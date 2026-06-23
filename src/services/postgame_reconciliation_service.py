@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import and_, func, or_
 
@@ -23,7 +22,6 @@ from src.services.game_collection_service import (
     GameCollectionTarget,
     crawl_and_save_game_details,
 )
-from src.services.game_write_contract import GameWriteContract
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
@@ -31,6 +29,11 @@ from src.utils.game_status import (
     LIVE_GAME_STATUSES,
 )
 from src.utils.team_codes import normalize_kbo_game_id
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
+    from src.services.game_write_contract import GameWriteContract
 
 logger = logging.getLogger(__name__)
 

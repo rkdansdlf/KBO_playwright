@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func
 
@@ -25,6 +25,9 @@ from src.utils.relay_validation import (
     VALIDATION_UNVERIFIED,
     VALIDATION_VERIFIED,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

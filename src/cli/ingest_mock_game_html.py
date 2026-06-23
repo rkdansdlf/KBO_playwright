@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.parsers.game_detail_parser import parse_game_detail_html
 from src.repositories.game_repository import save_game_detail
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 

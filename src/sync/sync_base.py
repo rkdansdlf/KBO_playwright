@@ -11,15 +11,13 @@ import json
 import logging
 import sqlite3
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import count
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from psycopg2 import Error as PsycopgError
 from sqlalchemy import bindparam, create_engine, inspect, text
-from sqlalchemy.engine import Connection, Result
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Query, Session, sessionmaker
 
@@ -42,6 +40,11 @@ from src.utils.game_status import (
     GAME_STATUS_POSTPONED,
     GAME_STATUS_SCHEDULED,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy.engine import Connection, Result
 
 LEAGUE_NAME_TO_CODE = {
     "REGULAR": 0,

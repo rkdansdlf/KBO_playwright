@@ -5,11 +5,10 @@ Season stats sync: batting, pitching, fielding, baserunning, standings, rankings
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import KST
 from src.models.player import (
@@ -21,6 +20,9 @@ from src.models.player import (
 from src.models.rankings import StatRanking
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from src.sync.sync_base import _serialize_scalar
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

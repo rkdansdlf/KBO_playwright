@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

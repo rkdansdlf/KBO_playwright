@@ -354,7 +354,7 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert 'python-version: ["3.12"]' in workflow
     assert "cancel-in-progress: true" in workflow
     assert "concurrency:" in workflow
-    assert "timeout-minutes: 30" in workflow
+    assert "timeout-minutes: 10" in workflow
     assert "--exit-zero" not in workflow
     assert "continue-on-error" not in workflow
     assert "|| true" not in workflow

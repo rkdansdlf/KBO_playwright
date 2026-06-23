@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from typing import TYPE_CHECKING
 
 from src.db.engine import SessionLocal
 from src.models.crawl import CrawlRun
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 class CrawlRunRepository:

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2}
 

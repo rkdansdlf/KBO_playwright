@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
 
@@ -25,6 +24,9 @@ from src.urls import REGISTER
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.team_codes import resolve_team_code
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 ROSTER_CALLBACK_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 ROSTER_CRAWL_EXCEPTIONS = (

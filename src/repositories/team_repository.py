@@ -4,16 +4,18 @@ Repository for Team related data (Roster, Info, etc.)
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.orm import Session
 
 from src.models.player import PlayerBasic
 from src.models.team import TeamDailyRoster
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 PLAYER_ROSTER_POSITIONS = {"투수", "포수", "내야수", "외야수", "선수"}
 STAFF_ROSTER_POSITIONS = {"감독", "코치"}

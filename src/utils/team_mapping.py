@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Sequence
 
 logger = logging.getLogger(__name__)
 """
@@ -10,11 +9,16 @@ OCI team_history 테이블과 연동하여 동적 매핑 제공
 """
 
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.utils.team_codes import resolve_team_code
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 TEAM_HISTORY_QUERIES = (
     # 컬럼명 패턴 0 (KBO_playwright 표준)

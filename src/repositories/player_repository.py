@@ -7,10 +7,9 @@ from __future__ import annotations
 import contextlib
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
 
 from src.db.engine import Engine, SessionLocal
 from src.models.player import (
@@ -22,7 +21,11 @@ from src.models.player import (
     PlayerSeasonPitching,
 )
 from src.models.team import Team, TeamDailyRoster
-from src.parsers.player_profile_parser import PlayerProfileParsed
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from src.parsers.player_profile_parser import PlayerProfileParsed
 
 
 class PlayerRepository:

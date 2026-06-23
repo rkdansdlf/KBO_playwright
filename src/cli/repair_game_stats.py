@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.db.engine import SessionLocal
 from src.models.game import GameBattingStat, GamePitchingStat
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

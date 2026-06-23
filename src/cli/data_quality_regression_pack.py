@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from sqlalchemy import create_engine
 
@@ -14,6 +14,9 @@ from src.validators.data_quality_regression_pack import (
     report_to_json,
     run_regression_pack,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def main(argv: Sequence[str] | None = None) -> int:

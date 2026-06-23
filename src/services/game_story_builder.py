@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from src.models.game import Game, GameEvent
 from src.utils.relay_text import compact_relay_text, is_relay_noise_text
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
+    from src.models.game import Game, GameEvent
 
 STORY_SCHEMA_VERSION = "game_story.v1"
 STORY_TIMELINE_LIMIT = 8
@@ -61,7 +64,7 @@ class GameStoryBuilder:
 
     def build(self, game: Game, events: Iterable[GameEvent]) -> dict[str, Any]:
         ordered_events = sorted(
-            list(events),
+            events,
             key=lambda event: (
                 event.event_seq if event.event_seq is not None else 10**9,
                 event.id if event.id is not None else 10**9,

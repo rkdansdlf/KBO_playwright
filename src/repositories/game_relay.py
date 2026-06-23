@@ -6,13 +6,11 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, KST
 from src.db.engine import SessionLocal
@@ -46,6 +44,11 @@ from src.repositories.game_helpers import (
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.sources.relay.base import event_has_minimum_state, event_to_pbp_row, normalize_pbp_row
 from src.utils.team_codes import team_code_from_game_id_segment
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

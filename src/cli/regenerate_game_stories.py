@@ -7,15 +7,13 @@ import csv
 import hashlib
 import logging
 import os
-from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.cli.daily_story_batch import (
     dump_story_json,
@@ -26,6 +24,11 @@ from src.models.game import Game, GameEvent, GameSummary
 from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

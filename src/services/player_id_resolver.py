@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import csv
 import logging
-from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 from src.constants import SURROGATE_PLAYER_ID_BOUNDARY
 from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from sqlalchemy.orm import Session
 
 ALIAS_CSV_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "player_name_aliases.csv"
 

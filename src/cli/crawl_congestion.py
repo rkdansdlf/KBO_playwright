@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from src.crawlers.congestion_crawler import CongestionCrawler
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 async def run(args: argparse.Namespace) -> None:

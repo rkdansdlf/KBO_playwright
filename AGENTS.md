@@ -182,6 +182,35 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 Last updated: 2026-06-23
 
+### Current Sprint (2026-06-23)
+
+### Phase A-C: FBT select + 테스트 최적화 + SIM 정리
+- FBT001/FBT002를 pyproject.toml select에 추가, `quality_dashboard.py:_as_bool` keyword-only 전환
+- 테스트 최적화: basic2 crawler 101s→0.28s (360x), OCI sync retry 4s×3→0.05s (240x)
+- SIM 21건 정리: src/ SIM102/105/108/113/117 = 0 violations
+- 전체 pytest: 93s→75s (19% 단축)
+
+### Phase 1: TCH typing import 정리
+- TC001/TC002/TC003 select 추가, 256건 `--unsafe-fixes` auto-fix
+- 15개 model 파일의 `date/datetime`이 TYPE_CHECKING으로 잘못 이동된 것 복구 (SQLAlchemy Mapped runtime 필요)
+- model/tests/scripts per-file-ignore 설정
+
+### Phase 2: C4 + PT
+- C4 comprehension 최적화 11건 auto-fix
+- PT (pytest style) select 추가 (tests/scripts per-file-ignore)
+
+### Phase 3: 테스트 최적화
+- team_stats_fallback 35s→0.49s (70x, `get_team_mapping_for_year` monkeypatch)
+
+### Phase 4: CI timeout 단축
+- lint: 10→5min, test: 30→10min
+
+### Phase 5: 마무리
+- pre-commit install 완료
+- PLR2004 select+ignore 완전 제거 (중복 설정 정리)
+- coverage fail_under=50 (이미 pyproject.toml에 설정됨)
+- 최종 pytest: 4327 passed in 45.59s (기존 93s 대비 51% 단축)
+
 ### Ruff Rules Expansion Status
 
 Ruff expansion phases completed across the current cleanup campaign. The work enabled stricter lint coverage while preserving existing CLI contracts, crawler interfaces, and keyword-call compatibility where tests or public helpers depended on parameter names.
@@ -211,9 +240,9 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 ### Current Verification Baseline
 
 - `ruff check src/ tests/ scripts/` = 0 errors
-- `ruff format --check .` = 898 files already formatted
+- `ruff format --check .` = 896 files already formatted
 - `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
-- `python -m pytest --tb=short -q --cov=src --cov-report=term --cov-report=term-missing:skip-covered` = 4324 passed, 1 skipped, 2 deselected, 1 xfailed; coverage baseline 67%
+- `python -m pytest --tb=short -q --cov=src --cov-report=term --cov-report=term-missing:skip-covered` = 4327 passed, 1 skipped, 2 deselected, 1 xfailed; coverage baseline 67%
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
 
@@ -250,8 +279,8 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `ruff check src/ tests/ scripts/` = 0 errors (default select, C901 not enforced).
 - `ruff check --select C901 src/` = 0 violations (103→0, 100% eliminated).
 - `ruff check --select PLR0915 src/` = 0 violations (too-many-statements, threshold 50).
-- `ruff check --select FURB167,RUF013,DTZ005,S608 src/` = 0 violations; these rules are now enabled for `src/`.
-- `ruff check --select PLR0913 src/` = 120 violations; see `Docs/references/PLR0913_REFACTOR_PLAN.md` before refactoring.
+- `ruff check --select FURB167,RUF013,DTZ005,S608,TC001,TC002,TC003 src/` = 0 violations; these rules are now enabled for `src/`.
+- `ruff check --select PLR0913 src/` = 109 violations; see `Docs/references/PLR0913_REFACTOR_PLAN.md` before refactoring.
 
 ### Phase 10 Completed (2026-06-23) — Deep Playwright-aware C901 refactoring
 
@@ -275,10 +304,12 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 ### Phase 11 Started (2026-06-23) — New lint rules, coverage, quality dashboard
 
 - Enabled and cleaned `FURB167`, `RUF013`, `DTZ005`, and `S608` for `src/`; `tests/**` and `scripts/**` keep targeted per-file ignores for these operational/fixture-heavy rules.
+- Enabled and cleaned `TC001`, `TC002`, and `TC003` for `src/` import hygiene; SQLAlchemy model modules keep targeted TC ignores because annotation imports are runtime-sensitive.
 - Added `KST` to `src.constants` and migrated `src/` `datetime.now()` calls to `datetime.now(KST)`.
-- Added `pytest-cov` and coverage config; CI test command now emits `term-missing` coverage without a fail-under gate. Current full baseline: 67%.
+- Added `pytest-cov` and coverage config; CI test command now emits `term-missing` coverage with a conservative `fail_under = 50` gate. Current full baseline: 67%.
 - Added `src.cli.quality_dashboard` to summarize `logs/quality_reports/*.json` as JSON or text.
 - Added `Docs/references/PLR0913_REFACTOR_PLAN.md`; do not enable `PLR0913` until the staged refactor plan is complete.
+- Started PLR0913 refactoring: utility/repository context objects reduced the baseline from 120 to 109 violations.
 
 ### Notes For Future Agents
 

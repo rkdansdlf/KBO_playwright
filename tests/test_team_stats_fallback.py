@@ -35,6 +35,7 @@ def test_db():
 
 
 def test_team_batting_stats_crawler_fallback(test_db, monkeypatch):
+    monkeypatch.setattr("src.crawlers.team_batting_stats_crawler.get_team_mapping_for_year", lambda _year: {"OB": "OB"})
     session = test_db
     # Seed player batting data
     session.add(
@@ -98,6 +99,9 @@ def test_team_batting_stats_crawler_fallback(test_db, monkeypatch):
 
 
 def test_team_pitching_stats_crawler_fallback(test_db, monkeypatch):
+    monkeypatch.setattr(
+        "src.crawlers.team_pitching_stats_crawler.get_team_mapping_for_year", lambda _year: {"OB": "OB"}
+    )
     session = test_db
     # Seed player pitching data
     session.add(

@@ -6,13 +6,10 @@ import asyncio
 import csv
 import logging
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING, Any
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
@@ -40,6 +37,11 @@ from src.utils.game_status import (
     GAME_STATUS_SCHEDULED,
     GAME_STATUS_UNRESOLVED,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -597,7 +599,7 @@ def _load_target_rows(
             )
             .all()
         )
-        row_map = {game_id: league_type_name for game_id, league_type_name in found_rows}
+        row_map = dict(found_rows)
         return [(game_id, row_map[game_id]) for game_id in requested_ids if game_id in row_map]
 
     query = (

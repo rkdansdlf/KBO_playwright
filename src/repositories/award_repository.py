@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
 
 from ..models.award import Award
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class AwardRepository:

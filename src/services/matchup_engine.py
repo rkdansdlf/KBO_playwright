@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import case, func, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat
@@ -19,6 +18,9 @@ from src.models.matchup import (
     PitcherTeamSplit,
 )
 from src.models.player import PlayerBasic
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

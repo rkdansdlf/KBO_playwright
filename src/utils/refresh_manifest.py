@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = PROJECT_ROOT / "data" / "refresh_manifests"
@@ -37,31 +40,39 @@ def infer_topics(
     return sorted(topics)
 
 
-def write_refresh_manifest(
-    *,
-    phase: str,
-    target_date: str,
-    game_ids: Iterable[str],
-    datasets: Sequence[str],
-    derived_refresh: Sequence[str] | None = None,
-    topics: Sequence[str] | None = None,
-    output_dir: Path | None = None,
-    stability: Mapping[str, Any] | None = None,
-) -> Path:
-    output_path = output_dir or DEFAULT_MANIFEST_DIR
+@dataclass(frozen=True)
+class RefreshManifestSpec:
+    phase: str
+    target_date: str
+    game_ids: Iterable[str]
+    datasets: Sequence[str]
+    derived_refresh: Sequence[str] | None = None
+    topics: Sequence[str] | None = None
+    output_dir: Path | None = None
+    stability: Mapping[str, Any] | None = None
+
+
+def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: object) -> Path:
+    if spec is None:
+        spec = RefreshManifestSpec(**kwargs)
+    elif kwargs:
+        msg = "Pass either RefreshManifestSpec or keyword fields, not both"
+        raise TypeError(msg)
+
+    output_path = spec.output_dir or DEFAULT_MANIFEST_DIR
     output_path.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
     payload = {
-        "phase": phase,
-        "target_date": target_date,
-        "game_ids": sorted({gid for gid in game_ids if gid}),
-        "datasets": list(dict.fromkeys(datasets)),
-        "derived_refresh": list(dict.fromkeys(derived_refresh or [])),
-        "topics": list(dict.fromkeys(topics or infer_topics(datasets, derived_refresh))),
+        "phase": spec.phase,
+        "target_date": spec.target_date,
+        "game_ids": sorted({gid for gid in spec.game_ids if gid}),
+        "datasets": list(dict.fromkeys(spec.datasets)),
+        "derived_refresh": list(dict.fromkeys(spec.derived_refresh or [])),
+        "topics": list(dict.fromkeys(spec.topics or infer_topics(spec.datasets, spec.derived_refresh))),
         "generated_at": datetime.now(KST).isoformat(),
     }
-    if stability is not None:
-        payload["stability"] = dict(stability)
-    path = output_path / f"{stamp}_{phase}.json"
+    if spec.stability is not None:
+        payload["stability"] = dict(spec.stability)
+    path = output_path / f"{stamp}_{spec.phase}.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path

@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

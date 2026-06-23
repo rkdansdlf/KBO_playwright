@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
 
 INVALID_PLAYER_NAMES = {
     "",

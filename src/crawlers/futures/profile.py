@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bs4 import BeautifulSoup
-from bs4.element import Tag
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
@@ -15,6 +14,9 @@ from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from bs4.element import Tag
 
 logger = logging.getLogger(__name__)
 

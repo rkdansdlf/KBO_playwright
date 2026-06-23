@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -11,6 +11,9 @@ from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 from src.cli.sync_oci import OCISync
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

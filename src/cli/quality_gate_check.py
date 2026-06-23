@@ -8,11 +8,14 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.constants import KST
 from src.db.engine import SessionLocal
 from src.validators.quality_gate import run_quality_gate
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

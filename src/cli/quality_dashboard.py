@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

@@ -4,12 +4,15 @@ import argparse
 import asyncio
 import logging
 import sys
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.services.relay_recovery_service import (
     load_relay_recovery_targets,
     recover_relay_data,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

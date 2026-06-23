@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
-from src.models.source_registry import DataSource
 from src.repositories.source_registry_repository import DataSourceRepository
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
 from src.utils.alerting import SlackWebhookClient
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from src.models.source_registry import DataSource
 
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")

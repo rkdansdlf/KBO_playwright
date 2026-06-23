@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, desc, func, or_
-from sqlalchemy.orm import Session
 
 from src.models.game import (
     Game,
@@ -25,6 +24,9 @@ from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, 
 from src.models.team import TeamDailyRoster
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class ContextAggregator:

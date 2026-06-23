@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.repositories.game_repository import save_schedule_game
 from src.services.game_write_contract import GameWriteContract
 from src.utils.schedule_validation import validate_schedule_game_payload
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
 
 logger = logging.getLogger(__name__)
 

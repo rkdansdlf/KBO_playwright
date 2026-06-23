@@ -6,19 +6,22 @@ Acts as a fallback when KBO's team cumulative record pages are unavailable.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
 from datetime import date as date_type
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.db.engine import get_database_type
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.standings import TeamStandingsDaily
 from src.models.team import Team
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

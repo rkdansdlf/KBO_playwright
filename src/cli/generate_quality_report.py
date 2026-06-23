@@ -8,15 +8,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import MetaData, Table, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_oci_url
 from src.models.game import (
@@ -34,6 +32,11 @@ from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.validators.quality_gate import run_quality_gate
 from src.validators.standings_integrity import validate_standings_integrity
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -514,7 +517,7 @@ def get_daily_metrics(
         .group_by(Game.game_status)
         .all()
     )
-    status_map = {status: count for status, count in status_counts}
+    status_map = dict(status_counts)
 
     # 2. Detail Completion Analysis
     completed_games = (

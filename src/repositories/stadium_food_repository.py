@@ -4,11 +4,15 @@ Repository for StadiumFoodVendor and StadiumFoodMenuItem operations.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from ..models.stadium_food_menu_item import StadiumFoodMenuItem
 from ..models.stadium_food_vendor import StadiumFoodVendor
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class StadiumFoodVendorRepository:

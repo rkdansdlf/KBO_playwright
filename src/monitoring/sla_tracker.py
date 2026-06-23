@@ -8,18 +8,20 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 try:
     from datetime import UTC
 except ImportError:
     UTC = UTC
 
-from sqlalchemy.orm import Session
 
 from src.models.game import Game, GameBattingStat, GameLineup, GameMetadata, GamePitchingStat, GamePlayByPlay
 from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

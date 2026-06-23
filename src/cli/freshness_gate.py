@@ -6,8 +6,8 @@ import argparse
 import json
 import logging
 import os
-from collections.abc import Sequence
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Query, Session, sessionmaker
@@ -27,6 +27,9 @@ from src.models.game import (
 from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 from src.utils.relay_text import is_relay_noise_text
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

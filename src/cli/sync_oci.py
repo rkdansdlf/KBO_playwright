@@ -9,14 +9,12 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_oci_url
 from src.models.game import Game
@@ -25,6 +23,11 @@ from src.models.player import PlayerSeasonBatting
 from src.models.rankings import StatRanking
 from src.models.standings import TeamStandingsDaily
 from src.sync.oci_sync import OCISync
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -474,7 +477,7 @@ def _build_sync_dispatch() -> dict[str, tuple]:
                             "🚀 Syncing Stat Rankings using specialized OCISync...", True,
                             lambda sess: get_available_years(sess, StatRanking, "season"),
                             "✅ Stat Rankings Sync Finished"),
-        "player_game_stats": (lambda s, y, **_: (logger.info("  - [%s] Syncing Player Game Batting...", y), s.sync_player_game_batting(), logger.info("  - [%s] Syncing Player Game Pitching...", y), s.sync_player_game_pitching())[-1],
+        "player_game_stats": (lambda s, y, **kw: (logger.info("  - [%s] Syncing Player Game Batting...", y), s.sync_player_game_batting(year=y, limit=kw.get("limit")), logger.info("  - [%s] Syncing Player Game Pitching...", y), s.sync_player_game_pitching(year=y, limit=kw.get("limit")))[-1],
                             "🚀 Syncing Player Game Stats...", True,
                             lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
                             "✅ Player Game Stats Sync Finished"),

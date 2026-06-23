@@ -13,9 +13,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.exc import SQLAlchemyError
@@ -30,6 +30,9 @@ from src.parsers.retired_player_parser import (
     parse_retired_pitcher_table,
 )
 from src.repositories.player_repository import PlayerRepository
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

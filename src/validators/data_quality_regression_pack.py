@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect, text
-from sqlalchemy.engine import Connection
-from sqlalchemy.engine.reflection import Inspector
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.engine import Connection
+    from sqlalchemy.engine.reflection import Inspector
 
 
 @dataclass(frozen=True)

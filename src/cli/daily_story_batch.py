@@ -7,12 +7,10 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import KST
 from src.db.engine import SessionLocal
@@ -22,6 +20,11 @@ from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 STORY_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)

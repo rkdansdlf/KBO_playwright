@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING, Any
 
 from src.models.game import Game, GameBattingStat, GamePitchingStat, PlayerGameBatting, PlayerGamePitching
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 _BATTING_SUM_FIELDS = [
     "plate_appearances",

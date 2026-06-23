@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.analyzers.data_summary import generate_report
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

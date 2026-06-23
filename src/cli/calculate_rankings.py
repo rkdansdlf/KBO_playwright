@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 
 from src.aggregators.ranking_aggregator import RankingAggregator
 from src.db.engine import SessionLocal
@@ -20,6 +19,11 @@ from src.models.player import (
     PlayerSeasonPitching,
 )
 from src.models.rankings import StatRanking
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

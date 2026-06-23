@@ -5,14 +5,17 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker
 
 from src.db.engine import SessionLocal, create_engine_for_url
 from src.sync.runtime_hydrator import RuntimeHydrator
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

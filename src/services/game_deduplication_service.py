@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.constants import KST
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 DEFAULT_PRIMARY_CODE_PREFERENCES = ("SSG", "KH", "DB", "KIA")
