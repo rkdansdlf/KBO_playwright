@@ -44,15 +44,7 @@ def audit_year(year: int) -> dict[str, Any]:
                 gs.plate_appearances, gs.at_bats, gs.walks, gs.hbp,
                 gs.sacrifice_hits, gs.sacrifice_flies,
                 (COALESCE(gs.at_bats,0) + COALESCE(gs.walks,0) + COALESCE(gs.hbp,0)
-                 + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)) as calc_pa,
-                (SELECT COUNT(*) FROM game_events e
-                 WHERE e.game_id = gs.game_id
-                   AND (
-                       (e.batter_id IS NOT NULL AND gs.player_id IS NOT NULL AND e.batter_id = gs.player_id)
-                       OR
-                       ((e.batter_id IS NULL OR gs.player_id IS NULL) AND e.batter_name = gs.player_name)
-                   )
-                   AND (e.description LIKE '%희생번트%' OR e.description LIKE '%희생플라이%')) as pbp_sac_count
+                 + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)) as calc_pa
             FROM game_batting_stats gs
             JOIN game g ON g.game_id = gs.game_id
             JOIN kbo_seasons ks ON g.season_id = ks.season_id
@@ -86,16 +78,37 @@ def audit_year(year: int) -> dict[str, Any]:
             {"year": year},
         ).scalar()
 
-    categories = Counter()
-    for r in rows:
-        sh_sf_zero = r.sacrifice_hits == 0 and r.sacrifice_flies == 0
-        pa_gt_abhbp = r.plate_appearances > (r.at_bats + r.walks + r.hbp)
-        if r.pbp_sac_count > 0:
-            categories["FIXABLE_PBP"] += 1
-        elif sh_sf_zero and pa_gt_abhbp:
-            categories["FIXABLE_FORMULA"] += 1
-        else:
-            categories["UNFIXABLE"] += 1
+        categories = Counter()
+        for r in rows:
+            pbp_sac_count = (
+                session.execute(
+                    text("""
+                SELECT COUNT(*) FROM game_events e
+                WHERE e.game_id = :game_id
+                  AND (
+                      (e.batter_id IS NOT NULL AND :player_id IS NOT NULL AND e.batter_id = :player_id)
+                      OR
+                      ((e.batter_id IS NULL OR :player_id IS NULL) AND e.batter_name = :player_name)
+                  )
+                  AND (e.description LIKE '%희생번트%' OR e.description LIKE '%희생플라이%')
+                """),
+                    {
+                        "game_id": r.game_id,
+                        "player_id": r.player_id,
+                        "player_name": r.player_name,
+                    },
+                ).scalar()
+                or 0
+            )
+
+            sh_sf_zero = r.sacrifice_hits == 0 and r.sacrifice_flies == 0
+            pa_gt_abhbp = r.plate_appearances > (r.at_bats + r.walks + r.hbp)
+            if pbp_sac_count > 0:
+                categories["FIXABLE_PBP"] += 1
+            elif sh_sf_zero and pa_gt_abhbp:
+                categories["FIXABLE_FORMULA"] += 1
+            else:
+                categories["UNFIXABLE"] += 1
 
     return {
         "year": year,
