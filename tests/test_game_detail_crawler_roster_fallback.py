@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from src.crawlers.game_detail_crawler import GameDetailCrawler
+from src.crawlers.game_detail_crawler import BoxscoreCrawlContext, GameDetailCrawler
 
 
 def test_extract_hitters_uses_roster_map_for_missing_player_id():
@@ -29,14 +29,13 @@ def test_extract_hitters_uses_roster_map_for_missing_player_id():
 
     crawler._extract_table_rows = fake_extract_table_rows  # type: ignore[method-assign]
 
+    ctx = BoxscoreCrawlContext(
+        page=None,
+        season_year=2025,
+        roster_map={"홍길동": [{"id": "12345", "uniform": "7"}]},
+    )
     hitters, team_total = asyncio.run(
-        crawler._extract_hitters(
-            page=None,
-            team_side="away",
-            team_code="LG",
-            season_year=2025,
-            roster_map={"홍길동": [{"id": "12345", "uniform": "7"}]},
-        )
+        crawler._extract_hitters(ctx, team_side="away", team_code="LG"),
     )
 
     assert team_total == {}

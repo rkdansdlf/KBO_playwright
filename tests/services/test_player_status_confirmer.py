@@ -66,7 +66,11 @@ class TestPlayerStatusConfirmer:
         assert result == {"attempted": 0, "confirmed": 0}
 
     @pytest.mark.asyncio
-    async def test_max_confirmations_respected(self, mock_pool):
+    async def test_max_confirmations_respected(self, mock_pool, monkeypatch):
+        async def _no_sleep(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _no_sleep)
         page = AsyncMock()
         page.goto = AsyncMock()
         page.inner_text = AsyncMock(return_value="text")

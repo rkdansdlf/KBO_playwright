@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import src.crawlers.game_detail_crawler as game_detail_module
-from src.crawlers.game_detail_crawler import GameDetailCrawler
+from src.crawlers.game_detail_crawler import BoxscoreCrawlContext, GameDetailCrawler
 
 
 class _FakeCompliance:
@@ -92,17 +92,14 @@ def test_navigate_section_uses_compliance_delay_retry_and_selector(monkeypatch):
     policy = _FakePolicy()
     crawler.policy = policy
     page = _FakePage()
+    ctx = BoxscoreCrawlContext(page=page, game_id="20250401LGSS0", game_date="20250401")
 
     ok, reason, url = asyncio.run(
         crawler._navigate_section(
-            page,
-            "20250401LGSS0",
-            "20250401",
+            ctx,
             "HITTER",
             required_selector="#tblAwayHitter",
-            timeout=12345,
             selector_timeout=6789,
-            extra_delay=0,
         )
     )
 
@@ -111,7 +108,7 @@ def test_navigate_section_uses_compliance_delay_retry_and_selector(monkeypatch):
     assert compliance.urls == [url]
     assert policy.retry_calls == 1
     assert policy.delay_hosts == ["www.koreabaseball.com"]
-    assert page.goto_calls == [(url, "domcontentloaded", 12345)]
+    assert page.goto_calls == [(url, "domcontentloaded", 30000)]
     assert page.selector_calls == [("#tblAwayHitter", 6789)]
 
 
@@ -119,9 +116,9 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
     crawler = GameDetailCrawler()
     sections = []
 
-    async def fake_navigate(page, game_id, game_date, section, **kwargs):
+    async def fake_navigate(ctx, section, **kwargs):
         sections.append(section)
-        return True, "ok", crawler._section_url(game_id, game_date, section)
+        return True, "ok", crawler._section_url(ctx.game_id, ctx.game_date, section)
 
     async def fake_wait(page, **kwargs):
         return True, "ok"
@@ -138,17 +135,20 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
     async def fake_summary(*_args):
         return []
 
-    async def fake_hitters(
-        page, team_side, team_code, season_year, roster_map=None, use_hitter_section=False, db_session=None
-    ):
-        if not use_hitter_section:
+    hitter_call = 0
+    pitcher_call = 0
+
+    async def fake_hitters(ctx, team_side, team_code):
+        nonlocal hitter_call
+        hitter_call += 1
+        if hitter_call <= 2:
             return [], {}
         return [_hitter(team_side)], {"hits": 1, "at_bats": 3}
 
-    async def fake_pitchers(
-        page, team_side, team_code, season_year, roster_map=None, use_pitcher_section=False, db_session=None
-    ):
-        if not use_pitcher_section:
+    async def fake_pitchers(ctx, team_side, team_code):
+        nonlocal pitcher_call
+        pitcher_call += 1
+        if pitcher_call <= 2:
             return []
         return [_pitcher(team_side)]
 
@@ -175,8 +175,8 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
 def test_crawl_single_marks_incomplete_detail_when_fallback_is_empty(monkeypatch):
     crawler = GameDetailCrawler()
 
-    async def fake_navigate(page, game_id, game_date, section, **kwargs):
-        return True, "ok", crawler._section_url(game_id, game_date, section)
+    async def fake_navigate(ctx, section, **kwargs):
+        return True, "ok", crawler._section_url(ctx.game_id, ctx.game_date, section)
 
     async def fake_wait(page, **kwargs):
         return True, "ok"
