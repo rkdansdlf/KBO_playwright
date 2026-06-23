@@ -40,10 +40,7 @@ async def collect_rosters(year: int, month: int | None = None) -> None:
     if month:
         start_date = date(year, month, 1)
         # End date: start of next month - 1 day
-        if month == 12:
-            end_date = date(year, 12, 31)
-        else:
-            end_date = date(year, month + 1, 1) - timedelta(days=1)
+        end_date = date(year, 12, 31) if month == 12 else date(year, month + 1, 1) - timedelta(days=1)
     else:
         # Full year (Regular season roughly Mar-Nov)
         start_date = date(year, 3, 1)

@@ -11,6 +11,7 @@ from collections import defaultdict
 
 from sqlalchemy.orm import Session
 
+from src.constants import KST
 from src.models.game import Game
 from src.models.season import KboSeason
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
@@ -137,7 +138,7 @@ if __name__ == "__main__":
     from src.db.engine import SessionLocal
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--year", type=int, default=datetime.now().year)
+    parser.add_argument("--year", type=int, default=datetime.now(KST).year)
     parser.add_argument("--report", action="store_true")
     args = parser.parse_args()
 

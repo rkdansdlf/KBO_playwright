@@ -149,9 +149,6 @@ class PitchingStatCalculator:
 
         # 6. FIP (Fielding Independent Pitching)
         # FIP = ((13 * HR) + (3 * (BB + HBP)) - (2 * SO)) / IP + fip_constant
-        if ip > 0:
-            fip = round(((13 * hr) + (3 * (bb + hbp)) - (2 * so)) / ip + fip_constant, 2)
-        else:
-            fip = 0.0
+        fip = round(((13 * hr) + (3 * (bb + hbp)) - (2 * so)) / ip + fip_constant, 2) if ip > 0 else 0.0
 
         return {"era": era, "whip": whip, "k_per_nine": k_per_nine, "bb_per_nine": bb_per_nine, "kbb": kbb, "fip": fip}

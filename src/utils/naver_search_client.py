@@ -31,6 +31,8 @@ from typing import Any, Literal
 
 import httpx
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 SearchType = Literal["news", "cafearticle", "blog"]
@@ -187,7 +189,7 @@ class NaverSearchClient:
         """
         import asyncio
 
-        cutoff = datetime.now() - timedelta(days=days_back)
+        cutoff = datetime.now(KST) - timedelta(days=days_back)
         all_results: list[NaverSearchResult] = []
         seen_links: set[str] = set()
 

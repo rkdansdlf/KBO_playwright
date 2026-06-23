@@ -11,6 +11,8 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 from playwright.async_api import Error as PlaywrightError
@@ -249,7 +251,7 @@ class DailyRosterCrawler:
 async def main() -> None:
     crawler = DailyRosterCrawler()
     # Test for yesterday
-    (datetime.now().date()).strftime("%Y-%m-%d")
+    (datetime.now(KST).date()).strftime("%Y-%m-%d")
     data = await crawler.crawl_date_range("2024-05-20", "2024-05-20")
     logger.info("Crawled %s records.", len(data))
     for r in data[:5]:

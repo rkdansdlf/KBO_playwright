@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
 
@@ -44,10 +45,7 @@ def _check_datasource_health(session: Session) -> list[dict[str, Any]]:
         stale = ""
         if ds.last_success_at:
             hours_since = (datetime.now(UTC).replace(tzinfo=None) - ds.last_success_at).total_seconds() / 3600
-            if hours_since > 48:
-                stale = f"STALE ({hours_since:.0f}h)"
-            else:
-                stale = f"ok ({hours_since:.0f}h ago)"
+            stale = f"STALE ({hours_since:.0f}h)" if hours_since > 48 else f"ok ({hours_since:.0f}h ago)"
         else:
             stale = "NEVER"
         rows.append(
@@ -66,8 +64,8 @@ def _check_table_health(session: Session) -> list[dict[str, Any]]:
     rows = []
     for table, date_col in TABLE_CHECKS:
         try:
-            count = session.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
-            latest = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()
+            count = session.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()  # noqa: S608
+            latest = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()  # noqa: S608
             rows.append(
                 {
                     "table": table,
@@ -89,7 +87,7 @@ def run_health_check() -> None:
     logger.info("=" * 60)
     logger.info(" KBO Pipeline Health Check")
     logger.info("=" * 60)
-    logger.info(" Timestamp: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info(" Timestamp: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("")
 
     stale_count = sum(1 for r in ds_rows if r["stale"].startswith("STALE"))

@@ -14,6 +14,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent
 from src.services.wpa_calculator import WPACalculator
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "data" / "recovery"
-_current_year = datetime.now().year
+_current_year = datetime.now(KST).year
 DEFAULT_SEASONS = (_current_year - 2, _current_year - 1, _current_year)
 DEFAULT_MIN_EVENTS = 20
 

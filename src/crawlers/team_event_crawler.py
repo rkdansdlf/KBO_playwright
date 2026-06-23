@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.parsers.team_event_parser import parse_team_events
 from src.repositories.source_registry_repository import save_raw_snapshots
@@ -86,7 +87,7 @@ TEAM_TO_SOURCE_KEY = {
 class TeamEventCrawler:
     def __init__(self, days_back: int = 30) -> None:
         self.days_back = days_back
-        self.cutoff_date = datetime.now() - timedelta(days=days_back)
+        self.cutoff_date = datetime.now(KST) - timedelta(days=days_back)
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict]:

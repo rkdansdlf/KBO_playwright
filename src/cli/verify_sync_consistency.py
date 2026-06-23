@@ -95,7 +95,7 @@ def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[di
 
 def get_row_count(conn: Connection, table_name: str) -> int:
     try:
-        res = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
+        res = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))  # noqa: S608
         return res.scalar() or 0
     except SYNC_VERIFY_DB_EXCEPTIONS:
         logger.exception("Error getting count for %s", table_name)
@@ -110,11 +110,11 @@ def check_deep_ids(
         cols_str = ", ".join(pk_cols)
 
         # Fetch all primary keys from SQLite
-        res_sqlite = sqlite_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))
+        res_sqlite = sqlite_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))  # noqa: S608
         sqlite_rows = res_sqlite.fetchall()
 
         # Fetch all primary keys from OCI
-        res_oci = oci_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))
+        res_oci = oci_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))  # noqa: S608
         oci_rows = res_oci.fetchall()
 
         def stringify_row(row: Sequence[object]) -> tuple[str, ...]:

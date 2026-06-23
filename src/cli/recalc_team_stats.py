@@ -125,13 +125,11 @@ def run_recalc(
     with SessionLocal() as session:
         aggregator = TeamStatAggregator(session)
 
-        if batting_recalc:
-            if _run_batting_recalc(aggregator, season, team_id, dry_run=dry_run):
-                return 1
+        if batting_recalc and _run_batting_recalc(aggregator, season, team_id, dry_run=dry_run):
+            return 1
 
-        if pitching_recalc:
-            if _run_pitching_recalc(aggregator, season, team_id, dry_run=dry_run):
-                return 1
+        if pitching_recalc and _run_pitching_recalc(aggregator, season, team_id, dry_run=dry_run):
+            return 1
 
     logger.info("✨ Team statistics recalculation completed.")
     return 0

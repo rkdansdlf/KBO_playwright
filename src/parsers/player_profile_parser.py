@@ -65,7 +65,7 @@ class PlayerProfileParsed(BaseModel):
 LABELS = "선수명|등번호|생년월일|포지션|신장/체중|경력|출신교|입단 계약금|연봉|지명순위|입단년도"
 LABEL_REGEX = re.compile(
     rf"(?P<key>{LABELS})\s*:\s*(?P<val>.*?)(?=(?:{LABELS})\s*:|$)",
-    re.S,
+    re.DOTALL,
 )
 
 # Standard KBO Team name to Team ID mapping
@@ -171,7 +171,7 @@ def parse_height_weight(s: str) -> dict[str, int | None]:
     """Parse height/weight from '180cm/95kg' format."""
     if not s:
         return {"height_cm": None, "weight_kg": None}
-    m = re.search(r"(\d+)\s*cm\s*/\s*(\d+)\s*kg", _clean(s), re.I)
+    m = re.search(r"(\d+)\s*cm\s*/\s*(\d+)\s*kg", _clean(s), re.IGNORECASE)
     return {"height_cm": int(m.group(1)), "weight_kg": int(m.group(2))} if m else {"height_cm": None, "weight_kg": None}
 
 

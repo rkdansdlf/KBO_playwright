@@ -14,6 +14,7 @@ from datetime import datetime
 
 from sqlalchemy import func
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay, GameValidationMetrics
 from src.services.wpa_transitions import event_has_wpa_state
@@ -61,7 +62,7 @@ def seed_relay_validation_metrics(
             .all()
         }
 
-        now = datetime.now()
+        now = datetime.now(KST)
         for game in games:
             game_id = game.game_id
             year = int(game_id[:4])

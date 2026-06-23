@@ -35,81 +35,121 @@ logger = logging.getLogger(__name__)
 AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
-def audit_year(year: int) -> dict[str, Any]:
+_GLOBAL_AUDIT_CACHE = None
+
+
+def _populate_audit_cache():
+    global _GLOBAL_AUDIT_CACHE
+    if _GLOBAL_AUDIT_CACHE is not None:
+        return
+
+    logger.info("Initializing global audit cache (single-scan table query)...")
+    t0 = time.time()
     with SessionLocal() as session:
-        rows = session.execute(
+        # 1. Total games count per year
+        games_data = session.execute(
+            text("""
+            SELECT SUBSTR(g.game_id, 1, 4) as season_year, COUNT(DISTINCT g.game_id)
+            FROM game g
+            WHERE g.game_status IN ('COMPLETED', 'DRAW', 'FINAL')
+            GROUP BY SUBSTR(g.game_id, 1, 4)
+            """)
+        ).fetchall()
+        total_games_map = {int(r.season_year): r[1] for r in games_data if r.season_year and r.season_year.isdigit()}
+
+        # 2. Total batting rows count per year
+        rows_data = session.execute(
+            text("""
+            SELECT SUBSTR(gs.game_id, 1, 4) as season_year, COUNT(*)
+            FROM game_batting_stats gs
+            GROUP BY SUBSTR(gs.game_id, 1, 4)
+            """)
+        ).fetchall()
+        total_rows_map = {int(r.season_year): r[1] for r in rows_data if r.season_year and r.season_year.isdigit()}
+
+        # 3. All violation rows across all seasons
+        violations = session.execute(
             text("""
             SELECT
-                gs.game_id, g.game_date, gs.player_id, gs.player_name,
+                gs.game_id, gs.player_id, gs.player_name,
                 gs.plate_appearances, gs.at_bats, gs.walks, gs.hbp,
                 gs.sacrifice_hits, gs.sacrifice_flies,
                 (COALESCE(gs.at_bats,0) + COALESCE(gs.walks,0) + COALESCE(gs.hbp,0)
                  + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)) as calc_pa
             FROM game_batting_stats gs
-            JOIN game g ON g.game_id = gs.game_id
-            JOIN kbo_seasons ks ON g.season_id = ks.season_id
-            WHERE ks.season_year = :year
-              AND g.game_status IN ('COMPLETED', 'DRAW', 'FINAL')
-              AND COALESCE(gs.plate_appearances, 0) != (
-                  COALESCE(gs.at_bats,0) + COALESCE(gs.walks,0) + COALESCE(gs.hbp,0)
-                  + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)
-              )
-            ORDER BY g.game_date, gs.player_name
-        """),
-            {"year": year},
+            WHERE COALESCE(gs.plate_appearances, 0) != (
+                COALESCE(gs.at_bats,0) + COALESCE(gs.walks,0) + COALESCE(gs.hbp,0)
+                + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)
+            )
+            ORDER BY gs.game_id, gs.player_name
+            """)
         ).fetchall()
 
-        total_games = session.execute(
-            text("""
-            SELECT COUNT(DISTINCT game_id) FROM game g
-            JOIN kbo_seasons ks ON g.season_id = ks.season_id
-            WHERE ks.season_year = :year AND g.game_status IN ('COMPLETED', 'DRAW', 'FINAL')
-        """),
-            {"year": year},
-        ).scalar()
+        # Group violations by year
+        violations_map = {}
+        for r in violations:
+            if r.game_id and len(r.game_id) >= 4 and r.game_id[:4].isdigit():
+                y = int(r.game_id[:4])
+                violations_map.setdefault(y, []).append(r)
 
-        total_rows = session.execute(
-            text("""
-            SELECT COUNT(*) FROM game_batting_stats gs
-            JOIN game g ON g.game_id = gs.game_id
-            JOIN kbo_seasons ks ON g.season_id = ks.season_id
-            WHERE ks.season_year = :year AND g.game_status IN ('COMPLETED', 'DRAW', 'FINAL')
-        """),
-            {"year": year},
-        ).scalar()
+    t1 = time.time()
+    logger.info(f"Global audit cache initialized in {t1 - t0:.2f}s (cached {len(violations)} total violations)")
 
-        categories = Counter()
-        for r in rows:
-            pbp_sac_count = (
-                session.execute(
-                    text("""
-                SELECT COUNT(*) FROM game_events e
-                WHERE e.game_id = :game_id
-                  AND (
-                      (e.batter_id IS NOT NULL AND :player_id IS NOT NULL AND e.batter_id = :player_id)
-                      OR
-                      ((e.batter_id IS NULL OR :player_id IS NULL) AND e.batter_name = :player_name)
-                  )
-                  AND (e.description LIKE '%희생번트%' OR e.description LIKE '%희생플라이%')
-                """),
-                    {
-                        "game_id": r.game_id,
-                        "player_id": r.player_id,
-                        "player_name": r.player_name,
-                    },
-                ).scalar()
-                or 0
-            )
+    _GLOBAL_AUDIT_CACHE = {
+        "total_games_map": total_games_map,
+        "total_rows_map": total_rows_map,
+        "violations_map": violations_map,
+    }
 
-            sh_sf_zero = r.sacrifice_hits == 0 and r.sacrifice_flies == 0
-            pa_gt_abhbp = r.plate_appearances > (r.at_bats + r.walks + r.hbp)
-            if pbp_sac_count > 0:
-                categories["FIXABLE_PBP"] += 1
-            elif sh_sf_zero and pa_gt_abhbp:
-                categories["FIXABLE_FORMULA"] += 1
-            else:
-                categories["UNFIXABLE"] += 1
 
+def audit_year(year: int) -> dict[str, Any]:
+    t_start = time.time()
+    _populate_audit_cache()
+
+    total_games = _GLOBAL_AUDIT_CACHE["total_games_map"].get(year, 0)
+    total_rows = _GLOBAL_AUDIT_CACHE["total_rows_map"].get(year, 0)
+    rows = _GLOBAL_AUDIT_CACHE["violations_map"].get(year, [])
+
+    categories = Counter()
+    if rows:
+        logger.info(f"  [Year {year}] Verifying PBP sacrifice counts for {len(rows)} violation rows...")
+        with SessionLocal() as session:
+            for idx, r in enumerate(rows):
+                pbp_sac_count = (
+                    session.execute(
+                        text("""
+                    SELECT COUNT(*) FROM game_events e
+                    WHERE e.game_id = :game_id
+                      AND (
+                          (e.batter_id IS NOT NULL AND :player_id IS NOT NULL AND e.batter_id = :player_id)
+                          OR
+                          ((e.batter_id IS NULL OR :player_id IS NULL) AND e.batter_name = :player_name)
+                      )
+                      AND (e.description LIKE '%희생번트%' OR e.description LIKE '%희생플라이%')
+                    """),
+                        {
+                            "game_id": r.game_id,
+                            "player_id": r.player_id,
+                            "player_name": r.player_name,
+                        },
+                    ).scalar()
+                    or 0
+                )
+
+                sh_sf_zero = r.sacrifice_hits == 0 and r.sacrifice_flies == 0
+                pa_gt_abhbp = r.plate_appearances > (r.at_bats + r.walks + r.hbp)
+                if pbp_sac_count > 0:
+                    categories["FIXABLE_PBP"] += 1
+                elif sh_sf_zero and pa_gt_abhbp:
+                    categories["FIXABLE_FORMULA"] += 1
+                else:
+                    categories["UNFIXABLE"] += 1
+
+                if (idx + 1) % 50 == 0:
+                    logger.info(f"    Processed {idx + 1}/{len(rows)} rows...")
+
+    t_end = time.time()
+    logger.info(f"  [Year {year}] Completed in {t_end - t_start:.2f}s")
     return {
         "year": year,
         "total_games": total_games,
@@ -418,7 +458,10 @@ def main():
         if args.year
         else [2020, 2021, 2023]
     )
-    results = [audit_year(y) for y in years]
+    results = []
+    for y in years:
+        logger.info(f"Auditing year {y}...")
+        results.append(audit_year(y))
     results.sort(key=lambda r: r["year"])
 
     elapsed = time.time() - start_time

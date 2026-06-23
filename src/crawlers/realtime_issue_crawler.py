@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.throttle import throttle
@@ -76,7 +77,7 @@ class RealtimeIssueCrawler:
 
     @staticmethod
     def _naver_news_api_url() -> str:
-        date_str = datetime.now().strftime("%Y%m%d")
+        date_str = datetime.now(KST).strftime("%Y%m%d")
         return f"https://api-gw.sports.naver.com/news/articles/kbaseball?sort=latest&date={date_str}&page=1&pageSize=20&isPhoto=N"
 
     @staticmethod
@@ -99,7 +100,7 @@ class RealtimeIssueCrawler:
                 "source": url,
                 "office_name": item.get("officeName", ""),
                 "published_at": item.get("datetime", ""),
-                "crawled_at": datetime.now().isoformat(),
+                "crawled_at": datetime.now(KST).isoformat(),
                 "category": "naver_news",
             },
         }
@@ -151,7 +152,7 @@ class RealtimeIssueCrawler:
                     "content": title,
                     "meta": {
                         "source": href,
-                        "crawled_at": datetime.now().isoformat(),
+                        "crawled_at": datetime.now(KST).isoformat(),
                         "category": "naver_news",
                     },
                 },
@@ -206,7 +207,7 @@ class RealtimeIssueCrawler:
                                     "content": f"MLBPark Bullpen popular discussion thread: {title}",
                                     "meta": {
                                         "source": href,
-                                        "crawled_at": datetime.now().isoformat(),
+                                        "crawled_at": datetime.now(KST).isoformat(),
                                         "category": "mlbpark",
                                     },
                                 },

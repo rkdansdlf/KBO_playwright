@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.game_mvp_repository import GameMvpRepository
 
@@ -27,7 +28,7 @@ HEADERS = {
 
 
 class GameMvpCrawler:
-    async def run(self, game_ids: list[str] = None, *, save: bool = False) -> None:
+    async def run(self, game_ids: list[str] | None = None, *, save: bool = False) -> None:
         if game_ids:
             results = []
             for gid in game_ids:
@@ -80,7 +81,7 @@ class GameMvpCrawler:
 
     async def _fetch_recent_mvp_news(self) -> list[dict]:
         results = []
-        today = datetime.now()
+        today = datetime.now(KST)
         client = httpx.Client(headers=HEADERS, timeout=15)
 
         for days_ago in range(7):

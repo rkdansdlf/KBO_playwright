@@ -115,10 +115,7 @@ class SlaTracker:
                 s["detail_coverage"] * 100,
             )
 
-        if totals["games"] > 0:
-            overall_rate = totals["completed"] / totals["games"]
-        else:
-            overall_rate = 0
+        overall_rate = totals["completed"] / totals["games"] if totals["games"] > 0 else 0
         logger.info("%s %s %s %s %s %s", "-" * 12, "-" * 6, "-" * 10, "-" * 7, "-" * 7, "-" * 8)
         logger.info("  %-10s %6s %10s %s", "TOTAL", totals["games"], totals["completed"], format(overall_rate, ">6.0%"))
         logger.info("")

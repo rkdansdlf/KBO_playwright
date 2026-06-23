@@ -17,8 +17,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.validators.quality_gate import run_quality_gate
 
@@ -34,7 +34,7 @@ def run_monthly_team_audit(year: int) -> dict[str, Any]:
 
         return {
             "year": year,
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": datetime.now(KST).isoformat(),
             "batting": {
                 "ok": team_batting.get("ok", True),
                 "checked_teams": team_batting.get("checked_players", 0),
@@ -50,7 +50,6 @@ def run_monthly_team_audit(year: int) -> dict[str, Any]:
 
 def crawl_monthly_team_audit_job() -> None:
     """Scheduled job entry point — logs results, saves report, raises on failure."""
-    KST = ZoneInfo("Asia/Seoul")
     current_year = datetime.now(KST).year
     target_year = current_year - 1
 
@@ -97,7 +96,6 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
     args = parser.parse_args()
 
-    KST = ZoneInfo("Asia/Seoul")
     current_year = datetime.now(KST).year
     target_year = args.year if args.year else current_year - 1
 

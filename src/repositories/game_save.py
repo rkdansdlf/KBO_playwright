@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN
+from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, KST
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -259,7 +259,7 @@ def _parse_detail_game_date(game_data: dict[str, Any], provisional_game_id: str 
     try:
         return game_date_str, datetime.strptime(game_date_str, "%Y%m%d").date()
     except ValueError:
-        return game_date_str, datetime.now().date()
+        return game_date_str, datetime.now(KST).date()
 
 
 def _get_or_create_game(
@@ -628,7 +628,7 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
     except ValueError:
-        game_date = datetime.now().date()
+        game_date = datetime.now(KST).date()
 
     game_id, original_game_id = _canonicalize_game_id_for_payload(
         game_data.get("game_id"),

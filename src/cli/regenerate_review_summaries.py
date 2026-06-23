@@ -23,6 +23,7 @@ from src.cli.daily_review_batch import (
     _build_review_data,
     _upsert_review_summary,
 )
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameSummary
 from src.services.context_aggregator import ContextAggregator
@@ -97,12 +98,12 @@ def _load_game_ids_file(path: Path) -> list[str]:
 
 
 def _default_report_path() -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
     return Path("data/reports") / f"review_summary_regen_report_{stamp}.csv"
 
 
 def _default_backup_path() -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
     return Path("data/recovery") / f"review_summary_regen_backup_{stamp}.csv"
 
 

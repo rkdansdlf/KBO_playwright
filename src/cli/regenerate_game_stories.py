@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from src.cli.daily_story_batch import (
     dump_story_json,
 )
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary
 from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
@@ -93,12 +94,12 @@ def _load_game_ids_file(path: Path) -> list[str]:
 
 
 def _default_report_path() -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
     return Path("data/reports") / f"game_story_regen_report_{stamp}.csv"
 
 
 def _default_backup_path() -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
     return Path("data/recovery") / f"game_story_regen_backup_{stamp}.csv"
 
 

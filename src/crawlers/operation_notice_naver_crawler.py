@@ -33,16 +33,16 @@ NAVER_NOTICE_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeErr
 
 # Keyword → notice_type classification
 NOTICE_TYPE_RULES: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"취소|우천|노게임|우중|폭우", re.I), "CANCEL"),
-    (re.compile(r"지연|연기|딜레이", re.I), "DELAY"),
-    (re.compile(r"게이트|출입문|입장문|입구", re.I), "GATE_CHANGE"),
-    (re.compile(r"입장|제한|금지|규정|반입", re.I), "ENTRY_RULE"),
-    (re.compile(r"주차|파킹|주차장", re.I), "PARKING"),
-    (re.compile(r"날씨|기상|태풍|강풍", re.I), "WEATHER"),
-    (re.compile(r"셔틀|버스|교통|혼잡", re.I), "ENTRY_RULE"),
+    (re.compile(r"취소|우천|노게임|우중|폭우", re.IGNORECASE), "CANCEL"),
+    (re.compile(r"지연|연기|딜레이", re.IGNORECASE), "DELAY"),
+    (re.compile(r"게이트|출입문|입장문|입구", re.IGNORECASE), "GATE_CHANGE"),
+    (re.compile(r"입장|제한|금지|규정|반입", re.IGNORECASE), "ENTRY_RULE"),
+    (re.compile(r"주차|파킹|주차장", re.IGNORECASE), "PARKING"),
+    (re.compile(r"날씨|기상|태풍|강풍", re.IGNORECASE), "WEATHER"),
+    (re.compile(r"셔틀|버스|교통|혼잡", re.IGNORECASE), "ENTRY_RULE"),
 ]
 
-URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급|즉시|당장|오늘 취소|경기 취소", re.I)
+URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급|즉시|당장|오늘 취소|경기 취소", re.IGNORECASE)
 
 TEAM_SOURCE_MAP = {
     "LG": "naver_search_LG",

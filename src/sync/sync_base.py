@@ -23,6 +23,7 @@ from sqlalchemy.engine import Connection, Result
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Query, Session, sessionmaker
 
+from src.constants import KST
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -126,7 +127,7 @@ def _row_to_record(
     columns: list[str],
     transform_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    now = datetime.now()
+    now = datetime.now(KST)
     mapping = getattr(row, "_mapping", None)
     if mapping is not None:
         data = {c: mapping[c] for c in columns if c in mapping}
@@ -167,13 +168,13 @@ def _build_composite_signature_query(game_ids: list[str] | None) -> str:
         alias = f"t{i}"
         if table_name == "game_metadata":
             child_subqueries.append(
-                f"(SELECT COUNT(*) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_count,\n"
+                f"(SELECT COUNT(*) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_count,\n"  # noqa: S608
                 f"            (SELECT MAX({alias}.updated_at) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_max_updated,\n"
                 f"            (SELECT MAX({alias}.start_time) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_start_time",
             )
         else:
             child_subqueries.append(
-                f"(SELECT COUNT(*) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_count,\n"
+                f"(SELECT COUNT(*) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_count,\n"  # noqa: S608
                 f"            (SELECT MAX({alias}.updated_at) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_max_updated",
             )
 
@@ -193,7 +194,7 @@ def _build_composite_signature_query(game_ids: list[str] | None) -> str:
             {children_sql}
         FROM game g
         {filter_clause}
-    """
+    """  # noqa: S608
 
 
 def load_game_sync_signatures(
@@ -550,7 +551,7 @@ class OCISyncBase:
                     COALESCE(MAX({quoted_column}), 0) > 0
                 )
                 FROM {quoted_table}
-                """,
+                """,  # noqa: S608
             ),
             {"sequence_name": sequence_name},
         )
@@ -854,8 +855,8 @@ class OCISyncBase:
         self,
         model: type,
         conflict_keys: list[str],
-        exclude_cols: list[str] = None,
-        filters: list = None,
+        exclude_cols: list[str] | None = None,
+        filters: list | None = None,
         transform_fn: Callable | None = None,
         batch_size: int = 5000,
         *,
@@ -1018,7 +1019,7 @@ class OCISyncBase:
                 INSERT INTO {table_name} ({cols_list})
                 SELECT {cols_list} FROM {temp_table}
                 {conflict_action}
-            """
+            """  # noqa: S608
             cursor.execute(insert_sql)
 
             cursor.execute(f"DROP TABLE {temp_table}")
@@ -1062,7 +1063,7 @@ class OCISyncBase:
                 conflict_target = ", ".join([f'"{k}"' for k in conflict_keys])
                 conflict_action = f"ON CONFLICT ({conflict_target}) DO UPDATE SET {set_clause}"
 
-            sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) {conflict_action}"
+            sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) {conflict_action}"  # noqa: S608
             cursor.execute(sql, record)
             connection.commit()
         except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):

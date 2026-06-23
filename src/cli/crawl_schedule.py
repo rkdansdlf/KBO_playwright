@@ -14,6 +14,7 @@ from datetime import datetime
 
 from dateutil.relativedelta import relativedelta
 
+from src.constants import KST
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.services.schedule_collection_service import save_schedule_games
 
@@ -40,7 +41,7 @@ async def crawl_schedule(args: argparse.Namespace) -> None:
 async def _crawl_upcoming_months(args: argparse.Namespace) -> None:
     """현재월 + 다음월 일정을 크롤링합니다."""
     crawler = ScheduleCrawler(request_delay=args.delay)
-    now = datetime.now()
+    now = datetime.now(KST)
     targets = [(now.year, now.month), ((now + relativedelta(months=1)).year, (now + relativedelta(months=1)).month)]
 
     if args.year and args.months:
