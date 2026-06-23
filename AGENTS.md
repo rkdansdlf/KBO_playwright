@@ -236,13 +236,15 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 | Container/deps | Dockerfile / packaging | Added `.dockerignore`, non-root Docker user, DB healthcheck, and aligned dependency lower bounds |
 | Magic value constants | `PLR2004` | Fixed 113 `src/` violations; created `src/constants.py` with KBO domain constants (`MAX_INNINGS`, `KBO_FOUNDING_YEAR`, `DATE_STR_LEN`, etc.); replaced HTTP 200 → `HTTPStatus.OK` across 17 files; 165 low-value violations suppressed via `pyproject.toml ignore` |
 | Lazy import hygiene | `PLC0415` | Moved 25 stdlib lazy imports (`json`, `os`, `re`, `argparse`, `datetime`) to top-level across 18 files; circular-dependent `src.` imports retained with intentional lazy pattern |
+| Redundant exception / simplification | `RSE`, `PIE`, `RUF017/022`, `YTT` | Fixed 6 violations (PIE790 3x, PIE810 2x, RUF022 1x, RSE102 1x); 0 violations after `--fix` |
 
 ### Current Verification Baseline
 
 - `ruff check src/ tests/ scripts/` = 0 errors
-- `ruff format --check .` = 896 files already formatted
+- `ruff format --check .` = 898 files already formatted
 - `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
-- `python -m pytest --tb=short -q --cov=src --cov-report=term --cov-report=term-missing:skip-covered` = 4327 passed, 1 skipped, 2 deselected, 1 xfailed; coverage baseline 67%
+- `python -m pytest --tb=short -q --cov=src --cov-report=term --cov-report=term-missing:skip-covered` = 4327 passed, 1 skipped, 2 deselected, 1 xfailed; 34s; coverage baseline 67%
+- `ruff check --select N src/` = 0 violations (pep8-naming, enabled 2026-06-24)
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
 
@@ -280,7 +282,8 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `ruff check --select C901 src/` = 0 violations (103→0, 100% eliminated).
 - `ruff check --select PLR0915 src/` = 0 violations (too-many-statements, threshold 50).
 - `ruff check --select FURB167,RUF013,DTZ005,S608,TC001,TC002,TC003 src/` = 0 violations; these rules are now enabled for `src/`.
-- `ruff check --select PLR0913 src/` = 109 violations; see `Docs/references/PLR0913_REFACTOR_PLAN.md` before refactoring.
+- `ruff check --select RSE,PIE,RUF017,RUF022,YTT,FLY002 src/` = 0 violations; enabled 2026-06-24.
+- `ruff check --select PLR0913 src/` = 87 violations; see `Docs/references/PLR0913_REFACTOR_PLAN.md` before refactoring.
 
 ### Phase 10 Completed (2026-06-23) — Deep Playwright-aware C901 refactoring
 
@@ -301,7 +304,13 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **Quality gate aggregate filter**: Split `INVALID_TEAM_CODES` into `AGGREGATE_TEAM_CODES` (TOTAL/합계/-/empty) and raw all-star codes (EA/WE). All 2020-2025 seasons pass.
 - **Player ID overrides**: Added 2 SSG Haechi entries to `data/player_id_overrides.csv`.
 
-### Phase 11 Started (2026-06-23) — New lint rules, coverage, quality dashboard
+### Phase 11 Complete (2026-06-24) — New lint rules, N naming, test optimization
+
+- **ANN201/204/206, RSE, PIE, FLY002**: 6 rules enabled with 0 src/ violations.
+- **N naming (pep8-naming)**: 23 violations fixed (22×N806 + 1×N811), select enabled for src/, per-file-ignored for tests/scripts/.
+- **Test optimization**: 3 slow tests monkeypatched — fan_culture 5s→~0.1s, OCI pregame 3s→~0.1s, player_status_confirmer 3s→1.5s. Total pytest: 46.51s→34.06s (26.7% 단축).
+
+### Phase 12 Started (2026-06-24) — TBD
 
 - Enabled and cleaned `FURB167`, `RUF013`, `DTZ005`, and `S608` for `src/`; `tests/**` and `scripts/**` keep targeted per-file ignores for these operational/fixture-heavy rules.
 - Enabled and cleaned `TC001`, `TC002`, and `TC003` for `src/` import hygiene; SQLAlchemy model modules keep targeted TC ignores because annotation imports are runtime-sensitive.
@@ -309,7 +318,8 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - Added `pytest-cov` and coverage config; CI test command now emits `term-missing` coverage with a conservative `fail_under = 50` gate. Current full baseline: 67%.
 - Added `src.cli.quality_dashboard` to summarize `logs/quality_reports/*.json` as JSON or text.
 - Added `Docs/references/PLR0913_REFACTOR_PLAN.md`; do not enable `PLR0913` until the staged refactor plan is complete.
-- Started PLR0913 refactoring: utility/repository context objects reduced the baseline from 120 to 109 violations.
+- PLR0913 Batches 4-5 completed: relay_crawler.py 6→0 (NaverSegmentIdentity, GameMatchContext, NaverHeaderRowContext, NaverPbpRowContext, NaverEventContext) + game_relay.py 6→1 (ValidationMetricsData, RelayValidationInput, PlayerResolutionContext, RelaySaveOptions with **overrides backward compat). Baseline: 109→87 (−22 violations).
+- `ruff check src/ tests/ scripts/` = 0 errors in src/, 26 pre-existing SIM errors in tests/. `ruff check --select PLR0913 src/` = 87 violations.
 
 ### Notes For Future Agents
 

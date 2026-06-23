@@ -314,21 +314,20 @@ def bench_copy_engine(oci_url: str, quick: bool = False) -> BenchSuite:
     for n in record_counts:
         records = _make_records(n)
 
-        with _temp_sqlite_pair() as (src_engine, _):
-            with _oci_target(oci_url) as tgt_engine:
-                syncer = _build_syncer_from_engines(src_engine, tgt_engine)
-                _install_target_exists_spy(syncer)
+        with _temp_sqlite_pair() as (src_engine, _), _oci_target(oci_url) as tgt_engine:
+            syncer = _build_syncer_from_engines(src_engine, tgt_engine)
+            _install_target_exists_spy(syncer)
 
-                start = time.perf_counter()
-                try:
-                    syncer._bulk_copy_upsert("bench_table", records, ["name"])
-                except BENCHMARK_EXCEPTIONS as e:
-                    elapsed = time.perf_counter() - start
-                    suite.add(f"n={n}", elapsed, rows=n, note=f"ERROR: {e}")
-                    continue
+            start = time.perf_counter()
+            try:
+                syncer._bulk_copy_upsert("bench_table", records, ["name"])
+            except BENCHMARK_EXCEPTIONS as e:
                 elapsed = time.perf_counter() - start
+                suite.add(f"n={n}", elapsed, rows=n, note=f"ERROR: {e}")
+                continue
+            elapsed = time.perf_counter() - start
 
-                suite.add(f"n={n}", elapsed, rows=n)
+            suite.add(f"n={n}", elapsed, rows=n)
 
     return suite
 

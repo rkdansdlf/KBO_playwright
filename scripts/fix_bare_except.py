@@ -40,7 +40,7 @@ def ensure_logger(text: str) -> str:
         lines = text.split("\n")
         last_import = -1
         for i, line in enumerate(lines):
-            if line.startswith("import ") or line.startswith("from "):
+            if line.startswith(("import ", "from ")):
                 last_import = i
         if last_import >= 0:
             lines.insert(last_import + 1, "\nimport logging")
