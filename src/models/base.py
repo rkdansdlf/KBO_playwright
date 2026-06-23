@@ -11,8 +11,6 @@ from sqlalchemy.orm import DeclarativeBase, mapped_column
 class Base(DeclarativeBase):
     """Base class for all ORM models"""
 
-    pass
-
 
 class TimestampMixin:
     """Mixin for created_at and updated_at timestamps"""

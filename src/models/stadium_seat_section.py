@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.sqlite import TEXT as SQLiteText
+from sqlalchemy.dialects.sqlite import TEXT as sqlite_text_type
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -64,7 +64,7 @@ class StadiumSeatSection(Base, TimestampMixin):
     )
     seat_map_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Seat map image URL")
     geometry_json: Mapped[dict | None] = mapped_column(
-        JSON().with_variant(SQLiteText, "sqlite"),
+        JSON().with_variant(sqlite_text_type, "sqlite"),
         nullable=True,
         comment="Section geometry coordinates",
     )
