@@ -92,6 +92,41 @@ class GameCollectionResult:
 
 
 @dataclass
+class GameCollectionConfig:
+    relay_crawler: RelayCrawler | None = None
+    force: bool = False
+    concurrency: int | None = None
+    relay_requires_detail: bool = True
+    should_save_detail: Callable[[dict[str, Any]], bool] | None = None
+    pause_every: int | None = None
+    pause_seconds: float = 0.0
+    log: Callable[[str], None] = logger.info
+    write_contract: GameWriteContract | None = None
+    source_stage: str = "detail"
+    source_crawler: str | None = None
+    source_reason: str = "detail_recovery"
+    relay_source_reason: str = "relay_recovery"
+
+
+@dataclass
+class DetailProcessingContext:
+    detail_crawler: DetailCrawler
+    contract: GameWriteContract
+    detail_source: GameWriteSource
+    cfg: GameCollectionConfig
+    result: GameCollectionResult
+    detail_ready: set[str]
+
+
+@dataclass
+class RelayProcessingContext:
+    relay_crawler: RelayCrawler
+    contract: GameWriteContract
+    cfg: GameCollectionConfig
+    result: GameCollectionResult
+
+
+@dataclass
 class GameCollectionItemResult:
     game_id: str
     game_date: str
@@ -190,19 +225,7 @@ async def crawl_and_save_game_details(
     games: Iterable[Any],
     *,
     detail_crawler: DetailCrawler,
-    relay_crawler: RelayCrawler | None = None,
-    force: bool = False,
-    concurrency: int | None = None,
-    relay_requires_detail: bool = True,
-    should_save_detail: Callable[[dict[str, Any]], bool] | None = None,
-    pause_every: int | None = None,
-    pause_seconds: float = 0.0,
-    log: Callable[[str], None] = logger.info,
-    write_contract: GameWriteContract | None = None,
-    source_stage: str = "detail",
-    source_crawler: str | None = None,
-    source_reason: str = "detail_recovery",
-    relay_source_reason: str = "relay_recovery",
+    config: GameCollectionConfig | None = None,
 ) -> GameCollectionResult:
     targets = normalize_game_targets(games)
     result = GameCollectionResult(total_targets=len(targets))
@@ -213,52 +236,50 @@ async def crawl_and_save_game_details(
     if not targets:
         return result
 
-    contract = write_contract or GameWriteContract(run_label="game_collection", log=log)
+    cfg = config or GameCollectionConfig()
+    contract = cfg.write_contract or GameWriteContract(run_label="game_collection", log=cfg.log)
     detail_source = GameWriteSource(
-        source_stage,
-        source_crawler or detail_crawler.__class__.__name__,
-        source_reason,
+        cfg.source_stage,
+        cfg.source_crawler or detail_crawler.__class__.__name__,
+        cfg.source_reason,
     )
     for target in targets:
         contract.claim_game(target.game_id, detail_source)
 
     exist_map = inspect_existing_game_data(targets)
+    detail_ctx = DetailProcessingContext(
+        detail_crawler=detail_crawler,
+        contract=contract,
+        detail_source=detail_source,
+        cfg=cfg,
+        result=result,
+        detail_ready=set(),
+    )
     detail_ready = await _collect_detail_phase(
         targets,
         exist_map,
-        detail_crawler,
-        contract,
-        detail_source,
-        force=force,
-        concurrency=concurrency,
-        should_save_detail=should_save_detail,
-        pause_every=pause_every,
-        pause_seconds=pause_seconds,
-        log=log,
-        result=result,
+        detail_ctx,
     )
 
-    if relay_crawler:
+    if cfg.relay_crawler:
+        relay_ctx = RelayProcessingContext(
+            relay_crawler=cfg.relay_crawler,
+            contract=contract,
+            cfg=cfg,
+            result=result,
+        )
         await _collect_relay_phase(
             targets,
             exist_map,
             detail_ready,
-            relay_crawler,
-            contract,
-            force=force,
-            relay_requires_detail=relay_requires_detail,
-            relay_source_reason=relay_source_reason,
-            pause_every=pause_every,
-            pause_seconds=pause_seconds,
-            log=log,
-            result=result,
+            relay_ctx,
         )
 
     # Derive SH/SF from PBP events for games where batting stats have them as 0
-    _derive_sh_sf_for_results(result, log=log)
+    _derive_sh_sf_for_results(result, log=cfg.log)
 
-    if write_contract is None:
-        log(contract.summary())
+    if cfg.write_contract is None:
+        cfg.log(contract.summary())
 
     return result
 
@@ -266,61 +287,53 @@ async def crawl_and_save_game_details(
 async def _collect_detail_phase(
     targets: list[GameCollectionTarget],
     exist_map: dict[str, ExistingGameData],
-    detail_crawler: DetailCrawler,
-    contract: GameWriteContract,
-    detail_source: GameWriteSource,
-    *,
-    force: bool,
-    concurrency: int | None,
-    should_save_detail: Callable[[dict[str, Any]], bool] | None,
-    pause_every: int | None,
-    pause_seconds: float,
-    log: Callable[[str], None],
-    result: GameCollectionResult,
+    ctx: DetailProcessingContext,
 ) -> set[str]:
     detail_ready: set[str] = {
         target.game_id for target in targets if exist_map.get(target.game_id, ExistingGameData()).has_detail
     }
     detail_targets = [
-        target for target in targets if force or not exist_map.get(target.game_id, ExistingGameData()).has_detail
+        target for target in targets if ctx.cfg.force or not exist_map.get(target.game_id, ExistingGameData()).has_detail
     ]
-    result.detail_targets = len(detail_targets)
-    result.detail_skipped_existing = len(targets) - len(detail_targets)
+    ctx.result.detail_targets = len(detail_targets)
+    ctx.result.detail_skipped_existing = len(targets) - len(detail_targets)
 
-    _mark_skipped_detail_targets(targets, exist_map, force=force, result=result, log=log)
+    _mark_skipped_detail_targets(targets, exist_map, force=ctx.cfg.force, result=ctx.result, log=ctx.cfg.log)
 
     if not detail_targets:
         return detail_ready
 
-    batch_size = pause_every or 20
+    batch_size = ctx.cfg.pause_every or 20
     total_batches = (len(detail_targets) + batch_size - 1) // batch_size
     for batch_num, b_idx in enumerate(range(0, len(detail_targets), batch_size), start=1):
         batch = detail_targets[b_idx : b_idx + batch_size]
-        await _pause_between_detail_batches(b_idx, pause_seconds, detail_crawler, log)
-        log(f"[*] Processing detail batch {batch_num}/{total_batches} ({len(batch)} games)...")
+        await _pause_between_detail_batches(b_idx, ctx.cfg.pause_seconds, ctx.detail_crawler, ctx.cfg.log)
+        ctx.cfg.log(f"[*] Processing detail batch {batch_num}/{total_batches} ({len(batch)} games)...")
 
-        payloads = await detail_crawler.crawl_games(
+        payloads = await ctx.detail_crawler.crawl_games(
             [target.as_crawler_input() for target in batch],
-            concurrency=concurrency,
+            concurrency=ctx.cfg.concurrency,
         )
         payload_by_id = {
             normalize_kbo_game_id(payload.get("game_id")): payload for payload in payloads if payload.get("game_id")
         }
 
+        detail_ctx = DetailProcessingContext(
+            detail_crawler=ctx.detail_crawler,
+            contract=ctx.contract,
+            detail_source=ctx.detail_source,
+            cfg=ctx.cfg,
+            result=ctx.result,
+            detail_ready=detail_ready,
+        )
         for index, target in enumerate(batch, start=1):
             global_index = b_idx + index
             _process_detail_target(
                 target,
                 payload_by_id.get(target.game_id),
-                detail_crawler,
-                contract,
-                detail_source,
-                should_save_detail,
-                result,
-                detail_ready,
+                detail_ctx,
                 global_index=global_index,
                 total_targets=len(detail_targets),
-                log=log,
             )
 
     return detail_ready
@@ -359,26 +372,20 @@ async def _pause_between_detail_batches(
 def _process_detail_target(
     target: GameCollectionTarget,
     payload: dict[str, Any] | None,
-    detail_crawler: DetailCrawler,
-    contract: GameWriteContract,
-    detail_source: GameWriteSource,
-    should_save_detail: Callable[[dict[str, Any]], bool] | None,
-    result: GameCollectionResult,
-    detail_ready: set[str],
+    ctx: DetailProcessingContext,
     *,
     global_index: int,
     total_targets: int,
-    log: Callable[[str], None],
 ) -> None:
-    log(f"[DETAIL] {global_index}/{total_targets} {target.game_id}")
-    failure_reason = _detail_payload_failure_reason(target, payload, detail_crawler, should_save_detail)
+    ctx.cfg.log(f"[DETAIL] {global_index}/{total_targets} {target.game_id}")
+    failure_reason = _detail_payload_failure_reason(target, payload, ctx.detail_crawler, ctx.cfg.should_save_detail)
     if failure_reason is not None:
-        _mark_detail_failed(target, failure_reason, result, log)
+        _mark_detail_failed(target, failure_reason, ctx.result, ctx.cfg.log)
         return
-    if _save_detail_payload(target, payload or {}, contract, detail_source, result, detail_ready):
-        log("   [DB] Detail saved")
+    if _save_detail_payload(target, payload or {}, ctx):
+        ctx.cfg.log("   [DB] Detail saved")
     else:
-        log("   [ERROR] Detail save failed")
+        ctx.cfg.log("   [ERROR] Detail save failed")
 
 
 def _detail_payload_failure_reason(
@@ -418,27 +425,24 @@ def _mark_detail_failed(
 def _save_detail_payload(
     target: GameCollectionTarget,
     payload: dict[str, Any],
-    contract: GameWriteContract,
-    detail_source: GameWriteSource,
-    result: GameCollectionResult,
-    detail_ready: set[str],
+    ctx: DetailProcessingContext,
 ) -> bool:
     if not save_game_detail(
         payload,
-        write_contract=contract,
-        source_stage=detail_source.stage,
-        source_crawler=detail_source.crawler,
-        source_reason=detail_source.reason,
+        write_contract=ctx.contract,
+        source_stage=ctx.detail_source.stage,
+        source_crawler=ctx.detail_source.crawler,
+        source_reason=ctx.detail_source.reason,
     ):
-        result.detail_failed += 1
-        item = result.items[target.game_id]
+        ctx.result.detail_failed += 1
+        item = ctx.result.items[target.game_id]
         item.detail_status = "save_failed"
         item.failure_reason = _normalize_detail_failure_reason("detail_save_failed", default="save_failed")
         return False
-    result.detail_saved += 1
-    result.processed_game_ids.append(target.game_id)
-    detail_ready.add(target.game_id)
-    item = result.items[target.game_id]
+    ctx.result.detail_saved += 1
+    ctx.result.processed_game_ids.append(target.game_id)
+    ctx.detail_ready.add(target.game_id)
+    item = ctx.result.items[target.game_id]
     item.detail_status = "saved"
     item.detail_saved = True
     return True
@@ -448,41 +452,32 @@ async def _collect_relay_phase(
     targets: list[GameCollectionTarget],
     exist_map: dict[str, ExistingGameData],
     detail_ready: set[str],
-    relay_crawler: RelayCrawler,
-    contract: GameWriteContract,
-    *,
-    force: bool,
-    relay_requires_detail: bool,
-    relay_source_reason: str,
-    pause_every: int | None,
-    pause_seconds: float,
-    log: Callable[[str], None],
-    result: GameCollectionResult,
+    ctx: RelayProcessingContext,
 ) -> None:
-    relay_source = GameWriteSource("relay", relay_crawler.__class__.__name__, relay_source_reason)
+    relay_source = GameWriteSource("relay", ctx.relay_crawler.__class__.__name__, ctx.cfg.relay_source_reason)
     relay_targets = [
         target
         for target in targets
-        if (force or not exist_map.get(target.game_id, ExistingGameData()).has_relay)
-        and (not relay_requires_detail or target.game_id in detail_ready)
+        if (ctx.cfg.force or not exist_map.get(target.game_id, ExistingGameData()).has_relay)
+        and (not ctx.cfg.relay_requires_detail or target.game_id in detail_ready)
     ]
-    result.relay_targets = len(relay_targets)
-    result.relay_skipped_existing = len(targets) - len(relay_targets)
-    if result.relay_skipped_existing:
-        log(f"[SKIP] Relay already exists for {result.relay_skipped_existing} game(s). Use --force to recrawl.")
+    ctx.result.relay_targets = len(relay_targets)
+    ctx.result.relay_skipped_existing = len(targets) - len(relay_targets)
+    if ctx.result.relay_skipped_existing:
+        ctx.cfg.log(f"[SKIP] Relay already exists for {ctx.result.relay_skipped_existing} game(s). Use --force to recrawl.")
         for target in targets:
-            item = result.items[target.game_id]
+            item = ctx.result.items[target.game_id]
             has_relay = exist_map.get(target.game_id, ExistingGameData()).has_relay
-            if has_relay and not force:
+            if has_relay and not ctx.cfg.force:
                 item.relay_status = "skipped_existing"
-            elif relay_requires_detail and target.game_id not in detail_ready:
+            elif ctx.cfg.relay_requires_detail and target.game_id not in detail_ready:
                 item.relay_status = "skipped_no_detail"
 
     for index, target in enumerate(relay_targets, start=1):
-        contract.claim_game(target.game_id, relay_source)
-        log(f"[RELAY] {index}/{len(relay_targets)} {target.game_id}")
-        relay_data = await relay_crawler.crawl_game_events(target.game_id)
-        item = result.items[target.game_id]
+        ctx.contract.claim_game(target.game_id, relay_source)
+        ctx.cfg.log(f"[RELAY] {index}/{len(relay_targets)} {target.game_id}")
+        relay_data = await ctx.relay_crawler.crawl_game_events(target.game_id)
+        item = ctx.result.items[target.game_id]
         flat_events = list((relay_data or {}).get("events") or [])
         raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
         if flat_events or raw_pbp_rows:
@@ -490,7 +485,7 @@ async def _collect_relay_phase(
                 target.game_id,
                 flat_events,
                 raw_pbp_rows=raw_pbp_rows,
-                write_contract=contract,
+                write_contract=ctx.contract,
                 source_stage=relay_source.stage,
                 source_crawler=relay_source.crawler,
                 source_reason=relay_source.reason,
@@ -498,27 +493,27 @@ async def _collect_relay_phase(
                 source_schema_version=(relay_data or {}).get("source_schema_version"),
                 payload_hash=(relay_data or {}).get("payload_hash"),
             )
-            result.relay_rows_saved += saved_rows
+            ctx.result.relay_rows_saved += saved_rows
             item.relay_rows_saved = saved_rows
             if saved_rows:
-                result.relay_saved_games += 1
+                ctx.result.relay_saved_games += 1
                 item.relay_status = "saved"
-                if target.game_id not in result.processed_game_ids:
-                    result.processed_game_ids.append(target.game_id)
-                log(f"   [DB] Relay saved ({saved_rows} rows)")
+                if target.game_id not in ctx.result.processed_game_ids:
+                    ctx.result.processed_game_ids.append(target.game_id)
+                ctx.cfg.log(f"   [DB] Relay saved ({saved_rows} rows)")
             else:
-                result.relay_missing += 1
+                ctx.result.relay_missing += 1
                 item.relay_status = "save_failed"
                 item.failure_reason = item.failure_reason or "relay_save_returned_zero"
-                log("   [WARN] Relay save returned 0 rows")
+                ctx.cfg.log("   [WARN] Relay save returned 0 rows")
         else:
-            result.relay_missing += 1
+            ctx.result.relay_missing += 1
             item.relay_status = "missing"
             item.failure_reason = (
-                item.failure_reason or _get_failure_reason(relay_crawler, target.game_id) or "no_relay_payload"
+                item.failure_reason or _get_failure_reason(ctx.relay_crawler, target.game_id) or "no_relay_payload"
             )
-            log("   [INFO] No relay data available")
-        await _maybe_pause(index, pause_every, pause_seconds, log)
+            ctx.cfg.log("   [INFO] No relay data available")
+        await _maybe_pause(index, ctx.cfg.pause_every, ctx.cfg.pause_seconds, ctx.cfg.log)
 
 
 def _get_value(obj: object, key: str) -> object | None:

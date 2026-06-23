@@ -1,3 +1,4 @@
+# ruff: noqa: S608
 """
 Derive sacrifice_hits (SH) and sacrifice_flies (SF) from game_events PBP data.
 

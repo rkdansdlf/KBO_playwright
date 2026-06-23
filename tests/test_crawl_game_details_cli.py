@@ -29,11 +29,11 @@ def test_collect_uses_player_id_resolver_and_closes_session(monkeypatch):
             calls["detail_delay"] = request_delay
             calls["detail_resolver"] = resolver
 
-    async def fake_crawl_and_save_game_details(targets, *, detail_crawler, **kwargs):
+    async def fake_crawl_and_save_game_details(targets, *, detail_crawler, config=None, **kwargs):
         calls["targets"] = targets
         calls["detail_crawler"] = detail_crawler
-        calls["force"] = kwargs["force"]
-        calls["concurrency"] = kwargs["concurrency"]
+        calls["force"] = config.force
+        calls["concurrency"] = config.concurrency
         return argparse.Namespace(
             detail_saved=1,
             detail_targets=1,

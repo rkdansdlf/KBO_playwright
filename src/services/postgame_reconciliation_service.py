@@ -18,6 +18,7 @@ from src.repositories.game_repository import (
     update_game_status,
 )
 from src.services.game_collection_service import (
+    GameCollectionConfig,
     GameCollectionResult,
     GameCollectionTarget,
     crawl_and_save_game_details,
@@ -184,11 +185,13 @@ async def reconcile_postgame_range(
     result.detail_result = await crawl_and_save_game_details(
         targets,
         detail_crawler=detail_crawler,
-        force=True,
-        concurrency=concurrency,
-        log=log,
-        write_contract=write_contract,
-        source_reason=source_reason,
+        config=GameCollectionConfig(
+            force=True,
+            concurrency=concurrency,
+            log=log,
+            write_contract=write_contract,
+            source_reason=source_reason,
+        ),
     )
 
     for target in targets:

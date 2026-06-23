@@ -46,7 +46,7 @@ from src.repositories.game_repository import (
 )
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
-from src.services.game_collection_service import GameCollectionItemResult, crawl_and_save_game_details
+from src.services.game_collection_service import GameCollectionConfig, GameCollectionItemResult, crawl_and_save_game_details
 from src.services.game_write_contract import GameWriteContract
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
 from src.services.player_id_resolver import PlayerIdResolver
@@ -515,11 +515,13 @@ async def _run_detail_recovery_passes(
         retry_result = await crawl_and_save_game_details(
             retry_targets,
             detail_crawler=g_crawler,
-            force=True,
-            concurrency=1,
-            log=logger.info,
-            write_contract=ctx.write_contract,
-            source_reason=f"postgame_finalize:{ctx.target_date}:recovery",
+            config=GameCollectionConfig(
+                force=True,
+                concurrency=1,
+                log=logger.info,
+                write_contract=ctx.write_contract,
+                source_reason=f"postgame_finalize:{ctx.target_date}:recovery",
+            ),
         )
 
         for game_id, item in retry_result.items.items():
@@ -588,11 +590,13 @@ async def _collect_detail_results(ctx: _RunContext, g_crawler: GameDetailCrawler
     collection_result = await crawl_and_save_game_details(
         list(ctx.detail_games_by_id.values()),
         detail_crawler=g_crawler,
-        force=True,
-        concurrency=1,
-        log=logger.info,
-        write_contract=ctx.write_contract,
-        source_reason=f"postgame_finalize:{ctx.target_date}",
+        config=GameCollectionConfig(
+            force=True,
+            concurrency=1,
+            log=logger.info,
+            write_contract=ctx.write_contract,
+            source_reason=f"postgame_finalize:{ctx.target_date}",
+        ),
     )
     detail_results_by_game = dict(collection_result.items)
     for game_id in ctx.detail_games_by_id:

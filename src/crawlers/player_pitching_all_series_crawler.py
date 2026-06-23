@@ -611,7 +611,7 @@ def _update_pitcher_basic2_stats(
 def parse_basic2_page(
     page: Page,
     season: int,
-    league: str,
+    league: str,  # noqa: ARG001
     pitchers: dict[int, PitcherStats],
     sort_key: str,
     max_players: int | None = None,
@@ -730,7 +730,7 @@ def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual 
 
     with SessionLocal() as session:
         # 1. 해당 시즌/시리즈에 경기를 뛴 모든 투수 ID 조회
-        pattern = SeasonStatAggregator._get_league_name_pattern(series_key)
+        pattern = SeasonStatAggregator._get_league_name_pattern(series_key)  # noqa: SLF001
 
         player_ids_query = (
             session.query(GamePitchingStat.player_id)

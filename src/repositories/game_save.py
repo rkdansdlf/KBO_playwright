@@ -24,6 +24,10 @@ from src.models.game import (
     GameSummary,
 )
 from src.repositories.game_helpers import (
+    GameSummaryEntry,
+    RecordKey,
+    RecordReplaceContext,
+    TeamSideContext,
     _apply_game_team_identity,
     _apply_game_team_identity_with_contract,
     _assign_field_if_changed,
@@ -76,6 +80,51 @@ class DetailSaveContext:
     game_date: date
     source: GameWriteSource
     write_contract: GameWriteContract | None
+
+
+@dataclass(frozen=True)
+class SnapshotContext:
+    game_data: dict[str, Any]
+    game_date: date
+    metadata: dict[str, Any]
+    away_info: dict[str, Any]
+    home_info: dict[str, Any]
+    pitchers: dict[str, Any]
+    status: str | None
+
+
+@dataclass(frozen=True)
+class PregameContext:
+    game_id: str
+    game_date: date
+    away_code: str | None
+    home_code: str | None
+
+
+@dataclass(frozen=True)
+class PregameGameFieldInput:
+    game_date: date
+    away_code: str | None
+    home_code: str | None
+    away_starter: str | None
+    home_starter: str | None
+
+
+@dataclass(frozen=True)
+class PregameLineupContext:
+    game_id: str
+    season_year: int
+    away_code: str | None
+    home_code: str | None
+
+
+@dataclass(frozen=True)
+class StartersInfo:
+    away_starter: str | None
+    away_starter_id: int | None
+    home_starter: str | None
+    home_starter_id: int | None
+    start_pitcher_announced: object
 
 
 def get_games_by_date(target_date: str) -> list[Game]:
@@ -405,7 +454,7 @@ def _update_detail_children(
     changed = False
     if inning_rows:
         changed |= _replace_records(
-            session, GameInningScore, ctx.game_id, inning_rows, source=ctx.source, write_contract=ctx.write_contract
+            session, GameInningScore, ctx.game_id, inning_rows, RecordReplaceContext(ctx.source, ctx.write_contract)
         )
     lineup_rows = _prepare_player_rows(
         ctx.game_id, "game_lineups", _build_lineups(ctx.game_id, hitters, season_year=ctx.game_date.year)
@@ -420,7 +469,7 @@ def _update_detail_children(
     for model, rows in ((GameLineup, lineup_rows), (GameBattingStat, batting_rows), (GamePitchingStat, pitching_rows)):
         if rows:
             changed |= _replace_records(
-                session, model, ctx.game_id, rows, source=ctx.source, write_contract=ctx.write_contract
+                session, model, ctx.game_id, rows, RecordReplaceContext(ctx.source, ctx.write_contract)
             )
     return changed
 
@@ -467,11 +516,12 @@ def _build_summary_rows(
     session: Session,
     game_id: str,
     game_date: date,
-    hitters: dict[str, list[dict[str, Any]]],
-    pitchers: dict[str, list[dict[str, Any]]],
+    roster: dict[str, dict[str, list[dict[str, Any]]]],
     summary_items: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     resolver = _new_strict_player_resolver(session)
+    hitters = roster.get("hitters", {})
+    pitchers = roster.get("pitchers", {})
     participant_map = {
         player["player_name"]: _normalize_player_id(player["player_id"])
         for side in ("away", "home")
@@ -589,7 +639,7 @@ def save_game_detail(
             )
 
             summary_rows = _build_summary_rows(
-                session, game_id, game_date, hitters, pitchers, game_data.get("summary") or []
+                session, game_id, game_date, {"hitters": hitters, "pitchers": pitchers}, game_data.get("summary") or []
             )
             if summary_rows:
                 changed |= _replace_records(
@@ -597,8 +647,7 @@ def save_game_detail(
                     GameSummary,
                     game_id,
                     summary_rows,
-                    source=source,
-                    write_contract=write_contract,
+                    RecordReplaceContext(source, write_contract),
                 )
 
             session.commit()
@@ -652,7 +701,10 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
             )
 
             _apply_snapshot_game_fields(
-                session, game, game_data, game_date, metadata, away_info, home_info, pitchers, status
+                session, game, SnapshotContext(
+                    game_data=game_data, game_date=game_date, metadata=metadata,
+                    away_info=away_info, home_info=home_info, pitchers=pitchers, status=status,
+                )
             )
             _apply_game_team_identity(game, game_date.year)
             _upsert_metadata(session, game_id, metadata)
@@ -685,26 +737,20 @@ def _get_or_create_snapshot_game(session: Session, game_id: str, game_date: date
 def _apply_snapshot_game_fields(
     session: Session,
     game: Game,
-    game_data: dict[str, Any],
-    game_date: date,
-    metadata: dict[str, Any],
-    away_info: dict[str, Any],
-    home_info: dict[str, Any],
-    pitchers: dict[str, Any],
-    status: str | None,
+    ctx: SnapshotContext,
 ) -> None:
-    game.game_date = game_date
-    game.stadium = metadata.get("stadium") or game.stadium
-    game.home_team = home_info.get("code") or game.home_team
-    game.away_team = away_info.get("code") or game.away_team
-    _apply_snapshot_scores(game, away_info, home_info)
-    _apply_snapshot_starting_pitchers(game, pitchers)
+    game.game_date = ctx.game_date
+    game.stadium = ctx.metadata.get("stadium") or game.stadium
+    game.home_team = ctx.home_info.get("code") or game.home_team
+    game.away_team = ctx.away_info.get("code") or game.away_team
+    _apply_snapshot_scores(game, ctx.away_info, ctx.home_info)
+    _apply_snapshot_starting_pitchers(game, ctx.pitchers)
 
-    season_id = _resolve_game_season_id(session, game_data, game_date, game.season_id)
+    season_id = _resolve_game_season_id(session, ctx.game_data, ctx.game_date, game.season_id)
     if season_id:
         game.season_id = season_id
 
-    explicit_status = normalize_game_status(status)
+    explicit_status = normalize_game_status(ctx.status)
     if explicit_status and (not is_terminal_status(game.game_status) or is_terminal_status(explicit_status)):
         game.game_status = explicit_status
 
@@ -793,7 +839,11 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
                 reason="normalized_to_kbo_legacy_game_id",
             )
 
-            _apply_pregame_payload(session, game, preview_data, game_id, game_date, game_date_str, away_code, home_code)
+            _apply_pregame_payload(
+                session, game, preview_data, PregameContext(
+                    game_id=game_id, game_date=game_date, away_code=away_code, home_code=home_code,
+                )
+            )
 
             session.commit()
         except GAME_SAVE_EXCEPTIONS:
@@ -809,32 +859,36 @@ def _apply_pregame_payload(
     session: Session,
     game: Game,
     preview_data: dict[str, Any],
-    game_id: str,
-    game_date: date,
-    game_date_str: str,
-    away_code: str | None,
-    home_code: str | None,
+    ctx: PregameContext,
 ) -> None:
-    existing_preview_payload = _load_existing_preview_payload(session, game_id)
+    existing_preview_payload = _load_existing_preview_payload(session, ctx.game_id)
     away_starter, away_starter_id = _resolve_pregame_starter(preview_data, game, existing_preview_payload, "away")
     home_starter, home_starter_id = _resolve_pregame_starter(preview_data, game, existing_preview_payload, "home")
     start_pitcher_announced = preview_data.get("start_pitcher_announced")
     if not start_pitcher_announced and away_starter and home_starter:
         start_pitcher_announced = True
 
-    _apply_pregame_game_fields(game, preview_data, game_date, away_code, home_code, away_starter, home_starter)
-    _upsert_pregame_metadata(session, game_id, preview_data, start_pitcher_announced)
-    _replace_pregame_lineups(session, preview_data, game_id, game_date.year, away_code, home_code)
+    _apply_pregame_game_fields(
+        game, preview_data, PregameGameFieldInput(
+            game_date=ctx.game_date, away_code=ctx.away_code, home_code=ctx.home_code,
+            away_starter=away_starter, home_starter=home_starter,
+        )
+    )
+    _upsert_pregame_metadata(session, ctx.game_id, preview_data, start_pitcher_announced)
+    _replace_pregame_lineups(
+        session, preview_data, PregameLineupContext(
+            game_id=ctx.game_id, season_year=ctx.game_date.year,
+            away_code=ctx.away_code, home_code=ctx.home_code,
+        )
+    )
+    game_date_str = ctx.game_date.strftime("%Y%m%d")
     _upsert_pregame_summary(
-        session,
-        preview_data,
-        game_id,
-        game_date_str,
-        away_starter,
-        away_starter_id,
-        home_starter,
-        home_starter_id,
-        start_pitcher_announced,
+        session, preview_data, ctx.game_id, game_date_str,
+        StartersInfo(
+            away_starter=away_starter, away_starter_id=away_starter_id,
+            home_starter=home_starter, home_starter_id=home_starter_id,
+            start_pitcher_announced=start_pitcher_announced,
+        ),
     )
 
 
@@ -854,23 +908,19 @@ def _load_existing_preview_payload(session: Session, game_id: str) -> dict[str, 
 def _apply_pregame_game_fields(
     game: Game,
     preview_data: dict[str, Any],
-    game_date: date,
-    away_code: str | None,
-    home_code: str | None,
-    away_starter: str | None,
-    home_starter: str | None,
+    input_data: PregameGameFieldInput,
 ) -> None:
-    game.game_date = game_date
-    game.away_team = away_code or game.away_team
-    game.home_team = home_code or game.home_team
+    game.game_date = input_data.game_date
+    game.away_team = input_data.away_code or game.away_team
+    game.home_team = input_data.home_code or game.home_team
     game.stadium = preview_data.get("stadium") or game.stadium
-    if away_starter:
-        game.away_pitcher = away_starter
-    if home_starter:
-        game.home_pitcher = home_starter
+    if input_data.away_starter:
+        game.away_pitcher = input_data.away_starter
+    if input_data.home_starter:
+        game.home_pitcher = input_data.home_starter
     if not is_terminal_status(game.game_status) and not is_live_status(game.game_status):
         game.game_status = GAME_STATUS_SCHEDULED
-    _apply_game_team_identity(game, game_date.year)
+    _apply_game_team_identity(game, input_data.game_date.year)
 
 
 def _upsert_pregame_metadata(
@@ -894,31 +944,24 @@ def _upsert_pregame_metadata(
 def _replace_pregame_lineups(
     session: Session,
     preview_data: dict[str, Any],
-    game_id: str,
-    season_year: int,
-    away_code: str | None,
-    home_code: str | None,
+    ctx: PregameLineupContext,
 ) -> None:
     resolver = _new_strict_player_resolver(session)
     away_rows = _build_pregame_lineup_rows(
-        game_id,
-        team_side="away",
-        team_code=away_code,
-        season_year=season_year,
+        ctx.game_id,
+        TeamSideContext(team_side="away", team_code=ctx.away_code, season_year=ctx.season_year),
         lineup=preview_data.get("away_lineup") or [],
         resolver=resolver,
     )
     home_rows = _build_pregame_lineup_rows(
-        game_id,
-        team_side="home",
-        team_code=home_code,
-        season_year=season_year,
+        ctx.game_id,
+        TeamSideContext(team_side="home", team_code=ctx.home_code, season_year=ctx.season_year),
         lineup=preview_data.get("home_lineup") or [],
         resolver=resolver,
     )
-    prepared_lineups = _prepare_player_rows(game_id, "game_lineups", away_rows + home_rows)
-    _replace_prepared_lineup_side(session, game_id, "away", prepared_lineups)
-    _replace_prepared_lineup_side(session, game_id, "home", prepared_lineups)
+    prepared_lineups = _prepare_player_rows(ctx.game_id, "game_lineups", away_rows + home_rows)
+    _replace_prepared_lineup_side(session, ctx.game_id, "away", prepared_lineups)
+    _replace_prepared_lineup_side(session, ctx.game_id, "home", prepared_lineups)
 
 
 def _replace_prepared_lineup_side(
@@ -929,7 +972,7 @@ def _replace_prepared_lineup_side(
 ) -> None:
     side_rows = [row for row in prepared_lineups if row.get("team_side") == team_side]
     if side_rows:
-        _replace_records_for_side(session, GameLineup, game_id, team_side, side_rows)
+        _replace_records_for_side(session, RecordKey(GameLineup, game_id, team_side), side_rows)
 
 
 def _upsert_pregame_summary(
@@ -937,11 +980,7 @@ def _upsert_pregame_summary(
     preview_data: dict[str, Any],
     game_id: str,
     game_date_str: str,
-    away_starter: str | None,
-    away_starter_id: int | None,
-    home_starter: str | None,
-    home_starter_id: int | None,
-    start_pitcher_announced: object,
+    starters: StartersInfo,
 ) -> None:
     preview_payload = {
         "game_id": game_id,
@@ -950,18 +989,20 @@ def _upsert_pregame_summary(
         "start_time": preview_data.get("start_time"),
         "away_team_name": preview_data.get("away_team_name"),
         "home_team_name": preview_data.get("home_team_name"),
-        "away_starter": away_starter,
-        "away_starter_id": away_starter_id,
-        "home_starter": home_starter,
-        "home_starter_id": home_starter_id,
-        "start_pitcher_announced": start_pitcher_announced,
+        "away_starter": starters.away_starter,
+        "away_starter_id": starters.away_starter_id,
+        "home_starter": starters.home_starter,
+        "home_starter_id": starters.home_starter_id,
+        "start_pitcher_announced": starters.start_pitcher_announced,
         "lineup_announced": preview_data.get("lineup_announced"),
         "away_lineup": preview_data.get("away_lineup") or [],
         "home_lineup": preview_data.get("home_lineup") or [],
     }
     _upsert_game_summary_entry(
         session,
-        game_id=game_id,
-        summary_type="프리뷰",
-        detail_text=_json_dumps(preview_payload),
+        GameSummaryEntry(
+            game_id=game_id,
+            summary_type="프리뷰",
+            detail_text=_json_dumps(preview_payload),
+        ),
     )

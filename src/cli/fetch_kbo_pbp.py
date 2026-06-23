@@ -7,6 +7,8 @@ import sys
 from typing import TYPE_CHECKING
 
 from src.services.relay_recovery_service import (
+    RecoveryTargetCriteria,
+    RelayRecoveryConfig,
     load_relay_recovery_targets,
     recover_relay_data,
 )
@@ -56,10 +58,12 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
 
     try:
         targets = load_relay_recovery_targets(
-            season=args.season,
-            month=args.month,
-            game_ids=[args.game_id] if args.game_id else None,
-            missing_only=not args.force,
+            RecoveryTargetCriteria(
+                season=args.season,
+                month=args.month,
+                game_ids=[args.game_id] if args.game_id else None,
+                missing_only=not args.force,
+            ),
             log=logger.info,
         )
     except (FileNotFoundError, ValueError):
@@ -72,9 +76,11 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
 
     await recover_relay_data(
         targets,
-        validate_final_score=args.validate_final_score,
-        validate_inning_continuity=args.validate_inning_continuity,
-        log=logger.info,
+        RelayRecoveryConfig(
+            validate_final_score=args.validate_final_score,
+            validate_inning_continuity=args.validate_inning_continuity,
+            log=logger.info,
+        ),
     )
     logger.info("\n[INFO] Relay recovery run completed.")
     return 0

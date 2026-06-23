@@ -115,10 +115,11 @@ def test_reconcile_postgame_range_reports_status_and_score_changes(monkeypatch):
         )
         session.commit()
 
-    async def _fake_collect(games, *, detail_crawler, force, concurrency, log, **_kwargs):
+    async def _fake_collect(games, *, detail_crawler, config=None, **_kwargs):
         assert detail_crawler.__class__ is _FakeDetailCrawler
-        assert force is True
-        assert concurrency == 1
+        assert config is not None
+        assert config.force is True
+        assert config.concurrency == 1
         game_list = list(games)
         with SessionLocal() as session:
             game = session.query(Game).filter(Game.game_id == "20260424LGOB0").one()

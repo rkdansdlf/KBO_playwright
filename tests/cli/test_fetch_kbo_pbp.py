@@ -18,11 +18,12 @@ class TestFetchKboPbpCLI:
             mock_load.return_value = []
             result = main(["--season", "2025"])
             assert result == 0
-            args, kwargs = mock_load.call_args
-            assert kwargs["season"] == 2025
-            assert kwargs["month"] is None
-            assert kwargs["game_ids"] is None
-            assert kwargs["missing_only"] is True
+            args, _kwargs = mock_load.call_args
+            criteria = args[0]
+            assert criteria.season == 2025
+            assert criteria.month is None
+            assert criteria.game_ids is None
+            assert criteria.missing_only is True
 
     def test_main_with_game_id(self):
         with (
