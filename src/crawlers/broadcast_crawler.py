@@ -8,6 +8,7 @@ from datetime import datetime
 from playwright.async_api import Page, async_playwright
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -22,9 +23,9 @@ class BroadcastCrawler:
     def __init__(self) -> None:
         self.url = SCHEDULE
 
-    async def run(self, year: int = None, month: int = None, *, save: bool = False) -> None:
-        year = year or datetime.now().year
-        month = month or datetime.now().month
+    async def run(self, year: int | None = None, month: int | None = None, *, save: bool = False) -> None:
+        year = year or datetime.now(KST).year
+        month = month or datetime.now(KST).month
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)

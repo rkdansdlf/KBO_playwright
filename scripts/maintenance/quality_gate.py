@@ -24,9 +24,10 @@ import csv
 import json
 import os
 import sys
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -83,8 +84,8 @@ def collect_metrics(session_or_conn) -> dict[str, int]:
         "batting_null_player_id": "SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL",
         "pitching_null_player_id": "SELECT COUNT(*) FROM game_pitching_stats WHERE player_id IS NULL",
         "lineups_null_player_id": "SELECT COUNT(*) FROM game_lineups WHERE player_id IS NULL",
-        "orphaned_batting_stats": "SELECT COUNT(*) FROM game_batting_stats WHERE game_id NOT IN (SELECT game_id FROM game)",
-        "orphaned_pitching_stats": "SELECT COUNT(*) FROM game_pitching_stats WHERE game_id NOT IN (SELECT game_id FROM game)",
+        "orphaned_batting_stats": "SELECT COUNT(*) FROM game_batting_stats gbs WHERE NOT EXISTS (SELECT 1 FROM game g WHERE g.game_id = gbs.game_id)",
+        "orphaned_pitching_stats": "SELECT COUNT(*) FROM game_pitching_stats gps WHERE NOT EXISTS (SELECT 1 FROM game g WHERE g.game_id = gps.game_id)",
         "missing_player_profiles": """
             WITH season_players AS (
                 SELECT player_id FROM player_season_batting

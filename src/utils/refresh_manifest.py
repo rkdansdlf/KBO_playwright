@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.constants import KST
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = PROJECT_ROOT / "data" / "refresh_manifests"
 
@@ -48,7 +50,7 @@ def write_refresh_manifest(
 ) -> Path:
     output_path = output_dir or DEFAULT_MANIFEST_DIR
     output_path.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
     payload = {
         "phase": phase,
         "target_date": target_date,
@@ -56,7 +58,7 @@ def write_refresh_manifest(
         "datasets": list(dict.fromkeys(datasets)),
         "derived_refresh": list(dict.fromkeys(derived_refresh or [])),
         "topics": list(dict.fromkeys(topics or infer_topics(datasets, derived_refresh))),
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(KST).isoformat(),
     }
     if stability is not None:
         payload["stability"] = dict(stability)

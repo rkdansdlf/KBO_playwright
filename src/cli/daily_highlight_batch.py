@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.aggregators.highlight_aggregator import HighlightAggregator
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameHighlight
 from src.sync.oci_sync import OCISync
@@ -203,7 +204,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-notify", action="store_true", help="Skip sending Telegram alert summary")
     args = parser.parse_args(argv)
 
-    target = args.date if args.date else datetime.now().strftime("%Y%m%d")
+    target = args.date if args.date else datetime.now(KST).strftime("%Y%m%d")
     asyncio.run(
         run_highlight_batch(
             target,

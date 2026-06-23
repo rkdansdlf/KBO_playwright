@@ -18,6 +18,7 @@ from pathlib import Path
 
 from sqlalchemy import func
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.parsers.game_detail_parser import parse_game_detail_html
@@ -160,7 +161,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         if season is None:
             from datetime import datetime
 
-            season = datetime.now().year
+            season = datetime.now(KST).year
         asyncio.run(run_futures(args.futures_limit, season, args.futures_delay, args.futures_concurrency))
 
     if game_ids:

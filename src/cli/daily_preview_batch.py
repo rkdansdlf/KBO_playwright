@@ -14,6 +14,7 @@ from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.crawlers.preview_crawler import PreviewCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import save_pregame_lineups
@@ -143,7 +144,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)
 
-    target = args.date if args.date else datetime.now().strftime("%Y%m%d")
+    target = args.date if args.date else datetime.now(KST).strftime("%Y%m%d")
     asyncio.run(run_preview_batch(target, sync_to_oci=not args.no_sync))
     return 0
 

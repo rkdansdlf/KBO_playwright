@@ -8,6 +8,8 @@ from typing import Any
 
 import httpx
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 NAVER_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError, OSError)
@@ -38,7 +40,7 @@ class NaverNewsCrawlerBase(ABC):
 
     async def _fetch_news(self) -> list[dict]:
         results: list[dict] = []
-        today = datetime.now()
+        today = datetime.now(KST)
         client = httpx.Client(headers=HEADERS, timeout=15)
         try:
             for days_ago in range(7):

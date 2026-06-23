@@ -96,11 +96,11 @@ TEAM_YOUTUBE_CHANNELS: dict[str, dict] = {
 
 # 응원가 유형 분류 키워드
 SONG_TYPE_RULES: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"팀\s*응원가|team\s*song|응원가\s*모음|전체\s*응원", re.I), "TEAM"),
-    (re.compile(r"타순|lead.off|1번타자", re.I), "LEADOFF"),
-    (re.compile(r"끝내기|walk.off|끝내|승리의", re.I), "WALKOFF"),
-    (re.compile(r"마무리|클로저|closer", re.I), "CLOSER"),
-    (re.compile(r"선발|starter|starting", re.I), "STARTER"),
+    (re.compile(r"팀\s*응원가|team\s*song|응원가\s*모음|전체\s*응원", re.IGNORECASE), "TEAM"),
+    (re.compile(r"타순|lead.off|1번타자", re.IGNORECASE), "LEADOFF"),
+    (re.compile(r"끝내기|walk.off|끝내|승리의", re.IGNORECASE), "WALKOFF"),
+    (re.compile(r"마무리|클로저|closer", re.IGNORECASE), "CLOSER"),
+    (re.compile(r"선발|starter|starting", re.IGNORECASE), "STARTER"),
 ]
 
 # 선수 응원가 제목 패턴: "홍길동 응원가", "[홍길동] 응원가"

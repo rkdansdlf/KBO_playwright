@@ -7,6 +7,7 @@ from typing import Any
 
 from playwright.async_api import Locator, async_playwright
 
+from src.constants import KST
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import resolve_team_code
@@ -53,7 +54,7 @@ class InternationalScheduleCrawler:
 
         # Determine year from URL or page context
         year_match = re.search(r"(\d{4})", url)
-        year = int(year_match.group(1)) if year_match else datetime.now().year
+        year = int(year_match.group(1)) if year_match else datetime.now(KST).year
 
         games = []
 
@@ -85,10 +86,7 @@ class InternationalScheduleCrawler:
         try:
             month, day = map(int, date_clean.split("."))
             game_date = datetime(year, month, day).date()
-            if time_str:
-                game_time = time_str.strip()
-            else:
-                game_time = "00:00"
+            game_time = time_str.strip() if time_str else "00:00"
         except ValueError:
             # Often first row is header or empty or special
             return None

@@ -26,6 +26,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat
 from src.models.player import PlayerBasic
@@ -117,7 +118,7 @@ def _build_batting_data(
     is_basic2: bool,
     year: int | None = None,
 ) -> dict[str, Any]:
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     series_map = get_series_mapping()
     league_name = series_map.get(series_key, {}).get("league", "REGULAR")
 
@@ -197,7 +198,7 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | Non
     """
     Parse batting table using JS extraction for reduced RPC.
     """
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     get_team_mapping_for_year(year)
 
     extraction_script = r"""
@@ -273,7 +274,7 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | Non
 
 
 def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | None = None) -> list[dict]:
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     get_team_mapping_for_year(year)
     try:
         table = page.query_selector("table")
@@ -334,7 +335,7 @@ def parse_batting_stats_table(
     *,
     use_fast: bool | None = None,
 ) -> list[dict]:
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     if use_fast is None:
         use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
     if use_fast:
@@ -623,7 +624,7 @@ def _parse_basic2_header_data_legacy(
     Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
     각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집
     """
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     players_data = {}
     team_mapping = get_team_mapping_for_year(year)
 
@@ -703,7 +704,7 @@ def _parse_basic2_header_data_fast(
     description: str,
     year: int | None = None,
 ) -> dict[int, dict]:
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     players_data: dict[int, dict] = {}
     team_mapping = get_team_mapping_for_year(year)
 
@@ -731,7 +732,7 @@ def parse_basic2_header_data(
     *,
     use_fast: bool | None = None,
 ) -> dict[int, dict]:
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     if use_fast is None:
         use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
     if use_fast:
@@ -1008,7 +1009,7 @@ def _handle_batting_fallback(
 def crawl_series_batting_stats(
     year: int | None = None,
     series_key: str = "regular",
-    limit: int = None,
+    limit: int | None = None,
     *,
     save_to_db: bool = False,
     headless: bool = False,
@@ -1027,7 +1028,7 @@ def crawl_series_batting_stats(
     Returns:
         수집된 타자 기록 리스트
     """
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     series_mapping = get_series_mapping()
 
     if series_key not in series_mapping:
@@ -1126,7 +1127,7 @@ def _save_batting_if_needed(all_players_data: list[dict], *, save_to_db: bool) -
 
 def crawl_all_series(
     year: int | None = None,
-    limit: int = None,
+    limit: int | None = None,
     *,
     save_to_db: bool = False,
     headless: bool = False,
@@ -1138,7 +1139,7 @@ def crawl_all_series(
     Returns:
         시리즈별 수집된 데이터 딕셔너리
     """
-    year = year or datetime.now().year
+    year = year or datetime.now(KST).year
     policy = RequestPolicy()
     series_mapping = get_series_mapping()
     all_series_data = {}
@@ -1163,7 +1164,7 @@ def crawl_all_series(
 def main() -> None:
     parser = argparse.ArgumentParser(description="KBO 전체 시리즈 타자 기록 크롤러")
 
-    parser.add_argument("--year", type=int, default=datetime.now().year, help="시즌 연도 (기본값: 당해 연도)")
+    parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="시즌 연도 (기본값: 당해 연도)")
     parser.add_argument("--series", type=str, help="특정 시리즈만 크롤링 (regular, exhibition, wildcard, etc.)")
     parser.add_argument("--limit", type=int, help="수집할 선수 수 제한")
     parser.add_argument("--save", action="store_true", help="DB에 저장")

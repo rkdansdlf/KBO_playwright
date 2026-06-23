@@ -603,9 +603,23 @@ python3 -m src.cli.freshness_gate --date 20251015
 
 # 확장 검증 (14일 기준, OCI)
 python3 -m src.cli.freshness_gate --days 14 --source-url-env OCI_DB_URL
+
+# 실패 시 Telegram/Slack 알림 전송
+python3 -m src.cli.freshness_gate --days 14 --source-url-env OCI_DB_URL --alert
 ```
 
-### 4. Gap Report
+### 4. Quality Dashboard
+생성된 `logs/quality_reports/*.json` 리포트를 compact dashboard payload로 요약합니다.
+
+```bash
+# 최근 14개 일일 품질 리포트 요약(JSON)
+python3 -m src.cli.quality_dashboard --limit 14 --json
+
+# 최근 30일 리포트 텍스트 요약
+python3 -m src.cli.quality_dashboard --days 30
+```
+
+### 5. Gap Report
 카테고리별 데이터 수집 갭을 분석합니다.
 
 ```bash
@@ -616,7 +630,7 @@ python3 -m src.cli.gap_report
 python3 -m src.cli.gap_report --categories relay profile
 ```
 
-### 5. PlayerGame 통계 재계산
+### 6. PlayerGame 통계 재계산
 경기 단위 스탯을 선수별로 집계합니다.
 
 ```bash
@@ -633,7 +647,7 @@ python3 -m src.cli.recalc_player_game_stats --game-id 20250401LGSS0 --save
 python3 -m src.cli.recalc_player_game_stats --season 2025 --dry-run
 ```
 
-### 6. 팀/선수 시즌 스탯 재계산
+### 7. 팀/선수 시즌 스탯 재계산
 ```bash
 # 타자 시즌 스탯
 python3 -m src.cli.recalc_player_stats --season 2025 --save
@@ -642,7 +656,7 @@ python3 -m src.cli.recalc_player_stats --season 2025 --save
 python3 -m src.cli.recalc_team_stats --season 2025 --save
 ```
 
-### 7. 크롤러 셀렉터 게이트 (Crawler Selector Gate)
+### 8. 크롤러 셀렉터 게이트 (Crawler Selector Gate)
 크롤러 셀렉터가 변경되거나 깨지는 것을 모니터링하기 위해 fixture 또는 live HTML을 대상으로 CSS 셀렉터 매칭 결과를 검증합니다.
 
 ```bash
@@ -656,7 +670,7 @@ python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_select
 python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --output-dir logs/selector_gate
 ```
 
-### 8. 데이터 품질 회귀 체크 (Data Quality Regression Pack)
+### 9. 데이터 품질 회귀 체크 (Data Quality Regression Pack)
 데이터베이스의 정규 시즌 집계 결과와 PBP 등 transactional 데이터에 대해 PA 공식 검증, 불가능한 스탯 범위, 고아 데이터, NULL player_id 등의 무결성을 회귀 점검합니다.
 
 ```bash

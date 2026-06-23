@@ -166,10 +166,7 @@ def build_kbo_game_id(
         return None
 
     dh = str(doubleheader_no if doubleheader_no is not None else 0).strip()
-    if not dh or not dh[-1].isdigit():
-        dh = "0"
-    else:
-        dh = dh[-1]
+    dh = "0" if not dh or not dh[-1].isdigit() else dh[-1]
 
     return f"{date_part}{away_code}{home_code}{dh}"
 

@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN
+from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, KST
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -147,7 +147,7 @@ def _upsert_validation_metrics(
     if error_reason and ("score_mismatch" in error_reason or "inning_score_mismatch" in error_reason):
         metrics.finish_mismatch_count = (metrics.finish_mismatch_count or 0) + 1
     if validation_status in {VALIDATION_VERIFIED, VALIDATION_RECOVERED} and (events or raw_pbp_rows):
-        metrics.last_successful_event_at = datetime.now()
+        metrics.last_successful_event_at = datetime.now(KST)
     if error_reason:
         metrics.fallback_trigger_reason = str(error_reason)[:64]
     if evidence:
@@ -343,7 +343,7 @@ def _game_date_from_game_id(game_id: str) -> date:
     try:
         return datetime.strptime(game_id[:8], "%Y%m%d").date()
     except ValueError:
-        return datetime.now().date()
+        return datetime.now(KST).date()
 
 
 def _get_or_create_game_parent(session: Session, game_id: str, game_date: date) -> Game:

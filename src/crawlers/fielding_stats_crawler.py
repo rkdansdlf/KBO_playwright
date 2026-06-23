@@ -14,6 +14,7 @@ from playwright.sync_api import ElementHandle, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from src.constants import KST
 from src.crawlers.selectors import FIELDING_STATS
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.type_helpers import parse_innings, safe_float, safe_int
@@ -299,7 +300,7 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
         list: 수비 기록 딕셔너리 리스트
     """
     if year is None:
-        year = datetime.now().year
+        year = datetime.now(KST).year
     fielding_data = []
     fielding_data_map = {}  # (player_id, team_id, position_id) -> record
     policy = RequestPolicy()
@@ -361,7 +362,7 @@ def save_fielding_stats(year: int | None = None, db_path: str | None = None) -> 
         db_path: 데이터베이스 파일 경로 (None이면 data/kbo_{year}.db)
     """
     if year is None:
-        year = datetime.now().year
+        year = datetime.now(KST).year
     if db_path is None:
         db_path = f"data/kbo_{year}.db"
     # 수비 기록 크롤링
@@ -411,7 +412,7 @@ def save_fielding_stats(year: int | None = None, db_path: str | None = None) -> 
                     record.get("stolen_bases_allowed"),
                     record.get("caught_stealing"),
                     record.get("cs_pct"),
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"),
                     "CRAWLER",
                 ),
             )
@@ -436,7 +437,7 @@ if __name__ == "__main__":
     parser.add_argument("--year", type=int, default=None, help="Season year (default: current year)")
     parser.add_argument("--save", action="store_true", help="Save to local database")
     args = parser.parse_args()
-    year = args.year or datetime.now().year
+    year = args.year or datetime.now(KST).year
 
     logger.info("📊 수비 크롤러 실행 (연도: %s, 저장 여부: %s)", year, args.save)
     if args.save:

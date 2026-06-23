@@ -48,11 +48,11 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from threading import Thread
-from typing import Sequence
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv

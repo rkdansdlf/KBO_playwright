@@ -4,9 +4,10 @@ import json
 import logging
 from datetime import date, datetime
 
+# 로깅 설정
+from src.constants import KST
 from src.utils.alerting import SlackWebhookClient
 
-# 로깅 설정
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("fallback_monitor")
 
@@ -50,7 +51,7 @@ class FallbackMonitor:
         player_id: str,
         type_name: str,
         original_data: dict,
-        calculated_data: dict = None,
+        calculated_data: dict | None = None,
         player_name: str | None = None,
     ) -> str:
         """
@@ -69,7 +70,7 @@ class FallbackMonitor:
         backup_dir = project_root / "logs" / "audit_fixes"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
-        date_str = datetime.now().strftime("%Y%m%d")
+        date_str = datetime.now(KST).strftime("%Y%m%d")
         file_path = backup_dir / f"{date_str}_{player_id}_{type_name}.json"
 
         snapshots = []
@@ -77,16 +78,13 @@ class FallbackMonitor:
             try:
                 with file_path.open(encoding="utf-8") as f:
                     content = json.load(f)
-                    if isinstance(content, list):
-                        snapshots = content
-                    else:
-                        snapshots = [content]
+                    snapshots = content if isinstance(content, list) else [content]
             except (OSError, ValueError) as e:
                 logger.warning("Failed to read existing backup file %s: %s", file_path, e)
 
         # 새 스냅샷 추가
         snapshot = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(KST).isoformat(),
             "player_id": str(player_id),
             "type": type_name,
             "original": original_data,
@@ -114,7 +112,7 @@ class FallbackMonitor:
         backup_dir = project_root / "logs" / "audit_fixes"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
-        date_str = datetime.now().strftime("%Y%m%d")
+        date_str = datetime.now(KST).strftime("%Y%m%d")
         file_path = backup_dir / f"{date_str}_{event_type}_{category.lower()}.json"
 
         with file_path.open("w", encoding="utf-8") as f:

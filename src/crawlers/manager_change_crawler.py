@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.crawlers.base_naver_crawler import NaverNewsCrawlerBase
 from src.db.engine import SessionLocal
 from src.repositories.manager_change_repository import ManagerChangeRepository
@@ -55,7 +56,7 @@ class ManagerChangeCrawler(NaverNewsCrawlerBase):
             return None
         reason = self._detect_reason(text)
         change_date = self._parse_date(article.get("dateTime", ""))
-        season = change_date.year if change_date else datetime.now().year
+        season = change_date.year if change_date else datetime.now(KST).year
         url = self._build_naver_url(article.get("oid", ""), article.get("aid", ""))
         return {
             "team_id": team_id or "UNKNOWN",

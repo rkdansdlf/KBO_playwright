@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 import argparse
 import csv
@@ -85,7 +87,7 @@ def _append_batting_discrepancy(session: Session, year_data: dict, official: Pla
 
 def _build_report_data(years: list[int], db_url: str | None) -> dict:
     report_data = {
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(KST).isoformat(),
         "db_target": "LOCAL" if not db_url else "REMOTE",
         "years": {},
     }
@@ -104,7 +106,7 @@ def _build_report_data(years: list[int], db_url: str | None) -> dict:
 def _report_path(output_dir: str, db_url: str | None, output_format: str) -> str:
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     suffix = "remote" if db_url else "local"
-    filename = f"data_quality_report_{suffix}_{datetime.now():%Y%m%d_%H%M%S}"
+    filename = f"data_quality_report_{suffix}_{datetime.now(KST):%Y%m%d_%H%M%S}"
     return str(Path(output_dir, f"{filename}.{output_format}"))
 
 

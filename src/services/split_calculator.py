@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 """
 Situational Splits Calculator Service.
@@ -179,7 +181,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Situational Splits Calculator")
     parser.add_argument("--player_id", type=int, required=True, help="KBO Player ID")
-    parser.add_argument("--season", type=int, default=datetime.now().year, help="Season year")
+    parser.add_argument("--season", type=int, default=datetime.now(KST).year, help="Season year")
     args = parser.parse_args()
 
     calc = SituationalSplitCalculator()

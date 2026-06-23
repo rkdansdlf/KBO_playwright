@@ -93,21 +93,27 @@ _RULES: tuple[_DiagnosisRule, ...] = (
     _DiagnosisRule(
         category="auth",
         severity="high",
-        pattern=re.compile(r"authentication failed|login failed|invalid .*credential|KBO_USER_ID|KBO_USER_PWD", re.I),
+        pattern=re.compile(
+            r"authentication failed|login failed|invalid .*credential|KBO_USER_ID|KBO_USER_PWD", re.IGNORECASE
+        ),
         message="KBO authentication or credential configuration failed.",
         suggested_commands=("venv/bin/python -m src.cli.health_check --json",),
     ),
     _DiagnosisRule(
         category="database",
         severity="high",
-        pattern=re.compile(r"IntegrityError|FOREIGN KEY|UNIQUE constraint|database is locked|OperationalError", re.I),
+        pattern=re.compile(
+            r"IntegrityError|FOREIGN KEY|UNIQUE constraint|database is locked|OperationalError", re.IGNORECASE
+        ),
         message="Database write, constraint, or lock failure detected.",
         suggested_commands=("venv/bin/python -m src.cli.db_healthcheck",),
     ),
     _DiagnosisRule(
         category="quality_gate",
         severity="high",
-        pattern=re.compile(r"quality gate|freshness gate|exceeds baseline|null_player_id|completeness audit", re.I),
+        pattern=re.compile(
+            r"quality gate|freshness gate|exceeds baseline|null_player_id|completeness audit", re.IGNORECASE
+        ),
         message="Data quality gate or freshness invariant failed.",
         suggested_commands=(
             "venv/bin/python -m src.cli.data_quality_regression_pack --json",
@@ -117,7 +123,7 @@ _RULES: tuple[_DiagnosisRule, ...] = (
     _DiagnosisRule(
         category="scheduler_lock",
         severity="warning",
-        pattern=re.compile(r"LIVE_LOCK|DAILY_LOCK|MAINTENANCE_LOCK|lock .*held|already held", re.I),
+        pattern=re.compile(r"LIVE_LOCK|DAILY_LOCK|MAINTENANCE_LOCK|lock .*held|already held", re.IGNORECASE),
         message="Scheduler lock prevented concurrent job execution.",
         suggested_commands=("venv/bin/python scripts/scheduler.py --help",),
     ),
@@ -125,7 +131,7 @@ _RULES: tuple[_DiagnosisRule, ...] = (
         category="network",
         severity="high",
         pattern=re.compile(
-            r"ConnectTimeout|ReadTimeout|HTTPStatusError|ERR_NAME_NOT_RESOLVED|net::|ConnectionError", re.I
+            r"ConnectTimeout|ReadTimeout|HTTPStatusError|ERR_NAME_NOT_RESOLVED|net::|ConnectionError", re.IGNORECASE
         ),
         message="Network, HTTP, or upstream availability failure detected.",
         suggested_commands=("venv/bin/python -m src.cli.freshness_gate --days 1 --json",),
@@ -133,7 +139,7 @@ _RULES: tuple[_DiagnosisRule, ...] = (
     _DiagnosisRule(
         category="playwright",
         severity="high",
-        pattern=re.compile(r"TargetClosedError|Browser.*closed|playwright\._impl\._errors\.Error", re.I),
+        pattern=re.compile(r"TargetClosedError|Browser.*closed|playwright\._impl\._errors\.Error", re.IGNORECASE),
         message="Playwright browser/runtime failure detected.",
         suggested_commands=("venv/bin/python -m src.cli.crawler_live_smoke",),
     ),

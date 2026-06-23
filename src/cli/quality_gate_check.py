@@ -10,6 +10,7 @@ import logging
 import sys
 from collections.abc import Sequence
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.validators.quality_gate import run_quality_gate
 
@@ -64,7 +65,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.year:
         from datetime import datetime
 
-        year = datetime.now().year
+        year = datetime.now(KST).year
     else:
         year = args.year
 

@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -127,7 +128,7 @@ class GameSyncMixin:
         data["batting_order"] = None
         return data
 
-    def sync_games(self, limit: int = None, filters: list = None, batch_size: int = 5000) -> int:  # noqa: ARG002
+    def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:  # noqa: ARG002
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
 
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
@@ -164,21 +165,21 @@ class GameSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_player_game_batting(self, limit: int = None) -> int:  # noqa: ARG002
+    def sync_player_game_batting(self, limit: int | None = None) -> int:  # noqa: ARG002
         """Sync player game batting stats from SQLite to OCI"""
         return self.sync_simple_table(
             PlayerGameBatting,
             ["game_id", "player_id"],
         )
 
-    def sync_player_game_pitching(self, limit: int = None) -> int:  # noqa: ARG002
+    def sync_player_game_pitching(self, limit: int | None = None) -> int:  # noqa: ARG002
         """Sync player game pitching stats from SQLite to OCI"""
         return self.sync_simple_table(
             PlayerGamePitching,
             ["game_id", "player_id"],
         )
 
-    def sync_all_game_data(self, limit: int = None) -> dict[str, int]:
+    def sync_all_game_data(self, limit: int | None = None) -> dict[str, int]:
         """Sync all game-related data"""
         return {
             "game_schedules": self.sync_game_schedules(limit=limit),
@@ -211,7 +212,7 @@ class GameSyncMixin:
         def purge_child_rows() -> None:
             for table_name in child_tables:
                 self.target_session.execute(
-                    text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),
+                    text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),  # noqa: S608
                     {"pattern": pattern},
                 )
             self.target_session.commit()
@@ -273,7 +274,7 @@ class GameSyncMixin:
         if days:
             from datetime import datetime, timedelta
 
-            filters.append(Game.game_date >= (datetime.now() - timedelta(days=days)).date())
+            filters.append(Game.game_date >= (datetime.now(KST) - timedelta(days=days)).date())
         if year:
             filters.append(Game.game_id.like(f"{year}%"))
         return filters, target_game_ids
@@ -392,8 +393,8 @@ class GameSyncMixin:
 
     def sync_game_details(
         self,
-        days: int = None,
-        year: int = None,
+        days: int | None = None,
+        year: int | None = None,
         *,
         unsynced_only: bool = False,
         batch_size: int = 5000,
@@ -830,7 +831,7 @@ class GameSyncMixin:
 
     def _sync_game_summary_rows(
         self,
-        filters: list = None,
+        filters: list | None = None,
         *,
         summary_type: str | None = None,
         replace_game_ids: list[str] | None = None,
@@ -880,7 +881,7 @@ class GameSyncMixin:
         logger.info("   Synced %s/%s rows via COPY...", len(records), len(records))
         return len(records)
 
-    def _sync_game_play_by_play(self, filters: list = None) -> int:
+    def _sync_game_play_by_play(self, filters: list | None = None) -> int:
 
         query = self.sqlite_session.query(GamePlayByPlay.game_id).distinct()
         if filters:

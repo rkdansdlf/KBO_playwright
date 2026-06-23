@@ -36,10 +36,7 @@ async def collect_games(
     force: bool = False,
     concurrency: int | None = None,
 ) -> None:
-    if game_ids:
-        targets = load_game_targets_by_ids(game_ids)
-    else:
-        targets = load_game_targets_from_db(year, month)
+    targets = load_game_targets_by_ids(game_ids) if game_ids else load_game_targets_from_db(year, month)
     logger.info(
         f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else ""),  # noqa: G003
     )

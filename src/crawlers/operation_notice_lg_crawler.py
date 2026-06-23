@@ -35,15 +35,15 @@ HOST = "www.lgtwins.com"
 
 # Map title keywords → notice_type
 NOTICE_TYPE_RULES: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"취소|우천|노게임", re.I), "CANCEL"),
-    (re.compile(r"지연|딜레이|연기", re.I), "DELAY"),
-    (re.compile(r"게이트|출입문|입장문", re.I), "GATE_CHANGE"),
-    (re.compile(r"입장|제한|금지|규정", re.I), "ENTRY_RULE"),
-    (re.compile(r"주차|파킹", re.I), "PARKING"),
-    (re.compile(r"날씨|기상|비|폭우|태풍", re.I), "WEATHER"),
+    (re.compile(r"취소|우천|노게임", re.IGNORECASE), "CANCEL"),
+    (re.compile(r"지연|딜레이|연기", re.IGNORECASE), "DELAY"),
+    (re.compile(r"게이트|출입문|입장문", re.IGNORECASE), "GATE_CHANGE"),
+    (re.compile(r"입장|제한|금지|규정", re.IGNORECASE), "ENTRY_RULE"),
+    (re.compile(r"주차|파킹", re.IGNORECASE), "PARKING"),
+    (re.compile(r"날씨|기상|비|폭우|태풍", re.IGNORECASE), "WEATHER"),
 ]
 
-URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급공지|즉시", re.I)
+URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급공지|즉시", re.IGNORECASE)
 
 
 def _classify_notice(title: str) -> str:
@@ -69,7 +69,7 @@ def _parse_date(raw: str) -> datetime | None:
 
 def _extract_article_id(href: str) -> str | None:
     """Extract article ID from URL query params or path."""
-    m = re.search(r"(?:idx|id|seq|no|articleIdx|snSeq)=(\d+)", href, re.I)
+    m = re.search(r"(?:idx|id|seq|no|articleIdx|snSeq)=(\d+)", href, re.IGNORECASE)
     if m:
         return m.group(1)
     m = re.search(r"/(\d+)(?:\?|$)", href)

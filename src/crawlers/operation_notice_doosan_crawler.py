@@ -33,14 +33,14 @@ HOST = "www.doosanbears.com"
 DOOSAN_NOTICE_CRAWL_EXCEPTIONS = (PlaywrightError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 NOTICE_TYPE_RULES: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"취소|우천|노게임", re.I), "CANCEL"),
-    (re.compile(r"지연|딜레이|연기", re.I), "DELAY"),
-    (re.compile(r"게이트|출입문|입장문", re.I), "GATE_CHANGE"),
-    (re.compile(r"입장|제한|금지|규정", re.I), "ENTRY_RULE"),
-    (re.compile(r"주차|파킹", re.I), "PARKING"),
-    (re.compile(r"날씨|기상|비|폭우|태풍", re.I), "WEATHER"),
+    (re.compile(r"취소|우천|노게임", re.IGNORECASE), "CANCEL"),
+    (re.compile(r"지연|딜레이|연기", re.IGNORECASE), "DELAY"),
+    (re.compile(r"게이트|출입문|입장문", re.IGNORECASE), "GATE_CHANGE"),
+    (re.compile(r"입장|제한|금지|규정", re.IGNORECASE), "ENTRY_RULE"),
+    (re.compile(r"주차|파킹", re.IGNORECASE), "PARKING"),
+    (re.compile(r"날씨|기상|비|폭우|태풍", re.IGNORECASE), "WEATHER"),
 ]
-URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급공지|즉시", re.I)
+URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급공지|즉시", re.IGNORECASE)
 
 
 def _classify_notice(title: str) -> str:
@@ -64,7 +64,7 @@ def _parse_date(raw: str) -> datetime | None:
 
 
 def _extract_article_id(href: str) -> str | None:
-    m = re.search(r"(?:idx|id|seq|no|boardIdx|articleIdx|snSeq)=(\d+)", href, re.I)
+    m = re.search(r"(?:idx|id|seq|no|boardIdx|articleIdx|snSeq)=(\d+)", href, re.IGNORECASE)
     if m:
         return m.group(1)
     m = re.search(r"/(\d+)(?:\?|$)", href)
@@ -87,37 +87,36 @@ class OperationNoticeDoosanCrawler:
         all_notices: list[dict] = []
         from src.utils.playwright_pool import AsyncPlaywrightPool
 
-        async with AsyncPlaywrightPool(max_pages=1, block_resources=True) as pool:
-            async with pool.page() as page:
-                for page_no in range(1, self.max_pages + 1):
-                    url = f"{BASE_URL}?page={page_no}"
-                    try:
-                        await throttle.wait(HOST)
-                        resp = await page.goto(url)
-                        if not resp or resp.status != HTTPStatus.OK:
-                            logger.warning(
-                                "[Doosan Notice] HTTP %s on page %d",
-                                resp.status if resp else "None",
-                                page_no,
-                            )
-                            break
-
-                        await page.wait_for_timeout(2000)
-                        html = await page.content()
-                        self._raw_pages.append(
-                            {"source_key": "doosan_bears_notices", "url": url, "html": html, "status_code": 200},
+        async with AsyncPlaywrightPool(max_pages=1, block_resources=True) as pool, pool.page() as page:
+            for page_no in range(1, self.max_pages + 1):
+                url = f"{BASE_URL}?page={page_no}"
+                try:
+                    await throttle.wait(HOST)
+                    resp = await page.goto(url)
+                    if not resp or resp.status != HTTPStatus.OK:
+                        logger.warning(
+                            "[Doosan Notice] HTTP %s on page %d",
+                            resp.status if resp else "None",
+                            page_no,
                         )
-
-                        notices, hit_stop = self._parse_page(html, stop_at_external_id)
-                        all_notices.extend(notices)
-                        logger.info("[Doosan Notice] page %s: %s notices", page_no, len(notices))
-
-                        if hit_stop or not notices:
-                            break
-
-                    except DOOSAN_NOTICE_CRAWL_EXCEPTIONS:
-                        logger.exception("[Doosan Notice] Failed to fetch page %d", page_no)
                         break
+
+                    await page.wait_for_timeout(2000)
+                    html = await page.content()
+                    self._raw_pages.append(
+                        {"source_key": "doosan_bears_notices", "url": url, "html": html, "status_code": 200},
+                    )
+
+                    notices, hit_stop = self._parse_page(html, stop_at_external_id)
+                    all_notices.extend(notices)
+                    logger.info("[Doosan Notice] page %s: %s notices", page_no, len(notices))
+
+                    if hit_stop or not notices:
+                        break
+
+                except DOOSAN_NOTICE_CRAWL_EXCEPTIONS:
+                    logger.exception("[Doosan Notice] Failed to fetch page %d", page_no)
+                    break
 
         logger.info("[Doosan Notice] Total: %s notices", len(all_notices))
 

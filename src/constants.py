@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+from zoneinfo import ZoneInfo
 
 HTTP_OK = HTTPStatus.OK
+
+KST = ZoneInfo("Asia/Seoul")
 
 DATE_STR_LEN = 8
 

@@ -79,10 +79,7 @@ class PlayerDailyStatsCrawler:
                 logger.info("   📊 Found %s raw data rows on page.", len(rows))
                 all_games = []
                 for row in rows:
-                    if is_pitcher:
-                        data = self._parse_pitcher_row(row, season)
-                    else:
-                        data = self._parse_hitter_row(row, season)
+                    data = self._parse_pitcher_row(row, season) if is_pitcher else self._parse_hitter_row(row, season)
                     if data:
                         all_games.append(data)
                 return all_games

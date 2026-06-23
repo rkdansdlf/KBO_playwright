@@ -12,6 +12,7 @@ from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.constants import KST
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.models.game import Game
 from src.models.ticket_schedule import TicketSchedule
@@ -74,7 +75,7 @@ class DynamicDataCrawler:
         Calculates upcoming game ticketing open times based on KBO team rules
         and saves them to the ticket_schedules table.
         """
-        today_val = datetime.now().date()
+        today_val = datetime.now(KST).date()
         future_val = today_val + timedelta(days=lookahead_days)
         logger.info("🎟️ Calculating ticket opening times for games between %s and %s...", today_val, future_val)
 
@@ -116,7 +117,7 @@ class DynamicDataCrawler:
                 existing_ticket.stadium = g.stadium or ""
                 existing_ticket.open_time = open_time
                 existing_ticket.url = url
-                existing_ticket.updated_at = datetime.now()
+                existing_ticket.updated_at = datetime.now(KST)
                 ticket_records.append(existing_ticket)
             else:
                 # Create new

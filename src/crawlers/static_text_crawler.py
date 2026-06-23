@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 from bs4 import BeautifulSoup
@@ -57,7 +59,7 @@ class StaticTextCrawler:
                         "source": pdf_path,
                         "page_number": page_idx + 1,
                         "total_pages": total_pages,
-                        "crawled_at": datetime.now().isoformat(),
+                        "crawled_at": datetime.now(KST).isoformat(),
                         "category": "rulebook",
                     },
                 },
@@ -114,7 +116,7 @@ class StaticTextCrawler:
         return {
             "title": title,
             "content": main_content,
-            "meta": {"source": url, "crawled_at": datetime.now().isoformat(), "category": "namuwiki"},
+            "meta": {"source": url, "crawled_at": datetime.now(KST).isoformat(), "category": "namuwiki"},
         }
 
     def _parse_namuwiki_html(self, html_content: str) -> tuple[str, str]:

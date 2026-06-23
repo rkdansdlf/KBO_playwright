@@ -233,10 +233,8 @@ class RankingAggregator:
         ranked: list[dict[str, Any]] = []
         previous_value: float | None = None
         current_rank = 0
-        processed_count = 0
 
-        for entry in processed:
-            processed_count += 1
+        for processed_count, entry in enumerate(processed, start=1):
             value = entry["value"]
             if previous_value is None or value != previous_value:
                 current_rank = processed_count

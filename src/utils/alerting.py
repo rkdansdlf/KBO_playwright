@@ -71,7 +71,7 @@ class SlackWebhookClient:
     """Sends notifications. Now prioritizes Telegram if configured."""
 
     @staticmethod
-    def send_alert(message: str, blocks: list = None) -> bool:
+    def send_alert(message: str, blocks: list | None = None) -> bool:
         """
         Sends an alert message.
         Tries Telegram first, falls back to Slack if configured.

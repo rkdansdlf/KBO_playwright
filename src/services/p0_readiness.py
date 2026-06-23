@@ -147,7 +147,7 @@ def _query_games(session: Session, start: date, end: date) -> list[Any]:
                     FROM game
                     WHERE game_date BETWEEN :start_date AND :end_date
                     ORDER BY game_date, game_id
-                    """,
+                    """,  # noqa: S608
                 ),
                 {"start_date": start, "end_date": end},
             )

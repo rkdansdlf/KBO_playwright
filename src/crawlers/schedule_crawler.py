@@ -12,6 +12,7 @@ from datetime import datetime
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
+from src.constants import KST
 from src.urls import SCHEDULE
 from src.utils.compliance import compliance
 from src.utils.game_status import (
@@ -63,7 +64,7 @@ class ScheduleCrawler:
         suffix = series_id if series_id is not None else "all"
         return f"{year}-{month:02d}:{suffix}"
 
-    async def crawl_schedule(self, year: int, month: int, series_id: str = None) -> list[dict]:
+    async def crawl_schedule(self, year: int, month: int, series_id: str | None = None) -> list[dict]:
         """
         지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
@@ -96,7 +97,9 @@ class ScheduleCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def crawl_season(self, year: int, months: list[int] | None = None, series_id: str = None) -> list[dict]:
+    async def crawl_season(
+        self, year: int, months: list[int] | None = None, series_id: str | None = None
+    ) -> list[dict]:
         """
         주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
@@ -185,7 +188,7 @@ class ScheduleCrawler:
 
         return True, "ok"
 
-    async def _crawl_month(self, page: Page, year: int, month: int, series_id: str = None) -> list[dict]:
+    async def _crawl_month(self, page: Page, year: int, month: int, series_id: str | None = None) -> list[dict]:
         """특정 월의 경기 일정 페이지에서 정보를 추출합니다.
         series_id가 지정되지 않은 경우 전 시리즈(시범/정규/포스트)를 순회합니다.
         """
@@ -602,7 +605,7 @@ async def main() -> None:
     crawler = ScheduleCrawler()
 
     # Crawl current month schedule
-    now = datetime.now()
+    now = datetime.now(KST)
     games = await crawler.crawl_schedule(now.year, now.month)
 
     logger.info("\n📊 Schedule Summary:")

@@ -22,6 +22,7 @@ from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
 from src.crawlers.futures.futures_pitching import fetch_and_parse_futures_pitching
 from src.crawlers.player_list_crawler import PlayerListCrawler
@@ -467,7 +468,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--season",
         type=int,
-        default=datetime.now().year,
+        default=datetime.now(KST).year,
         help="기준 시즌 (기본값: 현재 연도)",
     )
     parser.add_argument(

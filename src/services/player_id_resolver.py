@@ -805,10 +805,7 @@ class PlayerIdResolver:
             .limit(1)
         )
         max_id = self.session.execute(stmt).scalar()
-        if max_id is None or max_id < SURROGATE_PLAYER_ID_BOUNDARY:
-            new_id = SURROGATE_PLAYER_ID_BOUNDARY
-        else:
-            new_id = max_id + 1
+        new_id = SURROGATE_PLAYER_ID_BOUNDARY if max_id is None or max_id < SURROGATE_PLAYER_ID_BOUNDARY else max_id + 1
 
         try:
             kor_team_name = self._unknown_profile_team(team_code)

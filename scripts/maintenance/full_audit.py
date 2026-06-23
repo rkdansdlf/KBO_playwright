@@ -12,9 +12,10 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text

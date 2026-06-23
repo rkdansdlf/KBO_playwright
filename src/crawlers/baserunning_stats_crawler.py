@@ -13,6 +13,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from src.constants import KST
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -61,7 +62,7 @@ def crawl_baserunning_stats(
         list: 주루 기록 리스트
     """
     if year is None:
-        year = datetime.now().year
+        year = datetime.now(KST).year
     baserunning_data = []
     policy = RequestPolicy()
 
@@ -158,7 +159,7 @@ def save_baserunning_stats(
     db_path: str | None = None,
 ) -> None:
     if year is None:
-        year = datetime.now().year
+        year = datetime.now(KST).year
     if db_path is None:
         db_path = f"data/kbo_{year}.db"
     logger.info("\n%s", "=" * 60)
@@ -249,7 +250,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 stats["stolen_base_percentage"],
                 stats["out_on_base"],
                 stats["picked_off"],
-                datetime.now(),
+                datetime.now(KST),
             ),
         )
     except BASERUNNING_SAVE_EXCEPTIONS:
@@ -271,6 +272,6 @@ if __name__ == "__main__":
     # 테스트용
     from player_list_crawler import crawl_player_list
 
-    YEAR = datetime.now().year
+    YEAR = datetime.now(KST).year
     players = crawl_player_list(YEAR)
     save_baserunning_stats(players, YEAR)
