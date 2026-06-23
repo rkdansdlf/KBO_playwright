@@ -65,6 +65,8 @@ select = [
     "BLE",     # flake8-blind-except
     "RUF100",  # unused noqa
     "RUF005",  # collection literal concatenation
+    "RUF017",  # avoid-six
+    "RUF022",  # unsorted-dunder-all
     "PERF401",  # manual list comprehension
     "PT",      # pytest style
     "PTH",     # pathlib (os.path 대체)
@@ -72,8 +74,15 @@ select = [
     "T20",     # print / pdb
     "FURB167", # regex-flag-alias
     "RUF013",  # implicit-optional
+    "RSE",     # redundant-none-check
+    "PIE",     # flake8-pie (simplification)
     "DTZ005",  # datetime-now-without-tz
+    "FLY002",  # flynt f-string conversion
+    "N",       # pep8-naming
     "S608",    # hardcoded-sql-expression
+    "RSE",     # redundant-exception (bare Exception)
+    "PIE",     # flake8-pie (miscellaneous simplifications)
+    "YTT",     # sys.version checks
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
@@ -84,10 +93,8 @@ ignore = [
     "UP035",   # deprecated typing (Dict→dict etc — too many existing)
     "B023",    # function-uses-loop-variable (common closure pattern)
     "SIM102",  # collapsible-if (readability preference)
-    "SIM105",  # suppressible-exception (explicit try/except clearer)
     "SIM108",  # simplify-if-else (ternary, not always clearer)
     "SIM113",  # enumerate-for-loop (manual counter ok)
-    "SIM117",  # merge-with-statements (nested contexts fine)
     "COM812",  # handled by formatter (conflicts with ruff format)
     "G010",    # logging-warn vs logging-warning (redundant alias)
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
@@ -96,8 +103,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "src/models/**" = ["TC001", "TC002", "TC003"]
-"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608"]
-"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608"]
+"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608", "FLY002", "N"]
+"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608", "N"]
 
 [tool.ruff.format]
 quote-style = "double"
