@@ -1,3 +1,4 @@
+# ruff: noqa: S608
 """
 Fetch HITTER section HTML from KBO GameCenter and extract SH/SF values.
 

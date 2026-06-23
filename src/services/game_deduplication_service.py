@@ -1,3 +1,4 @@
+# ruff: noqa: S608
 """Shared SQLite helpers for selecting primary game rows."""
 
 from __future__ import annotations

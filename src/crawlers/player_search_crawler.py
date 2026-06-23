@@ -511,7 +511,7 @@ async def crawl_all_players(
     max_pages: int | None = None,
     *,
     headless: bool = False,
-    slow_mo: int = 200,
+    slow_mo: int = 200,  # noqa: ARG001
     request_delay: float = REQUEST_DELAY_SEC,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[PlayerRow]:

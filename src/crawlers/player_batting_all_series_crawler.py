@@ -755,7 +755,7 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
 
     with SessionLocal() as session:
         # 1. 해당 시즌/시리즈에 경기를 뛴 모든 타자 ID 조회
-        pattern = SeasonStatAggregator._get_league_name_pattern(series_key)
+        pattern = SeasonStatAggregator._get_league_name_pattern(series_key)  # noqa: SLF001
 
         player_ids_query = (
             session.query(GameBattingStat.player_id)

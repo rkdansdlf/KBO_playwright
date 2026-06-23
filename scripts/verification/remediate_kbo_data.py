@@ -22,7 +22,7 @@ import logging
 from scripts.verification.audit_game_logic import audit_game_logic
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
-from src.services.game_collection_service import crawl_and_save_game_details
+from src.services.game_collection_service import GameCollectionConfig, crawl_and_save_game_details
 from src.services.player_id_resolver import PlayerIdResolver
 
 logger = logging.getLogger(__name__)
@@ -119,10 +119,12 @@ async def remediate_year(year: int, limit: int | None = None, request_delay: flo
         result = await crawl_and_save_game_details(
             targets,
             detail_crawler=detail_crawler,
-            force=True,  # Overwrite bad DB records
-            pause_every=10,
-            pause_seconds=2.0,
-            log=print,
+            config=GameCollectionConfig(
+                force=True,
+                pause_every=10,
+                pause_seconds=2.0,
+                log=print,
+            ),
         )
 
         logger.info(f"\n🎉 Remediation completed for {year}:")

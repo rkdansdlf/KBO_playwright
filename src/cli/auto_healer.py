@@ -33,7 +33,7 @@ from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.repositories.game_repository import update_game_status
-from src.services.game_collection_service import GameCollectionItemResult, crawl_and_save_game_details
+from src.services.game_collection_service import GameCollectionConfig, GameCollectionItemResult, crawl_and_save_game_details
 from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
@@ -201,11 +201,13 @@ async def _run_recovery(
         collection_result = await crawl_and_save_game_details(
             [{"game_id": game.game_id, "game_date": game.game_date.strftime("%Y%m%d")} for game in recovery_candidates],
             detail_crawler=crawler,
-            force=True,
-            concurrency=1,
-            log=logger.info,
-            write_contract=write_contract,
-            source_reason="auto_healing_recovery",
+            config=GameCollectionConfig(
+                force=True,
+                concurrency=1,
+                log=logger.info,
+                write_contract=write_contract,
+                source_reason="auto_healing_recovery",
+            ),
         )
         for game in recovery_candidates:
             item = collection_result.items.get(game.game_id)
@@ -418,7 +420,11 @@ async def run_pbp_healer_async(
         return {"found": found, "recovered": 0, "failed": 0, "skipped": found}
 
     # --- Re-crawl through the relay source orchestrator ---
-    from src.services.relay_recovery_service import RelayRecoveryTarget, recover_relay_data
+    from src.services.relay_recovery_service import (
+        RelayRecoveryConfig,
+        RelayRecoveryTarget,
+        recover_relay_data,
+    )
     from src.sources.relay import derive_bucket_id
 
     targets = [
@@ -432,10 +438,12 @@ async def run_pbp_healer_async(
     ]
     recovery_result = await recover_relay_data(
         targets,
-        source_order_override=["kbo", "naver", "import", "manual"],
-        allow_derived_pbp=False,
-        sleep_seconds=0,
-        log=logger.info,
+        RelayRecoveryConfig(
+            source_order_override=["kbo", "naver", "import", "manual"],
+            allow_derived_pbp=False,
+            sleep_seconds=0,
+            log=logger.info,
+        ),
     )
     recovered_ids = {
         str(row.get("game_id"))

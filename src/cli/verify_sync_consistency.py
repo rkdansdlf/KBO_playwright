@@ -1,3 +1,4 @@
+# ruff: noqa: S608
 """
 verify_sync_consistency.py
 

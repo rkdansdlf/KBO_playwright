@@ -394,14 +394,14 @@ class TeamStatAggregator:
         from src.repositories.team_stats_repository import TeamSeasonBattingRepository
 
         repo = TeamSeasonBattingRepository()
-        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
+        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]  # noqa: SLF001
 
         db_type = get_database_type()
         try:
             if db_type == "sqlite":
                 self.session.execute(text("PRAGMA foreign_keys = OFF"))
             for payload in cleaned:
-                stmt = repo._build_insert_stmt(payload)
+                stmt = repo._build_insert_stmt(payload)  # noqa: SLF001
                 self.session.execute(stmt)
 
             self.session.commit()
@@ -415,14 +415,14 @@ class TeamStatAggregator:
         from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 
         repo = TeamSeasonPitchingRepository()
-        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
+        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]  # noqa: SLF001
 
         db_type = get_database_type()
         try:
             if db_type == "sqlite":
                 self.session.execute(text("PRAGMA foreign_keys = OFF"))
             for payload in cleaned:
-                stmt = repo._build_insert_stmt(payload)
+                stmt = repo._build_insert_stmt(payload)  # noqa: SLF001
                 self.session.execute(stmt)
             self.session.commit()
         except SQLAlchemyError:

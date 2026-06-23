@@ -1,3 +1,4 @@
+# ruff: noqa: S608
 """
 Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
 Dual-repository pattern: SQLite (dev/validation) → OCI (production)

@@ -12,6 +12,8 @@ import logging
 
 from src.services.relay_recovery_service import (
     DEFAULT_MANIFEST_PATH,
+    RecoveryTargetCriteria,
+    RelayRecoveryConfig,
     load_relay_recovery_targets,
     parse_source_order,
     recover_relay_data,
@@ -90,13 +92,15 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
 
     try:
         targets = load_relay_recovery_targets(
-            season=args.season,
-            date=args.date,
-            game_ids=_parse_game_ids(args.game_ids),
-            game_ids_file=args.game_ids_file,
-            bucket=args.bucket,
-            missing_only=args.missing_only,
-            include_incomplete=args.include_incomplete,
+            RecoveryTargetCriteria(
+                season=args.season,
+                date=args.date,
+                game_ids=_parse_game_ids(args.game_ids),
+                game_ids_file=args.game_ids_file,
+                bucket=args.bucket,
+                missing_only=args.missing_only,
+                include_incomplete=args.include_incomplete,
+            ),
             log=logger.info,
         )
     except (FileNotFoundError, ValueError):
@@ -112,16 +116,18 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
 
     await recover_relay_data(
         targets,
-        dry_run=args.dry_run,
-        source_order_override=parse_source_order(args.source_order),
-        import_manifest=args.import_manifest,
-        source_timeout=args.source_timeout,
-        allow_derived_pbp=args.allow_derived_pbp,
-        min_result_events=args.min_result_events,
-        validate_final_score=args.validate_final_score,
-        validate_inning_continuity=args.validate_inning_continuity,
-        report_out=Path(args.report_out) if args.report_out else None,
-        log=logger.info,
+        RelayRecoveryConfig(
+            dry_run=args.dry_run,
+            source_order_override=parse_source_order(args.source_order),
+            import_manifest=args.import_manifest,
+            source_timeout=args.source_timeout,
+            allow_derived_pbp=args.allow_derived_pbp,
+            min_result_events=args.min_result_events,
+            validate_final_score=args.validate_final_score,
+            validate_inning_continuity=args.validate_inning_continuity,
+            report_out=Path(args.report_out) if args.report_out else None,
+            log=logger.info,
+        ),
     )
     logger.info("Relay recovery run completed.")
     return 0
