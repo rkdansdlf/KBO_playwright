@@ -369,7 +369,7 @@ class TestParseProfile:
         p = PlayerProfileParsed()
         try:
             _ = p["invalid_key"]
-            raise AssertionError()
+            raise AssertionError
         except KeyError:
             pass
 
