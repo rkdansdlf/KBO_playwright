@@ -13,6 +13,7 @@ from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.db.engine import SessionLocal
 from src.services.game_collection_service import (
+    GameCollectionConfig,
     crawl_and_save_game_details,
     load_game_targets_by_ids,
     load_game_targets_from_db,
@@ -63,12 +64,14 @@ async def collect_games(
         result = await crawl_and_save_game_details(
             targets,
             detail_crawler=detail_crawler,
-            relay_crawler=relay_crawler,
-            force=force,
-            concurrency=concurrency,
-            pause_every=10,
-            pause_seconds=2.0,
-            log=logger.info,
+            config=GameCollectionConfig(
+                relay_crawler=relay_crawler,
+                force=force,
+                concurrency=concurrency,
+                pause_every=10,
+                pause_seconds=2.0,
+                log=logger.info,
+            ),
         )
         logger.info(
             "[FINISH] detail_saved=%s detail_failed=%s detail_skipped=%s relay_games=%s relay_rows=%s relay_skipped=%s",

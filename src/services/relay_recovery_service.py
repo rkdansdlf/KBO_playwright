@@ -105,6 +105,52 @@ class RelaySaveCounts:
     skipped_event_rows_reason: str | None = None
 
 
+@dataclass
+class RecoveryTargetCriteria:
+    season: int | None = None
+    month: int | None = None
+    date: str | None = None
+    game_ids: Iterable[str] | None = None
+    game_ids_file: str | Path | None = None
+    bucket: str | None = None
+    missing_only: bool = True
+    include_incomplete: bool = False
+
+
+@dataclass
+class RelayRecoveryConfig:
+    dry_run: bool = False
+    source_order_override: Sequence[str] | None = None
+    import_manifest: str | Path | Iterable[str | Path] = DEFAULT_MANIFEST_PATH
+    capability_path: str | Path = DEFAULT_CAPABILITY_PATH
+    source_timeout: float = 30.0
+    allow_derived_pbp: bool = False
+    min_result_events: int | None = None
+    validate_final_score: bool = True
+    validate_inning_continuity: bool = True
+    report_out: str | Path | None = None
+    sleep_seconds: float = 1.0
+    log: Callable[[str], None] = logger.info
+
+
+@dataclass
+class RelayValidationConfig:
+    final_scores: dict[str, tuple[int | None, int | None]]
+    min_result_events: int | None = None
+    validate_final_score: bool = True
+    validate_inning_continuity: bool = True
+
+
+@dataclass
+class RecoveryLoopContext:
+    target: RelayRecoveryTarget
+    bucket_id: str
+    source_order: Sequence[str]
+    run_result: RelayRecoveryResult
+    dry_run: bool
+    log: Callable[[str], None]
+
+
 def parse_source_order(value: str | None) -> list[str] | None:
     if not value:
         return None
@@ -136,35 +182,25 @@ def load_game_ids_from_file(path: str | Path | None) -> list[str]:
 
 
 def load_relay_recovery_targets(
+    criteria: RecoveryTargetCriteria,
     *,
-    season: int | None = None,
-    month: int | None = None,
-    date: str | None = None,
-    game_ids: Iterable[str] | None = None,
-    game_ids_file: str | Path | None = None,
-    bucket: str | None = None,
-    missing_only: bool = True,
-    include_incomplete: bool = False,
     log: Callable[[str], None] = logger.info,
 ) -> list[RelayRecoveryTarget]:
     allowed_statuses = list(COMPLETED_LIKE_GAME_STATUSES)
-    if include_incomplete:
+    if criteria.include_incomplete:
         allowed_statuses.extend([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED])
 
-    requested_ids = _dedupe([*(game_ids or []), *load_game_ids_from_file(game_ids_file)])
+    requested_ids = _dedupe([*(criteria.game_ids or []), *load_game_ids_from_file(criteria.game_ids_file)])
 
-    if not requested_ids and not date and not season:
+    if not requested_ids and not criteria.date and not criteria.season:
         msg = "Must provide season, date, game_ids, or game_ids_file"
         raise ValueError(msg)
 
     with SessionLocal() as session:
         rows = _load_target_rows(
             session,
-            season=season,
-            month=month,
-            date=date,
+            criteria,
             allowed_statuses=allowed_statuses,
-            requested_ids=requested_ids,
         )
         row_game_ids = [row[0] for row in rows]
         if not row_game_ids:
@@ -187,66 +223,71 @@ def load_relay_recovery_targets(
         has_events = game_id in event_set
         has_event_state = game_id in event_state_set
         has_pbp = game_id in pbp_set
-        if missing_only and has_event_state and has_pbp:
+        if criteria.missing_only and has_event_state and has_pbp:
             skipped += 1
             continue
         targets.append(
-            RelayRecoveryTarget.from_game_state(
+            RelayRecoveryTarget(
                 game_id=game_id,
                 league_type_name=league_type_name,
-                bucket_id=bucket,
+                bucket_id=criteria.bucket or derive_bucket_id(game_id, league_type_name),
                 has_events=has_events,
                 has_event_state=has_event_state,
                 has_pbp=has_pbp,
+                needs_event_recovery=not has_event_state,
+                needs_pbp_recovery=not has_pbp,
             ),
         )
 
-    if missing_only:
+    if criteria.missing_only:
         log(f"[INFO] Missing-only mode: Skipped {skipped} games already fully recovered.")
     return targets
 
 
 async def recover_relay_data(
     targets: Iterable[RelayRecoveryTarget],
-    *,
-    dry_run: bool = False,
-    source_order_override: Sequence[str] | None = None,
-    import_manifest: str | Path | Iterable[str | Path] = DEFAULT_MANIFEST_PATH,
-    capability_path: str | Path = DEFAULT_CAPABILITY_PATH,
-    source_timeout: float = 30.0,
-    allow_derived_pbp: bool = False,
-    min_result_events: int | None = None,
-    validate_final_score: bool = True,
-    validate_inning_continuity: bool = True,
-    report_out: str | Path | None = None,
-    sleep_seconds: float = 1.0,
+    config: RelayRecoveryConfig | None = None,
     orchestrator: RelayRecoveryOrchestrator | None = None,
-    log: Callable[[str], None] = logger.info,
 ) -> RelayRecoveryResult:
+    cfg = config or RelayRecoveryConfig()
     target_list = list(targets)
     run_result = RelayRecoveryResult(total_targets=len(target_list))
     if not target_list:
         return run_result
 
     orchestrator = orchestrator or build_relay_recovery_orchestrator(
-        import_manifest=import_manifest,
-        capability_path=capability_path,
-        source_timeout=source_timeout,
+        import_manifest=cfg.import_manifest,
+        capability_path=cfg.capability_path,
+        source_timeout=cfg.source_timeout,
     )
     bucket_map = _bucket_targets(target_list)
 
-    log(f"[INFO] Total games to process: {len(target_list)}")
-    if dry_run:
-        log("[WARN] Dry-run mode activated. No data will be saved.")
+    cfg.log(f"[INFO] Total games to process: {len(target_list)}")
+    if cfg.dry_run:
+        cfg.log("[WARN] Dry-run mode activated. No data will be saved.")
 
-    final_scores = _load_final_scores([target.game_id for target in target_list]) if validate_final_score else {}
+    validation_config = (
+        RelayValidationConfig(
+            final_scores=_load_final_scores([target.game_id for target in target_list]),
+            min_result_events=cfg.min_result_events,
+            validate_final_score=cfg.validate_final_score,
+            validate_inning_continuity=cfg.validate_inning_continuity,
+        )
+        if cfg.validate_final_score
+        else RelayValidationConfig(
+            final_scores={},
+            min_result_events=cfg.min_result_events,
+            validate_final_score=False,
+            validate_inning_continuity=cfg.validate_inning_continuity,
+        )
+    )
 
     for bucket_id, bucket_targets in bucket_map.items():
         source_order = orchestrator.source_order_for_bucket(
             bucket_id,
-            source_order_override or default_source_order_for_bucket(bucket_id),
+            cfg.source_order_override or default_source_order_for_bucket(bucket_id),
         )
-        log(f"[INFO] Bucket {bucket_id}: source order = {', '.join(source_order)}")
+        cfg.log(f"[INFO] Bucket {bucket_id}: source order = {', '.join(source_order)}")
         await orchestrator.probe_bucket(
             bucket_id,
             [target.game_id for target in bucket_targets],
@@ -254,11 +295,18 @@ async def recover_relay_data(
         )
 
         for index, target in enumerate(bucket_targets, start=1):
-            log(f"\n[PROGRESS] Bucket {bucket_id} {index}/{len(bucket_targets)}: {target.game_id}")
+            cfg.log(f"\n[PROGRESS] Bucket {bucket_id} {index}/{len(bucket_targets)}: {target.game_id}")
 
-            if _maybe_derive_pbp(
-                target, bucket_id, run_result, dry_run=dry_run, allow_derived_pbp=allow_derived_pbp, log=log
-            ):
+            ctx = RecoveryLoopContext(
+                target=target,
+                bucket_id=bucket_id,
+                source_order=source_order,
+                run_result=run_result,
+                dry_run=cfg.dry_run,
+                log=cfg.log,
+            )
+
+            if _maybe_derive_pbp(ctx, cfg):
                 continue
 
             relay_result, attempts = await orchestrator.fetch_game(
@@ -267,47 +315,35 @@ async def recover_relay_data(
                 source_order,
                 validator=_relay_validator(
                     target.game_id,
-                    final_scores=final_scores,
-                    min_result_events=min_result_events,
-                    validate_final_score=validate_final_score,
-                    validate_inning_continuity=validate_inning_continuity,
+                    validation_config,
                 ),
             )
             run_result.report_rows.extend(attempts)
             if relay_result.is_empty:
                 _handle_empty_relay_result(
-                    target,
-                    bucket_id,
-                    source_order,
+                    ctx,
                     attempts,
                     relay_result,
-                    run_result,
-                    dry_run=dry_run,
                 )
-                log(f"[SKIP] No relay data extracted for {target.game_id}")
+                cfg.log(f"[SKIP] No relay data extracted for {target.game_id}")
                 continue
 
-            # Result passed validation during fetch_game if it reached here and is not empty
             relay_result, filter_notes, filtered_rows = _sanitize_relay_result(relay_result)
             if relay_result.is_empty:
-                _handle_filtered_relay_result(target, bucket_id, relay_result, filter_notes, run_result, log)
+                _handle_filtered_relay_result(ctx, relay_result, filter_notes)
                 continue
 
             _save_relay_result(
-                target,
-                bucket_id,
+                ctx,
+                cfg,
                 relay_result,
                 filter_notes,
                 filtered_rows,
-                run_result,
-                dry_run=dry_run,
-                allow_derived_pbp=allow_derived_pbp,
-                log=log,
             )
-            if sleep_seconds > 0:
-                await asyncio.sleep(sleep_seconds)
+            if cfg.sleep_seconds > 0:
+                await asyncio.sleep(cfg.sleep_seconds)
 
-    write_relay_recovery_report(report_out, run_result.report_rows, log=log)
+    write_relay_recovery_report(cfg.report_out, run_result.report_rows, log=cfg.log)
     return run_result
 
 
@@ -320,49 +356,38 @@ def _bucket_targets(targets: list[RelayRecoveryTarget]) -> dict[str, list[RelayR
 
 def _relay_validator(
     game_id: str,
-    *,
-    final_scores: dict[str, tuple[int | None, int | None]],
-    min_result_events: int | None,
-    validate_final_score: bool,
-    validate_inning_continuity: bool,
+    config: RelayValidationConfig,
 ) -> Callable[[NormalizedRelayResult], str | None]:
     def validator(relay_result: NormalizedRelayResult) -> str | None:
         return _validate_relay_result(
             game_id,
             relay_result,
-            final_scores=final_scores,
-            min_result_events=min_result_events,
-            validate_final_score=validate_final_score,
-            validate_inning_continuity=validate_inning_continuity,
+            config,
         )
 
     return validator
 
 
 def _maybe_derive_pbp(
-    target: RelayRecoveryTarget,
-    bucket_id: str,
-    run_result: RelayRecoveryResult,
-    *,
-    dry_run: bool,
-    allow_derived_pbp: bool,
-    log: Callable[[str], None],
+    ctx: RecoveryLoopContext,
+    config: RelayRecoveryConfig,
 ) -> bool:
-    if not (allow_derived_pbp and target.has_event_state and target.needs_pbp_recovery):
+    target = ctx.target
+    if not (config.allow_derived_pbp and target.has_event_state and target.needs_pbp_recovery):
         return False
-    saved_rows = 0 if dry_run else backfill_game_play_by_play_from_existing_events(target.game_id)
-    log(
-        f"[SUCCESS] {'Would derive' if dry_run else 'Derived'} "
-        f"{saved_rows if not dry_run else 'missing'} play_by_play rows from game_events",
+    saved_rows = 0 if ctx.dry_run else backfill_game_play_by_play_from_existing_events(target.game_id)
+    ctx.log(
+        f"[SUCCESS] {'Would derive' if ctx.dry_run else 'Derived'} "
+        f"{saved_rows if not ctx.dry_run else 'missing'} play_by_play rows from game_events",
     )
-    run_result.derived_pbp_games += 1
-    run_result.saved_rows += saved_rows
-    run_result.report_rows.append(
+    ctx.run_result.derived_pbp_games += 1
+    ctx.run_result.saved_rows += saved_rows
+    ctx.run_result.report_rows.append(
         {
             "game_id": target.game_id,
-            "bucket_id": bucket_id,
+            "bucket_id": ctx.bucket_id,
             "source_name": "derived_game_events",
-            "status": "dry_run" if dry_run else "saved",
+            "status": "dry_run" if ctx.dry_run else "saved",
             "saved_rows": saved_rows,
             "saved_event_rows": 0,
             "saved_pbp_rows": saved_rows,
@@ -376,51 +401,39 @@ def _maybe_derive_pbp(
 
 
 def _handle_empty_relay_result(
-    target: RelayRecoveryTarget,
-    bucket_id: str,
-    source_order: Sequence[str],
+    ctx: RecoveryLoopContext,
     attempts: list[dict[str, Any]],
     relay_result: NormalizedRelayResult,
-    run_result: RelayRecoveryResult,
-    *,
-    dry_run: bool,
 ) -> None:
-    run_result.empty_games += 1
+    ctx.run_result.empty_games += 1
     failure_bucket = _classify_relay_failure(relay_result.notes)
     if failure_bucket == "relay_match_failed":
-        run_result.match_failed_games += 1
+        ctx.run_result.match_failed_games += 1
     elif failure_bucket == "relay_api_failed":
-        run_result.api_failed_games += 1
-    if _should_mark_source_unavailable(bucket_id, attempts, relay_result):
-        _mark_unavailable_relay_source(
-            target, bucket_id, source_order, attempts, relay_result, run_result, dry_run=dry_run
-        )
+        ctx.run_result.api_failed_games += 1
+    if _should_mark_source_unavailable(ctx.bucket_id, attempts, relay_result):
+        _mark_unavailable_relay_source(ctx, attempts, relay_result)
 
 
 def _mark_unavailable_relay_source(
-    target: RelayRecoveryTarget,
-    bucket_id: str,
-    source_order: Sequence[str],
+    ctx: RecoveryLoopContext,
     attempts: list[dict[str, Any]],
     relay_result: NormalizedRelayResult,
-    run_result: RelayRecoveryResult,
-    *,
-    dry_run: bool,
 ) -> None:
     evidence = {
-        "bucket_id": bucket_id,
-        "source_order": list(source_order),
+        "bucket_id": ctx.bucket_id,
+        "source_order": list(ctx.source_order),
         "attempts": attempts,
         "notes": relay_result.notes,
     }
-    if not dry_run:
-        mark_relay_source_unavailable(target.game_id, reason="public_relay_source_unavailable", evidence=evidence)
-    run_result.report_rows.append(
+    if not ctx.dry_run:
+        mark_relay_source_unavailable(ctx.target.game_id, reason="public_relay_source_unavailable", evidence=evidence)
+    ctx.run_result.report_rows.append(
         {
-            "game_id": target.game_id,
-            "bucket_id": bucket_id,
+            "game_id": ctx.target.game_id,
+            "bucket_id": ctx.bucket_id,
             "source_name": "none",
-            "status": "source_unavailable_dry_run" if dry_run else "source_unavailable",
+            "status": "source_unavailable_dry_run" if ctx.dry_run else "source_unavailable",
             "saved_rows": 0,
             "saved_event_rows": 0,
             "saved_pbp_rows": 0,
@@ -433,20 +446,17 @@ def _mark_unavailable_relay_source(
 
 
 def _handle_filtered_relay_result(
-    target: RelayRecoveryTarget,
-    bucket_id: str,
+    ctx: RecoveryLoopContext,
     relay_result: NormalizedRelayResult,
     filter_notes: list[str],
-    run_result: RelayRecoveryResult,
-    log: Callable[[str], None],
 ) -> None:
-    run_result.filtered_games += 1
+    ctx.run_result.filtered_games += 1
     notes = ";".join(filter_notes) or "relay_rows_empty_after_filter"
-    log(f"[SKIP] Relay rows filtered out for {target.game_id}: {notes}")
-    run_result.report_rows.append(
+    ctx.log(f"[SKIP] Relay rows filtered out for {ctx.target.game_id}: {notes}")
+    ctx.run_result.report_rows.append(
         {
-            "game_id": target.game_id,
-            "bucket_id": bucket_id,
+            "game_id": ctx.target.game_id,
+            "bucket_id": ctx.bucket_id,
             "source_name": relay_result.source_name,
             "status": "skipped_filtered",
             "saved_rows": 0,
@@ -458,33 +468,28 @@ def _handle_filtered_relay_result(
 
 
 def _save_relay_result(
-    target: RelayRecoveryTarget,
-    bucket_id: str,
+    ctx: RecoveryLoopContext,
+    config: RelayRecoveryConfig,
     relay_result: NormalizedRelayResult,
     filter_notes: list[str],
     filtered_rows: int,
-    run_result: RelayRecoveryResult,
-    *,
-    dry_run: bool,
-    allow_derived_pbp: bool,
-    log: Callable[[str], None],
 ) -> None:
     save_counts = _save_or_count_rows(
-        target.game_id,
+        ctx.target.game_id,
         relay_result,
-        dry_run=dry_run,
-        allow_derived_pbp=allow_derived_pbp,
+        dry_run=ctx.dry_run,
+        allow_derived_pbp=config.allow_derived_pbp,
     )
-    _log_relay_save(target, relay_result, save_counts, dry_run=dry_run, log=log)
+    _log_relay_save(ctx.target, relay_result, save_counts, dry_run=ctx.dry_run, log=ctx.log)
     if save_counts.saved_rows:
-        run_result.saved_games += 1
-        run_result.saved_rows += save_counts.saved_rows
-    run_result.report_rows.append(
+        ctx.run_result.saved_games += 1
+        ctx.run_result.saved_rows += save_counts.saved_rows
+    ctx.run_result.report_rows.append(
         {
-            "game_id": target.game_id,
-            "bucket_id": bucket_id,
+            "game_id": ctx.target.game_id,
+            "bucket_id": ctx.bucket_id,
             "source_name": relay_result.source_name,
-            "status": "dry_run" if dry_run else ("partial_relay" if filtered_rows else "saved"),
+            "status": "dry_run" if ctx.dry_run else ("partial_relay" if filtered_rows else "saved"),
             "saved_rows": save_counts.saved_rows,
             "saved_event_rows": save_counts.saved_event_rows,
             "saved_pbp_rows": save_counts.saved_pbp_rows,
@@ -580,15 +585,13 @@ def write_relay_recovery_report(
 
 def _load_target_rows(
     session: Session,
+    criteria: RecoveryTargetCriteria,
     *,
-    season: int | None,
-    month: int | None,
-    date: str | None,
-    allowed_statuses: list[str],
-    requested_ids: list[str],
+    allowed_statuses: list[str] | None = None,
 ) -> list[tuple[str, str | None]]:
     if not allowed_statuses:
         allowed_statuses = list(COMPLETED_LIKE_GAME_STATUSES)
+    requested_ids = _dedupe([*(criteria.game_ids or []), *load_game_ids_from_file(criteria.game_ids_file)])
     if requested_ids:
         found_rows = (
             session.query(Game.game_id, KboSeason.league_type_name)
@@ -607,15 +610,15 @@ def _load_target_rows(
         .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
         .filter(Game.game_status.in_(tuple(allowed_statuses)))
     )
-    if date:
+    if criteria.date:
         try:
-            target_dt = datetime.strptime(date, "%Y%m%d").date()
+            target_dt = datetime.strptime(criteria.date, "%Y%m%d").date()
         except ValueError as exc:
-            msg = f"Invalid date format: {date}. Use YYYYMMDD."
+            msg = f"Invalid date format: {criteria.date}. Use YYYYMMDD."
             raise ValueError(msg) from exc
         query = query.filter(Game.game_date == target_dt)
-    elif season:
-        prefix = f"{season}{month:02d}" if month else str(season)
+    elif criteria.season:
+        prefix = f"{criteria.season}{criteria.month:02d}" if criteria.month else str(criteria.season)
         query = query.filter(Game.game_id.like(f"{prefix}%"))
     return query.order_by(Game.game_id.asc()).all()
 
@@ -633,28 +636,24 @@ def _load_final_scores(game_ids: Sequence[str]) -> dict[str, tuple[int | None, i
 def _validate_relay_result(
     game_id: str,
     relay_result: NormalizedRelayResult,
-    *,
-    final_scores: dict[str, tuple[int | None, int | None]],
-    min_result_events: int | None,
-    validate_final_score: bool,
-    validate_inning_continuity: bool = True,
+    config: RelayValidationConfig,
 ) -> str | None:
     events = relay_result.events or []
-    if min_result_events is not None and len(events) < min_result_events:
-        return f"too_few_result_events:{len(events)}<{min_result_events}"
+    if config.min_result_events is not None and len(events) < config.min_result_events:
+        return f"too_few_result_events:{len(events)}<{config.min_result_events}"
 
     if not events:
         return None
 
-    if validate_inning_continuity:
+    if config.validate_inning_continuity:
         inning_error = _validate_relay_inning_continuity(events)
         if inning_error:
             return inning_error
 
-    if not validate_final_score:
+    if not config.validate_final_score:
         return None
 
-    return _validate_relay_final_score(game_id, events, final_scores)
+    return _validate_relay_final_score(game_id, events, config.final_scores)
 
 
 def _validate_relay_inning_continuity(events: list[dict[str, Any]]) -> str | None:

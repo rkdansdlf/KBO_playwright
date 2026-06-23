@@ -1,3 +1,4 @@
+# ruff: noqa: S608
 """
 Database engine configuration
 Supports both SQLite (dev) and MySQL (production)

@@ -122,9 +122,11 @@ def test_load_relay_recovery_targets_skips_fully_recovered_games(monkeypatch):
 
     messages: list[str] = []
     targets = service.load_relay_recovery_targets(
-        season=2025,
-        month=4,
-        missing_only=True,
+        service.RecoveryTargetCriteria(
+            season=2025,
+            month=4,
+            missing_only=True,
+        ),
         log=messages.append,
     )
 
@@ -145,8 +147,10 @@ def test_load_relay_recovery_targets_preserves_requested_order(monkeypatch):
     _seed_games(SessionLocal)
 
     targets = service.load_relay_recovery_targets(
-        game_ids=["20250403LGSS0", "20250401LGSS0", "20250403LGSS0"],
-        missing_only=False,
+        service.RecoveryTargetCriteria(
+            game_ids=["20250403LGSS0", "20250401LGSS0", "20250403LGSS0"],
+            missing_only=False,
+        ),
         log=lambda _msg: None,
     )
 
@@ -192,8 +196,10 @@ def test_load_relay_recovery_targets_includes_existing_events_with_missing_wpa(m
         session.commit()
 
     targets = service.load_relay_recovery_targets(
-        game_ids=["20250404LGSS0"],
-        missing_only=True,
+        service.RecoveryTargetCriteria(
+            game_ids=["20250404LGSS0"],
+            missing_only=True,
+        ),
         log=lambda _msg: None,
     )
 
@@ -223,8 +229,10 @@ def test_load_relay_recovery_targets_excludes_non_completed_requested_games(monk
         session.commit()
 
     targets = service.load_relay_recovery_targets(
-        game_ids=["20250404LGSS0", "20250401LGSS0"],
-        missing_only=False,
+        service.RecoveryTargetCriteria(
+            game_ids=["20250404LGSS0", "20250401LGSS0"],
+            missing_only=False,
+        ),
         log=lambda _msg: None,
     )
 
@@ -279,10 +287,12 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
                     bucket_id="2025_regular_kbo",
                 )
             ],
-            source_order_override=["fake"],
+            service.RelayRecoveryConfig(
+                source_order_override=["fake"],
+                sleep_seconds=0,
+                log=lambda _msg: None,
+            ),
             orchestrator=_FakeOrchestrator(),
-            sleep_seconds=0,
-            log=lambda _msg: None,
         )
     )
 
@@ -351,9 +361,11 @@ def test_recover_relay_data_filters_malformed_rows_before_save(monkeypatch):
     result = asyncio.run(
         service.recover_relay_data(
             [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
+            service.RelayRecoveryConfig(
+                sleep_seconds=0,
+                log=lambda _msg: None,
+            ),
             orchestrator=_FakeOrchestrator(),
-            sleep_seconds=0,
-            log=lambda _msg: None,
         )
     )
 
@@ -403,9 +415,11 @@ def test_recover_relay_data_backfills_missing_wpa_before_save(monkeypatch):
     result = asyncio.run(
         service.recover_relay_data(
             [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
+            service.RelayRecoveryConfig(
+                sleep_seconds=0,
+                log=lambda _msg: None,
+            ),
             orchestrator=_FakeOrchestrator(),
-            sleep_seconds=0,
-            log=lambda _msg: None,
         )
     )
 
@@ -445,9 +459,11 @@ def test_recover_relay_data_skips_when_all_rows_filtered(monkeypatch):
     result = asyncio.run(
         service.recover_relay_data(
             [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
+            service.RelayRecoveryConfig(
+                sleep_seconds=0,
+                log=lambda _msg: None,
+            ),
             orchestrator=_FakeOrchestrator(),
-            sleep_seconds=0,
-            log=lambda _msg: None,
         )
     )
 
@@ -488,10 +504,12 @@ def test_recover_relay_data_derives_missing_pbp_from_existing_events(monkeypatch
                     needs_pbp_recovery=True,
                 )
             ],
-            allow_derived_pbp=True,
+            service.RelayRecoveryConfig(
+                allow_derived_pbp=True,
+                sleep_seconds=0,
+                log=lambda _msg: None,
+            ),
             orchestrator=_UnusedOrchestrator(),
-            sleep_seconds=0,
-            log=lambda _msg: None,
         )
     )
 
@@ -541,10 +559,12 @@ def test_recover_relay_data_skips_result_with_too_few_events(monkeypatch):
     result = asyncio.run(
         service.recover_relay_data(
             [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
-            min_result_events=2,
+            service.RelayRecoveryConfig(
+                min_result_events=2,
+                sleep_seconds=0,
+                log=lambda _msg: None,
+            ),
             orchestrator=_FakeOrchestrator(),
-            sleep_seconds=0,
-            log=lambda _msg: None,
         )
     )
 
@@ -601,10 +621,12 @@ def test_recover_relay_data_skips_score_mismatch_when_validation_enabled(monkeyp
     result = asyncio.run(
         service.recover_relay_data(
             [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
-            validate_final_score=True,
+            service.RelayRecoveryConfig(
+                validate_final_score=True,
+                sleep_seconds=0,
+                log=lambda _msg: None,
+            ),
             orchestrator=_FakeOrchestrator(),
-            sleep_seconds=0,
-            log=lambda _msg: None,
         )
     )
 

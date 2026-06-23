@@ -160,10 +160,12 @@ def test_crawl_and_save_game_details_skips_existing_detail_and_relay(monkeypatch
                 {"game_id": "20250402LGSS0", "game_date": "2025-04-02"},
             ],
             detail_crawler=detail_crawler,
-            relay_crawler=relay_crawler,
-            force=False,
-            concurrency=2,
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                relay_crawler=relay_crawler,
+                force=False,
+                concurrency=2,
+                log=lambda _message: None,
+            ),
         )
     )
 
@@ -207,9 +209,11 @@ def test_crawl_and_save_game_details_force_recrawls_existing(monkeypatch):
         service.crawl_and_save_game_details(
             [{"game_id": "20250401LGSS0", "game_date": "20250401"}],
             detail_crawler=detail_crawler,
-            relay_crawler=relay_crawler,
-            force=True,
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                relay_crawler=relay_crawler,
+                force=True,
+                log=lambda _message: None,
+            ),
         )
     )
 
@@ -239,8 +243,10 @@ def test_crawl_and_save_game_details_processes_every_detail_target_in_batch(monk
                 {"game_id": "20250402KTHH0", "game_date": "20250402"},
             ],
             detail_crawler=_FakeDetailCrawler(),
-            force=True,
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                force=True,
+                log=lambda _message: None,
+            ),
         )
     )
 
@@ -277,8 +283,10 @@ def test_crawl_and_save_game_details_records_mixed_batch_failure_and_success(mon
                 {"game_id": "20250402KTHH0", "game_date": "20250402"},
             ],
             detail_crawler=OneMissingDetailCrawler(),
-            force=True,
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                force=True,
+                log=lambda _message: None,
+            ),
         )
     )
 
@@ -307,8 +315,10 @@ def test_crawl_and_save_game_details_saves_raw_pbp_without_events(monkeypatch):
         service.crawl_and_save_game_details(
             [{"game_id": "20250405LGSS0", "game_date": "20250405"}],
             detail_crawler=_FakeDetailCrawler(),
-            relay_crawler=_RawRelayCrawler(),
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                relay_crawler=_RawRelayCrawler(),
+                log=lambda _message: None,
+            ),
         )
     )
 
@@ -339,8 +349,10 @@ def test_crawl_and_save_game_details_does_not_fetch_relay_when_detail_fails(monk
         service.crawl_and_save_game_details(
             [{"game_id": "20250403LGSS0", "game_date": "20250403"}],
             detail_crawler=_FailingDetailCrawler(),
-            relay_crawler=relay_crawler,
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                relay_crawler=relay_crawler,
+                log=lambda _message: None,
+            ),
         )
     )
 
@@ -367,9 +379,11 @@ def test_crawl_and_save_game_details_can_filter_payloads_before_save(monkeypatch
         service.crawl_and_save_game_details(
             [{"game_id": "20250404LGSS0", "game_date": "20250404"}],
             detail_crawler=_FakeDetailCrawler(),
-            force=True,
-            should_save_detail=lambda payload: False,
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                force=True,
+                should_save_detail=lambda payload: False,
+                log=lambda _message: None,
+            ),
         )
     )
 
@@ -390,8 +404,10 @@ def test_crawl_and_save_game_details_marks_save_failed_reason_when_save_returns_
         service.crawl_and_save_game_details(
             [{"game_id": "20250408LGSS0", "game_date": "20250408"}],
             detail_crawler=_FakeDetailCrawler(),
-            force=True,
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                force=True,
+                log=lambda _message: None,
+            ),
         )
     )
 
@@ -424,8 +440,10 @@ def test_crawl_and_save_game_details_filters_incomplete_payload_by_default(monke
         service.crawl_and_save_game_details(
             [{"game_id": "20250407LGSS0", "game_date": "20250407"}],
             detail_crawler=_EmptyHittersDetailCrawler(),
-            force=True,
-            log=lambda _message: None,
+            config=service.GameCollectionConfig(
+                force=True,
+                log=lambda _message: None,
+            ),
         )
     )
 

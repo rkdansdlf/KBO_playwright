@@ -106,7 +106,7 @@ class OperationNoticeNaverCrawler:
     async def run(self, *, save: bool = False) -> list[dict]:
         logger.info("[NaverNotice] Searching for notices (last %s days)...", self.days_back)
 
-        if not self.client._is_configured():
+        if not self.client._is_configured():  # noqa: SLF001
             logger.warning("[NaverNotice] ⚠️  NAVER_CLIENT_ID / NAVER_CLIENT_SECRET not set.")
             logger.info("[NaverNotice]    Set in .env to enable Naver search-based notice crawling.")
             return []

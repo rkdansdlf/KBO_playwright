@@ -137,7 +137,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
         else:
             relays = []
         parsed_payload = (
-            self._relay_parser._parse_naver_payload(relays) if relays else {"events": [], "raw_pbp_rows": []}
+            self._relay_parser._parse_naver_payload(relays) if relays else {"events": [], "raw_pbp_rows": []}  # noqa: SLF001
         )
         events = parsed_payload["events"]
         raw_pbp_rows = parsed_payload["raw_pbp_rows"]

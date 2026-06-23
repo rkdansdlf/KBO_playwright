@@ -74,6 +74,16 @@ def completed_like_statuses() -> Iterable[str]:
     return tuple(COMPLETED_LIKE_GAME_STATUSES)
 
 
+def should_proceed_to_crawl(has_games_today: bool, all_finished: bool) -> bool:
+    """Smart polling gate helper.
+
+    Returns True if the crawler should proceed to Layer 2 (heavy Playwright crawl).
+    Proceeds when there are games and all are finished, OR when yesterday's games
+    are still active (edge case: games running past midnight).
+    """
+    return all_finished or not has_games_today
+
+
 @dataclass(frozen=True)
 class GameStatusEvidence:
     game_date: date

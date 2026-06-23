@@ -135,6 +135,35 @@ class DerivedGameStatusInput:
     today: date
 
 
+@dataclass(frozen=True)
+class RecordReplaceContext:
+    source: GameWriteSource | None = None
+    write_contract: GameWriteContract | None = None
+
+
+@dataclass(frozen=True)
+class RecordKey:
+    model: type[Any]
+    game_id: str
+    team_side: str | None = None
+
+
+@dataclass(frozen=True)
+class TeamSideContext:
+    team_side: str
+    team_code: str | None
+    season_year: int
+
+
+@dataclass(frozen=True)
+class GameSummaryEntry:
+    game_id: str
+    summary_type: str
+    detail_text: str
+    player_name: str | None = None
+    player_id: int | None = None
+
+
 def _coerce_int(value: object) -> int | None:
     if value in (None, ""):
         return None
@@ -826,10 +855,10 @@ def _replace_records(
     model: type[Any],
     game_id: str,
     mappings: list[dict[str, Any]],
-    *,
-    source: GameWriteSource | None = None,
-    write_contract: GameWriteContract | None = None,
+    ctx: RecordReplaceContext | None = None,
 ) -> bool:
+    source = ctx.source if ctx else None
+    write_contract = ctx.write_contract if ctx else None
     dataset = model.__tablename__
     query = session.query(model).filter(model.game_id == game_id)
     if _records_match_existing(query.all(), model, mappings):
@@ -856,35 +885,35 @@ def _replace_records(
 
 def _replace_records_for_side(
     session: Session,
-    model: type[Any],
-    game_id: str,
-    team_side: str,
+    record_key: RecordKey,
     mappings: list[dict[str, Any]],
-    *,
-    source: GameWriteSource | None = None,
-    write_contract: GameWriteContract | None = None,
+    ctx: RecordReplaceContext | None = None,
 ) -> bool:
-    dataset = f"{model.__tablename__}.{team_side}"
-    query = session.query(model).filter(model.game_id == game_id, model.team_side == team_side)
-    if _records_match_existing(query.all(), model, mappings):
+    source = ctx.source if ctx else None
+    write_contract = ctx.write_contract if ctx else None
+    dataset = f"{record_key.model.__tablename__}.{record_key.team_side}"
+    query = session.query(record_key.model).filter(
+        record_key.model.game_id == record_key.game_id, record_key.model.team_side == record_key.team_side
+    )
+    if _records_match_existing(query.all(), record_key.model, mappings):
         if source and write_contract:
-            write_contract.dataset_duplicate(game_id, source, dataset, len(mappings))
+            write_contract.dataset_duplicate(record_key.game_id, source, dataset, len(mappings))
         return False
 
     query.delete()
     if mappings:
         now = datetime.now(UTC).replace(tzinfo=None)
-        has_created_at = "created_at" in model.__table__.columns
-        has_updated_at = "updated_at" in model.__table__.columns
+        has_created_at = "created_at" in record_key.model.__table__.columns
+        has_updated_at = "updated_at" in record_key.model.__table__.columns
         if has_created_at or has_updated_at:
             for mapping in mappings:
                 if has_created_at and not mapping.get("created_at"):
                     mapping["created_at"] = now
                 if has_updated_at and not mapping.get("updated_at"):
                     mapping["updated_at"] = now
-        session.execute(model.__table__.insert(), mappings)
+        session.execute(record_key.model.__table__.insert(), mappings)
     if source and write_contract:
-        write_contract.dataset_replaced(game_id, source, dataset, len(mappings))
+        write_contract.dataset_replaced(record_key.game_id, source, dataset, len(mappings))
     return True
 
 
@@ -893,10 +922,10 @@ def _replace_orm_records(
     model: type[Any],
     game_id: str,
     records: list[Any],
-    *,
-    source: GameWriteSource | None = None,
-    write_contract: GameWriteContract | None = None,
+    ctx: RecordReplaceContext | None = None,
 ) -> bool:
+    source = ctx.source if ctx else None
+    write_contract = ctx.write_contract if ctx else None
     dataset = model.__tablename__
     query = session.query(model).filter(model.game_id == game_id)
     if _records_match_existing_objects(query.all(), model, records):
@@ -1249,10 +1278,7 @@ def _build_pitching_stats(
 
 def _build_pregame_lineup_rows(
     game_id: str,
-    *,
-    team_side: str,
-    team_code: str | None,
-    season_year: int,
+    ctx: TeamSideContext,
     lineup: list[dict[str, Any]],
     resolver: PlayerIdResolver,
 ) -> list[dict[str, Any]]:
@@ -1265,13 +1291,15 @@ def _build_pregame_lineup_rows(
         position = entry.get("position")
         is_pitcher = position in ("투수", "P")
         player_id = (
-            resolver.resolve_id(player_name, team_code, season_year, is_pitcher=is_pitcher) if team_code else None
+            resolver.resolve_id(player_name, ctx.team_code, ctx.season_year, is_pitcher=is_pitcher)
+            if ctx.team_code
+            else None
         )
         rows.append(
             {
                 "game_id": game_id,
-                "team_side": team_side,
-                "team_code": team_code,
+                "team_side": ctx.team_side,
+                "team_code": ctx.team_code,
                 "player_id": _normalize_player_id(player_id),
                 "player_name": player_name,
                 "uniform_no": entry.get("uniform_no"),
@@ -1283,40 +1311,35 @@ def _build_pregame_lineup_rows(
                 "notes": None,
             },
         )
-    _apply_team_identity_to_mappings(rows, season_year)
+    _apply_team_identity_to_mappings(rows, ctx.season_year)
     return rows
 
 
 def _upsert_game_summary_entry(
     session: Session,
-    *,
-    game_id: str,
-    summary_type: str,
-    detail_text: str,
-    player_name: str | None = None,
-    player_id: int | None = None,
+    entry: GameSummaryEntry,
 ) -> None:
     existing = (
         session.query(GameSummary)
         .filter(
-            GameSummary.game_id == game_id,
-            GameSummary.summary_type == summary_type,
-            GameSummary.player_name == player_name,
+            GameSummary.game_id == entry.game_id,
+            GameSummary.summary_type == entry.summary_type,
+            GameSummary.player_name == entry.player_name,
         )
         .one_or_none()
     )
     if existing:
-        existing.player_id = player_id
-        existing.detail_text = detail_text
+        existing.player_id = entry.player_id
+        existing.detail_text = entry.detail_text
         return
 
     session.add(
         GameSummary(
-            game_id=game_id,
-            summary_type=summary_type,
-            player_name=player_name,
-            player_id=player_id,
-            detail_text=detail_text,
+            game_id=entry.game_id,
+            summary_type=entry.summary_type,
+            player_name=entry.player_name,
+            player_id=entry.player_id,
+            detail_text=entry.detail_text,
         ),
     )
 

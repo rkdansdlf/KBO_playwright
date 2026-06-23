@@ -57,4 +57,4 @@ if __name__ == "__main__":
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>블루석 오렌지석 레드석</p></body></html>"
     result = parse_seat_sections(html, "lg_twins_seat")
     for item in result:
-        print(item)
+        print(item)  # noqa: T201  # noqa: T201

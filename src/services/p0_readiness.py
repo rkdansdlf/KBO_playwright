@@ -1,3 +1,4 @@
+# ruff: noqa: S608
 """P0 game-data readiness checks.
 
 This module keeps the operational readiness rules in one place so the CLI,

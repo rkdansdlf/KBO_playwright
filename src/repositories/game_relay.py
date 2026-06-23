@@ -26,6 +26,7 @@ from src.models.game import (
 )
 from src.repositories.game_helpers import (
     GAME_STATUS_UNRESOLVED,
+    RecordReplaceContext,
     _apply_game_team_identity,
     _auto_sync_to_oci,
     _canonicalize_game_id,
@@ -904,8 +905,7 @@ def _replace_relay_rows(
             GamePlayByPlay,
             game_id,
             pbp_rows,
-            source=source,
-            write_contract=write_contract,
+            RecordReplaceContext(source=source, write_contract=write_contract),
         )
     if event_rows:
         changed |= _replace_orm_records(
@@ -913,8 +913,7 @@ def _replace_relay_rows(
             GameEvent,
             game_id,
             event_rows,
-            source=source,
-            write_contract=write_contract,
+            RecordReplaceContext(source=source, write_contract=write_contract),
         )
     return changed
 
