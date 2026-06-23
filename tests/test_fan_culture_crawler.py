@@ -237,8 +237,12 @@ class TestFanCultureCrawler:
     def test_run_with_mocked_api(self, monkeypatch):
         import asyncio
 
+        async def _no_sleep(*_args, **_kwargs):
+            pass
+
         from src.crawlers.fan_culture_crawler import FanCultureCrawler
 
+        monkeypatch.setattr("asyncio.sleep", _no_sleep)
         fake_item = YouTubeVideoItem(
             video_id="test123",
             title="2026 홍길동 응원가",

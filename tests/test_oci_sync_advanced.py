@@ -154,6 +154,8 @@ def test_sync_pregame_game_connection_failure_aborts(monkeypatch):
 
     from sqlalchemy.exc import SQLAlchemyError
 
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
     syncer = _build_minimal_games_mixin()
     mock_session = MagicMock()
     mock_session.query.side_effect = SQLAlchemyError("OCI connection lost")

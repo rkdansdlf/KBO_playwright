@@ -65,13 +65,17 @@ class TestProviderLogId:
         self.crawler = RelayCrawler()
 
     def test_generates_id(self):
+        from src.crawlers.relay_crawler import NaverSegmentIdentity
+
         log_id = self.crawler._provider_log_id(
-            payload_hash="abc123def456",
-            inning=1,
-            half="top",
-            segment_index=0,
-            log_index=1,
-            text="삼진: 헛스윙",
+            NaverSegmentIdentity(
+                payload_hash="abc123def456",
+                inning=1,
+                half="top",
+                segment_index=0,
+                log_index=1,
+                text="삼진: 헛스윙",
+            ),
         )
         assert log_id.startswith("naver:abc123def456:1t:0:1:")
 
