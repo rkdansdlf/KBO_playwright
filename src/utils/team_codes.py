@@ -294,12 +294,12 @@ def _split_game_id_team_part(team_part: str) -> tuple[str | None, str | None]:
 STANDARD_TEAM_CODES = {"HH", "KIA", "KT", "LG", "LT", "NC", "DB", "SSG", "SS", "KH"}
 
 __all__ = [
+    "STANDARD_TEAM_CODES",
+    "TEAM_NAME_TO_CODE",
     "build_kbo_game_id",
     "kbo_game_id_team_code",
+    "normalize_kbo_game_id",
+    "resolve_kbo_legacy_team_code",
     "resolve_team_code",
     "team_code_from_game_id_segment",
-    "resolve_kbo_legacy_team_code",
-    "TEAM_NAME_TO_CODE",
-    "STANDARD_TEAM_CODES",
-    "normalize_kbo_game_id",
 ]

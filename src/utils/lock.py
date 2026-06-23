@@ -26,8 +26,6 @@ _thread_locks_lock = threading.Lock()
 class LockAcquisitionError(Exception):
     """Raised when a lock cannot be acquired."""
 
-    pass
-
 
 class ProcessLock:
     """A cross-process and cross-thread lock.
