@@ -583,10 +583,10 @@ def save_to_database(player_data: dict[int, dict], series_name: str) -> int:
 def main() -> None:
     """메인 실행 함수"""
     # 크롤링 대상 설정
-    YEAR = datetime.now(KST).year
+    year = datetime.now(KST).year
 
     # 시리즈 정의
-    SERIES_LIST = [
+    series_list = [
         {"value": "1", "name": "KBO 시범경기"},
         {"value": "4", "name": "KBO 와일드카드"},
         {"value": "3", "name": "KBO 준플레이오프"},
@@ -594,8 +594,8 @@ def main() -> None:
         {"value": "7", "name": "KBO 한국시리즈"},
     ]
 
-    logger.info("🚀 KBO %s년 선수 타자 기록 완전 크롤링 시작", YEAR)
-    logger.info("📋 대상: 정규시즌(Enhanced) + %s개 시리즈(Basic)", len(SERIES_LIST))
+    logger.info("🚀 KBO %s년 선수 타자 기록 완전 크롤링 시작", year)
+    logger.info("📋 대상: 정규시즌(Enhanced) + %s개 시리즈(Basic)", len(series_list))
 
     policy = RequestPolicy()
 
@@ -612,7 +612,7 @@ def main() -> None:
             logger.info("📊 1단계: 정규시즌 데이터 수집 (Enhanced)")
             logger.info("%s", "=" * 50)
 
-            regular_season_data = crawl_regular_season_data(page, YEAR, policy=policy)
+            regular_season_data = crawl_regular_season_data(page, year, policy=policy)
             if regular_season_data:
                 saved = save_to_database(regular_season_data, "정규시즌")
                 total_saved += saved
@@ -622,7 +622,7 @@ def main() -> None:
             logger.info("📊 2단계: 기타 시리즈 데이터 수집 (Basic)")
             logger.info("%s", "=" * 50)
 
-            other_series_data = crawl_other_series_data(page, YEAR, SERIES_LIST, policy=policy)
+            other_series_data = crawl_other_series_data(page, year, series_list, policy=policy)
             for series_name, series_data in other_series_data.items():
                 if series_data:
                     saved = save_to_database(series_data, series_name)

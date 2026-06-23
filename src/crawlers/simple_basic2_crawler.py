@@ -261,9 +261,9 @@ def collect_current_page_bb_data(page: Page, year: int) -> dict[int, dict]:
 
 def main() -> None:
     """메인 실행 함수"""
-    YEAR = datetime.now(KST).year
+    year = datetime.now(KST).year
 
-    logger.info("🚀 KBO %s년 BB 헤더 Basic2 크롤링 테스트 시작", YEAR)
+    logger.info("🚀 KBO %s년 BB 헤더 Basic2 크롤링 테스트 시작", year)
 
     policy = RequestPolicy()
 
@@ -274,7 +274,7 @@ def main() -> None:
 
         try:
             # BB 헤더 Basic2 데이터 수집
-            bb_data = crawl_bb_basic2_data(page, YEAR, policy=policy)
+            bb_data = crawl_bb_basic2_data(page, year, policy=policy)
 
             if bb_data:
                 logger.info("\n📊 수집 결과: %s명", len(bb_data))

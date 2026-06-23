@@ -58,7 +58,7 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
 
     @staticmethod
     def _extract_foreign_player_name(text: str) -> str | None:
-        INVALID_NAMES = {
+        invalid_names = {
             "부상",
             "대체",
             "교체",
@@ -92,14 +92,14 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
         )
         if role_name:
             name = role_name.group(1).strip()
-            if name not in INVALID_NAMES:
+            if name not in invalid_names:
                 return name
         for m in re.finditer(
             r"([가-힣]{2,5}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*(?:교체|대체|방출|영입|재계약|웨이버)",
             text,
         ):
             name = m.group(1).strip()
-            if name not in INVALID_NAMES:
+            if name not in invalid_names:
                 return name
         names = re.findall(r"[A-Z][a-z]+(?:\s[A-Z][a-z]+)*", text)
         for name in names:
@@ -108,7 +108,7 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
         korean_name = re.search(r"([가-힣]{2,4})(?:선수|투수|타자)", text)
         if korean_name:
             name = korean_name.group(1).strip()
-            if name not in INVALID_NAMES:
+            if name not in invalid_names:
                 return name
         return None
 
