@@ -196,7 +196,7 @@ class NaverSearchClient:
         tasks = []
         for q_config in NOTICE_QUERIES:
             for stype in ("news",):
-                tasks.append((q_config, stype))  # noqa: PERF401
+                tasks.append((q_config, stype))
 
         for q_config, stype in tasks:
             results = await self.search(

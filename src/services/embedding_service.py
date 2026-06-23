@@ -206,7 +206,7 @@ class EmbeddingService:
 
         requests_payload = []
         for text in texts:
-            requests_payload.append(  # noqa: PERF401
+            requests_payload.append(
                 {
                     "model": "models/text-embedding-004",
                     "content": {"parts": [{"text": text}]},

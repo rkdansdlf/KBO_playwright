@@ -216,7 +216,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("\n❌ 사용자가 중단했습니다.")
         sys.exit(130)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.info(f"\n❌ 예상치 못한 오류: {e}")
         sys.exit(1)
 

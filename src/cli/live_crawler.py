@@ -278,7 +278,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 if kbo_data and kbo_data.get("events"):
                     break
                 msg = "KBO PBP crawl returned no events"
-                raise ValueError(msg)  # noqa: TRY301
+                raise ValueError(msg)
             except (PlaywrightError, TimeoutError, RuntimeError, ValueError) as fallback_err:
                 logger.warning(
                     "KBO fallback attempt %s failed for %s: %s", attempt, game_id, fallback_err, exc_info=True
@@ -749,7 +749,7 @@ def _compute_base_dynamic_interval(
     active_suspended: bool,
     last_active_time: datetime | None,
     now: datetime,
-    base_interval_minutes: int,  # noqa: ARG001
+    base_interval_minutes: int,
 ) -> tuple[int, str]:
     """Return (base_sleep_seconds, mode_label) for the existing dynamic logic."""
     if active:

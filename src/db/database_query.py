@@ -44,7 +44,7 @@ def get_player_defensive_stats(player_name: str, year: int) -> list[dict[str, An
 
         results = []
         for row in session.execute(fielding_stmt).scalars().all():
-            results.append(  # noqa: PERF401
+            results.append(
                 {
                     "player_id": row.player_id,
                     "team_id": row.team_id,

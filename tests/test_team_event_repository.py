@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from src.models.base import Base
-from src.models.game import Game  # noqa: F401 register FK target for team_events.game_id
 from src.models.team_event import TeamEvent
 from src.repositories.team_event_repository import TeamEventRepository
 

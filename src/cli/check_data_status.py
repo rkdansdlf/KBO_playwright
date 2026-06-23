@@ -234,9 +234,9 @@ def check_game_data(session: Session) -> dict[str, Any]:
 
     # NULL field check
     for tbl, label in [("player_game_batting", "batting"), ("player_game_pitching", "pitching")]:
-        nid = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_id IS NULL")).scalar()  # noqa: S608
-        nn = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_name IS NULL")).scalar()  # noqa: S608
-        ns = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE team_side IS NULL")).scalar()  # noqa: S608
+        nid = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_id IS NULL")).scalar()
+        nn = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_name IS NULL")).scalar()
+        ns = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE team_side IS NULL")).scalar()
         if nid or nn or ns:
             logger.info("  %s NULLs: player_id=%s, player_name=%s, team_side=%s [WARN]", label, nid, nn, ns)
         else:
@@ -257,7 +257,7 @@ def check_game_data(session: Session) -> dict[str, Any]:
         ("player_game_pitching", "whip", 0, 30, "whip"),
     ]:
         n = session.execute(
-            text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} IS NOT NULL AND ({col} < {lo} OR {col} > {hi})"),  # noqa: S608
+            text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} IS NOT NULL AND ({col} < {lo} OR {col} > {hi})"),
         ).scalar()
         if n:
             logger.info("  %s.%s: %s outside [%s, %s]", tbl, col, n, lo, hi)

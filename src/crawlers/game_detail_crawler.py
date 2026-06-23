@@ -1318,10 +1318,10 @@ class GameDetailCrawler:
         for team_side in ("away", "home"):
             for row in hitters.get(team_side, []):
                 if row.get("player_name") and not row.get("player_id"):
-                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))  # noqa: PERF401
+                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))
             for row in pitchers.get(team_side, []):
                 if row.get("player_name") and not row.get("player_id"):
-                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))  # noqa: PERF401
+                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))
         if not unresolved:
             return
         logger.warning("⚠️  Unresolved player_id entries for %s: %s", game_id, len(unresolved))

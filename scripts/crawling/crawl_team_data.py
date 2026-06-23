@@ -56,7 +56,7 @@ async def main():
                     else:
                         logger.info(f"   ⚠️ Franchise not found for {item['name']}")
                 session.commit()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.info(f"❌ TeamInfoCrawler Failed: {e}")
         if info_crawler:
             await info_crawler.close()
