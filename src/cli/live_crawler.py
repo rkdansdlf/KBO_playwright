@@ -151,9 +151,9 @@ def _compute_enriched_interval(
 
     Returns (sleep_seconds, extra_note, updated_last_event_counts).
     """
-    MIN_POLLING_INTERVAL = 5
+    min_polling_interval = 5
     if not game_ids_playing or not enriched_state:
-        return max(MIN_POLLING_INTERVAL, base_interval), "", dict(last_event_counts)
+        return max(min_polling_interval, base_interval), "", dict(last_event_counts)
 
     updated_counts = dict(last_event_counts)
     multipliers: list[float] = []
@@ -178,11 +178,11 @@ def _compute_enriched_interval(
             multipliers.append(0.7)
 
     if not multipliers:
-        return max(MIN_POLLING_INTERVAL, base_interval), "", updated_counts
+        return max(min_polling_interval, base_interval), "", updated_counts
 
     # Apply the most aggressive (lowest) multiplier among active games
     combined = min(multipliers)
-    final = max(MIN_POLLING_INTERVAL, min(120, int(round(base_interval * combined))))
+    final = max(min_polling_interval, min(120, int(round(base_interval * combined))))
 
     note_parts = []
     if any(m < 1.0 for m in multipliers):
