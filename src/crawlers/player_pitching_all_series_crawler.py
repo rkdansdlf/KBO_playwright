@@ -1077,9 +1077,9 @@ def main() -> None:
             policy.delay()
 
         # 전체 요약
-        logger.info("\n" + "=" * 60)
+        logger.info("%s", "\n" + "=" * 60)
         logger.info("📈 전체 수집 요약 (%s년)", args.year)
-        logger.info("=" * 60)
+        logger.info("%s", "=" * 60)
         total_players = 0
         for series_key, data in all_data.items():
             series_name = SERIES_MAPPING[series_key]["name"]

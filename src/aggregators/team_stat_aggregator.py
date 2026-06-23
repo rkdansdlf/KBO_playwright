@@ -403,13 +403,11 @@ class TeamStatAggregator:
             for payload in cleaned:
                 stmt = repo._build_insert_stmt(payload)
                 self.session.execute(stmt)
+
             self.session.commit()
-        except SQLAlchemyError:
+        except Exception:
             self.session.rollback()
             raise
-        finally:
-            if db_type == "sqlite":
-                self.session.execute(text("PRAGMA foreign_keys = ON"))
 
     def _save_pitching_records(self, records: list[dict[str, Any]]) -> None:
         if not records:

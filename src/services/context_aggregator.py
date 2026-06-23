@@ -774,17 +774,15 @@ class ContextAggregator:
             .all()
         )
 
-        results = []
-        for m in movements:
-            results.append(
-                {
-                    "date": m.movement_date.isoformat(),
-                    "section": m.section,
-                    "player": m.player_name,
-                    "remarks": m.remarks,
-                },
-            )
-        return results
+        return [
+            {
+                "date": m.movement_date.isoformat(),
+                "section": m.section,
+                "player": m.player_name,
+                "remarks": m.remarks,
+            }
+            for m in movements
+        ]
 
     def get_daily_roster_changes(self, team_code: str, target_date: str | date | datetime) -> dict[str, list[str]]:
         """해당 날짜의 1군 등록/말소 현황 비교 (어제와 비교)"""

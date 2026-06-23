@@ -180,7 +180,7 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
         return False
 
     logger.info("\n%s", "=" * 70)
-    logger.info("  📊  RAG Chunk Quality Report" + (f"  [filter: {source_filter}]" if source_filter else ""))
+    logger.info("  📊  RAG Chunk Quality Report%s", f"  [filter: {source_filter}]" if source_filter else "")
     logger.info("%s\n", "=" * 70)
 
     # --- Length stats ---

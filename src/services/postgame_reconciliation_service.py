@@ -239,20 +239,20 @@ def format_reconciliation_report(changes: Iterable[PostgameReconciliationChange]
 
     header = "game_id | date | status | score | detail | reason"
     lines = [header, "-" * len(header)]
-    for change in rows:
-        lines.append(
-            " | ".join(
-                [
-                    change.game_id,
-                    change.game_date,
-                    f"{_display(change.before_status)} -> {_display(change.after_status)}",
-                    f"{_score(change.before_away_score, change.before_home_score)} -> "
-                    f"{_score(change.after_away_score, change.after_home_score)}",
-                    change.detail_status,
-                    change.failure_reason or "",
-                ],
-            ),
+    lines.extend(
+        " | ".join(
+            [
+                change.game_id,
+                change.game_date,
+                f"{_display(change.before_status)} -> {_display(change.after_status)}",
+                f"{_score(change.before_away_score, change.before_home_score)} -> "
+                f"{_score(change.after_away_score, change.after_home_score)}",
+                change.detail_status,
+                change.failure_reason or "",
+            ],
         )
+        for change in rows
+    )
     return "\n".join(lines)
 
 

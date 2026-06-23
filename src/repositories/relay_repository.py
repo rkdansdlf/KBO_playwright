@@ -18,18 +18,18 @@ def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
     for inning_data in innings_data or []:
         inning = inning_data.get("inning")
         half = inning_data.get("half")
-        for play in inning_data.get("plays", []) or []:
-            flat_rows.append(
-                {
-                    "inning": inning,
-                    "inning_half": half,
-                    "pitcher_name": play.get("pitcher"),
-                    "batter_name": play.get("batter"),
-                    "play_description": play.get("description"),
-                    "event_type": play.get("event_type"),
-                    "result": play.get("result"),
-                },
-            )
+        flat_rows.extend(
+            {
+                "inning": inning,
+                "inning_half": half,
+                "pitcher_name": play.get("pitcher"),
+                "batter_name": play.get("batter"),
+                "play_description": play.get("description"),
+                "event_type": play.get("event_type"),
+                "result": play.get("result"),
+            }
+            for play in inning_data.get("plays", []) or []
+        )
     return save_normalized_relay_data(game_id, events=None, raw_pbp_rows=flat_rows, allow_derived_pbp=False)
 
 
