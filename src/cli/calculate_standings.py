@@ -14,6 +14,7 @@ from sqlalchemy import extract
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.season import KboSeason
@@ -439,7 +440,7 @@ class StandingsCalculator:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="KBO Standings Calculator")
-    parser.add_argument("--year", type=int, default=datetime.now().year, help="대상 년도")
+    parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="대상 년도")
     parser.add_argument("--all", action="store_true", help="전체 년도 재계산")
     parser.add_argument("--report", action="store_true", help="순위 리포트 출력")
     parser.add_argument("--trend", type=str, nargs="?", const="__all__", help="승률추이 (팀코드 지정 또는 전체)")

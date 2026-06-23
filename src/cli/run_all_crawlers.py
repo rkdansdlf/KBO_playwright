@@ -20,6 +20,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.cli.verify_sync_consistency import run_consistency_audit
+
+# Load environment variables
+from src.constants import KST
 from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
 from src.crawlers.realtime_issue_crawler import RealtimeIssueCrawler
 from src.crawlers.static_text_crawler import StaticTextCrawler
@@ -29,7 +32,6 @@ from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.services.embedding_service import EmbeddingService
 from src.utils.alerting import SlackWebhookClient
 
-# Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -125,7 +127,7 @@ def _load_local_markdown_docs(rules_dir: str = "Docs/baseball") -> list[dict[str
                         "meta": {
                             "source": full_path,
                             "source_file": file,
-                            "crawled_at": datetime.now().isoformat(),
+                            "crawled_at": datetime.now(KST).isoformat(),
                             "category": category,
                             **({"subcategory": subcategory} if subcategory else {}),
                         },
@@ -227,8 +229,8 @@ async def run_dynamic_pipeline() -> None:
         crawler.crawl_and_update_ticket_times(lookahead_days=14)
 
         # 2. Crawl player rosters changes for today and yesterday
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        today_str = datetime.now(KST).strftime("%Y-%m-%d")
+        yesterday_str = (datetime.now(KST) - timedelta(days=1)).strftime("%Y-%m-%d")
         try:
             roster_records = await crawler.crawl_roster_changes(start_date=yesterday_str, end_date=today_str)
             # Save roster records to team_daily_roster table using repository to resolve player_basic_id/person_type

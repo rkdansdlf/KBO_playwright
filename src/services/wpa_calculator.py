@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 class WPACalculator:
-    def __init__(self, matrix_path: str = None) -> None:
+    def __init__(self, matrix_path: str | None = None) -> None:
         """
         Initialize calculator with Win Expectancy Matrix from CSV.
         """
@@ -85,10 +85,7 @@ class WPACalculator:
         )
 
         # 3. Calculate WPA (Batting Team Perspective)
-        if is_bottom:  # Home Team batting
-            wpa = we_after - we_before
-        else:  # Away Team batting
-            wpa = we_before - we_after
+        wpa = we_after - we_before if is_bottom else we_before - we_after
 
         return round(wpa, 4)
 
@@ -174,10 +171,7 @@ class WPACalculator:
 
         expected_runs = re_table.get((outs, runners), 0.0)
 
-        if is_bottom:
-            projected_diff = score_diff + expected_runs
-        else:
-            projected_diff = score_diff - expected_runs
+        projected_diff = score_diff + expected_runs if is_bottom else score_diff - expected_runs
 
         innings_left = max(0.5, 9 - inning + (0.5 if not is_bottom else 0))
         c = 0.75

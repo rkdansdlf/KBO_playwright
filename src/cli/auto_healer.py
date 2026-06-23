@@ -29,6 +29,7 @@ from typing import Any
 
 from sqlalchemy import select, text
 
+from src.constants import KST
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 def _find_stuck_games() -> list[Game]:
     """Return all past games whose status is still SCHEDULED (no scores yet)."""
-    yesterday = datetime.now().date() - timedelta(days=1)
+    yesterday = datetime.now(KST).date() - timedelta(days=1)
     with SessionLocal() as session:
         stmt = select(Game).where(
             Game.game_status.in_([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED]),
@@ -187,7 +188,7 @@ async def _run_recovery(
             resolver.preload_season_index(year)
 
         crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
-        write_contract = GameWriteContract(run_label=f"auto_healer:{datetime.now():%Y%m%dT%H%M%S}", log=logger.info)
+        write_contract = GameWriteContract(run_label=f"auto_healer:{datetime.now(KST):%Y%m%dT%H%M%S}", log=logger.info)
         results = {"completed": 0, "cancelled": 0, "unresolved": 0, "dry_run": 0}
         if dry_run:
             for game in recovery_candidates:
@@ -284,7 +285,7 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
 
     Returns a list of dicts: {game_id, game_date, away_team, home_team, error_reason}
     """
-    cutoff = (datetime.now().date() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(KST).date() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
     query = text(
         """

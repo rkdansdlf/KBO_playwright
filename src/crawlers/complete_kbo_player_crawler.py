@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.constants import KST
+
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from playwright.sync_api import Error as PlaywrightError
@@ -482,10 +484,7 @@ def extract_basic2_stats(cells: list, sort_field: str) -> dict[str, Any]:
                 value_str = cells[pos].inner_text().strip()
 
                 # 데이터 타입 결정
-                if sort_field in ["SLG", "OBP", "OPS", "RISP", "PH-BA"]:
-                    data_type = float
-                else:
-                    data_type = int
+                data_type = float if sort_field in ["SLG", "OBP", "OPS", "RISP", "PH-BA"] else int
 
                 parsed_value = safe_parse_number(value_str, data_type)
                 if parsed_value is not None:
@@ -584,7 +583,7 @@ def save_to_database(player_data: dict[int, dict], series_name: str) -> int:
 def main() -> None:
     """메인 실행 함수"""
     # 크롤링 대상 설정
-    YEAR = datetime.now().year
+    YEAR = datetime.now(KST).year
 
     # 시리즈 정의
     SERIES_LIST = [
@@ -634,7 +633,7 @@ def main() -> None:
             logger.info("🎉 크롤링 완료")
             logger.info("%s", "=" * 50)
             logger.info("📊 총 저장된 레코드: %s개", total_saved)
-            logger.info("📅 크롤링 시간: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            logger.info("📅 크롤링 시간: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
 
         except DB_SAVE_EXCEPTIONS:
             logger.exception("❌ 크롤링 중 오류 발생")

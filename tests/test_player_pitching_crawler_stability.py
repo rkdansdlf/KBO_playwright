@@ -26,6 +26,7 @@ class _FakePage:
 
 def test_parse_basic2_page_does_not_create_pitcher_without_basic1(monkeypatch):
     monkeypatch.setattr(module, "retry_wait_for_selector", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(module, "get_team_mapping_for_year", lambda _year: {"삼성": "SS"})
     monkeypatch.setattr(
         module,
         "extract_rows_fast",
@@ -53,6 +54,7 @@ def test_parse_basic2_page_does_not_create_pitcher_without_basic1(monkeypatch):
 
 def test_parse_basic2_page_enriches_existing_basic1_pitcher(monkeypatch):
     monkeypatch.setattr(module, "retry_wait_for_selector", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(module, "get_team_mapping_for_year", lambda _year: {"삼성": "SS"})
     monkeypatch.setattr(
         module,
         "extract_rows_fast",

@@ -12,6 +12,8 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 import contextlib
@@ -473,7 +475,7 @@ def _ensure_game_stub(session: Session, game_id: str) -> None:
         game_date = datetime.strptime(game_id[:8], "%Y%m%d").date()
     except ValueError:
         logger.warning("Failed to parse game date from game_id")
-        game_date = datetime.now().date()
+        game_date = datetime.now(KST).date()
 
     away_team = None
     home_team = None

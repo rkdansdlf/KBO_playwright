@@ -67,7 +67,7 @@ def main(_argv: list[str] | None = None) -> None:
     ]:
         try:
             with Engine.connect() as conn:
-                result = conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
+                result = conn.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608
                 count = result.scalar_one()
                 logger.info("%s: %s", table, count)
         except SQLAlchemyError:

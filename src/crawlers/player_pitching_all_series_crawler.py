@@ -32,6 +32,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GamePitchingStat
 from src.models.player import PlayerBasic
@@ -1023,7 +1024,7 @@ def crawl_pitcher_series(
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="KBO 투수 기록 크롤러 (Basic1/Basic2)")
-    parser.add_argument("--year", type=int, default=datetime.now().year, help="시즌 연도 (기본: 당해 연도)")
+    parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="시즌 연도 (기본: 당해 연도)")
     parser.add_argument(
         "--series",
         type=str,

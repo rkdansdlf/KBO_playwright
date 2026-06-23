@@ -102,10 +102,7 @@ class GameCollectionItemResult:
 def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
     if month:
         start = date(year, month, 1)
-        if month == 12:
-            end = date(year + 1, 1, 1)
-        else:
-            end = date(year, month + 1, 1)
+        end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
     else:
         start = date(year, 1, 1)
         end = date(year + 1, 1, 1)

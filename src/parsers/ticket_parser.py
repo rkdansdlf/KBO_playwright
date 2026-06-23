@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from src.constants import KST
 from src.parsers.base_parser import BaseStadiumParser
 
 TEAM_CODE_FROM_SOURCE_KEY = {
@@ -42,7 +43,7 @@ class TicketParser(BaseStadiumParser):
             return []
 
         team_code, stadium_id = team_info
-        season = datetime.now().year
+        season = datetime.now(KST).year
         meta_season = self.metadata.get("season")
         if meta_season:
             season = int(meta_season)

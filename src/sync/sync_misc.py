@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.models.award import Award
 from src.models.base import Base
 from src.models.broadcast import GameBroadcast
@@ -129,8 +130,8 @@ class MiscSyncMixin:
                     "franchise_id": fid,
                     "is_active": team.is_active if team.is_active is not None else True,
                     "aliases": aliases_pg,
-                    "created_at": team.created_at or datetime.now(),
-                    "updated_at": team.updated_at or datetime.now(),
+                    "created_at": team.created_at or datetime.now(KST),
+                    "updated_at": team.updated_at or datetime.now(KST),
                 },
             )
 
@@ -193,10 +194,7 @@ class MiscSyncMixin:
                             import math
 
                             norm = math.sqrt(sum(x * x for x in truncated))
-                            if norm > 1e-9:
-                                adjusted = [x / norm for x in truncated]
-                            else:
-                                adjusted = truncated
+                            adjusted = [x / norm for x in truncated] if norm > 1e-9 else truncated
                         else:
                             adjusted = embedding + [0.0] * (target_dim - current_dim)
                         data["embedding"] = adjusted
@@ -521,8 +519,8 @@ class MiscSyncMixin:
                     "stadium": h.stadium,
                     "city": h.city,
                     "color": h.color,
-                    "created_at": h.created_at or datetime.now(),
-                    "updated_at": h.updated_at or datetime.now(),
+                    "created_at": h.created_at or datetime.now(KST),
+                    "updated_at": h.updated_at or datetime.now(KST),
                 },
             )
 
@@ -550,7 +548,7 @@ class MiscSyncMixin:
             transform_fn=transform,
         )
 
-    def sync_matchups(self, year: int = None, batch_size: int = 10000) -> dict[str, int]:
+    def sync_matchups(self, year: int | None = None, batch_size: int = 10000) -> dict[str, int]:
         """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI"""
         logger.info("📁 Ensuring matchup tables exist on OCI...")
         Base.metadata.create_all(self.oci_engine)

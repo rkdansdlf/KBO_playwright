@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from src.constants import KST
+
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 DEFAULT_PRIMARY_CODE_PREFERENCES = ("SSG", "KH", "DB", "KIA")
 DEFAULT_REGULAR_SUFFIXES = ("0", "1", "2")
@@ -83,7 +85,7 @@ def mark_primary_games(
             marked += result.marked_primary
 
         if remove_extreme_dates:
-            current_year = datetime.now().year
+            current_year = datetime.now(KST).year
             cursor.execute(
                 """
                 UPDATE game
@@ -153,7 +155,7 @@ def _load_slots(
         FROM game
         WHERE {" AND ".join(where_clauses)}
         GROUP BY game_date, home_franchise_id, away_franchise_id, suffix
-        """,
+        """,  # noqa: S608
         params,
     ).fetchall()
     return [(row[0], row[1], row[2], row[3]) for row in rows]
@@ -191,7 +193,7 @@ def _load_candidates(
                (SELECT COUNT(*) FROM game_batting_stats b WHERE b.game_id = g.game_id) AS stat_count
         FROM game g
         WHERE {" AND ".join(where_clauses)}
-        """,
+        """,  # noqa: S608
         params,
     ).fetchall()
     return [(row[0], int(row[1] or 0)) for row in rows]

@@ -14,6 +14,8 @@ from pathlib import Path
 
 import httpx
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,11 +61,11 @@ class ComplianceChecker:
 
                                     snapshot_dir = Path("Docs/robots")
                                     snapshot_dir.mkdir(parents=True, exist_ok=True)
-                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                    timestamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
                                     snapshot_path = snapshot_dir / f"robots_{timestamp}.txt"
                                     with snapshot_path.open("w", encoding="utf-8") as f:
                                         f.write(f"# Source: {self.robots_url}\n")
-                                        f.write(f"# Fetched at: {datetime.now().isoformat()}\n\n")
+                                        f.write(f"# Fetched at: {datetime.now(KST).isoformat()}\n\n")
                                         f.write(content)
                                     logger.info("[COMPLIANCE] robots.txt snapshot saved to %s", snapshot_path)
                                 except OSError:

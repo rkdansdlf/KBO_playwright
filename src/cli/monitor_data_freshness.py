@@ -78,14 +78,14 @@ def check_table_completeness(*, dry_run: bool = False) -> list[str]:
     with SessionLocal() as session:
         for domain, (table, date_col) in DOMAIN_TABLE_CHECKS.items():
             try:
-                row = session.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+                row = session.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()  # noqa: S608
                 if row == 0:
                     msg = f"[EMPTY] Table {table} (domain={domain}) has 0 rows"
                     logger.warning(msg)
                     if not dry_run:
                         alerts.append(msg)
                 else:
-                    recent = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()
+                    recent = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()  # noqa: S608
                     msg = f"[OK] {table}: {row} rows, latest {date_col}={recent}"
                     logger.info(msg)
             except SQLAlchemyError as e:

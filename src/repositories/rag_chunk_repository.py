@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.constants import KST
 from src.models.rag_chunk import RagChunk
 
 
@@ -23,7 +24,7 @@ class RagChunkRepository:
         Saves or updates RAG chunks using a clean, database-agnostic query-and-upsert approach.
         """
         upserted_count = 0
-        now = datetime.now()
+        now = datetime.now(KST)
 
         for chunk_data in chunks:
             title = chunk_data.get("title", "")

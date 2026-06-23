@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 from typing import Any, Protocol
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 import contextlib
@@ -612,7 +614,7 @@ class GameDetailCrawler:
     @staticmethod
     def _boxscore_timeout_debug_path(game_id: str, *, lightweight: bool) -> str:
         prefix = "lightweight_timeout" if lightweight else "timeout"
-        return f"data/{prefix}_{game_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        return f"data/{prefix}_{game_id}_{datetime.now(KST).strftime('%Y%m%d_%H%M%S')}.png"
 
     async def _save_boxscore_timeout_screenshot(self, page: Page, debug_path: str) -> None:
         Path("data").mkdir(parents=True, exist_ok=True)

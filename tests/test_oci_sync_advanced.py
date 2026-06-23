@@ -33,6 +33,7 @@ def _build_minimal_base():
 
 
 def test_bulk_copy_upsert_retries_on_transient_failure(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
     syncer = _build_minimal_base()
     attempt_log = []
     reconnect_log = []
@@ -53,6 +54,7 @@ def test_bulk_copy_upsert_retries_on_transient_failure(monkeypatch):
 
 
 def test_bulk_copy_upsert_raises_on_persistent_failure(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
     syncer = _build_minimal_base()
     attempt_log = []
     reconnect_log = []
@@ -86,6 +88,7 @@ def test_bulk_copy_upsert_skips_when_no_records(monkeypatch):
 
 
 def test_bulk_copy_upsert_reconnect_on_each_retry(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
     syncer = _build_minimal_base()
     reconnect_calls = 0
     first_session = syncer.target_session

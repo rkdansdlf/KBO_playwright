@@ -63,6 +63,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.gap_report [--category ...]`: Run gap analysis for missing/aged data.
 - `python3 -m src.cli.refresh_source_snapshots --all --max-hours 24`: Refresh DataSource raw snapshots and last-success timestamps.
 - `python3 -m src.cli.generate_quality_report --year YYYY`: Generate data quality statistics report.
+- `python3 -m src.cli.quality_dashboard --limit 14 --json`: Summarize generated quality reports into a compact dashboard payload.
 - `python3 -m src.cli.crawl_kbo_official_events --save`: Refresh KBO official event/promotion source snapshots.
 - `python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --json`: Validate crawler selector contracts against fixture/live targets.
 - `python3 -m src.cli.diagnose_crawler_failure --json logs/<logfile>.log`: Classify crawler failure logs and suggest targeted recovery commands.
@@ -212,7 +213,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `ruff check src/ tests/ scripts/` = 0 errors
 - `ruff format --check .` = 898 files already formatted
 - `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
-- `python -m pytest -q --tb=line` = 4323 passed, 1 skipped, 2 deselected, 1 xfailed
+- `python -m pytest --tb=short -q --cov=src --cov-report=term --cov-report=term-missing:skip-covered` = 4324 passed, 1 skipped, 2 deselected, 1 xfailed; coverage baseline 67%
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
 
@@ -248,7 +249,9 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 
 - `ruff check src/ tests/ scripts/` = 0 errors (default select, C901 not enforced).
 - `ruff check --select C901 src/` = 0 violations (103→0, 100% eliminated).
-- `ruff check --select PLR0915 src/` = 3 violations (too-many-statements, threshold 50).
+- `ruff check --select PLR0915 src/` = 0 violations (too-many-statements, threshold 50).
+- `ruff check --select FURB167,RUF013,DTZ005,S608 src/` = 0 violations; these rules are now enabled for `src/`.
+- `ruff check --select PLR0913 src/` = 120 violations; see `Docs/references/PLR0913_REFACTOR_PLAN.md` before refactoring.
 
 ### Phase 10 Completed (2026-06-23) — Deep Playwright-aware C901 refactoring
 
@@ -268,6 +271,14 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **Foreign player parser fix**: Added `외국인 (투수/타자/선수) ... 계약/영입` name extraction pattern to `_extract_foreign_player_name`. Fixes existing test regression.
 - **Quality gate aggregate filter**: Split `INVALID_TEAM_CODES` into `AGGREGATE_TEAM_CODES` (TOTAL/합계/-/empty) and raw all-star codes (EA/WE). All 2020-2025 seasons pass.
 - **Player ID overrides**: Added 2 SSG Haechi entries to `data/player_id_overrides.csv`.
+
+### Phase 11 Started (2026-06-23) — New lint rules, coverage, quality dashboard
+
+- Enabled and cleaned `FURB167`, `RUF013`, `DTZ005`, and `S608` for `src/`; `tests/**` and `scripts/**` keep targeted per-file ignores for these operational/fixture-heavy rules.
+- Added `KST` to `src.constants` and migrated `src/` `datetime.now()` calls to `datetime.now(KST)`.
+- Added `pytest-cov` and coverage config; CI test command now emits `term-missing` coverage without a fail-under gate. Current full baseline: 67%.
+- Added `src.cli.quality_dashboard` to summarize `logs/quality_reports/*.json` as JSON or text.
+- Added `Docs/references/PLR0913_REFACTOR_PLAN.md`; do not enable `PLR0913` until the staged refactor plan is complete.
 
 ### Notes For Future Agents
 

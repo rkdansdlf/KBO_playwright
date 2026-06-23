@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Query, Session, sessionmaker
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -71,9 +72,9 @@ def _apply_freshness_date_filter(
     if target_date:
         return query.filter(Game.game_date == datetime.strptime(target_date, "%Y%m%d").date())
     if max_hours:
-        return query.filter(Game.game_date >= (datetime.now() - timedelta(hours=max_hours)).date())
+        return query.filter(Game.game_date >= (datetime.now(KST) - timedelta(hours=max_hours)).date())
     if days:
-        return query.filter(Game.game_date >= datetime.now().date() - timedelta(days=days))
+        return query.filter(Game.game_date >= datetime.now(KST).date() - timedelta(days=days))
     return query
 
 
@@ -114,7 +115,7 @@ def _check_past_scheduled_games(
     issues: dict[str, list[str]],
 ) -> None:
     query = _apply_freshness_date_filter(_scheduled_base_query(session), target_date, days, max_hours)
-    yesterday = datetime.now().date() - timedelta(days=1)
+    yesterday = datetime.now(KST).date() - timedelta(days=1)
     rows = query.filter(Game.game_date <= yesterday).order_by(Game.game_date, Game.game_id).all()
     issues["past_scheduled_games"].extend(row.game_id for row in rows)
 

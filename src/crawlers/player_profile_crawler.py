@@ -16,6 +16,8 @@ from typing import Any
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 from src.urls import HITTER_DETAIL, PITCHER_DETAIL
@@ -340,7 +342,7 @@ def _profile_photo_url(raw: dict[str, Any], player_id: str) -> str | None:
     photo_url = raw.get("photo_url") or raw.get("photo_attr")
     if photo_url and "no-Image.png" not in photo_url:
         return str(photo_url)
-    curr_year = datetime.now().year
+    curr_year = datetime.now(KST).year
     return f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{curr_year}/{player_id}.jpg"
 
 

@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import KST
 from src.models.player import (
     PlayerSeasonBaserunning,
     PlayerSeasonBatting,
@@ -160,7 +161,7 @@ class StatsSyncMixin:
                 where_clause = f'WHERE "{col}" = :year'
                 params = {"year": year}
 
-            sql = f'SELECT COUNT(*), MAX("updated_at") FROM "{table_name}" {where_clause}'
+            sql = f'SELECT COUNT(*), MAX("updated_at") FROM "{table_name}" {where_clause}'  # noqa: S608
             try:
                 row = session.execute(text(sql), params).fetchone()
                 return {"count": row[0] or 0, "max_updated_at": _serialize_scalar(row[1])}
@@ -285,7 +286,7 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_standings(self, year: int = None, days: int = None, batch_size: int = 10000) -> int:
+    def sync_standings(self, year: int | None = None, days: int | None = None, batch_size: int = 10000) -> int:
         """Sync calculated daily standings snapshots to OCI"""
         from src.models.base import Base
         from src.models.standings import TeamStandingsDaily
@@ -301,7 +302,7 @@ class StatsSyncMixin:
         if days:
             from datetime import datetime, timedelta
 
-            since_date = (datetime.now() - timedelta(days=days)).date()
+            since_date = (datetime.now(KST) - timedelta(days=days)).date()
             filters.append(TeamStandingsDaily.standings_date >= since_date)
 
         return self.sync_simple_table(
@@ -419,6 +420,6 @@ class StatsSyncMixin:
             # player-level fielding/baserunning use 'year'; team-level and others use 'season'
             use_year_col = table_name in ("player_season_fielding", "player_season_baserunning")
             year_col = "year" if use_year_col else "season"
-            self.target_session.execute(text(f'DELETE FROM "{table_name}" WHERE "{year_col}" = :year'), {"year": year})
+            self.target_session.execute(text(f'DELETE FROM "{table_name}" WHERE "{year_col}" = :year'), {"year": year})  # noqa: S608
         self.target_session.commit()
         logger.info("🧹 Purged OCI season stats for %s (type=%s)", year, type)

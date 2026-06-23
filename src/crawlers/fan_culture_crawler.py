@@ -27,6 +27,7 @@ from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.fan_culture_repository import FanCultureRepository
 from src.utils.youtube_api_client import (
@@ -45,13 +46,13 @@ FAN_CULTURE_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeErro
 # 응원가로 판단하기 위한 제목 필터 (이 단어가 포함되어야 함)
 CHEERSONG_TITLE_KEYWORDS = re.compile(
     r"응원가|응원\s*송|cheersong|cheer\s*song|응원\s*모음",
-    re.I,
+    re.IGNORECASE,
 )
 
 # 제외 패턴 (예: 쇼츠, 하이라이트, 뉴스 등 응원가 아닌 영상)
 EXCLUDE_PATTERNS = re.compile(
     r"하이라이트|highlight|뉴스|news|경기\s*영상|직캠|fancam|영입|인터뷰|interview|예고|preview",
-    re.I,
+    re.IGNORECASE,
 )
 
 # 시즌 연도 추출
@@ -101,7 +102,7 @@ class FanCultureCrawler:
     """
 
     def __init__(self, season: int | None = None, max_results_per_team: int = 50) -> None:
-        self.season = season or datetime.now().year
+        self.season = season or datetime.now(KST).year
         self.max_results = max_results_per_team
         self.client = YouTubeAPIClient()
 

@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import DATE_STR_LEN, GAME_ID_YEAR_LEN
+from src.constants import DATE_STR_LEN, GAME_ID_YEAR_LEN, KST
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
 from src.utils.compliance import compliance
@@ -131,7 +131,7 @@ class RelayCrawler:
             year_part = date_part[:4]
         else:
             date_part = (query_date or "").replace("-", "")
-            year_part = date_part[:4] if len(date_part) >= GAME_ID_YEAR_LEN else str(datetime.now().year)
+            year_part = date_part[:4] if len(date_part) >= GAME_ID_YEAR_LEN else str(datetime.now(KST).year)
 
         query_date_str = query_date or f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]}"
         if "20241110" <= date_part <= "20241124":

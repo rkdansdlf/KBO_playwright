@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import os
 import re
@@ -336,10 +337,11 @@ class PlayerSearchCrawler:
                 break
             except PLAYER_SEARCH_EXCEPTIONS as e:
                 err_msg = str(e)
-                if "Execution context was destroyed" in err_msg or "Target closed" in err_msg:
-                    if attempt < max_attempts - 1:
-                        await asyncio.sleep(1.0)
-                        continue
+                if (
+                    "Execution context was destroyed" in err_msg or "Target closed" in err_msg
+                ) and attempt < max_attempts - 1:
+                    await asyncio.sleep(1.0)
+                    continue
                 raise
         res = []
         for r in payload or []:
@@ -424,14 +426,12 @@ class PlayerSearchCrawler:
             return True
 
     async def _wait_after_nav(self, page: Page, prev_v: str, _first_b: str) -> None:
-        try:
+        with contextlib.suppress(TimeoutError):
             await page.wait_for_function(
                 "([s, v]) => document.querySelector(s)?.value !== v",
                 [HFPAGE, prev_v],
                 timeout=SHORT_TIMEOUT,
             )
-        except TimeoutError:
-            pass
         await asyncio.sleep(self.request_delay)
 
     async def _list_initial_links(self, page: Page) -> None:

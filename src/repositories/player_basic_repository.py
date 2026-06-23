@@ -156,7 +156,7 @@ class PlayerBasicRepository:
             "education_path": player_data.get("education_path"),
         }
 
-    def get_all(self, limit: int = None) -> list[PlayerBasic]:
+    def get_all(self, limit: int | None = None) -> list[PlayerBasic]:
         """Get all players (optionally limited)"""
         with SessionLocal() as session:
             query = session.query(PlayerBasic)
@@ -192,7 +192,7 @@ class PlayerBasicRepository:
         with SessionLocal() as session:
             return session.query(PlayerBasic).filter_by(player_id=player_id).first()
 
-    def get_by_team(self, team: str, limit: int = None) -> list[PlayerBasic]:
+    def get_by_team(self, team: str, limit: int | None = None) -> list[PlayerBasic]:
         """Get players by team"""
         with SessionLocal() as session:
             query = session.query(PlayerBasic).filter_by(team=team)

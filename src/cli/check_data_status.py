@@ -20,6 +20,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching
@@ -230,9 +231,9 @@ def check_game_data(session: Session) -> dict[str, Any]:
 
     # NULL field check
     for tbl, label in [("player_game_batting", "batting"), ("player_game_pitching", "pitching")]:
-        nid = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_id IS NULL")).scalar()
-        nn = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_name IS NULL")).scalar()
-        ns = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE team_side IS NULL")).scalar()
+        nid = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_id IS NULL")).scalar()  # noqa: S608
+        nn = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_name IS NULL")).scalar()  # noqa: S608
+        ns = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE team_side IS NULL")).scalar()  # noqa: S608
         if nid or nn or ns:
             logger.info("  %s NULLs: player_id=%s, player_name=%s, team_side=%s [WARN]", label, nid, nn, ns)
         else:
@@ -253,7 +254,7 @@ def check_game_data(session: Session) -> dict[str, Any]:
         ("player_game_pitching", "whip", 0, 30, "whip"),
     ]:
         n = session.execute(
-            text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} IS NOT NULL AND ({col} < {lo} OR {col} > {hi})"),
+            text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} IS NOT NULL AND ({col} < {lo} OR {col} > {hi})"),  # noqa: S608
         ).scalar()
         if n:
             logger.info("  %s.%s: %s outside [%s, %s]", tbl, col, n, lo, hi)
@@ -626,7 +627,7 @@ def _log_warnings(warnings: list[str]) -> None:
 def _run_full_status_check(*, verbose: bool) -> None:
     logger.info("\n%s", "=" * 60)
     logger.info(" KBO Data Status Check")
-    logger.info(" Timestamp: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info(" Timestamp: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("%s", "=" * 60)
     schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats = _collect_full_status(
         verbose=verbose

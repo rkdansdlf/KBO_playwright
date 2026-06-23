@@ -139,7 +139,7 @@ class PlayerSeasonBattingRepository:
         season: int,
         league: str = "REGULAR",
         level: str = "KBO1",
-        limit: int = None,
+        limit: int | None = None,
     ) -> list[PlayerSeasonBatting]:
         """Get all batting stats for a specific season"""
         with SessionLocal() as session:
@@ -169,7 +169,7 @@ class PlayerSeasonBattingRepository:
                 .all(),
             )
 
-    def count(self, season: int = None) -> int:
+    def count(self, season: int | None = None) -> int:
         """Count total batting stat records (optionally by season)"""
         with SessionLocal() as session:
             query = session.query(PlayerSeasonBatting)

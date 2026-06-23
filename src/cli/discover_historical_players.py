@@ -11,6 +11,7 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime
 
+from src.constants import KST
 from src.crawlers.retire.listing import RetiredPlayerListingCrawler
 from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic
@@ -69,7 +70,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    _current_year = datetime.now().year
+    _current_year = datetime.now(KST).year
     parser = argparse.ArgumentParser(description="Discover and store historical player IDs")
     parser.add_argument("--start", type=int, default=1982)
     parser.add_argument("--end", type=int, default=_current_year - 1)

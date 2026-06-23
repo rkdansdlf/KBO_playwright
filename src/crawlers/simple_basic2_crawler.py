@@ -10,6 +10,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from src.constants import KST
+
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from playwright.sync_api import Error as PlaywrightError
@@ -259,7 +261,7 @@ def collect_current_page_bb_data(page: Page, year: int) -> dict[int, dict]:
 
 def main() -> None:
     """메인 실행 함수"""
-    YEAR = datetime.now().year
+    YEAR = datetime.now(KST).year
 
     logger.info("🚀 KBO %s년 BB 헤더 Basic2 크롤링 테스트 시작", YEAR)
 
@@ -291,7 +293,7 @@ def main() -> None:
                 logger.info("\n🎉 완료!")
                 logger.info("   📊 수집: %s명", len(bb_data))
                 logger.info("   💾 저장: %s명", saved_count)
-                logger.info("   📅 시간: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                logger.info("   📅 시간: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
 
             else:
                 logger.error("❌ 데이터를 수집하지 못했습니다.")
