@@ -165,22 +165,24 @@ class GameSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_player_game_batting(self, year: int | None = None, limit: int | None = None) -> int:  # noqa: ARG002
+    def sync_player_game_batting(self, year: int | None = None, batch_size: int = 5000) -> int:
         """Sync player game batting stats from SQLite to OCI"""
         filters = [PlayerGameBatting.game_id.like(f"{year}%")] if year else None
         return self.sync_simple_table(
             PlayerGameBatting,
             ["game_id", "player_id"],
             filters=filters,
+            batch_size=batch_size,
         )
 
-    def sync_player_game_pitching(self, year: int | None = None, limit: int | None = None) -> int:  # noqa: ARG002
+    def sync_player_game_pitching(self, year: int | None = None, batch_size: int = 5000) -> int:
         """Sync player game pitching stats from SQLite to OCI"""
         filters = [PlayerGamePitching.game_id.like(f"{year}%")] if year else None
         return self.sync_simple_table(
             PlayerGamePitching,
             ["game_id", "player_id"],
             filters=filters,
+            batch_size=batch_size,
         )
 
     def sync_all_game_data(self, limit: int | None = None) -> dict[str, int]:
@@ -188,8 +190,8 @@ class GameSyncMixin:
         return {
             "game_schedules": self.sync_game_schedules(limit=limit),
             "games": self.sync_games(limit=limit),
-            "player_game_batting": self.sync_player_game_batting(limit=limit),
-            "player_game_pitching": self.sync_player_game_pitching(limit=limit),
+            "player_game_batting": self.sync_player_game_batting(),
+            "player_game_pitching": self.sync_player_game_pitching(),
         }
 
     def _purge_game_detail_children_for_year(self, year: int) -> None:

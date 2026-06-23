@@ -633,9 +633,9 @@ def _upsert_metadata(
         if source and write_contract:
             write_contract.field_updated(game_id, source, "metadata.created", None, True)
 
-    _WRITE_SOURCE = source or GameWriteSource("metadata", "unknown")
+    _write_source = source or GameWriteSource("metadata", "unknown")
 
-    FIELD_MAP: list[tuple[str, str, str, bool]] = [
+    field_map: list[tuple[str, str, str, bool]] = [
         ("stadium_code", "stadium_code", "metadata.stadium_code", False),
         ("stadium", "stadium_name", "metadata.stadium_name", False),
         ("attendance", "attendance", "metadata.attendance", False),
@@ -644,7 +644,7 @@ def _upsert_metadata(
         ("duration_minutes", "game_time_minutes", "metadata.game_time_minutes", False),
         ("weather", "weather", "metadata.weather", False),
     ]
-    for meta_key, attr_name, field_name, use_safe_time in FIELD_MAP:
+    for meta_key, attr_name, field_name, use_safe_time in field_map:
         raw = metadata.get(meta_key)
         if raw not in (None, ""):
             val = _safe_time(raw) if use_safe_time else raw
@@ -654,7 +654,7 @@ def _upsert_metadata(
                     attr_name,
                     val,
                     game_id=game_id,
-                    source=_WRITE_SOURCE,
+                    source=_write_source,
                     write_contract=write_contract,
                     field=field_name,
                 )
@@ -668,7 +668,7 @@ def _upsert_metadata(
             "source_payload",
             merged_payload or None,
             game_id=game_id,
-            source=_WRITE_SOURCE,
+            source=_write_source,
             write_contract=write_contract,
             field="metadata.source_payload",
             allow_empty=True,
