@@ -9,6 +9,7 @@ import hashlib
 import json
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
@@ -73,6 +74,66 @@ KBO_TO_NAVER_TEAM_CODE = {
 }
 
 
+@dataclass
+class GameMatchContext:
+    game: dict[str, Any]
+    games: list[dict[str, Any]]
+    away_code: str
+    home_code: str
+    game_date_str: str
+
+
+@dataclass
+class NaverSegmentIdentity:
+    payload_hash: str
+    inning: int | None
+    half: str | None
+    segment_index: int
+    log_index: int
+    text: str
+
+
+@dataclass
+class NaverHeaderRowContext:
+    payload_hash: str
+    inning: int
+    half: str
+    segment_index: int
+    segment_title: str
+    row_index: int
+
+
+@dataclass
+class NaverPbpRowContext:
+    payload_hash: str
+    inning: int
+    half: str
+    segment_index: int
+    log_index: int
+    description: str
+    pitcher_name: str | None
+    batter_name: str | None
+    row_index: int
+
+
+@dataclass
+class NaverEventContext:
+    sequence: int
+    inning: int
+    half: str
+    description: str
+    batter_name: str | None
+    pitcher_name: str | None
+    home_score: int
+    away_score: int
+    base_state: int
+    outs: int
+    provider_log_id: str
+    source_row_index: int
+    balls: int
+    strikes: int
+
+
 class RelayCrawler:
     schedule_fallback_window_days = 7
 
@@ -109,7 +170,6 @@ class RelayCrawler:
 
     async def close(self) -> None:
         """API-based crawler doesn't need explicit resource release for now."""
-        pass
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
         """Backward-compatible alias used by older CLI entrypoints."""
@@ -245,21 +305,19 @@ class RelayCrawler:
 
     def _resolve_dh_no(
         self,
-        game: dict[str, Any],
-        games: list[dict[str, Any]],
+        ctx: GameMatchContext,
         dh_no_val: object,
-        away_code: str,
-        home_code: str,
-        game_date_str: str,
     ) -> str:
         dh_no_str = str(dh_no_val or "").strip()
         if dh_no_str in {"1", "2"}:
             return dh_no_str
         same_team_games = []
-        for g in games:
+        for g in ctx.games:
             g_away_t = self._naver_team_code(str(g.get("awayTeamCode") or "").strip())
             g_home_t = self._naver_team_code(str(g.get("homeTeamCode") or "").strip())
-            if (g_away_t == away_code and g_home_t == home_code) or (g_away_t == home_code and g_home_t == away_code):
+            if (g_away_t == ctx.away_code and g_home_t == ctx.home_code) or (
+                g_away_t == ctx.home_code and g_home_t == ctx.away_code
+            ):
                 g_date = str(g.get("gameDate") or "").replace("-", "").strip()
                 if not g_date:
                     g_id_temp = str(g.get("gameId") or "").strip()
@@ -267,24 +325,20 @@ class RelayCrawler:
                         date_match = re.search(r"(\d{8})", g_id_temp)
                         if date_match:
                             g_date = date_match.group(1)
-                if g_date == game_date_str:
+                if g_date == ctx.game_date_str:
                     same_team_games.append(g)
         if len(same_team_games) > 1:
             same_team_games.sort(key=self._game_time_mins)
             try:
-                return str(same_team_games.index(game) + 1)
+                return str(same_team_games.index(ctx.game) + 1)
             except ValueError:
                 return "1"
         return "1"
 
     def _score_doubleheader(
         self,
-        game: dict,
+        ctx: GameMatchContext,
         dh_no: str,
-        game_date_str: str,
-        away_code: str,
-        home_code: str,
-        games: list[dict],
     ) -> int:
         def is_dh_truthy(v: object) -> bool:
             if isinstance(v, bool):
@@ -293,13 +347,13 @@ class RelayCrawler:
                 return False
             return str(v).strip().lower() in {"true", "y", "yes", "1", "2"}
 
-        dh_val = game.get("doubleHeader")
-        dh_no_val = game.get("doubleHeaderNo")
+        dh_val = ctx.game.get("doubleHeader")
+        dh_no_val = ctx.game.get("doubleHeaderNo")
         is_dh = is_dh_truthy(dh_val) or is_dh_truthy(dh_no_val)
 
         g_dh = "0"
         if is_dh:
-            g_dh = self._resolve_dh_no(game, games, dh_no_val, away_code, home_code, game_date_str)
+            g_dh = self._resolve_dh_no(ctx, dh_no_val)
 
         if g_dh == dh_no:
             return 30
@@ -427,7 +481,14 @@ class RelayCrawler:
                 if g_mmdd.isdigit() and g_mmdd != k_mmdd:
                     score -= 100
 
-            score += self._score_doubleheader(game, dh_no, game_date_str, away_code, home_code, games)
+            match_ctx = GameMatchContext(
+                game=game,
+                games=games,
+                away_code=away_code,
+                home_code=home_code,
+                game_date_str=game_date_str,
+            )
+            score += self._score_doubleheader(match_ctx, dh_no)
             score += self._score_date_match(game, game_id, game_date_str)
             score += self._score_time_match(game, game_time)
             score += self._score_stadium_match(game, stadium)
@@ -672,18 +733,12 @@ class RelayCrawler:
 
     @staticmethod
     def _provider_log_id(
-        *,
-        payload_hash: str,
-        inning: int | None,
-        half: str | None,
-        segment_index: int,
-        log_index: int,
-        text: str,
+        identity: NaverSegmentIdentity,
     ) -> str:
-        text_hash = hashlib.sha1(str(text or "").encode("utf-8")).hexdigest()[:10]
-        half_token = (half or "x")[:1]
-        inning_token = inning if inning is not None else "x"
-        return f"naver:{payload_hash}:{inning_token}{half_token}:{segment_index}:{log_index}:{text_hash}"
+        text_hash = hashlib.sha1(str(identity.text or "").encode("utf-8")).hexdigest()[:10]
+        half_token = (identity.half or "x")[:1]
+        inning_token = identity.inning if identity.inning is not None else "x"
+        return f"naver:{identity.payload_hash}:{inning_token}{half_token}:{identity.segment_index}:{identity.log_index}:{text_hash}"
 
     def _parse_naver_payload(self, text_relays: list[dict[str, Any]]) -> dict[str, Any]:
         parsed_events = []
@@ -761,12 +816,14 @@ class RelayCrawler:
                     "event_type": "unclassified",
                     "result": None,
                     "provider_log_id": self._provider_log_id(
-                        payload_hash=payload_hash,
-                        inning=None,
-                        half=None,
-                        segment_index=index,
-                        log_index=-1,
-                        text=title,
+                        NaverSegmentIdentity(
+                            payload_hash=payload_hash,
+                            inning=None,
+                            half=None,
+                            segment_index=index,
+                            log_index=-1,
+                            text=title,
+                        ),
                     ),
                     "source_row_index": len(raw_pbp_rows),
                     "source_name": "naver",
@@ -791,12 +848,14 @@ class RelayCrawler:
 
         raw_rows.append(
             self._build_inning_header_row(
-                payload_hash,
-                inning,
-                half,
-                segment_index,
-                segment_title,
-                pbp_raw_index,
+                NaverHeaderRowContext(
+                    payload_hash=payload_hash,
+                    inning=inning,
+                    half=half,
+                    segment_index=segment_index,
+                    segment_title=segment_title,
+                    row_index=pbp_raw_index,
+                ),
             )
         )
         pbp_raw_index += 1
@@ -821,15 +880,17 @@ class RelayCrawler:
             balls, strikes, _matched_pitch = advance_pitch_count(description, balls, strikes)
 
             pbp_result = self._build_naver_pbp_row(
-                payload_hash,
-                inning,
-                half,
-                segment_index,
-                log_index,
-                description,
-                pitcher_name,
-                batter_name,
-                pbp_raw_index,
+                NaverPbpRowContext(
+                    payload_hash=payload_hash,
+                    inning=inning,
+                    half=half,
+                    segment_index=segment_index,
+                    log_index=log_index,
+                    description=description,
+                    pitcher_name=pitcher_name,
+                    batter_name=batter_name,
+                    row_index=pbp_raw_index,
+                ),
             )
             current_pbp_index = pbp_raw_index
             pbp_raw_index += 1
@@ -839,28 +900,32 @@ class RelayCrawler:
                 continue
 
             provider_log_id = self._provider_log_id(
-                payload_hash=payload_hash,
-                inning=inning,
-                half=half,
-                segment_index=segment_index,
-                log_index=log_index,
-                text=description,
+                NaverSegmentIdentity(
+                    payload_hash=payload_hash,
+                    inning=inning,
+                    half=half,
+                    segment_index=segment_index,
+                    log_index=log_index,
+                    text=description,
+                ),
             )
             event = self._build_naver_event(
-                sequence,
-                inning,
-                half,
-                description,
-                batter_name,
-                pitcher_name,
-                state["home_score"],
-                state["away_score"],
-                state["base_state"],
-                state["outs"],
-                provider_log_id,
-                current_pbp_index,
-                balls,
-                strikes,
+                NaverEventContext(
+                    sequence=sequence,
+                    inning=inning,
+                    half=half,
+                    description=description,
+                    batter_name=batter_name,
+                    pitcher_name=pitcher_name,
+                    home_score=state["home_score"],
+                    away_score=state["away_score"],
+                    base_state=state["base_state"],
+                    outs=state["outs"],
+                    provider_log_id=provider_log_id,
+                    source_row_index=current_pbp_index,
+                    balls=balls,
+                    strikes=strikes,
+                ),
             )
             events.append(event)
             sequence += 1
@@ -877,30 +942,28 @@ class RelayCrawler:
 
     def _build_inning_header_row(
         self,
-        payload_hash: str,
-        inning: int,
-        half: str,
-        segment_index: int,
-        segment_title: str,
-        row_index: int,
+        ctx: NaverHeaderRowContext,
     ) -> dict[str, Any]:
+        pbp_log_id = self._provider_log_id(
+            NaverSegmentIdentity(
+                payload_hash=ctx.payload_hash,
+                inning=ctx.inning,
+                half=ctx.half,
+                segment_index=ctx.segment_index,
+                log_index=-1,
+                text=ctx.segment_title,
+            ),
+        )
         return {
-            "inning": inning,
-            "inning_half": half,
+            "inning": ctx.inning,
+            "inning_half": ctx.half,
             "pitcher_name": None,
             "batter_name": None,
-            "play_description": segment_title or f"{inning}회{'초' if half == 'top' else '말'}",
+            "play_description": ctx.segment_title or f"{ctx.inning}회{'초' if ctx.half == 'top' else '말'}",
             "event_type": "inning_header",
             "result": None,
-            "provider_log_id": self._provider_log_id(
-                payload_hash=payload_hash,
-                inning=inning,
-                half=half,
-                segment_index=segment_index,
-                log_index=-1,
-                text=segment_title,
-            ),
-            "source_row_index": row_index,
+            "provider_log_id": pbp_log_id,
+            "source_row_index": ctx.row_index,
             "source_name": "naver",
         }
 
@@ -937,79 +1000,61 @@ class RelayCrawler:
 
     def _build_naver_pbp_row(
         self,
-        payload_hash: str,
-        inning: int,
-        half: str,
-        segment_index: int,
-        log_index: int,
-        description: str,
-        pitcher_name: str | None,
-        batter_name: str | None,
-        row_index: int,
+        ctx: NaverPbpRowContext,
     ) -> dict[str, Any]:
-        return {
-            "inning": inning,
-            "inning_half": half,
-            "pitcher_name": pitcher_name,
-            "batter_name": batter_name,
-            "play_description": description,
-            "event_type": self._detect_event_type(description),
-            "result": description.split(":", 1)[-1].strip() if ":" in description else None,
-            "provider_log_id": self._provider_log_id(
-                payload_hash=payload_hash,
-                inning=inning,
-                half=half,
-                segment_index=segment_index,
-                log_index=log_index,
-                text=description,
+        pbp_log_id = self._provider_log_id(
+            NaverSegmentIdentity(
+                payload_hash=ctx.payload_hash,
+                inning=ctx.inning,
+                half=ctx.half,
+                segment_index=ctx.segment_index,
+                log_index=ctx.log_index,
+                text=ctx.description,
             ),
-            "source_row_index": row_index,
+        )
+        return {
+            "inning": ctx.inning,
+            "inning_half": ctx.half,
+            "pitcher_name": ctx.pitcher_name,
+            "batter_name": ctx.batter_name,
+            "play_description": ctx.description,
+            "event_type": self._detect_event_type(ctx.description),
+            "result": ctx.description.split(":", 1)[-1].strip() if ":" in ctx.description else None,
+            "provider_log_id": pbp_log_id,
+            "source_row_index": ctx.row_index,
             "source_name": "naver",
         }
 
     def _build_naver_event(
         self,
-        sequence: int,
-        inning: int,
-        half: str,
-        description: str,
-        batter_name: str | None,
-        pitcher_name: str | None,
-        home_score: int,
-        away_score: int,
-        base_state: int,
-        outs: int,
-        provider_log_id: str,
-        source_row_index: int,
-        balls: int,
-        strikes: int,
+        ctx: NaverEventContext,
     ) -> dict[str, Any]:
         event: dict[str, Any] = {
-            "event_seq": sequence,
-            "inning": inning,
-            "inning_half": half,
-            "description": description,
-            "event_type": self._detect_event_type(description),
-            "batter_name": batter_name,
-            "pitcher_name": pitcher_name,
-            "home_score": home_score,
-            "away_score": away_score,
-            "score_diff": home_score - away_score,
-            "base_state": base_state,
-            "outs": outs,
+            "event_seq": ctx.sequence,
+            "inning": ctx.inning,
+            "inning_half": ctx.half,
+            "description": ctx.description,
+            "event_type": self._detect_event_type(ctx.description),
+            "batter_name": ctx.batter_name,
+            "pitcher_name": ctx.pitcher_name,
+            "home_score": ctx.home_score,
+            "away_score": ctx.away_score,
+            "score_diff": ctx.home_score - ctx.away_score,
+            "base_state": ctx.base_state,
+            "outs": ctx.outs,
             "bases_before": "-",
-            "bases_after": self._format_base_string(base_state),
+            "bases_after": self._format_base_string(ctx.base_state),
             "wpa": 0.0,
             "win_expectancy_before": 0.5,
             "win_expectancy_after": 0.5,
         }
-        event["batter"] = batter_name
-        event["pitcher"] = pitcher_name
-        event["result"] = description.split(":", 1)[-1].strip() if ":" in description else None
-        event["provider_log_id"] = provider_log_id
-        event["source_row_index"] = source_row_index
-        event["balls"] = balls
-        event["strikes"] = strikes
+        event["batter"] = ctx.batter_name
+        event["pitcher"] = ctx.pitcher_name
+        event["result"] = ctx.description.split(":", 1)[-1].strip() if ":" in ctx.description else None
+        event["provider_log_id"] = ctx.provider_log_id
+        event["source_row_index"] = ctx.source_row_index
+        event["balls"] = ctx.balls
+        event["strikes"] = ctx.strikes
         return event
 
     def _finalize_payload(self, parsed_events: list[dict[str, Any]]) -> None:
