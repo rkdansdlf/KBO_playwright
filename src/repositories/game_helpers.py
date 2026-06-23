@@ -7,10 +7,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
 
@@ -21,7 +21,6 @@ import re
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN, GAME_ID_MIN_LEN
 from src.db.engine import SessionLocal
@@ -55,6 +54,11 @@ from src.utils.team_codes import (
     team_code_from_game_id_segment,
 )
 from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from sqlalchemy.orm import Session
 
 SEASON_TYPE_TO_LEAGUE_CODE = {
     "regular": 0,
@@ -97,6 +101,38 @@ SEASON_DATE_RULES: dict[int, list[tuple[str, str, str]]] = {
         ("2026-10-26", "2026-11-01", "한국시리즈"),
     ],
 }
+
+
+@dataclass(frozen=True)
+class CanonicalGameIdPayload:
+    game_date: object = None
+    away_team_code: object = None
+    home_team_code: object = None
+    season_year: int | None = None
+    doubleheader_no: object = None
+
+
+@dataclass(frozen=True)
+class FieldChangeContext:
+    game_id: str
+    source: GameWriteSource
+    write_contract: GameWriteContract | None
+    field: str | None = None
+    allow_empty: bool = False
+
+
+@dataclass(frozen=True)
+class DerivedGameStatusInput:
+    game_date: date | None
+    home_score: object
+    away_score: object
+    current_status: str | None
+    has_metadata: bool
+    has_inning_scores: bool
+    has_lineups: bool
+    has_batting: bool
+    has_pitching: bool
+    today: date
 
 
 def _coerce_int(value: object) -> int | None:
@@ -257,30 +293,32 @@ def _canonicalize_game_id(game_id: object) -> tuple[str | None, str | None]:
 
 def _canonicalize_game_id_for_payload(
     game_id: object,
-    *,
-    game_date: object = None,
-    away_team_code: object = None,
-    home_team_code: object = None,
-    season_year: int | None = None,
-    doubleheader_no: object = None,
+    payload: CanonicalGameIdPayload | None = None,
+    **kwargs: object,
 ) -> tuple[str | None, str | None]:
     """Return a canonical game_id, preferring explicit payload teams when available."""
+    if payload is None:
+        payload = CanonicalGameIdPayload(**kwargs)
+    elif kwargs:
+        msg = "Pass either CanonicalGameIdPayload or keyword payload fields, not both"
+        raise TypeError(msg)
+
     canonical, original = _canonicalize_game_id(game_id)
     if not original:
         return canonical, original
 
     fallback_date = canonical[:8] if canonical else ""
-    date_part = str(game_date or fallback_date).replace("-", "").strip()
+    date_part = str(payload.game_date or fallback_date).replace("-", "").strip()
 
-    dh = doubleheader_no
+    dh = payload.doubleheader_no
     if dh is None and original[-1:].isdigit():
         dh = original[-1]
     expected = build_kbo_game_id(
         date_part,
-        str(away_team_code).strip().upper() if away_team_code not in (None, "") else None,
-        str(home_team_code).strip().upper() if home_team_code not in (None, "") else None,
+        str(payload.away_team_code).strip().upper() if payload.away_team_code not in (None, "") else None,
+        str(payload.home_team_code).strip().upper() if payload.home_team_code not in (None, "") else None,
         doubleheader_no=dh,
-        season_year=season_year,
+        season_year=payload.season_year,
     )
     if expected and expected != canonical:
         return expected, original
@@ -330,24 +368,26 @@ def _assign_field_if_changed(
     target: object,
     attr: str,
     value: object,
-    *,
-    game_id: str,
-    source: GameWriteSource,
-    write_contract: GameWriteContract | None,
-    field: str | None = None,
-    allow_empty: bool = False,
+    context: FieldChangeContext | None = None,
+    **kwargs: object,
 ) -> bool:
-    if not allow_empty and value in (None, ""):
+    if context is None:
+        context = FieldChangeContext(**kwargs)
+    elif kwargs:
+        msg = "Pass either FieldChangeContext or keyword context fields, not both"
+        raise TypeError(msg)
+
+    if not context.allow_empty and value in (None, ""):
         return False
 
     current = getattr(target, attr)
     if _values_equal(current, value):
-        if write_contract:
-            write_contract.field_duplicate(game_id, source, field or attr, current)
+        if context.write_contract:
+            context.write_contract.field_duplicate(context.game_id, context.source, context.field or attr, current)
         return False
 
-    if write_contract:
-        write_contract.field_updated(game_id, source, field or attr, current, value)
+    if context.write_contract:
+        context.write_contract.field_updated(context.game_id, context.source, context.field or attr, current, value)
     setattr(target, attr, value)
     return True
 
@@ -530,35 +570,46 @@ def _ensure_game_stub(session: Session, game_id: str) -> None:
     )
 
 
-def _derive_game_status(
-    *,
-    game_date: date | None,
-    home_score: object,
-    away_score: object,
-    current_status: str | None,
-    has_metadata: bool,
-    has_inning_scores: bool,
-    has_lineups: bool,
-    has_batting: bool,
-    has_pitching: bool,
-    today: date,
-) -> str:
+def _derive_game_status(status_input: DerivedGameStatusInput | None = None, **kwargs: object) -> str:
+    if status_input is None:
+        status_input = DerivedGameStatusInput(**kwargs)
+    elif kwargs:
+        msg = "Pass either DerivedGameStatusInput or keyword status fields, not both"
+        raise TypeError(msg)
+
     if (
-        home_score is not None
-        and away_score is not None
-        and (has_batting or has_pitching or (game_date and game_date < today and has_inning_scores))
+        status_input.home_score is not None
+        and status_input.away_score is not None
+        and (
+            status_input.has_batting
+            or status_input.has_pitching
+            or (
+                status_input.game_date
+                and status_input.game_date < status_input.today
+                and status_input.has_inning_scores
+            )
+        )
     ):
-        return _resolve_terminal_status(home_score, away_score)
-    if game_date and game_date > today:
+        return _resolve_terminal_status(status_input.home_score, status_input.away_score)
+    if status_input.game_date and status_input.game_date > status_input.today:
         return GAME_STATUS_SCHEDULED
-    has_any_detail = has_inning_scores or has_lineups or has_batting or has_pitching
-    if current_status in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED} and not has_any_detail:
-        return current_status
-    if game_date == today and has_any_detail and current_status in LIVE_GAME_STATUSES:
-        return current_status
-    if game_date == today and has_any_detail:
+    has_any_detail = (
+        status_input.has_inning_scores
+        or status_input.has_lineups
+        or status_input.has_batting
+        or status_input.has_pitching
+    )
+    if status_input.current_status in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED} and not has_any_detail:
+        return status_input.current_status
+    if (
+        status_input.game_date == status_input.today
+        and has_any_detail
+        and status_input.current_status in LIVE_GAME_STATUSES
+    ):
+        return status_input.current_status
+    if status_input.game_date == status_input.today and has_any_detail:
         return GAME_STATUS_LIVE
-    if has_metadata and not has_any_detail:
+    if status_input.has_metadata and not has_any_detail:
         return GAME_STATUS_CANCELLED
     return GAME_STATUS_UNRESOLVED
 

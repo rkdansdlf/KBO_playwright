@@ -9,8 +9,8 @@ import argparse
 import asyncio
 import logging
 import os
-from collections.abc import Awaitable, Callable
 from datetime import datetime
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from playwright.async_api import Error as PlaywrightError
@@ -21,6 +21,9 @@ from src.cli.collect_profiles import collect_profiles
 from src.cli.db_healthcheck import main as healthcheck_main
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 

@@ -18,13 +18,15 @@ import csv
 import json
 import logging
 import sys
-from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import SQLAlchemyError
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

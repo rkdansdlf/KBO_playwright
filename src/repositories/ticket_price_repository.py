@@ -4,10 +4,14 @@ Repository for TicketPrice operations.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from ..models.ticket_price import TicketPrice
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class TicketPriceRepository:

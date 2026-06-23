@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bs4 import BeautifulSoup
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 
 @dataclass(frozen=True)

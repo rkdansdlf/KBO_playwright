@@ -12,10 +12,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS, TransitTimeCrawler
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

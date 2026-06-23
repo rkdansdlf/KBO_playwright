@@ -5,9 +5,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.crawlers.kbo_event_crawler import KboEventCrawler
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

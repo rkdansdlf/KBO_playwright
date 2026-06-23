@@ -4,11 +4,15 @@ Repository for ParkingLot and ParkingFeeRule operations.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from ..models.parking_fee_rule import ParkingFeeRule
 from ..models.parking_lot import ParkingLot
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class ParkingLotRepository:

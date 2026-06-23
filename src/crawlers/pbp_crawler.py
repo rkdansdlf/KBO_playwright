@@ -43,7 +43,7 @@ class PBPCrawler:
     ) -> None:
         # Using the older but more robust LiveText.aspx which behaves better with Referer checks
         self.base_url = "https://www.koreabaseball.com/Game/LiveText.aspx"
-        self.policy = policy or RequestPolicy(min_delay=request_delay, max_delay=request_delay + 0.5)
+        self.policy = policy or RequestPolicy.with_delay(request_delay, request_delay + 0.5)
         self.pool = pool
         self._context_kwargs = self.policy.build_context_kwargs(locale="ko-KR")
         self.wpa_calc = WPACalculator()

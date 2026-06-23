@@ -7,9 +7,9 @@ import asyncio
 import json
 import logging
 import sys
-from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx
@@ -17,11 +17,15 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from src.db.engine import SessionLocal
-from src.models.source_registry import DataSource
 from src.repositories.source_registry_repository import DataSourceRepository, save_raw_snapshots
 from src.utils.http_client import DEFAULT_HEADERS
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from src.models.source_registry import DataSource
 
 logger = logging.getLogger(__name__)
 

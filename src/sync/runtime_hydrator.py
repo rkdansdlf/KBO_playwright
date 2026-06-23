@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.models.game import (
     Game,
@@ -28,6 +26,11 @@ from src.models.game import (
 )
 from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import TeamDailyRoster
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
+    from sqlalchemy.orm import Session
 
 
 @dataclass(frozen=True)
@@ -433,7 +436,7 @@ class RuntimeHydrator:
             if source_player:
                 bulk_mappings.append({c: getattr(source_player, c) for c in full_columns})
             else:
-                mapping: dict[str, object] = {c: None for c in full_columns}
+                mapping: dict[str, object] = dict.fromkeys(full_columns)
                 mapping.update(
                     player_id=player_id,
                     name=refs[player_id],

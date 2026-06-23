@@ -8,11 +8,13 @@ import json
 import logging
 import re
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
-from bs4.element import Tag
+
+if TYPE_CHECKING:
+    from bs4.element import Tag
 
 logger = logging.getLogger(__name__)
 

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, or_, select, text
-from sqlalchemy.orm import Session
 
 from src.constants import IP_FRAC_THIRD, IP_FRAC_TWO_THIRDS, MAX_OUTS
 from src.models.game import Game, GameBattingStat, GamePitchingStat
@@ -13,6 +12,9 @@ from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.team_codes import STANDARD_TEAM_CODES
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 AGGREGATE_TEAM_CODES = ("", "합계", "TOTAL", "ALL", "-")
 INVALID_TEAM_CODES = (*AGGREGATE_TEAM_CODES, "EA", "WE")

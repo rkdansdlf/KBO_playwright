@@ -9,11 +9,13 @@ try:
     from datetime import UTC
 except ImportError:
     UTC = UTC
-from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.services.wpa_transitions import event_has_wpa_state
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 ALLOWED_SOURCE_TYPES = {
     "naver",

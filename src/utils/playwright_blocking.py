@@ -4,14 +4,17 @@ Resource blocking helpers for Playwright (sync + async).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
-from playwright.async_api import BrowserContext as AsyncBrowserContext
-from playwright.async_api import Page as AsyncPage
-from playwright.async_api import Route as AsyncRoute
-from playwright.sync_api import BrowserContext as SyncBrowserContext
-from playwright.sync_api import Page as SyncPage
-from playwright.sync_api import Route as SyncRoute
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from playwright.async_api import BrowserContext as AsyncBrowserContext
+    from playwright.async_api import Page as AsyncPage
+    from playwright.async_api import Route as AsyncRoute
+    from playwright.sync_api import BrowserContext as SyncBrowserContext
+    from playwright.sync_api import Page as SyncPage
+    from playwright.sync_api import Route as SyncRoute
 
 DEFAULT_BLOCKED_RESOURCE_TYPES: set[str] = {"image", "media", "font"}
 

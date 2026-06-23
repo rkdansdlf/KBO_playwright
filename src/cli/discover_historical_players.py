@@ -8,13 +8,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from src.constants import KST
 from src.crawlers.retire.listing import RetiredPlayerListingCrawler
 from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

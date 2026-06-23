@@ -9,10 +9,13 @@ import logging
 import os
 import random
 import time
-from collections.abc import Callable, Iterable
-from typing import ParamSpec, TypeVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
 
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
@@ -26,30 +29,40 @@ DEFAULT_USER_AGENTS = [
 ]
 
 
+@dataclass(frozen=True)
+class RequestPolicyConfig:
+    min_delay: float | None = None
+    max_delay: float | None = None
+    user_agents: Iterable[str] | None = None
+    max_retries: int | None = None
+    backoff_factor: float | None = None
+    retry_exceptions: tuple[type[BaseException], ...] = (Exception,)
+
+
 class RequestPolicy:
     """Centralized throttling and retry policy."""
 
-    def __init__(
-        self,
-        *,
-        min_delay: float | None = None,
-        max_delay: float | None = None,
-        user_agents: Iterable[str] | None = None,
-        max_retries: int | None = None,
-        backoff_factor: float | None = None,
-        retry_exceptions: tuple[type[BaseException], ...] = (Exception,),
-    ) -> None:
-        env_min = float(os.getenv("KBO_REQUEST_DELAY_MIN", min_delay or 1.5))
-        env_max = float(os.getenv("KBO_REQUEST_DELAY_MAX", max_delay or 2.5))
+    def __init__(self, config: RequestPolicyConfig | None = None, **overrides: object) -> None:
+        if config is None:
+            config = RequestPolicyConfig(**overrides)
+        elif overrides:
+            msg = "Pass either RequestPolicyConfig or keyword policy fields, not both"
+            raise TypeError(msg)
+        env_min = float(os.getenv("KBO_REQUEST_DELAY_MIN", config.min_delay or 1.5))
+        env_max = float(os.getenv("KBO_REQUEST_DELAY_MAX", config.max_delay or 2.5))
         if env_min > env_max:
             env_min, env_max = env_max, env_min
 
         self.min_delay = env_min
         self.max_delay = env_max
-        self.max_retries = int(os.getenv("KBO_REQUEST_MAX_RETRIES", max_retries or 3))
-        self.backoff_factor = float(os.getenv("KBO_REQUEST_BACKOFF", backoff_factor or 1.5))
-        self.user_agents = self._load_user_agents(user_agents)
-        self.retry_exceptions = retry_exceptions
+        self.max_retries = int(os.getenv("KBO_REQUEST_MAX_RETRIES", config.max_retries or 3))
+        self.backoff_factor = float(os.getenv("KBO_REQUEST_BACKOFF", config.backoff_factor or 1.5))
+        self.user_agents = self._load_user_agents(config.user_agents)
+        self.retry_exceptions = config.retry_exceptions
+
+    @classmethod
+    def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> RequestPolicy:
+        return cls(RequestPolicyConfig(min_delay=min_delay, max_delay=max_delay))
 
     def _load_user_agents(self, override: Iterable[str] | None) -> list[str]:
         if override:

@@ -5,11 +5,14 @@ Repository for DataSource and RawSourceSnapshot operations.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
 
 from ..models.source_registry import DataSource, RawSourceSnapshot
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",

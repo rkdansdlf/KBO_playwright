@@ -118,7 +118,7 @@ class GameDetailCrawler:
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
         self.base_url = GAME_CENTER
-        self.policy = RequestPolicy(min_delay=request_delay)
+        self.policy = RequestPolicy.with_delay(request_delay)
         self.resolver = resolver
         self.pool = pool
         self._last_failure_reason: dict[str, str] = {}

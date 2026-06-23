@@ -7,7 +7,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
@@ -18,6 +18,9 @@ from src.services.game_collection_service import (
     load_game_targets_from_db,
 )
 from src.utils.team_codes import normalize_kbo_game_id
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

@@ -5,12 +5,13 @@ Aggregate player-level fielding & baserunning stats to team-season level.
 from __future__ import annotations
 
 import logging
-from typing import Any
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING, Any
 
 from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
 from src.models.team import TeamSeasonBaserunning, TeamSeasonFielding
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

@@ -4,11 +4,13 @@ Ranking aggregator that normalizes fielding/baserunning stats.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.repositories.ranking_repository import RankingRepository
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 @dataclass(frozen=True)

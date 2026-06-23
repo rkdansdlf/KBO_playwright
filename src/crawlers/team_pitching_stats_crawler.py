@@ -6,10 +6,9 @@ from __future__ import annotations
 
 import argparse
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bs4 import BeautifulSoup
-from bs4.element import Tag
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -24,6 +23,9 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
 from src.utils.type_helpers import parse_innings
+
+if TYPE_CHECKING:
+    from bs4.element import Tag
 
 logger = logging.getLogger(__name__)
 

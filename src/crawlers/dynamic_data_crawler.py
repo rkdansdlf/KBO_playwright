@@ -6,16 +6,18 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from src.constants import KST
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.models.game import Game
 from src.models.ticket_schedule import TicketSchedule
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

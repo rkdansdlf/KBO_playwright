@@ -10,13 +10,16 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from scripts.maintenance.audit_pa_formula import fix_year_formula
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

@@ -9,11 +9,10 @@ import argparse
 import asyncio
 import logging
 import os
-from collections.abc import Sequence
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.aggregators.highlight_aggregator import HighlightAggregator
 from src.constants import KST
@@ -22,6 +21,11 @@ from src.models.game import Game, GameHighlight
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

@@ -23,9 +23,8 @@ import argparse
 import asyncio
 import json
 import logging
-from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, text
 
@@ -40,6 +39,9 @@ from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
 from src.utils.alerting import SlackWebhookClient, TelegramBotClient
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +114,7 @@ def _find_recovery_targets(target_game_ids: list[str] | None) -> tuple[list[Game
     stuck_games = _find_stuck_games()
     inconsistent_games = _find_inconsistent_games()
     all_found = sorted(
-        list({game.game_id: game for game in (stuck_games + inconsistent_games)}.values()),
+        {game.game_id: game for game in (stuck_games + inconsistent_games)}.values(),
         key=lambda game: game.game_id,
     )
     return all_found, stuck_games, inconsistent_games

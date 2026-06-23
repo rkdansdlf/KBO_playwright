@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 """
 Futures League Pitching Stats Crawler
@@ -11,7 +11,6 @@ Fetches year-by-year Futures pitching statistics from player profile pages.
 import re
 
 from bs4 import BeautifulSoup
-from bs4.element import Tag
 from playwright.async_api import Error as PlaywrightError
 
 from src.utils.compliance import compliance
@@ -23,6 +22,9 @@ from src.utils.type_helpers import (
     safe_float_or_none,
     safe_int_or_none,
 )
+
+if TYPE_CHECKING:
+    from bs4.element import Tag
 
 logger = logging.getLogger(__name__)
 FUTURES_PITCHER_KEYS = [

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 import argparse
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.db.engine import SessionLocal
@@ -18,6 +17,11 @@ from src.repositories.player_stats_repository import (
     PlayerSeasonFieldingRepository,
 )
 from src.repositories.safe_batting_repository import save_batting_stats_safe
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 
 def _build_player_team_map(session: Session) -> dict:

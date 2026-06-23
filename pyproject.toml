@@ -49,6 +49,9 @@ select = [
     "ANN202",  # missing-return-type-private-function
     "ANN205",  # missing-return-type-static-method
     "ANN401",  # dynamically typed expressions (Any)
+    "TC001",   # typing-only-first-party-import
+    "TC002",   # typing-only-third-party-import
+    "TC003",   # typing-only-standard-library-import
     "TRY003",  # raise-vanilla-args
     "TRY004",  # type-check-without-type-error
     "TRY201",  # verbose-raise
@@ -63,17 +66,16 @@ select = [
     "RUF100",  # unused noqa
     "RUF005",  # collection literal concatenation
     "PERF401",  # manual list comprehension
+    "PT",      # pytest style
     "PTH",     # pathlib (os.path 대체)
     "ARG",     # unused-function-argument
     "T20",     # print / pdb
-    "PLR2004", # magic-value-comparison
     "FURB167", # regex-flag-alias
     "RUF013",  # implicit-optional
     "DTZ005",  # datetime-now-without-tz
     "S608",    # hardcoded-sql-expression
 ]
 ignore = [
-    "PLR2004", # 165 remaining are low-value noise; key domain constants already fixed
     "E402",    # module-import-not-at-top (lazy imports intentional)
     "E501",    # line-too-long (handled by formatter)
     "E701",    # multiple-statements-on-one-line-colon (legacy style)
@@ -93,8 +95,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608"]
-"scripts/**" = ["ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608"]
+"src/models/**" = ["TC001", "TC002", "TC003"]
+"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608"]
+"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -106,6 +109,7 @@ branch = true
 source = ["src"]
 
 [tool.coverage.report]
+fail_under = 50
 show_missing = true
 skip_empty = true
 exclude_also = [

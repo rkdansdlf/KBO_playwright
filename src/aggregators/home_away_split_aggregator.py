@@ -6,14 +6,16 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING
 
 from src.constants import KST
 from src.models.game import Game, GameBattingStat
 from src.models.matchup import BatterHomeAwaySplit
 from src.models.season import KboSeason
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

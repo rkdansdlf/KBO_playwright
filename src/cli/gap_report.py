@@ -14,9 +14,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select, text
@@ -28,6 +27,9 @@ from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
 from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
 from src.validators.standings_integrity import validate_standings_integrity
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")

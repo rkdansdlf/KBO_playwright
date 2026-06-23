@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.parsers.schedule_parser import parse_schedule_html
 from src.services.schedule_collection_service import save_schedule_games
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
@@ -17,6 +17,9 @@ from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT, SHORT_TIMEOUT
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 

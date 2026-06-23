@@ -22,7 +22,6 @@ import argparse
 import logging
 import os
 import re
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -57,7 +56,12 @@ logger = logging.getLogger(__name__)
 # Constants & configuration
 # ---------------------------------------------------------------------------
 
+from typing import TYPE_CHECKING
+
 from src.urls import PITCHER_BASIC1, PITCHER_BASIC2
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 BASIC1_URL = PITCHER_BASIC1
 BASIC2_URL = PITCHER_BASIC2

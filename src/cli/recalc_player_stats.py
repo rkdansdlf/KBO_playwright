@@ -14,18 +14,21 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import case, func, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.db.engine import Engine, SessionLocal
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

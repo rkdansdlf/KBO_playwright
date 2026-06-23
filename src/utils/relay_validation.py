@@ -7,9 +7,7 @@ Supports two-phase validation: live (structural) and post-game (cross-check).
 from __future__ import annotations
 
 import logging
-from typing import Any
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING, Any
 
 from src.constants import MAX_OUTS
 from src.models.game import Game
@@ -17,6 +15,9 @@ from src.repositories.game_helpers import (
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +263,7 @@ def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[
 
     missing_innings = set(range(1, max_inn + 1)) - set(innings_in_pbp)
     if missing_innings:
-        return f"missing_innings_{sorted(list(missing_innings))}"
+        return f"missing_innings_{sorted(missing_innings)}"
     return None
 
 

@@ -9,10 +9,10 @@ import argparse
 import logging
 from collections import defaultdict, deque
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import extract
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import KST
 from src.db.engine import SessionLocal
@@ -20,6 +20,9 @@ from src.models.game import Game
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

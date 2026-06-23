@@ -188,7 +188,7 @@ class PlayerProfileCrawler:
     def __init__(self, request_delay: float = 1.2, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
-        self.policy = RequestPolicy(min_delay=request_delay, max_delay=request_delay)
+        self.policy = RequestPolicy.with_delay(request_delay, request_delay)
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, player_id: str) -> str | None:

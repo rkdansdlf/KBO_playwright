@@ -19,15 +19,17 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from bs4 import BeautifulSoup
-from sqlalchemy.orm import Session
 
 from src.urls import GAME_CENTER
 from src.utils.request_policy import RequestPolicy
 from src.utils.type_helpers import to_int
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

@@ -15,11 +15,10 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -34,6 +33,11 @@ from src.repositories.player_game_stats import (
     upsert_player_game_pitching,
 )
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

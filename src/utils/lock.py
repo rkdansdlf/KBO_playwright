@@ -3,7 +3,10 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from types import TracebackType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from types import TracebackType
 
 logger = logging.getLogger(__name__)
 

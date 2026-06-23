@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.services.matchup_engine import MatchupEngine
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

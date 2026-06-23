@@ -109,7 +109,7 @@ class PlayerSearchCrawler:
         self.pool = pool
         self.request_delay = request_delay
         self.headless = headless
-        self.policy = RequestPolicy(min_delay=request_delay, max_delay=request_delay)
+        self.policy = RequestPolicy.with_delay(request_delay, request_delay)
         self.failure_counts: Counter = Counter()
 
     def _record_failure(self, reason: str) -> None:

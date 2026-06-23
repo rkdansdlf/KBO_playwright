@@ -12,15 +12,18 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Sequence
 from datetime import datetime
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.services.context_aggregator import ContextAggregator
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

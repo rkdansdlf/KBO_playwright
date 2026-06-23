@@ -7,7 +7,7 @@ import logging
 import re
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,6 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, TimeoutError, async_playwright
 from playwright_stealth import Stealth
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.fa_contract import FAContract
@@ -26,6 +25,9 @@ from src.models.team import Team
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT
 from src.utils.team_codes import resolve_team_code
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 FA_CRAWL_EXCEPTIONS = (
     PlaywrightError,

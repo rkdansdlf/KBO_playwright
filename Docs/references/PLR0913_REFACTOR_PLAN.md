@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-23
 
-`PLR0913` (`too-many-arguments`) is not enabled in the default Ruff profile yet. The current baseline is 120 violations in `src/`. Because many affected functions are crawler, repository, and service interfaces with broad call-site usage, this rule should be introduced through staged refactors rather than blanket signature changes.
+`PLR0913` (`too-many-arguments`) is not enabled in the default Ruff profile yet. The initial baseline was 120 violations in `src/`; after the first utility/repository context-object pass, the current baseline is 109. Because many affected functions are crawler, repository, and service interfaces with broad call-site usage, this rule should be introduced through staged refactors rather than blanket signature changes.
 
 ## Baseline
 
@@ -32,8 +32,8 @@ Use the smallest compatible change per function category:
 
 ## Batch Order
 
-1. CLI and utility functions with 6 arguments: low-risk cleanup or targeted compatibility `noqa`.
-2. `game_save.py` and `game_helpers.py`: introduce payload/context objects and update tests.
+1. CLI and utility functions with 6 arguments: low-risk cleanup or targeted compatibility `noqa`. Started: `RequestPolicy`, `AsyncPlaywrightPool`, `write_refresh_manifest`, and `derive_stable_game_status` now use config/evidence objects while keeping keyword compatibility.
+2. `game_save.py` and `game_helpers.py`: introduce payload/context objects and update tests. Started: canonical game-id, field-change, derived-status, and detail-save helpers are context-based; record replacement and pregame/snapshot helpers remain.
 3. `game_detail_crawler.py`: group Playwright crawl context and parsed payload state.
 4. `relay_crawler.py`, `game_relay.py`, `relay_recovery_service.py`: share relay context/value objects.
 5. `game_collection_service.py`: replace large argument groups with collection request/result dataclasses.

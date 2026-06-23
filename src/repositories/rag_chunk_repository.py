@@ -5,13 +5,15 @@ Repository for managing RAG chunks in the SQLite/Postgres database.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from src.constants import KST
 from src.models.rag_chunk import RagChunk
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class RagChunkRepository:

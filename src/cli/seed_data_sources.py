@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
