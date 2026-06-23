@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from src.constants import DATE_STR_LEN
+from src.constants import DATE_STR_LEN, KST
 from src.utils.alerting import SlackWebhookClient
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class TrendTracker:
 
     def load_reports(self, days: int = 30) -> list[dict]:
         reports_by_date: dict[str, dict] = {}
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(KST) - timedelta(days=days)
         if not self.report_dir.exists():
             return []
         for f in sorted(self.report_dir.glob("*.json")):
@@ -106,8 +106,8 @@ class TrendTracker:
         if isinstance(raw_date, str):
             normalized = raw_date.replace("-", "")
             if len(normalized) == DATE_STR_LEN and normalized.isdigit():
-                return datetime.strptime(normalized, "%Y%m%d")
-        return datetime.strptime(path.stem, "%Y%m%d")
+                return datetime.strptime(normalized, "%Y%m%d").replace(tzinfo=KST)
+        return datetime.strptime(path.stem, "%Y%m%d").replace(tzinfo=KST)
 
     def _generated_at_key(self, report: dict) -> str:
         generated_at = report.get("generated_at")
