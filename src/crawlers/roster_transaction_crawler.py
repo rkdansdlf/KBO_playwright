@@ -298,22 +298,20 @@ class RosterTransactionCrawler:
         }
         """
         data = await page.evaluate(script)
-        transactions = []
-        for item in data:
-            transactions.append(
-                {
-                    "transaction_date": roster_date,
-                    "team_id": team_code,
-                    "player_id": int(item["player_id"]),
-                    "player_name": item["player_name"],
-                    "action": "registered",
-                    "roster_level": "first_team",
-                    "source_type": "kbo_today_page",
-                    "confidence": "high",
-                    "dedupe_key": f"{roster_date}_{team_code}_{item['player_name']}_registered",
-                },
-            )
-        return transactions
+        return [
+            {
+                "transaction_date": roster_date,
+                "team_id": team_code,
+                "player_id": int(item["player_id"]),
+                "player_name": item["player_name"],
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+                "confidence": "high",
+                "dedupe_key": f"{roster_date}_{team_code}_{item['player_name']}_registered",
+            }
+            for item in data
+        ]
 
     def _map_team_name(self, name: str) -> str | None:
         mapping = {

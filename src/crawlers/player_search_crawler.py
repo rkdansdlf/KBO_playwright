@@ -644,9 +644,9 @@ async def main() -> None:
     elif not oci_url:
         logger.info("\nOCI_DB_URL not set; OCI sync skipped")
 
-    logger.info("\n" + "=" * 60)
+    logger.info("%s", "\n" + "=" * 60)
     logger.info("Complete")
-    logger.info("=" * 60)
+    logger.info("%s", "=" * 60)
 
 
 if __name__ == "__main__":

@@ -637,8 +637,7 @@ def _append_detail_integrity_section(lines: list[str], metrics: dict[str, Any]) 
         lines.append("✅ <b>Integrity</b>: 100% (All details captured)")
     else:
         lines.append(f"⚠️ <b>Integrity</b>: {len(incomplete)} games missing details")
-        for gid in incomplete[:3]:
-            lines.append(f"   - {gid}")
+        lines.extend(f"   - {gid}" for gid in incomplete[:3])
 
 
 def _append_player_stats_section(lines: list[str], gate_result: dict[str, Any]) -> None:
@@ -671,8 +670,7 @@ def _append_relay_integrity_section(lines: list[str], metrics: dict[str, Any]) -
         recent_count = relay_integrity.get("recent_missing_count", 0)
         season_count = relay_integrity.get("current_season_missing_count", 0)
         lines.append(f"⚠️ <b>PBP</b>: {recent_count} recent / {season_count} current-season games missing")
-        for gid in list(relay_integrity.get("missing_game_ids") or [])[:5]:
-            lines.append(f"   - {gid}")
+        lines.extend(f"   - {gid}" for gid in list(relay_integrity.get("missing_game_ids") or [])[:5])
 
 
 def _append_standings_integrity_section(lines: list[str], metrics: dict[str, Any]) -> None:
@@ -723,8 +721,7 @@ def _append_auto_remediation_section(lines: list[str], metrics: dict[str, Any]) 
     elif status == "aborted":
         cats_str = ", ".join(auto_rem.get("categories_aborted", []))
         lines.append(f"🛑 <b>Auto-Remediation</b>: 작업 중단 ({cats_str})")
-        for r in auto_rem.get("abort_reasons", [])[:3]:
-            lines.append(f"   - {r}")
+        lines.extend(f"   - {r}" for r in auto_rem.get("abort_reasons", [])[:3])
     else:
         lines.append("✅ <b>Auto-Remediation</b>: No issues detected")
 
@@ -736,8 +733,7 @@ def _append_pa_formula_section(lines: list[str], metrics: dict[str, Any]) -> Non
     else:
         count = pa_formula.get("violation_count", 0)
         lines.append(f"❌ <b>PA Formula</b>: {count} violations")
-        for v in (pa_formula.get("violations") or [])[:3]:
-            lines.append(f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")
+        lines.extend(f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF" for v in (pa_formula.get("violations") or [])[:3])
 
 
 def _append_pa_formula_trend_section(lines: list[str], metrics: dict[str, Any]) -> None:
@@ -761,12 +757,10 @@ def _append_team_stats_section(lines: list[str], gate_result: dict[str, Any]) ->
         lines.append(f"🏆 <b>Team Stats</b>: {team_stats['total_mismatches']} mismatches")
         for m in team_stats["batting_mismatches"]:
             lines.append(f"   ❌ Batting [{m.get('team_id', '?')}]: {m.get('issue', 'mismatch')}")
-            for d in m.get("diffs", [])[:2]:
-                lines.append(f"      {d}")
+            lines.extend(f"      {d}" for d in m.get("diffs", [])[:2])
         for m in team_stats["pitching_mismatches"]:
             lines.append(f"   ❌ Pitching [{m.get('team_id', '?')}]: {m.get('issue', 'mismatch')}")
-            for d in m.get("diffs", [])[:2]:
-                lines.append(f"      {d}")
+            lines.extend(f"      {d}" for d in m.get("diffs", [])[:2])
 
 
 def _append_team_stats_trend_section(lines: list[str], metrics: dict[str, Any]) -> None:
@@ -859,7 +853,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         logger.info("🚀 Sending report to Telegram...")
         SlackWebhookClient.send_alert(telegram_msg)
     else:
-        logger.info("\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))
+        logger.info("%s", "\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))
 
     return 0
 

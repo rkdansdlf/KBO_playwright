@@ -1194,9 +1194,9 @@ def main() -> None:
         )
 
         # 전체 요약
-        logger.info("\n" + "=" * 60)
+        logger.info("%s", "\n" + "=" * 60)
         logger.info("📈 전체 수집 요약 (%s년)", args.year)
-        logger.info("=" * 60)
+        logger.info("%s", "=" * 60)
         for series_key, data in all_data.items():
             series_name = get_series_mapping()[series_key]["name"]
             logger.info("  %s: %s명", series_name, len(data))

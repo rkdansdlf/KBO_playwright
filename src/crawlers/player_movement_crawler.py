@@ -225,12 +225,7 @@ class PlayerMovementCrawler:
         data = await page.evaluate(script)
 
         # Post-process (Validate Key fields)
-        valid_data = []
-        for item in data:
-            if item["date"] and item["section"]:
-                valid_data.append(item)
-
-        return valid_data
+        return [item for item in data if item["date"] and item["section"]]
 
 
 async def main() -> None:
