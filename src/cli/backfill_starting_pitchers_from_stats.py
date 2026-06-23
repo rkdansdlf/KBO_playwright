@@ -132,7 +132,7 @@ def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str
           AND {overwrite_filter}
         ORDER BY g.game_date, g.game_id
         {limit_clause}
-        """,  # noqa: S608
+        """,
     )
     params: dict[str, Any] = {"start_date": start_date, "end_date": end_date}
     if args.limit:

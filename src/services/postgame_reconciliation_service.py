@@ -240,7 +240,7 @@ def format_reconciliation_report(changes: Iterable[PostgameReconciliationChange]
     header = "game_id | date | status | score | detail | reason"
     lines = [header, "-" * len(header)]
     for change in rows:
-        lines.append(  # noqa: PERF401
+        lines.append(
             " | ".join(
                 [
                     change.game_id,

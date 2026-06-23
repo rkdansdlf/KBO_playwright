@@ -89,7 +89,7 @@ class TestGetDbSession:
         with patch("src.db.engine.SessionLocal", return_value=mock_session):
             try:
                 with get_db_session() as _:
-                    raise ValueError("test error")  # noqa: TRY301
+                    raise ValueError("test error")
             except ValueError:
                 pass
             mock_session.rollback.assert_called_once()

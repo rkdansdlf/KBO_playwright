@@ -113,7 +113,7 @@ def _default_backup_path() -> Path:
 def _season_filters(seasons: Iterable[int]) -> list:
     filters = []
     for season in sorted(set(seasons)):
-        filters.append(  # noqa: PERF401
+        filters.append(
             and_(
                 Game.game_date >= date(season, 1, 1),
                 Game.game_date <= date(season, 12, 31),

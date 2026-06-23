@@ -38,9 +38,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = run_regression_pack(conn)
 
     if args.json:
-        print(report_to_json(report))  # noqa: T201
+        print(report_to_json(report))
     else:
-        print(render_regression_report(report))  # noqa: T201
+        print(render_regression_report(report))
     return 0 if report.ok else 1
 
 

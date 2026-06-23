@@ -65,9 +65,9 @@ def analyze_roster() -> list[dict[str, Any]]:
         ).scalar()
     result = [{"section": "Roster", "total": _int(total), "recent_30d": _int(recent)}]
     for r in by_action:
-        result.append({"action": r.action, "count": _int(r.cnt)})  # noqa: PERF401
+        result.append({"action": r.action, "count": _int(r.cnt)})
     for r in by_team:
-        result.append({"team": r.team_id, "count": _int(r.cnt), "last": _fmt(r.last_txn)})  # noqa: PERF401
+        result.append({"team": r.team_id, "count": _int(r.cnt), "last": _fmt(r.last_txn)})
     return result
 
 
@@ -86,7 +86,7 @@ def analyze_tickets() -> list[dict[str, Any]]:
         rules = session.execute(text("SELECT COUNT(*) FROM ticket_open_rules")).scalar()
     result = [{"section": "Ticket", "total": _int(total), "open_rules": _int(rules)}]
     for r in by_team:
-        result.append(  # noqa: PERF401
+        result.append(
             {
                 "team": r.team_id,
                 "count": _int(r.cnt),
@@ -111,7 +111,7 @@ def analyze_seats() -> list[dict[str, Any]]:
         ).fetchall()
     result = [{"section": "Seats", "total": _int(total)}]
     for r in by_stadium:
-        result.append({"stadium": r.stadium_id, "sections": _int(r.cnt), "grades": _int(r.grades)})  # noqa: PERF401
+        result.append({"stadium": r.stadium_id, "sections": _int(r.cnt), "grades": _int(r.grades)})
     return result
 
 
@@ -128,7 +128,7 @@ def analyze_parking() -> list[dict[str, Any]]:
         ).fetchall()
     result = [{"section": "Parking", "lots": _int(total), "fee_rules": _int(fees)}]
     for r in by_stadium:
-        result.append({"stadium": r.stadium_id, "lots": _int(r.cnt)})  # noqa: PERF401
+        result.append({"stadium": r.stadium_id, "lots": _int(r.cnt)})
     return result
 
 
@@ -147,7 +147,7 @@ def analyze_food() -> list[dict[str, Any]]:
         ).fetchall()
     result = [{"section": "Food", "vendors": _int(vendors), "menu_items": _int(menus)}]
     for r in by_stadium:
-        result.append(  # noqa: PERF401
+        result.append(
             {
                 "stadium": r.stadium_id,
                 "vendors": _int(r.vendors),

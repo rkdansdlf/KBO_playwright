@@ -611,7 +611,7 @@ def _update_pitcher_basic2_stats(
 def parse_basic2_page(
     page: Page,
     season: int,
-    league: str,  # noqa: ARG001
+    league: str,
     pitchers: dict[int, PitcherStats],
     sort_key: str,
     max_players: int | None = None,
@@ -1077,7 +1077,7 @@ def main() -> None:
             policy.delay()
 
         # 전체 요약
-        logger.info("\n" + "=" * 60)  # noqa: G003
+        logger.info("\n" + "=" * 60)
         logger.info("📈 전체 수집 요약 (%s년)", args.year)
         logger.info("=" * 60)
         total_players = 0

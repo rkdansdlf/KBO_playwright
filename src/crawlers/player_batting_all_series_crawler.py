@@ -1194,7 +1194,7 @@ def main() -> None:
         )
 
         # 전체 요약
-        logger.info("\n" + "=" * 60)  # noqa: G003
+        logger.info("\n" + "=" * 60)
         logger.info("📈 전체 수집 요약 (%s년)", args.year)
         logger.info("=" * 60)
         for series_key, data in all_data.items():

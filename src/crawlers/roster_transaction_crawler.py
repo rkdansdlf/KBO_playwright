@@ -300,7 +300,7 @@ class RosterTransactionCrawler:
         data = await page.evaluate(script)
         transactions = []
         for item in data:
-            transactions.append(  # noqa: PERF401
+            transactions.append(
                 {
                     "transaction_date": roster_date,
                     "team_id": team_code,

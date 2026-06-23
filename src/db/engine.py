@@ -274,7 +274,7 @@ def _migrate_game_table(conn: Connection) -> None:
             created_at,
             updated_at
         FROM game_old;
-        """  # noqa: S608
+        """
     conn.exec_driver_sql(insert_sql)
     conn.exec_driver_sql("DROP TABLE game_old;")
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
@@ -315,7 +315,7 @@ def _migrate_game_summary_table(conn: Connection) -> None:
         INSERT INTO game_summary (id, game_id, summary_type, player_id, player_name, detail_text, created_at, updated_at)
         SELECT id, game_id, {select_summary}, {"player_id" if has_player_id else "NULL"}, player_name, {select_detail}, created_at, updated_at
         FROM game_summary_old;
-        """,  # noqa: S608
+        """,
     )
     conn.exec_driver_sql("DROP TABLE game_summary_old;")
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
@@ -323,23 +323,6 @@ def _migrate_game_summary_table(conn: Connection) -> None:
 
 def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
-    from src.models import (  # noqa: F401
-        award,
-        crawl,
-        embedding_cache,
-        fa_contract,
-        game,
-        matchup,
-        player,
-        rag_chunk,
-        rankings,
-        season,
-        stadium_food,
-        standings,
-        team,
-        team_stats,
-        ticket_schedule,
-    )
     from src.models.base import Base
 
     try:

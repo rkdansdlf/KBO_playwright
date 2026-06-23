@@ -49,7 +49,7 @@ def _sync_batting_and_pitching(sync: OCISync, batting_count: int, pitching_count
 
 
 def _log_sync_completion(total_synced: int, batting_count: int, pitching_count: int) -> None:
-    logger.info("\n" + "=" * 50)  # noqa: G003
+    logger.info("\n" + "=" * 50)
     logger.info("📈 동기화 완료")
     logger.info("=" * 50)
     logger.info("총 동기화된 데이터: %s건", total_synced)
@@ -71,9 +71,9 @@ def main() -> None:
 
     from src.db.engine import SessionLocal
 
-    logger.info("\n" + "🔄" * 30)  # noqa: G003
+    logger.info("\n" + "🔄" * 30)
     logger.info("KBO 데이터 OCI 동기화")
-    logger.info("🔄" * 30 + "\n")  # noqa: G003
+    logger.info("🔄" * 30 + "\n")
 
     from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
