@@ -7,18 +7,20 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, text
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_database_type
 from src.models.player import PlayerSeasonBatting
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 LAST_FILTER_COUNTS: Counter = Counter()

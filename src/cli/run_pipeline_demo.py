@@ -13,8 +13,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func
 
@@ -25,6 +25,9 @@ from src.parsers.game_detail_parser import parse_game_detail_html
 from src.parsers.schedule_parser import parse_schedule_html
 from src.repositories.game_repository import save_game_detail
 from src.services.schedule_collection_service import save_schedule_games
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

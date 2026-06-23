@@ -5,13 +5,16 @@ Repository for RosterTransaction operations.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import inspect, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from ..models.player import PlayerBasic
 from ..models.roster_transaction import RosterTransaction
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class RosterTransactionRepository:

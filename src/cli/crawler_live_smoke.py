@@ -9,15 +9,17 @@ import io
 import json
 import logging
 import os
-from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 logger = logging.getLogger(__name__)
 

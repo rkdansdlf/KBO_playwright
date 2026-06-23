@@ -4,12 +4,14 @@ Parser utilities for retired/inactive player statistics tables.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KBO_FOUNDING_YEAR
 from src.utils.team_codes import resolve_kbo_legacy_team_code
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _clean_header(text: str) -> str:

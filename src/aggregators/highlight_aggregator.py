@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import func
-from sqlalchemy.orm import Session
 
 from src.models.game import GameEvent, GameHighlight
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class HighlightAggregator:

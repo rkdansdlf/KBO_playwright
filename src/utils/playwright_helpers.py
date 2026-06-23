@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from src.utils.playwright_retry import NAV_TIMEOUT
-from src.utils.request_policy import RequestPolicy
+
+if TYPE_CHECKING:
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 

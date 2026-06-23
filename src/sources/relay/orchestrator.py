@@ -8,9 +8,8 @@ try:
     from datetime import UTC
 except ImportError:
     UTC = UTC
-from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .base import (
     CapabilityRecord,
@@ -21,6 +20,9 @@ from .base import (
     upsert_capability_record,
 )
 from .circuit_breaker import SourceCircuitBreaker
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
 
 logger = logging.getLogger(__name__)
 

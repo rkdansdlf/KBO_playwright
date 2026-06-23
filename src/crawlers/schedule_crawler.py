@@ -54,7 +54,7 @@ class ScheduleCrawler:
         self.base_url = SCHEDULE
         self.request_delay = request_delay
         self.pool = pool
-        self.policy = policy or RequestPolicy(min_delay=request_delay)
+        self.policy = policy or RequestPolicy.with_delay(request_delay)
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, key: str) -> str | None:

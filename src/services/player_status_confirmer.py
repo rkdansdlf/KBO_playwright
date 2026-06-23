@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-
-from playwright.async_api import Page
+from typing import TYPE_CHECKING
 
 from src.urls import HITTER_DETAIL
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.status_parser import parse_status_from_text
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page
 
 
 class PlayerStatusConfirmer:

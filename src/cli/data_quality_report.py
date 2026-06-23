@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 
 from src.constants import KST
 
@@ -11,6 +10,7 @@ import csv
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, sessionmaker
@@ -24,6 +24,9 @@ from src.models.player import (
     PlayerSeasonFielding,
     PlayerSeasonPitching,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def _empty_year_data() -> dict:

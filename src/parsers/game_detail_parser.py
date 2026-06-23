@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import re
 from io import StringIO
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from bs4 import BeautifulSoup
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 def parse_game_detail_html(

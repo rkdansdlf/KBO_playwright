@@ -12,11 +12,10 @@ import asyncio
 import logging
 import os
 import time
-from collections.abc import Sequence
 from datetime import datetime
 from http import HTTPStatus
 from threading import Lock, Thread
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -55,6 +54,9 @@ from src.utils.game_state import (
 )
 from src.utils.game_status import GAME_STATUS_LIVE
 from src.utils.refresh_manifest import write_refresh_manifest
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def _has_ending_header(raw_pbp_rows: list[dict[str, Any]]) -> bool:

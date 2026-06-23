@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.constants import DATE_STR_LEN
 from src.utils.game_status import (
@@ -17,6 +16,9 @@ from src.utils.game_status import (
     normalize_game_status,
 )
 from src.utils.team_codes import KBO_GAME_ID_TEAM_CODES, normalize_kbo_game_id
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _GAME_ID_RE = re.compile(r"^(\d{8})([A-Z]+)(\d)$")
 

@@ -15,14 +15,16 @@ by querying the game_events PBP data with game_batting_stats.
 
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from src.db.engine import SessionLocal
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class SituationalSplitCalculator:

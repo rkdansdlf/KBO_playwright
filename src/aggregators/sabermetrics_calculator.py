@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
 
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class SabermetricsCalculator:

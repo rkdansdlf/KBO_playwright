@@ -45,7 +45,7 @@ def validate_game_data(game_data: dict[str, Any]) -> tuple[bool, list[str], list
         if code and code not in STANDARD_TEAM_CODES:
             # Check if it's a known international code (warnings only)
             # For now, following user request to enforce standard 10
-            errors.append(f"Invalid {side} team code: '{code}'. Must be one of {sorted(list(STANDARD_TEAM_CODES))}")
+            errors.append(f"Invalid {side} team code: '{code}'. Must be one of {sorted(STANDARD_TEAM_CODES)}")
 
     hitters = game_data.get("hitters") or {}
     pitchers = game_data.get("pitchers") or {}

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def run_seat(*, dry_run: bool = False) -> None:

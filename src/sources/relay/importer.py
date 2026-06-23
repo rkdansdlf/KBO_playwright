@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
 from html import unescape
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.crawlers.relay_crawler import RelayCrawler
 
@@ -17,6 +16,9 @@ from .base import (
     normalize_inning_half,
     normalize_pbp_row,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 class ImportRelayAdapter(RelaySourceAdapter):

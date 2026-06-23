@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.monitoring.crawler_selector_gate import load_selector_config, render_selector_summary, run_selector_gate
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def main(argv: Sequence[str] | None = None) -> int:

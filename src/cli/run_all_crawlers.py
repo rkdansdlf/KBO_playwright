@@ -12,12 +12,11 @@ import sys
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.cli.verify_sync_consistency import run_consistency_audit
 
@@ -31,6 +30,9 @@ from src.parsers.text_transformer import TextTransformer
 from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.services.embedding_service import EmbeddingService
 from src.utils.alerting import SlackWebhookClient
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 load_dotenv()
 

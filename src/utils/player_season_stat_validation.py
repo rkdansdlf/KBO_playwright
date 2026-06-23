@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.utils.player_validation import normalize_player_id, normalize_player_name, validate_player_payload
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
 
 BATTING_CORE_STATS = ("games", "plate_appearances", "at_bats", "hits")
 PITCHING_CORE_STATS = ("games", "innings_pitched", "innings_outs")

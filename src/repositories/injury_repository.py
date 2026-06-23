@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from datetime import date
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from ..models.injury import InjuryEntry
+
+if TYPE_CHECKING:
+    from datetime import date
+
+    from sqlalchemy.orm import Session
 
 
 class InjuryRepository:

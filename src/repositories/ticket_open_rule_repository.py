@@ -4,10 +4,14 @@ Repository for TicketOpenRule operations.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from ..models.ticket_open_rule import TicketOpenRule
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class TicketOpenRuleRepository:

@@ -14,9 +14,8 @@ import asyncio
 import json
 import logging
 from collections import Counter
-from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
@@ -35,6 +34,9 @@ from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.lock import ProcessLock
 from src.utils.player_validation import normalize_player_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

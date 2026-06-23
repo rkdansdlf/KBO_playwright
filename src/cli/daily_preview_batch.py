@@ -9,8 +9,8 @@ import argparse
 import asyncio
 import logging
 import os
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -22,6 +22,9 @@ from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.team_codes import resolve_team_code
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

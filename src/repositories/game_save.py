@@ -6,11 +6,11 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, KST
 from src.db.engine import SessionLocal
@@ -54,6 +54,7 @@ from src.repositories.game_helpers import (
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.utils.game_status import (
     GAME_STATUS_SCHEDULED,
+    GameStatusEvidence,
     derive_stable_game_status,
     is_live_status,
     is_terminal_status,
@@ -61,9 +62,20 @@ from src.utils.game_status import (
 )
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
 logger = logging.getLogger(__name__)
 
 GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, ValueError, TypeError, OSError)
+
+
+@dataclass(frozen=True)
+class DetailSaveContext:
+    game_id: str
+    game_date: date
+    source: GameWriteSource
+    write_contract: GameWriteContract | None
 
 
 def get_games_by_date(target_date: str) -> list[Game]:
@@ -217,11 +229,13 @@ def save_schedule_game(
 
             # Schedule crawl should keep already finalized statuses intact.
             new_status = derive_stable_game_status(
-                game_date=game_date,
-                current_status=game.game_status,
-                new_status=game_data.get("game_status"),
-                home_score=game.home_score,
-                away_score=game.away_score,
+                GameStatusEvidence(
+                    game_date=game_date,
+                    current_status=game.game_status,
+                    new_status=game_data.get("game_status"),
+                    home_score=game.home_score,
+                    away_score=game.away_score,
+                )
             )
             changed |= _assign_field_if_changed(
                 game,
@@ -278,17 +292,14 @@ def _get_or_create_game(
 
 def _update_detail_core_fields(
     game: Game,
-    game_id: str,
-    game_date: date,
+    ctx: DetailSaveContext,
     metadata: dict[str, Any],
     home_info: dict[str, Any],
     away_info: dict[str, Any],
-    source: GameWriteSource,
-    write_contract: GameWriteContract | None,
 ) -> bool:
     changed = False
     for field_name, value, allow_empty in (
-        ("game_date", game_date, False),
+        ("game_date", ctx.game_date, False),
         ("stadium", metadata.get("stadium"), False),
         ("home_team", home_info.get("code"), False),
         ("away_team", away_info.get("code"), False),
@@ -299,9 +310,9 @@ def _update_detail_core_fields(
             game,
             field_name,
             value,
-            game_id=game_id,
-            source=source,
-            write_contract=write_contract,
+            game_id=ctx.game_id,
+            source=ctx.source,
+            write_contract=ctx.write_contract,
             allow_empty=allow_empty,
         )
     return changed
@@ -309,37 +320,34 @@ def _update_detail_core_fields(
 
 def _update_detail_status(
     game: Game,
-    game_id: str,
-    game_date: date,
+    ctx: DetailSaveContext,
     teams: dict[str, Any],
     explicit_status: str | None,
-    source: GameWriteSource,
-    write_contract: GameWriteContract | None,
 ) -> tuple[bool, list[dict[str, Any]], str | None]:
-    inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
+    inning_rows = _build_inning_scores(ctx.game_id, teams, season_year=ctx.game_date.year)
     has_progress = bool(inning_rows) or game.home_score is not None or game.away_score is not None
     new_status = derive_stable_game_status(
-        game_date=game_date,
-        current_status=game.game_status,
-        new_status=explicit_status,
-        home_score=game.home_score,
-        away_score=game.away_score,
-        has_progress_evidence=has_progress,
+        GameStatusEvidence(
+            game_date=ctx.game_date,
+            current_status=game.game_status,
+            new_status=explicit_status,
+            home_score=game.home_score,
+            away_score=game.away_score,
+            has_progress_evidence=has_progress,
+        )
     )
     changed = _assign_field_if_changed(
-        game, "game_status", new_status, game_id=game_id, source=source, write_contract=write_contract
+        game, "game_status", new_status, game_id=ctx.game_id, source=ctx.source, write_contract=ctx.write_contract
     )
     return changed, inning_rows, new_status
 
 
 def _update_detail_winner(
     game: Game,
-    game_id: str,
+    ctx: DetailSaveContext,
     home_info: dict[str, Any],
     away_info: dict[str, Any],
     new_status: str | None,
-    source: GameWriteSource,
-    write_contract: GameWriteContract | None,
 ) -> bool:
     if game.home_score is None or game.away_score is None or not is_terminal_status(new_status):
         return False
@@ -348,18 +356,18 @@ def _update_detail_winner(
         game,
         "winning_team",
         winning_team,
-        game_id=game_id,
-        source=source,
-        write_contract=write_contract,
+        game_id=ctx.game_id,
+        source=ctx.source,
+        write_contract=ctx.write_contract,
         allow_empty=True,
     )
     changed |= _assign_field_if_changed(
         game,
         "winning_score",
         winning_score,
-        game_id=game_id,
-        source=source,
-        write_contract=write_contract,
+        game_id=ctx.game_id,
+        source=ctx.source,
+        write_contract=ctx.write_contract,
         allow_empty=True,
     )
     return changed
@@ -389,32 +397,31 @@ def _update_starting_pitchers(
 
 def _update_detail_children(
     session: Session,
-    game_id: str,
-    game_date: date,
+    ctx: DetailSaveContext,
     hitters: dict[str, list[dict[str, Any]]],
     pitchers: dict[str, list[dict[str, Any]]],
     inning_rows: list[dict[str, Any]],
-    source: GameWriteSource,
-    write_contract: GameWriteContract | None,
 ) -> bool:
     changed = False
     if inning_rows:
         changed |= _replace_records(
-            session, GameInningScore, game_id, inning_rows, source=source, write_contract=write_contract
+            session, GameInningScore, ctx.game_id, inning_rows, source=ctx.source, write_contract=ctx.write_contract
         )
     lineup_rows = _prepare_player_rows(
-        game_id, "game_lineups", _build_lineups(game_id, hitters, season_year=game_date.year)
+        ctx.game_id, "game_lineups", _build_lineups(ctx.game_id, hitters, season_year=ctx.game_date.year)
     )
     batting_rows = _prepare_player_rows(
-        game_id, "game_batting_stats", _build_batting_stats(game_id, hitters, season_year=game_date.year)
+        ctx.game_id, "game_batting_stats", _build_batting_stats(ctx.game_id, hitters, season_year=ctx.game_date.year)
     )
     pitching_rows = _prepare_player_rows(
-        game_id, "game_pitching_stats", _build_pitching_stats(game_id, pitchers, season_year=game_date.year)
+        ctx.game_id, "game_pitching_stats", _build_pitching_stats(ctx.game_id, pitchers, season_year=ctx.game_date.year)
     )
     changed |= _ensure_player_basic_stubs(session, [*lineup_rows, *batting_rows, *pitching_rows])
     for model, rows in ((GameLineup, lineup_rows), (GameBattingStat, batting_rows), (GamePitchingStat, pitching_rows)):
         if rows:
-            changed |= _replace_records(session, model, game_id, rows, source=source, write_contract=write_contract)
+            changed |= _replace_records(
+                session, model, ctx.game_id, rows, source=ctx.source, write_contract=ctx.write_contract
+            )
     return changed
 
 
@@ -517,6 +524,7 @@ def save_game_detail(
     with SessionLocal() as session:
         try:
             game, changed = _get_or_create_game(session, game_id, game_date, source, write_contract)
+            detail_ctx = DetailSaveContext(game_id, game_date, source, write_contract)
             _record_game_id_alias(
                 session,
                 original_game_id,
@@ -527,32 +535,24 @@ def save_game_detail(
 
             changed |= _update_detail_core_fields(
                 game,
-                game_id=game_id,
-                game_date=game_date,
+                detail_ctx,
                 metadata=metadata,
                 home_info=home_info,
                 away_info=away_info,
-                source=source,
-                write_contract=write_contract,
             )
             status_changed, inning_rows, new_status = _update_detail_status(
                 game,
-                game_id,
-                game_date,
+                detail_ctx,
                 teams,
                 explicit_status,
-                source,
-                write_contract,
             )
             changed |= status_changed
             changed |= _update_detail_winner(
                 game,
-                game_id=game_id,
+                detail_ctx,
                 home_info=home_info,
                 away_info=away_info,
                 new_status=new_status,
-                source=source,
-                write_contract=write_contract,
             )
             changed |= _update_starting_pitchers(game, game_id, pitchers, source, write_contract)
 
@@ -582,13 +582,10 @@ def save_game_detail(
             )
             changed |= _update_detail_children(
                 session,
-                game_id,
-                game_date,
+                detail_ctx,
                 hitters,
                 pitchers,
                 inning_rows,
-                source,
-                write_contract,
             )
 
             summary_rows = _build_summary_rows(
@@ -733,12 +730,14 @@ def _apply_snapshot_status_and_winner(
 ) -> None:
     has_progress = has_inning_rows or game.home_score is not None or game.away_score is not None
     stable_status = derive_stable_game_status(
-        game_date=game_date,
-        current_status=game.game_status,
-        new_status=status,
-        home_score=game.home_score,
-        away_score=game.away_score,
-        has_progress_evidence=has_progress,
+        GameStatusEvidence(
+            game_date=game_date,
+            current_status=game.game_status,
+            new_status=status,
+            home_score=game.home_score,
+            away_score=game.away_score,
+            has_progress_evidence=has_progress,
+        )
     )
     game.game_status = stable_status
 

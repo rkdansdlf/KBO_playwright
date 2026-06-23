@@ -8,15 +8,19 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
-from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
 from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from sqlalchemy.engine import Connection
 
 logger = logging.getLogger(__name__)
 

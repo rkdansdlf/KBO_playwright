@@ -46,26 +46,9 @@ def _populate_audit_cache():
     logger.info("Initializing global audit cache (single-scan table query)...")
     t0 = time.time()
     with SessionLocal() as session:
-        # 1. Total games count per year
-        games_data = session.execute(
-            text("""
-            SELECT SUBSTR(g.game_id, 1, 4) as season_year, COUNT(DISTINCT g.game_id)
-            FROM game g
-            WHERE g.game_status IN ('COMPLETED', 'DRAW', 'FINAL')
-            GROUP BY SUBSTR(g.game_id, 1, 4)
-            """)
-        ).fetchall()
-        total_games_map = {int(r.season_year): r[1] for r in games_data if r.season_year and r.season_year.isdigit()}
-
-        # 2. Total batting rows count per year
-        rows_data = session.execute(
-            text("""
-            SELECT SUBSTR(gs.game_id, 1, 4) as season_year, COUNT(*)
-            FROM game_batting_stats gs
-            GROUP BY SUBSTR(gs.game_id, 1, 4)
-            """)
-        ).fetchall()
-        total_rows_map = {int(r.season_year): r[1] for r in rows_data if r.season_year and r.season_year.isdigit()}
+        # Bypass auxiliary statistics querying to avoid DB scan overload on OCI PostgreSQL
+        total_games_map = {}
+        total_rows_map = {}
 
         # 3. All violation rows across all seasons
         violations = session.execute(

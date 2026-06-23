@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
@@ -16,6 +16,9 @@ from src.services.postgame_reconciliation_service import (
     reconcile_postgame_range,
     write_reconciliation_csv,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

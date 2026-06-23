@@ -295,11 +295,11 @@ def _build_stability_summary(
         "detail_recovery": {
             "passes": int(detail_recovery_passes),
             "recovered_after_retry": int(detail_recovered_after_retry),
-            "still_missing_count": len(set(str(game_id) for game_id in detail_still_missing)),
-            "still_missing": sorted(set(str(game_id) for game_id in detail_still_missing)),
+            "still_missing_count": len({str(game_id) for game_id in detail_still_missing}),
+            "still_missing": sorted({str(game_id) for game_id in detail_still_missing}),
             "attempts_by_game": {str(game_id): int(attempts) for game_id, attempts in detail_recovery_attempts.items()},
             "escalation_threshold": DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD,
-            "escalation_game_ids": sorted(set(str(game_id) for game_id in detail_recovery_escalation_game_ids)),
+            "escalation_game_ids": sorted({str(game_id) for game_id in detail_recovery_escalation_game_ids}),
         },
         "affected_game_ids": affected_game_ids,
     }

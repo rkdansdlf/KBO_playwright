@@ -5,11 +5,14 @@ Repository for TeamEvent operations.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
 
 from ..models.team_event import TeamEvent
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class TeamEventRepository:

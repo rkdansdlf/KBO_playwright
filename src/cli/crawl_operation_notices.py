@@ -16,12 +16,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.crawlers.operation_notice_doosan_crawler import OperationNoticeDoosanCrawler
 from src.crawlers.operation_notice_lg_crawler import OperationNoticeLGCrawler
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

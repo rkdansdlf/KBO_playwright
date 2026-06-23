@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from ..models.foreign_player import ForeignPlayerChange
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class ForeignPlayerRepository:

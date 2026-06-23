@@ -194,6 +194,10 @@ jobs:
             --date ${{ needs.finalize.outputs.date }} \
             --force-notify
 
+      - name: Quality Dashboard
+        run: |
+          python3 -m src.cli.quality_dashboard --limit 14 --json
+
       - name: Trend Tracker Check
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}

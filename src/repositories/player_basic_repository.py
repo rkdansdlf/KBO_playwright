@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 from sqlalchemy import case
@@ -15,11 +15,13 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.db.engine import Engine, SessionLocal
 from src.models.player import PlayerBasic
 from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class PlayerBasicRepository:

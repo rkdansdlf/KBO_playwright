@@ -11,7 +11,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
@@ -20,7 +20,6 @@ from src.constants import DATE_STR_LEN, GAME_ID_YEAR_LEN, KST
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
 from src.utils.compliance import compliance
-from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.relay_text import (
     advance_pitch_count,
     detect_relay_event_type,
@@ -29,6 +28,9 @@ from src.utils.relay_text import (
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import normalize_kbo_game_id
 from src.utils.type_helpers import to_int
+
+if TYPE_CHECKING:
+    from src.utils.playwright_pool import AsyncPlaywrightPool
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,7 @@ class RelayCrawler:
         }
         self.schedule_api_base_url = "https://api-gw.sports.naver.com/schedule/today-games"
         self.last_resolved_naver_game_id: str | None = None
-        self.policy = policy or RequestPolicy(min_delay=request_delay)
+        self.policy = policy or RequestPolicy.with_delay(request_delay)
         self._last_failure_reason: dict[str, str] = {}
         self.last_failure_reason: str | None = None
         self._last_fetch_failure_reason: str | None = None

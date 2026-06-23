@@ -7,36 +7,46 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
-from types import TracebackType
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 from playwright.async_api import Error as PlaywrightError
 
 from src.utils.playwright_blocking import install_async_resource_blocking
 
+if TYPE_CHECKING:
+    from types import TracebackType
+
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class AsyncPlaywrightPoolOptions:
+    max_pages: int = 1
+    headless: bool = True
+    browser_type: str = "chromium"
+    context_kwargs: dict[str, Any] | None = None
+    block_resources: bool = True
+    timeout_ms: int | None = None
+    requires_auth: bool = False
+
+
 class AsyncPlaywrightPool:
-    def __init__(
-        self,
-        *,
-        max_pages: int = 1,
-        headless: bool = True,
-        browser_type: str = "chromium",
-        context_kwargs: dict[str, Any] | None = None,
-        block_resources: bool = True,
-        timeout_ms: int | None = None,
-        requires_auth: bool = False,
-    ) -> None:
-        self.max_pages = max_pages
-        self.headless = headless
-        self.browser_type = browser_type
-        self.context_kwargs = context_kwargs or {}
-        self.block_resources = block_resources
-        self.timeout_ms = timeout_ms
-        self.requires_auth = requires_auth
+    def __init__(self, options: AsyncPlaywrightPoolOptions | None = None, **overrides: object) -> None:
+        if options is None:
+            options = AsyncPlaywrightPoolOptions(**overrides)
+        elif overrides:
+            msg = "Pass either AsyncPlaywrightPoolOptions or keyword options, not both"
+            raise TypeError(msg)
+
+        self.max_pages = options.max_pages
+        self.headless = options.headless
+        self.browser_type = options.browser_type
+        self.context_kwargs = options.context_kwargs or {}
+        self.block_resources = options.block_resources
+        self.timeout_ms = options.timeout_ms
+        self.requires_auth = options.requires_auth
 
         self._playwright = None
         self._browser: Browser | None = None

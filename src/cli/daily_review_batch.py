@@ -10,12 +10,10 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import KST
 from src.db.engine import SessionLocal
@@ -26,6 +24,11 @@ from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.team_codes import team_code_from_game_id_segment
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

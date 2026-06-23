@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
-from sqlalchemy.sql.elements import ColumnElement
 
 from src.models.game import Game
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+if TYPE_CHECKING:
+    from datetime import date
+
+    from sqlalchemy.orm import Session
+    from sqlalchemy.sql.elements import ColumnElement
 
 REGULAR_SEASON_NAMES = ("정규시즌", "Regular Season", "regular")
 STANDINGS_FIELDS = (

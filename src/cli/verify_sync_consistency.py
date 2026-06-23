@@ -10,13 +10,11 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
 from sqlalchemy import inspect, text
-from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
 # Add project root to sys.path
@@ -24,6 +22,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.db.engine import create_engine_for_url, get_oci_url, get_source_db_url
 from src.utils.alerting import SlackWebhookClient
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.engine import Connection
 
 load_dotenv()
 

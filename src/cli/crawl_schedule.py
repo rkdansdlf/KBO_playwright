@@ -9,14 +9,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from dateutil.relativedelta import relativedelta
 
 from src.constants import KST
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.services.schedule_collection_service import save_schedule_games
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

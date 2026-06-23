@@ -8,15 +8,13 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import DATE_STR_LEN
 from src.models.broadcast import GameBroadcast
@@ -39,6 +37,11 @@ from src.utils.game_status import (
     GAME_STATUS_SCHEDULED,
     is_live_status,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")

@@ -4,15 +4,13 @@ import argparse
 import csv
 import logging
 import os
-from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from src.constants import KST
 from src.db.engine import SessionLocal
@@ -25,6 +23,11 @@ from src.utils.relay_text import (
     is_relay_noise_text,
     is_relay_result_event_text,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

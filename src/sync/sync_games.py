@@ -165,18 +165,22 @@ class GameSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_player_game_batting(self, limit: int | None = None) -> int:  # noqa: ARG002
+    def sync_player_game_batting(self, year: int | None = None, limit: int | None = None) -> int:  # noqa: ARG002
         """Sync player game batting stats from SQLite to OCI"""
+        filters = [PlayerGameBatting.game_id.like(f"{year}%")] if year else None
         return self.sync_simple_table(
             PlayerGameBatting,
             ["game_id", "player_id"],
+            filters=filters,
         )
 
-    def sync_player_game_pitching(self, limit: int | None = None) -> int:  # noqa: ARG002
+    def sync_player_game_pitching(self, year: int | None = None, limit: int | None = None) -> int:  # noqa: ARG002
         """Sync player game pitching stats from SQLite to OCI"""
+        filters = [PlayerGamePitching.game_id.like(f"{year}%")] if year else None
         return self.sync_simple_table(
             PlayerGamePitching,
             ["game_id", "player_id"],
+            filters=filters,
         )
 
     def sync_all_game_data(self, limit: int | None = None) -> dict[str, int]:
@@ -230,7 +234,7 @@ class GameSyncMixin:
         *,
         label: str,
     ) -> None:
-        target_game_ids = sorted(set(game_id for game_id in game_ids if game_id))
+        target_game_ids = sorted({game_id for game_id in game_ids if game_id})
         if not target_game_ids:
             return
 

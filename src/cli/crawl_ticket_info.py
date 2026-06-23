@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from src.crawlers.ticket_crawler import TicketCrawler
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 async def run(args: argparse.Namespace) -> None:

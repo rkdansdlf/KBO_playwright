@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Integer, case, func, or_
-from sqlalchemy.orm import Session
 
 from src.models.game import Game, GameBattingStat, GameEvent, GameLineup, GamePitchingStat
 from src.models.player import PlayerBasic
 from src.models.season import KboSeason
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
