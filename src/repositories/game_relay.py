@@ -114,49 +114,40 @@ def _relay_player_resolution_context(
 def _upsert_validation_metrics(
     session: Session,
     game_id: str,
-    *,
-    validation_status: str,
-    source_name: str | None = None,
-    error_reason: str | None = None,
-    events: list[dict[str, Any]] | None = None,
-    raw_pbp_rows: list[dict[str, Any]] | None = None,
-    parser_version: str | None = None,
-    source_schema_version: str | None = None,
-    payload_hash: str | None = None,
-    evidence: dict[str, Any] | None = None,
+    data: ValidationMetricsData,
 ) -> GameValidationMetrics:
     from src.utils.relay_validation import VALIDATION_RECOVERED, VALIDATION_VERIFIED
 
-    events = list(events or [])
-    raw_pbp_rows = list(raw_pbp_rows or [])
+    events_list = list(data.events or [])
+    pbp_list = list(data.raw_pbp_rows or [])
     metrics = session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
     if metrics is None:
-        metrics = GameValidationMetrics(game_id=game_id, validation_status=validation_status)
+        metrics = GameValidationMetrics(game_id=game_id, validation_status=data.validation_status)
         session.add(metrics)
-    elif metrics.validation_status != validation_status:
+    elif metrics.validation_status != data.validation_status:
         metrics.previous_status = metrics.validation_status
-        metrics.validation_status = validation_status
+        metrics.validation_status = data.validation_status
 
-    metrics.source_used = (source_name or metrics.source_used or "unknown")[:16]
-    metrics.parser_version = parser_version or metrics.parser_version
-    metrics.source_schema_version = source_schema_version or metrics.source_schema_version
-    metrics.payload_hash = payload_hash or metrics.payload_hash
-    metrics.duplicate_event_count = _duplicate_provider_count(events, raw_pbp_rows)
+    metrics.source_used = (data.source_name or metrics.source_used or "unknown")[:16]
+    metrics.parser_version = data.parser_version or metrics.parser_version
+    metrics.source_schema_version = data.source_schema_version or metrics.source_schema_version
+    metrics.payload_hash = data.payload_hash or metrics.payload_hash
+    metrics.duplicate_event_count = _duplicate_provider_count(events_list, pbp_list)
     metrics.unclassified_event_count = sum(
         1
-        for row in [*events, *raw_pbp_rows]
+        for row in [*events_list, *pbp_list]
         if str(row.get("event_type") or "").strip().lower() in {"unknown", "unclassified", "other"}
     )
-    if error_reason and ("score_mismatch" in error_reason or "inning_score_mismatch" in error_reason):
+    if data.error_reason and ("score_mismatch" in data.error_reason or "inning_score_mismatch" in data.error_reason):
         metrics.finish_mismatch_count = (metrics.finish_mismatch_count or 0) + 1
-    if validation_status in {VALIDATION_VERIFIED, VALIDATION_RECOVERED} and (events or raw_pbp_rows):
+    if data.validation_status in {VALIDATION_VERIFIED, VALIDATION_RECOVERED} and (events_list or pbp_list):
         metrics.last_successful_event_at = datetime.now(KST)
-    if error_reason:
-        metrics.fallback_trigger_reason = str(error_reason)[:64]
-    if evidence:
+    if data.error_reason:
+        metrics.fallback_trigger_reason = str(data.error_reason)[:64]
+    if data.evidence:
         existing = metrics.evidence_json if isinstance(metrics.evidence_json, dict) else {}
         merged = dict(existing)
-        merged.update(evidence)
+        merged.update(data.evidence)
         metrics.evidence_json = merged
     return metrics
 
@@ -319,10 +310,12 @@ def mark_relay_source_unavailable(
             _upsert_validation_metrics(
                 session,
                 game_id,
-                validation_status=VALIDATION_SOURCE_UNAVAILABLE,
-                source_name=source_name,
-                error_reason=reason,
-                evidence=evidence or {"reason": reason},
+                ValidationMetricsData(
+                    validation_status=VALIDATION_SOURCE_UNAVAILABLE,
+                    source_name=source_name,
+                    error_reason=reason,
+                    evidence=evidence or {"reason": reason},
+                ),
             )
             session.commit()
         except SQLAlchemyError:
@@ -509,6 +502,57 @@ class _RelayResolutionContext:
         return _coerce_player_id(pid), "resolved", f"name_match_{team_code}_{self.season_year}"
 
 
+@dataclass
+class ValidationMetricsData:
+    validation_status: str
+    source_name: str | None = None
+    error_reason: str | None = None
+    events: list[dict[str, Any]] | None = None
+    raw_pbp_rows: list[dict[str, Any]] | None = None
+    parser_version: str | None = None
+    source_schema_version: str | None = None
+    payload_hash: str | None = None
+    evidence: dict[str, Any] | None = None
+    notes: str | None = None
+    valid_event_rows: list[dict[str, Any]] | None = None
+    live_warnings: list[Any] | None = None
+
+
+@dataclass
+class RelayValidationInput:
+    events: list[dict[str, Any]] | None = None
+    raw_pbp_rows: list[dict[str, Any]] | None = None
+    valid_event_rows: list[dict[str, Any]] | None = None
+
+
+@dataclass
+class PlayerResolutionContext:
+    batter_name: str | None = None
+    resolved_batter_name: str | None = None
+    batter_team: str | None = None
+    batter_confidence: str | None = None
+    batter_reason: str | None = None
+    pitcher_name: str | None = None
+    pitcher_team: str | None = None
+    pitcher_confidence: str | None = None
+    pitcher_reason: str | None = None
+
+
+@dataclass
+class RelaySaveOptions:
+    source_name: str | None = None
+    notes: str | None = None
+    allow_derived_pbp: bool = True
+    write_contract: GameWriteContract | None = None
+    source_stage: str = "relay"
+    source_crawler: str = "RelayCrawler"
+    source_reason: str = "relay_recovery"
+    parser_version: str | None = None
+    source_schema_version: str | None = None
+    payload_hash: str | None = None
+    game_lifecycle_state: str | None = None
+
+
 def _prepare_relay_payloads(
     events: list[dict[str, Any]] | None,
     raw_pbp_rows: list[dict[str, Any]] | None,
@@ -528,9 +572,7 @@ def _prepare_relay_payloads(
 def _resolve_relay_validation(
     session: Session,
     game_id: str,
-    events: list[dict[str, Any]],
-    raw_pbp_rows: list[dict[str, Any]],
-    valid_event_rows: list[dict[str, Any]],
+    input_data: RelayValidationInput,
     game_row: Game | None,
     game_lifecycle_state: str | None,
 ) -> _RelayValidationResult:
@@ -546,18 +588,18 @@ def _resolve_relay_validation(
         validate_pbp_payload,
     )
 
-    live_warnings = validate_live_events(events)
+    live_warnings = validate_live_events(input_data.events)
     game_status = str(getattr(game_row, "game_status", "") or "").upper()
     is_terminal_game = bool(
         game_lifecycle_state in ("final", "result_pending_stabilization", "cancelled")
         or game_status in COMPLETED_LIKE_GAME_STATUSES,
     )
-    if raw_pbp_rows and not valid_event_rows and is_terminal_game:
+    if input_data.raw_pbp_rows and not input_data.valid_event_rows and is_terminal_game:
         return _RelayValidationResult(VALIDATION_SOURCE_INCOMPLETE, "raw_pbp_without_valid_event_state", live_warnings)
     if is_terminal_game:
-        is_valid, error_reason = validate_pbp_payload(session, game_id, events, raw_pbp_rows)
+        is_valid, error_reason = validate_pbp_payload(session, game_id, input_data.events, input_data.raw_pbp_rows)
         if is_valid:
-            score_match, score_err = cross_validate_with_box_score(session, game_id, events)
+            score_match, score_err = cross_validate_with_box_score(session, game_id, input_data.events)
             is_valid = score_match
             if not score_match:
                 error_reason = score_err
@@ -566,7 +608,7 @@ def _resolve_relay_validation(
 
     if live_warnings:
         status = VALIDATION_PENDING_LIVE
-    elif events:
+    elif input_data.events:
         status = VALIDATION_PROVISIONALLY_VALID
     else:
         status = VALIDATION_PENDING_LIVE
@@ -577,15 +619,7 @@ def _upsert_relay_validation_metadata(
     session: Session,
     game_id: str,
     validation: _RelayValidationResult,
-    *,
-    source_name: str | None,
-    notes: str | None,
-    events: list[dict[str, Any]],
-    raw_pbp_rows: list[dict[str, Any]],
-    valid_event_rows: list[dict[str, Any]],
-    parser_version: str | None,
-    source_schema_version: str | None,
-    payload_hash: str | None,
+    data: ValidationMetricsData,
 ) -> None:
     from src.repositories.game_helpers import _upsert_metadata
     from src.utils.relay_validation import VALIDATION_PENDING_LIVE, VALIDATION_UNVERIFIED
@@ -594,34 +628,35 @@ def _upsert_relay_validation_metadata(
         "pbp_validation_status": validation.status,
         "pbp_validation_error": validation.error_reason or "none",
     }
-    if parser_version:
-        metadata_payload["parser_version"] = parser_version
-    if source_schema_version:
-        metadata_payload["source_schema_version"] = source_schema_version
-    if payload_hash:
-        metadata_payload["payload_hash"] = payload_hash
+    if data.parser_version:
+        metadata_payload["parser_version"] = data.parser_version
+    if data.source_schema_version:
+        metadata_payload["source_schema_version"] = data.source_schema_version
+    if data.payload_hash:
+        metadata_payload["payload_hash"] = data.payload_hash
     if validation.status in (VALIDATION_UNVERIFIED, VALIDATION_PENDING_LIVE) and validation.error_reason:
         logger.info("[PBP VALIDATION] Game %s status=%s reason=%s", game_id, validation.status, validation.error_reason)
 
     _upsert_metadata(session, game_id, metadata_payload)
-    _upsert_validation_metrics(
-        session,
-        game_id,
+
+    evidence: dict[str, Any] = {
+        "notes": data.notes,
+        "live_warnings": validation.live_warnings,
+        "valid_event_rows": len(data.valid_event_rows or []),
+        "raw_pbp_rows": len(data.raw_pbp_rows or []),
+    }
+    update_data = ValidationMetricsData(
         validation_status=validation.status,
-        source_name=source_name,
+        source_name=data.source_name,
         error_reason=validation.error_reason,
-        events=events,
-        raw_pbp_rows=raw_pbp_rows,
-        parser_version=parser_version,
-        source_schema_version=source_schema_version,
-        payload_hash=payload_hash,
-        evidence={
-            "notes": notes,
-            "live_warnings": validation.live_warnings,
-            "valid_event_rows": len(valid_event_rows),
-            "raw_pbp_rows": len(raw_pbp_rows),
-        },
+        events=data.events,
+        raw_pbp_rows=data.raw_pbp_rows,
+        parser_version=data.parser_version,
+        source_schema_version=data.source_schema_version,
+        payload_hash=data.payload_hash,
+        evidence=evidence,
     )
+    _upsert_validation_metrics(session, game_id, update_data)
 
 
 def _apply_relay_lifecycle_state(game_row: Game | None, game_id: str, game_lifecycle_state: str | None) -> None:
@@ -752,31 +787,22 @@ def _resolve_event_batter(
 
 
 def _build_player_resolution_payload(
-    *,
-    batter_name: str | None,
-    resolved_batter_name: str | None,
-    batter_team: str | None,
-    batter_confidence: str | None,
-    batter_reason: str | None,
-    pitcher_name: str | None,
-    pitcher_team: str | None,
-    pitcher_confidence: str | None,
-    pitcher_reason: str | None,
+    ctx: PlayerResolutionContext,
 ) -> dict[str, Any]:
     resolver_payload: dict[str, Any] = {}
-    if batter_name and (resolved_batter_name or batter_team or batter_confidence or batter_reason):
+    if ctx.batter_name and (ctx.resolved_batter_name or ctx.batter_team or ctx.batter_confidence or ctx.batter_reason):
         resolver_payload["batter"] = {
-            "name": resolved_batter_name,
-            "team_code": batter_team,
-            "confidence": batter_confidence,
-            "reason": batter_reason,
+            "name": ctx.resolved_batter_name,
+            "team_code": ctx.batter_team,
+            "confidence": ctx.batter_confidence,
+            "reason": ctx.batter_reason,
         }
-    if pitcher_name and (pitcher_team or pitcher_confidence or pitcher_reason):
+    if ctx.pitcher_name and (ctx.pitcher_team or ctx.pitcher_confidence or ctx.pitcher_reason):
         resolver_payload["pitcher"] = {
-            "name": pitcher_name,
-            "team_code": pitcher_team,
-            "confidence": pitcher_confidence,
-            "reason": pitcher_reason,
+            "name": ctx.pitcher_name,
+            "team_code": ctx.pitcher_team,
+            "confidence": ctx.pitcher_confidence,
+            "reason": ctx.pitcher_reason,
         }
     return resolver_payload
 
@@ -812,15 +838,17 @@ def _build_relay_event_rows(
             is_pitcher=True,
         )
         resolver_payload = _build_player_resolution_payload(
-            batter_name=batter_name,
-            resolved_batter_name=resolved_batter_name,
-            batter_team=batter_team,
-            batter_confidence=batter_confidence,
-            batter_reason=batter_reason,
-            pitcher_name=pitcher_name,
-            pitcher_team=pitcher_team,
-            pitcher_confidence=pitcher_confidence,
-            pitcher_reason=pitcher_reason,
+            PlayerResolutionContext(
+                batter_name=batter_name,
+                resolved_batter_name=resolved_batter_name,
+                batter_team=batter_team,
+                batter_confidence=batter_confidence,
+                batter_reason=batter_reason,
+                pitcher_name=pitcher_name,
+                pitcher_team=pitcher_team,
+                pitcher_confidence=pitcher_confidence,
+                pitcher_reason=pitcher_reason,
+            ),
         )
         if resolver_payload:
             extra_json.setdefault("player_resolution", resolver_payload)
@@ -913,17 +941,8 @@ def save_relay_data(
     events: list[dict[str, Any]] | None = None,
     raw_pbp_rows: list[dict[str, Any]] | None = None,
     *,
-    source_name: str | None = None,
-    notes: str | None = None,
-    allow_derived_pbp: bool = True,  # noqa: ARG001
-    write_contract: GameWriteContract | None = None,
-    source_stage: str = "relay",
-    source_crawler: str = "RelayCrawler",
-    source_reason: str = "relay_recovery",
-    parser_version: str | None = None,
-    source_schema_version: str | None = None,
-    payload_hash: str | None = None,
-    game_lifecycle_state: str | None = None,
+    options: RelaySaveOptions | None = None,
+    **overrides: object,
 ) -> int:
     """
     Persist normalized relay data.
@@ -933,12 +952,13 @@ def save_relay_data(
     - When only lightweight play-by-play rows exist, persist game_play_by_play only.
     - Never synthesize game_events if WPA/state coverage is insufficient.
     """
+    opts: RelaySaveOptions = options if options is not None else RelaySaveOptions(**overrides)
     game_id, original_game_id = _canonicalize_game_id(game_id)
     if not game_id:
         return 0
-    source = GameWriteSource(source_stage, source_crawler, source_reason)
-    if write_contract:
-        write_contract.claim_game(game_id, source)
+    source = GameWriteSource(opts.source_stage, opts.source_crawler, opts.source_reason)
+    if opts.write_contract:
+        opts.write_contract.claim_game(game_id, source)
 
     events, raw_pbp_rows, valid_event_rows = _prepare_relay_payloads(events, raw_pbp_rows)
     if not valid_event_rows and not raw_pbp_rows:
@@ -959,31 +979,38 @@ def save_relay_data(
             validation = _resolve_relay_validation(
                 session,
                 game_id,
-                events=events,
-                raw_pbp_rows=raw_pbp_rows,
-                valid_event_rows=valid_event_rows,
+                RelayValidationInput(
+                    events=events,
+                    raw_pbp_rows=raw_pbp_rows,
+                    valid_event_rows=valid_event_rows,
+                ),
                 game_row=game_row,
-                game_lifecycle_state=game_lifecycle_state,
+                game_lifecycle_state=opts.game_lifecycle_state,
             )
             _upsert_relay_validation_metadata(
                 session,
                 game_id,
                 validation,
-                source_name=source_name,
-                notes=notes,
-                events=events,
-                raw_pbp_rows=raw_pbp_rows,
-                valid_event_rows=valid_event_rows,
-                parser_version=parser_version,
-                source_schema_version=source_schema_version,
-                payload_hash=payload_hash,
+                ValidationMetricsData(
+                    validation_status=validation.status,
+                    source_name=opts.source_name,
+                    error_reason=validation.error_reason,
+                    events=events,
+                    raw_pbp_rows=raw_pbp_rows,
+                    parser_version=opts.parser_version,
+                    source_schema_version=opts.source_schema_version,
+                    payload_hash=opts.payload_hash,
+                    notes=opts.notes,
+                    valid_event_rows=valid_event_rows,
+                    live_warnings=validation.live_warnings,
+                ),
             )
-            _apply_relay_lifecycle_state(game_row, game_id, game_lifecycle_state)
+            _apply_relay_lifecycle_state(game_row, game_id, opts.game_lifecycle_state)
 
             resolution = _relay_resolution_context(session, game_id)
-            pbp_rows = _build_relay_pbp_rows(game_id, raw_pbp_rows, source_name, resolution)
-            event_rows = _build_relay_event_rows(game_id, valid_event_rows, source_name, notes, resolution)
-            changed = _replace_relay_rows(session, game_id, pbp_rows, event_rows, source, write_contract)
+            pbp_rows = _build_relay_pbp_rows(game_id, raw_pbp_rows, opts.source_name, resolution)
+            event_rows = _build_relay_event_rows(game_id, valid_event_rows, opts.source_name, opts.notes, resolution)
+            changed = _replace_relay_rows(session, game_id, pbp_rows, event_rows, source, opts.write_contract)
             session.commit()
             if changed:
                 _auto_sync_to_oci(game_id)

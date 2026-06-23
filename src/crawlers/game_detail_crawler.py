@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -108,6 +109,52 @@ class PlayerIdResolver(Protocol):
     ) -> int | None: ...
 
 
+@dataclass
+class BoxscoreCrawlContext:
+    page: Page
+    game_id: str | None = None
+    game_date: str | None = None
+    team_info: dict[str, dict[str, Any]] | None = None
+    season_year: int | None = None
+    roster_map: dict[str, list[dict[str, Any]]] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+@dataclass
+class HitterPayloadContext:
+    row: dict[str, Any]
+    idx: int
+    player_name: str
+    p_id: int | None
+    uniform_no: str | None
+    team_code: str | None
+    team_side: str
+    stats: dict[str, Any]
+    extras: dict[str, Any]
+
+
+@dataclass
+class PitcherResolutionContext:
+    row: dict[str, Any]
+    rows: list[dict[str, Any]]
+    idx: int
+    player_name: str
+    team_code: str | None
+    season_year: int | None
+    uniform_no: str | None
+
+
+@dataclass
+class PitcherPayloadContext:
+    row: dict[str, Any]
+    idx: int
+    player_name: str
+    p_id: int | None
+    uniform_no: str | None
+    team_code: str | None
+    team_side: str
+
+
 class GameDetailCrawler:
     """Crawl KBO GameCenter review pages and return structured box score data."""
 
@@ -177,34 +224,29 @@ class GameDetailCrawler:
 
     async def _navigate_section(
         self,
-        page: Page,
-        game_id: str,
-        game_date: str,
+        ctx: BoxscoreCrawlContext,
         section: str,
         *,
         required_selector: str | None = None,
-        timeout: int = 30000,
         selector_timeout: int = 15000,
-        extra_delay: float = 0,
-        wait_until: str = "domcontentloaded",
     ) -> tuple[bool, str, str]:
-        url = self._section_url(game_id, game_date, section)
+        assert ctx.game_id is not None
+        assert ctx.game_date is not None
+        url = self._section_url(ctx.game_id, ctx.game_date, section)
         if not await compliance.is_allowed(url):
             logger.error("❌ BLOCKED by compliance policy: %s", url)
             return False, "blocked", url
 
         async def _navigate() -> None:
             await self.policy.delay_async(host="www.koreabaseball.com")
-            await page.goto(url, wait_until=wait_until, timeout=timeout)
-            if extra_delay:
-                await asyncio.sleep(extra_delay)
+            await ctx.page.goto(url, wait_until="domcontentloaded", timeout=30000)
             if required_selector:
-                await page.wait_for_selector(required_selector, timeout=selector_timeout)
+                await ctx.page.wait_for_selector(required_selector, timeout=selector_timeout)
 
         try:
             await self.policy.run_with_retry_async(_navigate)
         except DETAIL_CRAWLER_EXCEPTIONS:
-            logger.exception("❌ Failed to navigate %s for %s", section, game_id)
+            logger.exception("❌ Failed to navigate %s for %s", section, ctx.game_id)
             return False, "navigation_error", url
 
         return True, "ok", url
@@ -305,7 +347,8 @@ class GameDetailCrawler:
         review_url = self._section_url(game_id, game_date, "REVIEW")
         logger.info("📡 Navigating to REVIEW: %s", review_url)
 
-        ok, reason, _ = await self._navigate_section(page, game_id, game_date, "REVIEW")
+        nav_ctx = BoxscoreCrawlContext(page=page, game_id=game_id, game_date=game_date)
+        ok, reason, _ = await self._navigate_section(nav_ctx, "REVIEW")
         if not ok:
             self._last_failure_reason[game_id] = reason
             return None
@@ -327,15 +370,16 @@ class GameDetailCrawler:
             hitters = {"away": [], "home": []}
             pitchers = {"away": [], "home": []}
         else:
-            detailed_stats = await self._extract_detailed_stats(
-                page,
-                game_id,
-                game_date,
-                team_info,
-                metadata,
-                season_year,
-                roster_map,
+            detail_ctx = BoxscoreCrawlContext(
+                page=page,
+                game_id=game_id,
+                game_date=game_date,
+                team_info=team_info,
+                metadata=metadata,
+                season_year=season_year,
+                roster_map=roster_map,
             )
+            detailed_stats = await self._extract_detailed_stats(detail_ctx)
             if detailed_stats is None:
                 return None
             hitters, pitchers = detailed_stats
@@ -372,25 +416,15 @@ class GameDetailCrawler:
         team_info: dict[str, dict[str, Any]],
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None,
-        *,
-        use_hitter_section: bool = False,
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
-        away_hitters, away_total = await self._extract_hitters(
-            page,
-            "away",
-            team_info["away"]["code"],
-            season_year,
-            roster_map,
-            use_hitter_section=use_hitter_section,
+        ctx = BoxscoreCrawlContext(
+            page=page,
+            team_info=team_info,
+            season_year=season_year,
+            roster_map=roster_map,
         )
-        home_hitters, home_total = await self._extract_hitters(
-            page,
-            "home",
-            team_info["home"]["code"],
-            season_year,
-            roster_map,
-            use_hitter_section=use_hitter_section,
-        )
+        away_hitters, away_total = await self._extract_hitters(ctx, "away", team_info["away"]["code"])
+        home_hitters, home_total = await self._extract_hitters(ctx, "home", team_info["home"]["code"])
         return {"away": away_hitters, "home": home_hitters}, {"away": away_total, "home": home_total}
 
     async def _extract_pitcher_pair(
@@ -399,26 +433,16 @@ class GameDetailCrawler:
         team_info: dict[str, dict[str, Any]],
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None,
-        *,
-        use_pitcher_section: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
+        ctx = BoxscoreCrawlContext(
+            page=page,
+            team_info=team_info,
+            season_year=season_year,
+            roster_map=roster_map,
+        )
         return {
-            "away": await self._extract_pitchers(
-                page,
-                "away",
-                team_info["away"]["code"],
-                season_year,
-                roster_map,
-                use_pitcher_section=use_pitcher_section,
-            ),
-            "home": await self._extract_pitchers(
-                page,
-                "home",
-                team_info["home"]["code"],
-                season_year,
-                roster_map,
-                use_pitcher_section=use_pitcher_section,
-            ),
+            "away": await self._extract_pitchers(ctx, "away", team_info["away"]["code"]),
+            "home": await self._extract_pitchers(ctx, "home", team_info["home"]["code"]),
         }
 
     @staticmethod
@@ -427,16 +451,12 @@ class GameDetailCrawler:
 
     async def _retry_missing_boxscore_sections(
         self,
-        page: Page,
-        game_id: str,
-        game_date: str,
-        team_info: dict[str, dict[str, Any]],
-        season_year: int | None,
-        roster_map: dict[str, list[dict[str, Any]]] | None,
+        ctx: BoxscoreCrawlContext,
         hitters: dict[str, list[dict[str, Any]]],
         hitter_totals: dict[str, dict[str, Any]],
         pitchers: dict[str, list[dict[str, Any]]],
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+        game_id = ctx.game_id
         max_attempts = max(1, int(os.getenv("GAMEDETAIL_SECTION_FALLBACK_ATTEMPTS", "2")))
         for attempt in range(1, max_attempts + 1):
             if self._stats_complete(hitters, pitchers) or attempt >= max_attempts:
@@ -447,77 +467,56 @@ class GameDetailCrawler:
                 attempt,
                 max_attempts,
             )
-            hitters, hitter_totals = await self._recover_hitter_section_if_missing(
-                page,
-                game_id,
-                game_date,
-                team_info,
-                season_year,
-                roster_map,
-                hitters,
-                hitter_totals,
-            )
-            pitchers = await self._recover_pitcher_section_if_missing(
-                page,
-                game_id,
-                game_date,
-                team_info,
-                season_year,
-                roster_map,
-                pitchers,
-            )
+            hitters, hitter_totals = await self._recover_hitter_section_if_missing(ctx, hitters, hitter_totals)
+            pitchers = await self._recover_pitcher_section_if_missing(ctx, pitchers)
             await asyncio.sleep(0.4)
         return hitters, hitter_totals, pitchers
 
     async def _recover_hitter_section_if_missing(
         self,
-        page: Page,
-        game_id: str,
-        game_date: str,
-        team_info: dict[str, dict[str, Any]],
-        season_year: int | None,
-        roster_map: dict[str, list[dict[str, Any]]] | None,
+        ctx: BoxscoreCrawlContext,
         hitters: dict[str, list[dict[str, Any]]],
         hitter_totals: dict[str, dict[str, Any]],
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
         if bool(hitters["away"]) and bool(hitters["home"]):
             return hitters, hitter_totals
         ok, reason, _ = await self._navigate_section(
-            page,
-            game_id,
-            game_date,
+            ctx,
             "HITTER",
             required_selector=GAME_DETAIL.hitter_fallback,
             selector_timeout=SEL_TIMEOUT,
         )
         if ok:
-            return await self._extract_hitter_pair(page, team_info, season_year, roster_map, use_hitter_section=True)
-        logger.warning("⚠️ HITTER section navigation failed for %s: %s", game_id, reason)
+            return await self._extract_hitter_pair(
+                ctx.page,
+                ctx.team_info,
+                ctx.season_year,
+                ctx.roster_map,
+            )
+        logger.warning("⚠️ HITTER section navigation failed for %s: %s", ctx.game_id, reason)
         return hitters, hitter_totals
 
     async def _recover_pitcher_section_if_missing(
         self,
-        page: Page,
-        game_id: str,
-        game_date: str,
-        team_info: dict[str, dict[str, Any]],
-        season_year: int | None,
-        roster_map: dict[str, list[dict[str, Any]]] | None,
+        ctx: BoxscoreCrawlContext,
         pitchers: dict[str, list[dict[str, Any]]],
     ) -> dict[str, list[dict[str, Any]]]:
         if bool(pitchers["away"]) and bool(pitchers["home"]):
             return pitchers
         ok, reason, _ = await self._navigate_section(
-            page,
-            game_id,
-            game_date,
+            ctx,
             "PITCHER",
             required_selector=GAME_DETAIL.pitcher_fallback,
             selector_timeout=SEL_TIMEOUT,
         )
         if ok:
-            return await self._extract_pitcher_pair(page, team_info, season_year, roster_map, use_pitcher_section=True)
-        logger.warning("⚠️ PITCHER section navigation failed for %s: %s", game_id, reason)
+            return await self._extract_pitcher_pair(
+                ctx.page,
+                ctx.team_info,
+                ctx.season_year,
+                ctx.roster_map,
+            )
+        logger.warning("⚠️ PITCHER section navigation failed for %s: %s", ctx.game_id, reason)
         return pitchers
 
     @staticmethod
@@ -557,37 +556,24 @@ class GameDetailCrawler:
 
     async def _extract_detailed_stats(
         self,
-        page: Page,
-        game_id: str,
-        game_date: str,
-        team_info: dict[str, dict[str, Any]],
-        metadata: dict[str, Any],
-        season_year: int | None,
-        roster_map: dict[str, list[dict[str, Any]]] | None,
+        ctx: BoxscoreCrawlContext,
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]] | None:
-        await self._click_review_tab_if_present(page)
-        hitters, hitter_totals = await self._extract_hitter_pair(page, team_info, season_year, roster_map)
-        pitchers = await self._extract_pitcher_pair(page, team_info, season_year, roster_map)
+        await self._click_review_tab_if_present(ctx.page)
+        team_info = ctx.team_info
+        hitters, hitter_totals = await self._extract_hitter_pair(ctx.page, team_info, ctx.season_year, ctx.roster_map)
+        pitchers = await self._extract_pitcher_pair(ctx.page, team_info, ctx.season_year, ctx.roster_map)
         hitters, hitter_totals, pitchers = await self._retry_missing_boxscore_sections(
-            page,
-            game_id,
-            game_date,
-            team_info,
-            season_year,
-            roster_map,
-            hitters,
-            hitter_totals,
-            pitchers,
+            ctx, hitters, hitter_totals, pitchers
         )
         if not any((hitters["away"], hitters["home"], pitchers["away"], pitchers["home"])):
-            if not self._has_partial_recovery_anchor(team_info, metadata):
-                self._last_failure_reason[game_id] = "incomplete_detail"
+            if not self._has_partial_recovery_anchor(team_info, ctx.metadata):
+                self._last_failure_reason[ctx.game_id] = "incomplete_detail"
                 return None
             logger.info(
                 "ℹ️  No box scores found for %s, but scoreboard/metadata available. Proceeding with partial recovery.",
-                game_id,
+                ctx.game_id,
             )
-        await self._validate_hitter_totals(page, game_id, hitters, hitter_totals)
+        await self._validate_hitter_totals(ctx.page, ctx.game_id, hitters, hitter_totals)
         return hitters, pitchers
 
     async def _is_cancelled_boxscore_page(self, page: Page) -> bool:
@@ -899,45 +885,33 @@ class GameDetailCrawler:
 
     def _build_hitter_payload(
         self,
-        *,
-        row: dict[str, Any],
-        idx: int,
-        player_name: str,
-        p_id: int | None,
-        uniform_no: str | None,
-        team_code: str | None,
-        team_side: str,
-        stats: dict[str, Any],
-        extras: dict[str, Any],
+        ctx: HitterPayloadContext,
     ) -> dict[str, Any]:
-        batting_order = self._parse_batting_order(row["cells"])
-        position = self._parse_position(row["cells"])
+        batting_order = self._parse_batting_order(ctx.row["cells"])
+        position = self._parse_position(ctx.row["cells"])
         return {
-            "player_id": p_id,
-            "player_name": player_name,
-            "uniform_no": uniform_no,
-            "team_code": team_code,
-            "team_side": team_side,
+            "player_id": ctx.p_id,
+            "player_name": ctx.player_name,
+            "uniform_no": ctx.uniform_no,
+            "team_code": ctx.team_code,
+            "team_side": ctx.team_side,
             "batting_order": batting_order,
             "position": position,
             "is_starter": batting_order is not None and batting_order <= 9,
-            "appearance_seq": idx,
-            "stats": stats,
-            "extras": extras or None,
+            "appearance_seq": ctx.idx,
+            "stats": ctx.stats,
+            "extras": ctx.extras or None,
         }
 
     async def _extract_hitters(
         self,
-        page: Page,
+        ctx: BoxscoreCrawlContext,
         team_side: str,
         team_code: str | None,
-        season_year: int | None,
-        roster_map: dict[str, list[dict[str, Any]]] | None = None,
-        _db_session: object | None = None,
-        *,
-        use_hitter_section: bool = False,
     ) -> list[dict[str, Any]]:
-        _ = use_hitter_section
+        season_year = ctx.season_year
+        roster_map = ctx.roster_map
+        page = ctx.page
         selectors = (
             [GAME_DETAIL.away_hitter_primary, GAME_DETAIL.away_hitter_extra]
             if team_side == "away"
@@ -956,8 +930,6 @@ class GameDetailCrawler:
         )
         extra_rows = tables[1] if len(tables) > 1 else []
 
-        # KEY FIX: Legacy tables (e.g. 2018) might not have player name in the extra table (Table 3).
-        # In that case, we must merge by INDEX, assuming 1:1 correspondence.
         extra_has_names = any(r.get("playerName") for r in extra_rows)
 
         extra_map = {}
@@ -986,11 +958,9 @@ class GameDetailCrawler:
 
             self._apply_hitter_inning_derivatives(stats, inning_rows, idx)
 
-            # Key fix for Task 3: Use resolver for exhibition/missing IDs
             if p_id is None:
                 p_id = self._resolve_hitter_id(player_name, team_code, season_year, uniform_no)
 
-            # Merge Strategy: Name-based OR Index-based
             extra_row = self._select_hitter_extra_row(
                 extra_has_names=extra_has_names,
                 extra_map=extra_map,
@@ -1004,20 +974,21 @@ class GameDetailCrawler:
 
             self._backfill_hitter_plate_appearances(stats)
 
-            # Optimization: Check roster_map if ID is missing
             if not p_id:
                 p_id, uniform_no = self._resolve_from_roster_map(roster_map, player_name, uniform_no)
 
             payload = self._build_hitter_payload(
-                row=row,
-                idx=idx,
-                player_name=player_name,
-                p_id=p_id,
-                uniform_no=uniform_no,
-                team_code=team_code,
-                team_side=team_side,
-                stats=stats,
-                extras=extras,
+                HitterPayloadContext(
+                    row=row,
+                    idx=idx,
+                    player_name=player_name,
+                    p_id=p_id,
+                    uniform_no=uniform_no,
+                    team_code=team_code,
+                    team_side=team_side,
+                    stats=stats,
+                    extras=extras,
+                ),
             )
             results.append(payload)
 
@@ -1044,24 +1015,17 @@ class GameDetailCrawler:
 
     def _resolve_pitcher_from_resolver(
         self,
-        *,
-        row: dict[str, Any],
-        rows: list[dict[str, Any]],
-        idx: int,
-        player_name: str,
-        team_code: str | None,
-        season_year: int | None,
-        uniform_no: str | None,
+        ctx: PitcherResolutionContext,
     ) -> int | None:
-        if not (self.resolver and team_code and season_year):
+        if not (self.resolver and ctx.team_code and ctx.season_year):
             return None
-        if player_name == "박준영" and team_code == "HH" and season_year == 2026:
-            return self._resolve_hanwha_park_junyoung(row, rows, idx)
+        if ctx.player_name == "박준영" and ctx.team_code == "HH" and ctx.season_year == 2026:
+            return self._resolve_hanwha_park_junyoung(ctx.row, ctx.rows, ctx.idx)
         return self.resolver.resolve_id(
-            player_name,
-            team_code,
-            season_year,
-            uniform_no=uniform_no,
+            ctx.player_name,
+            ctx.team_code,
+            ctx.season_year,
+            uniform_no=ctx.uniform_no,
             is_pitcher=True,
         )
 
@@ -1094,77 +1058,52 @@ class GameDetailCrawler:
 
     async def _resolve_pitcher_id(
         self,
-        *,
-        row: dict[str, Any],
-        rows: list[dict[str, Any]],
-        idx: int,
-        player_name: str,
-        team_code: str | None,
-        season_year: int | None,
-        uniform_no: str | None,
+        ctx: PitcherResolutionContext,
     ) -> int | None:
-        p_id = self._resolve_pitcher_from_resolver(
-            row=row,
-            rows=rows,
-            idx=idx,
-            player_name=player_name,
-            team_code=team_code,
-            season_year=season_year,
-            uniform_no=uniform_no,
-        )
+        p_id = self._resolve_pitcher_from_resolver(ctx)
         if p_id is None:
-            p_id = await self._search_and_register_pitcher(player_name, team_code)
+            p_id = await self._search_and_register_pitcher(ctx.player_name, ctx.team_code)
         if p_id:
-            logger.info("   [RESOLVED] %s (%s) -> %s", player_name, team_code, p_id)
+            logger.info("   [RESOLVED] %s (%s) -> %s", ctx.player_name, ctx.team_code, p_id)
         return p_id
 
     def _build_pitcher_payload(
         self,
-        *,
-        row: dict[str, Any],
-        idx: int,
-        player_name: str,
-        p_id: int | None,
-        uniform_no: str | None,
-        team_code: str | None,
-        team_side: str,
+        ctx: PitcherPayloadContext,
     ) -> dict[str, Any]:
         stats = {}
         extras = {}
-        self._populate_pitcher_stats(stats, extras, row["cells"])
+        self._populate_pitcher_stats(stats, extras, ctx.row["cells"])
 
-        innings_text = row["cells"].get("이닝") or row["cells"].get("IP")
+        innings_text = ctx.row["cells"].get("이닝") or ctx.row["cells"].get("IP")
         innings_outs = parse_innings_to_outs(innings_text)
 
-        result_text = row["cells"].get("결과") or row["cells"].get("결")
+        result_text = ctx.row["cells"].get("결과") or ctx.row["cells"].get("결")
         decision = self._parse_decision(result_text)
         if decision:
             stats["decision"] = decision
 
         return {
-            "player_id": p_id,
-            "player_name": player_name,
-            "uniform_no": uniform_no,
-            "team_code": team_code,
-            "team_side": team_side,
-            "is_starting": idx == 1,
-            "appearance_seq": idx,
+            "player_id": ctx.p_id,
+            "player_name": ctx.player_name,
+            "uniform_no": ctx.uniform_no,
+            "team_code": ctx.team_code,
+            "team_side": ctx.team_side,
+            "is_starting": ctx.idx == 1,
+            "appearance_seq": ctx.idx,
             "stats": {**stats, "innings_outs": innings_outs},
             "extras": extras or None,
         }
 
     async def _extract_pitchers(
         self,
-        page: Page,
+        ctx: BoxscoreCrawlContext,
         team_side: str,
         team_code: str | None,
-        season_year: int | None,
-        roster_map: dict[str, list[dict[str, Any]]] | None = None,
-        _db_session: object | None = None,
-        *,
-        use_pitcher_section: bool = False,
     ) -> list[dict[str, Any]]:
-        _ = use_pitcher_section
+        page = ctx.page
+        season_year = ctx.season_year
+        roster_map = ctx.roster_map
         selectors = (
             [
                 GAME_DETAIL.away_pitcher_primary,
@@ -1195,31 +1134,32 @@ class GameDetailCrawler:
 
             p_id = safe_int_or_none(row.get("playerId"))
 
-            # Key fix for Task 3: Use resolver for exhibition/missing IDs
-            # AND: Auto-search and register if still unknown
             if p_id is None:
                 p_id = await self._resolve_pitcher_id(
-                    row=row,
-                    rows=rows,
-                    idx=idx,
-                    player_name=player_name,
-                    team_code=team_code,
-                    season_year=season_year,
-                    uniform_no=uniform_no,
+                    PitcherResolutionContext(
+                        row=row,
+                        rows=rows,
+                        idx=idx,
+                        player_name=player_name,
+                        team_code=team_code,
+                        season_year=season_year,
+                        uniform_no=uniform_no,
+                    ),
                 )
 
-            # Optimization: Check roster_map if ID is missing
             if not p_id:
                 p_id, uniform_no = self._resolve_from_roster_map(roster_map, player_name, uniform_no)
 
             payload = self._build_pitcher_payload(
-                row=row,
-                idx=idx,
-                player_name=player_name,
-                p_id=p_id,
-                uniform_no=uniform_no,
-                team_code=team_code,
-                team_side=team_side,
+                PitcherPayloadContext(
+                    row=row,
+                    idx=idx,
+                    player_name=player_name,
+                    p_id=p_id,
+                    uniform_no=uniform_no,
+                    team_code=team_code,
+                    team_side=team_side,
+                ),
             )
             results.append(payload)
 
