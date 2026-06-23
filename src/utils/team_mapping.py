@@ -184,8 +184,8 @@ class TeamMapper:
 
     def _load_team_history_rows(self, oci_url: str) -> list[Sequence[object]] | None:
         engine = create_engine(oci_url)
-        Session = sessionmaker(bind=engine)
-        session = Session()
+        session_maker = sessionmaker(bind=engine)
+        session = session_maker()
         try:
             self._log_team_history_columns(session)
             results = self._query_team_history(session)

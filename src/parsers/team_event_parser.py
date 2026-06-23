@@ -228,7 +228,7 @@ def _extract_source_url(tag: Tag, config: dict[str, Any], page_url: str) -> str:
     if not href:
         href = _extract_onclick_href(tag)
 
-    if not href or href.startswith("#") or href.startswith("javascript:"):
+    if not href or href.startswith(("#", "javascript:")):
         return page_url
     if href.startswith("http"):
         return href
