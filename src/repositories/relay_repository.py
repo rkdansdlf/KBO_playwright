@@ -19,7 +19,7 @@ def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
         inning = inning_data.get("inning")
         half = inning_data.get("half")
         for play in inning_data.get("plays", []) or []:
-            flat_rows.append(  # noqa: PERF401
+            flat_rows.append(
                 {
                     "inning": inning,
                     "inning_half": half,

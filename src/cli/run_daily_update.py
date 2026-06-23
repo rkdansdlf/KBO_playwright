@@ -222,21 +222,7 @@ def _daily_summary_path(target_date: str, summary_dir: str | Path | None = None)
 
 
 def _build_stability_summary(
-    *,
-    detail_failure_counts: Mapping[str, int],
-    detail_failure_game_ids: Mapping[str, list[str]],
-    relay_recovery_target_ids: Sequence[str],
-    oci_skip_counts: Mapping[str, int],
-    oci_skip_game_ids: Mapping[str, list[str]],
-    non_p0_quality_gate_counts: Mapping[str, int],
-    non_p0_quality_gate_ids: Mapping[str, list[str]],
-    p0_non_game_counts: Mapping[str, int],
-    p0_non_game_errors: Mapping[str, str],
-    detail_recovery_passes: int,
-    detail_recovered_after_retry: int,
-    detail_still_missing: Sequence[str],
-    detail_recovery_attempts: Mapping[str, int],
-    detail_recovery_escalation_game_ids: Sequence[str],
+    ctx: _RunContext,
     summary_path: Path,
 ) -> dict[str, Any]:
     recoverable_reasons = {
@@ -250,16 +236,16 @@ def _build_stability_summary(
     detail_retry_candidates = sorted(
         {
             game_id
-            for reason, game_ids in detail_failure_game_ids.items()
+            for reason, game_ids in ctx.detail_failure_game_ids.items()
             if reason in recoverable_reasons
             for game_id in game_ids
         },
     )
-    relay_retry_candidates = sorted(set(oci_skip_game_ids.get("skipped_empty_relay", [])))
+    relay_retry_candidates = sorted(set(ctx.oci_skip_game_ids.get("skipped_empty_relay", [])))
     affected_game_ids = sorted(
         {
             game_id
-            for ids in [*detail_failure_game_ids.values(), *oci_skip_game_ids.values()]
+            for ids in [*ctx.detail_failure_game_ids.values(), *ctx.oci_skip_game_ids.values()]
             for game_id in ids
             if game_id
         },
@@ -267,39 +253,45 @@ def _build_stability_summary(
     return {
         "summary_path": str(summary_path),
         "detail": {
-            "failure_counts": dict(sorted(detail_failure_counts.items())),
+            "failure_counts": dict(sorted(ctx.detail_failure_counts.items())),
             "failure_game_ids": {
-                reason: sorted(set(game_ids)) for reason, game_ids in sorted(detail_failure_game_ids.items())
+                reason: sorted(set(game_ids)) for reason, game_ids in sorted(ctx.detail_failure_game_ids.items())
             },
         },
         "relay": {
-            "target_count": len(set(relay_recovery_target_ids)),
-            "target_game_ids": sorted(set(relay_recovery_target_ids)),
+            "target_count": len(set(ctx.relay_recovery_target_ids)),
+            "target_game_ids": sorted(set(ctx.relay_recovery_target_ids)),
         },
         "oci": {
-            "skip_counts": dict(sorted(oci_skip_counts.items())),
-            "skip_game_ids": {reason: sorted(set(game_ids)) for reason, game_ids in sorted(oci_skip_game_ids.items())},
+            "skip_counts": dict(sorted(ctx.oci_skip_counts.items())),
+            "skip_game_ids": {
+                reason: sorted(set(game_ids)) for reason, game_ids in sorted(ctx.oci_skip_game_ids.items())
+            },
         },
         "quality_gates": {
-            "non_p0_failure_counts": dict(sorted(non_p0_quality_gate_counts.items())),
-            "non_p0_failure_ids": {reason: sorted(set(ids)) for reason, ids in sorted(non_p0_quality_gate_ids.items())},
+            "non_p0_failure_counts": dict(sorted(ctx.non_p0_quality_gate_counts.items())),
+            "non_p0_failure_ids": {
+                reason: sorted(set(ids)) for reason, ids in sorted(ctx.non_p0_quality_gate_ids.items())
+            },
         },
         "p0_non_game": {
-            "counts": dict(sorted(p0_non_game_counts.items())),
-            "errors": dict(sorted(p0_non_game_errors.items())),
+            "counts": dict(sorted(ctx.p0_non_game_counts.items())),
+            "errors": dict(sorted(ctx.p0_non_game_errors.items())),
         },
         "retry_candidates": {
             "detail": detail_retry_candidates,
             "relay": relay_retry_candidates,
         },
         "detail_recovery": {
-            "passes": int(detail_recovery_passes),
-            "recovered_after_retry": int(detail_recovered_after_retry),
-            "still_missing_count": len({str(game_id) for game_id in detail_still_missing}),
-            "still_missing": sorted({str(game_id) for game_id in detail_still_missing}),
-            "attempts_by_game": {str(game_id): int(attempts) for game_id, attempts in detail_recovery_attempts.items()},
+            "passes": int(ctx.detail_recovery_passes),
+            "recovered_after_retry": int(ctx.detail_recovered_after_retry),
+            "still_missing_count": len({str(game_id) for game_id in ctx.detail_still_missing}),
+            "still_missing": sorted({str(game_id) for game_id in ctx.detail_still_missing}),
+            "attempts_by_game": {
+                str(game_id): int(attempts) for game_id, attempts in ctx.detail_recovery_attempts.items()
+            },
             "escalation_threshold": DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD,
-            "escalation_game_ids": sorted({str(game_id) for game_id in detail_recovery_escalation_game_ids}),
+            "escalation_game_ids": sorted({str(game_id) for game_id in ctx.detail_retry_escalation_game_ids}),
         },
         "affected_game_ids": affected_game_ids,
     }
@@ -1317,23 +1309,7 @@ async def _step_14_tomorrow_preview(ctx: _RunContext) -> None:
 
 
 def _build_stability_summary_for_context(ctx: _RunContext, summary_path: Path) -> dict[str, Any]:
-    return _build_stability_summary(
-        detail_failure_counts=ctx.detail_failure_counts,
-        detail_failure_game_ids=ctx.detail_failure_game_ids,
-        relay_recovery_target_ids=sorted(ctx.relay_recovery_target_ids),
-        oci_skip_counts=ctx.oci_skip_counts,
-        oci_skip_game_ids=ctx.oci_skip_game_ids,
-        non_p0_quality_gate_counts=ctx.non_p0_quality_gate_counts,
-        non_p0_quality_gate_ids=ctx.non_p0_quality_gate_ids,
-        p0_non_game_counts=ctx.p0_non_game_counts,
-        p0_non_game_errors=ctx.p0_non_game_errors,
-        detail_recovery_passes=ctx.detail_recovery_passes,
-        detail_recovered_after_retry=ctx.detail_recovered_after_retry,
-        detail_still_missing=ctx.detail_still_missing,
-        detail_recovery_attempts=ctx.detail_recovery_attempts,
-        detail_recovery_escalation_game_ids=ctx.detail_retry_escalation_game_ids,
-        summary_path=summary_path,
-    )
+    return _build_stability_summary(ctx, summary_path)
 
 
 def _build_p0_readiness_for_context(ctx: _RunContext) -> dict[str, Any]:

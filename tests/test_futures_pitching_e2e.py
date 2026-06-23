@@ -58,7 +58,7 @@ async def main():
     logger.info("Step 3: Saving %d Futures pitching records to database...", len(rows))
     payloads = []
     for r in rows:
-        payloads.append(  # noqa: PERF401
+        payloads.append(
             {
                 "player_id": int(player.player_basic_id),
                 "player_name": "소형준",

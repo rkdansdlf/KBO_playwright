@@ -227,7 +227,7 @@ class DailyRosterCrawler:
         # Post-process
         cleaned = []
         for item in data:
-            cleaned.append(  # noqa: PERF401
+            cleaned.append(
                 {
                     "roster_date": roster_date,
                     "team_code": self._normalize_team(team_code, roster_date.year),

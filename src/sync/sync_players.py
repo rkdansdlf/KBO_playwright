@@ -87,7 +87,7 @@ class PlayerSyncMixin:
             "batting_data": self.sync_batting_data(),
         }
 
-    def sync_player_basic(self, limit: int | None = None) -> int:  # noqa: ARG002
+    def sync_player_basic(self, limit: int | None = None) -> int:
         """Sync player_basic data from SQLite to OCI using fast bulk COPY"""
         return self.sync_simple_table(
             PlayerBasic,

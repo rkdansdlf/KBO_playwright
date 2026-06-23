@@ -67,8 +67,8 @@ def _check_table_health(session: Session) -> list[dict[str, Any]]:
     rows = []
     for table, date_col in TABLE_CHECKS:
         try:
-            count = session.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()  # noqa: S608
-            latest = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()  # noqa: S608
+            count = session.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+            latest = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()
             rows.append(
                 {
                     "table": table,

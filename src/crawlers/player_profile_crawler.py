@@ -288,7 +288,7 @@ class PlayerProfileCrawler:
                 parsed = parse_profile(_profile_raw_text(raw))
                 result = _build_profile_result(player_id, raw, parsed)
                 self._last_failure_reason.pop(str(player_id), None)
-                return result  # noqa: TRY300
+                return result
             except PROFILE_CRAWL_EXCEPTIONS:
                 logger.exception("   (Failed attempt at %s)", url)
                 last_reason = "selector_timeout"

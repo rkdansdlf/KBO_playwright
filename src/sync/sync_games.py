@@ -128,7 +128,7 @@ class GameSyncMixin:
         data["batting_order"] = None
         return data
 
-    def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:  # noqa: ARG002
+    def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
 
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
@@ -218,7 +218,7 @@ class GameSyncMixin:
         def purge_child_rows() -> None:
             for table_name in child_tables:
                 self.target_session.execute(
-                    text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),  # noqa: S608
+                    text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),
                     {"pattern": pattern},
                 )
             self.target_session.commit()
@@ -503,7 +503,7 @@ class GameSyncMixin:
         self,
         scoped_game_ids: list[str],
         filters: list,
-        target_game_ids: list[str] | None,  # noqa: ARG002
+        target_game_ids: list[str] | None,
         year: int | None,
         days: int | None,
         *,

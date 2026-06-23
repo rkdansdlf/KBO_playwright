@@ -119,7 +119,7 @@ def apply_sh_sf_to_batting_stats(session: Session, game_id: str) -> int:
             SET {set_clause}
             WHERE game_id = :game_id
               AND {where_clause}
-        """)  # noqa: S608
+        """)
         result = session.execute(sql, params)
         updated += result.rowcount or 0
 

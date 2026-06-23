@@ -228,7 +228,7 @@ class PlayerMovementCrawler:
         valid_data = []
         for item in data:
             if item["date"] and item["section"]:
-                valid_data.append(item)  # noqa: PERF401
+                valid_data.append(item)
 
         return valid_data
 

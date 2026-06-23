@@ -776,7 +776,7 @@ class ContextAggregator:
 
         results = []
         for m in movements:
-            results.append(  # noqa: PERF401
+            results.append(
                 {
                     "date": m.movement_date.isoformat(),
                     "section": m.section,
