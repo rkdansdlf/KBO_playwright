@@ -60,6 +60,27 @@ class BattingCrawlContext:
     all_players_data: list[dict]
 
 
+@dataclass
+class BattingRowData:
+    cells: list[str]
+    player_id: int
+    player_name: str
+    team_code: str
+    series_key: str
+    is_basic2: bool
+    year: int | None = None
+
+
+@dataclass
+class LegacyRowContext:
+    row_idx: int
+    row: ElementHandle
+    current_header: str
+    description: str
+    year: int
+    team_mapping: dict[str, str]
+
+
 CRAWLER_EXCEPTIONS = (
     PlaywrightError,
     PlaywrightTimeoutError,

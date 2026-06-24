@@ -59,6 +59,10 @@ ALLOWED_TRANSITIONS: set[tuple[str, str]] = {
 }
 
 
+def is_terminal(state: str) -> bool:
+    return state in TERMINAL_STATES
+
+
 def validate_transition(current: str | None, next_state: str) -> tuple[bool, str | None]:
     """Check if a lifecycle state transition is valid.
 

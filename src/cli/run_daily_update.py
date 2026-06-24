@@ -81,7 +81,6 @@ class _RunContext:
     today_kst: date
     runner: Callable
     write_contract: GameWriteContract
-    step_runner: Callable | None = None
     summary_dir: str | Path | None = None
     seed_tomorrow_preview: bool = False
     run_auto_healer: bool = True
@@ -1576,7 +1575,6 @@ async def run_update(  # noqa: PLR0913
         today_kst=_today_kst(),
         runner=step_runner or _run_python_step,
         write_contract=GameWriteContract(run_label=f"daily_update:{target_date}", log=logger.info),
-        step_runner=step_runner,
         summary_dir=summary_dir,
         seed_tomorrow_preview=seed_tomorrow_preview,
         run_auto_healer=run_auto_healer,

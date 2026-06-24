@@ -199,11 +199,12 @@ def _add_pitching(
 class TestCalcRateStats:
     def test_normal_triple_slash(self):
         engine = MatchupEngine()
-        stats = BattingStats(hits=2, at_bats=5, walks=1, hbp=0, sf=0, strikeouts=1, doubles=1, triples=0, home_runs=0)
-        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=6)
+        avg, obp, slg, ops = engine._calc_rate_stats(
+            hits=2, ab=5, pa=6, walks=1, hbp=0, double=1, triple=0, hr=0
+        )
         assert avg == pytest.approx(0.400, abs=0.001)
-        assert obp == pytest.approx(0.500, abs=0.001)  # (2+1+0)/6
-        assert slg == pytest.approx(0.600, abs=0.001)  # TB=3, 3/5
+        assert obp == pytest.approx(0.500, abs=0.001)
+        assert slg == pytest.approx(0.600, abs=0.001)
         assert ops == pytest.approx(1.100, abs=0.001)
 
     def test_zero_ab_returns_zero_avg(self):
@@ -211,7 +212,7 @@ class TestCalcRateStats:
         stats = BattingStats(hits=0, at_bats=0, walks=3, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0)
         avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=3)
         assert avg == 0.0
-        assert obp == 1.0  # 3/3
+        assert obp == 1.0
         assert slg == 0.0
         assert ops == 1.0
 
@@ -237,7 +238,7 @@ class TestCalcRateStats:
         engine = MatchupEngine()
         stats = BattingStats(hits=4, at_bats=10, walks=1, hbp=0, sf=0, strikeouts=1, doubles=1, triples=0, home_runs=1)
         avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=11)
-        assert slg == pytest.approx(0.800, abs=0.001)  # 8/10
+        assert slg == pytest.approx(0.800, abs=0.001)
 
     def test_all_none_inputs(self):
         engine = MatchupEngine()

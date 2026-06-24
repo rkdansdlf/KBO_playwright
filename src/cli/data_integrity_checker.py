@@ -35,14 +35,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-CRITICAL_TABLES = [
-    ("game", "game_date", None),
-    ("game_batting_stats", "game_id", "game"),
-    ("game_pitching_stats", "game_id", "game"),
-    ("game_inning_scores", "game_id", "game"),
-    ("game_lineups", "game_id", "game"),
-]
-
 PLAYER_ID_TABLES = [
     ("game_batting_stats", "player_id"),
     ("game_pitching_stats", "player_id"),

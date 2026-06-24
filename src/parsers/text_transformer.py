@@ -7,7 +7,17 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass
+class ChunkingContext:
+    doc_title: str
+    meta: dict[str, Any]
+    chunks: list[dict[str, Any]]
+    chunk_char_limit: int
+    overlap_char_limit: int
 
 
 class TextTransformer:
@@ -58,7 +68,16 @@ class TextTransformer:
         if strategy == "semantic":
             return self.chunk_semantically(title, content, meta)
         if strategy == "parent_child":
-            return self.chunk_parent_child(title, content, meta)
+            return self.chunk_parent_child(
+                content,
+                ctx=ChunkingContext(
+                    doc_title=title,
+                    meta=meta,
+                    chunks=[],
+                    chunk_char_limit=1000,
+                    overlap_char_limit=100,
+                ),
+            )
         return self.chunk_with_overlap(title, content, meta, chunk_char_limit=800, overlap_char_limit=150)
 
     def chunk_semantically(
@@ -115,25 +134,27 @@ class TextTransformer:
 
         return chunks
 
-    def chunk_parent_child(  # noqa: PLR0913
+    def chunk_parent_child(
         self,
-        doc_title: str,
         text: str,
-        meta: dict[str, Any],
         parent_size: int = 1000,
         child_size: int = 250,
         child_overlap: int = 50,
+        *,
+        ctx: ChunkingContext | None = None,
     ) -> list[dict[str, Any]]:
         """
         Divides the document into large parent chunks, then splits each parent into smaller child chunks.
         Stores parent content inside the child's metadata so that the child can be retrieved via embedding,
         while the parent context is passed to the LLM.
         """
+        if ctx is None:
+            raise ValueError from None
         # 1. Split into parent chunks using paragraph overlap
         parent_chunks = self.chunk_with_overlap(
-            doc_title,
+            ctx.doc_title,
             text,
-            meta,
+            ctx.meta,
             chunk_char_limit=parent_size,
             overlap_char_limit=100,
         )
@@ -167,7 +188,7 @@ class TextTransformer:
 
             # 3. Create child chunks with parent content referenced in meta
             for c_txt in child_texts:
-                child_meta = meta.copy()
+                child_meta = ctx.meta.copy()
                 child_meta["chunk_index"] = child_idx
                 child_meta["parent_chunk_index"] = p_idx + 1
                 child_meta["parent_content"] = parent_content
@@ -177,7 +198,7 @@ class TextTransformer:
                 child_meta["source_row_id"] = row_id_hash
 
                 all_child_chunks.append(
-                    {"title": f"{doc_title} (Child {child_idx})", "content": c_txt.strip(), "meta": child_meta},
+                    {"title": f"{ctx.doc_title} (Child {child_idx})", "content": c_txt.strip(), "meta": child_meta},
                 )
                 child_idx += 1
 
@@ -309,7 +330,13 @@ class TextTransformer:
         Splits articles or columns by paragraph blocks, merging them until the character limit is reached,
         then overlaps 10%-20% of the text.
         """
-        chunks = []
+        ctx = ChunkingContext(
+            doc_title=doc_title,
+            meta=meta,
+            chunks=[],
+            chunk_char_limit=chunk_char_limit,
+            overlap_char_limit=overlap_char_limit,
+        )
         paragraphs = self._paragraph_blocks(text)
         current_chunk_text = ""
         chunk_idx = 1
@@ -317,31 +344,23 @@ class TextTransformer:
         for para in paragraphs:
             if len(para) > chunk_char_limit:
                 current_chunk_text, chunk_idx = self._append_sentence_chunks(
-                    doc_title,
                     para,
-                    meta,
-                    chunks,
                     current_chunk_text,
                     chunk_idx,
-                    chunk_char_limit,
-                    overlap_char_limit,
+                    ctx,
                 )
             else:
                 current_chunk_text, chunk_idx = self._append_paragraph_chunk(
-                    doc_title,
                     para,
-                    meta,
-                    chunks,
                     current_chunk_text,
                     chunk_idx,
-                    chunk_char_limit,
-                    overlap_char_limit,
+                    ctx,
                 )
 
         if current_chunk_text:
-            chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
+            ctx.chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
 
-        return chunks
+        return ctx.chunks
 
     def _paragraph_blocks(self, text: str) -> list[str]:
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
@@ -349,44 +368,36 @@ class TextTransformer:
             return paragraphs
         return [p.strip() for p in text.split("\n") if p.strip()]
 
-    def _append_sentence_chunks(  # noqa: PLR0913
+    def _append_sentence_chunks(
         self,
-        doc_title: str,
         para: str,
-        meta: dict[str, Any],
-        chunks: list[dict[str, Any]],
         current_chunk_text: str,
         chunk_idx: int,
-        chunk_char_limit: int,
-        overlap_char_limit: int,
+        ctx: ChunkingContext,
     ) -> tuple[str, int]:
         for sent in re.split(r"(?<=[.!?])\s+", para):
-            if len(current_chunk_text) + len(sent) <= chunk_char_limit:
+            if len(current_chunk_text) + len(sent) <= ctx.chunk_char_limit:
                 current_chunk_text = (current_chunk_text + " " + sent).strip()
             elif current_chunk_text:
-                chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
+                ctx.chunks.append(self._create_news_chunk(ctx.doc_title, current_chunk_text, ctx.meta, chunk_idx))
                 chunk_idx += 1
-                current_chunk_text = current_chunk_text[-overlap_char_limit:] + " " + sent
+                current_chunk_text = current_chunk_text[-ctx.overlap_char_limit:] + " " + sent
             else:
                 current_chunk_text = sent
         return current_chunk_text, chunk_idx
 
-    def _append_paragraph_chunk(  # noqa: PLR0913
+    def _append_paragraph_chunk(
         self,
-        doc_title: str,
         para: str,
-        meta: dict[str, Any],
-        chunks: list[dict[str, Any]],
         current_chunk_text: str,
         chunk_idx: int,
-        chunk_char_limit: int,
-        overlap_char_limit: int,
+        ctx: ChunkingContext,
     ) -> tuple[str, int]:
-        if len(current_chunk_text) + len(para) <= chunk_char_limit:
+        if len(current_chunk_text) + len(para) <= ctx.chunk_char_limit:
             return ((current_chunk_text + "\n\n" + para) if current_chunk_text else para), chunk_idx
         if current_chunk_text:
-            chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
-            return current_chunk_text[-overlap_char_limit:] + "\n\n" + para, chunk_idx + 1
+            ctx.chunks.append(self._create_news_chunk(ctx.doc_title, current_chunk_text, ctx.meta, chunk_idx))
+            return current_chunk_text[-ctx.overlap_char_limit:] + "\n\n" + para, chunk_idx + 1
         return para, chunk_idx
 
     def _create_news_chunk(self, doc_title: str, content: str, meta: dict[str, Any], index: int) -> dict[str, Any]:

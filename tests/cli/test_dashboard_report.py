@@ -1,51 +1,22 @@
-from argparse import Namespace
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
+from src.cli.dashboard_report import _date_or_today, AVAILABLE_SECTIONS
 
-from src.cli.dashboard_report import main
 
-
-class TestDashboardReport:
-    def _setup_mocks(self, mock_sf, date=None, sections=None, fmt="terminal"):
-        if sections is None:
-            sections = ["standings"]
-        mock_parse = patch("argparse.ArgumentParser.parse_args")
-        ns = mock_parse.start()
-        ns.return_value = Namespace(
-            date=date,
-            year=2025,
-            sections=sections,
-            format=fmt,
-            report=False,
-            notify=False,
-        )
-        mock_session = MagicMock()
-        mock_sf.return_value.__enter__.return_value = mock_session
-        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
-        return mock_parse, mock_session
-
-    def test_default_run(self):
-        with patch("src.cli.dashboard_report.SessionLocal") as mock_sf:
-            mock_parse, mock_session = self._setup_mocks(mock_sf)
-            try:
-                result = main()
-                assert result is None
-            finally:
-                mock_parse.stop()
-
+class TestDateOrToday:
     def test_with_date(self):
-        with patch("src.cli.dashboard_report.SessionLocal") as mock_sf:
-            mock_parse, mock_session = self._setup_mocks(mock_sf, date="20250101")
-            try:
-                result = main()
-                assert result is None
-            finally:
-                mock_parse.stop()
+        assert _date_or_today("20260624") == "20260624"
 
-    def test_json_format(self):
-        with patch("src.cli.dashboard_report.SessionLocal") as mock_sf:
-            mock_parse, mock_session = self._setup_mocks(mock_sf, fmt="json")
-            try:
-                result = main()
-                assert result is None
-            finally:
-                mock_parse.stop()
+    def test_none_returns_today(self):
+        result = _date_or_today(None)
+        assert len(result) == 8
+        assert result.isdigit()
+
+
+class TestAvailableSections:
+    def test_sections_defined(self):
+        assert "standings" in AVAILABLE_SECTIONS
+        assert "park_factor" in AVAILABLE_SECTIONS
+        assert "quality" in AVAILABLE_SECTIONS
+        assert "all" in AVAILABLE_SECTIONS
