@@ -212,7 +212,7 @@ def _aggregate_pitching(
             func.sum(case((GamePitchingStat.decision == "H", 1), else_=0)).label("holds"),
             func.sum(GamePitchingStat.batters_faced).label("batters_faced"),
             func.sum(GamePitchingStat.pitches).label("pitches"),
-            func.count(func.nullif(GamePitchingStat.is_starting == 1, False)).label("games_started"),
+            func.count(func.nullif(GamePitchingStat.is_starting.is_(True), False)).label("games_started"),
         )
         .join(Game, Game.game_id == GamePitchingStat.game_id)
         .filter(

@@ -48,6 +48,9 @@ select = [
     "ANN003",  # missing-type-kwargs
     "ANN202",  # missing-return-type-private-function
     "ANN205",  # missing-return-type-static-method
+    "ANN201",  # missing-return-type-public-function
+    "ANN204",  # missing-return-type-special-method
+    "ANN206",  # missing-return-type-class-method
     "ANN401",  # dynamically typed expressions (Any)
     "TC001",   # typing-only-first-party-import
     "TC002",   # typing-only-third-party-import
@@ -83,6 +86,15 @@ select = [
     "YTT",     # sys.version checks
     "SLF001",  # private-member-access (intentional internal access noqa'd)
     "PLR0913", # too-many-arguments
+    "PLR0912", # too-many-branches
+    "PLR0915", # too-many-statements
+    "PLR0911", # too-many-return-statements
+    "PLR5501", # if-stmt-min-max
+    "ISC",     # implicit-string-concatenation
+    "PGH",     # pygrep-hooks
+    "FURB132", # for-loop-with-temporary-variable
+    "RUF024",  # non-unique-dunder-all
+    "RUF040",  # non-unique-dunder-slots
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
@@ -99,12 +111,15 @@ ignore = [
     "G010",    # logging-warn vs logging-warning (redundant alias)
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
     "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
+    "PLR0911", # too-many-return-statements (pragmatic ignore for existing baseline)
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "src/models/**" = ["TC001", "TC002", "TC003", "PLR0913"]
-"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "TRY301", "ARG", "T201", "T20", "FURB167", "RUF013", "DTZ005", "S608", "FLY002", "N", "SLF001", "PLR0913", "PERF401", "BLE001", "F401"]
-"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "BLE001"]
+"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "ARG", "T201", "T20", "FURB167", "RUF013", "DTZ005", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF401", "BLE001", "F401", "I001"]
+"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001"]
+"migrations/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "T201", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001"]
+
 
 [tool.ruff.format]
 quote-style = "double"

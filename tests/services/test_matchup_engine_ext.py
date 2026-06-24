@@ -4,22 +4,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.models.stat_dataclasses import BattingStats
 from src.services.matchup_engine import MatchupEngine
 
 
 class TestCalcRateStats:
     def test_full_stats(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(
-            hits=10,
-            ab=30,
-            pa=35,
-            walks=4,
-            hbp=1,
-            double=2,
-            triple=1,
-            hr=1,
-        )
+        stats = BattingStats(hits=10, at_bats=30, walks=4, hbp=1, sf=0, strikeouts=0, doubles=2, triples=1, home_runs=1)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=35)
         assert avg == 0.333  # 10/30
         assert obp > 0
         assert slg > 0
@@ -27,28 +20,21 @@ class TestCalcRateStats:
 
     def test_zero_ab(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(0, 0, 0, 0, 0, 0, 0, 0)
+        stats = BattingStats(hits=0, at_bats=0, walks=0, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=0)
         assert avg == 0.0
         assert ops == 0.0
 
     def test_no_hits(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(0, 10, 10, 0, 0, 0, 0, 0)
+        stats = BattingStats(hits=0, at_bats=10, walks=0, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=10)
         assert avg == 0.0
 
     def test_is_full_false_skips_slg(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(
-            hits=5,
-            ab=20,
-            pa=22,
-            walks=2,
-            hbp=0,
-            double=0,
-            triple=0,
-            hr=0,
-            is_full=False,
-        )
+        stats = BattingStats(hits=5, at_bats=20, walks=2, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=22, is_full=False)
         assert avg == 0.25
         assert slg == 0.0
 

@@ -1,0 +1,264 @@
+name: KBO Smart Polling Pipeline
+
+on:
+  schedule:
+    # Tue-Fri: KST 21:30 ~ 23:30 every 30 min (games ~18:30, ~3h10m avg)
+    - cron: '*/30 12-14 * * 2-5'
+    # Saturday: KST 20:00 ~ 22:30 every 30 min (games ~17:00 or 18:00)
+    - cron: '*/30 11-13 * * 6'
+    # Sunday: KST 17:00 ~ 21:00 every 30 min (games ~14:00 or 17:00)
+    - cron: '*/30 08-12 * * 0'
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Target date (YYYYMMDD). Defaults to previous KST date.'
+        required: false
+        default: ''
+      skip_gate:
+        description: 'Skip the polling gate check (force crawl)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: kbo-smart-polling-${{ github.event.inputs.target_date || 'scheduled' }}
+  cancel-in-progress: true
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 1 — Smart Polling Gate (Layer 1: lightweight HTTPX check)
+  # ──────────────────────────────────────────────────────────────────────────
+  polling_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_proceed: ${{ steps.gate.outputs.should_proceed }}
+      has_games: ${{ steps.gate.outputs.has_games }}
+      reason: ${{ steps.gate.outputs.reason }}
+      target_date: ${{ steps.date.outputs.KST_DATE }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/kbo-job-setup
+        id: date
+        with:
+          playwright: 'false'
+          init-db: 'false'
+          resolve-date: 'true'
+          target-date: ${{ github.event.inputs.target_date || '' }}
+          date-roll: '1'
+
+      - name: "[Layer 1] Check if today's games are finished"
+        id: gate
+        run: |
+          set +e
+          set -o pipefail
+          python3 -m src.cli.smart_polling_gate --json 2>&1 | tee gate_output.json
+          GATE_EXIT=$?
+          set -e
+          if [ -f gate_output.json ]; then
+            SHOULD_PROCEED=$(python3 -c "import json,sys; d=json.load(open('gate_output.json')); print('true' if d.get('should_proceed') else 'false')")
+            HAS_GAMES=$(python3 -c "import json,sys; d=json.load(open('gate_output.json')); print('true' if d.get('has_games_today') else 'false')")
+            REASON=$(python3 -c "import json,sys; d=json.load(open('gate_output.json')); print(d.get('reason', 'unknown'))")
+            echo "should_proceed=${SHOULD_PROCEED}" >> $GITHUB_OUTPUT
+            echo "has_games=${HAS_GAMES}" >> $GITHUB_OUTPUT
+            echo "reason=${REASON}" >> $GITHUB_OUTPUT
+          else
+            echo "should_proceed=false" >> $GITHUB_OUTPUT
+            echo "has_games=false" >> $GITHUB_OUTPUT
+            echo "reason=gate_script_error" >> $GITHUB_OUTPUT
+          fi
+          if [ "${GATE_EXIT}" = "1" ]; then
+            echo "⏳ Gate returned skip (exit 1) — games still in progress or no games today"
+          elif [ "${GATE_EXIT}" != "0" ]; then
+            echo "⚠️ Gate returned unexpected exit code ${GATE_EXIT} — treating as failure"
+            exit ${GATE_EXIT}
+          fi
+          exit 0
+
+      - name: "[Layer 1] Skip gate (forced run)"
+        if: ${{ github.event.inputs.skip_gate == 'true' }}
+        run: |
+          echo "should_proceed=true" >> $GITHUB_OUTPUT
+          echo "has_games=true" >> $GITHUB_OUTPUT
+          echo "reason=gate_skipped_forced" >> $GITHUB_OUTPUT
+          echo "⏭️ Gate skipped by user request — forcing crawl"
+
+      - name: Report gate decision
+        if: always()
+        run: |
+          echo "🎯 Gate Decision:"
+          echo "  Target Date: ${{ steps.date.outputs.KST_DATE }}"
+          echo "  Should Proceed: ${{ steps.gate.outputs.should_proceed }}"
+          echo "  Has Games: ${{ steps.gate.outputs.has_games }}"
+          echo "  Reason: ${{ steps.gate.outputs.reason }}"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 2 — Daily Update (Layer 2: heavy Playwright crawl)
+  # Only runs if gate says should_proceed=true
+  # ──────────────────────────────────────────────────────────────────────────
+  daily_update:
+    needs: polling_gate
+    if: needs.polling_gate.outputs.should_proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      target_date: ${{ needs.polling_gate.outputs.target_date }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          playwright: 'true'
+          init-db: 'true'
+          hydrate: 'true'
+          hydrate-date: ${{ needs.polling_gate.outputs.target_date }}
+
+      - name: Hydrate Runtime Cache From OCI
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.hydrate_runtime_from_oci \
+            --date "${{ needs.polling_gate.outputs.target_date }}"
+
+      - name: "[Layer 2] Run Daily Update Pipeline"
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          set -o pipefail
+          python3 -m src.cli.run_daily_update \
+            --date "${{ needs.polling_gate.outputs.target_date }}" \
+            --sync 2>&1 | tee daily_update.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Commit and Push Updated Data
+        if: success()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/
+          git diff --quiet && git diff --staged --quiet || \
+            (git commit -m "⚾ KBO daily data auto-update (${{ needs.polling_gate.outputs.target_date }})" && \
+             git push)
+
+      - name: Upload Local DB as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kbo-db-${{ needs.polling_gate.outputs.target_date }}
+          path: data/kbo_dev.db
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 3 — Data Integrity Check
+  # Only runs if daily_update succeeded
+  # ──────────────────────────────────────────────────────────────────────────
+  integrity_check:
+    needs: [polling_gate, daily_update]
+    if: |
+      needs.polling_gate.outputs.should_proceed == 'true' &&
+      needs.daily_update.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          playwright: 'false'
+          init-db: 'true'
+          hydrate: 'false'
+
+      - name: Download DB Artifact from daily_update
+        uses: actions/download-artifact@v4
+        with:
+          name: kbo-db-${{ needs.polling_gate.outputs.target_date }}
+          path: data/
+
+      - name: "[Integrity] Run Data Integrity Checker"
+        run: |
+          set -o pipefail
+          python3 -m src.cli.data_integrity_checker \
+            --date "${{ needs.polling_gate.outputs.target_date }}" \
+            --json 2>&1 | tee integrity_report.json
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload Integrity Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrity-report-${{ needs.polling_gate.outputs.target_date }}
+          path: integrity_report.json
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 4 — Notification (always runs, only notifies on failure)
+  # ──────────────────────────────────────────────────────────────────────────
+  notify:
+    needs: [polling_gate, daily_update, integrity_check]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Notify on polling gate failure
+        if: needs.polling_gate.result == 'failure'
+        uses: ./.github/actions/notify
+        with:
+          status: failure
+          workflow: KBO Smart Polling Pipeline
+          channels: telegram
+
+      - name: Notify on integrity check failure
+        if: needs.integrity_check.result == 'failure'
+        uses: ./.github/actions/notify
+        with:
+          status: failure
+          workflow: KBO Smart Polling Pipeline
+          channels: telegram
+
+      - name: Notify on daily update failure
+        if: |
+          needs.daily_update.result == 'failure' &&
+          needs.polling_gate.outputs.should_proceed == 'true'
+        uses: ./.github/actions/notify
+        with:
+          status: failure
+          workflow: KBO Smart Polling Pipeline
+          channels: telegram
+
+      - name: Notify on cancellation
+        if: |
+          needs.daily_update.result == 'cancelled' ||
+          needs.integrity_check.result == 'cancelled'
+        uses: ./.github/actions/notify
+        with:
+          status: cancelled
+          workflow: KBO Smart Polling Pipeline
+          channels: telegram
+
+      - name: Notify success (only on scheduled runs that proceeded)
+        if: |
+          github.event_name == 'schedule' &&
+          needs.polling_gate.outputs.should_proceed == 'true' &&
+          needs.integrity_check.result == 'success'
+        uses: ./.github/actions/notify
+        with:
+          status: success
+          workflow: KBO Smart Polling Pipeline
+          channels: telegram
+
+      - name: Log skip (no notification needed)
+        if: needs.polling_gate.outputs.should_proceed != 'true'
+        run: |
+          echo "⏭️ Pipeline skipped: reason=${{ needs.polling_gate.outputs.reason }} — no notification sent"
