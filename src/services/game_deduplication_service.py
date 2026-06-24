@@ -119,13 +119,15 @@ def _mark_window(
     for game_date, home_fid, away_fid, suffix in groups:
         candidates = _load_candidates(
             cursor,
-            game_date=game_date,
-            home_fid=home_fid,
-            away_fid=away_fid,
-            suffix=suffix,
-            start_date=start_date,
-            end_date=end_date,
-            suffixes=suffixes,
+            query=_CandidateQuery(
+                game_date=game_date,
+                home_fid=home_fid,
+                away_fid=away_fid,
+                suffix=suffix,
+                start_date=start_date,
+                end_date=end_date,
+                suffixes=suffixes,
+            ),
         )
         if not candidates:
             continue
@@ -165,16 +167,21 @@ def _load_slots(
     return [(row[0], row[1], row[2], row[3]) for row in rows]
 
 
-def _load_candidates(  # noqa: PLR0913
+@dataclass(frozen=True, slots=True)
+class _CandidateQuery:
+    game_date: str
+    home_fid: int
+    away_fid: int
+    suffix: str
+    start_date: str | None = None
+    end_date: str | None = None
+    suffixes: Sequence[str] | None = None
+
+
+def _load_candidates(
     cursor: sqlite3.Cursor,
     *,
-    game_date: str,
-    home_fid: int,
-    away_fid: int,
-    suffix: str,
-    start_date: str | None,
-    end_date: str | None,
-    suffixes: Sequence[str],
+    query: _CandidateQuery,
 ) -> list[tuple[str, int]]:
     where_clauses = [
         "g.game_date = ?",
@@ -182,14 +189,19 @@ def _load_candidates(  # noqa: PLR0913
         "g.away_franchise_id = ?",
         "g.game_id LIKE ?",
     ]
-    params: list[object] = [game_date, home_fid, away_fid, f"%{suffix}"]
-    if start_date and end_date:
+    params: list[object] = [
+        query.game_date,
+        query.home_fid,
+        query.away_fid,
+        f"%{query.suffix}",
+    ]
+    if query.start_date and query.end_date:
         where_clauses.append("g.game_date BETWEEN ? AND ?")
-        params.extend([start_date, end_date])
-    if suffixes:
-        suffix_placeholders = ",".join("?" for _ in suffixes)
+        params.extend([query.start_date, query.end_date])
+    if query.suffixes:
+        suffix_placeholders = ",".join("?" for _ in query.suffixes)
         where_clauses.append("SUBSTR(g.game_id, -1, 1) IN (" + suffix_placeholders + ")")
-        params.extend(suffixes)
+        params.extend(query.suffixes)
 
     rows = cursor.execute(
         f"""

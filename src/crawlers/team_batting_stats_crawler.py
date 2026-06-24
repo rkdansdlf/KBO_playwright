@@ -118,6 +118,7 @@ class TeamBattingStatsCrawler:
                 with SessionLocal() as session:
                     aggregator = TeamStatAggregator(session)
                     from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+
                     stats = aggregator.aggregate_batting(TeamAggregationQuery(season=season, dry_run=not persist))
 
                     # 팀명 보충 (aggregator는 코드만 가지고 있음)

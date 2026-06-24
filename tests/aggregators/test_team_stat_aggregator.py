@@ -73,6 +73,7 @@ class TestTeamStatAggregatorPure(unittest.TestCase):
         team_names = {"LG": "트윈스"}
 
         from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+
         results = self.aggregator.aggregate_batting(TeamAggregationQuery(rows=rows, team_names=team_names))
 
         self.assertEqual(len(results), 1)
@@ -670,6 +671,7 @@ class TestTeamStatAggregatorInstanceMethods:
 
         aggregator = TeamStatAggregator(session)
         from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+
         results = aggregator.aggregate_batting(TeamAggregationQuery(season=2025))
 
         assert len(results) == 1
@@ -688,6 +690,7 @@ class TestTeamStatAggregatorInstanceMethods:
 
         aggregator = TeamStatAggregator(session)
         from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+
         results = aggregator.aggregate_pitching(TeamAggregationQuery(season=2025))
 
         assert len(results) == 1
