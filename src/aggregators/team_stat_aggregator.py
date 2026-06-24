@@ -136,11 +136,6 @@ class TeamStatAggregator:
             return self._aggregate_pitching_mem(actual_rows, actual_names, query.team_games_map)
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
-            return self._aggregate_pitching_db(season, team_id, dry_run=dry_run)
-        if actual_rows is not None:
-            return self._aggregate_pitching_mem(actual_rows, actual_names, team_games_map)
-        msg = "Either an integer season or rows iterable must be provided"
-        raise ValueError(msg)
 
     def aggregate_all(
         self,
@@ -678,7 +673,7 @@ class TeamStatAggregator:
                     team_games_map[(year, tc)] = games
 
         aggregator = TeamStatAggregator()
-        results = aggregator.aggregate_pitching(rows=rows, team_names=team_names, team_games_map=team_games_map)
+        results = aggregator.aggregate_pitching(TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map))
 
         # Supplement ties from standings
         for r in results:
