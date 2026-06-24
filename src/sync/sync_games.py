@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import inspect, text
@@ -92,6 +93,19 @@ def _compact_metadata_source_payload_for_limit(payload: object, limit: int | Non
             return fallback
 
     return {"truncated": True}
+
+
+@dataclass(frozen=True)
+class GameDetailSyncScope:
+    """Groups common sync parameters for game detail chunk operations."""
+
+    scoped_game_ids: list[str]
+    filters: list
+    target_game_ids: list[str] | None
+    year: int | None
+    days: int | None
+    unsynced_only: bool
+    batch_size: int
 
 
 class GameSyncMixin:
@@ -297,15 +311,14 @@ class GameSyncMixin:
     def _sync_parent_games_for_details(
         self,
         results: dict[str, int],
-        filters: list,
-        target_game_ids: list[str] | None,
+        chunk_parent_filters: list,
         publishable_parent_game_ids: list[str] | None,
         *,
         unsynced_only: bool,
         batch_size: int,
     ) -> None:
         logger.info("⚾ Syncing Parent Game Records...")
-        if unsynced_only and target_game_ids is not None:
+        if unsynced_only and publishable_parent_game_ids is not None:
             if publishable_parent_game_ids:
                 results["games"] = self.sync_games(
                     filters=[Game.game_id.in_(publishable_parent_game_ids)], batch_size=batch_size
@@ -314,24 +327,22 @@ class GameSyncMixin:
                 results["games"] = 0
                 logger.info("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
         else:
-            results["games"] = self.sync_games(filters=filters if filters else None, batch_size=batch_size)
+            results["games"] = self.sync_games(
+                filters=chunk_parent_filters if chunk_parent_filters else None, batch_size=batch_size
+            )
 
     def _sync_game_id_aliases(
         self,
         results: dict[str, int],
-        target_game_ids: list[str] | None,
-        filters: list,
-        year: int | None,
-        days: int | None,
-        batch_size: int,
+        scope: GameDetailSyncScope,
     ) -> None:
         alias_filters = None
-        if target_game_ids:
-            alias_filters = [GameIdAlias.canonical_game_id.in_(target_game_ids)]
-        elif year:
-            alias_filters = [GameIdAlias.canonical_game_id.like(f"{year}%")]
-        elif days and filters:
-            game_ids = [game.game_id for game in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
+        if scope.target_game_ids:
+            alias_filters = [GameIdAlias.canonical_game_id.in_(scope.target_game_ids)]
+        elif scope.year:
+            alias_filters = [GameIdAlias.canonical_game_id.like(f"{scope.year}%")]
+        elif scope.days and scope.filters:
+            game_ids = [game.game_id for game in self.sqlite_session.query(Game.game_id).filter(*scope.filters).all()]
             alias_filters = [GameIdAlias.canonical_game_id.in_(game_ids)] if game_ids else []
 
         if alias_filters != []:
@@ -340,7 +351,7 @@ class GameSyncMixin:
                 ["alias_game_id"],
                 exclude_cols=["created_at"],
                 filters=alias_filters,
-                batch_size=batch_size,
+                batch_size=scope.batch_size,
             )
 
     def _game_detail_child_filters(self, filters: list, year: int | None, days: int | None) -> list | None:
@@ -423,15 +434,16 @@ class GameSyncMixin:
         if year and not unsynced_only:
             self._purge_game_detail_children_for_year(year)
 
-        return self._aggregate_game_detail_chunks(
-            scoped_game_ids,
-            filters,
-            target_game_ids,
-            year,
-            days,
+        scope = GameDetailSyncScope(
+            scoped_game_ids=scoped_game_ids,
+            filters=filters,
+            target_game_ids=target_game_ids,
+            year=year,
+            days=days,
             unsynced_only=unsynced_only,
             batch_size=batch_size,
         )
+        return self._aggregate_game_detail_chunks(scope)
 
     def sync_game_details_for_ids(self, game_ids: list[str], batch_size: int = 5000) -> dict[str, int]:
         """Sync completed game details for an explicit list of game IDs."""
@@ -443,30 +455,25 @@ class GameSyncMixin:
             return {}
 
         filters = [Game.game_id.in_(scoped_game_ids)]
-        return self._aggregate_game_detail_chunks(
-            scoped_game_ids,
-            filters,
-            scoped_game_ids,
-            None,
-            None,
+        scope = GameDetailSyncScope(
+            scoped_game_ids=scoped_game_ids,
+            filters=filters,
+            target_game_ids=scoped_game_ids,
+            year=None,
+            days=None,
             unsynced_only=False,
             batch_size=batch_size,
         )
+        return self._aggregate_game_detail_chunks(scope)
 
     def _aggregate_game_detail_chunks(
         self,
-        scoped_game_ids: list[str],
-        filters: list,
-        target_game_ids: list[str] | None,
-        year: int | None,
-        days: int | None,
-        *,
-        unsynced_only: bool,
-        batch_size: int,
+        scope: GameDetailSyncScope,
     ) -> dict[str, int]:
         game_chunk_size = 20
         chunked_game_ids = [
-            scoped_game_ids[i : i + game_chunk_size] for i in range(0, len(scoped_game_ids), game_chunk_size)
+            scope.scoped_game_ids[i : i + game_chunk_size]
+            for i in range(0, len(scope.scoped_game_ids), game_chunk_size)
         ]
         logger.info(
             "📦 Splitting game detail sync into %s chunks (max %s games per chunk)",
@@ -480,12 +487,7 @@ class GameSyncMixin:
             logger.info("🚀 Syncing game detail chunk %s/%s (%s games)...", idx, total_chunks, len(chunk_ids))
             chunk_results = self._sync_game_detail_chunk(
                 chunk_ids,
-                filters=filters,
-                target_game_ids=target_game_ids,
-                year=year,
-                days=days,
-                unsynced_only=unsynced_only,
-                batch_size=batch_size,
+                scope,
                 skip_year_purge=True,
             )
             for key, val in chunk_results.items():
@@ -502,38 +504,32 @@ class GameSyncMixin:
 
     def _sync_game_detail_chunk(
         self,
-        scoped_game_ids: list[str],
-        filters: list,
-        target_game_ids: list[str] | None,  # noqa: ARG002
-        year: int | None,
-        days: int | None,
+        chunk_ids: list[str],
+        scope: GameDetailSyncScope,
         *,
-        unsynced_only: bool,
-        batch_size: int,
         skip_year_purge: bool = False,
     ) -> dict[str, Any]:
         results = {}
-        eligibility = build_game_sync_eligibility(self.sqlite_session, scoped_game_ids)
+        eligibility = build_game_sync_eligibility(self.sqlite_session, chunk_ids)
         results.update(eligibility.counts())
         _log_sync_eligibility(eligibility)
 
-        publishable_parent_game_ids = eligibility.parent_game_ids if unsynced_only else None
+        publishable_parent_game_ids = eligibility.parent_game_ids if scope.unsynced_only else None
 
         # We filter parent game sync to only the game IDs in this chunk
-        chunk_parent_filters = [Game.game_id.in_(scoped_game_ids)]
+        chunk_parent_filters = [Game.game_id.in_(chunk_ids)]
         self._sync_parent_games_for_details(
             results,
             chunk_parent_filters,
-            scoped_game_ids,
             publishable_parent_game_ids,
-            unsynced_only=unsynced_only,
-            batch_size=batch_size,
+            unsynced_only=scope.unsynced_only,
+            batch_size=scope.batch_size,
         )
 
         # Sync aliases scoped to the chunk's games
-        self._sync_game_id_aliases(results, scoped_game_ids, chunk_parent_filters, year, days, batch_size)
+        self._sync_game_id_aliases(results, scope)
 
-        child_filters = self._game_detail_child_filters(filters, year, days)
+        child_filters = self._game_detail_child_filters(scope.filters, scope.year, scope.days)
         if child_filters == []:
             return results
 
@@ -545,10 +541,10 @@ class GameSyncMixin:
                 _RELAY_REPLACE_CHILD_MODELS, eligibility.relay_game_ids, label="relay"
             )
         else:
-            self._prepare_target_game_detail_children(year, unsynced_only=unsynced_only, eligibility=eligibility)
+            self._prepare_target_game_detail_children(scope.year, unsynced_only=scope.unsynced_only, eligibility=eligibility)
 
         def get_child_filters(model_cls: type) -> list | None:
-            return self._child_filter_for_model(model_cls, child_filters, scoped_game_ids, eligibility)
+            return self._child_filter_for_model(model_cls, child_filters, chunk_ids, eligibility)
 
         # 1. Game Metadata
         results["metadata"] = self.sync_simple_table(
@@ -557,7 +553,7 @@ class GameSyncMixin:
             exclude_cols=["created_at"],
             filters=get_child_filters(GameMetadata),
             transform_fn=self._transform_game_metadata_for_target,
-            batch_size=batch_size,
+            batch_size=scope.batch_size,
         )
 
         # 2. Inning Scores
@@ -566,7 +562,7 @@ class GameSyncMixin:
             ["game_id", "team_side", "inning"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameInningScore),
-            batch_size=batch_size,
+            batch_size=scope.batch_size,
         )
 
         # 3. Lineups
@@ -576,7 +572,7 @@ class GameSyncMixin:
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameLineup),
             transform_fn=self._transform_game_lineup_for_target,
-            batch_size=batch_size,
+            batch_size=scope.batch_size,
             dedupe_keys=["game_id", "player_id"],
         )
 
@@ -586,7 +582,7 @@ class GameSyncMixin:
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameBattingStat),
-            batch_size=batch_size,
+            batch_size=scope.batch_size,
             dedupe_keys=["game_id", "player_id"],
         )
 
@@ -596,7 +592,7 @@ class GameSyncMixin:
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GamePitchingStat),
-            batch_size=batch_size,
+            batch_size=scope.batch_size,
             dedupe_keys=["game_id", "player_id"],
         )
 
@@ -607,18 +603,18 @@ class GameSyncMixin:
             ["game_id", "event_seq"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameEvent),
-            batch_size=batch_size,
+            batch_size=scope.batch_size,
         )
         results["validation_metrics"] = self.sync_simple_table(
             GameValidationMetrics,
             ["game_id"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameValidationMetrics),
-            batch_size=batch_size,
+            batch_size=scope.batch_size,
         )
 
         # 7. Game Summary
-        results["summary"] = self._sync_game_summary_rows(filters=get_child_filters(GameSummary), batch_size=batch_size)
+        results["summary"] = self._sync_game_summary_rows(filters=get_child_filters(GameSummary), batch_size=scope.batch_size)
 
         # 8. Game Highlights
         results["highlights"] = self.sync_simple_table(
@@ -626,7 +622,7 @@ class GameSyncMixin:
             ["game_id", "highlight_type", "event_seq"],
             exclude_cols=["id", "created_at"],
             filters=get_child_filters(GameHighlight),
-            batch_size=batch_size,
+            batch_size=scope.batch_size,
         )
 
         return results

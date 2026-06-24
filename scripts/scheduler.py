@@ -1647,7 +1647,19 @@ def main(argv: Sequence[str] | None = None):
     scheduler = BlockingScheduler(timezone="Asia/Seoul")
     scheduler.add_listener(job_error_listener, EVENT_JOB_ERROR)
 
-    # Job 1.9: Phase 1 Extra Crawlers (06:00 KST)
+    # Job 1.9: Daily Games Crawl (03:00 KST)
+    # Ensures daily schedule and game detail collection even if GH Actions fails
+    scheduler.add_job(
+        crawl_daily_games,
+        trigger=CronTrigger(hour=3, minute=0),
+        id="crawl_daily_games",
+        name="Daily Games Crawl (Schedule + Details)",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_daily_games (Daily 03:00 KST)")
+
+    # Job 1.10: Phase 1 Extra Crawlers (06:00 KST)
     scheduler.add_job(
         crawl_phase1_extra_job,
         trigger=CronTrigger(hour=6, minute=0),
@@ -1832,12 +1844,6 @@ def main(argv: Sequence[str] | None = None):
     startup_run = os.getenv("STARTUP_RUN", "1") == "1" and not args.no_startup_run
     if startup_run:
         try:
-            logger.info("Performing one-time startup crawl (run_daily_update)")
-            crawl_daily_games()
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Startup crawl failed; scheduler will continue with cron jobs")
-
-        try:
             backfilled = backfill_missed_daily_crawls()
             if backfilled:
                 logger.info("Startup backfill completed for dates: %s", backfilled)
@@ -1851,19 +1857,20 @@ def main(argv: Sequence[str] | None = None):
     logger.info(f" Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 60)
     logger.info("\nScheduled Jobs:")
-    logger.info("  1. Phase 1 Extra Crawlers: Every day at 06:00 KST")
-    logger.info("  2. P0 Non-Game Data: Every day at 06:20 KST")
-    logger.info("  3. P1/P2 Seat/Parking/Food: Every day at 06:30 KST")
-    logger.info("  4. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
-    logger.info("  5. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
-    logger.info("  6. Park Factor Computation: Every Sunday at 05:30 KST")
-    logger.info("  7. Retired Player Crawl: 1st of every month at 02:00 KST")
-    logger.info("  8. Weekly SLA Report: Every Monday at 06:00 KST")
-    logger.info("  9. Transit Time (JAMSIL): Every 15m, 10:00-23:45 KST")
-    logger.info(" 10. Congestion (JAMSIL): Every 5m, 10:00-23:55 KST")
-    logger.info(" 11. Operation Notices (Official): Daily 09:00 + 11:30 KST")
-    logger.info(" 12. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
-    logger.info(" 13. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
+    logger.info("  1. Daily Games Crawl: Every day at 03:00 KST")
+    logger.info("  2. Phase 1 Extra Crawlers: Every day at 06:00 KST")
+    logger.info("  3. P0 Non-Game Data: Every day at 06:20 KST")
+    logger.info("  4. P1/P2 Seat/Parking/Food: Every day at 06:30 KST")
+    logger.info("  5. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
+    logger.info("  6. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
+    logger.info("  7. Park Factor Computation: Every Sunday at 05:30 KST")
+    logger.info("  8. Retired Player Crawl: 1st of every month at 02:00 KST")
+    logger.info("  9. Weekly SLA Report: Every Monday at 06:00 KST")
+    logger.info(" 10. Transit Time (JAMSIL): Every 15m, 10:00-23:45 KST")
+    logger.info(" 11. Congestion (JAMSIL): Every 5m, 10:00-23:55 KST")
+    logger.info(" 12. Operation Notices (Official): Daily 09:00 + 11:30 KST")
+    logger.info(" 13. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
+    logger.info(" 14. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
     logger.info("%s\n", "=" * 60)
 
     try:
