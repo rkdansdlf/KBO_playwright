@@ -18,6 +18,7 @@ from src.models.matchup import (
     PitcherTeamSplit,
 )
 from src.models.player import PlayerBasic
+from src.models.stat_dataclasses import BattingStats
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -142,27 +143,31 @@ class MatchupEngine:
         existing.strikeouts += stats["so"]
         existing.sacrifice_flies += stats["sf"]
         avg, obp, slg, ops = self._calc_rate_stats(
-            existing.hits,
-            existing.at_bats,
+            BattingStats(
+                hits=existing.hits,
+                at_bats=existing.at_bats,
+                walks=existing.walks,
+                hbp=existing.hbp,
+                doubles=existing.doubles,
+                triples=existing.triples,
+                home_runs=existing.home_runs,
+            ),
             existing.plate_appearances,
-            existing.walks,
-            existing.hbp,
-            existing.doubles,
-            existing.triples,
-            existing.home_runs,
         )
         existing.avg, existing.obp, existing.slg, existing.ops = avg, obp, slg, ops
 
     def _add_new_bvp(self, session: Session, batter_id: int, pitcher_id: int, stats: dict[str, Any]) -> None:
         avg, obp, slg, ops = self._calc_rate_stats(
-            stats["h"],
-            stats["ab"],
+            BattingStats(
+                hits=stats["h"],
+                at_bats=stats["ab"],
+                walks=stats["bb"],
+                hbp=stats["hbp"],
+                doubles=stats["d2"],
+                triples=stats["d3"],
+                home_runs=stats["hr"],
+            ),
             stats["pa"],
-            stats["bb"],
-            stats["hbp"],
-            stats["d2"],
-            stats["d3"],
-            stats["hr"],
         )
         session.add(
             MatchupBvP(
@@ -427,14 +432,16 @@ class MatchupEngine:
         splits = []
         for row in rows:
             avg, obp, slg, ops = self._calc_rate_stats(
-                row.hits,
-                row.at_bats,
+                BattingStats(
+                    hits=row.hits,
+                    at_bats=row.at_bats,
+                    walks=row.walks,
+                    hbp=row.hbp,
+                    doubles=row.doubles,
+                    triples=row.triples,
+                    home_runs=row.home_runs,
+                ),
                 row.plate_appearances,
-                row.walks,
-                row.hbp,
-                row.doubles,
-                row.triples,
-                row.home_runs,
             )
             splits.append(
                 BatterTeamSplit(
@@ -567,14 +574,16 @@ class MatchupEngine:
         splits = []
         for row in rows:
             avg, obp, slg, ops = self._calc_rate_stats(
-                row.hits,
-                row.at_bats,
+                BattingStats(
+                    hits=row.hits,
+                    at_bats=row.at_bats,
+                    walks=row.walks,
+                    hbp=0,
+                    doubles=row.doubles,
+                    triples=row.triples,
+                    home_runs=row.home_runs,
+                ),
                 row.plate_appearances,
-                row.walks,
-                0,
-                row.doubles,
-                row.triples,
-                row.home_runs,
             )
             splits.append(
                 BatterStadiumSplit(
@@ -640,14 +649,13 @@ class MatchupEngine:
         splits = []
         for row in rows:
             avg, obp, slg, ops = self._calc_rate_stats(
-                row.hits,
-                row.at_bats,
+                BattingStats(
+                    hits=row.hits,
+                    at_bats=row.at_bats,
+                    walks=row.walks,
+                    home_runs=row.home_runs,
+                ),
                 row.plate_appearances,
-                row.walks,
-                0,
-                0,
-                0,
-                row.home_runs,
                 is_full=False,
             )
             splits.append(
@@ -672,37 +680,25 @@ class MatchupEngine:
             )
         session.add_all(splits)
 
-    def _calc_rate_stats(  # noqa: PLR0913
+    def _calc_rate_stats(
         self,
-        hits: int | float | None,
-        ab: int | float | None,
-        pa: int | float | None,
-        walks: int | float | None,
-        hbp: int | float | None,
-        double: int | float | None,
-        triple: int | float | None,
-        hr: int | float | None,
+        stats: BattingStats,
+        pa: int,
         *,
         is_full: bool = True,
     ) -> tuple[float, float, float, float]:
         """Helper to calculate composite rates safely."""
-        h = hits or 0
-        ab = ab or 0
-        pa = pa or 0
-        bb = walks or 0
-        hb = hbp or 0
-
-        avg = round(h / ab, 3) if ab > 0 else 0.0
+        avg = round(stats.hits / stats.at_bats, 3) if stats.at_bats > 0 else 0.0
 
         obp = 0.0
         if pa > 0:
-            obp = round((h + bb + hb) / pa, 3)
+            obp = round((stats.hits + stats.walks + stats.hbp) / pa, 3)
 
         slg = 0.0
         if is_full:
-            single = h - (double or 0) - (triple or 0) - (hr or 0)
-            tb = single + ((double or 0) * 2) + ((triple or 0) * 3) + ((hr or 0) * 4)
-            slg = round(tb / ab, 3) if ab > 0 else 0.0
+            single = stats.hits - stats.doubles - stats.triples - stats.home_runs
+            tb = single + stats.doubles * 2 + stats.triples * 3 + stats.home_runs * 4
+            slg = round(tb / stats.at_bats, 3) if stats.at_bats > 0 else 0.0
 
         ops = round(obp + slg, 3)
         return avg, obp, slg, ops
