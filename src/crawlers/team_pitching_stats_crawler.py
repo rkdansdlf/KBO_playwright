@@ -120,7 +120,8 @@ class TeamPitchingStatsCrawler:
             try:
                 with SessionLocal() as session:
                     aggregator = TeamStatAggregator(session)
-                    stats = aggregator.aggregate_pitching(season, dry_run=not persist)
+                    from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+                    stats = aggregator.aggregate_pitching(TeamAggregationQuery(season=season, dry_run=not persist))
 
                     # 팀명 보충
                     reverse_mapping = {v: k for k, v in mapping.items()}

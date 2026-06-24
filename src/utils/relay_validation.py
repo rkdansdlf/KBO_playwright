@@ -7,6 +7,7 @@ Supports two-phase validation: live (structural) and post-game (cross-check).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from src.constants import MAX_OUTS
@@ -73,7 +74,7 @@ def validate_live_events(events: list[dict[str, Any]]) -> list[str]:
 
         warnings.extend(_score_regression_warnings(i, home_score, away_score, prev_home_score, prev_away_score))
         warnings.extend(_inning_regression_warnings(i, inning, half, prev_inning, prev_half))
-        warnings.extend(_out_count_warnings(i, outs, inning, half, prev_outs, prev_inning, prev_half))
+        warnings.extend(_out_count_warnings(OutCountContext(i, outs, inning, half, prev_outs, prev_inning, prev_half)))
         warnings.extend(_event_sequence_warnings(i, event, events))
 
         home_scores.append(home_score)
@@ -120,27 +121,30 @@ def _inning_regression_warnings(
     return []
 
 
-def _out_count_warnings(  # noqa: PLR0913
-    index: int,
-    outs: int | None,
-    inning: int | None,
-    half: str | None,
-    prev_outs: int | None,
-    prev_inning: int | None,
-    prev_half: str | None,
-) -> list[str]:
-    if outs is None or prev_outs is None:
+@dataclass
+class OutCountContext:
+    index: int
+    outs: int | None
+    inning: int | None
+    half: str | None
+    prev_outs: int | None
+    prev_inning: int | None
+    prev_half: str | None
+
+
+def _out_count_warnings(ctx: OutCountContext) -> list[str]:
+    if ctx.outs is None or ctx.prev_outs is None:
         return []
-    if outs < 0 or outs > MAX_OUTS:
-        return [f"event_{index}: out count out of range {outs}"]
-    if index <= 0 or inning != prev_inning or half != prev_half:
+    if ctx.outs < 0 or ctx.outs > MAX_OUTS:
+        return [f"event_{ctx.index}: out count out of range {ctx.outs}"]
+    if ctx.index <= 0 or ctx.inning != ctx.prev_inning or ctx.half != ctx.prev_half:
         return []
 
-    out_diff = outs - prev_outs
+    out_diff = ctx.outs - ctx.prev_outs
     if out_diff < 0:
-        return [f"event_{index}: outs decreased {prev_outs}->{outs} without inning change"]
+        return [f"event_{ctx.index}: outs decreased {ctx.prev_outs}->{ctx.outs} without inning change"]
     if out_diff > MAX_OUTS:
-        return [f"event_{index}: outs jumped by {out_diff} in one event"]
+        return [f"event_{ctx.index}: outs jumped by {out_diff} in one event"]
     return []
 
 
