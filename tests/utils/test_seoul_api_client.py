@@ -48,6 +48,7 @@ class TestGetAreaCongestion:
 
             async def get(self, *args, **kwargs):
                 import httpx
+
                 raise httpx.HTTPError("connection failed")
 
         monkeypatch.setattr("httpx.AsyncClient", lambda **kwargs: _FailClient())
@@ -84,17 +85,19 @@ class TestGetAreaCongestion:
                 pass
 
             async def get(self, *args, **kwargs):
-                return _make_response({
-                    "SeoulRtd.citydata_ppltn": {
-                        "RESULT": [
-                            {
-                                "AREA_CONGEST_LVL": "보통",
-                                "AREA_PPLTN_MAX": "5000",
-                                "AREA_PPLTN_MIN": "3000",
-                            }
-                        ]
+                return _make_response(
+                    {
+                        "SeoulRtd.citydata_ppltn": {
+                            "RESULT": [
+                                {
+                                    "AREA_CONGEST_LVL": "보통",
+                                    "AREA_PPLTN_MAX": "5000",
+                                    "AREA_PPLTN_MIN": "3000",
+                                }
+                            ]
+                        }
                     }
-                })
+                )
 
         monkeypatch.setattr("httpx.AsyncClient", lambda **kwargs: _OkClient())
         result = await get_area_congestion("잠실 야구장")
@@ -120,17 +123,19 @@ class TestGetJamsilCongestionBatch:
                 pass
 
             async def get(self, *args, **kwargs):
-                return _make_response({
-                    "SeoulRtd.citydata_ppltn": {
-                        "RESULT": [
-                            {
-                                "AREA_CONGEST_LVL": "여유",
-                                "AREA_PPLTN_MAX": "100",
-                                "AREA_PPLTN_MIN": "50",
-                            }
-                        ]
+                return _make_response(
+                    {
+                        "SeoulRtd.citydata_ppltn": {
+                            "RESULT": [
+                                {
+                                    "AREA_CONGEST_LVL": "여유",
+                                    "AREA_PPLTN_MAX": "100",
+                                    "AREA_PPLTN_MIN": "50",
+                                }
+                            ]
+                        }
                     }
-                })
+                )
 
         monkeypatch.setattr("httpx.AsyncClient", lambda **kwargs: _OkClient())
         results = await get_jamsil_congestion_batch()
