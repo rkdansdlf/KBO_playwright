@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat
+from src.models.stat_dataclasses import BattingStats
 from src.models.matchup import (
     BatterSplit,
     BatterStadiumSplit,
@@ -198,7 +199,8 @@ def _add_pitching(
 class TestCalcRateStats:
     def test_normal_triple_slash(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(2, 5, 6, 1, 0, 1, 0, 0)
+        stats = BattingStats(hits=2, at_bats=5, walks=1, hbp=0, sf=0, strikeouts=1, doubles=1, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=6)
         assert avg == pytest.approx(0.400, abs=0.001)
         assert obp == pytest.approx(0.500, abs=0.001)  # (2+1+0)/6
         assert slg == pytest.approx(0.600, abs=0.001)  # TB=3, 3/5
@@ -206,7 +208,8 @@ class TestCalcRateStats:
 
     def test_zero_ab_returns_zero_avg(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(0, 0, 3, 3, 0, 0, 0, 0)
+        stats = BattingStats(hits=0, at_bats=0, walks=3, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=3)
         assert avg == 0.0
         assert obp == 1.0  # 3/3
         assert slg == 0.0
@@ -214,7 +217,8 @@ class TestCalcRateStats:
 
     def test_zero_pa_returns_zero_obp(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(0, 0, 0, 0, 0, 0, 0, 0)
+        stats = BattingStats(hits=0, at_bats=0, walks=0, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=0)
         assert avg == 0.0
         assert obp == 0.0
         assert slg == 0.0
@@ -222,7 +226,8 @@ class TestCalcRateStats:
 
     def test_is_full_false_skips_slg(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(2, 5, 6, 1, 0, 1, 0, 1, is_full=False)
+        stats = BattingStats(hits=2, at_bats=5, walks=1, hbp=0, sf=0, strikeouts=1, doubles=1, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=6, is_full=False)
         assert avg == pytest.approx(0.400, abs=0.001)
         assert obp == pytest.approx(0.500, abs=0.001)
         assert slg == 0.0
@@ -230,13 +235,14 @@ class TestCalcRateStats:
 
     def test_handles_hr_in_tb(self):
         engine = MatchupEngine()
-        # 1B=2, 2B=1, HR=1 => TB = 2*1 + 1*2 + 1*4 = 8
-        avg, obp, slg, ops = engine._calc_rate_stats(4, 10, 11, 1, 0, 1, 0, 1)
+        stats = BattingStats(hits=4, at_bats=10, walks=1, hbp=0, sf=0, strikeouts=1, doubles=1, triples=0, home_runs=1)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=11)
         assert slg == pytest.approx(0.800, abs=0.001)  # 8/10
 
     def test_all_none_inputs(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(None, None, None, None, None, None, None, None)
+        stats = BattingStats(hits=0, at_bats=0, walks=0, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=0)
         assert avg == 0.0
         assert obp == 0.0
         assert slg == 0.0

@@ -11,9 +11,11 @@ from src.models.game import (
     Game,
     GameBattingStat,
     GamePitchingStat,
+    GameLineup,
     PlayerGameBatting,
     PlayerGamePitching,
 )
+from src.models.stat_dataclasses import BattingStats, PitchingStats
 from src.repositories.player_game_stats import (
     _compute_batting_rates,
     _compute_pitching_rates,
@@ -33,9 +35,8 @@ from src.repositories.player_game_stats import (
 
 class TestRateComputation:
     def test_compute_batting_rates(self):
-        rates = _compute_batting_rates(
-            hits=2, at_bats=5, walks=1, hbp=0, sf=0, strikeouts=1, doubles=1, triples=0, home_runs=0
-        )
+        stats = BattingStats(hits=2, at_bats=5, walks=1, hbp=0, sf=0, strikeouts=1, doubles=1, triples=0, home_runs=0)
+        rates = _compute_batting_rates(stats)
         assert rates["avg"] == 0.400
         assert rates["obp"] == 0.500
         assert rates["slg"] == 0.600
@@ -45,16 +46,16 @@ class TestRateComputation:
         assert rates["babip"] == pytest.approx(0.5, abs=0.001)
 
     def test_compute_batting_rates_zero_ab(self):
-        rates = _compute_batting_rates(
-            hits=0, at_bats=0, walks=1, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0
-        )
+        stats = BattingStats(hits=0, at_bats=0, walks=1, hbp=0, sf=0, strikeouts=0, doubles=0, triples=0, home_runs=0)
+        rates = _compute_batting_rates(stats)
         assert rates["avg"] == 0.0
         assert rates["obp"] == 1.0
         assert rates["slg"] == 0.0
         assert rates["ops"] == 1.0
 
     def test_compute_pitching_rates(self):
-        rates = _compute_pitching_rates(total_outs=15, hits=3, bb=1, er=1, k=5, hr=0)
+        stats = PitchingStats(total_outs=15, hits=3, bb=1, er=1, k=5, hr=0)
+        rates = _compute_pitching_rates(stats)
         assert rates["era"] == pytest.approx(1.80, abs=0.01)
         assert rates["whip"] == pytest.approx(0.80, abs=0.01)
         # FIP = (13*HR + 3*BB - 2*K) / IP + 3.10 = (0+3-10)/5+3.10 = 1.7
@@ -64,7 +65,8 @@ class TestRateComputation:
         assert rates["kbb"] == 5.0
 
     def test_compute_pitching_rates_zero_ip(self):
-        rates = _compute_pitching_rates(total_outs=0, hits=0, bb=0, er=0, k=0, hr=0)
+        stats = PitchingStats(total_outs=0, hits=0, bb=0, er=0, k=0, hr=0)
+        rates = _compute_pitching_rates(stats)
         assert rates["era"] == 0.0
         assert rates["whip"] == 0.0
         assert rates["fip"] == 0.0
