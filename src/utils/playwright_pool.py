@@ -8,7 +8,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 from playwright.async_api import Error as PlaywrightError
@@ -55,7 +55,7 @@ class AsyncPlaywrightPool:
         self._pages: list[Page] = []
         self._started = False
 
-    async def __aenter__(self) -> AsyncPlaywrightPool:
+    async def __aenter__(self) -> Self:
         await self.start()
         return self
 

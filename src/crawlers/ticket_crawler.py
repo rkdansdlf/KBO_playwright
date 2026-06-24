@@ -143,7 +143,7 @@ class TicketCrawler:
 
     async def _crawl_kbo_ticket_map(self) -> list[dict[str, Any]]:
         """Crawl the KBO ticket map page to extract team ticket URLs, then crawl each team's page."""
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True, verify=False) as client:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
             try:
                 host = urlparse(self.kbo_ticket_url).hostname or "koreabaseball.com"
                 await throttle.wait(host)
@@ -212,7 +212,7 @@ class TicketCrawler:
             if not url:
                 continue
             try:
-                async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True, verify=False) as c:
+                async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as c:
                     host = urlparse(url).hostname or "koreabaseball.com"
                     await throttle.wait(host)
                     resp = await c.get(url)

@@ -12,6 +12,7 @@ import src.repositories.game_save as game_save_module
 import src.services.postgame_reconciliation_service as service
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerBasic
+from src.services.postgame_reconciliation_service import ReconciliationRequest
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_COMPLETED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
 
 
@@ -142,10 +143,7 @@ def test_reconcile_postgame_range_reports_status_and_score_changes(monkeypatch):
 
     result = asyncio.run(
         service.reconcile_postgame_range(
-            "20260424",
-            "20260424",
-            detail_crawler=_FakeDetailCrawler(),
-            log=lambda _message: None,
+            ReconciliationRequest("20260424", "20260424", detail_crawler=_FakeDetailCrawler(), log=lambda _message: None)
         )
     )
 
@@ -196,10 +194,7 @@ def test_reconcile_postgame_range_marks_cancelled_miss(monkeypatch):
 
     result = asyncio.run(
         service.reconcile_postgame_range(
-            "20260424",
-            "20260424",
-            detail_crawler=_FakeDetailCrawler(),
-            log=lambda _message: None,
+            ReconciliationRequest("20260424", "20260424", detail_crawler=_FakeDetailCrawler(), log=lambda _message: None)
         )
     )
 
@@ -258,11 +253,13 @@ def test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss(monke
 
     result = asyncio.run(
         service.reconcile_postgame_range(
-            "20260527",
-            "20260527",
-            detail_crawler=_FakeDetailCrawler(),
-            extra_game_ids=["20260527SSLG0"],
-            log=lambda _message: None,
+            ReconciliationRequest(
+                "20260527",
+                "20260527",
+                detail_crawler=_FakeDetailCrawler(),
+                extra_game_ids=["20260527SSLG0"],
+                log=lambda _message: None,
+            )
         )
     )
 

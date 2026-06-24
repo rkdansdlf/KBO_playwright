@@ -1576,6 +1576,7 @@ def main(argv: Sequence[str] | None = None):
     logger.info(" 13. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
     logger.info(" 14. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
     logger.info(" 15. OCI Hydration: Daily 05:00 KST (local fallback)")
+    logger.info(" 15. OCI Hydration: Daily 05:00 KST (local fallback)")
     logger.info("%s\n", "=" * 60)
 
     try:

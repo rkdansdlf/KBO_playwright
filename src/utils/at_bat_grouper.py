@@ -100,15 +100,10 @@ def _needs_new_at_bat(  # noqa: PLR0913
     event_type: str,
 ) -> bool:
     return (
-        current_batter_key is not None
-        and current_batter_key[:2] != (inning, half)
-        or batter_name
-        and current_batter is not None
-        and batter_name != current_batter
-        or has_seen_result_this_at_bat
-        and event_type in AT_BAT_TERMINAL_EVENTS
-        or current_batter is None
-        and bool(batter_name)
+        (current_batter_key is not None and current_batter_key[:2] != (inning, half))
+        or (batter_name and current_batter is not None and batter_name != current_batter)
+        or (has_seen_result_this_at_bat and event_type in AT_BAT_TERMINAL_EVENTS)
+        or (current_batter is None and bool(batter_name))
     )
 
 

@@ -54,6 +54,7 @@ class GameActivityState:
     last_active_time: datetime | None
     now: datetime
 
+
 _LIVE_SHARD_CURSOR_BY_DATE: dict[str, int] = {}
 _ACTIVE_DETAIL_SNAPSHOT_GAMES: set[str] = set()
 _ACTIVE_DETAIL_SNAPSHOT_LOCK = Lock()
@@ -198,7 +199,7 @@ def _compute_enriched_interval(
 
     # Apply the most aggressive (lowest) multiplier among active games
     combined = min(multipliers)
-    final = max(min_polling_interval, min(120, int(round(base_interval * combined))))
+    final = max(min_polling_interval, min(120, round(base_interval * combined)))
 
     note_parts = []
     if any(m < 1.0 for m in multipliers):
@@ -762,7 +763,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
 def _compute_base_dynamic_interval(
     *,
     state: GameActivityState,
-    base_interval_minutes: int,
+    base_interval_minutes: int,  # noqa: ARG001
 ) -> tuple[int, str]:
     """Return (base_sleep_seconds, mode_label) for the existing dynamic logic."""
     if state.active:

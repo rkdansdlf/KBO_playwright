@@ -264,7 +264,7 @@ def parse_draft(s: str) -> dict[str, Any | None]:
             "draft_team_code": team_code,
             "draft_round": int(rnd) if rnd else None,
             "draft_pick_overall": int(pick) if pick else None,
-            "draft_type": dtype if dtype else ("자유선발" if "자유" in s else None),
+            "draft_type": dtype or ("자유선발" if "자유" in s else None),
         }
     except (ValueError, TypeError):
         return default_res

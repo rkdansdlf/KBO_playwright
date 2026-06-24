@@ -839,7 +839,7 @@ class PlayerIdResolver:
                 candidates.add(row[0])
 
         if len(candidates) == 1:
-            return list(candidates)[0]
+            return next(iter(candidates))
 
         # Try PlayerBasic with team/career again but even more relaxed
         kor_team_name = self.TEAM_NAME_MAP.get(team_code, "")

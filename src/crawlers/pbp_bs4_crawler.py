@@ -47,6 +47,7 @@ class BaseEventContext:
     wpa: float
     state: dict[str, int]
 
+
 PBP_BS4_PARSE_EXCEPTIONS = (RuntimeError, ValueError, TypeError, KeyError, IndexError)
 
 

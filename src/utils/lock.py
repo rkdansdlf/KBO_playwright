@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -140,7 +140,7 @@ class ProcessLock:
                 self.acquire_count = 0
             logger.debug("Released ProcessLock: %s", self.name)
 
-    def __enter__(self) -> ProcessLock:
+    def __enter__(self) -> Self:
         if not self.acquire():
             msg = f"Could not acquire ProcessLock: {self.name}"
             raise LockAcquisitionError(msg)

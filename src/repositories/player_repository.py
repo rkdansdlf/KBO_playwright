@@ -144,8 +144,8 @@ class PlayerRepository:
         if profile.birth_date:
             with contextlib.suppress(ValueError):
                 player.birth_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").date()
-        player.height_cm = profile.height_cm if profile.height_cm else player.height_cm
-        player.weight_kg = profile.weight_kg if profile.weight_kg else player.weight_kg
+        player.height_cm = profile.height_cm or player.height_cm
+        player.weight_kg = profile.weight_kg or player.weight_kg
         player.bats = profile.batting_hand or player.bats
         player.throws = profile.throwing_hand or player.throws
         if profile.is_foreign is not None:

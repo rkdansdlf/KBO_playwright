@@ -187,7 +187,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)
 
-    target = args.date if args.date else datetime.now(KST).strftime("%Y%m%d")
+    target = args.date or datetime.now(KST).strftime("%Y%m%d")
     asyncio.run(run_story_batch(target, sync_to_oci=not args.no_sync))
     return 0
 
