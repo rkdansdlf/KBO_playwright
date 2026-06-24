@@ -94,27 +94,6 @@ def test_alert_success_includes_optional_details(monkeypatch):
     assert calls == ["✅ KBO Job sample_job completed successfully.\ndetail_failures=incomplete_detail=1"]
 
 
-def test_futures_scheduler_raises_on_failed_crawl_summary(monkeypatch):
-    monkeypatch.setattr(
-        scheduler,
-        "crawl_futures_main",
-        lambda _argv: {
-            "ok": False,
-            "processed": 5323,
-            "success_count": 0,
-            "total_saved": 0,
-            "failure_counts": {"exception": 5323},
-        },
-    )
-    monkeypatch.setattr(
-        scheduler,
-        "alert_success",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("success alert should not be sent")),
-    )
-
-    with pytest.raises(RuntimeError, match="Futures crawl failed"):
-        scheduler.crawl_all_futures_profiles.__wrapped__()
-
 
 def test_sync_from_oci_job_runs_hydration_for_current_year(monkeypatch):
     calls = []
@@ -296,19 +275,6 @@ def test_realtime_oci_sync_worker_isolates_game_failures_and_releases_lock(monke
     scheduler.REALTIME_OCI_SYNC_LOCK.release()
 
 
-def test_generate_daily_report_job_forces_morning_summary_notify(monkeypatch):
-    calls = []
-    monkeypatch.setattr(scheduler, "_previous_day_kst", lambda: "20260513")
-
-    def _fake_report_main(argv):
-        calls.append(list(argv))
-        return 0
-
-    monkeypatch.setattr(generate_quality_report, "main", _fake_report_main)
-    scheduler.generate_daily_report_job()
-
-    assert calls == [["--date", "20260513", "--force-notify"]]
-
 
 def test_crawl_p0_non_game_job_invokes_unified_cli(monkeypatch):
     from src.cli import crawl_p0_data
@@ -375,7 +341,6 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
     monkeypatch.setenv("STARTUP_RUN", "0")
     monkeypatch.setattr(scheduler, "crawl_pregame_refresh", lambda: None)
     monkeypatch.setattr(scheduler, "crawl_live_refresh", lambda: None)
-    monkeypatch.setattr(scheduler, "crawl_all_futures_profiles", lambda: None)
     monkeypatch.setattr(scheduler, "crawl_phase1_extra_job", lambda: None)
     monkeypatch.setattr(scheduler, "crawl_p0_non_game_job", lambda: None)
 

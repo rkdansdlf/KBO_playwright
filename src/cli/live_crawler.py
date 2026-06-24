@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
 from threading import Lock, Thread
@@ -37,6 +38,21 @@ LIVE_CRAWLER_EXCEPTIONS = (
     OSError,
 )
 THREAD_EXCEPTIONS = (RuntimeError, OSError)
+
+
+@dataclass(frozen=True, slots=True)
+class LiveSaveOptions:
+    detail_crawler: GameDetailCrawler | None
+    detail_snapshot_background: bool
+
+
+@dataclass(frozen=True, slots=True)
+class GameActivityState:
+    active: bool
+    active_playing: bool
+    active_suspended: bool
+    last_active_time: datetime | None
+    now: datetime
 
 _LIVE_SHARD_CURSOR_BY_DATE: dict[str, int] = {}
 _ACTIVE_DETAIL_SNAPSHOT_GAMES: set[str] = set()
@@ -483,9 +499,8 @@ async def _save_live_relay_and_snapshot(  # noqa: PLR0913
     raw_pbp_rows: list[dict[str, Any]],
     relay_data: dict[str, Any] | None,
     resolved_lifecycle: str,
-    detail_crawler: GameDetailCrawler | None,
     *,
-    detail_snapshot_background: bool,
+    save_options: LiveSaveOptions,
 ) -> bool:
     if not flat_events and not raw_pbp_rows:
         return False
@@ -505,10 +520,10 @@ async def _save_live_relay_and_snapshot(  # noqa: PLR0913
         touched = True
         logger.info("[LIVE] 📝 Synced %s relay rows for %s", saved_rows, game_id)
 
-    if detail_snapshot_background:
+    if save_options.detail_snapshot_background:
         _submit_live_detail_snapshot_background(game_id, today_str)
-    elif detail_crawler is not None:
-        detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
+    elif save_options.detail_crawler is not None:
+        detail = await save_options.detail_crawler.crawl_game(game_id, today_str, lightweight=True)
         if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
             touched = True
             logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", game_id)
@@ -537,10 +552,9 @@ async def _process_single_live_game(  # noqa: PLR0913
     lifecycle_state: str | None,
     nav_status_raw: str | None,
     relay_crawler: NaverRelayCrawler,
-    detail_crawler: GameDetailCrawler,
     today_str: str,
     *,
-    detail_snapshot_background: bool = False,
+    save_options: LiveSaveOptions,
 ) -> tuple[str | None, str]:
     game_id = game["game_id"]
 
@@ -564,8 +578,7 @@ async def _process_single_live_game(  # noqa: PLR0913
         raw_pbp_rows,
         relay_data,
         resolved_lifecycle,
-        detail_crawler,
-        detail_snapshot_background=detail_snapshot_background,
+        save_options=save_options,
     )
 
     return (game_id if touched else None), resolved_lifecycle
@@ -637,9 +650,11 @@ async def run_live_crawler_cycle(
                 lifecycle_state,
                 nav_status_raw,
                 relay_crawler,
-                detail_crawler,
                 today_str,
-                detail_snapshot_background=detail_snapshot_background,
+                save_options=LiveSaveOptions(
+                    detail_crawler=detail_crawler,
+                    detail_snapshot_background=detail_snapshot_background,
+                ),
             )
             for game, lifecycle_state, nav_status_raw in selected_candidates
         ]
@@ -708,11 +723,13 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
                 extra_note = ""
             else:
                 base_interval, mode_str = _compute_base_dynamic_interval(
-                    active=active,
-                    active_playing=active_playing,
-                    active_suspended=active_suspended,
-                    last_active_time=last_active_time,
-                    now=now,
+                    state=GameActivityState(
+                        active=active,
+                        active_playing=active_playing,
+                        active_suspended=active_suspended,
+                        last_active_time=last_active_time,
+                        now=now,
+                    ),
                     base_interval_minutes=base_interval_minutes,
                 )
 
@@ -742,30 +759,26 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             await asyncio.sleep(60)
 
 
-def _compute_base_dynamic_interval(  # noqa: PLR0913
+def _compute_base_dynamic_interval(
     *,
-    active: bool,
-    active_playing: bool,
-    active_suspended: bool,
-    last_active_time: datetime | None,
-    now: datetime,
-    base_interval_minutes: int,  # noqa: ARG001
+    state: GameActivityState,
+    base_interval_minutes: int,
 ) -> tuple[int, str]:
     """Return (base_sleep_seconds, mode_label) for the existing dynamic logic."""
-    if active:
-        if active_playing:
+    if state.active:
+        if state.active_playing:
             return 10, "ACTIVE (Inning playing)"
-        if active_suspended:
+        if state.active_suspended:
             return 60, "DELAYED (Rain delay/Stoppage)"
         return 30, "CHANGE (Inning change)"
     recently_active = False
-    if last_active_time is not None:
-        elapsed = (now - last_active_time).total_seconds()
+    if state.last_active_time is not None:
+        elapsed = (state.now - state.last_active_time).total_seconds()
         if elapsed < 600:
             recently_active = True
     if recently_active:
         return 60, "COOLDOWN (Recently finished)"
-    if 12 <= now.hour < 23:
+    if 12 <= state.now.hour < 23:
         return 120, "GAME HOURS (No active games)"
     return 1800, "OFF HOURS"
 

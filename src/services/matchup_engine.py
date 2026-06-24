@@ -318,14 +318,14 @@ class MatchupEngine:
         for player_id, splits in bat_splits.items():
             for split_type, stats in splits.items():
                 avg, obp, slg, ops = self._calc_rate_stats(
-                    stats["h"],
-                    stats["ab"],
+                    BattingStats(
+                        hits=stats["h"],
+                        at_bats=stats["ab"],
+                        walks=stats["bb"],
+                        hbp=stats["hbp"],
+                        home_runs=stats["hr"],
+                    ),
                     stats["pa"],
-                    stats["bb"],
-                    stats["hbp"],
-                    0,
-                    0,
-                    stats["hr"],
                     is_full=False,
                 )
                 session.add(

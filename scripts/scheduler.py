@@ -70,7 +70,6 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.cli.crawl_futures import main as crawl_futures_main
 from src.cli.crawl_retire import main as crawl_retire_main
 from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
@@ -1005,55 +1004,6 @@ def crawl_live_refresh():
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
-def crawl_all_futures_profiles():
-    """
-    Weekly job: Crawl Futures league stats from all player profiles.
-
-    Runs on Sunday at 05:00 KST to sync season-cumulative Futures stats.
-    Uses exponential backoff retry on failures (3 attempts max).
-    """
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Weekly Futures Profile Crawl ===")
-
-        try:
-            current_year = datetime.now().year
-
-            # Crawl Futures stats with recommended settings
-            logger.info(f"Crawling Futures stats for active players in {current_year}")
-            summary = crawl_futures_main(
-                [
-                    "--season",
-                    str(current_year),
-                    "--concurrency",
-                    "2",  # Low concurrency to respect rate limits
-                    "--delay",
-                    "2.0",  # 2-second delay between requests
-                ]
-            )
-            if not isinstance(summary, dict):
-                raise TypeError("Futures crawl did not return a summary")
-            if not summary.get("ok", False):
-                raise RuntimeError(
-                    "Futures crawl failed: "
-                    f"processed={summary.get('processed')} "
-                    f"success_count={summary.get('success_count')} "
-                    f"total_saved={summary.get('total_saved')} "
-                    f"failure_counts={summary.get('failure_counts')}"
-                )
-
-            logger.info("=== Weekly Futures Profile Crawl Completed Successfully ===")
-            alert_success("crawl_all_futures_profiles")
-
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Futures profile crawl attempt failed")
-            raise
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=120, max=600),
-    retry_error_callback=alert_failure,
-)
 def crawl_retired_players_job(limit: int | None = None):
     """
     Monthly job: Crawl retired/inactive player statistics.
@@ -1123,33 +1073,6 @@ def crawl_p1p2_data_job():
             logger.exception("P1/P2 data crawlers failed")
 
 
-def monitor_data_freshness_job():
-    """
-    Data freshness monitor: check for stale DataSources and empty tables.
-    Runs daily at 07:00 KST (after all crawlers).
-    """
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Data Freshness Monitor ===")
-        try:
-            from src.cli.monitor_data_freshness import run_monitor
-
-            result = run_monitor(alert=True)
-            stale = result.get("stale", [])
-            table_issues = result.get("table_issues", [])
-            p0_issues = result.get("p0_issues", [])
-            if stale or table_issues or p0_issues:
-                logger.warning(
-                    "Freshness issues: %d stale sources, %d table issues, %d P0 issues",
-                    len(stale),
-                    len(table_issues),
-                    len(p0_issues),
-                )
-            else:
-                logger.info("All data sources and tables healthy")
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Data freshness monitor failed")
-
-
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="APScheduler for KBO daily/futures jobs")
     parser.add_argument(
@@ -1199,18 +1122,19 @@ def sync_from_oci_job():
     wait=wait_exponential(multiplier=1, min=60, max=300),
     retry_error_callback=alert_failure,
 )
-def generate_daily_report_job():
-    """
-    Quality report job: Analyze previous day's data integrity.
-    Runs daily at 05:15 KST.
-    """
-    from src.cli.generate_quality_report import main as report_main
-
+def _crawl_team_info_history():
+    """Weekly job: Refresh team info and team history data."""
     with MAINTENANCE_LOCK:
-        logger.info("=== Starting Daily Quality Report Generation ===")
-        target_date = _previous_day_kst()
-        report_main(["--date", target_date, "--force-notify"])
-        logger.info("=== Daily Quality Report Generation Completed ===")
+        logger.info("=== Starting Team Info/History Refresh ===")
+        try:
+            from src.crawlers.team_history_crawler import TeamHistoryCrawler
+            from src.crawlers.team_info_crawler import TeamInfoCrawler
+
+            asyncio.run(TeamInfoCrawler().run(save=True))
+            asyncio.run(TeamHistoryCrawler().run(save=True))
+            logger.info("=== Team Info/History Refresh Completed ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Team info/history refresh failed")
 
 
 def weekly_sla_report_job():
@@ -1244,23 +1168,6 @@ def crawl_phase1_extra_job():
             logger.exception("Phase 1 extra crawlers failed")
 
 
-def compute_standings_job():
-    """
-    Compute daily standings with home/away splits, recent 10, weekly trends.
-    Runs daily at 03:30 KST (after game crawl at 03:00).
-    """
-    with DAILY_LOCK:
-        logger.info("=== Starting Standings Computation ===")
-        try:
-            from src.cli.calculate_standings import main as standings_main
-
-            current_year = datetime.now(KST).year
-            standings_main(["--year", str(current_year)])
-            logger.info("=== Standings Computation Completed ===")
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Standings computation failed")
-
-
 def compute_park_factor_job():
     """
     Compute park factor for all stadiums.
@@ -1281,228 +1188,14 @@ def compute_park_factor_job():
             logger.exception("Park Factor computation failed")
 
 
-def aggregate_team_defense_job():
-    """
-    Aggregate team-level fielding and baserunning stats.
-    Runs daily at 03:45 KST (after standings).
-    """
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Team Defense Aggregation ===")
-        try:
-            from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
-            from src.db.engine import SessionLocal
-            from src.models.team import Team
-
-            current_year = datetime.now(KST).year
-            with SessionLocal() as session:
-                teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
-                agg = TeamFieldingAggregator(session)
-                agg.run_all(current_year, teams)
-                logger.info("=== Team Defense Aggregation Completed ===")
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Team defense aggregation failed")
-
-
-def compute_rankings_job():
-    """
-    Compute sabermetric rankings (wOBA, wRC+, WAR, OPS+).
-    Runs daily at 04:00 KST.
-    """
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Rankings Computation ===")
-        try:
-            from src.aggregators.ranking_aggregator import RankingAggregator
-            from src.db.engine import SessionLocal
-
-            current_year = datetime.now(KST).year
-            with SessionLocal() as session:
-                agg = RankingAggregator(session)
-                agg.run_for_season(current_year)
-                logger.info("=== Rankings Computation Completed ===")
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Rankings computation failed")
-
-
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=60, max=300),
-    retry_error_callback=alert_failure,
-)
-def batch_parse_snapshots_job():
-    """
-    Batch parser: process pending RawSourceSnapshot records.
-    Runs daily at 04:45 KST (after PBP healer, before OCI sync).
-    """
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Batch Parse Snapshots ===")
-        try:
-            from scripts.batch_parse_snapshots import run_batch_parse
-
-            stats = run_batch_parse(limit=200)
-            logger.info(
-                "Batch parse completed: processed=%d, done=%d, failed=%d, skipped=%d",
-                stats["processed"],
-                stats["done"],
-                stats["failed"],
-                stats["skipped"],
-            )
-            if stats.get("failed", 0) > 0:
-                logger.warning("Batch parse had %d failures", stats["failed"])
-            alert_success(
-                "batch_parse_snapshots_job",
-                f"processed={stats['processed']}, done={stats['done']}, failed={stats['failed']}",
-            )
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Batch parse snapshots job failed")
-
-
-def heal_unverified_pbp_job():
-    """
-    PBP Healer: scan for unverified PBP games and re-crawl from KBO official site.
-    Runs daily at 04:30 KST (after rankings, before OCI sync).
-    Uses MAINTENANCE_LOCK to avoid overlapping with other heavy jobs.
-    """
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting PBP Auto-Healer ===")
-        try:
-            import os
-
-            from src.cli.auto_healer import run_pbp_healer
-
-            lookback = os.getenv("PBP_HEALER_LOOKBACK_DAYS", "3")
-            exit_code = run_pbp_healer(["--lookback-days", lookback])
-            if exit_code == 0:
-                logger.info("=== PBP Auto-Healer Completed (no failures) ===")
-            else:
-                logger.warning("=== PBP Auto-Healer Completed with some failures (exit_code=%d) ===", exit_code)
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("PBP Auto-Healer job failed")
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Tier 2 Maintenance Backfill Jobs
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def backfill_sh_sf_job():
-    """Derive missing SH/SF from PBP events for current-season games."""
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting SH/SF Backfill ===")
-        try:
-            from scripts.maintenance.backfill_sh_sf_from_pbp import (
-                backfill_game,
-                find_candidate_games,
-            )
-            from src.db.engine import SessionLocal
-
-            year = datetime.now(KST).year
-            with SessionLocal() as session:
-                game_ids = find_candidate_games(session, year=year)
-                if not game_ids:
-                    logger.info("SH/SF backfill: no candidate games found")
-                    return
-                total = 0
-                for gid in game_ids:
-                    updated = backfill_game(session, gid)
-                    if updated:
-                        session.commit()
-                        total += updated
-                logger.info("SH/SF backfill: %d games updated (%d rows)", len(game_ids), total)
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("SH/SF backfill job failed")
-
-
-def backfill_player_ids_job():
-    """Resolve NULL player_ids in game stats tables for the current year."""
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Player ID Backfill ===")
-        try:
-            from scripts.maintenance.resolve_null_player_ids_conservative import (
-                DEFAULT_OUTPUT_DIR,
-                DEFAULT_OVERRIDES_CSV,
-                DEFAULT_ROW_OVERRIDES_CSV,
-                DEFAULT_TABLES,
-                resolve_null_player_ids,
-            )
-
-            year = datetime.now(KST).year
-            result = resolve_null_player_ids(
-                years=(year,),
-                tables=DEFAULT_TABLES,
-                overrides_csv=DEFAULT_OVERRIDES_CSV,
-                row_overrides_csv=DEFAULT_ROW_OVERRIDES_CSV,
-                output_dir=DEFAULT_OUTPUT_DIR,
-                apply=True,
-                backup=True,
-                delete_duplicates=True,
-            )
-            logger.info(
-                "Player ID backfill: resolved_groups=%d unresolved_groups=%d updated_rows=%d duplicate_null_rows=%d",
-                result.get("resolved_groups", 0),
-                result.get("unresolved_groups", 0),
-                result.get("updated_rows", 0),
-                result.get("duplicate_null_rows", 0),
-            )
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Player ID backfill job failed")
-
-
-def backfill_advanced_stats_job():
-    """Recalculate advanced season stats (batting/pitching/baserunning/fielding)."""
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Advanced Stats Backfill ===")
-        try:
-            from src.cli.backfill_advanced_stats import backfill_stats
-
-            year = datetime.now(KST).year
-            backfill_stats([year], "regular")
-            logger.info("Advanced stats backfill completed for %d", year)
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Advanced stats backfill job failed")
-
-
-def backfill_roster_job():
-    """Monthly full backfill of roster movements and daily rosters."""
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Roster Backfill ===")
-        try:
-            from scripts.maintenance.backfill_roster_movements import (
-                backfill_daily_rosters,
-                backfill_player_movements,
-            )
-
-            year = datetime.now(KST).year
-            asyncio.run(backfill_player_movements([year]))
-            end = datetime.now(KST).strftime("%Y-%m-%d")
-            start = (datetime.now(KST) - timedelta(days=7)).strftime("%Y-%m-%d")
-            asyncio.run(backfill_daily_rosters(start, end))
-            logger.info("Roster backfill completed for %d (rosters: %s ~ %s)", year, start, end)
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Roster backfill job failed")
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Tier 3 — Unified Gap Report
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def gap_report_job():
-    """Run the unified gap analysis and send per-category alerts."""
-    with MAINTENANCE_LOCK:
-        logger.info("=== Starting Gap Report ===")
-        try:
-            from src.cli.gap_report import run_gap_report
-
-            report = run_gap_report(alert=True, dry_run=False)
-            total_gaps = sum(1 for g in report.get("gaps", {}).values() if not g.get("ok", True) and not g.get("error"))
-            error_gaps = sum(1 for g in report.get("gaps", {}).values() if g.get("error"))
-            logger.info(
-                "Gap report complete: %d gap(s), %d error(s)",
-                total_gaps,
-                error_gaps,
-            )
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Gap report job failed")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1840,6 +1533,17 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: crawl_p0_non_game (Daily 06:20 KST)")
 
+    # Job M3: Team info/history refresh — Weekly Sunday 06:00 KST
+    scheduler.add_job(
+        _crawl_team_info_history,
+        trigger=CronTrigger(day_of_week="sun", hour=6, minute=0),
+        id="crawl_team_info_history",
+        name="Team Info/History Refresh",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_team_info_history (Weekly Sunday 06:00 KST)")
+
     # Optional one-time startup backfill for missed days
     startup_run = os.getenv("STARTUP_RUN", "1") == "1" and not args.no_startup_run
     if startup_run:
@@ -1871,6 +1575,7 @@ def main(argv: Sequence[str] | None = None):
     logger.info(" 12. Operation Notices (Official): Daily 09:00 + 11:30 KST")
     logger.info(" 13. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
     logger.info(" 14. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
+    logger.info(" 15. OCI Hydration: Daily 05:00 KST (local fallback)")
     logger.info("%s\n", "=" * 60)
 
     try:

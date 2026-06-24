@@ -15,7 +15,7 @@ class TestDeriveShSfForGame:
     def test_finds_sacrifice_bunt(self):
         session = MagicMock()
         stats_rows = [MagicMock(player_id=1, player_name="Kim")]
-        event_rows = [MagicMock(batter_id=1, batter_name="Kim", description="희생번트")]
+        event_rows = [MagicMock(batter_id=1, batter_name="Kim", description="희생번트", outs=None)]
         session.execute.return_value.all.side_effect = [stats_rows, event_rows]
         result = derive_sh_sf_for_game(session, "20240501LGSS0")
         assert 1 in result
@@ -24,7 +24,7 @@ class TestDeriveShSfForGame:
     def test_finds_sacrifice_fly(self):
         session = MagicMock()
         stats_rows = [MagicMock(player_id=1, player_name="Kim")]
-        event_rows = [MagicMock(batter_id=1, batter_name="Kim", description="희생플라이")]
+        event_rows = [MagicMock(batter_id=1, batter_name="Kim", description="희생플라이", outs=0)]
         session.execute.return_value.all.side_effect = [stats_rows, event_rows]
         result = derive_sh_sf_for_game(session, "20240501LGSS0")
         assert result[1]["sf"] == 1
@@ -32,7 +32,7 @@ class TestDeriveShSfForGame:
     def test_counts_both_sh_and_sf(self):
         session = MagicMock()
         stats_rows = [MagicMock(player_id=1, player_name="Kim")]
-        event_rows = [MagicMock(batter_id=1, batter_name="Kim", description="희생번트 and 희생플라이")]
+        event_rows = [MagicMock(batter_id=1, batter_name="Kim", description="희생번트 and 희생플라이", outs=0)]
         session.execute.return_value.all.side_effect = [stats_rows, event_rows]
         result = derive_sh_sf_for_game(session, "20240501LGSS0")
         assert result[1]["sh"] == 1

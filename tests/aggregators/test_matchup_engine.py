@@ -199,9 +199,8 @@ def _add_pitching(
 class TestCalcRateStats:
     def test_normal_triple_slash(self):
         engine = MatchupEngine()
-        avg, obp, slg, ops = engine._calc_rate_stats(
-            hits=2, ab=5, pa=6, walks=1, hbp=0, double=1, triple=0, hr=0
-        )
+        stats = BattingStats(hits=2, at_bats=5, walks=1, hbp=0, sf=0, strikeouts=0, doubles=1, triples=0, home_runs=0)
+        avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=6)
         assert avg == pytest.approx(0.400, abs=0.001)
         assert obp == pytest.approx(0.500, abs=0.001)
         assert slg == pytest.approx(0.600, abs=0.001)

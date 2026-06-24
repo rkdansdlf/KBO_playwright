@@ -117,17 +117,19 @@ def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any
             if a.is_starter:
                 any_starter = True
 
-        rates = _compute_batting_rates(BattingStats(
-            hits=totals["hits"],
-            at_bats=totals["at_bats"],
-            walks=totals["walks"],
-            hbp=totals["hbp"],
-            sf=totals["sacrifice_flies"],
-            strikeouts=totals["strikeouts"],
-            doubles=totals["doubles"],
-            triples=totals["triples"],
-            home_runs=totals["home_runs"],
-        ))
+        rates = _compute_batting_rates(
+            BattingStats(
+                hits=totals["hits"],
+                at_bats=totals["at_bats"],
+                walks=totals["walks"],
+                hbp=totals["hbp"],
+                sf=totals["sacrifice_flies"],
+                strikeouts=totals["strikeouts"],
+                doubles=totals["doubles"],
+                triples=totals["triples"],
+                home_runs=totals["home_runs"],
+            )
+        )
 
         results.append(
             {
@@ -187,14 +189,16 @@ def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, An
                 any_starting = True
 
         decision = next((a.decision for a in appearances if a.decision), None)
-        rates = _compute_pitching_rates(PitchingStats(
-            total_outs=totals["innings_outs"],
-            hits=totals["hits_allowed"],
-            bb=totals["walks_allowed"],
-            er=totals["earned_runs"],
-            k=totals["strikeouts"],
-            hr=totals["home_runs_allowed"],
-        ))
+        rates = _compute_pitching_rates(
+            PitchingStats(
+                total_outs=totals["innings_outs"],
+                hits=totals["hits_allowed"],
+                bb=totals["walks_allowed"],
+                er=totals["earned_runs"],
+                k=totals["strikeouts"],
+                hr=totals["home_runs_allowed"],
+            )
+        )
 
         results.append(
             {

@@ -116,6 +116,7 @@ class Basic2AdditionalContext:
     policy: RequestPolicy
     pitchers: dict[int, PitcherStats]
 
+
 SERIES_MAPPING: dict[str, dict[str, str]] = {
     "regular": {
         "name": "KBO 정규시즌",
@@ -754,40 +755,52 @@ def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual 
     pitchers: dict[int, PitcherStats] = {}
 
     with SessionLocal() as session:
-        # 1. 해당 시즌/시리즈에 경기를 뛴 모든 투수 ID 조회
-        pattern = SeasonStatAggregator._get_league_name_pattern(series_key)  # noqa: SLF001
+        # 1. 벌크 집계 데이터 가져오기
+        bulk_stats = SeasonStatAggregator.aggregate_pitching_season_bulk(session, year, series_key)
+        if not bulk_stats:
+            logger.info("✅ DB 집계 완료: 총 0명")
+            return []
 
-        player_ids_query = (
-            session.query(GamePitchingStat.player_id)
+        player_ids = [s["player_id"] for s in bulk_stats if s.get("player_id")]
+        logger.info("🔍 DB에서 %s명의 투수를 발견했습니다.", len(player_ids))
+
+        # 2. 선수 기본 정보 벌크 로드
+        players = (
+            session.query(PlayerBasic.player_id, PlayerBasic.name).filter(PlayerBasic.player_id.in_(player_ids)).all()
+        )
+        player_name_map = {p.player_id: p.name for p in players}
+
+        # 3. 최근 소속팀 매핑 벌크 로드 (N+1 방지)
+        recent_games = (
+            session.query(GamePitchingStat.player_id, GamePitchingStat.team_code, Game.game_date)
             .join(Game, GamePitchingStat.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(GamePitchingStat.player_id.in_(player_ids))
             .filter(KboSeason.season_year == year)
-            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
-            .distinct()
+            .all()
         )
 
-        player_ids = [p[0] for p in player_ids_query.all() if p[0]]
-        logger.info("🔍 DB에서 %s명의 투수를 발견했습니다.", len(player_ids))
+        player_team_map = {}
+        player_latest_date = {}
+        for pid, team_code, gdate in recent_games:
+            if not pid or not team_code:
+                continue
+            if pid not in player_latest_date or gdate > player_latest_date[pid]:
+                player_latest_date[pid] = gdate
+                player_team_map[pid] = team_code
 
         series_info = SERIES_MAPPING.get(series_key, {})
         league_name = series_info.get("league", "REGULAR")
 
-        for pid in player_ids:
-            # 2. 개별 투수별 집계
-            agg_data = SeasonStatAggregator.aggregate_pitching_season(session, pid, year, series_key)
-            if not agg_data:
-                continue
-
-            # 3. 선수 기본 정보 조회
-            player_basic = session.query(PlayerBasic).filter_by(player_id=pid).first()
-
-            # 4. PitcherStats 객체 생성
+        # 4. PitcherStats 생성 및 데이터 매핑
+        for agg_data in bulk_stats:
+            pid = agg_data["player_id"]
             stats = PitcherStats(
                 player_id=pid,
                 season=year,
                 league=league_name,
                 source="FALLBACK",
-                player_name=player_basic.name if player_basic else f"Player_{pid}",
+                player_name=player_name_map.get(pid) or agg_data.get("player_name") or f"Player_{pid}",
             )
 
             # 데이터 매핑
@@ -795,18 +808,9 @@ def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual 
                 if hasattr(stats, key):
                     setattr(stats, key, value)
 
-            # 팀 정보 보정 (집계에 참여한 가장 최근 경기 팀 코드 사용 시도)
-            last_game_stat = (
-                session.query(GamePitchingStat.team_code)
-                .join(Game, GamePitchingStat.game_id == Game.game_id)
-                .join(KboSeason, Game.season_id == KboSeason.season_id)
-                .filter(GamePitchingStat.player_id == pid)
-                .filter(KboSeason.season_year == year)
-                .order_by(Game.game_date.desc())
-                .first()
-            )
-            if last_game_stat:
-                stats.team_code = last_game_stat[0]
+            # 최근 팀 보정
+            if pid in player_team_map:
+                stats.team_code = player_team_map[pid]
 
             pitchers[pid] = stats
 
@@ -966,29 +970,33 @@ def crawl_pitcher_series(  # noqa: PLR0913
 
         # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
         team_options = _get_pitcher_team_options(page, by_team=by_team)
-        _collect_pitcher_basic1_loop(PitcherBasic1Context(
-            page=page,
-            year=year,
-            league_name=league_name,
-            iteration_targets=team_options,
-            by_team=by_team,
-            limit=limit,
-            policy=policy,
-            pitchers=pitchers,
-        ))
+        _collect_pitcher_basic1_loop(
+            PitcherBasic1Context(
+                page=page,
+                year=year,
+                league_name=league_name,
+                iteration_targets=team_options,
+                by_team=by_team,
+                limit=limit,
+                policy=policy,
+                pitchers=pitchers,
+            )
+        )
 
         logger.info("✅ Basic1 수집 완료: 총 %s명", len(pitchers))
 
         if series_key == "regular" and not by_team:
-            _collect_pitcher_basic2_additional(Basic2AdditionalContext(
-                page=page,
-                year=year,
-                league_name=league_name,
-                series_info=series_info,
-                limit=limit,
-                policy=policy,
-                pitchers=pitchers,
-            ))
+            _collect_pitcher_basic2_additional(
+                Basic2AdditionalContext(
+                    page=page,
+                    year=year,
+                    league_name=league_name,
+                    series_info=series_info,
+                    limit=limit,
+                    policy=policy,
+                    pitchers=pitchers,
+                )
+            )
         elif by_team:
             logger.info("ℹ️ 팀별 순회 모드에서는 Basic2(상세 지표) 수집을 건너뜁니다.")
 
