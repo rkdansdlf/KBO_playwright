@@ -143,7 +143,9 @@ def test_reconcile_postgame_range_reports_status_and_score_changes(monkeypatch):
 
     result = asyncio.run(
         service.reconcile_postgame_range(
-            ReconciliationRequest("20260424", "20260424", detail_crawler=_FakeDetailCrawler(), log=lambda _message: None)
+            ReconciliationRequest(
+                "20260424", "20260424", detail_crawler=_FakeDetailCrawler(), log=lambda _message: None
+            )
         )
     )
 
@@ -194,7 +196,9 @@ def test_reconcile_postgame_range_marks_cancelled_miss(monkeypatch):
 
     result = asyncio.run(
         service.reconcile_postgame_range(
-            ReconciliationRequest("20260424", "20260424", detail_crawler=_FakeDetailCrawler(), log=lambda _message: None)
+            ReconciliationRequest(
+                "20260424", "20260424", detail_crawler=_FakeDetailCrawler(), log=lambda _message: None
+            )
         )
     )
 
