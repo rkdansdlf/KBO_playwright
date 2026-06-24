@@ -29,10 +29,8 @@ class TestExtractRowsFast:
         assert result[0]["cells"] == ["1", "PlayerA", "LG"]
 
     def test_returns_none_on_exception(self) -> None:
-        from playwright.sync_api import Error as PlaywrightError
-
         page = MagicMock()
-        page.evaluate.side_effect = PlaywrightError("timeout")
+        page.evaluate.side_effect = RuntimeError("timeout")
         result = extract_rows_fast(page)
         assert result is None
 
