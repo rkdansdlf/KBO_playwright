@@ -8,6 +8,7 @@ batter identity, result events, and inning/half boundaries.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -56,13 +57,15 @@ def group_events_into_at_bats(
         new_batter_key = (inning, half, batter_name)
 
         if _needs_new_at_bat(
-            current_batter_key=current_batter_key,
-            inning=inning,
-            half=half,
-            batter_name=batter_name,
-            current_batter=current_batter,
-            has_seen_result_this_at_bat=has_seen_result_this_at_bat,
-            event_type=event_type,
+            ctx=AtBatContext(
+                current_batter_key=current_batter_key,
+                inning=inning,
+                half=half,
+                batter_name=batter_name,
+                current_batter=current_batter,
+                has_seen_result_this_at_bat=has_seen_result_this_at_bat,
+                event_type=event_type,
+            ),
         ):
             at_bat_seq += 1
             has_seen_result_this_at_bat = False
@@ -89,21 +92,23 @@ def group_events_into_at_bats(
     return events
 
 
-def _needs_new_at_bat(  # noqa: PLR0913
-    *,
-    current_batter_key: tuple[int | str | None, str | None, str] | None,
-    inning: int | str | None,
-    half: str | None,
-    batter_name: str,
-    current_batter: str | None,
-    has_seen_result_this_at_bat: bool,
-    event_type: str,
-) -> bool:
+@dataclass
+class AtBatContext:
+    current_batter_key: tuple[int | str | None, str | None, str] | None
+    inning: int | str | None
+    half: str | None
+    batter_name: str
+    current_batter: str | None
+    has_seen_result_this_at_bat: bool
+    event_type: str
+
+
+def _needs_new_at_bat(*, ctx: AtBatContext) -> bool:
     return (
-        (current_batter_key is not None and current_batter_key[:2] != (inning, half))
-        or (batter_name and current_batter is not None and batter_name != current_batter)
-        or (has_seen_result_this_at_bat and event_type in AT_BAT_TERMINAL_EVENTS)
-        or (current_batter is None and bool(batter_name))
+        (ctx.current_batter_key is not None and ctx.current_batter_key[:2] != (ctx.inning, ctx.half))
+        or (ctx.batter_name and ctx.current_batter is not None and ctx.batter_name != ctx.current_batter)
+        or (ctx.has_seen_result_this_at_bat and ctx.event_type in AT_BAT_TERMINAL_EVENTS)
+        or (ctx.current_batter is None and bool(ctx.batter_name))
     )
 
 
