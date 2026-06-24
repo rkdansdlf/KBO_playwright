@@ -115,7 +115,7 @@ class TextTransformer:
 
         return chunks
 
-    def chunk_parent_child(
+    def chunk_parent_child(  # noqa: PLR0913
         self,
         doc_title: str,
         text: str,
@@ -349,7 +349,7 @@ class TextTransformer:
             return paragraphs
         return [p.strip() for p in text.split("\n") if p.strip()]
 
-    def _append_sentence_chunks(
+    def _append_sentence_chunks(  # noqa: PLR0913
         self,
         doc_title: str,
         para: str,
@@ -371,7 +371,7 @@ class TextTransformer:
                 current_chunk_text = sent
         return current_chunk_text, chunk_idx
 
-    def _append_paragraph_chunk(
+    def _append_paragraph_chunk(  # noqa: PLR0913
         self,
         doc_title: str,
         para: str,

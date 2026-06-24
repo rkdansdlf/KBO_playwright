@@ -33,7 +33,7 @@ class DeduplicationResult:
     marked_primary: int
 
 
-def mark_primary_games(
+def mark_primary_games(  # noqa: PLR0913
     db_path: str | Path = DEFAULT_DB_PATH,
     *,
     windows: Iterable[DeduplicationWindow] | None = None,
@@ -165,7 +165,7 @@ def _load_slots(
     return [(row[0], row[1], row[2], row[3]) for row in rows]
 
 
-def _load_candidates(
+def _load_candidates(  # noqa: PLR0913
     cursor: sqlite3.Cursor,
     *,
     game_date: str,

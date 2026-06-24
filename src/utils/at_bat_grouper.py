@@ -89,7 +89,7 @@ def group_events_into_at_bats(
     return events
 
 
-def _needs_new_at_bat(
+def _needs_new_at_bat(  # noqa: PLR0913
     *,
     current_batter_key: tuple[int | str | None, str | None, str] | None,
     inning: int | str | None,

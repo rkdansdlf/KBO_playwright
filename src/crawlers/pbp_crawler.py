@@ -211,7 +211,7 @@ class PBPCrawler:
             self.last_failure_reason = "error"
             return None
 
-    async def _crawl_game_events_page(
+    async def _crawl_game_events_page(  # noqa: PLR0913
         self,
         pool: AsyncPlaywrightPool,
         page: Page,
@@ -238,7 +238,7 @@ class PBPCrawler:
             return None
         return {"game_id": game_id, "game_date": game_date, "events": events}
 
-    async def _retry_after_auth_redirect(
+    async def _retry_after_auth_redirect(  # noqa: PLR0913
         self,
         pool: AsyncPlaywrightPool,
         page: Page,

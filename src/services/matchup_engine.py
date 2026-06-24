@@ -672,7 +672,7 @@ class MatchupEngine:
             )
         session.add_all(splits)
 
-    def _calc_rate_stats(
+    def _calc_rate_stats(  # noqa: PLR0913
         self,
         hits: int | float | None,
         ab: int | float | None,

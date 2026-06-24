@@ -108,7 +108,7 @@ def _is_basic2_headers(headers: list[str]) -> bool:
     return any(indicator in combined for indicator in basic2_indicators)
 
 
-def _build_batting_data(
+def _build_batting_data(  # noqa: PLR0913
     cells: list[str],
     player_id: int,
     player_name: str,
@@ -567,7 +567,7 @@ def _log_first_rows_basic2_legacy(
         logger.info("      ✅ %s (%s) - %s: %s", player_name, team_name, current_header, sort_value)
 
 
-def _parse_legacy_row(
+def _parse_legacy_row(  # noqa: PLR0913
     row_idx: int,
     row: ElementHandle,
     current_header: str,
@@ -900,7 +900,7 @@ def _process_current_page_batting(
     return len(current_page_data)
 
 
-def _collect_batting_stats_loop(
+def _collect_batting_stats_loop(  # noqa: PLR0913
     page: Page,
     year: int,
     series_key: str,
@@ -1006,7 +1006,7 @@ def _handle_batting_fallback(
     return all_players_data
 
 
-def crawl_series_batting_stats(
+def crawl_series_batting_stats(  # noqa: PLR0913
     year: int | None = None,
     series_key: str = "regular",
     limit: int | None = None,

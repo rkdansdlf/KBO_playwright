@@ -489,7 +489,7 @@ async def _step_1_schedule(ctx: _RunContext) -> None:
     ctx.detail_games = detail_games
 
 
-async def _run_detail_recovery_passes(
+async def _run_detail_recovery_passes(  # noqa: PLR0913
     ctx: _RunContext,
     g_crawler: GameDetailCrawler,
     detail_results_by_game: dict,
@@ -1550,7 +1550,7 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
     }
 
 
-async def run_update(
+async def run_update(  # noqa: PLR0913
     target_date: str,
     *,
     sync: bool = False,

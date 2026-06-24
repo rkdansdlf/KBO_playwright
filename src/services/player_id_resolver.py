@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +30,15 @@ CANONICAL_TEAM_CODES = {
 }
 
 SAMSUNG_LEE_SEUNGHYUN_SEASON = 2026
+
+
+@dataclass(frozen=True)
+class PlayerIdentity:
+    player_name: str
+    team_code: str | None
+    season: int | None
+    uniform_no: str | None
+    is_pitcher: bool | None
 
 
 class PlayerIdResolver:
@@ -209,21 +219,22 @@ class PlayerIdResolver:
     def _return_existing_unknown_or_ambiguous(
         self,
         cache_key: str,
-        player_name: str,
-        team_code: str,
-        season: int,
-        uniform_no: str | None,
+        identity: PlayerIdentity,
         candidate_ids: Iterable[int | str | None],
     ) -> int | None:
         candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
-        if team_code and candidates and all(pid >= SURROGATE_PLAYER_ID_BOUNDARY for pid in candidates):
+        if identity.team_code and candidates and all(pid >= SURROGATE_PLAYER_ID_BOUNDARY for pid in candidates):
             if self.strict_game_resolution:
-                return self._return_ambiguous(cache_key, player_name, team_code, season, candidates)
-            existing_unknown_id = self._find_existing_unknown_player(player_name, team_code, uniform_no)
+                return self._return_ambiguous(
+                    cache_key, identity.player_name, identity.team_code, identity.season, candidates
+                )
+            existing_unknown_id = self._find_existing_unknown_player(
+                identity.player_name, identity.team_code, identity.uniform_no
+            )
             if existing_unknown_id:
                 self._cache[cache_key] = existing_unknown_id
                 return existing_unknown_id
-        return self._return_ambiguous(cache_key, player_name, team_code, season, candidates)
+        return self._return_ambiguous(cache_key, identity.player_name, identity.team_code, identity.season, candidates)
 
     def preload_season_index(self, season: int) -> None:
         logger.info("🔄 Preloading player index for season %s...", season)
@@ -470,13 +481,10 @@ class PlayerIdResolver:
     def _cache_single_or_ambiguous(
         self,
         cache_key: str,
-        player_name: str,
-        team_code: str,
-        season: int,
-        uniform_no: str | None,
+        identity: PlayerIdentity,
         candidate_ids: set[int],
     ) -> int | None:
-        candidate_ids = self._filter_surrogate_ids(candidate_ids, player_name)
+        candidate_ids = self._filter_surrogate_ids(candidate_ids, identity.player_name)
         if len(candidate_ids) == 1:
             pid = next(iter(candidate_ids))
             self._cache[cache_key] = pid
@@ -484,39 +492,32 @@ class PlayerIdResolver:
         if len(candidate_ids) > 1:
             return self._return_existing_unknown_or_ambiguous(
                 cache_key,
-                player_name,
-                team_code,
-                season,
-                uniform_no,
+                identity,
                 candidate_ids,
             )
         return None
 
     def _resolve_from_season_stats(
         self,
-        player_name: str,
-        team_code: str,
-        season: int,
-        uniform_no: str | None,
+        identity: PlayerIdentity,
         *,
-        is_pitcher: bool | None,
         cache_key: str,
     ) -> int | None:
-        is_allstar = team_code in self.ALL_STAR_TEAMS
+        is_allstar = identity.team_code in self.ALL_STAR_TEAMS
         candidate_ids = set()
-        for model in self._candidate_models(is_pitcher=is_pitcher):
+        for model in self._candidate_models(is_pitcher=identity.is_pitcher):
             stmt = (
                 select(PlayerBasic.player_id)
                 .select_from(model)
                 .join(PlayerBasic, model.player_id == PlayerBasic.player_id)
-                .where(PlayerBasic.name == player_name, model.season == season)
+                .where(PlayerBasic.name == identity.player_name, model.season == identity.season)
             )
-            if not is_allstar and team_code:
-                stmt = stmt.where(model.team_code == team_code)
-            if uniform_no:
-                stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
+            if not is_allstar and identity.team_code:
+                stmt = stmt.where(model.team_code == identity.team_code)
+            if identity.uniform_no:
+                stmt = stmt.where(PlayerBasic.uniform_no == str(identity.uniform_no))
             candidate_ids.update(row[0] for row in self.session.execute(stmt).fetchall())
-        return self._cache_single_or_ambiguous(cache_key, player_name, team_code, season, uniform_no, candidate_ids)
+        return self._cache_single_or_ambiguous(cache_key, identity, candidate_ids)
 
     def _resolve_from_player_basic_context(
         self,
@@ -536,7 +537,8 @@ class PlayerIdResolver:
         if uniform_no:
             stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
         candidate_ids = {row[0] for row in self.session.execute(stmt).fetchall()}
-        return self._cache_single_or_ambiguous(cache_key, player_name, team_code, season, uniform_no, candidate_ids)
+        identity = PlayerIdentity(player_name, team_code, season, uniform_no, None)
+        return self._cache_single_or_ambiguous(cache_key, identity, candidate_ids)
 
     def _resolve_by_uniform_no(
         self,
@@ -553,33 +555,30 @@ class PlayerIdResolver:
             PlayerBasic.uniform_no == str(uniform_no),
         )
         candidate_ids = {row[0] for row in self.session.execute(stmt).fetchall()}
-        return self._cache_single_or_ambiguous(cache_key, player_name, team_code, season, uniform_no, candidate_ids)
+        identity = PlayerIdentity(player_name, team_code, season, uniform_no, None)
+        return self._cache_single_or_ambiguous(cache_key, identity, candidate_ids)
 
     def _resolve_strict_game_facts_or_none(
         self,
-        player_name: str,
-        team_code: str,
-        season: int,
-        uniform_no: str | None,
+        identity: PlayerIdentity,
         *,
-        is_pitcher: bool | None,
         cache_key: str,
     ) -> int | None:
         fact_id = self._resolve_from_same_season_game_facts(
-            player_name,
-            team_code,
-            season,
-            uniform_no=uniform_no,
-            is_pitcher=is_pitcher,
+            identity.player_name,
+            identity.team_code,
+            identity.season,
+            uniform_no=identity.uniform_no,
+            is_pitcher=identity.is_pitcher,
         )
         if fact_id:
             self._cache[cache_key] = fact_id
             return fact_id
         logger.warning(
             "   [UNRESOLVED PLAYER] %s (%s, %s) lacked strict team/season/uniform evidence. Leaving player_id NULL.",
-            player_name,
-            team_code,
-            season,
+            identity.player_name,
+            identity.team_code,
+            identity.season,
         )
         self._cache[cache_key] = None
         return None
@@ -594,7 +593,8 @@ class PlayerIdResolver:
     ) -> int | None:
         stmt = select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)
         candidate_ids = {row[0] for row in self.session.execute(stmt).fetchall()}
-        return self._cache_single_or_ambiguous(cache_key, player_name, team_code, season, uniform_no, candidate_ids)
+        identity = PlayerIdentity(player_name, team_code, season, uniform_no, None)
+        return self._cache_single_or_ambiguous(cache_key, identity, candidate_ids)
 
     def _resolve_relaxed_and_cache(
         self,
@@ -697,10 +697,10 @@ class PlayerIdResolver:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
+        identity = PlayerIdentity(player_name, team_code, season, uniform_no, is_pitcher)
+
         resolver_steps = (
-            lambda: self._resolve_from_season_stats(
-                player_name, team_code, season, uniform_no, is_pitcher=is_pitcher, cache_key=cache_key
-            ),
+            lambda: self._resolve_from_season_stats(identity, cache_key=cache_key),
             lambda: self._resolve_from_player_basic_context(player_name, team_code, season, uniform_no, cache_key),
             lambda: self._resolve_by_uniform_no(player_name, team_code, season, uniform_no, cache_key),
         )
@@ -710,14 +710,7 @@ class PlayerIdResolver:
                 return resolved_id
 
         if self.strict_game_resolution:
-            return self._resolve_strict_game_facts_or_none(
-                player_name,
-                team_code,
-                season,
-                uniform_no,
-                is_pitcher=is_pitcher,
-                cache_key=cache_key,
-            )
+            return self._resolve_strict_game_facts_or_none(identity, cache_key=cache_key)
 
         return self._resolve_non_strict_fallbacks(player_name, team_code, season, uniform_no, cache_key)
 

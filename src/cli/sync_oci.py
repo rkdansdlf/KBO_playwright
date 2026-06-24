@@ -375,7 +375,7 @@ def get_available_years(session: Session, model: type[object], column_name: str 
     return sorted(years, reverse=True)
 
 
-def _run_sync(
+def _run_sync(  # noqa: PLR0913
     args: argparse.Namespace,
     sync_fn: Callable[..., object],
     *,

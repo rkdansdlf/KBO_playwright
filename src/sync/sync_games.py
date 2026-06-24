@@ -508,6 +508,7 @@ class GameSyncMixin:
         scope: GameDetailSyncScope,
         *,
         skip_year_purge: bool = False,
+        batch_size: int = 5000,
     ) -> dict[str, Any]:
         results = {}
         eligibility = build_game_sync_eligibility(self.sqlite_session, chunk_ids)
@@ -523,7 +524,7 @@ class GameSyncMixin:
             chunk_parent_filters,
             publishable_parent_game_ids,
             unsynced_only=scope.unsynced_only,
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
         )
 
         # Sync aliases scoped to the chunk's games
@@ -541,7 +542,9 @@ class GameSyncMixin:
                 _RELAY_REPLACE_CHILD_MODELS, eligibility.relay_game_ids, label="relay"
             )
         else:
-            self._prepare_target_game_detail_children(scope.year, unsynced_only=scope.unsynced_only, eligibility=eligibility)
+            self._prepare_target_game_detail_children(
+                scope.year, unsynced_only=scope.unsynced_only, eligibility=eligibility
+            )
 
         def get_child_filters(model_cls: type) -> list | None:
             return self._child_filter_for_model(model_cls, child_filters, chunk_ids, eligibility)
@@ -553,7 +556,7 @@ class GameSyncMixin:
             exclude_cols=["created_at"],
             filters=get_child_filters(GameMetadata),
             transform_fn=self._transform_game_metadata_for_target,
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
         )
 
         # 2. Inning Scores
@@ -562,7 +565,7 @@ class GameSyncMixin:
             ["game_id", "team_side", "inning"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameInningScore),
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
         )
 
         # 3. Lineups
@@ -572,7 +575,7 @@ class GameSyncMixin:
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameLineup),
             transform_fn=self._transform_game_lineup_for_target,
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
             dedupe_keys=["game_id", "player_id"],
         )
 
@@ -582,7 +585,7 @@ class GameSyncMixin:
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameBattingStat),
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
             dedupe_keys=["game_id", "player_id"],
         )
 
@@ -592,7 +595,7 @@ class GameSyncMixin:
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GamePitchingStat),
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
             dedupe_keys=["game_id", "player_id"],
         )
 
@@ -603,18 +606,18 @@ class GameSyncMixin:
             ["game_id", "event_seq"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameEvent),
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
         )
         results["validation_metrics"] = self.sync_simple_table(
             GameValidationMetrics,
             ["game_id"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameValidationMetrics),
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
         )
 
         # 7. Game Summary
-        results["summary"] = self._sync_game_summary_rows(filters=get_child_filters(GameSummary), batch_size=scope.batch_size)
+        results["summary"] = self._sync_game_summary_rows(filters=get_child_filters(GameSummary), batch_size=batch_size)
 
         # 8. Game Highlights
         results["highlights"] = self.sync_simple_table(
@@ -622,7 +625,7 @@ class GameSyncMixin:
             ["game_id", "highlight_type", "event_seq"],
             exclude_cols=["id", "created_at"],
             filters=get_child_filters(GameHighlight),
-            batch_size=scope.batch_size,
+            batch_size=batch_size,
         )
 
         return results

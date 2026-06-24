@@ -472,7 +472,7 @@ def _append_quality_notify_lines(msg_lines: list[str], quality: dict[str, Any]) 
     )
 
 
-def _append_quality_violation_lines(
+def _append_quality_violation_lines(  # noqa: PLR0913
     msg_lines: list[str],
     quality: dict[str, Any],
     gate: dict[str, Any],

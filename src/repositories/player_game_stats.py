@@ -47,7 +47,7 @@ _PITCHING_SUM_FIELDS = [
 ]
 
 
-def _compute_batting_rates(
+def _compute_batting_rates(  # noqa: PLR0913
     hits: int,
     at_bats: int,
     walks: int,
@@ -74,7 +74,7 @@ def _compute_batting_rates(
     return {"avg": avg, "obp": obp, "slg": slg, "ops": ops, "iso": iso, "babip": babip}
 
 
-def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int, hr: int) -> dict[str, float]:
+def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int, hr: int) -> dict[str, float]:  # noqa: PLR0913
     ip = total_outs / 3.0
     era = round(er * 9 / ip, 2) if ip > 0 else 0.0
     whip = round((bb + hits) / ip, 2) if ip > 0 else 0.0
