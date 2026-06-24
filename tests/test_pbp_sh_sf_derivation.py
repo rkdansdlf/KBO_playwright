@@ -50,8 +50,9 @@ def test_derive_sh_sf_for_game_basic(db_session):
 
     # Add PBP events:
     # 1. Player A: 희생번트 (Sacrifice bunt) - has batter_id
-    # 2. Player B: 희생플라이 (Sacrifice fly) - has batter_id, outs = 2 (outs after play, was previously filtered out)
+    # 2. Player B: 희생플라이 (Sacrifice fly) - has batter_id, outs = 1 (counts as SF)
     # 3. Player C (unresolved): 희생번트 - no batter_id, batter_name = "PlayerC"
+    # 4. Player D: 희생플라이 with outs=2 - filtered out by current logic (SF only counts with <2 outs)
     db_session.add_all(
         [
             GameEvent(
@@ -68,7 +69,7 @@ def test_derive_sh_sf_for_game_basic(db_session):
                 batter_id=2,
                 batter_name="PlayerB",
                 description="PlayerB : 중견수 희생플라이 아웃",
-                outs=2,
+                outs=1,
             ),
             GameEvent(
                 game_id=game_id,

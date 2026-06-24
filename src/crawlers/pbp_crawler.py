@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
@@ -22,6 +23,26 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.text_parser import KBOTextParser
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GameEventsContext:
+    pool: AsyncPlaywrightPool
+    page: Page
+    game_id: str
+    game_date: str
+    url: str
+    retry_count: int
+
+
+@dataclass
+class AuthRedirectContext:
+    pool: AsyncPlaywrightPool
+    page: Page
+    game_id: str
+    game_date: str
+    url: str
+    retry_count: int
 
 PBP_CRAWLER_EXCEPTIONS = (
     PlaywrightError,
@@ -203,7 +224,7 @@ class PBPCrawler:
         try:
             page = await pool.acquire()
             try:
-                return await self._crawl_game_events_page(pool, page, game_id, game_date, url, retry_count)
+                return await self._crawl_game_events_page(GameEventsContext(pool, page, game_id, game_date, url, retry_count))
             finally:
                 await pool.release(page)
         except PBP_CRAWLER_EXCEPTIONS:
@@ -211,49 +232,41 @@ class PBPCrawler:
             self.last_failure_reason = "error"
             return None
 
-    async def _crawl_game_events_page(  # noqa: PLR0913
+    async def _crawl_game_events_page(
         self,
-        pool: AsyncPlaywrightPool,
-        page: Page,
-        game_id: str,
-        game_date: str,
-        url: str,
-        retry_count: int,
+        ctx: GameEventsContext,
     ) -> dict[str, Any] | None:
         try:
-            if not await self._prepare_live_text_page(page, game_date, url):
+            if not await self._prepare_live_text_page(ctx.page, ctx.game_date, ctx.url):
                 return None
-            if self._is_auth_redirect(page):
-                return await self._retry_after_auth_redirect(pool, page, game_id, game_date, url, retry_count)
-            if not await self._wait_for_pbp_container(page, game_id):
+            if self._is_auth_redirect(ctx.page):
+                return await self._retry_after_auth_redirect(
+                    GameEventsContext(ctx.pool, ctx.page, ctx.game_id, ctx.game_date, ctx.url, ctx.retry_count)
+                )
+            if not await self._wait_for_pbp_container(ctx.page, ctx.game_id):
                 return None
             logger.info("[INFO] Extracting Relay Data...")
-            events = await self._extract_flat_events_legacy(page)
+            events = await self._extract_flat_events_legacy(ctx.page)
         except PBP_CRAWLER_EXCEPTIONS:
-            logger.exception("PBP crawl failed for %s", game_id)
+            logger.exception("PBP crawl failed for %s", ctx.game_id)
             self.last_failure_reason = "error"
             return None
         if not events:
             self.last_failure_reason = "empty"
             return None
-        return {"game_id": game_id, "game_date": game_date, "events": events}
+        return {"game_id": ctx.game_id, "game_date": ctx.game_date, "events": events}
 
-    async def _retry_after_auth_redirect(  # noqa: PLR0913
+    async def _retry_after_auth_redirect(
         self,
-        pool: AsyncPlaywrightPool,
-        page: Page,
-        game_id: str,
-        game_date: str,
-        url: str,
-        retry_count: int,
+        ctx: AuthRedirectContext,
     ) -> dict[str, Any] | None:
-        logger.info("[ERROR] Redirected to %s.", page.url)
+        logger.info("[ERROR] Redirected to %s.", ctx.page.url)
         self.last_failure_reason = "auth_required"
-        if retry_count > 0:
+        if ctx.retry_count > 0:
             return None
-        await pool.close()
-        await pool.start()
-        return await self._crawl_game_events_with_pool(pool, game_id, game_date, url, retry_count=1)
+        await ctx.pool.close()
+        await ctx.pool.start()
+        return await self._crawl_game_events_with_pool(ctx.pool, ctx.game_id, ctx.game_date, ctx.url, retry_count=1)
 
     async def _extract_flat_events_legacy(self, page: Page) -> list[dict[str, Any]]:
         """Extract events from LiveText.aspx which are in reverse chronological order."""

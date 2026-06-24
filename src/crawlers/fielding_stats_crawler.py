@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -155,26 +156,29 @@ def _parse_fielding_row(
         logger.exception("   ⚠️ 데이터 행 파싱 오류")
 
 
-def _crawl_team_fielding_basic(  # noqa: PLR0913
-    page: Page,
-    team_val: str,
-    team_name: str,
-    year: int,
-    position_mapping: dict[str, str],
-    fielding_data_map: dict[tuple[str, str, str], dict[str, Any]],
-    policy: RequestPolicy,
-) -> None:
+@dataclass
+class FieldingCrawlContext:
+    page: Page
+    team_val: str
+    team_name: str
+    year: int
+    position_mapping: dict[str, str]
+    fielding_data_map: dict[tuple[str, str, str], dict[str, Any]]
+    policy: RequestPolicy
+
+
+def _crawl_team_fielding_basic(ctx: FieldingCrawlContext) -> None:
     try:
-        logger.info("\n🏢 [%s] 수비 기록 크롤링 중...", team_name)
-        page.select_option(FIELDING_STATS.position_dropdown, value="")
-        policy.delay()
+        logger.info("\n🏢 [%s] 수비 기록 크롤링 중...", ctx.team_name)
+        ctx.page.select_option(FIELDING_STATS.position_dropdown, value="")
+        ctx.policy.delay()
 
-        with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-            page.select_option(FIELDING_STATS.team_dropdown, value=team_val)
-        page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-        policy.delay()
+        with ctx.page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
+            ctx.page.select_option(FIELDING_STATS.team_dropdown, value=ctx.team_val)
+        ctx.page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+        ctx.policy.delay()
 
-        pagination = page.query_selector(FIELDING_STATS.paging)
+        pagination = ctx.page.query_selector(FIELDING_STATS.paging)
         total_pages = 1
         if pagination:
             page_numbers = [
@@ -187,16 +191,16 @@ def _crawl_team_fielding_basic(  # noqa: PLR0913
 
         for current_page in range(1, total_pages + 1):
             if current_page > 1:
-                _go_to_page(page, current_page, policy)
+                _go_to_page(ctx.page, current_page, ctx.policy)
 
-            table = page.query_selector(FIELDING_STATS.data_table)
+            table = ctx.page.query_selector(FIELDING_STATS.data_table)
             if not table or not table.query_selector("tbody"):
                 continue
 
             for row in table.query_selector("tbody").query_selector_all("tr"):
-                _parse_fielding_row(row, year, position_mapping, fielding_data_map)
+                _parse_fielding_row(row, ctx.year, ctx.position_mapping, ctx.fielding_data_map)
     except CRAWLER_EXCEPTIONS:
-        logger.exception("   ⚠️ [%s] 처리 중 오류", team_name)
+        logger.exception("   ⚠️ [%s] 처리 중 오류", ctx.team_name)
 
 
 def _parse_catcher_detail_row(
@@ -339,7 +343,7 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
 
         # 1. 기본 수집: 팀별 전체 선수 (13개 기본 컬럼)
         for team_val, team_name in teams:
-            _crawl_team_fielding_basic(page, team_val, team_name, year, position_mapping, fielding_data_map, policy)
+            _crawl_team_fielding_basic(FieldingCrawlContext(page, team_val, team_name, year, position_mapping, fielding_data_map, policy))
 
         # 2. 포수 상세 수집 (전체 팀, 17개 컬럼)
         _crawl_catcher_fielding_details(page, url, year, fielding_data_map, policy)

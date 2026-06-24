@@ -19,6 +19,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DERIVE_EVENTS_SQL = text("""
-    SELECT batter_id, batter_name, description
+    SELECT batter_id, batter_name, description, outs
     FROM game_events
     WHERE game_id = :game_id
       AND (description LIKE '%희생번트%' OR description LIKE '%희생플라이%')
@@ -46,6 +47,10 @@ def derive_sh_sf_for_game(session: Session, game_id: str) -> dict[int | str, dic
         is_sh = "희생번트" in desc
         is_sf = "희생플라이" in desc
         if not is_sh and not is_sf:
+            continue
+
+        # SF only counts with fewer than 2 outs before the play
+        if is_sf and row.outs is not None and row.outs >= 2:
             continue
 
         key = _resolve_derived_batter_key(row, name_to_id)
@@ -71,6 +76,10 @@ def _build_unique_batter_name_map(session: Session, game_id: str) -> dict[str, i
     for row in stats_rows:
         if row.player_id and row.player_name:
             name_to_ids.setdefault(row.player_name.strip(), set()).add(row.player_id)
+
+    collisions = {name: ids for name, ids in name_to_ids.items() if len(ids) > 1}
+    if collisions:
+        logger.warning("SH/SF derivation: name collisions in game %s: %s", game_id, collisions)
 
     return {name: next(iter(ids)) for name, ids in name_to_ids.items() if len(ids) == 1}
 
@@ -123,6 +132,18 @@ def apply_sh_sf_to_batting_stats(session: Session, game_id: str) -> int:
         """)
         result = session.execute(sql, params)
         updated += result.rowcount or 0
+
+        # Also update player_game_batting if it has SH/SF columns
+        try:
+            sql2 = text(f"""
+                UPDATE player_game_batting
+                SET {set_clause}
+                WHERE game_id = :game_id
+                  AND {where_clause}
+            """)
+            session.execute(sql2, params)
+        except (SQLAlchemyError, RuntimeError):
+            pass  # player_game_batting may not exist in all environments
 
     if updated:
         logger.info("Derived SH/SF from PBP for game %s: %d rows updated", game_id, updated)

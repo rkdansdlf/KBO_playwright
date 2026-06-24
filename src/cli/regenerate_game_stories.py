@@ -28,6 +28,12 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+
+@dataclass(frozen=True, slots=True)
+class StoryContext:
+    existing_summary_rows: dict[str, list[GameSummary]]
+    existing_summaries: dict[str, str | None]
+
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -294,15 +300,14 @@ def _process_story_game(  # noqa: PLR0913
     game: Game,
     events: list[GameEvent],
     builder: GameStoryBuilder,
-    existing_summary_rows: dict[str, list[GameSummary]],
-    existing_summaries: dict[str, str | None],
     *,
+    ctx: StoryContext,
     apply: bool,
 ) -> tuple[StoryRegenReportRow, bool]:
     if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
         return _skipped_story_row(game), False
 
-    old_json = existing_summaries.get(game.game_id)
+    old_json = ctx.existing_summaries.get(game.game_id)
     story_data = builder.build(game, events)
     new_json = dump_story_json(story_data)
     row = _build_story_report_row(game, old_json, story_data, new_json)
@@ -311,20 +316,19 @@ def _process_story_game(  # noqa: PLR0913
         row.status = "DRY_RUN_READY" if row.changed else "DRY_RUN_UNCHANGED"
         return row, False
     if row.changed:
-        _upsert_story_summary(session, game.game_id, new_json, existing_summary_rows)
+        _upsert_story_summary(session, game.game_id, new_json, ctx.existing_summary_rows)
         row.status = "APPLIED"
     else:
         row.status = "UNCHANGED"
     return row, True
 
 
-def _process_story_batches(  # noqa: PLR0913
+def _process_story_batches(
     session: Session,
     games: Sequence[Game],
     builder: GameStoryBuilder,
-    existing_summary_rows: dict[str, list[GameSummary]],
-    existing_summaries: dict[str, str | None],
     *,
+    ctx: StoryContext,
     apply: bool,
 ) -> tuple[list[StoryRegenReportRow], list[str]]:
     rows: list[StoryRegenReportRow] = []
@@ -340,8 +344,7 @@ def _process_story_batches(  # noqa: PLR0913
                 game,
                 batch_event_map.get(game.game_id, []),
                 builder,
-                existing_summary_rows,
-                existing_summaries,
+                ctx=ctx,
                 apply=apply,
             )
             rows.append(row)
@@ -395,12 +398,12 @@ def regenerate_game_stories(  # noqa: PLR0913
 
         _append_missing_game_rows(rows, target_game_ids, games_by_id)
         existing_summary_rows, existing_summaries = _load_existing_story_summaries(session, games)
+        story_ctx = StoryContext(existing_summary_rows, existing_summaries)
         processed_rows, sync_game_ids = _process_story_batches(
             session,
             games,
             builder,
-            existing_summary_rows,
-            existing_summaries,
+            ctx=story_ctx,
             apply=apply,
         )
         rows.extend(processed_rows)

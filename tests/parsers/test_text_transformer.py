@@ -1,4 +1,4 @@
-from src.parsers.text_transformer import TextTransformer
+from src.parsers.text_transformer import ChunkingContext, TextTransformer
 
 
 class TestCleanText:
@@ -170,7 +170,17 @@ class TestChunkParentChild:
     def test_basic_parent_child(self):
         text = "A" * 300 + "\n\n" + "B" * 300
         chunks = self.t.chunk_parent_child(
-            "Doc", text, {"source": "test"}, parent_size=500, child_size=250, child_overlap=50
+            text,
+            parent_size=500,
+            child_size=250,
+            child_overlap=50,
+            ctx=ChunkingContext(
+                doc_title="Doc",
+                meta={"source": "test"},
+                chunks=[],
+                chunk_char_limit=500,
+                overlap_char_limit=100,
+            ),
         )
         assert len(chunks) >= 1
         assert "parent_content" in chunks[0]["meta"]
@@ -179,11 +189,26 @@ class TestChunkParentChild:
 
     def test_single_parent(self):
         text = "Hello world."
-        chunks = self.t.chunk_parent_child("Doc", text, {"source": "test"})
+        chunks = self.t.chunk_parent_child(
+            text,
+            ctx=ChunkingContext(
+                doc_title="Doc",
+                meta={"source": "test"},
+                chunks=[],
+                chunk_char_limit=1000,
+                overlap_char_limit=100,
+            ),
+        )
         assert len(chunks) >= 1
 
     def test_empty_text(self):
-        assert self.t.chunk_parent_child("Doc", "", {}) == []
+        assert (
+            self.t.chunk_parent_child(
+                "",
+                ctx=ChunkingContext(doc_title="Doc", meta={}, chunks=[], chunk_char_limit=1000, overlap_char_limit=100),
+            )
+            == []
+        )
 
 
 class TestCreateNewsChunk:
