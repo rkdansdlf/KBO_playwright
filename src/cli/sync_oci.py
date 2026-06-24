@@ -7,9 +7,9 @@ OCISync 클래스와 전용 동기화 메서드를 사용하여 테이블별로 
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv

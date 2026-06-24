@@ -21,6 +21,7 @@ from src.utils.relay_validation import (
     _validate_pbp_final_score,
     _validate_pbp_innings,
     validate_live_events,
+    OutCountContext,
 )
 
 
@@ -153,35 +154,35 @@ class TestInningRegressionWarnings:
 
 class TestOutCountWarnings:
     def test_no_outs_no_warnings(self) -> None:
-        assert _out_count_warnings(1, None, 1, "top", 0, 1, "top") == []
+        assert _out_count_warnings(OutCountContext(1, None, 1, "top", 0, 1, "top")) == []
 
     def test_first_event_no_warnings(self) -> None:
-        assert _out_count_warnings(0, 1, 1, "top", 0, None, None) == []
+        assert _out_count_warnings(OutCountContext(0, 1, 1, "top", 0, None, None)) == []
 
     def test_out_of_range(self) -> None:
-        result = _out_count_warnings(1, -1, 1, "top", 0, 1, "top")
+        result = _out_count_warnings(OutCountContext(1, -1, 1, "top", 0, 1, "top"))
         assert len(result) == 1
         assert "out of range" in result[0]
 
     def test_out_of_range_high(self) -> None:
         from src.constants import MAX_OUTS
 
-        result = _out_count_warnings(1, MAX_OUTS + 1, 1, "top", 0, 1, "top")
+        result = _out_count_warnings(OutCountContext(1, MAX_OUTS + 1, 1, "top", 0, 1, "top"))
         assert len(result) == 1
 
     def test_different_inning_no_warning(self) -> None:
-        assert _out_count_warnings(1, 1, 2, "top", 0, 1, "top") == []
+        assert _out_count_warnings(OutCountContext(1, 1, 2, "top", 0, 1, "top")) == []
 
     def test_different_half_no_warning(self) -> None:
-        assert _out_count_warnings(1, 1, 1, "bottom", 0, 1, "top") == []
+        assert _out_count_warnings(OutCountContext(1, 1, 1, "bottom", 0, 1, "top")) == []
 
     def test_normal_progression(self) -> None:
-        assert _out_count_warnings(1, 1, 1, "top", 0, 1, "top") == []
+        assert _out_count_warnings(OutCountContext(1, 1, 1, "top", 0, 1, "top")) == []
 
     def test_max_outs_no_warning(self) -> None:
         from src.constants import MAX_OUTS
 
-        result = _out_count_warnings(1, MAX_OUTS, 1, "top", 0, 1, "top")
+        result = _out_count_warnings(OutCountContext(1, MAX_OUTS, 1, "top", 0, 1, "top"))
         assert result == []
 
 

@@ -687,7 +687,8 @@ class TestTeamStatAggregatorInstanceMethods:
         self.seed_pitching_data(session)
 
         aggregator = TeamStatAggregator(session)
-        results = aggregator.aggregate_pitching(2025)
+        from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+        results = aggregator.aggregate_pitching(TeamAggregationQuery(season=2025))
 
         assert len(results) == 1
         assert results[0]["team_id"] == "OB"
