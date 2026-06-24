@@ -231,7 +231,8 @@ class GameDetailCrawler:
         selector_timeout: int = 15000,
     ) -> tuple[bool, str, str]:
         if ctx.game_id is None or ctx.game_date is None:
-            raise ValueError("ctx.game_id and ctx.game_date required")  # noqa: TRY003
+            msg = "ctx.game_id and ctx.game_date required"
+            raise ValueError(msg)
         url = self._section_url(ctx.game_id, ctx.game_date, section)
         if not await compliance.is_allowed(url):
             logger.error("❌ BLOCKED by compliance policy: %s", url)
