@@ -150,11 +150,8 @@ def _check_inning_scores(session: Session, game: object, issues: dict[str, list[
         return
     away_sum = sum((row.runs or 0) for row in inning_rows if row.team_side == "away")
     home_sum = sum((row.runs or 0) for row in inning_rows if row.team_side == "home")
-    if (
-        game.away_score is not None
-        and away_sum != game.away_score
-        or game.home_score is not None
-        and home_sum != game.home_score
+    if (game.away_score is not None and away_sum != game.away_score) or (
+        game.home_score is not None and home_sum != game.home_score
     ):
         issues["inning_score_mismatch"].append(game.game_id)
 

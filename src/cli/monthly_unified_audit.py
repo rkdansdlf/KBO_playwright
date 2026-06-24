@@ -133,7 +133,7 @@ def crawl_monthly_unified_audit_job() -> None:
 
 def _target_year_from_args(year: int | None) -> int:
     kst = ZoneInfo("Asia/Seoul")
-    return year if year else datetime.now(kst).year - 1
+    return year or datetime.now(kst).year - 1
 
 
 def _run_team_only(target_year: int, *, json_output: bool) -> None:

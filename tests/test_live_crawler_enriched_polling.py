@@ -23,7 +23,9 @@ class TestBaseDynamicInterval:
     def make_now(self, hour: int) -> datetime:
         return datetime(2025, 4, 1, hour, 0, 0, tzinfo=ZoneInfo("Asia/Seoul"))
 
-    def _state(self, *, active=False, active_playing=False, active_suspended=False, last_active_time=None, now=None) -> GameActivityState:
+    def _state(
+        self, *, active=False, active_playing=False, active_suspended=False, last_active_time=None, now=None
+    ) -> GameActivityState:
         return GameActivityState(
             active=active,
             active_playing=active_playing,

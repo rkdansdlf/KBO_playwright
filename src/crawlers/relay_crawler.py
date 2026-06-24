@@ -269,7 +269,8 @@ class RelayCrawler:
                 raise RuntimeError(f"status_{status}")
             payload = response.json()
             if not isinstance(payload, dict):
-                raise TypeError("non_object_json")
+                msg = "non-object JSON response"
+                raise TypeError(msg)
             return payload
 
         try:

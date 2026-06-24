@@ -32,21 +32,15 @@ class HighlightAggregator:
     @staticmethod
     def _is_walkoff(event: GameEvent, score_diff_before: int, score_diff_after: int) -> bool:
         is_bottom_late = (event.inning or 1) >= 9 and event.inning_half == "bottom"
-        return (
-            is_bottom_late
-            and score_diff_before <= 0
-            and score_diff_after > 0
-            or event.description
-            and "끝내기" in event.description
+        return (is_bottom_late and score_diff_before <= 0 and score_diff_after > 0) or (
+            event.description and "끝내기" in event.description
         )
 
     @staticmethod
     def _is_home_run(event: GameEvent) -> bool:
         return bool(
-            event.description
-            and "홈런" in event.description
-            or event.event_type
-            and event.event_type.lower() in ("hr", "homerun"),
+            (event.description and "홈런" in event.description)
+            or (event.event_type and event.event_type.lower() in ("hr", "homerun")),
         )
 
     def _detect_tags_and_type(

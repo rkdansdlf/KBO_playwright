@@ -327,9 +327,7 @@ class GameSyncMixin:
                 results["games"] = 0
                 logger.info("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
         else:
-            results["games"] = self.sync_games(
-                filters=chunk_parent_filters if chunk_parent_filters else None, batch_size=batch_size
-            )
+            results["games"] = self.sync_games(filters=chunk_parent_filters or None, batch_size=batch_size)
 
     def _sync_game_id_aliases(
         self,
@@ -364,7 +362,7 @@ class GameSyncMixin:
                 logger.info("ℹ️ No games found for the specified period.")
                 return []
             child_filters.append(GameMetadata.game_id.in_(game_ids))
-        return child_filters if child_filters else None
+        return child_filters or None
 
     def _prepare_target_game_detail_children(
         self,

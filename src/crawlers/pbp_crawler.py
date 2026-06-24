@@ -44,6 +44,7 @@ class AuthRedirectContext:
     url: str
     retry_count: int
 
+
 PBP_CRAWLER_EXCEPTIONS = (
     PlaywrightError,
     TimeoutError,
@@ -224,7 +225,9 @@ class PBPCrawler:
         try:
             page = await pool.acquire()
             try:
-                return await self._crawl_game_events_page(GameEventsContext(pool, page, game_id, game_date, url, retry_count))
+                return await self._crawl_game_events_page(
+                    GameEventsContext(pool, page, game_id, game_date, url, retry_count)
+                )
             finally:
                 await pool.release(page)
         except PBP_CRAWLER_EXCEPTIONS:

@@ -1398,7 +1398,7 @@ def _clean_extras(extras: dict[str, Any] | None) -> dict[str, Any] | None:
         return None
     ignore_keys = {"COL_0", "COL_1", "선수명", "PlayerName", "playerName"}
     cleaned = {k: v for k, v in extras.items() if k not in ignore_keys}
-    return cleaned if cleaned else None
+    return cleaned or None
 
 
 def _auto_sync_to_oci(game_id: str) -> None:

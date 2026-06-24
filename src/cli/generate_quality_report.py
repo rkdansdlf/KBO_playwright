@@ -830,7 +830,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--force-notify", action="store_true", help="Always send to Telegram")
     args = parser.parse_args(argv)
 
-    target_date = args.date if args.date else datetime.now(_KST).strftime("%Y%m%d")
+    target_date = args.date or datetime.now(_KST).strftime("%Y%m%d")
     year = int(target_date[:4])
 
     with SessionLocal() as session:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.cli.crawl_phase1_extra import main
 
@@ -27,6 +30,53 @@ class TestCrawlPhase1ExtraCLI:
             MockCrawler.return_value = mock_instance
             main()
             mock_instance.run.assert_called_once_with(game_ids=None, save=True)
+
+    def test_main_injury(self):
+        with (
+            patch("sys.argv", ["crawl_phase1_extra", "--type", "injury"]),
+            patch("src.cli.crawl_phase1_extra.run_injury", new_callable=AsyncMock) as mock_run,
+        ):
+            main()
+            mock_run.assert_called_once_with(save=False)
+
+    def test_main_foreign_player(self):
+        with (
+            patch("sys.argv", ["crawl_phase1_extra", "--type", "foreign"]),
+            patch("src.cli.crawl_phase1_extra.run_foreign_player", new_callable=AsyncMock) as mock_run,
+        ):
+            main()
+            mock_run.assert_called_once_with(save=False)
+
+    def test_main_manager_change(self):
+        with (
+            patch("sys.argv", ["crawl_phase1_extra", "--type", "manager"]),
+            patch("src.cli.crawl_phase1_extra.run_manager_change", new_callable=AsyncMock) as mock_run,
+        ):
+            main()
+            mock_run.assert_called_once_with(save=False)
+
+    def test_main_fan_culture(self):
+        with (
+            patch("sys.argv", ["crawl_phase1_extra", "--type", "fan_culture"]),
+            patch("src.cli.crawl_phase1_extra.run_fan_culture", new_callable=AsyncMock) as mock_run,
+        ):
+            main()
+            mock_run.assert_called_once_with(save=False)
+
+    def test_main_all(self):
+        with (
+            patch("sys.argv", ["crawl_phase1_extra", "--type", "all"]),
+            patch("src.cli.crawl_phase1_extra.run_all", new_callable=AsyncMock) as mock_run,
+        ):
+            main()
+            mock_run.assert_called_once_with(save=False)
+
+    def test_main_no_type_prints_help(self, capsys):
+        with patch("sys.argv", ["crawl_phase1_extra"]):
+            with pytest.raises(SystemExit):
+                main()
+            captured = capsys.readouterr()
+            assert "usage" in captured.out.lower() or "required" in captured.out.lower()
 
     def test_main_seed_stadium(self):
         with (

@@ -63,7 +63,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     kst = ZoneInfo("Asia/Seoul")
     current_year = datetime.now(kst).year
-    target_year = args.year if args.year else current_year - 1
+    target_year = args.year or current_year - 1
 
     if target_year < 2020:
         logger.info("Skipping PA formula audit for year %s (before 2020)", target_year)

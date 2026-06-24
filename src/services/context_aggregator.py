@@ -48,7 +48,7 @@ class ContextAggregator:
             return whole * 3 + 1
         if abs(fractional - 0.2) < 0.02:
             return whole * 3 + 2
-        return int(round(value * 3))
+        return round(value * 3)
 
     @classmethod
     def _pitching_outs(cls, row: GamePitchingStat) -> int:

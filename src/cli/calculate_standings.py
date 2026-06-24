@@ -212,7 +212,7 @@ def _weekly_win_pcts(team: TeamState) -> dict[str, float | None] | None:
         losses = team.weekly_losses.get(week, 0)
         total = wins + losses
         weekly_pcts[week] = round(wins / total, 3) if total > 0 else None
-    return weekly_pcts if weekly_pcts else None
+    return weekly_pcts or None
 
 
 def _build_snapshot(

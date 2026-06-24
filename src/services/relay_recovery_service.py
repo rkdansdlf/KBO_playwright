@@ -50,6 +50,16 @@ DEFAULT_MANIFEST_PATH = PROJECT_ROOT / "data" / "recovery" / "source_manifest.cs
 DEFAULT_CAPABILITY_PATH = PROJECT_ROOT / "data" / "recovery" / "source_capability.csv"
 
 
+@dataclass
+class GameStateInput:
+    game_id: str
+    league_type_name: str | None
+    bucket_id: str | None
+    has_events: bool
+    has_event_state: bool
+    has_pbp: bool
+
+
 @dataclass(frozen=True)
 class RelayRecoveryTarget:
     game_id: str
@@ -62,25 +72,20 @@ class RelayRecoveryTarget:
     needs_pbp_recovery: bool = True
 
     @classmethod
-    def from_game_state(  # noqa: PLR0913
+    def from_game_state(
         cls,
         *,
-        game_id: str,
-        league_type_name: str | None,
-        bucket_id: str | None,
-        has_events: bool,
-        has_event_state: bool,
-        has_pbp: bool,
+        state: GameStateInput,
     ) -> RelayRecoveryTarget:
         return cls(
-            game_id=game_id,
-            league_type_name=league_type_name,
-            bucket_id=bucket_id or derive_bucket_id(game_id, league_type_name),
-            has_events=has_events,
-            has_event_state=has_event_state,
-            has_pbp=has_pbp,
-            needs_event_recovery=not has_event_state,
-            needs_pbp_recovery=not has_pbp,
+            game_id=state.game_id,
+            league_type_name=state.league_type_name,
+            bucket_id=state.bucket_id or derive_bucket_id(state.game_id, state.league_type_name),
+            has_events=state.has_events,
+            has_event_state=state.has_event_state,
+            has_pbp=state.has_pbp,
+            needs_event_recovery=not state.has_event_state,
+            needs_pbp_recovery=not state.has_pbp,
         )
 
 
@@ -802,7 +807,7 @@ def _save_or_count_rows(
     if not event_rows and relay_result.raw_pbp_rows:
         skipped_event_rows_reason = "no_valid_event_state"
     if dry_run:
-        saved_rows = event_rows if event_rows else pbp_rows
+        saved_rows = event_rows or pbp_rows
         return RelaySaveCounts(
             saved_rows=saved_rows,
             saved_event_rows=event_rows,

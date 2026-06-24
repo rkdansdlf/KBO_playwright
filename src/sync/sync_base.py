@@ -763,7 +763,8 @@ class OCISyncBase:
                 time.sleep(wait_seconds)
             else:
                 return conn
-        raise RuntimeError("Unreachable")
+        msg = "Unreachable: connection loop exited without return"
+        raise RuntimeError(msg)
 
     def _rollback_target_session(self, *, label: str) -> None:
         try:
@@ -810,7 +811,8 @@ class OCISyncBase:
                 )
                 self._reconnect_oci()
                 time.sleep(wait_seconds)
-        raise RuntimeError("Unreachable")
+        msg = "Unreachable: reconnect loop exited"
+        raise RuntimeError(msg)
 
     def _resolve_sync_columns(self, model: type, exclude_cols: list[str]) -> list[str]:
         target_column_defs = {}

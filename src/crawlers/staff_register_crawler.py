@@ -228,7 +228,7 @@ class StaffRegisterCrawler:
                     "name": name,
                     "uniform_no": uniform_no,
                     "team": canonical_team,
-                    "birth_date": birth_text if birth_text else None,
+                    "birth_date": birth_text or None,
                     "birth_date_date": birth_date_obj,
                     "height_cm": height_cm,
                     "weight_kg": weight_kg,
