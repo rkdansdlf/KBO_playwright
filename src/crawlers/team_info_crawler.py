@@ -105,7 +105,8 @@ class TeamInfoCrawler:
         }
 
     async def _extract_modal_fields(self, row: Locator, team_name: str) -> tuple[str | None, ...]:
-        assert self.page is not None
+        if self.page is None:
+            raise RuntimeError("Page not initialized")  # noqa: TRY003
         link = row.locator("td").nth(0).locator("a.showTg").first
         if await link.count() == 0:
             logger.info("No link found for %s", team_name)
@@ -138,7 +139,8 @@ class TeamInfoCrawler:
         return None
 
     async def _close_modal(self, modal: Locator) -> None:
-        assert self.page is not None
+        if self.page is None:
+            raise RuntimeError("Page not initialized")  # noqa: TRY003
         await self.page.keyboard.press("Escape")
         try:
             if await modal.is_visible(timeout=1000):

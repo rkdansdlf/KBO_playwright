@@ -343,13 +343,15 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
 
         # 1. 기본 수집: 팀별 전체 선수 (13개 기본 컬럼)
         for team_val, team_name in teams:
-            _crawl_team_fielding_basic(FieldingCrawlContext(page, team_val, team_name, year, position_mapping, fielding_data_map, policy))
+            _crawl_team_fielding_basic(
+                FieldingCrawlContext(page, team_val, team_name, year, position_mapping, fielding_data_map, policy)
+            )
 
         # 2. 포수 상세 수집 (전체 팀, 17개 컬럼)
         _crawl_catcher_fielding_details(page, url, year, fielding_data_map, policy)
 
         fielding_data = list(fielding_data_map.values())
-        summary, fielding_data = build_fielding_crawl_summary(fielding_data)
+        _, fielding_data = build_fielding_crawl_summary(fielding_data)
         logger.info("\n✅ 총 %s개의 수비 기록 수집 완료!", len(fielding_data))
 
         browser.close()

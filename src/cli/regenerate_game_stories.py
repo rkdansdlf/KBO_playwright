@@ -28,13 +28,14 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from sqlalchemy.orm import Session
+
 
 @dataclass(frozen=True, slots=True)
 class StoryContext:
     existing_summary_rows: dict[str, list[GameSummary]]
     existing_summaries: dict[str, str | None]
 
-    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

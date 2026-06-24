@@ -94,7 +94,6 @@ def test_alert_success_includes_optional_details(monkeypatch):
     assert calls == ["✅ KBO Job sample_job completed successfully.\ndetail_failures=incomplete_detail=1"]
 
 
-
 def test_sync_from_oci_job_runs_hydration_for_current_year(monkeypatch):
     calls = []
     fixed_now = datetime(2026, 1, 2, 5, 0, tzinfo=scheduler.KST)
@@ -273,7 +272,6 @@ def test_realtime_oci_sync_worker_isolates_game_failures_and_releases_lock(monke
     ]
     assert scheduler.REALTIME_OCI_SYNC_LOCK.acquire(blocking=False)
     scheduler.REALTIME_OCI_SYNC_LOCK.release()
-
 
 
 def test_crawl_p0_non_game_job_invokes_unified_cli(monkeypatch):

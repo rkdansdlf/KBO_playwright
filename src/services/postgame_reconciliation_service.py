@@ -154,23 +154,27 @@ def find_postgame_reconciliation_targets(
     return targets
 
 
-async def reconcile_postgame_range(  # noqa: PLR0913
-    start_date: str,
-    end_date: str,
-    *,
-    detail_crawler: DetailCrawler,
-    concurrency: int | None = 1,
-    extra_game_ids: Iterable[str] | None = None,
-    log: Callable[[str], None] = logger.info,
-    write_contract: GameWriteContract | None = None,
-    source_reason: str = "postgame_reconciliation",
+@dataclass
+class ReconciliationRequest:
+    start_date: str
+    end_date: str
+    detail_crawler: DetailCrawler
+    concurrency: int | None = 1
+    extra_game_ids: Iterable[str] | None = None
+    log: Callable[[str], None] = field(default=logger.info)
+    write_contract: GameWriteContract | None = None
+    source_reason: str = "postgame_reconciliation"
+
+
+async def reconcile_postgame_range(
+    req: ReconciliationRequest,
 ) -> PostgameReconciliationResult:
     """Re-crawl started-like games and return status/score changes."""
-    start_date, end_date = _normalize_range(start_date, end_date)
+    start_date, end_date = _normalize_range(req.start_date, req.end_date)
     targets = find_postgame_reconciliation_targets(
         start_date,
         end_date,
-        extra_game_ids=extra_game_ids,
+        extra_game_ids=req.extra_game_ids,
     )
     result = PostgameReconciliationResult(
         start_date=start_date,
@@ -184,13 +188,13 @@ async def reconcile_postgame_range(  # noqa: PLR0913
     before = _load_score_status_snapshots(game_ids)
     result.detail_result = await crawl_and_save_game_details(
         targets,
-        detail_crawler=detail_crawler,
+        detail_crawler=req.detail_crawler,
         config=GameCollectionConfig(
             force=True,
-            concurrency=concurrency,
-            log=log,
-            write_contract=write_contract,
-            source_reason=source_reason,
+            concurrency=req.concurrency,
+            log=req.log,
+            write_contract=req.write_contract,
+            source_reason=req.source_reason,
         ),
     )
 

@@ -95,7 +95,7 @@ class RealtimeIssueCrawler:
         url = f"https://sports.news.naver.com/kbaseball/news/read?oid={oid}&aid={offset_id}"
         return {
             "title": title,
-            "content": sub_content if sub_content else title,
+            "content": sub_content or title,
             "meta": {
                 "source": url,
                 "office_name": item.get("officeName", ""),

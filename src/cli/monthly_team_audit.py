@@ -97,7 +97,7 @@ def main() -> int:
     args = parser.parse_args()
 
     current_year = datetime.now(KST).year
-    target_year = args.year if args.year else current_year - 1
+    target_year = args.year or current_year - 1
 
     if target_year < 2020:
         logger.info("Skipping team audit for year %s (before 2020)", target_year)

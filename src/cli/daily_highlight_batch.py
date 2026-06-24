@@ -208,7 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-notify", action="store_true", help="Skip sending Telegram alert summary")
     args = parser.parse_args(argv)
 
-    target = args.date if args.date else datetime.now(KST).strftime("%Y%m%d")
+    target = args.date or datetime.now(KST).strftime("%Y%m%d")
     asyncio.run(
         run_highlight_batch(
             target,

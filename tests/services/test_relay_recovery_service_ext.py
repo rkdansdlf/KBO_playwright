@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.services.relay_recovery_service import (
+    GameStateInput,
     RelayRecoveryTarget,
     RelaySaveCounts,
     _classify_relay_failure,
@@ -188,12 +189,14 @@ class TestManifestBaseDir:
 class TestRelayRecoveryTarget:
     def test_from_game_state_with_events(self):
         target = RelayRecoveryTarget.from_game_state(
-            game_id="20240315LGSS0",
-            league_type_name="Regular",
-            bucket_id=None,
-            has_events=True,
-            has_event_state=True,
-            has_pbp=False,
+            state=GameStateInput(
+                game_id="20240315LGSS0",
+                league_type_name="Regular",
+                bucket_id=None,
+                has_events=True,
+                has_event_state=True,
+                has_pbp=False,
+            )
         )
         assert target.game_id == "20240315LGSS0"
         assert target.needs_event_recovery is False
@@ -201,12 +204,14 @@ class TestRelayRecoveryTarget:
 
     def test_from_game_state_fully_recovered(self):
         target = RelayRecoveryTarget.from_game_state(
-            game_id="20240315LGSS0",
-            league_type_name="Regular",
-            bucket_id="2024_regular",
-            has_events=True,
-            has_event_state=True,
-            has_pbp=True,
+            state=GameStateInput(
+                game_id="20240315LGSS0",
+                league_type_name="Regular",
+                bucket_id="2024_regular",
+                has_events=True,
+                has_event_state=True,
+                has_pbp=True,
+            )
         )
         assert target.needs_event_recovery is False
         assert target.needs_pbp_recovery is False

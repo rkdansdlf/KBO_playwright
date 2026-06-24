@@ -70,6 +70,11 @@ select = [
     "RUF005",  # collection literal concatenation
     "RUF017",  # avoid-six
     "RUF022",  # unsorted-dunder-all
+    "RUF015",  # unnecessary-iterable-allocation-for-first-element
+    "RUF046",  # unnecessary-cast-to-int
+    "RUF059",  # unused-unpacked-variable
+    "EM101",   # raw-string-in-exception
+    "PYI034",  # non-self-return-type
     "PERF401",  # manual list comprehension
     "PT",      # pytest style
     "PTH",     # pathlib (os.path 대체)
@@ -95,6 +100,17 @@ select = [
     "FURB132", # for-loop-with-temporary-variable
     "RUF024",  # non-unique-dunder-all
     "RUF040",  # non-unique-dunder-slots
+    "RUF012",  # mutable-class-default
+    "PLW0603", # global-statement
+    "PLW0127", # self-assigning-variable
+    "S501",    # request-with-no-cert-validation
+    "S311",    # suspicious-non-cryptographic-random-usage
+    "S310",    # suspicious-url-open-usage
+    "S603",    # subprocess-without-shell-equals-true
+    "ASYNC109", # async-function-with-timeout
+    "ASYNC212", # blocking-http-call-httpx-in-async-function
+    "ASYNC240", # blocking-path-method-in-async-function
+    "FURB110", # if-exp-instead-of-or-operator
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
@@ -116,8 +132,37 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "src/models/**" = ["TC001", "TC002", "TC003", "PLR0913"]
-"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "ARG", "T201", "T20", "FURB167", "RUF013", "DTZ005", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF401", "BLE001", "F401", "I001"]
-"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001"]
+"src/crawlers/base_naver_crawler.py" = ["ASYNC212", "RUF012"]
+"src/crawlers/foreign_player_crawler.py" = ["RUF012"]
+"src/crawlers/injury_crawler.py" = ["RUF012"]
+"src/crawlers/manager_change_crawler.py" = ["RUF012"]
+"src/crawlers/preview_crawler.py" = ["RUF012"]
+"src/crawlers/ticket_crawler.py" = ["RUF012", "S501"]
+"src/crawlers/game_mvp_crawler.py" = ["ASYNC212"]
+"src/crawlers/game_detail_crawler.py" = ["ASYNC240"]
+"src/crawlers/player_search_crawler.py" = ["ASYNC109"]
+"src/crawlers/relay_crawler.py" = ["ASYNC109"]
+"src/crawlers/schedule_crawler.py" = ["ASYNC109"]
+"src/repositories/player_repository.py" = ["RUF012"]
+"src/repositories/player_season_pitching_repository.py" = ["PLW0603"]
+"src/repositories/safe_batting_repository.py" = ["PLW0603"]
+"src/utils/team_mapping.py" = ["PLW0603"]
+"src/utils/request_policy.py" = ["S311"]
+"src/utils/throttle.py" = ["S311"]
+"src/utils/alerting.py" = ["S310"]
+"src/utils/compliance.py" = ["ASYNC240"]
+"src/utils/lock.py" = ["PLW0127"]
+"src/sources/relay/base.py" = ["PLW0127"]
+"src/sources/relay/orchestrator.py" = ["PLW0127"]
+"src/monitoring/sla_tracker.py" = ["PLW0127"]
+"src/sync/runtime_hydrator.py" = ["RUF012"]
+"src/sources/relay/circuit_breaker.py" = ["RUF012"]
+"src/cli/retry_daily_failures.py" = ["S603"]
+"src/cli/run_daily_update.py" = ["S603"]
+"src/cli/run_periodic_extras.py" = ["S603"]
+"src/cli/run_all_crawlers.py" = ["ASYNC240"]
+"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "ARG", "T201", "T20", "FURB167", "RUF013", "DTZ005", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF401", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "ASYNC109", "ASYNC212", "ASYNC240", "FURB110"]
+"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "ASYNC109", "ASYNC212", "ASYNC240", "FURB110"]
 "migrations/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "T201", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001"]
 
 

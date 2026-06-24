@@ -195,7 +195,7 @@ class FuturesProfileCrawler:
             # Extract rows
             rows = []
             tbody = table_elem.find("tbody")
-            row_container = tbody if tbody else table_elem
+            row_container = tbody or table_elem
 
             for tr in row_container.find_all("tr"):
                 cells = [cell.get_text(strip=True) for cell in tr.find_all(["th", "td"])]

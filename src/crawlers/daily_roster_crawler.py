@@ -239,7 +239,7 @@ class DailyRosterCrawler:
 
     def _normalize_team(self, code: str, season_year: int | None = None) -> str:
         resolved = resolve_team_code(code, season_year)
-        return resolved if resolved else code
+        return resolved or code
 
     def _clean_category(self, cat: str) -> str:
         # "투수 (14명)" -> "투수"

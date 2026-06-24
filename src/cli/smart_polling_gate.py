@@ -196,7 +196,7 @@ async def _handle_no_games(
         logger.info("[GATE] No games today or yesterday — likely rest day, skip")
         return (False, False, _build_details("no_games_today", today_games=0, yesterday_active=0))
 
-    yesterday_terminal, yesterday_active, yesterday_unknown = _classify_games(yesterday_games)
+    _, yesterday_active, _ = _classify_games(yesterday_games)
     if yesterday_active:
         logger.info(
             "[GATE] Yesterday (%s) still has %d active games — proceeding to crawl",

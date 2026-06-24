@@ -111,13 +111,13 @@ def parse_innings_to_outs(text: str | None) -> int | None:
         whole = int(frac_match.group(1))
         num = int(frac_match.group(2))
         den = int(frac_match.group(3))
-        return whole * 3 + int(round(num * 3 / den))
+        return whole * 3 + round(num * 3 / den)
 
     frac_only = re.match(r"^(\d+)/(\d+)$", cleaned)
     if frac_only:
         num = int(frac_only.group(1))
         den = int(frac_only.group(2))
-        return int(round(num * 3 / den))
+        return round(num * 3 / den)
 
     if "." in cleaned:
         try:
