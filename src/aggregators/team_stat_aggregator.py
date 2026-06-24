@@ -36,6 +36,7 @@ class TeamAggregationQuery:
     team_games_map: dict[tuple[int, str], int] | None = None
     dry_run: bool = False
 
+
 DEFAULT_TEAM_NAMES = {
     "OB": "두산",
     "LT": "롯데",
@@ -144,20 +145,12 @@ class TeamStatAggregator:
             if actual_query.rows is not None
             else (actual_query.season if actual_query.season is not None else None)
         )
-        actual_names = (
-            actual_query.team_names
-            if actual_query.team_names is not None
-            else actual_query.team_id
-        )
+        actual_names = actual_query.team_names if actual_query.team_names is not None else actual_query.team_id
 
         if actual_query.season is not None:
-            return self._aggregate_batting_db(
-                actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run
-            )
+            return self._aggregate_batting_db(actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run)
         if actual_rows is not None:
-            return self._aggregate_batting_mem(
-                actual_rows, actual_names, actual_query.team_games_map
-            )
+            return self._aggregate_batting_mem(actual_rows, actual_names, actual_query.team_games_map)
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
@@ -202,20 +195,12 @@ class TeamStatAggregator:
             if actual_query.rows is not None
             else (actual_query.season if actual_query.season is not None else None)
         )
-        actual_names = (
-            actual_query.team_names
-            if actual_query.team_names is not None
-            else actual_query.team_id
-        )
+        actual_names = actual_query.team_names if actual_query.team_names is not None else actual_query.team_id
 
         if actual_query.season is not None:
-            return self._aggregate_pitching_db(
-                actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run
-            )
+            return self._aggregate_pitching_db(actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run)
         if actual_rows is not None:
-            return self._aggregate_pitching_mem(
-                actual_rows, actual_names, actual_query.team_games_map
-            )
+            return self._aggregate_pitching_mem(actual_rows, actual_names, actual_query.team_games_map)
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
@@ -230,7 +215,9 @@ class TeamStatAggregator:
         Aggregates and updates both batting and pitching stats.
         """
         batting_results = self.aggregate_batting(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
-        pitching_results = self.aggregate_pitching(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
+        pitching_results = self.aggregate_pitching(
+            TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run)
+        )
         return {
             "batting": batting_results,
             "pitching": pitching_results,
@@ -720,7 +707,9 @@ class TeamStatAggregator:
                     team_games_map[(year, tc)] = games
 
         aggregator = TeamStatAggregator()
-        return aggregator.aggregate_batting(TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map))
+        return aggregator.aggregate_batting(
+            TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map)
+        )
 
     @staticmethod
     def aggregate_team_pitching(session: Session, year: int, league: str = "REGULAR") -> list[dict[str, Any]]:
@@ -755,7 +744,9 @@ class TeamStatAggregator:
                     team_games_map[(year, tc)] = games
 
         aggregator = TeamStatAggregator()
-        results = aggregator.aggregate_pitching(TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map))
+        results = aggregator.aggregate_pitching(
+            TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map)
+        )
 
         # Supplement ties from standings
         for r in results:

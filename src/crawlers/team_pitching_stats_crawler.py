@@ -121,6 +121,7 @@ class TeamPitchingStatsCrawler:
                 with SessionLocal() as session:
                     aggregator = TeamStatAggregator(session)
                     from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+
                     stats = aggregator.aggregate_pitching(TeamAggregationQuery(season=season, dry_run=not persist))
 
                     # 팀명 보충

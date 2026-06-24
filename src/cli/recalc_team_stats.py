@@ -65,6 +65,7 @@ def _run_batting_recalc(
     logger.info("🔄 Recalculating Team Batting Stats for season=%s...", season)
     try:
         from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+
         results = aggregator.aggregate_batting(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
     except TEAM_RECALC_EXCEPTIONS:
         logger.exception("❌ Failed batting stats rollup for season=%s", season)
@@ -90,6 +91,7 @@ def _run_pitching_recalc(
     logger.info("🔄 Recalculating Team Pitching Stats for season=%s...", season)
     try:
         from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+
         results = aggregator.aggregate_pitching(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
     except TEAM_RECALC_EXCEPTIONS:
         logger.exception("❌ Failed pitching stats rollup for season=%s", season)
