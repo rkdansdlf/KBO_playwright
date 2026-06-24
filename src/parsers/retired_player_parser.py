@@ -223,7 +223,7 @@ def _apply_stat(
 ) -> None:
     consumed = record.setdefault("_consumed_keys", set())
     for key in keys:
-        if key in row and row[key]:
+        if row.get(key):
             record[field] = converter(row[key])
             consumed.add(key)
             break
