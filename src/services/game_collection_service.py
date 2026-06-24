@@ -293,7 +293,9 @@ async def _collect_detail_phase(
         target.game_id for target in targets if exist_map.get(target.game_id, ExistingGameData()).has_detail
     }
     detail_targets = [
-        target for target in targets if ctx.cfg.force or not exist_map.get(target.game_id, ExistingGameData()).has_detail
+        target
+        for target in targets
+        if ctx.cfg.force or not exist_map.get(target.game_id, ExistingGameData()).has_detail
     ]
     ctx.result.detail_targets = len(detail_targets)
     ctx.result.detail_skipped_existing = len(targets) - len(detail_targets)
@@ -464,7 +466,9 @@ async def _collect_relay_phase(
     ctx.result.relay_targets = len(relay_targets)
     ctx.result.relay_skipped_existing = len(targets) - len(relay_targets)
     if ctx.result.relay_skipped_existing:
-        ctx.cfg.log(f"[SKIP] Relay already exists for {ctx.result.relay_skipped_existing} game(s). Use --force to recrawl.")
+        ctx.cfg.log(
+            f"[SKIP] Relay already exists for {ctx.result.relay_skipped_existing} game(s). Use --force to recrawl."
+        )
         for target in targets:
             item = ctx.result.items[target.game_id]
             has_relay = exist_map.get(target.game_id, ExistingGameData()).has_relay

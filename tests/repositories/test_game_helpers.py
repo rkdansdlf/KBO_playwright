@@ -645,14 +645,23 @@ class TestUpsertMetadata:
 
 class TestUpsertGameSummaryEntry:
     def test_upsert_new_entry(self, session):
-        _upsert_game_summary_entry(session, game_id="g1", summary_type="홈런", detail_text="Kim 1호")
+        _upsert_game_summary_entry(
+            session,
+            GameSummaryEntry(game_id="g1", summary_type="홈런", detail_text="Kim 1호"),
+        )
         entry = session.query(GameSummary).filter(GameSummary.game_id == "g1").one_or_none()
         assert entry is not None
         assert entry.detail_text == "Kim 1호"
 
     def test_upsert_existing_entry(self, session):
-        _upsert_game_summary_entry(session, game_id="g1", summary_type="홈런", detail_text="v1")
-        _upsert_game_summary_entry(session, game_id="g1", summary_type="홈런", detail_text="v2")
+        _upsert_game_summary_entry(
+            session,
+            GameSummaryEntry(game_id="g1", summary_type="홈런", detail_text="v1"),
+        )
+        _upsert_game_summary_entry(
+            session,
+            GameSummaryEntry(game_id="g1", summary_type="홈런", detail_text="v2"),
+        )
         entries = session.query(GameSummary).all()
         assert len(entries) == 1
         assert entries[0].detail_text == "v2"
@@ -725,7 +734,11 @@ class TestReplaceRecordsForSide:
                 "is_starter": True,
             },
         ]
-        changed = _replace_records_for_side(session, GameLineup, "g1", "home", new_rows)
+        changed = _replace_records_for_side(
+            session,
+            RecordKey(model=GameLineup, game_id="g1", team_side="home"),
+            new_rows,
+        )
         assert changed is True
         rows = session.query(GameLineup).filter(GameLineup.team_side == "home").all()
         assert len(rows) == 1
@@ -739,9 +752,7 @@ class TestBuildPregameLineupRows:
 
         result = _build_pregame_lineup_rows(
             "g1",
-            team_side="home",
-            team_code="LG",
-            season_year=2024,
+            ctx=TeamSideContext(team_side="home", team_code="LG", season_year=2024),
             lineup=[{"player_name": "Kim", "batting_order": 1, "position": "CF"}],
             resolver=resolver,
         )
@@ -753,9 +764,7 @@ class TestBuildPregameLineupRows:
         resolver = MagicMock()
         result = _build_pregame_lineup_rows(
             "g1",
-            team_side="home",
-            team_code="LG",
-            season_year=2024,
+            ctx=TeamSideContext(team_side="home", team_code="LG", season_year=2024),
             lineup=[{"player_name": "", "batting_order": 1}],
             resolver=resolver,
         )

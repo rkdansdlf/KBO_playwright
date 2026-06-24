@@ -701,10 +701,17 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
             )
 
             _apply_snapshot_game_fields(
-                session, game, SnapshotContext(
-                    game_data=game_data, game_date=game_date, metadata=metadata,
-                    away_info=away_info, home_info=home_info, pitchers=pitchers, status=status,
-                )
+                session,
+                game,
+                SnapshotContext(
+                    game_data=game_data,
+                    game_date=game_date,
+                    metadata=metadata,
+                    away_info=away_info,
+                    home_info=home_info,
+                    pitchers=pitchers,
+                    status=status,
+                ),
             )
             _apply_game_team_identity(game, game_date.year)
             _upsert_metadata(session, game_id, metadata)
@@ -840,9 +847,15 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
             )
 
             _apply_pregame_payload(
-                session, game, preview_data, PregameContext(
-                    game_id=game_id, game_date=game_date, away_code=away_code, home_code=home_code,
-                )
+                session,
+                game,
+                preview_data,
+                PregameContext(
+                    game_id=game_id,
+                    game_date=game_date,
+                    away_code=away_code,
+                    home_code=home_code,
+                ),
             )
 
             session.commit()
@@ -869,24 +882,38 @@ def _apply_pregame_payload(
         start_pitcher_announced = True
 
     _apply_pregame_game_fields(
-        game, preview_data, PregameGameFieldInput(
-            game_date=ctx.game_date, away_code=ctx.away_code, home_code=ctx.home_code,
-            away_starter=away_starter, home_starter=home_starter,
-        )
+        game,
+        preview_data,
+        PregameGameFieldInput(
+            game_date=ctx.game_date,
+            away_code=ctx.away_code,
+            home_code=ctx.home_code,
+            away_starter=away_starter,
+            home_starter=home_starter,
+        ),
     )
     _upsert_pregame_metadata(session, ctx.game_id, preview_data, start_pitcher_announced)
     _replace_pregame_lineups(
-        session, preview_data, PregameLineupContext(
-            game_id=ctx.game_id, season_year=ctx.game_date.year,
-            away_code=ctx.away_code, home_code=ctx.home_code,
-        )
+        session,
+        preview_data,
+        PregameLineupContext(
+            game_id=ctx.game_id,
+            season_year=ctx.game_date.year,
+            away_code=ctx.away_code,
+            home_code=ctx.home_code,
+        ),
     )
     game_date_str = ctx.game_date.strftime("%Y%m%d")
     _upsert_pregame_summary(
-        session, preview_data, ctx.game_id, game_date_str,
+        session,
+        preview_data,
+        ctx.game_id,
+        game_date_str,
         StartersInfo(
-            away_starter=away_starter, away_starter_id=away_starter_id,
-            home_starter=home_starter, home_starter_id=home_starter_id,
+            away_starter=away_starter,
+            away_starter_id=away_starter_id,
+            home_starter=home_starter,
+            home_starter_id=home_starter_id,
             start_pitcher_announced=start_pitcher_announced,
         ),
     )

@@ -326,9 +326,7 @@ class RuntimeHydrator:
 
         excluded = {"id", *spec.exclude_columns}
         columns = [column.key for column in spec.model.__table__.columns if column.key not in excluded]
-        mappings: list[dict[str, object]] = [
-            {column: getattr(row, column) for column in columns} for row in rows
-        ]
+        mappings: list[dict[str, object]] = [{column: getattr(row, column) for column in columns} for row in rows]
 
         if not spec.replace_scope:
             upsert_keys = self.SQLITE_UPSERT_KEYS.get(spec.model)
