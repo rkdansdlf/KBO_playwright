@@ -6,6 +6,7 @@ Acts as a fallback when KBO's team cumulative record pages are unavailable.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date as date_type
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,16 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TeamAggregationQuery:
+    season: int | None = None
+    team_id: str | None = None
+    rows: Iterable[Any] | None = None
+    team_names: dict[str, str] | None = None
+    team_games_map: dict[tuple[int, str], int] | None = None
+    dry_run: bool = False
 
 DEFAULT_TEAM_NAMES = {
     "OB": "두산",
