@@ -733,7 +733,10 @@ def _append_pa_formula_section(lines: list[str], metrics: dict[str, Any]) -> Non
     else:
         count = pa_formula.get("violation_count", 0)
         lines.append(f"❌ <b>PA Formula</b>: {count} violations")
-        lines.extend(f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF" for v in (pa_formula.get("violations") or [])[:3])
+        lines.extend(
+            f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF"
+            for v in (pa_formula.get("violations") or [])[:3]
+        )
 
 
 def _append_pa_formula_trend_section(lines: list[str], metrics: dict[str, Any]) -> None:
