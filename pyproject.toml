@@ -111,6 +111,7 @@ select = [
     "ASYNC212", # blocking-http-call-httpx-in-async-function
     "ASYNC240", # blocking-path-method-in-async-function
     "FURB110", # if-exp-instead-of-or-operator
+    "RUF021",   # parenthesize-chained-operators
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
