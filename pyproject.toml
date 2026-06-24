@@ -112,6 +112,7 @@ select = [
     "ASYNC240", # blocking-path-method-in-async-function
     "FURB110", # if-exp-instead-of-or-operator
     "RUF021",   # parenthesize-chained-operators
+    "RUF019",   # unnecessary-key-check
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
