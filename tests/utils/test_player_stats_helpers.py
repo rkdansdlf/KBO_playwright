@@ -30,6 +30,7 @@ class TestExtractRowsFast:
 
     def test_returns_none_on_exception(self) -> None:
         from playwright.sync_api import Error as PlaywrightError
+
         page = MagicMock()
         page.evaluate.side_effect = PlaywrightError("timeout")
         result = extract_rows_fast(page)
