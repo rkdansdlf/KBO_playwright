@@ -1,5 +1,6 @@
 from src.crawlers import player_pitching_all_series_crawler as module
 from src.crawlers.player_pitching_all_series_crawler import (
+    Basic2PageContext,
     PitcherStats,
     build_pitching_crawl_summary,
     parse_basic2_page,
@@ -40,13 +41,13 @@ def test_parse_basic2_page_does_not_create_pitcher_without_basic1(monkeypatch):
     )
 
     pitchers = {}
-    processed = parse_basic2_page(
-        _FakePage(),
+    processed = parse_basic2_page(Basic2PageContext(
+        page=_FakePage(),
         season=2025,
         league="REGULAR",
         pitchers=pitchers,
         sort_key="NP",
-    )
+    ))
 
     assert processed == 0
     assert pitchers == {}
@@ -78,13 +79,13 @@ def test_parse_basic2_page_enriches_existing_basic1_pitcher(monkeypatch):
         )
     }
 
-    processed = parse_basic2_page(
-        _FakePage(),
+    processed = parse_basic2_page(Basic2PageContext(
+        page=_FakePage(),
         season=2025,
         league="REGULAR",
         pitchers=pitchers,
         sort_key="NP",
-    )
+    ))
 
     assert processed == 1
     assert pitchers[2001].extra_stats["metrics"]["np"] == 100

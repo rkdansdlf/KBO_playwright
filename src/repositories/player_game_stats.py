@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 from src.models.game import Game, GameBattingStat, GamePitchingStat, PlayerGameBatting, PlayerGamePitching
+from src.models.stat_dataclasses import BattingStats, PitchingStats
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 if TYPE_CHECKING:
@@ -47,41 +48,31 @@ _PITCHING_SUM_FIELDS = [
 ]
 
 
-def _compute_batting_rates(  # noqa: PLR0913
-    hits: int,
-    at_bats: int,
-    walks: int,
-    hbp: int,
-    sf: int,
-    strikeouts: int,
-    doubles: int,
-    triples: int,
-    home_runs: int,
-) -> dict[str, float]:
-    ab = at_bats or 0
-    pa_base = ab + walks + hbp + sf
-    avg = round(hits / ab, 3) if ab > 0 else 0.0
-    obp = round((hits + walks + hbp) / pa_base, 3) if pa_base > 0 else 0.0
-    total_bases = hits + doubles + 2 * triples + 3 * home_runs
+def _compute_batting_rates(stats: BattingStats) -> dict[str, float]:
+    ab = stats.at_bats or 0
+    pa_base = ab + stats.walks + stats.hbp + stats.sf
+    avg = round(stats.hits / ab, 3) if ab > 0 else 0.0
+    obp = round((stats.hits + stats.walks + stats.hbp) / pa_base, 3) if pa_base > 0 else 0.0
+    total_bases = stats.hits + stats.doubles + 2 * stats.triples + 3 * stats.home_runs
     slg = round(total_bases / ab, 3) if ab > 0 else 0.0
     ops = round(obp + slg, 3)
     iso = round(slg - avg, 3)
     babip = (
-        round((hits - home_runs) / (ab - strikeouts - home_runs + sf), 3)
-        if (ab - strikeouts - home_runs + sf) > 0
+        round((stats.hits - stats.home_runs) / (ab - stats.strikeouts - stats.home_runs + stats.sf), 3)
+        if (ab - stats.strikeouts - stats.home_runs + stats.sf) > 0
         else 0.0
     )
     return {"avg": avg, "obp": obp, "slg": slg, "ops": ops, "iso": iso, "babip": babip}
 
 
-def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int, hr: int) -> dict[str, float]:  # noqa: PLR0913
-    ip = total_outs / 3.0
-    era = round(er * 9 / ip, 2) if ip > 0 else 0.0
-    whip = round((bb + hits) / ip, 2) if ip > 0 else 0.0
-    fip = round((13 * hr + 3 * bb - 2 * k) / ip + 3.10, 2) if ip > 0 else 0.0
-    k9 = round(k * 9 / ip, 2) if ip > 0 else 0.0
-    bb9 = round(bb * 9 / ip, 2) if ip > 0 else 0.0
-    kbb = round(k / bb, 2) if bb > 0 else 0.0
+def _compute_pitching_rates(stats: PitchingStats) -> dict[str, float]:
+    ip = stats.total_outs / 3.0
+    era = round(stats.er * 9 / ip, 2) if ip > 0 else 0.0
+    whip = round((stats.bb + stats.hits) / ip, 2) if ip > 0 else 0.0
+    fip = round((13 * stats.hr + 3 * stats.bb - 2 * stats.k) / ip + 3.10, 2) if ip > 0 else 0.0
+    k9 = round(stats.k * 9 / ip, 2) if ip > 0 else 0.0
+    bb9 = round(stats.bb * 9 / ip, 2) if ip > 0 else 0.0
+    kbb = round(stats.k / stats.bb, 2) if stats.bb > 0 else 0.0
     return {"era": era, "whip": whip, "fip": fip, "k_per_nine": k9, "bb_per_nine": bb9, "kbb": kbb}
 
 
@@ -126,7 +117,7 @@ def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any
             if a.is_starter:
                 any_starter = True
 
-        rates = _compute_batting_rates(
+        rates = _compute_batting_rates(BattingStats(
             hits=totals["hits"],
             at_bats=totals["at_bats"],
             walks=totals["walks"],
@@ -136,7 +127,7 @@ def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any
             doubles=totals["doubles"],
             triples=totals["triples"],
             home_runs=totals["home_runs"],
-        )
+        ))
 
         results.append(
             {
@@ -196,14 +187,14 @@ def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, An
                 any_starting = True
 
         decision = next((a.decision for a in appearances if a.decision), None)
-        rates = _compute_pitching_rates(
+        rates = _compute_pitching_rates(PitchingStats(
             total_outs=totals["innings_outs"],
             hits=totals["hits_allowed"],
             bb=totals["walks_allowed"],
             er=totals["earned_runs"],
             k=totals["strikeouts"],
             hr=totals["home_runs_allowed"],
-        )
+        ))
 
         results.append(
             {
@@ -297,15 +288,17 @@ def aggregate_game_batting_batch(session: Session, game_ids: list[str]) -> list[
     results = []
     for entry in groups.values():
         rates = _compute_batting_rates(
-            hits=entry["hits"],
-            at_bats=entry["at_bats"],
-            walks=entry["walks"],
-            hbp=entry["hbp"],
-            sf=entry["sacrifice_flies"],
-            strikeouts=entry["strikeouts"],
-            doubles=entry["doubles"],
-            triples=entry["triples"],
-            home_runs=entry["home_runs"],
+            BattingStats(
+                hits=entry["hits"],
+                at_bats=entry["at_bats"],
+                walks=entry["walks"],
+                hbp=entry["hbp"],
+                sf=entry["sacrifice_flies"],
+                strikeouts=entry["strikeouts"],
+                doubles=entry["doubles"],
+                triples=entry["triples"],
+                home_runs=entry["home_runs"],
+            ),
         )
         results.append({**entry, **rates})
     return results
@@ -329,12 +322,14 @@ def aggregate_game_pitching_batch(session: Session, game_ids: list[str]) -> list
     results = []
     for entry in groups.values():
         rates = _compute_pitching_rates(
-            total_outs=entry["innings_outs"],
-            hits=entry["hits_allowed"],
-            bb=entry["walks_allowed"],
-            er=entry["earned_runs"],
-            k=entry["strikeouts"],
-            hr=entry["home_runs_allowed"],
+            PitchingStats(
+                total_outs=entry["innings_outs"],
+                hits=entry["hits_allowed"],
+                bb=entry["walks_allowed"],
+                er=entry["earned_runs"],
+                k=entry["strikeouts"],
+                hr=entry["home_runs_allowed"],
+            ),
         )
         results.append({**entry, **rates})
     return results

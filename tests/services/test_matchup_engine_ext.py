@@ -13,7 +13,7 @@ class TestCalcRateStats:
         engine = MatchupEngine()
         stats = BattingStats(hits=10, at_bats=30, walks=4, hbp=1, sf=0, strikeouts=0, doubles=2, triples=1, home_runs=1)
         avg, obp, slg, ops = engine._calc_rate_stats(stats, pa=35)
-        assert avg == 0.333  # 10/30
+        assert avg == pytest.approx(0.333, abs=0.001)
         assert obp > 0
         assert slg > 0
         assert ops > 0

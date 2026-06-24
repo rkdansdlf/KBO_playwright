@@ -83,6 +83,39 @@ CRAWLER_EXCEPTIONS = (
 )
 DB_SAVE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
 
+
+@dataclass
+class Basic2PageContext:
+    page: Page
+    season: int
+    league: str
+    pitchers: dict[int, PitcherStats]
+    sort_key: str
+    max_players: int | None = None
+
+
+@dataclass
+class PitcherBasic1Context:
+    page: Page
+    year: int
+    league_name: str
+    iteration_targets: list[dict]
+    by_team: bool
+    limit: int | None
+    policy: RequestPolicy
+    pitchers: dict[int, PitcherStats]
+
+
+@dataclass
+class Basic2AdditionalContext:
+    page: Page
+    year: int
+    league_name: str
+    series_info: dict
+    limit: int | None
+    policy: RequestPolicy
+    pitchers: dict[int, PitcherStats]
+
 SERIES_MAPPING: dict[str, dict[str, str]] = {
     "regular": {
         "name": "KBO 정규시즌",
@@ -608,30 +641,22 @@ def _update_pitcher_basic2_stats(
         rankings[sort_key] = rank_val
 
 
-def parse_basic2_page(  # noqa: PLR0913
-    page: Page,
-    season: int,
-    league: str,  # noqa: ARG001
-    pitchers: dict[int, PitcherStats],
-    sort_key: str,
-    max_players: int | None = None,
-) -> int:
-    if not retry_wait_for_selector(page, "table.tData01 thead th", timeout=NAV_TIMEOUT):
+def parse_basic2_page(ctx: Basic2PageContext) -> int:
+    if not retry_wait_for_selector(ctx.page, "table.tData01 thead th", timeout=NAV_TIMEOUT):
         logger.warning("⚠️  Basic2 테이블 헤더 파싱 실패 (타임아웃)")
         return 0
 
-    headers = [normalize_header(th.text_content()) for th in page.query_selector_all("table.tData01 thead th")]
+    headers = [normalize_header(th.text_content()) for th in ctx.page.query_selector_all("table.tData01 thead th")]
     header_index = {name: idx for idx, name in enumerate(headers)}
-    get_team_mapping_for_year(season)
+    get_team_mapping_for_year(ctx.season)
     use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
 
-    # Basic2 헤더는 정규시즌과 포스트시즌에서 다를 수 있음
     if "선수명" not in header_index or "팀명" not in header_index:
         logger.warning("⚠️  Basic2 테이블 헤더 파싱 실패")
         return 0
 
-    rows_data = extract_rows_fast(page, selector="table.tData01", link_query="a") if use_fast else None
-    rows = rows_data if rows_data is not None else page.query_selector_all("table.tData01 tbody tr")
+    rows_data = extract_rows_fast(ctx.page, selector="table.tData01", link_query="a") if use_fast else None
+    rows = rows_data if rows_data is not None else ctx.page.query_selector_all("table.tData01 tbody tr")
     processed = 0
 
     for row in rows:
@@ -640,14 +665,14 @@ def parse_basic2_page(  # noqa: PLR0913
             continue
 
         player_id, cell_text_fn = res
-        if max_players and player_id not in pitchers and len(pitchers) >= max_players:
+        if ctx.max_players and player_id not in ctx.pitchers and len(ctx.pitchers) >= ctx.max_players:
             continue
 
-        stats = pitchers.get(player_id)
+        stats = ctx.pitchers.get(player_id)
         if not stats:
             continue
 
-        _update_pitcher_basic2_stats(stats, header_index, cell_text_fn, sort_key)
+        _update_pitcher_basic2_stats(stats, header_index, cell_text_fn, ctx.sort_key)
         processed += 1
 
     return processed
@@ -853,77 +878,52 @@ def _select_pitcher_team_if_needed(page: Page, tm: dict, *, by_team: bool, polic
     return True
 
 
-def _collect_pitcher_basic1_loop(  # noqa: PLR0913
-    page: Page,
-    year: int,
-    league_name: str,
-    iteration_targets: list[dict],
-    *,
-    by_team: bool,
-    limit: int | None,
-    policy: RequestPolicy,
-    pitchers: dict[int, PitcherStats],
-) -> None:
-    for tm in iteration_targets:
-        policy.delay()
-        if not _select_pitcher_team_if_needed(page, tm, by_team=by_team, policy=policy):
+def _collect_pitcher_basic1_loop(ctx: PitcherBasic1Context) -> None:
+    for tm in ctx.iteration_targets:
+        ctx.policy.delay()
+        if not _select_pitcher_team_if_needed(ctx.page, tm, by_team=ctx.by_team, policy=ctx.policy):
             continue
 
-        wait_for_table(page)
+        wait_for_table(ctx.page)
 
         page_number = 1
         while True:
             parsed = parse_basic1_page(
-                page,
-                season=year,
-                league=league_name,
-                pitchers=pitchers,
-                max_players=limit,
+                ctx.page,
+                season=ctx.year,
+                league=ctx.league_name,
+                pitchers=ctx.pitchers,
+                max_players=ctx.limit,
             )
-            logger.info("   ▶ Basic1 %s페이지: %s명 처리 (누적 %s명)", page_number, parsed, len(pitchers))
+            logger.info("   ▶ Basic1 %s페이지: %s명 처리 (누적 %s명)", page_number, parsed, len(ctx.pitchers))
 
-            if limit and len(pitchers) >= limit:
+            if ctx.limit and len(ctx.pitchers) >= ctx.limit:
                 logger.info("   🎯 수집 제한에 도달했습니다.")
                 return
 
-            if not go_to_next_page(page, page_number, policy=policy):
+            if not go_to_next_page(ctx.page, page_number, policy=ctx.policy):
                 break
             page_number += 1
 
 
-def _collect_pitcher_basic2_additional(  # noqa: PLR0913
-    page: Page,
-    year: int,
-    league_name: str,
-    series_info: dict,
-    limit: int | None,
-    policy: RequestPolicy,
-    pitchers: dict[int, PitcherStats],
-) -> None:
-    if not setup_pitcher_page(page, BASIC2_URL, year, series_info["value"], policy=policy):
+def _collect_pitcher_basic2_additional(ctx: Basic2AdditionalContext) -> None:
+    if not setup_pitcher_page(ctx.page, BASIC2_URL, ctx.year, ctx.series_info["value"], policy=ctx.policy):
         logger.warning("⚠️  Basic2 페이지 설정 실패. 추가 지표 없이 종료합니다.")
         return
 
     for display_name, sort_code in BASIC2_SORT_SEQUENCE:
-        if not apply_sort(page, display_name, sort_code, policy=policy):
+        if not apply_sort(ctx.page, display_name, sort_code, policy=ctx.policy):
             continue
-        wait_for_table(page)
+        wait_for_table(ctx.page)
 
         page_number = 1
         total_processed = 0
 
         while True:
-            processed = parse_basic2_page(
-                page,
-                season=year,
-                league=league_name,
-                pitchers=pitchers,
-                sort_key=display_name,
-                max_players=limit,
-            )
+            processed = parse_basic2_page(ctx)
             total_processed += processed
 
-            if not go_to_next_page(page, page_number, policy=policy):
+            if not go_to_next_page(ctx.page, page_number, policy=ctx.policy):
                 break
             page_number += 1
 
@@ -966,7 +966,7 @@ def crawl_pitcher_series(  # noqa: PLR0913
 
         # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
         team_options = _get_pitcher_team_options(page, by_team=by_team)
-        _collect_pitcher_basic1_loop(
+        _collect_pitcher_basic1_loop(PitcherBasic1Context(
             page=page,
             year=year,
             league_name=league_name,
@@ -975,12 +975,12 @@ def crawl_pitcher_series(  # noqa: PLR0913
             limit=limit,
             policy=policy,
             pitchers=pitchers,
-        )
+        ))
 
         logger.info("✅ Basic1 수집 완료: 총 %s명", len(pitchers))
 
         if series_key == "regular" and not by_team:
-            _collect_pitcher_basic2_additional(
+            _collect_pitcher_basic2_additional(Basic2AdditionalContext(
                 page=page,
                 year=year,
                 league_name=league_name,
@@ -988,7 +988,7 @@ def crawl_pitcher_series(  # noqa: PLR0913
                 limit=limit,
                 policy=policy,
                 pitchers=pitchers,
-            )
+            ))
         elif by_team:
             logger.info("ℹ️ 팀별 순회 모드에서는 Basic2(상세 지표) 수집을 건너뜁니다.")
 
