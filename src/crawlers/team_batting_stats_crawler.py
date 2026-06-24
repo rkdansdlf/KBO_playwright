@@ -117,7 +117,8 @@ class TeamBattingStatsCrawler:
             try:
                 with SessionLocal() as session:
                     aggregator = TeamStatAggregator(session)
-                    stats = aggregator.aggregate_batting(season, dry_run=not persist)
+                    from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+                    stats = aggregator.aggregate_batting(TeamAggregationQuery(season=season, dry_run=not persist))
 
                     # 팀명 보충 (aggregator는 코드만 가지고 있음)
                     reverse_mapping = {v: k for k, v in team_mapping.items()}

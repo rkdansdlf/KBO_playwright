@@ -10,79 +10,92 @@ from src.utils.at_bat_grouper import (
     ROLE_UNKNOWN,
     _event_role,
     _needs_new_at_bat,
+    AtBatContext,
 )
 
 
 class TestNeedsNewAtBat:
     def test_same_inning_half_same_batter(self):
         result = _needs_new_at_bat(
-            current_batter_key=(1, "top", "A"),
-            inning=1,
-            half="top",
-            batter_name="김하성",
-            current_batter="김하성",
-            has_seen_result_this_at_bat=False,
-            event_type="batting",
+            ctx=AtBatContext(
+                current_batter_key=(1, "top", "A"),
+                inning=1,
+                half="top",
+                batter_name="김하성",
+                current_batter="김하성",
+                has_seen_result_this_at_bat=False,
+                event_type="batting",
+            )
         )
         assert result is False
 
     def test_different_inning(self):
         result = _needs_new_at_bat(
-            current_batter_key=(1, "top", "A"),
-            inning=2,
-            half="top",
-            batter_name="김하성",
-            current_batter="김하성",
-            has_seen_result_this_at_bat=False,
-            event_type="batting",
+            ctx=AtBatContext(
+                current_batter_key=(1, "top", "A"),
+                inning=2,
+                half="top",
+                batter_name="김하성",
+                current_batter="김하성",
+                has_seen_result_this_at_bat=False,
+                event_type="batting",
+            )
         )
         assert result is True
 
     def test_different_batter(self):
         result = _needs_new_at_bat(
-            current_batter_key=(1, "top", "A"),
-            inning=1,
-            half="top",
-            batter_name="박병호",
-            current_batter="김하성",
-            has_seen_result_this_at_bat=False,
-            event_type="batting",
+            ctx=AtBatContext(
+                current_batter_key=(1, "top", "A"),
+                inning=1,
+                half="top",
+                batter_name="박병호",
+                current_batter="김하성",
+                has_seen_result_this_at_bat=False,
+                event_type="batting",
+            )
         )
         assert result is True
 
     def test_terminal_event_with_result(self):
         result = _needs_new_at_bat(
-            current_batter_key=(1, "top", "A"),
-            inning=1,
-            half="top",
-            batter_name="김하성",
-            current_batter="김하성",
-            has_seen_result_this_at_bat=True,
-            event_type="batting",
+            ctx=AtBatContext(
+                current_batter_key=(1, "top", "A"),
+                inning=1,
+                half="top",
+                batter_name="김하성",
+                current_batter="김하성",
+                has_seen_result_this_at_bat=True,
+                event_type="batting",
+            )
         )
         assert result is True
 
     def test_no_current_batter_with_name(self):
         result = _needs_new_at_bat(
-            current_batter_key=None,
-            inning=1,
-            half="top",
-            batter_name="김하성",
-            current_batter=None,
-            has_seen_result_this_at_bat=False,
-            event_type="batting",
+            ctx=AtBatContext(
+                current_batter_key=None,
+                inning=1,
+                half="top",
+                batter_name="김하성",
+                current_batter=None,
+                has_seen_result_this_at_bat=False,
+                event_type="batting",
+            )
         )
         assert result is True
 
     def test_none_batter_name(self):
         result = _needs_new_at_bat(
-            current_batter_key=(1, "top", "A"),
-            inning=1,
-            half="top",
-            batter_name="",
-            current_batter="김하성",
-            has_seen_result_this_at_bat=False,
-            event_type="runner_advance",
+            ctx=AtBatContext(
+                current_batter_key=(1, "top", "A"),
+                inning=1,
+                half="top",
+                batter_name="",
+                current_batter="김하성",
+                has_seen_result_this_at_bat=False,
+                event_type="runner_advance",
+            )
         )
         assert result is False
 

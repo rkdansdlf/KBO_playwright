@@ -103,37 +103,119 @@ class TeamStatAggregator:
             }
         return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
 
-    def aggregate_batting(self, query: TeamAggregationQuery) -> list[dict[str, Any]]:
+    def aggregate_batting(  # noqa: PLR0913
+        self,
+        query: TeamAggregationQuery | int | Iterable[Any],
+        team_id: str | None = None,
+        *,
+        rows: Iterable[Any] | None = None,
+        team_names: dict[str, str] | None = None,
+        team_games_map: dict[tuple[int, str], int] | None = None,
+        dry_run: bool = False,
+    ) -> list[dict[str, Any]]:
         """
         Dispatches to database-driven aggregation if an integer season is passed,
         or pure in-memory aggregation if an iterable of rows is passed.
         """
-        actual_rows = query.rows if query.rows is not None else (query.season if query.season is not None else None)
+        if isinstance(query, TeamAggregationQuery):
+            actual_query = query
+        elif isinstance(query, int):
+            actual_query = TeamAggregationQuery(
+                season=query,
+                team_id=team_id,
+                rows=rows,
+                team_names=team_names,
+                team_games_map=team_games_map,
+                dry_run=dry_run,
+            )
+        else:
+            # Iterable rows
+            actual_query = TeamAggregationQuery(
+                season=None,
+                team_id=team_id,
+                rows=query,
+                team_names=team_names,
+                team_games_map=team_games_map,
+                dry_run=dry_run,
+            )
+
+        actual_rows = (
+            actual_query.rows
+            if actual_query.rows is not None
+            else (actual_query.season if actual_query.season is not None else None)
+        )
         actual_names = (
-            query.team_names if query.team_names is not None else query.team_id
+            actual_query.team_names
+            if actual_query.team_names is not None
+            else actual_query.team_id
         )
 
-        if query.season is not None:
-            return self._aggregate_batting_db(query.season, query.team_id, dry_run=query.dry_run)
+        if actual_query.season is not None:
+            return self._aggregate_batting_db(
+                actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run
+            )
         if actual_rows is not None:
-            return self._aggregate_batting_mem(actual_rows, actual_names, query.team_games_map)
+            return self._aggregate_batting_mem(
+                actual_rows, actual_names, actual_query.team_games_map
+            )
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
-    def aggregate_pitching(self, query: TeamAggregationQuery) -> list[dict[str, Any]]:
+    def aggregate_pitching(  # noqa: PLR0913
+        self,
+        query: TeamAggregationQuery | int | Iterable[Any],
+        team_id: str | None = None,
+        *,
+        rows: Iterable[Any] | None = None,
+        team_names: dict[str, str] | None = None,
+        team_games_map: dict[tuple[int, str], int] | None = None,
+        dry_run: bool = False,
+    ) -> list[dict[str, Any]]:
         """
         Dispatches to database-driven aggregation if an integer season is passed,
         or pure in-memory aggregation if an iterable of rows is passed.
         """
-        actual_rows = query.rows if query.rows is not None else (query.season if query.season is not None else None)
+        if isinstance(query, TeamAggregationQuery):
+            actual_query = query
+        elif isinstance(query, int):
+            actual_query = TeamAggregationQuery(
+                season=query,
+                team_id=team_id,
+                rows=rows,
+                team_names=team_names,
+                team_games_map=team_games_map,
+                dry_run=dry_run,
+            )
+        else:
+            # Iterable rows
+            actual_query = TeamAggregationQuery(
+                season=None,
+                team_id=team_id,
+                rows=query,
+                team_names=team_names,
+                team_games_map=team_games_map,
+                dry_run=dry_run,
+            )
+
+        actual_rows = (
+            actual_query.rows
+            if actual_query.rows is not None
+            else (actual_query.season if actual_query.season is not None else None)
+        )
         actual_names = (
-            query.team_names if query.team_names is not None else query.team_id
+            actual_query.team_names
+            if actual_query.team_names is not None
+            else actual_query.team_id
         )
 
-        if query.season is not None:
-            return self._aggregate_pitching_db(query.season, query.team_id, dry_run=query.dry_run)
+        if actual_query.season is not None:
+            return self._aggregate_pitching_db(
+                actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run
+            )
         if actual_rows is not None:
-            return self._aggregate_pitching_mem(actual_rows, actual_names, query.team_games_map)
+            return self._aggregate_pitching_mem(
+                actual_rows, actual_names, actual_query.team_games_map
+            )
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
@@ -147,8 +229,8 @@ class TeamStatAggregator:
         """
         Aggregates and updates both batting and pitching stats.
         """
-        batting_results = self.aggregate_batting(season, team_id, dry_run=dry_run)
-        pitching_results = self.aggregate_pitching(season, team_id, dry_run=dry_run)
+        batting_results = self.aggregate_batting(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
+        pitching_results = self.aggregate_pitching(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
         return {
             "batting": batting_results,
             "pitching": pitching_results,
@@ -638,7 +720,7 @@ class TeamStatAggregator:
                     team_games_map[(year, tc)] = games
 
         aggregator = TeamStatAggregator()
-        return aggregator.aggregate_batting(rows=rows, team_names=team_names, team_games_map=team_games_map)
+        return aggregator.aggregate_batting(TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map))
 
     @staticmethod
     def aggregate_team_pitching(session: Session, year: int, league: str = "REGULAR") -> list[dict[str, Any]]:

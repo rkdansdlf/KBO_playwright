@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.aggregators.team_stat_aggregator import TeamStatAggregator
+from src.aggregators.team_stat_aggregator import TeamAggregationQuery, TeamStatAggregator
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.standings import TeamStandingsDaily
 from src.models.team import Team
@@ -72,7 +72,8 @@ class TestTeamStatAggregatorPure(unittest.TestCase):
         rows = [p1, p2]
         team_names = {"LG": "트윈스"}
 
-        results = self.aggregator.aggregate_batting(rows, team_names=team_names)
+        from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+        results = self.aggregator.aggregate_batting(TeamAggregationQuery(rows=rows, team_names=team_names))
 
         self.assertEqual(len(results), 1)
         res = results[0]
@@ -147,7 +148,7 @@ class TestTeamStatAggregatorPure(unittest.TestCase):
         rows = [p1, p2]
         team_names = {"LG": "트윈스"}
 
-        results = self.aggregator.aggregate_pitching(rows, team_names=team_names)
+        results = self.aggregator.aggregate_pitching(TeamAggregationQuery(rows=rows, team_names=team_names))
 
         self.assertEqual(len(results), 1)
         res = results[0]
@@ -668,7 +669,8 @@ class TestTeamStatAggregatorInstanceMethods:
         self.seed_batting_data(session)
 
         aggregator = TeamStatAggregator(session)
-        results = aggregator.aggregate_batting(2025)
+        from src.aggregators.team_stat_aggregator import TeamAggregationQuery
+        results = aggregator.aggregate_batting(TeamAggregationQuery(season=2025))
 
         assert len(results) == 1
         assert results[0]["team_id"] == "OB"
