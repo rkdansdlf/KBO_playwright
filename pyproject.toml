@@ -82,6 +82,7 @@ select = [
     "PIE",     # flake8-pie (miscellaneous simplifications)
     "YTT",     # sys.version checks
     "SLF001",  # private-member-access (intentional internal access noqa'd)
+    "PLR0913", # too-many-arguments
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)

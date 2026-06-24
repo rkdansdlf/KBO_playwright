@@ -92,7 +92,7 @@ class TeamStatAggregator:
             }
         return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
 
-    def aggregate_batting(
+    def aggregate_batting(  # noqa: PLR0913
         self,
         season_or_rows: int | Iterable[PlayerSeasonBatting] | None = None,
         team_id_or_names: str | dict[str, str] | None = None,
@@ -120,7 +120,7 @@ class TeamStatAggregator:
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
-    def aggregate_pitching(
+    def aggregate_pitching(  # noqa: PLR0913
         self,
         season_or_rows: int | Iterable[PlayerSeasonPitching] | None = None,
         team_id_or_names: str | dict[str, str] | None = None,

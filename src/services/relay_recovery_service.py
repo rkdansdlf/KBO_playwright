@@ -62,7 +62,7 @@ class RelayRecoveryTarget:
     needs_pbp_recovery: bool = True
 
     @classmethod
-    def from_game_state(
+    def from_game_state(  # noqa: PLR0913
         cls,
         *,
         game_id: str,

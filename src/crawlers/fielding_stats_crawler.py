@@ -155,7 +155,7 @@ def _parse_fielding_row(
         logger.exception("   ⚠️ 데이터 행 파싱 오류")
 
 
-def _crawl_team_fielding_basic(
+def _crawl_team_fielding_basic(  # noqa: PLR0913
     page: Page,
     team_val: str,
     team_name: str,

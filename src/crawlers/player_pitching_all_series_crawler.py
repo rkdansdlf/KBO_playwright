@@ -608,7 +608,7 @@ def _update_pitcher_basic2_stats(
         rankings[sort_key] = rank_val
 
 
-def parse_basic2_page(
+def parse_basic2_page(  # noqa: PLR0913
     page: Page,
     season: int,
     league: str,  # noqa: ARG001
@@ -853,7 +853,7 @@ def _select_pitcher_team_if_needed(page: Page, tm: dict, *, by_team: bool, polic
     return True
 
 
-def _collect_pitcher_basic1_loop(
+def _collect_pitcher_basic1_loop(  # noqa: PLR0913
     page: Page,
     year: int,
     league_name: str,
@@ -891,7 +891,7 @@ def _collect_pitcher_basic1_loop(
             page_number += 1
 
 
-def _collect_pitcher_basic2_additional(
+def _collect_pitcher_basic2_additional(  # noqa: PLR0913
     page: Page,
     year: int,
     league_name: str,
@@ -930,7 +930,7 @@ def _collect_pitcher_basic2_additional(
         logger.info("   ✅ Basic2 %s 정렬 처리: %s행", display_name, total_processed)
 
 
-def crawl_pitcher_series(
+def crawl_pitcher_series(  # noqa: PLR0913
     year: int,
     series_key: str,
     limit: int | None = None,

@@ -855,7 +855,7 @@ class OCISyncBase:
                 logger.info("ℹ️ Skipping game_metadata.source_payload for legacy OCI varchar column")
         return columns
 
-    def sync_simple_table(
+    def sync_simple_table(  # noqa: PLR0913
         self,
         model: type,
         conflict_keys: list[str],
@@ -907,7 +907,7 @@ class OCISyncBase:
             dedupe_keys=dedupe_keys,
         )
 
-    def _sync_in_batches(
+    def _sync_in_batches(  # noqa: PLR0913
         self,
         model: type,
         query: Query,

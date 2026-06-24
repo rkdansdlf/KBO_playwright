@@ -154,7 +154,7 @@ def find_postgame_reconciliation_targets(
     return targets
 
 
-async def reconcile_postgame_range(
+async def reconcile_postgame_range(  # noqa: PLR0913
     start_date: str,
     end_date: str,
     *,

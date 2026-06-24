@@ -145,7 +145,7 @@ def _default_runner(command: Sequence[str]) -> None:
     subprocess.run(list(command), check=True)
 
 
-def run_retry(
+def run_retry(  # noqa: PLR0913
     *,
     target_date: str,
     summary_dir: str | Path | None = None,

@@ -120,7 +120,7 @@ def _inning_regression_warnings(
     return []
 
 
-def _out_count_warnings(
+def _out_count_warnings(  # noqa: PLR0913
     index: int,
     outs: int | None,
     inning: int | None,
