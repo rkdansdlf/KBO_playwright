@@ -890,30 +890,36 @@ def _build_relay_event_rows(
     return event_rows
 
 
-def _replace_relay_rows(  # noqa: PLR0913
+@dataclass
+class RelayRowReplaceContext:
+    pbp_rows: list[GamePlayByPlay]
+    event_rows: list[GameEvent]
+    source: GameWriteSource
+    write_contract: GameWriteContract | None
+
+
+def _replace_relay_rows(
     session: Session,
     game_id: str,
-    pbp_rows: list[GamePlayByPlay],
-    event_rows: list[GameEvent],
-    source: GameWriteSource,
-    write_contract: GameWriteContract | None,
+    *,
+    ctx: RelayRowReplaceContext,
 ) -> bool:
     changed = False
-    if pbp_rows:
+    if ctx.pbp_rows:
         changed |= _replace_orm_records(
             session,
             GamePlayByPlay,
             game_id,
-            pbp_rows,
-            RecordReplaceContext(source=source, write_contract=write_contract),
+            ctx.pbp_rows,
+            RecordReplaceContext(source=ctx.source, write_contract=ctx.write_contract),
         )
-    if event_rows:
+    if ctx.event_rows:
         changed |= _replace_orm_records(
             session,
             GameEvent,
             game_id,
-            event_rows,
-            RecordReplaceContext(source=source, write_contract=write_contract),
+            ctx.event_rows,
+            RecordReplaceContext(source=ctx.source, write_contract=ctx.write_contract),
         )
     return changed
 
@@ -1009,7 +1015,16 @@ def save_relay_data(
             resolution = _relay_resolution_context(session, game_id)
             pbp_rows = _build_relay_pbp_rows(game_id, raw_pbp_rows, opts.source_name, resolution)
             event_rows = _build_relay_event_rows(game_id, valid_event_rows, opts.source_name, opts.notes, resolution)
-            changed = _replace_relay_rows(session, game_id, pbp_rows, event_rows, source, opts.write_contract)
+            changed = _replace_relay_rows(
+                session,
+                game_id,
+                ctx=RelayRowReplaceContext(
+                    pbp_rows=pbp_rows,
+                    event_rows=event_rows,
+                    source=source,
+                    write_contract=opts.write_contract,
+                ),
+            )
             session.commit()
             if changed:
                 _auto_sync_to_oci(game_id)
