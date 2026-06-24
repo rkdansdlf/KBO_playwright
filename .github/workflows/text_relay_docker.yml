@@ -1,0 +1,201 @@
+name: KBO Text Relay Docker Pipeline
+
+on:
+  schedule:
+    - cron: '0 19 * * *'  # 04:00 KST (일일 문자중계 수집)
+  workflow_dispatch:
+    inputs:
+      game_id:
+        description: '수집할 경기 ID (예: 20260412SKLG0)'
+        required: false
+        default: ''
+      season:
+        description: '수집할 시즌 연도'
+        required: false
+        default: ''
+      month:
+        description: '수집할 월 (1-12)'
+        required: false
+        default: ''
+      output_dir:
+        description: 'CSV 출력 디렉토리'
+        required: false
+        default: 'data'
+
+concurrency:
+  group: kbo-text-relay
+  cancel-in-progress: false
+
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 1 - Docker 이미지 빌드 및 문자중계 수집
+  # ──────────────────────────────────────────────────────────────────────────
+  text-relay-collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Cache Docker layers
+        uses: actions/cache@v5
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-text-relay-${{ hashFiles('requirements.txt', 'Dockerfile.playwright') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-text-relay-
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.playwright
+          tags: kbo-text-relay:latest
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          load: true
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Create output directory
+        run: mkdir -p data logs
+
+      - name: Run Text Relay Crawler (Single Game)
+        if: github.event.inputs.game_id != ''
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/data:/app/data \
+            -v ${{ github.workspace }}/logs:/app/logs \
+            -e KBO_REQUEST_DELAY_MIN=1.5 \
+            -e KBO_REQUEST_DELAY_MAX=2.5 \
+            kbo-text-relay:latest \
+            --game-id ${{ github.event.inputs.game_id }} \
+            --save \
+            --output-dir /app/data
+
+      - name: Run Text Relay Crawler (Season)
+        if: github.event.inputs.game_id == '' && github.event.inputs.season != ''
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/data:/app/data \
+            -v ${{ github.workspace }}/logs:/app/logs \
+            -e KBO_REQUEST_DELAY_MIN=1.5 \
+            -e KBO_REQUEST_DELAY_MAX=2.5 \
+            kbo-text-relay:latest \
+            --season ${{ github.event.inputs.season }} \
+            --month ${{ github.event.inputs.month }} \
+            --save \
+            --output-dir /app/data
+
+      - name: Run Text Relay Crawler (Default - Previous Day)
+        if: github.event.inputs.game_id == '' && github.event.inputs.season == ''
+        run: |
+          # 전일 날짜 계산 (KST 기준)
+          YESTERDAY=$(TZ='Asia/Seoul' date -d 'yesterday' +%Y%m%d 2>/dev/null || date -v-1d +%Y%m%d)
+          YEAR=${YESTERDAY:0:4}
+          MONTH=${YESTERDAY:4:2}
+
+          echo "Collecting text relay for $YESTERDAY (Year: $YEAR, Month: $MONTH)"
+
+          docker run --rm \
+            -v ${{ github.workspace }}/data:/app/data \
+            -v ${{ github.workspace }}/logs:/app/logs \
+            -e KBO_REQUEST_DELAY_MIN=1.5 \
+            -e KBO_REQUEST_DELAY_MAX=2.5 \
+            kbo-text-relay:latest \
+            --season $YEAR \
+            --month $MONTH \
+            --save \
+            --output-dir /app/data
+
+      - name: List collected files
+        run: |
+          echo "=== Collected Text Relay Files ==="
+          ls -la data/*_text_relay.csv 2>/dev/null || echo "No text relay files found"
+          echo ""
+          echo "=== File Count ==="
+          ls data/*_text_relay.csv 2>/dev/null | wc -l
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: text-relay-csv-${{ github.run_id }}
+          path: data/*_text_relay.csv
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: text-relay-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 2 - 데이터 품질 검증
+  # ──────────────────────────────────────────────────────────────────────────
+  verify:
+    needs: text-relay-collect
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: text-relay-csv-${{ github.run_id }}
+          path: data/
+
+      - name: Verify CSV structure
+        run: |
+          echo "=== Verifying CSV Structure ==="
+          for file in data/*_text_relay.csv; do
+            if [ -f "$file" ]; then
+              echo "File: $file"
+              echo "  Rows: $(wc -l < "$file")"
+              echo "  Columns: $(head -1 "$file")"
+              echo ""
+            fi
+          done
+
+      - name: Check for empty files
+        run: |
+          echo "=== Checking for empty files ==="
+          EMPTY_COUNT=0
+          for file in data/*_text_relay.csv; do
+            if [ -f "$file" ]; then
+              ROWS=$(wc -l < "$file")
+              if [ "$ROWS" -le 1 ]; then
+                echo "WARNING: $file has no data rows"
+                EMPTY_COUNT=$((EMPTY_COUNT + 1))
+              fi
+            fi
+          done
+          echo "Empty files: $EMPTY_COUNT"
+
+      - name: Notify success
+        if: needs.text-relay-collect.result == 'success'
+        run: |
+          echo "✅ Text relay collection completed successfully"
+
+      - name: Notify failure
+        if: needs.text-relay-collect.result != 'success'
+        run: |
+          echo "❌ Text relay collection failed"

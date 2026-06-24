@@ -1,0 +1,158 @@
+# KBO Text Relay Crawler - Docker Compose 설정
+#
+# 사용 방법:
+#   단일 경기 수집:
+#     docker compose -f docker-compose.text-relay.yml run --rm text-relay --game-id 20260412SKLG0 --save
+#
+#   시즌 전체 수집:
+#     docker compose -f docker-compose.text-relay.yml run --rm text-relay --season 2026 --save
+#
+#   빌드 후 실행:
+#     docker compose -f docker-compose.text-relay.yml up --build --abort-on-container-exit
+#
+# 환경 변수 (.env 파일에서 로드):
+#   TARGET_URL: 크롤링 대상 URL (선택사항)
+#   KBO_REQUEST_DELAY_MIN: 최소 요청 딜레이 (기본: 1.5초)
+#   KBO_REQUEST_DELAY_MAX: 최대 요청 딜레이 (기본: 2.5초)
+#   DATABASE_URL: 데이터베이스 URL (선택사항)
+
+version: "3.9"
+
+services:
+  text-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    image: kbo-text-relay:latest
+    container_name: kbo-text-relay-crawler
+    restart: "no"
+
+    # 환경 변수 파일 로드
+    env_file:
+      - .env
+
+    # 환경 변수 직접 설정 (오버라이드 가능)
+    environment:
+      # 크롤링 설정
+      - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
+      - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
+      - KBO_REQUEST_MAX_RETRIES=${KBO_REQUEST_MAX_RETRIES:-3}
+      - KBO_PLAYWRIGHT_SELECTOR_TIMEOUT=${KBO_PLAYWRIGHT_SELECTOR_TIMEOUT:-15000}
+      - KBO_PLAYWRIGHT_NAVIGATION_TIMEOUT=${KBO_PLAYWRIGHT_NAVIGATION_TIMEOUT:-30000}
+
+      # 데이터베이스 (선택사항)
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}
+      - OCI_DB_URL=${OCI_DB_URL:-}
+
+      # 로깅
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONUNBUFFERED=1
+
+    # 볼륨 바인드 마운트
+    volumes:
+      # 수집 데이터 출력 디렉토리 (호스트 ↔ 컨테이너 공유)
+      - ./data:/app/data
+
+      # 로그 출력 디렉토리
+      - ./logs:/app/logs
+
+      # 소스코드 마운트 (개발 시 유용, 프로덕션에서는 제거)
+      # - ./src:/app/src:ro
+
+    # 네트워크 설정
+    networks:
+      - kbo-text-relay-network
+
+    # 리소스 제한
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    # 로깅 설정
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # 기본 명령어 (오버라이드 가능)
+    command: ["--help"]
+
+  # 일일 자동 수집 서비스 (선택사항)
+  text-relay-daily:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    image: kbo-text-relay:latest
+    container_name: kbo-text-relay-daily
+    restart: "no"
+
+    env_file:
+      - .env
+
+    environment:
+      - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
+      - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}
+
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+    networks:
+      - kbo-text-relay-network
+
+    # 일일 수집 명령어 (전일 경기 수집)
+    command: >
+      sh -c "YESTERDAY=$$(date -d 'yesterday' +%Y%m%d 2>/dev/null || date -v-1d +%Y%m%d) &&
+             python -m src.cli.crawl_text_relay --season $$(echo $$YESTERDAY | cut -c1-4) --save"
+
+    profiles:
+      - daily
+
+  # 스케줄러 서비스 (선택사항 - APScheduler 기반)
+  text-relay-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    image: kbo-text-relay:latest
+    container_name: kbo-text-relay-scheduler
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
+      - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}
+
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+    networks:
+      - kbo-text-relay-network
+
+    profiles:
+      - scheduler
+
+# 네트워크 정의
+networks:
+  kbo-text-relay-network:
+    driver: bridge
+    name: kbo-text-relay-net
+
+# 볼륨 정의 (선택사항 - 명시적 볼륨 사용 시)
+volumes:
+  text-relay-data:
+    driver: local
+    name: kbo-text-relay-data
+  text-relay-logs:
+    driver: local
+    name: kbo-text-relay-logs

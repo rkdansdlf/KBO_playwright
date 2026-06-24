@@ -17,6 +17,7 @@ import argparse
 import logging
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -44,6 +45,21 @@ from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BattingCrawlContext:
+    page: Page
+    year: int
+    series_key: str
+    iteration_targets: list[dict]
+    by_team: bool
+    limit: int | None
+    policy: RequestPolicy
+    unique_players: set[int]
+    all_players_data: list[dict]
+
+
 CRAWLER_EXCEPTIONS = (
     PlaywrightError,
     PlaywrightTimeoutError,
@@ -900,33 +916,22 @@ def _process_current_page_batting(
     return len(current_page_data)
 
 
-def _collect_batting_stats_loop(  # noqa: PLR0913
-    page: Page,
-    year: int,
-    series_key: str,
-    iteration_targets: list[dict],
-    *,
-    by_team: bool,
-    limit: int | None,
-    policy: RequestPolicy,
-    unique_players: set[int],
-    all_players_data: list[dict],
-) -> None:
+def _collect_batting_stats_loop(ctx: BattingCrawlContext) -> None:
     total_collected = 0
-    for tm in iteration_targets:
-        if not _select_team_if_needed(page, tm, by_team=by_team, policy=policy):
+    for tm in ctx.iteration_targets:
+        if not _select_team_if_needed(ctx.page, tm, by_team=ctx.by_team, policy=ctx.policy):
             continue
 
-        _apply_pa_sorting(page, policy)
+        _apply_pa_sorting(ctx.page, ctx.policy)
 
         page_num = 1
         while True:
             added = _process_current_page_batting(
-                page=page,
-                year=year,
-                series_key=series_key,
-                unique_players=unique_players,
-                all_players_data=all_players_data,
+                page=ctx.page,
+                year=ctx.year,
+                series_key=ctx.series_key,
+                unique_players=ctx.unique_players,
+                all_players_data=ctx.all_players_data,
             )
             total_collected += added
 
@@ -937,15 +942,15 @@ def _collect_batting_stats_loop(  # noqa: PLR0913
                 total_collected,
             )
 
-            if limit and total_collected >= limit:
-                logger.info("🎯 목표 수(%s명) 달성. 수집 중단.", limit)
+            if ctx.limit and total_collected >= ctx.limit:
+                logger.info("🎯 목표 수(%s명) 달성. 수집 중단.", ctx.limit)
                 return
 
-            if not go_to_next_page(page, page_num, policy):
+            if not go_to_next_page(ctx.page, page_num, ctx.policy):
                 break
 
             page_num += 1
-            policy.delay()
+            ctx.policy.delay()
 
 
 def _merge_basic2_data(
@@ -1075,15 +1080,17 @@ def crawl_series_batting_stats(  # noqa: PLR0913
             # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
             team_options = _get_team_options(page, by_team=by_team)
             _collect_batting_stats_loop(
-                page=page,
-                year=year,
-                series_key=series_key,
-                iteration_targets=team_options,
-                by_team=by_team,
-                limit=limit,
-                policy=policy,
-                unique_players=unique_players,
-                all_players_data=all_players_data,
+                BattingCrawlContext(
+                    page=page,
+                    year=year,
+                    series_key=series_key,
+                    iteration_targets=team_options,
+                    by_team=by_team,
+                    limit=limit,
+                    policy=policy,
+                    unique_players=unique_players,
+                    all_players_data=all_players_data,
+                )
             )
 
             # 정규시즌인 경우 Basic2 페이지에서 추가 데이터 수집
