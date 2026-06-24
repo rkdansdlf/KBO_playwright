@@ -49,7 +49,7 @@ class RebuildReportRow:
     oci_status: str = "not_requested"
 
 
-def rebuild_relay_events(
+def rebuild_relay_events(  # noqa: PLR0913
     *,
     seasons: Sequence[int] = DEFAULT_SEASONS,
     game_ids: Sequence[str] | None = None,

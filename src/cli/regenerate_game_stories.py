@@ -289,7 +289,7 @@ def _upsert_story_summary(
     session.add(GameSummary(game_id=game_id, summary_type=STORY_SUMMARY_TYPE, detail_text=new_json))
 
 
-def _process_story_game(
+def _process_story_game(  # noqa: PLR0913
     session: Session,
     game: Game,
     events: list[GameEvent],
@@ -318,7 +318,7 @@ def _process_story_game(
     return row, True
 
 
-def _process_story_batches(
+def _process_story_batches(  # noqa: PLR0913
     session: Session,
     games: Sequence[Game],
     builder: GameStoryBuilder,
@@ -360,7 +360,7 @@ def _mark_story_oci_status(rows: Sequence[StoryRegenReportRow], *, apply: bool, 
                 row.oci_status = "skipped_missing_oci_url"
 
 
-def regenerate_game_stories(
+def regenerate_game_stories(  # noqa: PLR0913
     *,
     game_ids: Sequence[str] | None = None,
     dates: Sequence[str] | None = None,

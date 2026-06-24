@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 class CrawlRunRepository:
-    def create_run(
+    def create_run(  # noqa: PLR0913
         self,
         *,
         label: str | None,

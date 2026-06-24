@@ -113,7 +113,7 @@ async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, 
     return player_positions
 
 
-async def process_player(
+async def process_player(  # noqa: PLR0913
     player_id: str,
     position: str,
     player_name: str,
@@ -131,7 +131,7 @@ async def process_player(
     return (str(result["player_id"]), int(result["saved"]))
 
 
-async def process_player_result(
+async def process_player_result(  # noqa: PLR0913
     player_id: str,
     position: str,
     player_name: str,

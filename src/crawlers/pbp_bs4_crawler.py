@@ -205,7 +205,7 @@ class PBPBS4Crawler:
             state["current_outs"] += 1
         state["current_outs"] = min(state["current_outs"], 3)
 
-    def _calculate_wpa(
+    def _calculate_wpa(  # noqa: PLR0913
         self,
         inning: int,
         *,
@@ -234,7 +234,7 @@ class PBPBS4Crawler:
         wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
         return wp_before, wp_after, wpa
 
-    def _base_event_payload(
+    def _base_event_payload(  # noqa: PLR0913
         self,
         sequence: int,
         info: dict[str, Any],

@@ -192,7 +192,7 @@ JAMSIL_LAT = 37.5121
 JAMSIL_LNG = 127.0719
 
 
-async def get_transit_time(
+async def get_transit_time(  # noqa: PLR0913
     origin_label: str,
     origin_lat: float,
     origin_lng: float,

@@ -76,7 +76,7 @@ class TeamState:
     def recent_10_draws(self) -> int:
         return sum(1 for r in self.recent_games if r == "D")
 
-    def add_game(
+    def add_game(  # noqa: PLR0913
         self,
         *,
         is_win: bool,

@@ -890,7 +890,7 @@ def _build_relay_event_rows(
     return event_rows
 
 
-def _replace_relay_rows(
+def _replace_relay_rows(  # noqa: PLR0913
     session: Session,
     game_id: str,
     pbp_rows: list[GamePlayByPlay],

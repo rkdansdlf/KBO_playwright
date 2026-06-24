@@ -50,7 +50,7 @@ class WPACalculator:
 
         logger.info("✅ Loaded %s Win Expectancy entries from %s", len(self._matrix), path)
 
-    def calculate_wpa(
+    def calculate_wpa(  # noqa: PLR0913
         self,
         inning: int,
         *,

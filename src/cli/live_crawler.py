@@ -476,7 +476,7 @@ def _resolve_live_lifecycle(
     return "running"
 
 
-async def _save_live_relay_and_snapshot(
+async def _save_live_relay_and_snapshot(  # noqa: PLR0913
     game_id: str,
     today_str: str,
     flat_events: list[dict[str, Any]],
@@ -532,7 +532,7 @@ def _trigger_fallback_healing_if_unverified(game_id: str) -> None:
             asyncio.create_task(_run_kbo_fallback_healing(game_id))
 
 
-async def _process_single_live_game(
+async def _process_single_live_game(  # noqa: PLR0913
     game: dict[str, Any],
     lifecycle_state: str | None,
     nav_status_raw: str | None,
@@ -742,7 +742,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             await asyncio.sleep(60)
 
 
-def _compute_base_dynamic_interval(
+def _compute_base_dynamic_interval(  # noqa: PLR0913
     *,
     active: bool,
     active_playing: bool,
