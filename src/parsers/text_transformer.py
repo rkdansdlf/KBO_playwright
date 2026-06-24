@@ -381,7 +381,7 @@ class TextTransformer:
             elif current_chunk_text:
                 ctx.chunks.append(self._create_news_chunk(ctx.doc_title, current_chunk_text, ctx.meta, chunk_idx))
                 chunk_idx += 1
-                current_chunk_text = current_chunk_text[-ctx.overlap_char_limit:] + " " + sent
+                current_chunk_text = current_chunk_text[-ctx.overlap_char_limit :] + " " + sent
             else:
                 current_chunk_text = sent
         return current_chunk_text, chunk_idx
@@ -397,7 +397,7 @@ class TextTransformer:
             return ((current_chunk_text + "\n\n" + para) if current_chunk_text else para), chunk_idx
         if current_chunk_text:
             ctx.chunks.append(self._create_news_chunk(ctx.doc_title, current_chunk_text, ctx.meta, chunk_idx))
-            return current_chunk_text[-ctx.overlap_char_limit:] + "\n\n" + para, chunk_idx + 1
+            return current_chunk_text[-ctx.overlap_char_limit :] + "\n\n" + para, chunk_idx + 1
         return para, chunk_idx
 
     def _create_news_chunk(self, doc_title: str, content: str, meta: dict[str, Any], index: int) -> dict[str, Any]:

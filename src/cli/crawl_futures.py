@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -37,6 +38,16 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from src.repositories.player_repository import PlayerRepository
+
+
+@dataclass(frozen=True, slots=True)
+class FuturesPlayerTarget:
+    player_id: str
+    position: str
+    player_name: str
+
 
 logger = logging.getLogger(__name__)
 
@@ -113,12 +124,9 @@ async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, 
     return player_positions
 
 
-async def process_player(  # noqa: PLR0913
-    player_id: str,
-    position: str,
-    player_name: str,
+async def process_player(
+    target: FuturesPlayerTarget,
     repository: PlayerRepository,
-    delay: float,
     pool: AsyncPlaywrightPool,
 ) -> tuple[str, int]:
     """
@@ -127,29 +135,26 @@ async def process_player(  # noqa: PLR0913
     Returns:
         (player_id, 저장된 시즌 기록 수)
     """
-    result = await process_player_result(player_id, position, player_name, repository, delay, pool)
+    result = await process_player_result(target, repository, pool)
     return (str(result["player_id"]), int(result["saved"]))
 
 
-async def process_player_result(  # noqa: PLR0913
-    player_id: str,
-    position: str,
-    player_name: str,
+async def process_player_result(
+    target: FuturesPlayerTarget,
     repository: PlayerRepository,
-    delay: float,  # noqa: ARG001
     pool: AsyncPlaywrightPool,
 ) -> dict[str, Any]:
-    normalized_id = normalize_player_id(player_id)
+    normalized_id = normalize_player_id(target.player_id)
     if normalized_id is None:
-        return _fail_result(player_id, "invalid_player_id", status="failed")
+        return _fail_result(target.player_id, "invalid_player_id", status="failed")
 
     player_id = str(normalized_id)
-    player_name = _resolve_player_name(player_id, player_name)
+    player_name = _resolve_player_name(player_id, target.player_name)
 
     if not _has_player_basic(player_id):
         return _fail_result(player_id, "missing_player_basic", status="skipped")
 
-    batting_rows, pitching_rows = await _crawl_futures_stats(player_id, position, pool)
+    batting_rows, pitching_rows = await _crawl_futures_stats(player_id, target.position, pool)
 
     if not batting_rows and not pitching_rows:
         return _fail_result(player_id, "futures_empty", status="skipped")
@@ -332,7 +337,6 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
     results, failure_counts = await _run_futures_players(
         player_positions,
         repository,
-        args,
         pool,
         semaphore,
     )
@@ -356,7 +360,6 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
 async def _run_futures_players(
     player_positions: dict[str, dict[str, str]],
     repository: PlayerRepository,
-    args: argparse.Namespace,
     pool: AsyncPlaywrightPool,
     semaphore: asyncio.Semaphore,
 ) -> tuple[list[dict[str, Any]], Counter]:
@@ -368,7 +371,11 @@ async def _run_futures_players(
             pos = meta["position"]
             name = meta["name"]
             try:
-                result = await process_player_result(pid, pos, name, repository, args.delay, pool)
+                result = await process_player_result(
+                    FuturesPlayerTarget(pid, pos, name),
+                    repository,
+                    pool,
+                )
             except FUTURES_PROCESS_EXCEPTIONS:
                 logger.exception("Unhandled exception for player %s (%s)", pid, pos)
                 result = {"player_id": pid, "status": "failed", "saved": 0, "failure_reason": "exception"}

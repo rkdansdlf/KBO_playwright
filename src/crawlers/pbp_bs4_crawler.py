@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -17,6 +18,34 @@ from src.services.wpa_calculator import WPACalculator
 from src.utils.text_parser import KBOTextParser
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class WpaEventContext:
+    inning: int
+    is_bottom: bool
+    outs_before: int
+    runners_before: int
+    outs_after: int
+    runners_after: int
+    score_diff_before: int
+    score_diff_after: int
+
+
+@dataclass
+class BaseEventContext:
+    sequence: int
+    info: dict[str, Any]
+    p_text: str
+    runs_scored: int
+    outs_before: int
+    runners_before: int
+    runners_after: int
+    score_diff_before: int
+    wp_before: float
+    wp_after: float
+    wpa: float
+    state: dict[str, int]
 
 PBP_BS4_PARSE_EXCEPTIONS = (RuntimeError, ValueError, TypeError, KeyError, IndexError)
 
@@ -143,28 +172,32 @@ class PBPBS4Crawler:
         runners_after = 0
         score_diff_after = state["home_score"] - state["away_score"]
         wp_before, wp_after, wpa = self._calculate_wpa(
-            inning,
-            is_bottom=is_bottom,
-            outs_before=outs_before,
-            runners_before=runners_before,
-            outs_after=outs_after,
-            runners_after=runners_after,
-            score_diff_before=score_diff_before,
-            score_diff_after=score_diff_after,
+            WpaEventContext(
+                inning=inning,
+                is_bottom=is_bottom,
+                outs_before=outs_before,
+                runners_before=runners_before,
+                outs_after=outs_after,
+                runners_after=runners_after,
+                score_diff_before=score_diff_before,
+                score_diff_after=score_diff_after,
+            )
         )
         event = self._base_event_payload(
-            sequence,
-            info,
-            p_text,
-            runs_scored,
-            outs_before,
-            runners_before,
-            runners_after,
-            score_diff_before,
-            wp_before,
-            wp_after,
-            wpa,
-            state,
+            BaseEventContext(
+                sequence=sequence,
+                info=info,
+                p_text=p_text,
+                runs_scored=runs_scored,
+                outs_before=outs_before,
+                runners_before=runners_before,
+                runners_after=runners_after,
+                score_diff_before=score_diff_before,
+                wp_before=wp_before,
+                wp_after=wp_after,
+                wpa=wpa,
+                state=state,
+            )
         )
         self._apply_basic_event_parsing(event, p_text)
         return event
@@ -205,71 +238,52 @@ class PBPBS4Crawler:
             state["current_outs"] += 1
         state["current_outs"] = min(state["current_outs"], 3)
 
-    def _calculate_wpa(  # noqa: PLR0913
+    def _calculate_wpa(
         self,
-        inning: int,
-        *,
-        is_bottom: bool,
-        outs_before: int,
-        runners_before: int,
-        outs_after: int,
-        runners_after: int,
-        score_diff_before: int,
-        score_diff_after: int,
+        ctx: WpaEventContext,
     ) -> tuple[float, float, float]:
         wp_before = self.wpa_calc.get_win_probability(
-            inning,
-            is_bottom=is_bottom,
-            outs=outs_before,
-            runners=runners_before,
-            score_diff=score_diff_before,
+            ctx.inning,
+            is_bottom=ctx.is_bottom,
+            outs=ctx.outs_before,
+            runners=ctx.runners_before,
+            score_diff=ctx.score_diff_before,
         )
         wp_after = self.wpa_calc.get_win_probability(
-            inning,
-            is_bottom=is_bottom,
-            outs=outs_after,
-            runners=runners_after,
-            score_diff=score_diff_after,
+            ctx.inning,
+            is_bottom=ctx.is_bottom,
+            outs=ctx.outs_after,
+            runners=ctx.runners_after,
+            score_diff=ctx.score_diff_after,
         )
-        wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
+        wpa = round(wp_after - wp_before if ctx.is_bottom else wp_before - wp_after, 4)
         return wp_before, wp_after, wpa
 
-    def _base_event_payload(  # noqa: PLR0913
+    def _base_event_payload(
         self,
-        sequence: int,
-        info: dict[str, Any],
-        p_text: str,
-        runs_scored: int,
-        outs_before: int,
-        runners_before: int,
-        runners_after: int,
-        score_diff_before: int,
-        wp_before: float,
-        wp_after: float,
-        wpa: float,
-        state: dict[str, int],
+        ctx: BaseEventContext,
     ) -> dict[str, Any]:
         return {
-            "event_seq": sequence,
-            "inning": info["inning"],
-            "inning_half": info["half"],
-            "description": p_text,
+            "event_seq": ctx.sequence,
+            "inning": ctx.info["inning"],
+            "inning_half": ctx.info["half"],
+            "description": ctx.p_text,
             "event_type": "unknown",
             "batter": None,
             "pitcher": None,
             "result": None,
-            "wpa": wpa,
-            "win_expectancy_before": wp_before,
-            "win_expectancy_after": wp_after,
-            "score_diff": score_diff_before,
-            "home_score": state["home_score"],
-            "away_score": state["away_score"],
-            "base_state": runners_before,
-            "outs": outs_before,
-            "bases_before": self._format_base_string(runners_before),
-            "bases_after": self._format_base_string(runners_after),
+            "wpa": ctx.wpa,
+            "win_expectancy_before": ctx.wp_before,
+            "win_expectancy_after": ctx.wp_after,
+            "score_diff": ctx.score_diff_before,
+            "home_score": ctx.state["home_score"],
+            "away_score": ctx.state["away_score"],
+            "base_state": ctx.runners_before,
+            "outs": ctx.outs_before,
+            "bases_before": self._format_base_string(ctx.runners_before),
+            "bases_after": self._format_base_string(ctx.runners_after),
             "result_code": None,
-            "rbi": runs_scored,
+            "rbi": ctx.runs_scored,
         }
 
     @staticmethod

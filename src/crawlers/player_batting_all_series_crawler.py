@@ -145,29 +145,20 @@ def _is_basic2_headers(headers: list[str]) -> bool:
     return any(indicator in combined for indicator in basic2_indicators)
 
 
-def _build_batting_data(  # noqa: PLR0913
-    cells: list[str],
-    player_id: int,
-    player_name: str,
-    team_code: str,
-    series_key: str,
-    *,
-    is_basic2: bool,
-    year: int | None = None,
-) -> dict[str, Any]:
-    year = year or datetime.now(KST).year
+def _build_batting_data(ctx: BattingRowData) -> dict[str, Any]:
+    year = ctx.year or datetime.now(KST).year
     series_map = get_series_mapping()
-    league_name = series_map.get(series_key, {}).get("league", "REGULAR")
+    league_name = series_map.get(ctx.series_key, {}).get("league", "REGULAR")
 
     def cell(idx: int) -> str | None:
-        return cells[idx] if len(cells) > idx else None
+        return ctx.cells[idx] if len(ctx.cells) > idx else None
 
-    if series_key == "regular":
-        if is_basic2:
+    if ctx.series_key == "regular":
+        if ctx.is_basic2:
             return {
-                "player_id": player_id,
-                "player_name": player_name,
-                "team_code": team_code,
+                "player_id": ctx.player_id,
+                "player_name": ctx.player_name,
+                "team_code": ctx.team_code,
                 "season": year,
                 "league": league_name,
                 "avg": safe_parse_number(cell(3), float),
@@ -186,9 +177,9 @@ def _build_batting_data(  # noqa: PLR0913
                 },
             }
         return {
-            "player_id": player_id,
-            "player_name": player_name,
-            "team_code": team_code,
+            "player_id": ctx.player_id,
+            "player_name": ctx.player_name,
+            "team_code": ctx.team_code,
             "season": year,
             "league": league_name,
             "avg": safe_parse_number(cell(3), float),
@@ -207,9 +198,9 @@ def _build_batting_data(  # noqa: PLR0913
         }
 
     return {
-        "player_id": player_id,
-        "player_name": player_name,
-        "team_code": team_code,
+        "player_id": ctx.player_id,
+        "player_name": ctx.player_name,
+        "team_code": ctx.team_code,
         "season": year,
         "league": league_name,
         "avg": safe_parse_number(cell(3), float),
@@ -293,13 +284,15 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | Non
             team_code = resolve_team_code(team_name, year) or team_name
 
             batting_data = _build_batting_data(
-                cells=cells,
-                player_id=player_id,
-                player_name=player_name,
-                team_code=team_code,
-                series_key=series_key,
-                is_basic2=is_basic2,
-                year=year,
+                BattingRowData(
+                    cells=cells,
+                    player_id=player_id,
+                    player_name=player_name,
+                    team_code=team_code,
+                    series_key=series_key,
+                    is_basic2=is_basic2,
+                    year=year,
+                )
             )
             players_data.append(batting_data)
 
@@ -348,13 +341,15 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | N
             team_code = resolve_team_code(team_name, year) or team_name
 
             batting_data = _build_batting_data(
-                cells=cells,
-                player_id=player_id,
-                player_name=player_name,
-                team_code=team_code,
-                series_key=series_key,
-                is_basic2=is_basic2,
-                year=year,
+                BattingRowData(
+                    cells=cells,
+                    player_id=player_id,
+                    player_name=player_name,
+                    team_code=team_code,
+                    series_key=series_key,
+                    is_basic2=is_basic2,
+                    year=year,
+                )
             )
             players_data.append(batting_data)
 
@@ -604,15 +599,8 @@ def _log_first_rows_basic2_legacy(
         logger.info("      ✅ %s (%s) - %s: %s", player_name, team_name, current_header, sort_value)
 
 
-def _parse_legacy_row(  # noqa: PLR0913
-    row_idx: int,
-    row: ElementHandle,
-    current_header: str,
-    description: str,
-    year: int,
-    team_mapping: dict[str, str],
-) -> tuple[int, dict] | None:
-    cells = row.query_selector_all("td")
+def _parse_legacy_row(ctx: LegacyRowContext) -> tuple[int, dict] | None:
+    cells = ctx.row.query_selector_all("td")
     if len(cells) < 5:
         return None
 
@@ -629,10 +617,10 @@ def _parse_legacy_row(  # noqa: PLR0913
             return None
 
         team_name = cells[2].text_content().strip()
-        team_code = get_team_code(team_name, year)
+        team_code = get_team_code(team_name, ctx.year)
         if not team_code:
-            team_code = team_mapping.get(team_name, team_name)
-            logger.warning("⚠️ %s년 '%s' 팀 매핑 실패, 폴백: %s", year, team_name, team_code)
+            team_code = ctx.team_mapping.get(team_name, team_name)
+            logger.warning("⚠️ %s년 '%s' 팀 매핑 실패, 폴백: %s", ctx.year, team_name, team_code)
 
         batting_data = {
             "player_id": player_id,
@@ -641,11 +629,11 @@ def _parse_legacy_row(  # noqa: PLR0913
         }
 
         cell_texts = [c.text_content().strip() for c in cells]
-        _extract_basic2_stat_by_header(current_header, cell_texts, batting_data)
+        _extract_basic2_stat_by_header(ctx.current_header, cell_texts, batting_data)
 
-        _log_first_rows_basic2_legacy(row_idx, player_name, team_name, current_header, batting_data)
+        _log_first_rows_basic2_legacy(ctx.row_idx, player_name, team_name, ctx.current_header, batting_data)
     except (ValueError, AttributeError):
-        logger.exception("      ⚠️ %s 행 파싱 오류", description)
+        logger.exception("      ⚠️ %s 행 파싱 오류", ctx.description)
         return None
     else:
         return player_id, batting_data
@@ -679,7 +667,16 @@ def _parse_basic2_header_data_legacy(
         _log_debug_legacy_table(page, rows, description)
 
         for row_idx, row in enumerate(rows):
-            res = _parse_legacy_row(row_idx, row, current_header, description, year, team_mapping)
+            res = _parse_legacy_row(
+                LegacyRowContext(
+                    row_idx=row_idx,
+                    row=row,
+                    current_header=current_header,
+                    description=description,
+                    year=year,
+                    team_mapping=team_mapping,
+                )
+            )
             if res:
                 player_id, batting_data = res
                 players_data[player_id] = batting_data
@@ -791,58 +788,59 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
     all_players_data = []
 
     with SessionLocal() as session:
-        # 1. 해당 시즌/시리즈에 경기를 뛴 모든 타자 ID 조회
-        pattern = SeasonStatAggregator._get_league_name_pattern(series_key)  # noqa: SLF001
+        # 1. 벌크 집계 데이터 가져오기
+        bulk_stats = SeasonStatAggregator.aggregate_batting_season_bulk(session, year, series_key)
+        if not bulk_stats:
+            logger.info("✅ DB 집계 완료: 총 0명")
+            return []
 
-        player_ids_query = (
-            session.query(GameBattingStat.player_id)
+        player_ids = [s["player_id"] for s in bulk_stats if s.get("player_id")]
+        logger.info("🔍 DB에서 %s명의 타자를 발견했습니다.", len(player_ids))
+
+        # 2. 선수 기본 정보 벌크 로드
+        players = (
+            session.query(PlayerBasic.player_id, PlayerBasic.name).filter(PlayerBasic.player_id.in_(player_ids)).all()
+        )
+        player_name_map = {p.player_id: p.name for p in players}
+
+        # 3. 최근 소속팀 매핑 벌크 로드 (N+1 방지)
+        recent_games = (
+            session.query(GameBattingStat.player_id, GameBattingStat.team_code, Game.game_date)
             .join(Game, GameBattingStat.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(GameBattingStat.player_id.in_(player_ids))
             .filter(KboSeason.season_year == year)
-            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
-            .distinct()
+            .all()
         )
 
-        player_ids = [p[0] for p in player_ids_query.all() if p[0]]
-        logger.info("🔍 DB에서 %s명의 타자를 발견했습니다.", len(player_ids))
+        player_team_map = {}
+        player_latest_date = {}
+        for pid, team_code, gdate in recent_games:
+            if not pid or not team_code:
+                continue
+            if pid not in player_latest_date or gdate > player_latest_date[pid]:
+                player_latest_date[pid] = gdate
+                player_team_map[pid] = team_code
 
         series_mapping = get_series_mapping()
         series_info = series_mapping.get(series_key, {})
         league_name = series_info.get("league", "REGULAR")
 
-        for pid in player_ids:
-            # 2. 개별 타자별 집계
-            agg_data = SeasonStatAggregator.aggregate_batting_season(session, pid, year, series_key)
-            if not agg_data:
-                continue
-
-            # 3. 선수 기본 정보 조회
-            player_basic = session.query(PlayerBasic).filter_by(player_id=pid).first()
-
-            # 4. 데이터 딕셔너리 생성
+        # 4. 데이터 딕셔너리 구성
+        for agg_data in bulk_stats:
+            pid = agg_data["player_id"]
             player_data = {
                 "player_id": pid,
-                "player_name": player_basic.name if player_basic else f"Player_{pid}",
+                "player_name": player_name_map.get(pid) or agg_data.get("player_name") or f"Player_{pid}",
                 "season": year,
                 "league": league_name,
                 "source": "FALLBACK",
             }
-
-            # 데이터 매핑
             player_data.update(agg_data)
 
-            # 팀 정보 보정
-            last_game_stat = (
-                session.query(GameBattingStat.team_code)
-                .join(Game, GameBattingStat.game_id == Game.game_id)
-                .join(KboSeason, Game.season_id == KboSeason.season_id)
-                .filter(GameBattingStat.player_id == pid)
-                .filter(KboSeason.season_year == year)
-                .order_by(Game.game_date.desc())
-                .first()
-            )
-            if last_game_stat:
-                player_data["team_code"] = last_game_stat[0]
+            # 최근 팀 보정
+            if pid in player_team_map:
+                player_data["team_code"] = player_team_map[pid]
 
             all_players_data.append(player_data)
 

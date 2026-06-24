@@ -102,7 +102,11 @@ def test_process_player_result_marks_empty_futures_as_skip(monkeypatch):
     monkeypatch.setattr(module, "_has_player_basic", lambda _pid: True)
 
     result = asyncio.run(
-        module.process_player_result("1001", "hitter", "PlayerA", _FakeRepository(), delay=0, pool=None)
+        module.process_player_result(
+            module.FuturesPlayerTarget("1001", "hitter", "PlayerA"),
+            _FakeRepository(),
+            pool=None,
+        )
     )
 
     assert result == {
@@ -125,7 +129,11 @@ def test_process_player_result_does_not_save_when_profile_upsert_fails(monkeypat
     monkeypatch.setattr(module, "_has_player_basic", lambda _pid: True)
 
     result = asyncio.run(
-        module.process_player_result("1001", "hitter", "PlayerA", _FakeRepository(player=None), delay=0, pool=None)
+        module.process_player_result(
+            module.FuturesPlayerTarget("1001", "hitter", "PlayerA"),
+            _FakeRepository(player=None),
+            pool=None,
+        )
     )
 
     assert result["status"] == "failed"
@@ -150,7 +158,11 @@ def test_process_player_result_skips_when_player_basic_missing(monkeypatch):
     monkeypatch.setattr(module, "_has_player_basic", lambda _pid: False)
 
     result = asyncio.run(
-        module.process_player_result("5669", "hitter", "PlayerA", _FakeRepository(), delay=0, pool=None)
+        module.process_player_result(
+            module.FuturesPlayerTarget("5669", "hitter", "PlayerA"),
+            _FakeRepository(),
+            pool=None,
+        )
     )
 
     assert result == {
@@ -171,7 +183,11 @@ def test_process_player_result_reports_pitching_filter_reason_when_save_returns_
     monkeypatch.setattr(module, "get_last_filter_counts", lambda: {"missing_required": 1})
 
     result = asyncio.run(
-        module.process_player_result("1001", "pitcher", "PlayerA", _FakeRepository(player=object()), delay=0, pool=None)
+        module.process_player_result(
+            module.FuturesPlayerTarget("1001", "pitcher", "PlayerA"),
+            _FakeRepository(player=object()),
+            pool=None,
+        )
     )
 
     assert result["status"] == "failed"
@@ -237,9 +253,9 @@ def test_crawl_futures_changed_since_skips_recent_futures_rows(monkeypatch):
 
     processed = []
 
-    async def fake_process(pid, pos, name, *_args, **_kwargs):
-        processed.append((pid, pos, name))
-        return {"player_id": pid, "status": "success", "saved": 1, "failure_reason": None}
+    async def fake_process(target, repository, pool):
+        processed.append((target.player_id, target.position, target.player_name))
+        return {"player_id": target.player_id, "status": "success", "saved": 1, "failure_reason": None}
 
     monkeypatch.setattr(module, "gather_active_player_ids", ids)
     monkeypatch.setattr(module, "SessionLocal", lambda: _FakeSession())
@@ -259,7 +275,8 @@ def test_crawl_futures_summary_groups_failure_reasons(monkeypatch):
     async def ids(_season, _delay):
         return {"1001": {"position": "hitter", "name": "PlayerA"}, "1002": {"position": "pitcher", "name": "PlayerB"}}
 
-    async def fake_process(pid, pos, name, *_args, **_kwargs):
+    async def fake_process(target, repository, pool):
+        pid = target.player_id
         if pid == "1001":
             return {"player_id": pid, "status": "success", "saved": 2, "failure_reason": None}
         return {"player_id": pid, "status": "skipped", "saved": 0, "failure_reason": "futures_empty"}

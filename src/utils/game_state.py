@@ -99,6 +99,7 @@ def derive_lifecycle_from_naver_status(nav_status: str | None) -> str | None:
         "CANCELLED": "cancelled",
         "DELAYED": "delayed",
         "SUSPENDED": "suspended",
+        "POSTPONED": "cancelled",
     }
     return mapping.get(upper)
 

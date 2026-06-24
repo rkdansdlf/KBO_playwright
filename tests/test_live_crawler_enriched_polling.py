@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import src.cli.live_crawler as live_crawler
 from src.cli.live_crawler import (
+    GameActivityState,
     _LIVE_SHARD_CURSOR_BY_DATE,
     _compute_base_dynamic_interval,
     _compute_enriched_interval,
@@ -22,13 +23,18 @@ class TestBaseDynamicInterval:
     def make_now(self, hour: int) -> datetime:
         return datetime(2025, 4, 1, hour, 0, 0, tzinfo=ZoneInfo("Asia/Seoul"))
 
+    def _state(self, *, active=False, active_playing=False, active_suspended=False, last_active_time=None, now=None) -> GameActivityState:
+        return GameActivityState(
+            active=active,
+            active_playing=active_playing,
+            active_suspended=active_suspended,
+            last_active_time=last_active_time,
+            now=now or self.make_now(14),
+        )
+
     def test_active_playing_returns_10s(self):
         secs, label = _compute_base_dynamic_interval(
-            active=True,
-            active_playing=True,
-            active_suspended=False,
-            last_active_time=None,
-            now=self.make_now(14),
+            state=self._state(active=True, active_playing=True),
             base_interval_minutes=2,
         )
         assert secs == 10
@@ -36,11 +42,7 @@ class TestBaseDynamicInterval:
 
     def test_active_suspended_returns_60s(self):
         secs, label = _compute_base_dynamic_interval(
-            active=True,
-            active_playing=False,
-            active_suspended=True,
-            last_active_time=None,
-            now=self.make_now(14),
+            state=self._state(active=True, active_suspended=True),
             base_interval_minutes=2,
         )
         assert secs == 60
@@ -48,51 +50,32 @@ class TestBaseDynamicInterval:
 
     def test_active_other_returns_30s(self):
         secs, label = _compute_base_dynamic_interval(
-            active=True,
-            active_playing=False,
-            active_suspended=False,
-            last_active_time=None,
-            now=self.make_now(14),
+            state=self._state(active=True),
             base_interval_minutes=2,
         )
         assert secs == 30
         assert "CHANGE" in label
 
     def test_cooldown_returns_60s(self):
-        now = self.make_now(14)
         last_active = datetime(2025, 4, 1, 13, 55, 0, tzinfo=ZoneInfo("Asia/Seoul"))
         secs, label = _compute_base_dynamic_interval(
-            active=False,
-            active_playing=False,
-            active_suspended=False,
-            last_active_time=last_active,
-            now=now,
+            state=self._state(last_active_time=last_active),
             base_interval_minutes=2,
         )
         assert secs == 60
         assert "COOLDOWN" in label
 
     def test_game_hours_returns_120s(self):
-        now = self.make_now(14)
         secs, label = _compute_base_dynamic_interval(
-            active=False,
-            active_playing=False,
-            active_suspended=False,
-            last_active_time=None,
-            now=now,
+            state=self._state(),
             base_interval_minutes=2,
         )
         assert secs == 120
         assert "GAME HOURS" in label
 
     def test_off_hours_returns_1800s(self):
-        now = self.make_now(3)
         secs, label = _compute_base_dynamic_interval(
-            active=False,
-            active_playing=False,
-            active_suspended=False,
-            last_active_time=None,
-            now=now,
+            state=self._state(now=self.make_now(3)),
             base_interval_minutes=2,
         )
         assert secs == 1800
