@@ -10,6 +10,7 @@ import argparse
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
@@ -375,24 +376,29 @@ def get_available_years(session: Session, model: type[object], column_name: str 
     return sorted(years, reverse=True)
 
 
-def _run_sync(  # noqa: PLR0913
+@dataclass
+class SyncRunConfig:
+    parallel_support: bool = False
+    header: str | None = None
+    years_getter: Callable[[Session], list[int]] | None = None
+    completion_msg: str | None = None
+
+
+def _run_sync(
     args: argparse.Namespace,
     sync_fn: Callable[..., object],
     *,
-    parallel_support: bool = False,
-    header: str | None = None,
-    years_getter: Callable[[Session], list[int]] | None = None,
-    completion_msg: str | None = None,
+    config: SyncRunConfig,
 ) -> None:
-    if header:
-        logger.info(header)
+    if config.header:
+        logger.info(config.header)
 
     target_years = [args.year] if args.year else []
 
-    if parallel_support and args.parallel and years_getter:
+    if config.parallel_support and args.parallel and config.years_getter:
         if not target_years:
             with SessionLocal() as session:
-                target_years = years_getter(session)
+                target_years = config.years_getter(session)
         run_parallel_sync(
             sync_fn,
             args.target_url,
@@ -423,8 +429,8 @@ def _run_sync(  # noqa: PLR0913
             finally:
                 syncer.close()
 
-    if completion_msg:
-        logger.info(completion_msg)
+    if config.completion_msg:
+        logger.info(config.completion_msg)
 
 
 def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -632,10 +638,12 @@ def main(argv: Iterable[str] | None = None) -> None:
         _run_sync(
             args,
             sync_fn,
-            parallel_support=parallel_ok,
-            header=header_str,
-            years_getter=year_getter,
-            completion_msg=completion_msg,
+            config=SyncRunConfig(
+                parallel_support=parallel_ok,
+                header=header_str,
+                years_getter=year_getter,
+                completion_msg=completion_msg,
+            ),
         )
     elif flag in simple_flags:
         method_name, header_str = simple_flags[flag]
