@@ -550,7 +550,8 @@ def _trigger_fallback_healing_if_unverified(game_id: str) -> None:
         )
         if val_status == "unverified" and game_id not in _ACTIVE_HEALING_GAMES:
             _ACTIVE_HEALING_GAMES.add(game_id)
-            asyncio.create_task(_run_kbo_fallback_healing(game_id))
+            task = asyncio.create_task(_run_kbo_fallback_healing(game_id))
+            task.add_done_callback(lambda _: _ACTIVE_HEALING_GAMES.discard(game_id))
 
 
 @dataclass(frozen=True)

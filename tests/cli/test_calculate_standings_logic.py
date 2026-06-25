@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from src.cli.calculate_standings import (
+    GameResultData,
     calculate_games_behind,
     iso_week_number,
     TeamState,
@@ -64,13 +65,15 @@ class TestTeamState:
         state = TeamState("LG")
         for _ in range(10):
             state.add_game(
-                is_win=True,
-                is_loss=False,
-                is_draw=False,
-                runs_for=1,
-                runs_against=0,
-                is_home=True,
-                game_date=date(2026, 6, 24),
+                GameResultData(
+                    is_win=True,
+                    is_loss=False,
+                    is_draw=False,
+                    runs_for=1,
+                    runs_against=0,
+                    is_home=True,
+                    game_date=date(2026, 6, 24),
+                )
             )
         assert state.recent_10_wins == 10
         assert state.recent_10_losses == 0
@@ -80,23 +83,27 @@ class TestTeamState:
         state = TeamState("LG")
         for _ in range(5):
             state.add_game(
-                is_win=True,
-                is_loss=False,
-                is_draw=False,
-                runs_for=1,
-                runs_against=0,
-                is_home=True,
-                game_date=date(2026, 6, 24),
+                GameResultData(
+                    is_win=True,
+                    is_loss=False,
+                    is_draw=False,
+                    runs_for=1,
+                    runs_against=0,
+                    is_home=True,
+                    game_date=date(2026, 6, 24),
+                )
             )
         for _ in range(5):
             state.add_game(
-                is_win=False,
-                is_loss=True,
-                is_draw=False,
-                runs_for=0,
-                runs_against=1,
-                is_home=True,
-                game_date=date(2026, 6, 24),
+                GameResultData(
+                    is_win=False,
+                    is_loss=True,
+                    is_draw=False,
+                    runs_for=0,
+                    runs_against=1,
+                    is_home=True,
+                    game_date=date(2026, 6, 24),
+                )
             )
         assert state.recent_10_wins == 5
         assert state.recent_10_losses == 5
@@ -104,13 +111,15 @@ class TestTeamState:
     def test_add_win_home(self):
         state = TeamState("LG")
         state.add_game(
-            is_win=True,
-            is_loss=False,
-            is_draw=False,
-            runs_for=5,
-            runs_against=3,
-            is_home=True,
-            game_date=date(2026, 6, 24),
+            GameResultData(
+                is_win=True,
+                is_loss=False,
+                is_draw=False,
+                runs_for=5,
+                runs_against=3,
+                is_home=True,
+                game_date=date(2026, 6, 24),
+            )
         )
         assert state.wins == 1
         assert state.home_wins == 1
@@ -119,13 +128,15 @@ class TestTeamState:
     def test_add_win_away(self):
         state = TeamState("LG")
         state.add_game(
-            is_win=True,
-            is_loss=False,
-            is_draw=False,
-            runs_for=5,
-            runs_against=3,
-            is_home=False,
-            game_date=date(2026, 6, 24),
+            GameResultData(
+                is_win=True,
+                is_loss=False,
+                is_draw=False,
+                runs_for=5,
+                runs_against=3,
+                is_home=False,
+                game_date=date(2026, 6, 24),
+            )
         )
         assert state.wins == 1
         assert state.away_wins == 1
@@ -133,13 +144,15 @@ class TestTeamState:
     def test_add_loss(self):
         state = TeamState("LG")
         state.add_game(
-            is_win=False,
-            is_loss=True,
-            is_draw=False,
-            runs_for=2,
-            runs_against=5,
-            is_home=True,
-            game_date=date(2026, 6, 24),
+            GameResultData(
+                is_win=False,
+                is_loss=True,
+                is_draw=False,
+                runs_for=2,
+                runs_against=5,
+                is_home=True,
+                game_date=date(2026, 6, 24),
+            )
         )
         assert state.losses == 1
         assert state.current_streak == -1
@@ -148,26 +161,30 @@ class TestTeamState:
         state = TeamState("LG")
         for _ in range(5):
             state.add_game(
-                is_win=True,
-                is_loss=False,
-                is_draw=False,
-                runs_for=1,
-                runs_against=0,
-                is_home=True,
-                game_date=date(2026, 6, 24),
+                GameResultData(
+                    is_win=True,
+                    is_loss=False,
+                    is_draw=False,
+                    runs_for=1,
+                    runs_against=0,
+                    is_home=True,
+                    game_date=date(2026, 6, 24),
+                )
             )
         assert state.current_streak == 5
 
     def test_draw(self):
         state = TeamState("LG")
         state.add_game(
-            is_win=False,
-            is_loss=False,
-            is_draw=True,
-            runs_for=3,
-            runs_against=3,
-            is_home=True,
-            game_date=date(2026, 6, 24),
+            GameResultData(
+                is_win=False,
+                is_loss=False,
+                is_draw=True,
+                runs_for=3,
+                runs_against=3,
+                is_home=True,
+                game_date=date(2026, 6, 24),
+            )
         )
         assert state.draws == 1
         assert state.recent_games[-1] == "D"

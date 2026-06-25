@@ -85,6 +85,26 @@ class GameStatusEvidence:
     today: date | None = None
 
 
+def _resolve_scored_status(current_status: str | None, new_status: str | None, home_score: int, away_score: int) -> str:
+    if is_terminal_status(current_status) and not is_terminal_status(new_status) and new_status is not None:
+        return current_status or GAME_STATUS_UNRESOLVED
+    return GAME_STATUS_DRAW if home_score == away_score else GAME_STATUS_COMPLETED
+
+
+def _resolve_today_status(evidence: GameStatusEvidence, new_status: str | None) -> str:
+    if evidence.has_progress_evidence or is_live_status(new_status):
+        return new_status or GAME_STATUS_LIVE if evidence.has_progress_evidence else GAME_STATUS_SCHEDULED
+    return GAME_STATUS_SCHEDULED
+
+
+def _resolve_past_status(current_status: str | None, new_status: str | None) -> str:
+    if is_terminal_status(new_status):
+        return new_status or GAME_STATUS_UNRESOLVED
+    if is_terminal_status(current_status):
+        return current_status or GAME_STATUS_UNRESOLVED
+    return GAME_STATUS_UNRESOLVED
+
+
 def derive_stable_game_status(evidence: GameStatusEvidence | None = None, **kwargs: object) -> str:
     """
     Central logic to resolve game status based on date and evidence.
@@ -104,44 +124,19 @@ def derive_stable_game_status(evidence: GameStatusEvidence | None = None, **kwar
     else:
         today = evidence.today
 
-    # 1. Future games are strictly SCHEDULED unless manually overridden (not handled here)
     if evidence.game_date > today:
         return GAME_STATUS_SCHEDULED
 
-    # 2. Normalize inputs
     current_status = normalize_game_status(evidence.current_status)
     new_status = normalize_game_status(evidence.new_status)
 
-    # 3. If we have scores and it's past or today, consider it terminal if context allows
     if evidence.home_score is not None and evidence.away_score is not None:
-        # If it was already terminal, don't move it back unless the new status is also terminal
-        if is_terminal_status(current_status) and not is_terminal_status(new_status) and new_status is not None:
-            return current_status or GAME_STATUS_UNRESOLVED
-        return GAME_STATUS_DRAW if evidence.home_score == evidence.away_score else GAME_STATUS_COMPLETED
+        return _resolve_scored_status(current_status, new_status, evidence.home_score, evidence.away_score)
 
-    # 4. Handle today's games
     if evidence.game_date == today:
-        # Only allow LIVE if there is actual evidence of progress
-        if evidence.has_progress_evidence or is_live_status(new_status):
-            # Even if new_status is LIVE, if we have NO evidence, be skeptical?
-            # For now, if a crawler explicitly says LIVE, we might trust it,
-            # but the goal is to be conservative.
-            return new_status or GAME_STATUS_LIVE if evidence.has_progress_evidence else GAME_STATUS_SCHEDULED
+        return _resolve_today_status(evidence, new_status)
 
-        # If it's today and we had it as LIVE, but now have no evidence and no new status,
-        # keep it LIVE to avoid flickering, OR move back to SCHEDULED?
-        # Decision: If no evidence and it's today, SCHEDULED is safer.
-        return GAME_STATUS_SCHEDULED
-
-    # 5. Handle past games
     if evidence.game_date < today:
-        if is_terminal_status(new_status):
-            return new_status or GAME_STATUS_UNRESOLVED
-        if is_terminal_status(current_status):
-            return current_status or GAME_STATUS_UNRESOLVED
-
-        # Past games without scores must not remain SCHEDULED. A later
-        # detail/status refresh can still promote them to terminal.
-        return GAME_STATUS_UNRESOLVED
+        return _resolve_past_status(current_status, new_status)
 
     return new_status or GAME_STATUS_SCHEDULED
