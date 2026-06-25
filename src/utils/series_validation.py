@@ -13,6 +13,15 @@ from src.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+_ERA_SERIES: list[tuple[int, tuple[str, ...]]] = [
+    (KBO_EARLY_ERA_END, ("regular", "korean_series")),
+    (KBO_MID_80S_ERA_END, ("regular", "korean_series", "exhibition")),
+    (KBO_90S_ERA_END, ("regular", "korean_series", "exhibition")),
+    (KBO_2000S_ERA_END, ("regular", "korean_series", "exhibition")),
+    (KBO_PLAYOFF_ERA_END, ("regular", "korean_series", "playoff", "exhibition")),
+    (KBO_SEMI_PLAYOFF_ERA_END, ("regular", "korean_series", "playoff", "semi_playoff", "exhibition")),
+]
 """
 KBO 연도별 시리즈 존재 여부 검증 유틸리티
 """
@@ -30,40 +39,12 @@ def get_available_series_by_year(year: int) -> list[str]:
     Returns:
         해당 연도에 존재하는 시리즈 키 목록
     """
-    # 기본적으로 모든 연도에 존재하는 시리즈
-    base_series = ["regular"]
-
-    # 연도별 추가 시리즈
-    if year >= KBO_FOUNDING_YEAR:  # KBO 창설 이후
-        if year <= KBO_EARLY_ERA_END:
-            # KBO_FOUNDING_YEAR-KBO_EARLY_ERA_END: 정규시즌 + 한국시리즈만
-            return [*base_series, "korean_series"]
-
-        if year <= KBO_MID_80S_ERA_END:
-            # 1986-KBO_MID_80S_ERA_END: 정규시즌 + 한국시리즈 + 시범경기
-            return [*base_series, "korean_series", "exhibition"]
-
-        if year <= KBO_90S_ERA_END:
-            # 1989-KBO_90S_ERA_END: 현재와 유사하지만 플레이오프 체계 다름
-            return [*base_series, "korean_series", "exhibition"]
-
-        if year <= KBO_2000S_ERA_END:
-            # 2000-KBO_2000S_ERA_END: 플레이오프 없음, 정규시즌 1위가 직접 한국시리즈
-            return [*base_series, "korean_series", "exhibition"]
-
-        if year <= KBO_PLAYOFF_ERA_END:
-            # 2002-KBO_PLAYOFF_ERA_END: 플레이오프 도입
-            return [*base_series, "korean_series", "playoff", "exhibition"]
-
-        if year <= KBO_SEMI_PLAYOFF_ERA_END:
-            # 2007-KBO_SEMI_PLAYOFF_ERA_END: 플레이오프 확장
-            return [*base_series, "korean_series", "playoff", "semi_playoff", "exhibition"]
-
-        # 2015-현재: 와일드카드 도입
-        return [*base_series, "korean_series", "playoff", "semi_playoff", "wildcard", "exhibition"]
-
-    # KBO_FOUNDING_YEAR년 이전은 KBO 창설 전
-    return []
+    if year < KBO_FOUNDING_YEAR:
+        return []
+    for end_year, series in _ERA_SERIES:
+        if year <= end_year:
+            return list(series)
+    return ["regular", "korean_series", "playoff", "semi_playoff", "wildcard", "exhibition"]
 
 
 def is_series_available(year: int, series_key: str) -> bool:

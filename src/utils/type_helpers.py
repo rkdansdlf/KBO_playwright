@@ -77,35 +77,7 @@ def parse_innings(value: str | None) -> float:
     return float(txt)
 
 
-def parse_innings_to_outs(text: str | None) -> int | None:
-    """
-    Convert innings string to total outs.
-
-    Supports:
-      - 'X Y/3'   (e.g. '5 1/3' -> 16)
-      - 'X/Y'     (e.g. '2/3' -> 2)
-      - Unicode fractions (⅓, ⅔)
-      - Decimal   (e.g. '5.1' -> 16, '0.2' -> 2)
-      - 'X:Y'     (e.g. '5:1' -> 16)
-      - Plain int (e.g. '5' -> 15)
-    """
-    if not text:
-        return None
-    cleaned = str(text).strip()
-    if cleaned in _EMPTY_SENTINELS:
-        return None
-
-    cleaned = cleaned.replace("⅓", " 1/3").replace("⅔", " 2/3").strip()
-
-    if ":" in cleaned:
-        parts = cleaned.split(":")
-        try:
-            innings = int(parts[0])
-            remainder = int(parts[1]) if len(parts) > 1 else 0
-            return innings * 3 + remainder
-        except ValueError:
-            return None
-
+def _parse_fraction_innings(cleaned: str) -> int | None:
     frac_match = re.match(r"^(\d+)\s+(\d+)/(\d+)$", cleaned)
     if frac_match:
         whole = int(frac_match.group(1))
@@ -115,18 +87,54 @@ def parse_innings_to_outs(text: str | None) -> int | None:
 
     frac_only = re.match(r"^(\d+)/(\d+)$", cleaned)
     if frac_only:
-        num = int(frac_only.group(1))
-        den = int(frac_only.group(2))
-        return round(num * 3 / den)
+        return round(int(frac_only.group(1)) * 3 / int(frac_only.group(2)))
 
-    if "." in cleaned:
-        try:
-            parts = cleaned.split(".", 1)
-            whole = int(parts[0].strip()) if parts[0].strip() else 0
-            frac_digit = int(parts[1].strip()[:1])
-            return whole * 3 + frac_digit
-        except (ValueError, IndexError):
-            pass
+    return None
+
+
+def _parse_decimal_innings(cleaned: str) -> int | None:
+    if "." not in cleaned:
+        return None
+    try:
+        parts = cleaned.split(".", 1)
+        whole = int(parts[0].strip()) if parts[0].strip() else 0
+        frac_digit = int(parts[1].strip()[:1])
+        return whole * 3 + frac_digit
+    except (ValueError, IndexError):
+        return None
+
+
+def parse_innings_to_outs(text: str | None) -> int | None:
+    """
+    Convert innings string to total outs.
+
+    Supports:
+      - 'X Y/3'   (e.g. '5 1/3' -> 16)
+      - 'X/Y'     (e.g. '2/3' -> 2)
+      - Unicode fractions
+      - Decimal   (e.g. '5.1' -> 16, '0.2' -> 2)
+      - 'X:Y'     (e.g. '5:1' -> 16)
+      - Plain int (e.g. '5' -> 15)
+    """
+    if not text:
+        return None
+    cleaned = str(text).strip().replace("⅓", " 1/3").replace("⅔", " 2/3").strip()
+    if cleaned in _EMPTY_SENTINELS:
+        return None
+
+    if ":" in cleaned:
+        parts = cleaned.split(":")
+        innings = int(parts[0])
+        remainder = int(parts[1]) if len(parts) > 1 else 0
+        return innings * 3 + remainder
+
+    result = _parse_fraction_innings(cleaned)
+    if result is not None:
+        return result
+
+    result = _parse_decimal_innings(cleaned)
+    if result is not None:
+        return result
 
     try:
         return int(cleaned) * 3
