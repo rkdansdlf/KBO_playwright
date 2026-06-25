@@ -192,14 +192,17 @@ JAMSIL_LAT = 37.5121
 JAMSIL_LNG = 127.0719
 
 
-async def get_transit_time(  # noqa: PLR0913
-    origin_label: str,
-    origin_lat: float,
-    origin_lng: float,
-    mode: TransportMode = "mixed",
-    dest_lat: float = JAMSIL_LAT,
-    dest_lng: float = JAMSIL_LNG,
-) -> TransitResult | None:
+@dataclass
+class TransitRequest:
+    origin_label: str
+    origin_lat: float
+    origin_lng: float
+    mode: TransportMode = "mixed"
+    dest_lat: float = JAMSIL_LAT
+    dest_lng: float = JAMSIL_LNG
+
+
+async def get_transit_time(req: TransitRequest) -> TransitResult | None:
     """
     Fetch transit duration from origin to Jamsil Stadium using available APIs.
 
@@ -212,19 +215,19 @@ async def get_transit_time(  # noqa: PLR0913
             (_call_naver, "naver"),
             (_call_tmap, "tmap"),
         ]:
-            result = await caller(client, origin_lat, origin_lng, dest_lat, dest_lng, mode)
+            result = await caller(client, req.origin_lat, req.origin_lng, req.dest_lat, req.dest_lng, req.mode)
             if result:
                 duration_minutes = max(1, round(result["duration_seconds"] / 60))
                 return TransitResult(
-                    origin_label=origin_label,
-                    transport_mode=mode,
+                    origin_label=req.origin_label,
+                    transport_mode=req.mode,
                     duration_minutes=duration_minutes,
                     distance_meters=result.get("distance_meters"),
                     source_api=api_name,
                     raw_response=result.get("raw", {}),
                 )
 
-    logger.warning("[MapAPI] All APIs failed for origin=%s", origin_label)
+    logger.warning("[MapAPI] All APIs failed for origin=%s", req.origin_label)
     return None
 
 
@@ -241,6 +244,8 @@ async def get_transit_times_batch(
     """
     import asyncio
 
-    tasks = [get_transit_time(o["label"], o["lat"], o["lng"], mode, dest_lat, dest_lng) for o in origins]
+    tasks = [
+        get_transit_time(TransitRequest(o["label"], o["lat"], o["lng"], mode, dest_lat, dest_lng)) for o in origins
+    ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     return [r for r in results if isinstance(r, TransitResult)]

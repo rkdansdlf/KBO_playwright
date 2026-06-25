@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from src.constants import MAX_INNINGS, MAX_OUTS
 
@@ -12,6 +13,18 @@ Uses a Win Expectancy Matrix (CSV) to calculate the shift in win probability for
 
 import csv
 from pathlib import Path
+
+
+@dataclass
+class WpaInput:
+    inning: int
+    is_bottom: bool
+    outs_before: int
+    runners_before: int
+    score_diff_before: int
+    outs_after: int
+    runners_after: int
+    score_diff_after: int
 
 
 class WPACalculator:
@@ -50,42 +63,31 @@ class WPACalculator:
 
         logger.info("✅ Loaded %s Win Expectancy entries from %s", len(self._matrix), path)
 
-    def calculate_wpa(  # noqa: PLR0913
-        self,
-        inning: int,
-        *,
-        is_bottom: bool,
-        outs_before: int,
-        runners_before: int,
-        score_diff_before: int,
-        outs_after: int,
-        runners_after: int,
-        score_diff_after: int,
-    ) -> float:
+    def calculate_wpa(self, *, data: WpaInput) -> float:
         """
         Calculates WPA = WinProb(After) - WinProb(Before).
         Returns WPA from the perspective of the Batting Team.
         """
         # 1. Get WE Before (Home Perspective)
         we_before = self.get_win_probability(
-            inning,
-            is_bottom=is_bottom,
-            outs=outs_before,
-            runners=runners_before,
-            score_diff=score_diff_before,
+            data.inning,
+            is_bottom=data.is_bottom,
+            outs=data.outs_before,
+            runners=data.runners_before,
+            score_diff=data.score_diff_before,
         )
 
         # 2. Get WE After (Home Perspective)
         we_after = self.get_win_probability(
-            inning,
-            is_bottom=is_bottom,
-            outs=outs_after,
-            runners=runners_after,
-            score_diff=score_diff_after,
+            data.inning,
+            is_bottom=data.is_bottom,
+            outs=data.outs_after,
+            runners=data.runners_after,
+            score_diff=data.score_diff_after,
         )
 
         # 3. Calculate WPA (Batting Team Perspective)
-        wpa = we_after - we_before if is_bottom else we_before - we_after
+        wpa = we_after - we_before if data.is_bottom else we_before - we_after
 
         return round(wpa, 4)
 

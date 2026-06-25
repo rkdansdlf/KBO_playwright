@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.models.crawl import CrawlRun
-from src.repositories.crawl_run_repository import CrawlRunRepository
+from src.repositories.crawl_run_repository import CrawlRunRepository, RunStats
 
 
 @pytest.fixture
@@ -34,14 +34,16 @@ class TestCrawlRunRepository:
         repo = CrawlRunRepository()
         now = datetime.now(UTC).replace(tzinfo=None)
         run = repo.create_run(
-            label="test-label",
-            started_at=now,
-            finished_at=now,
-            active_count=10,
-            retired_count=5,
-            staff_count=2,
-            confirmed_profiles=8,
-            heuristic_only=1,
+            stats=RunStats(
+                label="test-label",
+                started_at=now,
+                finished_at=now,
+                active_count=10,
+                retired_count=5,
+                staff_count=2,
+                confirmed_profiles=8,
+                heuristic_only=1,
+            ),
         )
         assert run.id is not None
         assert run.label == "test-label"
@@ -55,14 +57,16 @@ class TestCrawlRunRepository:
         repo = CrawlRunRepository()
         now = datetime.now(UTC).replace(tzinfo=None)
         run = repo.create_run(
-            label=None,
-            started_at=now,
-            finished_at=now,
-            active_count=0,
-            retired_count=0,
-            staff_count=0,
-            confirmed_profiles=0,
-            heuristic_only=0,
+            stats=RunStats(
+                label=None,
+                started_at=now,
+                finished_at=now,
+                active_count=0,
+                retired_count=0,
+                staff_count=0,
+                confirmed_profiles=0,
+                heuristic_only=0,
+            ),
         )
         assert run.id is not None
         assert run.label is None

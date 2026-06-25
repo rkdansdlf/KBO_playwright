@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.services.wpa_calculator import WPACalculator
+from src.services.wpa_calculator import WpaInput, WPACalculator
 
 
 class TestLoadMatrix:
@@ -65,14 +65,16 @@ class TestCalculateWpa:
         with patch.object(calc, "get_win_probability") as mock_wp:
             mock_wp.side_effect = [0.5, 0.7]
             wpa = calc.calculate_wpa(
-                1,
-                is_bottom=False,
-                outs_before=0,
-                runners_before=0,
-                score_diff_before=0,
-                outs_after=1,
-                runners_after=1,
-                score_diff_after=1,
+                data=WpaInput(
+                    inning=9,
+                    is_bottom=False,
+                    outs_before=0,
+                    runners_before=0,
+                    score_diff_before=0,
+                    outs_after=1,
+                    runners_after=1,
+                    score_diff_after=1,
+                )
             )
             assert wpa == pytest.approx(-0.2, abs=1e-4)
 
@@ -81,14 +83,16 @@ class TestCalculateWpa:
         with patch.object(calc, "get_win_probability") as mock_wp:
             mock_wp.side_effect = [0.3, 0.6]
             wpa = calc.calculate_wpa(
-                1,
-                is_bottom=True,
-                outs_before=0,
-                runners_before=0,
-                score_diff_before=0,
-                outs_after=1,
-                runners_after=3,
-                score_diff_after=2,
+                data=WpaInput(
+                    inning=9,
+                    is_bottom=True,
+                    outs_before=0,
+                    runners_before=0,
+                    score_diff_before=0,
+                    outs_after=1,
+                    runners_after=3,
+                    score_diff_after=2,
+                )
             )
             assert wpa == pytest.approx(0.3, abs=1e-4)
 
@@ -97,14 +101,16 @@ class TestCalculateWpa:
         with patch.object(calc, "get_win_probability") as mock_wp:
             mock_wp.side_effect = [0.5, 0.5]
             wpa = calc.calculate_wpa(
-                1,
-                is_bottom=False,
-                outs_before=0,
-                runners_before=0,
-                score_diff_before=0,
-                outs_after=0,
-                runners_after=0,
-                score_diff_after=0,
+                data=WpaInput(
+                    inning=9,
+                    is_bottom=False,
+                    outs_before=0,
+                    runners_before=0,
+                    score_diff_before=0,
+                    outs_after=0,
+                    runners_after=0,
+                    score_diff_after=0,
+                )
             )
             assert wpa == 0.0
 

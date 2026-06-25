@@ -77,7 +77,10 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.run_weekly_maintenance`: Run weekly maintenance tasks (futures profiles, enrichment).
 - `python3 -m src.cli.sync_oci --season-stats`: Sync season-level player/team stats to OCI.
 - `python3 -m src.cli.sync_oci --player-game-stats`: Sync player game-level stats to OCI.
-- `python3 -m scripts.verification.verify_player_game_stats --year YYYY`: Verify player game stat consistency.
+- `python3 -m src.cli.smart_polling_gate --json`: Lightweight gate to check if today's KBO games are finished (used in CI polling).
+- `python3 -m src.cli.data_integrity_checker --date YYYYMMDD`: Post-crawl data integrity validation (game existence, terminal status, stats, NULL player IDs).
+- `python3 -m src.cli.load_text_relay --input-dir data/`: Load text relay CSV files into the database.
+- `python3 scripts.verification.verify_player_game_stats --year YYYY`: Verify player game stat consistency.
 - `pytest`: Run the test suite.
 
 ### Additional CLI Inventory
@@ -90,8 +93,8 @@ These modules are operational or diagnostic entrypoints that are less frequently
 | Pipeline / jobs | `run_all_crawlers`, `run_advanced_daily`, `daily_highlight_batch`, `daily_review_batch`, `daily_story_batch`, `crawl_phase1_extra`, `run_pipeline_demo` |
 | Repair / backfill | `auto_healer`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `retry_daily_failures` |
 | Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
-| Monitoring / reports | `check_data_status`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `monitor_data_freshness`, `morning_pbp_report`, `crawler_live_smoke` |
-| Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `verify_chunk_quality`, `verify_sync_consistency` |
+| Monitoring / reports | `check_data_status`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `monitor_data_freshness`, `morning_pbp_report`, `crawler_live_smoke`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
+| Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `verify_chunk_quality`, `verify_sync_consistency`, `load_text_relay` |
 
 ## Code Quality & Linting
 - `ruff check src/ tests/ scripts/` = **0 errors** (enforced by pre-commit).
@@ -250,6 +253,14 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
 
+### Smart Polling System (2026-06-25)
+
+- **2-layer architecture**: Layer 1 (`smart_polling_gate.py`) uses lightweight HTTPX to query Naver Sports API and determine if today's games are finished. Layer 2 (`run_daily_update`) runs heavy Playwright crawling only when gate passes.
+- **Cron schedules**: Tue-Fri 21:30-23:30 KST, Sat 20:00-22:30 KST, Sun 17:00-21:00 KST (every 30 min during expected game end times). Monday excluded (no games).
+- **Workflow**: `kbo_smart_polling.yml` — 4 jobs: polling_gate → daily_update → integrity_check → notify.
+- **Error handling**: Gate exit 0 = proceed, exit 1 = skip (games in progress), exit 2+ = failure (triggers alert). Yesterday fallback handles games running past midnight.
+- **Post-crawl validation**: `data_integrity_checker.py` verifies game existence, terminal status, scores, child stats (batting/pitching), and NULL player IDs.
+
 ### Source Snapshot / Event Status
 
 - `kbo_official_events` now crawls official KBO `BusinessAndEvent` pages instead of the main page; dry-run returns 11 candidates and `--save` wrote 11 `team_events` plus 7 raw snapshots.
@@ -312,16 +323,21 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **N naming (pep8-naming)**: 23 violations fixed (22×N806 + 1×N811), select enabled for src/, per-file-ignored for tests/scripts/.
 - **Test optimization**: 3 slow tests monkeypatched — fan_culture 5s→~0.1s, OCI pregame 3s→~0.1s, player_status_confirmer 3s→1.5s. Total pytest: 46.51s→34.06s (26.7% 단축).
 
-### Phase 12 Started (2026-06-24) — TBD
+### Current Verification Baseline (2026-06-25)
 
-- Enabled and cleaned `FURB167`, `RUF013`, `DTZ005`, and `S608` for `src/`; `tests/**` and `scripts/**` keep targeted per-file ignores for these operational/fixture-heavy rules.
-- Enabled and cleaned `TC001`, `TC002`, and `TC003` for `src/` import hygiene; SQLAlchemy model modules keep targeted TC ignores because annotation imports are runtime-sensitive.
-- Added `KST` to `src.constants` and migrated `src/` `datetime.now()` calls to `datetime.now(KST)`.
-- Added `pytest-cov` and coverage config; CI test command now emits `term-missing` coverage with a conservative `fail_under = 50` gate. Current full baseline: 67%.
-- Added `src.cli.quality_dashboard` to summarize `logs/quality_reports/*.json` as JSON or text.
-- Added `Docs/references/PLR0913_REFACTOR_PLAN.md`; do not enable `PLR0913` until the staged refactor plan is complete.
-- PLR0913 Batches 4-5 completed: relay_crawler.py 6→0 (NaverSegmentIdentity, GameMatchContext, NaverHeaderRowContext, NaverPbpRowContext, NaverEventContext) + game_relay.py 6→1 (ValidationMetricsData, RelayValidationInput, PlayerResolutionContext, RelaySaveOptions with **overrides backward compat). Baseline: 109→87 (−22 violations).
-- `ruff check src/ tests/ scripts/` = 0 errors in src/, 26 pre-existing SIM errors in tests/. `ruff check --select PLR0913 src/` = 87 violations.
+- `ruff check src/ tests/ scripts/` = 0 errors (all selects, full clean).
+- `ruff format --check .` = 924+ files already formatted.
+- `python3 -m pytest` = 4838 passed (2 skipped, 1 xfailed). Zero consistent failures.
+- `ruff check --select C901 src/` = 0 violations (100% eliminated, including `derive_stable_game_status` phase 12 follow-up).
+- `ruff check --select PLR0913 src/` = 109 violations; see `Docs/references/PLR0913_REFACTOR_PLAN.md` before refactoring.
+
+### Data Directory Cleanup (2026-06-25)
+
+- Removed 15 stale 0-byte sync logs (`sync_oci_2010_v4.log` through `sync_oci_2024_v4.log`).
+- Removed corrupted DB backup (`kbo_dev_corrupted.db.bak` + WAL/SHM).
+- Archived 32 old DB backups (kept newest 2), 100 null_player_id CSVs, 279 quality_gate CSVs, review summaries.
+- Reduced `data/` from 76GB to 36GB.
+- Added `data/archive/` to `.gitignore`.
 
 ### Notes For Future Agents
 
