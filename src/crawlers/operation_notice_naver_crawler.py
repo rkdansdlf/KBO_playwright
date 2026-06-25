@@ -14,13 +14,13 @@ Usage:
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
+from src.crawlers.operation_notice_common import classify_notice, is_urgent
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.naver_search_client import NaverSearchClient, NaverSearchResult
@@ -34,36 +34,12 @@ STADIUM_CODE = "JAMSIL"
 SOURCE_NAME = "naver_search"
 NAVER_NOTICE_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
-# Keyword → notice_type classification
-NOTICE_TYPE_RULES: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"취소|우천|노게임|우중|폭우", re.IGNORECASE), "CANCEL"),
-    (re.compile(r"지연|연기|딜레이", re.IGNORECASE), "DELAY"),
-    (re.compile(r"게이트|출입문|입장문|입구", re.IGNORECASE), "GATE_CHANGE"),
-    (re.compile(r"입장|제한|금지|규정|반입", re.IGNORECASE), "ENTRY_RULE"),
-    (re.compile(r"주차|파킹|주차장", re.IGNORECASE), "PARKING"),
-    (re.compile(r"날씨|기상|태풍|강풍", re.IGNORECASE), "WEATHER"),
-    (re.compile(r"셔틀|버스|교통|혼잡", re.IGNORECASE), "ENTRY_RULE"),
-]
-
-URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급|즉시|당장|오늘 취소|경기 취소", re.IGNORECASE)
-
 TEAM_SOURCE_MAP = {
     "LG": "naver_search_LG",
     "OB": "naver_search_두산",
     "NC": "naver_search_NC",
     None: "naver_search_잠실",
 }
-
-
-def _classify(text: str) -> str:
-    for pattern, notice_type in NOTICE_TYPE_RULES:
-        if pattern.search(text):
-            return notice_type
-    return "GENERAL"
-
-
-def _is_urgent(text: str) -> bool:
-    return bool(URGENT_KEYWORDS.search(text))
 
 
 def _infer_game_date(result: NaverSearchResult) -> date | None:
@@ -80,7 +56,7 @@ def _result_to_notice(result: NaverSearchResult) -> dict[str, Any]:
 
     return {
         "stadium_code": STADIUM_CODE,
-        "notice_type": _classify(combined_text),
+        "notice_type": classify_notice(combined_text),
         "title": result.title[:500],
         "content": result.description[:2000] if result.description else None,
         "source_name": source_name,
@@ -88,7 +64,7 @@ def _result_to_notice(result: NaverSearchResult) -> dict[str, Any]:
         "external_id": result.link,  # URL as stable dedup key
         "published_at": result.pub_date,
         "game_date": game_date,
-        "is_urgent": _is_urgent(combined_text),
+        "is_urgent": is_urgent(combined_text),
         "is_confirmed": False,  # News is not official confirmation
         "raw_snapshot": result.raw,
     }
