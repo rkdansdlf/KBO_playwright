@@ -1,3 +1,8 @@
+from datetime import date
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 
 
@@ -39,3 +44,209 @@ class TestDedupeTransactions:
 
     def test_empty_input(self):
         assert self.crawler._dedupe_transactions([]) == []
+
+
+SAMPLE_MOBILE_HTML = """
+<html><body>
+<div class="content">
+  <h3>오늘자 선수 등록현황</h3>
+  <strong class="team">LG</strong>
+  <ul>
+    <li><a href="/Player/Register.aspx?playerId=12345">김현수</a></li>
+    <li><a href="/Player/Register.aspx?playerId=12346">박용택</a></li>
+  </ul>
+  <strong class="team">삼성</strong>
+  <ul>
+    <li><a href="/Player/Register.aspx?playerId=23456">이승엽</a></li>
+  </ul>
+  <h3>오늘자 선수 말소현황</h3>
+  <strong class="team">한화</strong>
+  <ul>
+    <li><a href="/Player/Register.aspx?playerId=34567">이용찬</a></li>
+  </ul>
+</div>
+</body></html>
+"""
+
+SAMPLE_ALTERNATE_HTML = """
+<html><body>
+<table>
+  <tr><td class="team">LG</td></tr>
+  <tr><td>등록 선수 현황</td></tr>
+  <tr><td><a href="/Player/Register.aspx?playerId=99999">홍길동</a></td></tr>
+  <tr><td>말소 선수 현황</td></tr>
+  <tr><td><a href="/Player/Register.aspx?playerId=88888">김철수</a></td></tr>
+</table>
+</body></html>
+"""
+
+
+class TestParseMobileHtml:
+    def setup_method(self):
+        self.crawler = RosterTransactionCrawler()
+
+    def test_parses_registered_and_deregistered(self):
+        result = self.crawler._parse_mobile_html(SAMPLE_MOBILE_HTML, date(2025, 6, 15))
+        assert len(result) == 4
+
+        registered = [r for r in result if r["action"] == "registered"]
+        deregistered = [r for r in result if r["action"] == "deregistered"]
+        assert len(registered) == 3
+        assert len(deregistered) == 1
+
+    def test_registered_fields(self):
+        result = self.crawler._parse_mobile_html(SAMPLE_MOBILE_HTML, date(2025, 6, 15))
+        rec = result[0]
+        assert rec["transaction_date"] == date(2025, 6, 15)
+        assert rec["team_id"] == "LG"
+        assert rec["player_id"] == 12345
+        assert rec["player_name"] == "김현수"
+        assert rec["action"] == "registered"
+        assert rec["roster_level"] == "first_team"
+        assert rec["inferred_to_level"] is None
+        assert rec["source_type"] == "kbo_today_page"
+        assert rec["confidence"] == "high"
+        assert "dedupe_key" in rec
+
+    def test_deregistered_inferred_level(self):
+        result = self.crawler._parse_mobile_html(SAMPLE_MOBILE_HTML, date(2025, 6, 15))
+        dereg = [r for r in result if r["action"] == "deregistered"][0]
+        assert dereg["inferred_to_level"] == "second_team"
+        assert dereg["team_id"] == "HH"
+
+    def test_empty_html_returns_empty(self):
+        result = self.crawler._parse_mobile_html("<html></html>", date(2025, 6, 15))
+        assert result == []
+
+    def test_player_without_id(self):
+        html = """
+        <html><body>
+        <h3>오늘자 선수 등록현황</h3>
+        <strong class="team">LG</strong>
+        <ul>
+          <li>홍길동</li>
+        </ul>
+        </body></html>
+        """
+        result = self.crawler._parse_mobile_html(html, date(2025, 6, 15))
+        assert len(result) == 1
+        assert result[0]["player_id"] is None
+        assert result[0]["player_name"] == "홍길동"
+
+    def test_skips_empty_player_names(self):
+        html = """
+        <html><body>
+        <h3>오늘자 선수 등록현황</h3>
+        <strong class="team">LG</strong>
+        <ul>
+          <li><a href="/Player/Register.aspx?playerId=111">  </a></li>
+        </ul>
+        </body></html>
+        """
+        result = self.crawler._parse_mobile_html(html, date(2025, 6, 15))
+        assert len(result) == 0
+
+
+class TestParseAlternateMobile:
+    def setup_method(self):
+        self.crawler = RosterTransactionCrawler()
+
+    def test_parses_alternate_layout(self):
+        result = self.crawler._parse_alternate_mobile(SAMPLE_ALTERNATE_HTML, date(2025, 6, 15))
+        assert len(result) == 2
+
+    def test_alternate_registered(self):
+        result = self.crawler._parse_alternate_mobile(SAMPLE_ALTERNATE_HTML, date(2025, 6, 15))
+        reg = [r for r in result if r["action"] == "registered"]
+        assert len(reg) == 1
+        assert reg[0]["player_id"] == 99999
+        assert reg[0]["player_name"] == "홍길동"
+
+    def test_alternate_deregistered(self):
+        result = self.crawler._parse_alternate_mobile(SAMPLE_ALTERNATE_HTML, date(2025, 6, 15))
+        dereg = [r for r in result if r["action"] == "deregistered"]
+        assert len(dereg) == 1
+        assert dereg[0]["player_id"] == 88888
+        assert dereg[0]["inferred_to_level"] == "second_team"
+
+    def test_empty_alternate_returns_empty(self):
+        result = self.crawler._parse_alternate_mobile("<html></html>", date(2025, 6, 15))
+        assert result == []
+
+
+class TestSaveToDb:
+    def setup_method(self):
+        self.crawler = RosterTransactionCrawler()
+        self.crawler._raw_pages = [
+            {"source_key": "kbo_today_roster", "url": "http://test", "html": "<html>", "status_code": 200}
+        ]
+
+    def test_save_commits_and_clears_raw_pages(self):
+        data = [
+            {"dedupe_key": "a", "player_name": "test1"},
+            {"dedupe_key": "b", "player_name": "test2"},
+        ]
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+
+        with patch(
+            "src.crawlers.roster_transaction_crawler.SessionLocal",
+            return_value=mock_session,
+        ):
+            with patch(
+                "src.crawlers.roster_transaction_crawler.save_raw_snapshots",
+                return_value=1,
+            ):
+                with patch("src.crawlers.roster_transaction_crawler.RosterTransactionRepository") as mock_repo_cls:
+                    mock_repo = MagicMock()
+                    mock_repo_cls.return_value = mock_repo
+                    self.crawler._save_to_db(data)
+
+        mock_session.commit.assert_called_once()
+        assert self.crawler._raw_pages == []
+
+    def test_save_rolls_back_on_error(self):
+        data = [{"dedupe_key": "a"}]
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+
+        with patch(
+            "src.crawlers.roster_transaction_crawler.SessionLocal",
+            return_value=mock_session,
+        ):
+            with patch(
+                "src.crawlers.roster_transaction_crawler.save_raw_snapshots",
+                side_effect=RuntimeError("DB error"),
+            ):
+                self.crawler._save_to_db(data)
+
+        mock_session.rollback.assert_called_once()
+
+    def test_save_skips_duplicates(self):
+        data = [
+            {"dedupe_key": "a", "player_name": "dup"},
+            {"dedupe_key": "a", "player_name": "dup"},
+        ]
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+
+        with patch(
+            "src.crawlers.roster_transaction_crawler.SessionLocal",
+            return_value=mock_session,
+        ):
+            with patch(
+                "src.crawlers.roster_transaction_crawler.save_raw_snapshots",
+                return_value=0,
+            ):
+                with patch("src.crawlers.roster_transaction_crawler.RosterTransactionRepository") as mock_repo_cls:
+                    mock_repo = MagicMock()
+                    mock_repo_cls.return_value = mock_repo
+                    self.crawler._save_to_db(data)
+
+        assert mock_repo.save.call_count == 1

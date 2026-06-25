@@ -673,32 +673,36 @@ class PlayerIdResolver:
             return None
 
         team_code = self._canonical_team_code(team_code)
-
         override_id = self._resolve_static_override(player_name, team_code, season, is_pitcher=is_pitcher)
         if override_id:
             return override_id
-
         samsung_id = self._resolve_samsung_lee_seunghyun(
             player_name, team_code, season, uniform_no, is_pitcher=is_pitcher
         )
         if samsung_id:
             return samsung_id
-
         hanwha_id = self._resolve_hanwha_park_junyoung(
             player_name, team_code, season, uniform_no, is_pitcher=is_pitcher
         )
         if hanwha_id:
             return hanwha_id
+        return self._resolve_player_id(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
 
+    def _resolve_player_id(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        *,
+        is_pitcher: bool | None,
+    ) -> int | None:
         if player_name in self.NAME_ALIASES:
             player_name = self.NAME_ALIASES[player_name]
-
         cache_key = self._cache_key(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
         if cache_key in self._cache:
             return self._cache[cache_key]
-
         identity = PlayerIdentity(player_name, team_code, season, uniform_no, is_pitcher)
-
         resolver_steps = (
             lambda: self._resolve_from_season_stats(identity, cache_key=cache_key),
             lambda: self._resolve_from_player_basic_context(player_name, team_code, season, uniform_no, cache_key),
@@ -708,10 +712,8 @@ class PlayerIdResolver:
             resolved_id = resolve_step()
             if resolved_id is not None:
                 return resolved_id
-
         if self.strict_game_resolution:
             return self._resolve_strict_game_facts_or_none(identity, cache_key=cache_key)
-
         return self._resolve_non_strict_fallbacks(player_name, team_code, season, uniform_no, cache_key)
 
     def _unknown_profile_team(self, team_code: str) -> str:

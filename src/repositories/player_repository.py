@@ -445,7 +445,6 @@ class PlayerRepository:
         if not player_name or player_name == "신인":
             return None
 
-        # Base query for same-name candidates
         candidate_query = select(PlayerBasic).where(PlayerBasic.name == player_name)
         candidates = session.execute(candidate_query).scalars().all()
 
@@ -453,7 +452,17 @@ class PlayerRepository:
             return None
         if len(candidates) == 1:
             return candidates[0].player_id
+        return self._resolve_multi_candidate(candidates, session, player_name, canonical_team_id, season, raw_position)
 
+    def _resolve_multi_candidate(
+        self,
+        candidates: list,
+        session: Session,
+        player_name: str,
+        canonical_team_id: str | None,
+        season: int,
+        raw_position: str | None,
+    ) -> int | None:
         for narrower in (
             lambda rows: self._narrow_by_position(rows, raw_position),
             lambda rows: self._narrow_by_debut_timeline(rows, season),
@@ -464,21 +473,13 @@ class PlayerRepository:
                 return player_id
 
         roster_player_id = self._unique_roster_movement_player_id(
-            session,
-            player_name,
-            canonical_team_id,
-            season,
-            {c.player_id for c in candidates},
+            session, player_name, canonical_team_id, season, {c.player_id for c in candidates}
         )
         if roster_player_id:
             return roster_player_id
 
-        # 5. Check franchise activity
         franchise_season_player_id = self._unique_franchise_season_player_id(
-            session,
-            canonical_team_id,
-            season,
-            {c.player_id for c in candidates},
+            session, canonical_team_id, season, {c.player_id for c in candidates}
         )
         if franchise_season_player_id:
             return franchise_season_player_id
