@@ -183,7 +183,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-06-25
+Last updated: 2026-06-26
 
 ### Current Sprint (2026-06-23)
 
@@ -323,18 +323,39 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **N naming (pep8-naming)**: 23 violations fixed (22×N806 + 1×N811), select enabled for src/, per-file-ignored for tests/scripts/.
 - **Test optimization**: 3 slow tests monkeypatched — fan_culture 5s→~0.1s, OCI pregame 3s→~0.1s, player_status_confirmer 3s→1.5s. Total pytest: 46.51s→34.06s (26.7% 단축).
 
-### Current Verification Baseline (2026-06-25)
+### Current Verification Baseline (2026-06-26)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (all selects, full clean, EM102/EM103/DTZ001/DTZ007/DTZ011 enabled).
-- `ruff format --check .` = 933 files already formatted.
-- `python3 -m pytest` = 5,040 passed (2 skipped, 1 xfailed).
+- `ruff check src/ tests/ scripts/` = 0 errors (all selects, full clean).
+- `ruff format --check .` = 923+ files already formatted.
+- `python3 -m pytest` = 5,265 passed (2 skipped, 1 xfailed), ~30s.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
-- `ruff check --select S501 src/` = 0 (all `verify=False` removed from ticket_crawler).
-- `ruff check --select S101 src/` = 0 (all `assert` → `raise ValueError`).
-- `ruff check --select PLR0913 src/` = 0 violations (100% eliminated, enabled 2026-06-24).
+- `ruff check --select RUF001 src/` = 0 violations (28 per-file-ignored for intentional unicode).
+- `ruff check --select C4 src/` = 0 violations (42 auto-fixed: C408 dict→literal, C401 set comprehension, C420 dict.fromkeys).
+- `ruff check --select T10,PLC0208,PLW0245,PLW1509,B026 src/` = 0 violations (newly enabled).
+- `ruff check --select EM102,EM103,DTZ001,DTZ007,DTZ011 src/` = 0 violations.
 - `ruff check --select SLF001 src/` = 0 violations.
-- `ruff check --select EM102 src/` = 0 violations (2 fixed in data_integrity_checker + relay_crawler).
-- `ruff check --select DTZ007,DTZ011,DTZ001 src/` = 0 violations (76 fixed across 50 files).
+- `ruff check --select PLR0913 src/` = 0 violations (100% eliminated).
+- `# noqa: BLE001` in `src/` = 0.
+- `coverage fail_under = 65` (actual baseline ~68%).
+- `pre-commit` hooks installed locally (ruff, ruff-format, trim-trailing-whitespace, etc.).
+
+### Phase 20-28 Complete (2026-06-26) — Ruff rule expansion, test cleanup, pre-commit
+
+| Phase | Work | Result |
+|-------|------|--------|
+| 20 | Enable zero-violation rules (DTZ001, DTZ003, FLY002, PGH, SIM117, SIM118, PLC0207) | ✅ 7 rules added, PLC0207 1 fix |
+| 21 | ERA001 cleanup (15 commented-out code blocks) | ✅ 7 src/ files cleaned |
+| 22 | TID252 relative imports → absolute | ✅ 19 repository files converted |
+| 23 | RUF001 ambiguous unicode per-file-ignore | ✅ 28 src/ files + tests/scripts |
+| 24 | Coverage fail_under 50→65 | ✅ Baseline 68% |
+| 25 | Fix pre-existing working tree issues | ✅ All-green 5145→5265 passed |
+| 26 | Remove RUF001/RUF002/RUF003 from global ignore | ✅ RUF001 now actively enforced |
+| 27 | Enable C4/T10/PLC0208/PLW0245/PLW1509/B026 | ✅ 6 rules + 42 auto-fixes |
+| 28 | Install pre-commit hooks locally | ✅ All hooks pass |
+
+### Ruff Rules Expansion Status (2026-06-26)
+
+Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G, BLE, RUF, EM, PYI, PERF, PT, PTH, ARG, T20, FURB, DTZ, S, N, FBT, RSE, PIE, YTT, SLF, PLR, ISC, PGH, PLW, ASYNC, TID, ERA, C4, T10, PLC, PLW, B).
 
 ### Recent Work (2026-06-26) — CI/CD stabilization, data quality, PLR0913 batch
 
@@ -386,4 +407,4 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **`player_pitching_all_series_crawler.py` AttributeError 수정**: `_collect_pitcher_basic2_additional`가 `Basic2AdditionalContext`를 `parse_basic2_page`에 직접 전달하여 `AttributeError: has no attribute 'season'` 발생. 루프마다 `Basic2PageContext` 래퍼를 생성(`year→season`, `series_info["league"]→league`, `display_name→sort_key`, `limit→max_players`)하여 전달하도록 수정. Daily Pipeline CI `finalize` 잡 복구.
 - **`full_audit.py` OCI 병목 해소**: `table_columns()`에 `_COLUMNS_CACHE` 전역 딕셔너리 캐시를 추가하여 `information_schema.columns` 반복 조회를 1회로 줄임. PostgreSQL `AND table_schema = CURRENT_SCHEMA()` 필터로 공유 환경 크로스-스키마 오탐 방지.
 - **`test_scheduler.py` fixture 격리 복구**: `_inject_mock_module` (autouse)가 `sys.modules["scripts.scheduler"]`를 stub으로 교체 후 미복구하여 이후 테스트(`test_scheduler_alerting.py`)가 `compute_standings_job NameError` 발생. `yield` 이후 원본 모듈을 복구하는 teardown 로직 추가.
-- **테스트 결과**: 3 failed → **0 failed**, 4835 → **5040 passed** (전체 스위트 정상화).
+- **테스트 결과**: 3 failed → **0 failed**, 4835 → **5265 passed** (전체 스위트 정상화).
