@@ -35,19 +35,19 @@ class TestGetRowCount:
 
 class TestCollectCountMismatches:
     def test_no_mismatches(self):
-        results = [{"table": "game", "local_count": 100, "oci_count": 100, "status": "MATCH"}]
+        results = [{"table_name": "game", "sqlite_count": 100, "oci_count": 100, "status": "MATCH", "delta": 0}]
         mismatches, _ = _collect_count_mismatches(results)
         assert len(mismatches) == 0
 
     def test_finds_mismatches(self):
-        results = [{"table": "game", "local_count": 100, "oci_count": 95, "status": "MISMATCH", "diff": 5}]
+        results = [{"table_name": "game", "sqlite_count": 100, "oci_count": 95, "status": "MISMATCH", "delta": 5}]
         mismatches, _ = _collect_count_mismatches(results)
         assert len(mismatches) > 0
 
 
 class TestLogCountResults:
     def test_logs_results(self, caplog):
-        results = [{"table": "game", "local_count": 100, "oci_count": 100, "status": "MATCH"}]
+        results = [{"table_name": "game", "sqlite_count": 100, "oci_count": 100, "status": "MATCH", "delta": 0}]
         with caplog.at_level(logging.INFO):
             _log_count_results(results)
 
