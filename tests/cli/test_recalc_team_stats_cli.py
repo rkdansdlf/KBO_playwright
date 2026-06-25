@@ -1,9 +1,20 @@
 import unittest
+from argparse import Namespace
+from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import logging
 
-from src.cli.recalc_team_stats import run_recalc
+from src.cli.recalc_team_stats import (
+    _log_dry_run_batting,
+    _log_dry_run_pitching,
+    _run_batting_recalc,
+    _run_pitching_recalc,
+    main,
+    run_recalc,
+)
 
 # Setup test imports
 from src.models.base import Base
@@ -145,6 +156,158 @@ class TestRecalcTeamStatsCLI(unittest.TestCase):
         with self.Session() as session:
             self.assertEqual(session.query(TeamSeasonBatting).count(), 1)
             self.assertEqual(session.query(TeamSeasonPitching).count(), 1)
+
+
+class TestRecalcTeamStatsMain:
+    def _run_main(self, argv, mock_recalc):
+        with (
+            patch("src.cli.recalc_team_stats.run_recalc", mock_recalc),
+            patch("sys.argv", argv),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            return exc_info.value.code
+
+    def test_main_with_season(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--season", "2025"], mock)
+        assert code == 0
+        mock.assert_called_once()
+
+    def test_main_with_year_alias(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--year", "2025"], mock)
+        assert code == 0
+
+    def test_main_with_team_id(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--season", "2025", "--team-id", "LG"], mock)
+        assert code == 0
+        _, kwargs = mock.call_args
+        assert kwargs.get("team_id") == "LG"
+
+    def test_main_with_team_alias(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--season", "2025", "--team", "OB"], mock)
+        assert code == 0
+        _, kwargs = mock.call_args
+        assert kwargs.get("team_id") == "OB"
+
+    def test_main_dry_run(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--season", "2025", "--dry-run"], mock)
+        assert code == 0
+        args, kwargs = mock.call_args
+        assert kwargs["dry_run"] is True
+
+    def test_main_batting_only(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--season", "2025", "--batting-only"], mock)
+        assert code == 0
+        args, kwargs = mock.call_args
+        assert kwargs["batting_only"] is True
+
+    def test_main_pitching_only(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--season", "2025", "--pitching-only"], mock)
+        assert code == 0
+        args, kwargs = mock.call_args
+        assert kwargs["pitching_only"] is True
+
+    def test_main_legacy_type_batting(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--season", "2025", "--type", "batting"], mock)
+        assert code == 0
+        args, kwargs = mock.call_args
+        assert kwargs["batting_only"] is True
+
+    def test_main_legacy_type_pitching(self):
+        mock = MagicMock(return_value=0)
+        code = self._run_main(["recalc_team_stats", "--season", "2025", "--type", "pitching"], mock)
+        assert code == 0
+        args, kwargs = mock.call_args
+        assert kwargs["pitching_only"] is True
+
+    def test_main_season_required(self):
+        with patch("sys.argv", ["recalc_team_stats"]):
+            with pytest.raises(SystemExit):
+                main()
+
+
+class TestLogDryRun:
+    def test_log_dry_run_batting(self, caplog):
+        results = [
+            {
+                "team_id": "LG",
+                "team_name": "트윈스",
+                "games": 10,
+                "at_bats": 100,
+                "hits": 30,
+                "avg": 0.300,
+                "obp": 0.350,
+                "slg": 0.450,
+                "ops": 0.800,
+            }
+        ]
+        with caplog.at_level(logging.INFO):
+            _log_dry_run_batting(results)
+        assert "DRY-RUN" in caplog.text
+        assert "LG" in caplog.text
+
+    def test_log_dry_run_batting_no_team_name(self, caplog):
+        results = [
+            {
+                "team_id": "LG",
+                "games": 10,
+                "at_bats": 100,
+                "hits": 30,
+                "avg": 0.300,
+                "obp": 0.350,
+                "slg": 0.450,
+                "ops": 0.800,
+            }
+        ]
+        with caplog.at_level(logging.INFO):
+            _log_dry_run_batting(results)
+        assert "DRY-RUN" in caplog.text
+
+    def test_log_dry_run_pitching(self, caplog):
+        results = [
+            {
+                "team_id": "LG",
+                "team_name": "트윈스",
+                "games": 10,
+                "wins": 5,
+                "losses": 3,
+                "ties": 0,
+                "innings_pitched": 50.0,
+                "earned_runs": 20,
+                "era": 3.60,
+                "whip": 1.20,
+            }
+        ]
+        with caplog.at_level(logging.INFO):
+            _log_dry_run_pitching(results)
+        assert "DRY-RUN" in caplog.text
+        assert "LG" in caplog.text
+
+    def test_log_dry_run_pitching_no_team_name(self, caplog):
+        results = [
+            {
+                "team_id": "LG",
+                "games": 10,
+                "wins": 5,
+                "losses": 3,
+                "ties": 0,
+                "innings_pitched": 50.0,
+                "earned_runs": 20,
+                "era": 3.60,
+                "whip": 1.20,
+            }
+        ]
+        with caplog.at_level(logging.INFO):
+            _log_dry_run_pitching(results)
+        assert "DRY-RUN" in caplog.text
 
 
 if __name__ == "__main__":
