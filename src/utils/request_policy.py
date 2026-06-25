@@ -41,6 +41,7 @@ class RequestPolicy:
     """Centralized throttling and retry policy."""
 
     def __init__(self, config: RequestPolicyConfig | None = None, **overrides: object) -> None:
+        """Initializes a new instance."""
         if config is None:
             config = RequestPolicyConfig(**overrides)
         elif overrides:
@@ -60,9 +61,28 @@ class RequestPolicy:
 
     @classmethod
     def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> RequestPolicy:
+        """Handles the with delay operation.
+
+        Args:
+            min_delay: Min Delay.
+            max_delay: Max Delay.
+
+        Returns:
+            RequestPolicy instance.
+
+        """
         return cls(RequestPolicyConfig(min_delay=min_delay, max_delay=max_delay))
 
     def _load_user_agents(self, override: Iterable[str] | None) -> list[str]:
+        """Loads user agents.
+
+        Args:
+            override: Override.
+
+        Returns:
+            List of results.
+
+        """
         if override:
             pool = [ua.strip() for ua in override if ua.strip()]
             if pool:
@@ -75,25 +95,64 @@ class RequestPolicy:
         return DEFAULT_USER_AGENTS
 
     def random_user_agent(self) -> str:
+        """Handles the random user agent operation.
+
+        Returns:
+            String result.
+
+        """
         return random.choice(self.user_agents)
 
     def build_context_kwargs(self, **overrides: object) -> dict[str, object]:
+        """Builds context kwargs.
+
+        Returns:
+            Dictionary mapping.
+
+        """
         kwargs = {"user_agent": self.random_user_agent()}
         kwargs.update(overrides)
         return kwargs
 
     def _random_delay(self) -> float:
+        """Handles the random delay operation.
+
+        Returns:
+            float instance.
+
+        """
         return random.uniform(self.min_delay, self.max_delay)
 
     def delay(self, host: str = "koreabaseball.com") -> None:
+        """Handles the delay operation.
+
+        Args:
+            host: Host.
+
+        """
         throttle.default_delay = self.min_delay  # Dynamic adjustment based on policy
         throttle.wait_sync(host)
 
     async def delay_async(self, host: str = "koreabaseball.com") -> None:
+        """Handles the delay async operation.
+
+        Args:
+            host: Host.
+
+        """
         throttle.default_delay = self.min_delay
         await throttle.wait(host)
 
     def run_with_retry(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
+        """Runs with retry.
+
+        Args:
+            func: Func.
+
+        Returns:
+            R instance.
+
+        """
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -110,6 +169,15 @@ class RequestPolicy:
         raise RuntimeError(msg)
 
     async def run_with_retry_async(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
+        """Runs with retry async.
+
+        Args:
+            func: Func.
+
+        Returns:
+            R instance.
+
+        """
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -126,4 +194,13 @@ class RequestPolicy:
         raise RuntimeError(msg)
 
     def _backoff_delay(self, attempt: int) -> float:
+        """Handles the backoff delay operation.
+
+        Args:
+            attempt: Attempt.
+
+        Returns:
+            float instance.
+
+        """
         return self.backoff_factor * attempt

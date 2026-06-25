@@ -25,6 +25,7 @@ class KboAuthenticator:
     AUTH_STATE_PATH = "data/kbo_auth_state.json"
 
     def __init__(self, user_id: str | None = None, user_pwd: str | None = None) -> None:
+        """Initializes a new instance."""
         self.user_id = user_id or os.getenv("KBO_USER_ID")
         self.user_pwd = user_pwd or os.getenv("KBO_USER_PWD")
 
@@ -109,11 +110,18 @@ class KboAuthenticator:
 
     @classmethod
     def get_auth_state_path(cls) -> str:
+        """Gets auth state path.
+
+        Returns:
+            String result.
+
+        """
         return cls.AUTH_STATE_PATH
 
 
 async def main() -> None:
     # Simple CLI tool to refresh login
+    """Main entry point for this CLI command."""
     auth = KboAuthenticator()
     success = await auth.login(headless=True)
     if success:

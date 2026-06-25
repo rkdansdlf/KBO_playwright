@@ -46,18 +46,54 @@ ALL_GAME_STATUSES = {
 
 
 def is_terminal_status(status: str | None) -> bool:
+    """Returns whether the terminal status.
+
+    Args:
+        status: Status.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     return str(status or "").upper() in TERMINAL_GAME_STATUSES
 
 
 def is_completed_like_status(status: str | None) -> bool:
+    """Returns whether the completed like status.
+
+    Args:
+        status: Status.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     return str(status or "").upper() in COMPLETED_LIKE_GAME_STATUSES
 
 
 def is_live_status(status: str | None) -> bool:
+    """Returns whether the live status.
+
+    Args:
+        status: Status.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     return str(status or "").upper() in LIVE_GAME_STATUSES
 
 
 def normalize_game_status(status: str | None) -> str | None:
+    """Normalizes game status.
+
+    Args:
+        status: Status.
+
+    Returns:
+        The result of the operation.
+
+    """
     if status is None:
         return None
     value = str(status).strip().upper()
@@ -71,6 +107,12 @@ def normalize_game_status(status: str | None) -> str | None:
 
 
 def completed_like_statuses() -> Iterable[str]:
+    """Handles the completed like statuses operation.
+
+    Returns:
+        The result of the operation.
+
+    """
     return tuple(COMPLETED_LIKE_GAME_STATUSES)
 
 
@@ -86,18 +128,50 @@ class GameStatusEvidence:
 
 
 def _resolve_scored_status(current_status: str | None, new_status: str | None, home_score: int, away_score: int) -> str:
+    """Resolves scored status.
+
+    Args:
+        current_status: Current Status.
+        new_status: New Status.
+        home_score: Home Score.
+        away_score: Away Score.
+
+    Returns:
+        String result.
+
+    """
     if is_terminal_status(current_status) and not is_terminal_status(new_status) and new_status is not None:
         return current_status or GAME_STATUS_UNRESOLVED
     return GAME_STATUS_DRAW if home_score == away_score else GAME_STATUS_COMPLETED
 
 
 def _resolve_today_status(evidence: GameStatusEvidence, new_status: str | None) -> str:
+    """Resolves today status.
+
+    Args:
+        evidence: Evidence.
+        new_status: New Status.
+
+    Returns:
+        String result.
+
+    """
     if evidence.has_progress_evidence or is_live_status(new_status):
         return new_status or GAME_STATUS_LIVE if evidence.has_progress_evidence else GAME_STATUS_SCHEDULED
     return GAME_STATUS_SCHEDULED
 
 
 def _resolve_past_status(current_status: str | None, new_status: str | None) -> str:
+    """Resolves past status.
+
+    Args:
+        current_status: Current Status.
+        new_status: New Status.
+
+    Returns:
+        String result.
+
+    """
     if is_terminal_status(new_status):
         return new_status or GAME_STATUS_UNRESOLVED
     if is_terminal_status(current_status):

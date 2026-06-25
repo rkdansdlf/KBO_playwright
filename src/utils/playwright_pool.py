@@ -32,6 +32,7 @@ class AsyncPlaywrightPoolOptions:
 
 class AsyncPlaywrightPool:
     def __init__(self, options: AsyncPlaywrightPoolOptions | None = None, **overrides: object) -> None:
+        """Initializes a new instance."""
         if options is None:
             options = AsyncPlaywrightPoolOptions(**overrides)
         elif overrides:
@@ -54,6 +55,7 @@ class AsyncPlaywrightPool:
         self._started = False
 
     async def __aenter__(self) -> Self:
+        """Enters the async runtime context."""
         await self.start()
         return self
 
@@ -63,9 +65,11 @@ class AsyncPlaywrightPool:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        """Exits the async runtime context."""
         await self.close()
 
     async def start(self) -> None:
+        """Handles the start operation."""
         if self._started:
             return
 
@@ -82,6 +86,7 @@ class AsyncPlaywrightPool:
             raise
 
     async def _prepare_auth_state(self) -> None:
+        """Prepares auth state."""
         from src.utils.kbo_auth import KboAuthenticator
 
         # Automated Authentication if required
@@ -99,6 +104,7 @@ class AsyncPlaywrightPool:
             self.context_kwargs["storage_state"] = KboAuthenticator.get_auth_state_path()
 
     async def _start_browser_context(self) -> None:
+        """Handles the start browser context operation."""
         self._playwright = await async_playwright().start()
         browser_factory = getattr(self._playwright, self.browser_type)
 
@@ -120,6 +126,12 @@ class AsyncPlaywrightPool:
 
     @staticmethod
     def _stealth_script() -> str:
+        """Handles the stealth script operation.
+
+        Returns:
+            String result.
+
+        """
         return """
             () => {
                 // 1. Mask navigator.webdriver
@@ -145,6 +157,7 @@ class AsyncPlaywrightPool:
             """
 
     async def _create_pages(self) -> None:
+        """Creates pages."""
         if not self._context:
             msg = "Playwright context not initialized"
             raise RuntimeError(msg)
@@ -157,6 +170,12 @@ class AsyncPlaywrightPool:
             await self._queue.put(page)
 
     async def acquire(self) -> Page:
+        """Handles the acquire operation.
+
+        Returns:
+            Page instance.
+
+        """
         if not self._started:
             await self.start()
         if not self._queue:
@@ -165,6 +184,12 @@ class AsyncPlaywrightPool:
         return await self._queue.get()
 
     async def release(self, page: Page) -> None:
+        """Handles the release operation.
+
+        Args:
+            page: Playwright page object.
+
+        """
         if not self._queue:
             return
         if page.is_closed() and self._context:
@@ -176,6 +201,12 @@ class AsyncPlaywrightPool:
 
     @asynccontextmanager
     async def page(self) -> Page:
+        """Handles the page operation.
+
+        Returns:
+            Page instance.
+
+        """
         page = await self.acquire()
         try:
             yield page
@@ -183,6 +214,7 @@ class AsyncPlaywrightPool:
             await self.release(page)
 
     async def close(self) -> None:
+        """Handles the close operation."""
         for page in self._pages:
             with suppress(PlaywrightError, RuntimeError, OSError):
                 await page.close()

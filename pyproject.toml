@@ -122,6 +122,7 @@ select = [
     "FURB162", # fromisoformat-replace-z
     "Q000",    # bad-quotes-inline-string
     "D403",    # first-word-uncapitalized-docstring
+    "D105",    # undocumented-magic-method
     "FURB157", # verbose-decimal-constructor
     "FURB188", # slice-to-remove-prefix-or-suffix
      "PYI055",  # unnecessary-type-union

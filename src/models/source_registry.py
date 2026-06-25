@@ -60,6 +60,7 @@ class DataSource(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<DataSource(key='{self.source_key}', type='{self.source_type}', domain='{self.target_domain}')>"
 
 
@@ -107,4 +108,5 @@ class RawSourceSnapshot(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<RawSourceSnapshot(id={self.id}, source_id={self.data_source_id}, hash='{self.content_hash}')>"

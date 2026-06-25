@@ -44,4 +44,5 @@ class ParkingFeeRule(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("parking_lot_id", "vehicle_type", name="uq_parking_fee"),)
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<ParkingFeeRule(lot_id={self.parking_lot_id}, vehicle='{self.vehicle_type}', fee={self.base_fee})>"

@@ -29,6 +29,15 @@ STAFF_KEYWORDS = (
 
 
 def _normalize(value: str | None) -> str:
+    """Normalizes  normalize.
+
+    Args:
+        value: Value.
+
+    Returns:
+        String result.
+
+    """
     return (value or "").strip()
 
 
@@ -55,6 +64,17 @@ def classify_player(entry: dict[str, object]) -> PlayerCategory:
 
 
 def _classify_active_player(position: str, team: str, team_lower: str) -> PlayerCategory:
+    """Classifies active player.
+
+    Args:
+        position: Position.
+        team: Team.
+        team_lower: Team Lower.
+
+    Returns:
+        PlayerCategory instance.
+
+    """
     if "감독" in position:
         return PlayerCategory.MANAGER
     if any(keyword in position for keyword in STAFF_KEYWORDS):

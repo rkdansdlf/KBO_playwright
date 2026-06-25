@@ -34,4 +34,5 @@ class Franchise(Base, TimestampMixin):
     web_url: Mapped[str] = mapped_column(String(255), nullable=True, comment="KBO Team Info URL")
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<Franchise(code='{self.original_code}', current='{self.current_code}')>"

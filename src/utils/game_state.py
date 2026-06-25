@@ -59,6 +59,15 @@ ALLOWED_TRANSITIONS: set[tuple[str, str]] = {
 
 
 def is_terminal(state: str) -> bool:
+    """Returns whether the terminal.
+
+    Args:
+        state: State.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     return state in TERMINAL_STATES
 
 

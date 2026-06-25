@@ -99,6 +99,15 @@ _RELAY_NOISE_TOKENS = (
 
 
 def compact_relay_text(description: object) -> str:
+    """Handles the compact relay text operation.
+
+    Args:
+        description: Description.
+
+    Returns:
+        String result.
+
+    """
     return " ".join(str(description or "").strip().split())
 
 
@@ -148,6 +157,15 @@ def advance_pitch_count(description: str, balls: int = 0, strikes: int = 0) -> t
 
 
 def is_relay_noise_text(description: object) -> bool:
+    """Returns whether the relay noise text.
+
+    Args:
+        description: Description.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     text = compact_relay_text(description)
     if not text:
         return True
@@ -157,6 +175,15 @@ def is_relay_noise_text(description: object) -> bool:
 
 
 def is_relay_result_event_text(description: object) -> bool:
+    """Returns whether the relay result event text.
+
+    Args:
+        description: Description.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     text = compact_relay_text(description)
     if is_relay_noise_text(text) or ":" not in text:
         return False
@@ -167,6 +194,15 @@ def is_relay_result_event_text(description: object) -> bool:
 
 
 def detect_relay_event_type(description: object) -> str:
+    """Handles the detect relay event type operation.
+
+    Args:
+        description: Description.
+
+    Returns:
+        String result.
+
+    """
     text = compact_relay_text(description)
     if not is_relay_result_event_text(text):
         return "unknown"
