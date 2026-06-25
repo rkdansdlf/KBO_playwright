@@ -104,7 +104,7 @@ class TeamStatAggregator:
             }
         return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
 
-    def aggregate_batting(  # noqa: PLR0913
+    def aggregate_batting(
         self,
         query: TeamAggregationQuery | int | Iterable[Any],
         team_id: str | None = None,
@@ -154,7 +154,7 @@ class TeamStatAggregator:
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
-    def aggregate_pitching(  # noqa: PLR0913
+    def aggregate_pitching(
         self,
         query: TeamAggregationQuery | int | Iterable[Any],
         team_id: str | None = None,
@@ -452,14 +452,14 @@ class TeamStatAggregator:
         from src.repositories.team_stats_repository import TeamSeasonBattingRepository
 
         repo = TeamSeasonBattingRepository()
-        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]  # noqa: SLF001
+        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
 
         db_type = get_database_type()
         try:
             if db_type == "sqlite":
                 self.session.execute(text("PRAGMA foreign_keys = OFF"))
             for payload in cleaned:
-                stmt = repo._build_insert_stmt(payload)  # noqa: SLF001
+                stmt = repo._build_insert_stmt(payload)
                 self.session.execute(stmt)
 
             self.session.commit()
@@ -473,14 +473,14 @@ class TeamStatAggregator:
         from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 
         repo = TeamSeasonPitchingRepository()
-        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]  # noqa: SLF001
+        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
 
         db_type = get_database_type()
         try:
             if db_type == "sqlite":
                 self.session.execute(text("PRAGMA foreign_keys = OFF"))
             for payload in cleaned:
-                stmt = repo._build_insert_stmt(payload)  # noqa: SLF001
+                stmt = repo._build_insert_stmt(payload)
                 self.session.execute(stmt)
             self.session.commit()
         except SQLAlchemyError:

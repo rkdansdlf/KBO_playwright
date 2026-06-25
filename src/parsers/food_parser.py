@@ -61,4 +61,4 @@ if __name__ == "__main__":
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>떡볶이: 3,000원</p></body></html>"
     result = parse_food(html, "lotte_giants_fnb")
     for item in result:
-        print(item)  # noqa: T201  # noqa: T201
+        print(item)

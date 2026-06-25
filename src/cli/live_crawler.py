@@ -295,7 +295,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 if kbo_data and kbo_data.get("events"):
                     break
                 msg = "KBO PBP crawl returned no events"
-                raise ValueError(msg)  # noqa: TRY301
+                raise ValueError(msg)
             except (PlaywrightError, TimeoutError, RuntimeError, ValueError) as fallback_err:
                 logger.warning(
                     "KBO fallback attempt %s failed for %s: %s", attempt, game_id, fallback_err, exc_info=True
@@ -333,7 +333,7 @@ async def _fetch_naver_live_statuses(relay_crawler: NaverRelayCrawler) -> dict[t
     today_str = datetime.now(seoul_tz).strftime("%Y%m%d")
     try:
         async with httpx.AsyncClient() as client:
-            query = relay_crawler._schedule_query_context(query_date=today_str)  # noqa: SLF001
+            query = relay_crawler._schedule_query_context(query_date=today_str)
             response = await client.get(
                 relay_crawler.schedule_api_base_url,
                 params=query,
@@ -362,8 +362,8 @@ def _evaluate_game_lifecycles(
     all_finished = True
     for game in today_games:
         game_id = game["game_id"]
-        away_nav = relay_crawler._naver_team_code(game["away_team_code"])  # noqa: SLF001
-        home_nav = relay_crawler._naver_team_code(game["home_team_code"])  # noqa: SLF001
+        away_nav = relay_crawler._naver_team_code(game["away_team_code"])
+        home_nav = relay_crawler._naver_team_code(game["home_team_code"])
         nav_status_raw = naver_status_map.get((away_nav, home_nav))
         lifecycle_state = derive_lifecycle_from_naver_status(nav_status_raw)
 
@@ -778,7 +778,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
 def _compute_base_dynamic_interval(
     *,
     state: GameActivityState,
-    base_interval_minutes: int,  # noqa: ARG001
+    base_interval_minutes: int,
 ) -> tuple[int, str]:
     """Return (base_sleep_seconds, mode_label) for the existing dynamic logic."""
     if state.active:
