@@ -91,6 +91,19 @@ class GameSyncEligibility:
         }
 
 
+@dataclass
+class SyncBatchConfig:
+    model: type
+    query: Query
+    total_count: int
+    columns: list[str]
+    conflict_keys: list[str]
+    transform_fn: Callable[[dict[str, Any]], dict[str, Any]] | None
+    update_timestamp: bool
+    batch_size: int = 5000
+    dedupe_keys: list[str] | None = None
+
+
 def _serialize_scalar(value: object) -> object:
     if value is None:
         return None
@@ -898,54 +911,46 @@ class OCISyncBase:
             update_timestamp = "updated_at" not in exclude_cols
 
         return self._sync_in_batches(
-            model,
-            query,
-            total_count,
-            columns,
-            conflict_keys,
-            transform_fn,
-            batch_size,
-            update_timestamp=update_timestamp,
-            dedupe_keys=dedupe_keys,
+            SyncBatchConfig(
+                model=model,
+                query=query,
+                total_count=total_count,
+                columns=columns,
+                conflict_keys=conflict_keys,
+                transform_fn=transform_fn,
+                batch_size=batch_size,
+                update_timestamp=update_timestamp,
+                dedupe_keys=dedupe_keys,
+            ),
         )
 
-    def _sync_in_batches(  # noqa: PLR0913
-        self,
-        model: type,
-        query: Query,
-        total_count: int,
-        columns: list[str],
-        conflict_keys: list[str],
-        transform_fn: Callable[[dict[str, Any]], dict[str, Any]] | None,
-        batch_size: int,
-        *,
-        update_timestamp: bool,
-        dedupe_keys: list[str] | None = None,
-    ) -> int:
+    def _sync_in_batches(self, config: SyncBatchConfig) -> int:
         synced = 0
-        for offset in range(0, total_count, batch_size):
-            rows = query.offset(offset).limit(batch_size).all()
-            records = [_row_to_record(row, columns, transform_fn) for row in rows]
-            records = _dedupe_records_for_conflict_keys(records, dedupe_keys or conflict_keys)
+        for offset in range(0, config.total_count, config.batch_size):
+            rows = config.query.offset(offset).limit(config.batch_size).all()
+            records = [_row_to_record(row, config.columns, config.transform_fn) for row in rows]
+            records = _dedupe_records_for_conflict_keys(records, config.dedupe_keys or config.conflict_keys)
 
             connection = None
             if self.oci_engine is not None:
-                connection = self._raw_oci_connection_with_retries(label=f"{model.__tablename__}.sync")
+                connection = self._raw_oci_connection_with_retries(label=f"{config.model.__tablename__}.sync")
 
             try:
                 try:
                     self._bulk_copy_upsert(
-                        model.__tablename__,
+                        config.model.__tablename__,
                         records,
-                        conflict_keys,
-                        update_timestamp=update_timestamp,
+                        config.conflict_keys,
+                        update_timestamp=config.update_timestamp,
                         connection=connection,
                     )
                     synced += len(records)
-                    logger.info("   Synced %s/%s rows via COPY...", synced, total_count)
+                    logger.info("   Synced %s/%s rows via COPY...", synced, config.total_count)
                 except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as batch_err:
                     logger.warning(
-                        "Batch COPY failed for %s, falling back to row-by-row: %s", model.__tablename__, batch_err
+                        "Batch COPY failed for %s, falling back to row-by-row: %s",
+                        config.model.__tablename__,
+                        batch_err,
                     )
                     try:
                         if connection is not None:
@@ -953,21 +958,23 @@ class OCISyncBase:
                     except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
                         logger.warning("Failed to close COPY connection before fallback", exc_info=True)
 
-                    connection = self._raw_oci_connection_with_retries(label=f"{model.__tablename__}.sync.fallback")
+                    connection = self._raw_oci_connection_with_retries(
+                        label=f"{config.model.__tablename__}.sync.fallback"
+                    )
 
                     for record in records:
                         try:
                             self._direct_insert_upsert(
-                                model.__tablename__,
+                                config.model.__tablename__,
                                 record,
-                                conflict_keys,
-                                update_timestamp=update_timestamp,
+                                config.conflict_keys,
+                                update_timestamp=config.update_timestamp,
                                 connection=connection,
                             )
                             synced += 1
                         except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as row_err:
-                            logger.warning("Skipping bad row in %s: %s", model.__tablename__, row_err)
-                    logger.info("   Synced %s/%s rows via row-by-row...", synced, total_count)
+                            logger.warning("Skipping bad row in %s: %s", config.model.__tablename__, row_err)
+                    logger.info("   Synced %s/%s rows via row-by-row...", synced, config.total_count)
             finally:
                 if connection is not None:
                     try:
