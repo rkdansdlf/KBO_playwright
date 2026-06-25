@@ -85,6 +85,8 @@ DB_SAVE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
 
 @dataclass
 class Basic2PageContext:
+    """Basic2PageContext class."""
+
     page: Page
     season: int
     league: str
@@ -95,6 +97,8 @@ class Basic2PageContext:
 
 @dataclass
 class PitcherBasic1Context:
+    """PitcherBasic1Context class."""
+
     page: Page
     year: int
     league_name: str
@@ -107,6 +111,8 @@ class PitcherBasic1Context:
 
 @dataclass
 class Basic2AdditionalContext:
+    """Basic2AdditionalContext class."""
+
     page: Page
     year: int
     league_name: str
@@ -160,6 +166,15 @@ PRIMARY_SORT_CONFIG = {
 
 
 def normalize_header(text: str) -> str:
+    """Normalizes header.
+
+    Args:
+        text: Text.
+
+    Returns:
+        String result.
+
+    """
     if text is None:
         return ""
     cleaned = text.replace("\xa0", " ").strip()
@@ -172,6 +187,15 @@ def normalize_header(text: str) -> str:
 
 
 def extract_player_id(href: str | None) -> int | None:
+    """Extracts player id.
+
+    Args:
+        href: Href.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not href:
         return None
     match = re.search(r"playerId=(\d+)", href)
@@ -179,6 +203,13 @@ def extract_player_id(href: str | None) -> int | None:
 
 
 def wait_for_table(page: Page, timeout: int = 30000) -> None:
+    """Handles the wait for table operation.
+
+    Args:
+        page: Page.
+        timeout: Timeout in seconds.
+
+    """
     try:
         page.wait_for_selector(
             "table.tData01 tbody tr",
@@ -282,6 +313,18 @@ def apply_sort(
     sort_code: str | None = None,
     policy: RequestPolicy | None = None,
 ) -> bool:
+    """Handles the apply sort operation.
+
+    Args:
+        page: Page.
+        header_label: Header Label.
+        sort_code: Sort Code.
+        policy: Policy.
+
+    Returns:
+        True if successful, False otherwise.
+
+    """
     try:
         if sort_code and _apply_sort_by_code(page, sort_code, policy):
             return True
@@ -298,6 +341,8 @@ def apply_sort(
 
 @dataclass
 class PitcherStats:
+    """PitcherStats class."""
+
     player_id: int
     season: int
     league: str
@@ -444,6 +489,15 @@ def _map_pitcher_basic1_stats(
     stats.team_code = team_code
 
     def get_val(key: str) -> str | None:
+        """Gets val.
+
+        Args:
+            key: Key.
+
+        Returns:
+            The result of the operation.
+
+        """
         return raw.get(key)
 
     stats.games = safe_int_or_none(get_val("G")) if "G" in raw else stats.games
@@ -496,6 +550,19 @@ def parse_basic1_page(
     pitchers: dict[int, PitcherStats],
     max_players: int | None = None,
 ) -> int:
+    """Parses basic1 page.
+
+    Args:
+        page: Page.
+        season: Season year.
+        league: League.
+        pitchers: Pitchers.
+        max_players: Max Players.
+
+    Returns:
+        Integer result.
+
+    """
     header_index = _get_and_validate_basic1_headers(page)
     if not header_index:
         return 0
@@ -575,6 +642,15 @@ def _extract_basic2_row_info(
             return None
 
         def cell_text_fast(idx: int) -> str | None:
+            """Handles the cell text fast operation.
+
+            Args:
+                idx: Idx.
+
+            Returns:
+                The result of the operation.
+
+            """
             return cells[idx] if len(cells) > idx else None
 
         return player_id, cell_text_fast
@@ -588,6 +664,15 @@ def _extract_basic2_row_info(
         return None
 
     def cell_text_slow(idx: int) -> str | None:
+        """Handles the cell text slow operation.
+
+        Args:
+            idx: Idx.
+
+        Returns:
+            The result of the operation.
+
+        """
         return cells[idx].text_content() if len(cells) > idx else None
 
     return player_id, cell_text_slow
@@ -640,6 +725,15 @@ def _update_pitcher_basic2_stats(
 
 
 def parse_basic2_page(ctx: Basic2PageContext) -> int:
+    """Parses basic2 page.
+
+    Args:
+        ctx: Ctx.
+
+    Returns:
+        Integer result.
+
+    """
     if not retry_wait_for_selector(ctx.page, "table.tData01 thead th", timeout=NAV_TIMEOUT):
         logger.warning("⚠️  Basic2 테이블 헤더 파싱 실패 (타임아웃)")
         return 0
@@ -682,6 +776,19 @@ def parse_basic2_page(ctx: Basic2PageContext) -> int:
 
 
 def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, policy: RequestPolicy | None = None) -> bool:
+    """Set up pitcher page.
+
+    Args:
+        page: Page.
+        url: Url.
+        year: Season year.
+        series_value: Series Value.
+        policy: Policy.
+
+    Returns:
+        True if successful, False otherwise.
+
+    """
     if policy:
         policy.delay(host="www.koreabaseball.com")
 
@@ -725,6 +832,15 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
 
 
 def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[str, object], list[PitcherStats]]:
+    """Builds pitching summary.
+
+    Args:
+        stats_list: Stats List.
+
+    Returns:
+        Tuple result.
+
+    """
     payloads = [stat.to_repository_payload() for stat in stats_list]
     valid_payloads, failure_counts = filter_valid_season_stat_payloads(payloads, stat_type="pitching")
     valid_ids = {payload["player_id"] for payload in valid_payloads}
@@ -949,6 +1065,17 @@ def crawl_pitcher_series(
     save_to_db: bool = False,
     by_team: bool = False,
 ) -> list[PitcherStats]:
+    """Crawls pitcher series.
+
+    Args:
+        year: Season year.
+        series_key: Series Key.
+        limit: Limit.
+
+    Returns:
+        List of results.
+
+    """
     if series_key not in SERIES_MAPPING:
         msg = f"지원하지 않는 시리즈 키: {series_key}"
         raise ValueError(msg)
@@ -1041,6 +1168,12 @@ def crawl_pitcher_series(
 
 
 def parse_arguments() -> argparse.Namespace:
+    """Parses arguments.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="KBO 투수 기록 크롤러 (Basic1/Basic2)")
     parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="시즌 연도 (기본: 당해 연도)")
     parser.add_argument(
@@ -1061,6 +1194,7 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Main entry point for this CLI command."""
     args = parse_arguments()
     policy = RequestPolicy()
 

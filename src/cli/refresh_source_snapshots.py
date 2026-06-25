@@ -35,6 +35,8 @@ PLAYWRIGHT_FALLBACK_STATUSES = {403, 429, 500, 502, 503, 504}
 
 @dataclass(slots=True)
 class FetchedPage:
+    """FetchedPage class."""
+
     source_key: str
     url: str
     html: str
@@ -44,6 +46,8 @@ class FetchedPage:
 
 @dataclass(slots=True)
 class RefreshResult:
+    """RefreshResult class."""
+
     source_key: str
     status: str
     method: str | None = None
@@ -54,6 +58,12 @@ class RefreshResult:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Refresh DataSource raw snapshots")
     selector = parser.add_mutually_exclusive_group(required=True)
     selector.add_argument("--all", action="store_true", help="Refresh all active DataSources")
@@ -165,6 +175,15 @@ async def _fetch_source(
 
 
 async def refresh_sources(args: argparse.Namespace) -> list[RefreshResult]:
+    """Handles the refresh sources operation.
+
+    Args:
+        args: Args.
+
+    Returns:
+        List of results.
+
+    """
     if args.delay is not None:
         throttle.default_delay = args.delay
 
@@ -242,6 +261,7 @@ def _write_results(results: Sequence[RefreshResult], *, json_output: bool) -> No
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = build_arg_parser()
     args = parser.parse_args(argv)

@@ -9,6 +9,8 @@ from .base import Base, TimestampMixin
 
 
 class StadiumInfo(Base, TimestampMixin):
+    """StadiumInfo class."""
+
     __tablename__ = "stadium_info"
 
     stadium_code: Mapped[str] = mapped_column(
@@ -46,6 +48,8 @@ class StadiumInfo(Base, TimestampMixin):
 
 
 class StadiumRegulation(Base, TimestampMixin):
+    """StadiumRegulation class."""
+
     __tablename__ = "stadium_regulations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

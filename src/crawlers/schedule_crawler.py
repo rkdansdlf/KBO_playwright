@@ -50,6 +50,7 @@ class ScheduleCrawler:
         pool: AsyncPlaywrightPool | None = None,
         policy: RequestPolicy | None = None,
     ) -> None:
+        """Initializes a new instance."""
         self.base_url = SCHEDULE
         self.request_delay = request_delay
         self.pool = pool
@@ -57,6 +58,15 @@ class ScheduleCrawler:
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, key: str) -> str | None:
+        """Gets last failure reason.
+
+        Args:
+            key: Key.
+
+        Returns:
+            The result of the operation.
+
+        """
         return self._last_failure_reason.get(key)
 
     def _schedule_key(self, year: int, month: int, series_id: str | None = None) -> str:

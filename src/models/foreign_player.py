@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class ForeignPlayerChange(Base, TimestampMixin):
+    """ForeignPlayerChange class."""
+
     __tablename__ = "foreign_player_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

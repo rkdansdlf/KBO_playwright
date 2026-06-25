@@ -14,10 +14,22 @@ if TYPE_CHECKING:
 
 
 class TeamEventRepository:
+    """TeamEventRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save(self, data: dict) -> TeamEvent:
+        """Saves save.
+
+        Args:
+            data: Data.
+
+        Returns:
+            TeamEvent instance.
+
+        """
         source_url = data.get("source_url")
         title = data.get("title", "")
         if source_url:
@@ -47,6 +59,16 @@ class TeamEventRepository:
         return new_record
 
     def get_by_team(self, team_id: str, limit: int = 50) -> list[TeamEvent]:
+        """Gets by team.
+
+        Args:
+            team_id: Team ID.
+            limit: Limit.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(TeamEvent)
             .where(TeamEvent.team_id == team_id)
@@ -56,6 +78,15 @@ class TeamEventRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_upcoming(self, limit: int = 50) -> list[TeamEvent]:
+        """Gets upcoming.
+
+        Args:
+            limit: Limit.
+
+        Returns:
+            List of results.
+
+        """
         now = datetime.now(UTC).replace(tzinfo=None)
         stmt = (
             select(TeamEvent)
@@ -69,8 +100,24 @@ class TeamEventRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_game(self, game_id: str) -> list[TeamEvent]:
+        """Gets by game.
+
+        Args:
+            game_id: Game ID.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(TeamEvent).where(TeamEvent.game_id == game_id).order_by(TeamEvent.published_at.desc())
         return list(self.session.execute(stmt).scalars().all())
 
     def update_status(self, event_id: int, status: str) -> None:
+        """Updates status.
+
+        Args:
+            event_id: Event ID.
+            status: Status.
+
+        """
         self.session.execute(update(TeamEvent).where(TeamEvent.id == event_id).values(status=status))

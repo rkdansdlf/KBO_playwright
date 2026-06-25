@@ -24,6 +24,7 @@ class RetiredPlayerDetailCrawler:
     pitcher_url = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.request_delay = request_delay
         self.pool = pool
         self._internal_pool = None
@@ -39,6 +40,7 @@ class RetiredPlayerDetailCrawler:
         return self._internal_pool
 
     async def close(self) -> None:
+        """Handles the close operation."""
         if self._internal_pool:
             await self._internal_pool.close()
             self._internal_pool = None
@@ -158,6 +160,7 @@ class RetiredPlayerDetailCrawler:
 
 
 async def main() -> None:
+    """Main entry point for this CLI command."""
     crawler = RetiredPlayerDetailCrawler()
     sample_id = "78137"
     try:

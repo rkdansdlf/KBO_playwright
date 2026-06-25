@@ -76,6 +76,12 @@ class GameDetailSelectors:
 
     @property
     def status_selectors(self) -> tuple[str, ...]:
+        """Handles the status selectors operation.
+
+        Returns:
+            Tuple result.
+
+        """
         return (
             self.status_on,
             self.status_typo,
@@ -85,6 +91,12 @@ class GameDetailSelectors:
 
     @property
     def boxscore_presence_selectors(self) -> tuple[str, ...]:
+        """Handles the boxscore presence selectors operation.
+
+        Returns:
+            Tuple result.
+
+        """
         return (
             self.away_hitter_primary,
             self.away_hitter_inning,

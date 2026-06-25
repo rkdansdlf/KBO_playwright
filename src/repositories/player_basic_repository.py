@@ -27,6 +27,7 @@ class PlayerBasicRepository:
     """Repository for player_basic table operations."""
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.dialect = Engine.dialect.name
         self.last_filter_counts: Counter = Counter()
 

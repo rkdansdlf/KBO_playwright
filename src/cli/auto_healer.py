@@ -247,6 +247,12 @@ async def run_healer_async(
     reset_checkpoint: bool = False,
     target_game_ids: list[str] | None = None,
 ) -> int:
+    """Runs healer async.
+
+    Returns:
+        Integer result.
+
+    """
     logger.info("\n🩺 Running KBO Pipeline Auto-Healer...")
 
     recovery_mgr = RecoveryManager()
@@ -513,6 +519,15 @@ def run_pbp_healer(argv: Sequence[str] | None = None) -> int:
 
 
 def run_healer(argv: Sequence[str] | None = None) -> int:
+    """Runs healer.
+
+    Args:
+        argv: Argv.
+
+    Returns:
+        Integer result.
+
+    """
     parser = argparse.ArgumentParser(description="KBO Data Auto-Healer daemon")
     parser.add_argument(
         "--pbp",
@@ -557,6 +572,7 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     return run_healer(argv)
 
 

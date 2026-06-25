@@ -108,6 +108,8 @@ PLAYER_NAME_PATTERN = re.compile(r"(?:\[)?([가-힣]{2,4})(?:\])?\s*응원가")
 
 @dataclass
 class YouTubeVideoItem:
+    """YouTubeVideoItem class."""
+
     video_id: str
     title: str
     description: str

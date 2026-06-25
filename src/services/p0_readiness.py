@@ -55,6 +55,15 @@ def _env_enabled(name: str, default: str = "1") -> bool:
 
 
 def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
+    """Normalizes yyyymmdd.
+
+    Args:
+        value: Value.
+
+    Returns:
+        String result.
+
+    """
     if value is None:
         return datetime.now(KST).strftime("%Y%m%d")
     if isinstance(value, datetime):
@@ -698,6 +707,15 @@ def build_p0_readiness(
 
 
 def format_p0_readiness_summary(readiness: dict[str, Any] | None) -> str:
+    """Formats p0 readiness summary.
+
+    Args:
+        readiness: Readiness.
+
+    Returns:
+        String result.
+
+    """
     if not isinstance(readiness, dict):
         return "p0=unavailable"
     summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}

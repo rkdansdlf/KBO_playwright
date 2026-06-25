@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 @dataclass
 class PitchingStats:
+    """PitchingStats class."""
+
     home_runs: int = 0
     walks: int = 0
     hit_batters: int = 0

@@ -98,6 +98,8 @@ DETAIL_CRAWLER_EXCEPTIONS = (
 
 
 class PlayerIdResolver(Protocol):
+    """PlayerIdResolver class."""
+
     def resolve_id(
         self,
         player_name: str,
@@ -106,11 +108,15 @@ class PlayerIdResolver(Protocol):
         *,
         uniform_no: str | None = None,
         is_pitcher: bool = False,
-    ) -> int | None: ...
+    ) -> int | None:
+        """Resolves player ID from name and team information."""
+        ...
 
 
 @dataclass
 class BoxscoreCrawlContext:
+    """BoxscoreCrawlContext class."""
+
     page: Page
     game_id: str | None = None
     game_date: str | None = None
@@ -122,6 +128,8 @@ class BoxscoreCrawlContext:
 
 @dataclass
 class HitterPayloadContext:
+    """HitterPayloadContext class."""
+
     row: dict[str, Any]
     idx: int
     player_name: str
@@ -135,6 +143,8 @@ class HitterPayloadContext:
 
 @dataclass
 class PitcherResolutionContext:
+    """PitcherResolutionContext class."""
+
     row: dict[str, Any]
     rows: list[dict[str, Any]]
     idx: int
@@ -146,6 +156,8 @@ class PitcherResolutionContext:
 
 @dataclass
 class PitcherPayloadContext:
+    """PitcherPayloadContext class."""
+
     row: dict[str, Any]
     idx: int
     player_name: str

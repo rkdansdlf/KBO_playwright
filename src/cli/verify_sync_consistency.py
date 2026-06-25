@@ -96,6 +96,16 @@ def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[di
 
 
 def get_row_count(conn: Connection, table_name: str) -> int:
+    """Gets row count.
+
+    Args:
+        conn: Conn.
+        table_name: Table Name.
+
+    Returns:
+        Integer result.
+
+    """
     try:
         res = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
         return res.scalar() or 0
@@ -120,6 +130,15 @@ def check_deep_ids(
         oci_rows = res_oci.fetchall()
 
         def stringify_row(row: Sequence[object]) -> tuple[str, ...]:
+            """Handles the stringify row operation.
+
+            Args:
+                row: Row.
+
+            Returns:
+                Tuple result.
+
+            """
             return tuple(val.isoformat() if hasattr(val, "isoformat") else str(val) for val in row)
 
         sqlite_ids = {stringify_row(row) for row in sqlite_rows}
@@ -203,6 +222,12 @@ def _send_consistency_mismatch_alert(alert_lines: list[str], *, trigger_alert: b
 
 
 def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> bool:
+    """Runs consistency audit.
+
+    Returns:
+        True if successful, False otherwise.
+
+    """
     source_url = get_source_db_url()
     target_url = get_oci_url()
 
@@ -240,6 +265,7 @@ def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> 
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO SQLite to OCI PostgreSQL consistency auditor")
     parser.add_argument(
         "--deep",

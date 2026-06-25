@@ -9,6 +9,8 @@ from .base import Base, TimestampMixin
 
 
 class GameMvp(Base, TimestampMixin):
+    """GameMvp class."""
+
     __tablename__ = "game_mvps"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

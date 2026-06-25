@@ -40,6 +40,15 @@ from src.utils.team_codes import resolve_team_code
 
 
 def build_fielding_crawl_summary(records: list[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Builds fielding summary.
+
+    Args:
+        records: Records.
+
+    Returns:
+        Tuple result.
+
+    """
     valid_records, failure_counts = filter_valid_season_stat_payloads(
         records,
         stat_type="fielding",
@@ -157,6 +166,8 @@ def _parse_fielding_row(
 
 @dataclass
 class FieldingCrawlContext:
+    """FieldingCrawlContext class."""
+
     page: Page
     team_val: str
     team_name: str

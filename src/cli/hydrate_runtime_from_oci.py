@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     load_dotenv()
     parser = argparse.ArgumentParser(description="Hydrate local runtime SQLite cache from OCI/Postgres")
     parser.add_argument("--source-url", type=str, default=os.getenv("OCI_DB_URL"), help="OCI/Postgres source URL")

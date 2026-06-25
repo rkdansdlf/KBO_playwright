@@ -15,10 +15,23 @@ logger = logging.getLogger(__name__)
 
 
 class TeamFieldingAggregator:
+    """TeamFieldingAggregator class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def aggregate_fielding(self, season: int, team_code: str) -> dict[str, Any]:
+        """Aggregates fielding.
+
+        Args:
+            season: Season year.
+            team_code: Team Code.
+
+        Returns:
+            Dictionary result.
+
+        """
         rows = (
             self.session.query(PlayerSeasonFielding)
             .filter(
@@ -66,6 +79,16 @@ class TeamFieldingAggregator:
         }
 
     def aggregate_baserunning(self, season: int, team_code: str) -> dict[str, Any]:
+        """Aggregates baserunning.
+
+        Args:
+            season: Season year.
+            team_code: Team Code.
+
+        Returns:
+            Dictionary result.
+
+        """
         rows = (
             self.session.query(PlayerSeasonBaserunning)
             .filter(
@@ -103,6 +126,13 @@ class TeamFieldingAggregator:
         }
 
     def run_all(self, season: int, team_codes: list[str]) -> None:
+        """Runs all.
+
+        Args:
+            season: Season year.
+            team_codes: Team Codes.
+
+        """
         from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
         from src.models.team import Team
 

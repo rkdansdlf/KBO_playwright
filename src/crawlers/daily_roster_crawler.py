@@ -43,6 +43,7 @@ class DailyRosterCrawler:
     """Crawl daily roster changes."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.base_url = REGISTER
         self.request_delay = request_delay
         self.pool = pool
@@ -246,6 +247,7 @@ class DailyRosterCrawler:
 
 
 async def main() -> None:
+    """Main entry point for this CLI command."""
     crawler = DailyRosterCrawler()
     # Test for yesterday
     (datetime.now(KST).date()).strftime("%Y-%m-%d")

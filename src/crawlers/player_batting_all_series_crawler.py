@@ -48,6 +48,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BattingCrawlContext:
+    """BattingCrawlContext class."""
+
     page: Page
     year: int
     series_key: str
@@ -61,6 +63,8 @@ class BattingCrawlContext:
 
 @dataclass
 class BattingRowData:
+    """BattingRowData class."""
+
     cells: list[str]
     player_id: int
     player_name: str
@@ -72,6 +76,8 @@ class BattingRowData:
 
 @dataclass
 class LegacyRowContext:
+    """LegacyRowContext class."""
+
     row_idx: int
     row: ElementHandle
     current_header: str
@@ -150,6 +156,15 @@ def _build_batting_data(ctx: BattingRowData) -> dict[str, Any]:
     league_name = series_map.get(ctx.series_key, {}).get("league", "REGULAR")
 
     def cell(idx: int) -> str | None:
+        """Handles the cell operation.
+
+        Args:
+            idx: Idx.
+
+        Returns:
+            The result of the operation.
+
+        """
         return ctx.cells[idx] if len(ctx.cells) > idx else None
 
     if ctx.series_key == "regular":
@@ -364,6 +379,17 @@ def parse_batting_stats_table(
     *,
     use_fast: bool | None = None,
 ) -> list[dict]:
+    """Parses batting stats table.
+
+    Args:
+        page: Page.
+        series_key: Series Key.
+        year: Season year.
+
+    Returns:
+        List of results.
+
+    """
     year = year or datetime.now(KST).year
     if use_fast is None:
         use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
@@ -373,6 +399,15 @@ def parse_batting_stats_table(
 
 
 def build_batting_crawl_summary(rows: list[dict]) -> tuple[dict[str, object], list[dict]]:
+    """Builds batting summary.
+
+    Args:
+        rows: Rows.
+
+    Returns:
+        Tuple result.
+
+    """
     valid_rows, failure_counts = filter_valid_season_stat_payloads(rows, stat_type="batting")
     summary = {
         "processed_rows": len(rows),
@@ -758,6 +793,18 @@ def parse_basic2_header_data(
     *,
     use_fast: bool | None = None,
 ) -> dict[int, dict]:
+    """Parses basic2 header data.
+
+    Args:
+        page: Page.
+        current_header: Current Header.
+        description: Description.
+        year: Season year.
+
+    Returns:
+        Dictionary result.
+
+    """
     year = year or datetime.now(KST).year
     if use_fast is None:
         use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
@@ -1178,6 +1225,7 @@ def crawl_all_series(
 
 
 def main() -> None:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO 전체 시리즈 타자 기록 크롤러")
 
     parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="시즌 연도 (기본값: 당해 연도)")

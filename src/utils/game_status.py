@@ -118,6 +118,8 @@ def completed_like_statuses() -> Iterable[str]:
 
 @dataclass(frozen=True)
 class GameStatusEvidence:
+    """GameStatusEvidence class."""
+
     game_date: date
     current_status: str | None = None
     new_status: str | None = None

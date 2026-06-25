@@ -85,6 +85,7 @@ def _check_table_health(session: Session) -> list[dict[str, Any]]:
 
 
 def run_health_check() -> None:
+    """Runs health."""
     with SessionLocal() as session:
         ds_rows = _check_datasource_health(session)
         table_rows = _check_table_health(session)
@@ -126,10 +127,17 @@ def run_health_check() -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     return argparse.ArgumentParser(description="KBO pipeline health check")
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     parser.parse_args(argv)
     run_health_check()

@@ -25,6 +25,12 @@ LAST_FILTER_COUNTS: Counter = Counter()
 
 
 def get_last_filter_counts() -> dict[str, int]:
+    """Gets last counts.
+
+    Returns:
+        Dictionary result.
+
+    """
     return dict(LAST_FILTER_COUNTS)
 
 

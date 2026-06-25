@@ -25,6 +25,7 @@ class StaticTextCrawler:
     """
 
     def __init__(self, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.pool = pool
         self._raw_pages: list[dict] = []
 

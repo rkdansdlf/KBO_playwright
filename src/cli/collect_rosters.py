@@ -20,6 +20,12 @@ ROSTER_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, 
 
 
 def save_chunk(chunk: list[dict[str, Any]]) -> None:
+    """Saves chunk.
+
+    Args:
+        chunk: Chunk.
+
+    """
     session = SessionLocal()
     try:
         repo = TeamRepository(session)
@@ -32,6 +38,13 @@ def save_chunk(chunk: list[dict[str, Any]]) -> None:
 
 
 async def collect_rosters(year: int, month: int | None = None) -> None:
+    """Handles the collect rosters operation.
+
+    Args:
+        year: Season year.
+        month: Month number (1-12).
+
+    """
     crawler = DailyRosterCrawler()
 
     # Define date range
@@ -56,6 +69,7 @@ async def collect_rosters(year: int, month: int | None = None) -> None:
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Collect Daily Rosters")
     parser.add_argument("--year", type=int, required=True, help="Target Year")
     parser.add_argument("--month", type=int, help="Target Month (Optional)")

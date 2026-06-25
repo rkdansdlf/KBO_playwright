@@ -78,10 +78,17 @@ class OperationNoticeNaverCrawler:
     """
 
     def __init__(self, days_back: int = 3) -> None:
+        """Initializes a new instance."""
         self.days_back = days_back
         self.client = NaverSearchClient()
 
     async def run(self, *, save: bool = False) -> list[dict]:
+        """Runs run.
+
+        Returns:
+            List of results.
+
+        """
         logger.info("[NaverNotice] Searching for notices (last %s days)...", self.days_back)
 
         if not self.client._is_configured():

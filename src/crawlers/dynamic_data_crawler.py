@@ -51,6 +51,7 @@ class DynamicDataCrawler:
     """Manages daily crawls of schedules, ticket open times, and roster entries."""
 
     def __init__(self, db_session: Session) -> None:
+        """Initializes a new instance."""
         self.db_session = db_session
         self.roster_crawler = DailyRosterCrawler()
 

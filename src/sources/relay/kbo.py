@@ -9,11 +9,23 @@ from .base import NormalizedRelayResult, RelaySourceAdapter, events_have_minimum
 
 
 class KboRelayAdapter(RelaySourceAdapter):
+    """KboRelayAdapter class."""
+
     def __init__(self, crawler: PBPCrawler | None = None) -> None:
+        """Initializes a new instance."""
         super().__init__("kbo")
         self.crawler = crawler or PBPCrawler()
 
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
+        """Fetches game.
+
+        Args:
+            game_id: Game ID.
+
+        Returns:
+            NormalizedRelayResult instance.
+
+        """
         game_id = normalize_kbo_game_id(game_id)
         result = await self.crawler.crawl_game_events(game_id)
         events = list((result or {}).get("events") or [])

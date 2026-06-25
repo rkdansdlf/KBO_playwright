@@ -21,6 +21,15 @@ URGENT_KEYWORDS = re.compile(
 
 
 def classify_notice(title: str) -> str:
+    """Classifies notice.
+
+    Args:
+        title: Title.
+
+    Returns:
+        String result.
+
+    """
     for pattern, notice_type in NOTICE_TYPE_RULES:
         if pattern.search(title):
             return notice_type
@@ -28,4 +37,13 @@ def classify_notice(title: str) -> str:
 
 
 def is_urgent(title: str) -> bool:
+    """Returns whether the urgent.
+
+    Args:
+        title: Title.
+
+    Returns:
+        True if successful, False otherwise.
+
+    """
     return bool(URGENT_KEYWORDS.search(title))

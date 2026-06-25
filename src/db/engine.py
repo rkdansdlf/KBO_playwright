@@ -47,6 +47,15 @@ def _is_sqlite(url: str | None) -> bool:
 
 
 def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLAlchemyEngine:
+    """Creates engine for url.
+
+    Args:
+        url: Url.
+
+    Returns:
+        SQLAlchemyEngine instance.
+
+    """
     if _is_sqlite(url):
         engine = create_engine(
             url,
@@ -78,6 +87,12 @@ SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expi
 
 @contextmanager
 def get_db_session() -> Iterator[Session]:
+    """Gets db session.
+
+    Returns:
+        The result of the operation.
+
+    """
     session = SessionLocal()
     try:
         yield session
@@ -322,6 +337,7 @@ def _migrate_game_summary_table(conn: Connection) -> None:
 
 def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
+    """Initializes db."""
     from src.models.base import Base
 
     try:

@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class TicketOpenRule(Base, TimestampMixin):
+    """TicketOpenRule class."""
+
     __tablename__ = "ticket_open_rules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

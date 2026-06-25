@@ -11,6 +11,8 @@ import re
 
 
 class KBOTextParser:
+    """KBO text parser for game data extraction."""
+
     @staticmethod
     def parse_runners(text: str) -> int:
         """Parses runner state bitmask from text.

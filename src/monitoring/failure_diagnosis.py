@@ -15,6 +15,8 @@ _SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2}
 
 @dataclass(frozen=True)
 class DiagnosisFinding:
+    """DiagnosisFinding class."""
+
     category: str
     severity: str
     message: str
@@ -22,6 +24,12 @@ class DiagnosisFinding:
     suggested_commands: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
+        """Handles the to dict operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "category": self.category,
             "severity": self.severity,
@@ -33,25 +41,51 @@ class DiagnosisFinding:
 
 @dataclass(frozen=True)
 class DiagnosisReport:
+    """DiagnosisReport class."""
+
     sources: tuple[str, ...]
     findings: tuple[DiagnosisFinding, ...]
 
     @property
     def source_count(self) -> int:
+        """Handles the source count operation.
+
+        Returns:
+            Integer result.
+
+        """
         return len(self.sources)
 
     @property
     def highest_severity(self) -> str:
+        """Handles the highest severity operation.
+
+        Returns:
+            String result.
+
+        """
         if not self.findings:
             return "info"
         return max((finding.severity for finding in self.findings), key=lambda value: _SEVERITY_RANK[value])
 
     @property
     def exit_code(self) -> int:
+        """Handles the exit code operation.
+
+        Returns:
+            Integer result.
+
+        """
         return 1 if any(finding.severity == "high" for finding in self.findings) else 0
 
     @property
     def suggested_commands(self) -> tuple[str, ...]:
+        """Handles the suggested commands operation.
+
+        Returns:
+            Tuple result.
+
+        """
         commands: list[str] = []
         for finding in self.findings:
             for command in finding.suggested_commands:
@@ -60,6 +94,12 @@ class DiagnosisReport:
         return tuple(commands)
 
     def to_dict(self) -> dict[str, Any]:
+        """Handles the to dict operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "source_count": self.source_count,
             "sources": list(self.sources),
@@ -202,4 +242,13 @@ def render_diagnosis_text(report: DiagnosisReport) -> str:
 
 
 def report_to_json(report: DiagnosisReport) -> str:
+    """Reports to json.
+
+    Args:
+        report: Report.
+
+    Returns:
+        String result.
+
+    """
     return json.dumps(report.to_dict(), ensure_ascii=False)

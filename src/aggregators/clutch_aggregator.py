@@ -22,10 +22,22 @@ logger = logging.getLogger(__name__)
 
 
 class ClutchAggregator:
+    """ClutchAggregator class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def aggregate(self, year: int) -> list[dict]:
+        """Aggregates aggregate.
+
+        Args:
+            year: Season year.
+
+        Returns:
+            List of results.
+
+        """
         events = (
             self.session.query(GameEvent)
             .join(Game, GameEvent.game_id == Game.game_id)
@@ -93,6 +105,12 @@ class ClutchAggregator:
         return results
 
     def persist_to_extra_stats(self, year: int) -> None:
+        """Handles the persist to extra stats operation.
+
+        Args:
+            year: Season year.
+
+        """
         results = self.aggregate(year)
         if not results:
             return
@@ -157,6 +175,13 @@ class ClutchAggregator:
                 raise
 
     def print_report(self, year: int, top_n: int = 10) -> None:
+        """Prints print report.
+
+        Args:
+            year: Season year.
+            top_n: Top N.
+
+        """
         results = self.aggregate(year)
         if not results:
             return

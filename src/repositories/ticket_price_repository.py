@@ -13,10 +13,22 @@ if TYPE_CHECKING:
 
 
 class TicketPriceRepository:
+    """TicketPriceRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save(self, data: dict) -> TicketPrice:
+        """Saves save.
+
+        Args:
+            data: Data.
+
+        Returns:
+            TicketPrice instance.
+
+        """
         stmt = select(TicketPrice).where(
             TicketPrice.team_id == data["team_id"],
             TicketPrice.season == data["season"],
@@ -35,6 +47,16 @@ class TicketPriceRepository:
         return new_record
 
     def get_by_team_season(self, team_id: str, season: int) -> list[TicketPrice]:
+        """Gets by team season.
+
+        Args:
+            team_id: Team ID.
+            season: Season year.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(TicketPrice)
             .where(TicketPrice.team_id == team_id, TicketPrice.season == season)
@@ -43,6 +65,16 @@ class TicketPriceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_stadium_season(self, stadium_id: str, season: int) -> list[TicketPrice]:
+        """Gets by stadium season.
+
+        Args:
+            stadium_id: Stadium ID.
+            season: Season year.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(TicketPrice)
             .where(TicketPrice.stadium_id == stadium_id, TicketPrice.season == season)
@@ -51,6 +83,15 @@ class TicketPriceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
+        """Saves bulk.
+
+        Args:
+            records: Records.
+
+        Returns:
+            Integer result.
+
+        """
         count = 0
         for data in records:
             self.save(data)

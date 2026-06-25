@@ -25,6 +25,18 @@ def parse_game_detail_html(
     game_date: str,
     db_session: Session | None = None,
 ) -> dict[str, Any]:
+    """Parses game detail html.
+
+    Args:
+        html: Html.
+        game_id: Game ID.
+        game_date: Game Date.
+        db_session: Database session.
+
+    Returns:
+        Dictionary result.
+
+    """
     soup = BeautifulSoup(html, "html.parser")
     dataframes = pd.read_html(StringIO(html))
 
@@ -107,6 +119,13 @@ def _build_team_info(
         home_row = df.iloc[1] if len(df) > 1 else None
 
         def parse_row(row: pd.Series, info: dict[str, Any]) -> None:
+            """Parses row.
+
+            Args:
+                row: Row.
+                info: Info.
+
+            """
             name = str(row.get("팀", "")).strip()
             if name:
                 info["name"] = name

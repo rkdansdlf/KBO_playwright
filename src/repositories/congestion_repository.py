@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 class CongestionRepository:
+    """CongestionRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     # ─────────────────────────────────────────────
@@ -82,6 +85,16 @@ class CongestionRepository:
         location_type: str | None = None,
         location_label: str | None = None,
     ) -> list[StadiumCongestion]:
+        """Gets by game date.
+
+        Args:
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(StadiumCongestion).where(
             and_(
                 StadiumCongestion.stadium_code == stadium_code,
@@ -100,6 +113,16 @@ class CongestionRepository:
         stadium_code: str,
         location_label: str,
     ) -> StadiumCongestion | None:
+        """Gets latest.
+
+        Args:
+            stadium_code: Stadium Code.
+            location_label: Location Label.
+
+        Returns:
+            The result of the operation.
+
+        """
         stmt = (
             select(StadiumCongestion)
             .where(

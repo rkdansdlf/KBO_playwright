@@ -151,6 +151,15 @@ class StatsSyncMixin:
         """
 
         def get_sig(session: Session) -> dict[str, Any]:
+            """Gets sig.
+
+            Args:
+                session: Session.
+
+            Returns:
+                Dictionary result.
+
+            """
             table_name = model.__tablename__
             where_clause = ""
             params = {}

@@ -37,6 +37,12 @@ async def run_single_game(
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> int:
+    """Runs single game.
+
+    Returns:
+        Integer result.
+
+    """
     from src.crawlers.text_relay_crawler import TextRelayCrawler
 
     crawler = TextRelayCrawler(output_dir=output_dir)
@@ -52,6 +58,12 @@ async def run_season(
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> dict[str, int]:
+    """Runs season.
+
+    Returns:
+        Dictionary result.
+
+    """
     from src.crawlers.schedule_crawler import ScheduleCrawler
     from src.crawlers.text_relay_crawler import TextRelayCrawler
 
@@ -70,6 +82,15 @@ async def run_season(
 
 
 async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
+    """Runs from args.
+
+    Args:
+        args: Args.
+
+    Returns:
+        Dictionary result.
+
+    """
     if args.game_id:
         rows = await run_single_game(
             game_id=args.game_id,
@@ -88,6 +109,12 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(
         description="KBO 문자중계(Text Relay) 수집",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -131,6 +158,7 @@ Examples:
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, int]:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     return asyncio.run(run_from_args(args))

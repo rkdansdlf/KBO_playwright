@@ -49,6 +49,8 @@ INTERNATIONAL_DATE_RANGES: dict[int, tuple[str, str]] = {
 
 @dataclass(slots=True)
 class ManifestEntry:
+    """ManifestEntry class."""
+
     game_id: str
     source_type: str
     locator: str
@@ -59,6 +61,8 @@ class ManifestEntry:
 
 @dataclass(slots=True)
 class CapabilityRecord:
+    """CapabilityRecord class."""
+
     bucket_id: str
     source_name: str
     sample_size: int
@@ -69,6 +73,8 @@ class CapabilityRecord:
 
 @dataclass(slots=True)
 class NormalizedRelayResult:
+    """NormalizedRelayResult class."""
+
     game_id: str
     source_name: str
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -82,17 +88,35 @@ class NormalizedRelayResult:
 
     @property
     def is_empty(self) -> bool:
+        """Returns whether the empty.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         return not self.events and not self.raw_pbp_rows
 
 
 class RelaySourceAdapter(ABC):
+    """RelaySourceAdapter class."""
+
     def __init__(self, source_name: str) -> None:
+        """Initializes a new instance."""
         self.source_name = source_name
         self.supports_bucket_probe = True
         self.cache_negative_probe = True
 
     @abstractmethod
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
+        """Fetches game.
+
+        Args:
+            game_id: Game ID.
+
+        Returns:
+            NormalizedRelayResult instance.
+
+        """
         raise NotImplementedError
 
 
@@ -107,6 +131,15 @@ def normalize_inning_half(value: object) -> str | None:
 
 
 def trailing_result_from_description(description: object) -> str | None:
+    """Handles the trailing result from description operation.
+
+    Args:
+        description: Description.
+
+    Returns:
+        The result of the operation.
+
+    """
     text = str(description or "").strip()
     if not text:
         return None
@@ -117,6 +150,15 @@ def trailing_result_from_description(description: object) -> str | None:
 
 
 def event_to_pbp_row(event: dict[str, Any]) -> dict[str, Any]:
+    """Handles the event to pbp row operation.
+
+    Args:
+        event: Event.
+
+    Returns:
+        Dictionary result.
+
+    """
     return normalize_pbp_row(
         {
             "inning": event.get("inning"),
@@ -154,15 +196,43 @@ def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def event_has_minimum_state(event: dict[str, Any]) -> bool:
+    """Handles the event has minimum state operation.
+
+    Args:
+        event: Event.
+
+    Returns:
+        True if successful, False otherwise.
+
+    """
     return event_has_wpa_state(event)
 
 
 def events_have_minimum_state(events: Iterable[dict[str, Any]]) -> bool:
+    """Handles the events have minimum state operation.
+
+    Args:
+        events: Events.
+
+    Returns:
+        True if successful, False otherwise.
+
+    """
     events = list(events)
     return bool(events) and all(event_has_minimum_state(event) for event in events)
 
 
 def derive_bucket_id(game_id: str, league_type_name: str | None = None) -> str:
+    """Derives bucket id.
+
+    Args:
+        game_id: Game ID.
+        league_type_name: League Type Name.
+
+    Returns:
+        String result.
+
+    """
     year = int(str(game_id)[:4])
     team_code = str(game_id)[8:12]
     league_name = str(league_type_name or "").strip().lower()
@@ -194,6 +264,15 @@ def _derive_bucket_by_date(game_id: str, year: int, team_code: str) -> str:
 
 
 def default_source_order_for_bucket(bucket_id: str) -> list[str]:
+    """Handles the default source order for bucket operation.
+
+    Args:
+        bucket_id: Bucket ID.
+
+    Returns:
+        List of results.
+
+    """
     if bucket_id.endswith("regular_kbo"):
         return list(REGULAR_BUCKET_SOURCE_ORDER)
     return list(SPECIAL_BUCKET_SOURCE_ORDER)
@@ -214,6 +293,15 @@ def _coerce_manifest_paths(manifest_path: str | Path | Iterable[str | Path]) -> 
 
 
 def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> list[ManifestEntry]:
+    """Reads manifest entries.
+
+    Args:
+        manifest_path: Manifest file path.
+
+    Returns:
+        List of results.
+
+    """
     entries: list[ManifestEntry] = []
     seen: set[tuple[str, str, str, str, int, str | None]] = set()
     for path in _coerce_manifest_paths(manifest_path):
@@ -260,6 +348,15 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
 
 
 def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str], CapabilityRecord]:
+    """Loads capability records.
+
+    Args:
+        capability_path: Capability file path.
+
+    Returns:
+        Dictionary result.
+
+    """
     path = Path(capability_path)
     if not path.exists():
         return {}
@@ -286,6 +383,13 @@ def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str]
 
 
 def upsert_capability_record(capability_path: str | Path, record: CapabilityRecord) -> None:
+    """Inserts or updates capability record.
+
+    Args:
+        capability_path: Capability file path.
+        record: Record.
+
+    """
     path = Path(capability_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = load_capability_records(path)

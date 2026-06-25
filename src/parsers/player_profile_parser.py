@@ -11,6 +11,8 @@ from pydantic import BaseModel
 
 
 class PlayerProfileParsed(BaseModel):
+    """PlayerProfileParsed class."""
+
     player_id: int | None = None
     player_name: str | None = None
     back_number: int | None = None

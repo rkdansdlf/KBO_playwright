@@ -28,6 +28,15 @@ def _summary_path(target_date: str, summary_dir: str | Path | None = None) -> Pa
 
 
 def load_daily_summary(path: str | Path) -> dict[str, Any]:
+    """Loads daily summary.
+
+    Args:
+        path: Path.
+
+    Returns:
+        Dictionary result.
+
+    """
     summary_path = Path(path)
     if not summary_path.exists():
         msg = f"Daily summary not found: {summary_path}"
@@ -58,6 +67,15 @@ def _dedupe_game_ids(values: Iterable[object]) -> list[str]:
 
 
 def retry_candidates(summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    """Handles the retry candidates operation.
+
+    Args:
+        summary: Summary.
+
+    Returns:
+        Tuple result.
+
+    """
     stability = summary.get("stability")
     if not isinstance(stability, Mapping):
         return [], []
@@ -92,6 +110,15 @@ def build_retry_commands(
     sync: bool = False,
     python_bin: str = sys.executable,
 ) -> list[Command]:
+    """Builds retry commands.
+
+    Args:
+        summary: Summary.
+
+    Returns:
+        List of results.
+
+    """
     detail_ids, relay_ids = retry_candidates(summary)
     commands: list[Command] = []
 
@@ -154,6 +181,12 @@ def run_retry(
     runner: Runner | None = None,
     python_bin: str = sys.executable,
 ) -> int:
+    """Runs retry.
+
+    Returns:
+        Integer result.
+
+    """
     summary_file = _summary_path(target_date, summary_dir)
     summary = load_daily_summary(summary_file)
     commands = build_retry_commands(summary, sync=sync, python_bin=python_bin)
@@ -179,6 +212,12 @@ def run_retry(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Retry daily stability summary failure candidates")
     parser.add_argument("--date", required=True, help="Target date in YYYYMMDD format")
     parser.add_argument(
@@ -194,6 +233,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     if len(args.date) != 8 or not args.date.isdigit():

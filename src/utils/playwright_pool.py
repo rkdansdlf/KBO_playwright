@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class AsyncPlaywrightPoolOptions:
+    """AsyncPlaywrightPoolOptions class."""
+
     max_pages: int = 1
     headless: bool = True
     browser_type: str = "chromium"
@@ -31,6 +33,8 @@ class AsyncPlaywrightPoolOptions:
 
 
 class AsyncPlaywrightPool:
+    """AsyncPlaywrightPool class."""
+
     def __init__(self, options: AsyncPlaywrightPoolOptions | None = None, **overrides: object) -> None:
         """Initializes a new instance."""
         if options is None:

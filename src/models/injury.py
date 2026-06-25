@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class InjuryEntry(Base, TimestampMixin):
+    """InjuryEntry class."""
+
     __tablename__ = "injury_entries"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

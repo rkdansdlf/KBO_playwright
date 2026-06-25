@@ -468,6 +468,15 @@ class _RelayResolutionContext:
     home_team_code: str | None
 
     def offense_team(self, half: str | None) -> str | None:
+        """Handles the offense team operation.
+
+        Args:
+            half: Half.
+
+        Returns:
+            The result of the operation.
+
+        """
         if half == "top":
             return self.away_team_code
         if half == "bottom":
@@ -475,6 +484,15 @@ class _RelayResolutionContext:
         return None
 
     def defense_team(self, half: str | None) -> str | None:
+        """Handles the defense team operation.
+
+        Args:
+            half: Half.
+
+        Returns:
+            The result of the operation.
+
+        """
         if half == "top":
             return self.home_team_code
         if half == "bottom":
@@ -488,6 +506,16 @@ class _RelayResolutionContext:
         *,
         is_pitcher: bool | None = None,
     ) -> tuple[int | None, str | None, str | None]:
+        """Resolves participant.
+
+        Args:
+            name: Name.
+            team_code: Team Code.
+
+        Returns:
+            Tuple result.
+
+        """
         if self.resolver is None or not name or not team_code or not self.season_year:
             return None, None, None
         try:
@@ -502,6 +530,8 @@ class _RelayResolutionContext:
 
 @dataclass
 class ValidationMetricsData:
+    """ValidationMetricsData class."""
+
     validation_status: str
     source_name: str | None = None
     error_reason: str | None = None
@@ -518,6 +548,8 @@ class ValidationMetricsData:
 
 @dataclass
 class RelayValidationInput:
+    """RelayValidationInput class."""
+
     events: list[dict[str, Any]] | None = None
     raw_pbp_rows: list[dict[str, Any]] | None = None
     valid_event_rows: list[dict[str, Any]] | None = None
@@ -525,6 +557,8 @@ class RelayValidationInput:
 
 @dataclass
 class PlayerResolutionContext:
+    """PlayerResolutionContext class."""
+
     batter_name: str | None = None
     resolved_batter_name: str | None = None
     batter_team: str | None = None
@@ -538,6 +572,8 @@ class PlayerResolutionContext:
 
 @dataclass
 class RelaySaveOptions:
+    """RelaySaveOptions class."""
+
     source_name: str | None = None
     notes: str | None = None
     allow_derived_pbp: bool = True
@@ -889,6 +925,8 @@ def _build_relay_event_rows(
 
 @dataclass
 class RelayRowReplaceContext:
+    """RelayRowReplaceContext class."""
+
     pbp_rows: list[GamePlayByPlay]
     event_rows: list[GameEvent]
     source: GameWriteSource

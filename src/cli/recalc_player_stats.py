@@ -377,6 +377,15 @@ def run_recalc(
     batting_only: bool = False,
     pitching_only: bool = False,
 ) -> int:
+    """Runs run recalc.
+
+    Args:
+        season: Season year.
+
+    Returns:
+        Integer result.
+
+    """
     league = "REGULAR"
     level = "KBO1"
 
@@ -416,6 +425,7 @@ def run_recalc(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Recalculate player cumulative statistics from game-level data.")
     parser.add_argument("--season", type=int, required=True, help="Season year")
     parser.add_argument(

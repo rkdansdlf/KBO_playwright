@@ -13,10 +13,22 @@ if TYPE_CHECKING:
 
 
 class ForeignPlayerRepository:
+    """ForeignPlayerRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save_change(self, data: dict) -> ForeignPlayerChange:
+        """Saves change.
+
+        Args:
+            data: Data.
+
+        Returns:
+            ForeignPlayerChange instance.
+
+        """
         player_name = data["player_name"]
         team_id = data["team_id"]
         season = data["season"]
@@ -41,6 +53,16 @@ class ForeignPlayerRepository:
         return new_record
 
     def get_by_team(self, team_id: str, season: int | None = None) -> list[ForeignPlayerChange]:
+        """Gets by team.
+
+        Args:
+            team_id: Team ID.
+            season: Season year.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(ForeignPlayerChange).where(ForeignPlayerChange.team_id == team_id)
         if season:
             stmt = stmt.where(ForeignPlayerChange.season == season)
@@ -48,6 +70,15 @@ class ForeignPlayerRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_season(self, season: int) -> list[ForeignPlayerChange]:
+        """Gets by season.
+
+        Args:
+            season: Season year.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(ForeignPlayerChange)
             .where(ForeignPlayerChange.season == season)

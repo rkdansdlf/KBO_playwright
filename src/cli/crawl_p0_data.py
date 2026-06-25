@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 async def run_events(*, save: bool = False, days: int = 30, team: str | None = None) -> int:
+    """Runs events.
+
+    Returns:
+        Integer result.
+
+    """
     from src.crawlers.team_event_crawler import TeamEventCrawler
 
     crawler = TeamEventCrawler(days_back=days)
@@ -25,6 +31,12 @@ async def run_events(*, save: bool = False, days: int = 30, team: str | None = N
 
 
 async def run_roster(*, save: bool = False, target_date: str | None = None) -> int:
+    """Runs roster.
+
+    Returns:
+        Integer result.
+
+    """
     from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 
     crawler = RosterTransactionCrawler()
@@ -33,6 +45,12 @@ async def run_roster(*, save: bool = False, target_date: str | None = None) -> i
 
 
 async def run_ticket(*, save: bool = False, season: int | None = None) -> int:
+    """Runs ticket.
+
+    Returns:
+        Integer result.
+
+    """
     from src.crawlers.ticket_crawler import TicketCrawler
 
     crawler = TicketCrawler()
@@ -48,6 +66,12 @@ async def run_all(
     season: int | None = None,
     target_date: str | None = None,
 ) -> dict[str, int]:
+    """Runs all.
+
+    Returns:
+        Dictionary result.
+
+    """
     logger.info("=== P0 data collection ===")
     counts = {
         "events": await run_events(save=save, days=days, team=team),
@@ -76,6 +100,15 @@ def _normalize_target_date(value: str | None) -> str | None:
 
 
 async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
+    """Runs from args.
+
+    Args:
+        args: Args.
+
+    Returns:
+        Dictionary result.
+
+    """
     target_date = _normalize_target_date(args.target_date)
     runner_map = {
         "events": lambda: run_events(save=args.save, days=args.days, team=args.team),
@@ -97,6 +130,12 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="P0 Data Collection (events + roster + ticket)")
     parser.add_argument(
         "--type",
@@ -113,6 +152,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, int]:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     return asyncio.run(run_from_args(args))

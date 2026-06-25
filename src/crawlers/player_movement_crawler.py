@@ -41,6 +41,7 @@ class PlayerMovementCrawler:
     """Crawl player status changes (Trade, FA, Waiver, etc.)."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.base_url = "https://www.koreabaseball.com/Player/Trade.aspx"
         self.request_delay = request_delay
         self.pool = pool
@@ -229,6 +230,7 @@ class PlayerMovementCrawler:
 
 async def main() -> None:
     # Test run
+    """Main entry point for this CLI command."""
     crawler = PlayerMovementCrawler()
     data = await crawler.crawl_years(2023, 2023)
     logger.info("Total collected: %s", len(data))

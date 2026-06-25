@@ -23,6 +23,12 @@ def _int(val: object) -> int:
 
 
 def analyze_events() -> list[dict[str, Any]]:
+    """Handles the analyze events operation.
+
+    Returns:
+        List of results.
+
+    """
     with SessionLocal() as session:
         rows = session.execute(
             text("""
@@ -45,6 +51,12 @@ def analyze_events() -> list[dict[str, Any]]:
 
 
 def analyze_roster() -> list[dict[str, Any]]:
+    """Handles the analyze roster operation.
+
+    Returns:
+        List of results.
+
+    """
     with SessionLocal() as session:
         total = session.execute(text("SELECT COUNT(*) FROM roster_transactions")).scalar()
         by_action = session.execute(
@@ -72,6 +84,12 @@ def analyze_roster() -> list[dict[str, Any]]:
 
 
 def analyze_tickets() -> list[dict[str, Any]]:
+    """Handles the analyze tickets operation.
+
+    Returns:
+        List of results.
+
+    """
     with SessionLocal() as session:
         total = session.execute(text("SELECT COUNT(*) FROM ticket_prices")).scalar()
         by_team = session.execute(
@@ -99,6 +117,12 @@ def analyze_tickets() -> list[dict[str, Any]]:
 
 
 def analyze_seats() -> list[dict[str, Any]]:
+    """Handles the analyze seats operation.
+
+    Returns:
+        List of results.
+
+    """
     with SessionLocal() as session:
         total = session.execute(text("SELECT COUNT(*) FROM stadium_seat_sections")).scalar()
         by_stadium = session.execute(
@@ -115,6 +139,12 @@ def analyze_seats() -> list[dict[str, Any]]:
 
 
 def analyze_parking() -> list[dict[str, Any]]:
+    """Handles the analyze parking operation.
+
+    Returns:
+        List of results.
+
+    """
     with SessionLocal() as session:
         total = session.execute(text("SELECT COUNT(*) FROM parking_lots")).scalar()
         fees = session.execute(text("SELECT COUNT(*) FROM parking_fee_rules")).scalar()
@@ -131,6 +161,12 @@ def analyze_parking() -> list[dict[str, Any]]:
 
 
 def analyze_food() -> list[dict[str, Any]]:
+    """Handles the analyze food operation.
+
+    Returns:
+        List of results.
+
+    """
     with SessionLocal() as session:
         vendors = session.execute(text("SELECT COUNT(*) FROM stadium_food_vendors")).scalar()
         menus = session.execute(text("SELECT COUNT(*) FROM stadium_food_menu_items")).scalar()
@@ -156,6 +192,12 @@ def analyze_food() -> list[dict[str, Any]]:
 
 
 def generate_report() -> str:
+    """Generates generate report.
+
+    Returns:
+        String result.
+
+    """
     lines = []
     lines.append("# KBO Pipeline Data Summary")
     lines.append(f"Generated: {datetime.now(UTC).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S UTC')}")

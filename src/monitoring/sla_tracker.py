@@ -28,10 +28,22 @@ logger = logging.getLogger(__name__)
 
 
 class SlaTracker:
+    """SlaTracker class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def compute_daily_sla(self, target_date: str) -> dict[str, Any]:
+        """Computes daily sla.
+
+        Args:
+            target_date: Target Date.
+
+        Returns:
+            Dictionary result.
+
+        """
         if isinstance(target_date, str) and len(target_date) == 8:
             query_date = date(int(target_date[:4]), int(target_date[4:6]), int(target_date[6:8]))
         else:
@@ -83,6 +95,16 @@ class SlaTracker:
         }
 
     def compute_weekly_sla(self, end_date: str, days: int = 7) -> list[dict]:
+        """Computes weekly sla.
+
+        Args:
+            end_date: End Date.
+            days: Days.
+
+        Returns:
+            List of results.
+
+        """
         end = parse_datetime_str(end_date)
         results = []
         for i in range(days):
@@ -91,6 +113,12 @@ class SlaTracker:
         return results
 
     def print_weekly_report(self, end_date: str) -> None:
+        """Prints weekly.
+
+        Args:
+            end_date: End Date.
+
+        """
         sla_data = self.compute_weekly_sla(end_date, days=7)
         if not sla_data or sla_data[0]["total"] == 0:
             logger.info("[SLA] No data for week ending %s", end_date)

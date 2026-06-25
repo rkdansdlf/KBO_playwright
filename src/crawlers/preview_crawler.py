@@ -28,6 +28,8 @@ PREVIEW_CRAWL_EXCEPTIONS = (*HTTP_API_EXCEPTIONS, *PLAYWRIGHT_API_EXCEPTIONS)
 
 
 class PreviewCrawler:
+    """PreviewCrawler class."""
+
     GAME_LIST_URL = "https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList"
     LINEUP_URL = "https://www.koreabaseball.com/ws/Schedule.asmx/GetLineUpAnalysis"
     BASE_REFERER = "https://www.koreabaseball.com/"
@@ -41,11 +43,13 @@ class PreviewCrawler:
     }
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.request_delay = request_delay
         self.pool = pool
         self.policy = RequestPolicy()
 
-    def _coerce_api_payload(self, payload: object) -> object | None:
+    @staticmethod
+    def _coerce_api_payload(payload: object) -> object | None:
         """Normalize API payloads from ASP.NET/JSON wrappers to a Python object."""
         if payload is None:
             return None
@@ -54,30 +58,32 @@ class PreviewCrawler:
             if not payload:
                 return None
             try:
-                return self._coerce_api_payload(json.loads(payload))
+                return PreviewCrawler._coerce_api_payload(json.loads(payload))
             except (json.JSONDecodeError, TypeError) as e:
                 logger.debug("Failed to parse JSON payload: %s", e)
                 return None
         if isinstance(payload, dict) and "d" in payload:
-            return self._coerce_api_payload(payload.get("d"))
+            return PreviewCrawler._coerce_api_payload(payload.get("d"))
         return payload
 
-    def _extract_list_payload(self, payload: object) -> list[object]:
+    @staticmethod
+    def _extract_list_payload(payload: object) -> list[object]:
         """Get list-like payload from various KBO API shapes."""
-        payload = self._coerce_api_payload(payload)
+        payload = PreviewCrawler._coerce_api_payload(payload)
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict):
             for key in ("game", "games", "result", "data"):
-                value = self._coerce_api_payload(payload.get(key))
+                value = PreviewCrawler._coerce_api_payload(payload.get(key))
                 if isinstance(value, list):
                     return value
-                nested = self._extract_list_payload(value)
+                nested = PreviewCrawler._extract_list_payload(value)
                 if nested:
                     return nested
         return []
 
-    def _clean_text(self, value: object) -> str:
+    @staticmethod
+    def _clean_text(value: object) -> str:
         """Return a stripped string for nullable KBO API fields."""
         if value is None:
             return ""
@@ -93,24 +99,27 @@ class PreviewCrawler:
                 return value.strip() not in ("", "0", "false", "False", "FALSE")
             return bool(value)
 
-    def _first_non_empty_text(self, payload: dict[str, Any], keys: tuple[str, ...]) -> str:
+    @staticmethod
+    def _first_non_empty_text(payload: dict[str, Any], keys: tuple[str, ...]) -> str:
         for key in keys:
-            value = self._clean_text(payload.get(key))
+            value = PreviewCrawler._clean_text(payload.get(key))
             if value:
                 return value
         return ""
 
-    def _first_non_empty_value(self, payload: dict[str, Any], keys: tuple[str, ...]) -> object | None:
+    @staticmethod
+    def _first_non_empty_value(payload: dict[str, Any], keys: tuple[str, ...]) -> object | None:
         for key in keys:
             value = payload.get(key)
             if value not in (None, ""):
                 return value
         return None
 
-    def _extract_starter_name(self, game: dict[str, Any], side: str) -> str:
+    @staticmethod
+    def _extract_starter_name(game: dict[str, Any], side: str) -> str:
         """Extract announced starter names from KBO game-list variants."""
         if side == "away":
-            return self._first_non_empty_text(
+            return PreviewCrawler._first_non_empty_text(
                 game,
                 (
                     "T_PIT_P_NM",
@@ -121,7 +130,7 @@ class PreviewCrawler:
                     "W_PIT_P_NM",
                 ),
             )
-        return self._first_non_empty_text(
+        return PreviewCrawler._first_non_empty_text(
             game,
             (
                 "B_PIT_P_NM",
@@ -133,10 +142,12 @@ class PreviewCrawler:
             ),
         )
 
-    def _extract_starter_id(self, game: dict[str, Any], side: str) -> object | None:
-        """Extract announced starter ids from KBO game-list variants."""
+    @staticmethod
+    @staticmethod
+    def _extract_starter_id(game: dict[str, Any], side: str) -> object | None:
+        """Resolve the starter ID for the requested side using multiple key variants."""
         if side == "away":
-            return self._first_non_empty_value(
+            return PreviewCrawler._first_non_empty_value(
                 game,
                 (
                     "T_PIT_P_ID",
@@ -147,7 +158,7 @@ class PreviewCrawler:
                     "W_PIT_P_ID",
                 ),
             )
-        return self._first_non_empty_value(
+        return PreviewCrawler._first_non_empty_value(
             game,
             (
                 "B_PIT_P_ID",
@@ -159,18 +170,20 @@ class PreviewCrawler:
             ),
         )
 
-    def _extract_lineup_announced(self, lineup_rows: list[object], *, fallback: bool) -> bool:
+    @staticmethod
+    def _extract_lineup_announced(lineup_rows: list[object], *, fallback: bool) -> bool:
         """Read LINEUP_CK from GetLineUpAnalysis when present."""
         if not lineup_rows:
             return fallback
         first = lineup_rows[0]
         if isinstance(first, list) and first and isinstance(first[0], dict) and "LINEUP_CK" in first[0]:
-            return self._to_flag(first[0].get("LINEUP_CK"))
+            return PreviewCrawler._to_flag(first[0].get("LINEUP_CK"))
         if isinstance(first, dict) and "LINEUP_CK" in first:
-            return self._to_flag(first.get("LINEUP_CK"))
+            return PreviewCrawler._to_flag(first.get("LINEUP_CK"))
         return fallback
 
-    def _extract_embedded_game_ids(self, payload: object) -> set[str]:
+    @staticmethod
+    def _extract_embedded_game_ids(payload: object) -> set[str]:
         """Collect normalized G_ID values embedded in lineup analysis payloads."""
         game_ids: set[str] = set()
         if isinstance(payload, dict):
@@ -179,18 +192,19 @@ class PreviewCrawler:
             if game_id:
                 game_ids.add(game_id)
             for value in payload.values():
-                game_ids.update(self._extract_embedded_game_ids(value))
+                game_ids.update(PreviewCrawler._extract_embedded_game_ids(value))
         elif isinstance(payload, list):
             for item in payload:
-                game_ids.update(self._extract_embedded_game_ids(item))
+                game_ids.update(PreviewCrawler._extract_embedded_game_ids(item))
         return game_ids
 
-    def _lineup_rows_match_game(self, lineup_rows: list[object], game_id: str) -> bool:
+    @staticmethod
+    def _lineup_rows_match_game(lineup_rows: list[object], game_id: str) -> bool:
         """Return False when KBO returns stale lineup rows for a different game."""
         expected_game_id = normalize_kbo_game_id(game_id)
         if not expected_game_id:
             return False
-        embedded_game_ids = self._extract_embedded_game_ids(lineup_rows)
+        embedded_game_ids = PreviewCrawler._extract_embedded_game_ids(lineup_rows)
         return not embedded_game_ids or embedded_game_ids == {expected_game_id}
 
     async def _fetch_api_json(
@@ -217,7 +231,7 @@ class PreviewCrawler:
                     follow_redirects=True,
                 )
                 response.raise_for_status()
-                payload = self._coerce_api_payload(response.json())
+                payload = PreviewCrawler._coerce_api_payload(response.json())
                 if isinstance(payload, (dict, list)):
                     return payload
                 logger.warning("⚠️ Unexpected response type from %s: %s", url, type(payload).__name__)
@@ -232,7 +246,7 @@ class PreviewCrawler:
         try:
             response = await self.policy.run_with_retry_async(page.request.post, url, form=form, headers=headers)
             if response.ok:
-                payload = self._coerce_api_payload(await response.json())
+                payload = PreviewCrawler._coerce_api_payload(await response.json())
                 if isinstance(payload, (dict, list)):
                     return payload
                 logger.warning("⚠️ Unexpected Playwright response type from %s: %s", url, type(payload).__name__)
@@ -259,13 +273,13 @@ class PreviewCrawler:
                 owns_pool=owns_pool,
             )
 
-            games = self._extract_list_payload(list_data)
+            games = PreviewCrawler._extract_list_payload(list_data)
             if not games:
                 logger.info("ℹ️ No games found or no starting pitchers announced for %s.", game_date)
                 return []
 
             for g in games:
-                preview_data = self._build_preview_payload(g, game_date)
+                preview_data = PreviewCrawler._build_preview_payload(g, game_date)
                 if not preview_data:
                     continue
                 await self._enrich_preview_lineups(g, preview_data, page)
@@ -332,26 +346,27 @@ class PreviewCrawler:
         list_data = await self._fetch_api_json(self.GAME_LIST_URL, list_payload, self.BASE_REFERER, page=page)
         return active_pool, page, owns_pool, list_data
 
-    def _build_preview_payload(self, game_row: dict[str, Any], game_date: str) -> dict[str, Any] | None:
+    @staticmethod
+    def _build_preview_payload(game_row: dict[str, Any], game_date: str) -> dict[str, Any] | None:
         game_id = normalize_kbo_game_id(game_row.get("G_ID"))
         if not game_id:
             return None
-        away_starter = self._extract_starter_name(game_row, "away")
-        home_starter = self._extract_starter_name(game_row, "home")
+        away_starter = PreviewCrawler._extract_starter_name(game_row, "away")
+        home_starter = PreviewCrawler._extract_starter_name(game_row, "home")
         return {
             "game_id": game_id,
             "game_date": game_date,
-            "stadium": self._clean_text(game_row.get("S_NM")) or None,
-            "start_time": self._clean_text(game_row.get("G_TM")) or None,
-            "away_team_name": self._clean_text(game_row.get("AWAY_NM")),
-            "home_team_name": self._clean_text(game_row.get("HOME_NM")),
+            "stadium": PreviewCrawler._clean_text(game_row.get("S_NM")) or None,
+            "start_time": PreviewCrawler._clean_text(game_row.get("G_TM")) or None,
+            "away_team_name": PreviewCrawler._clean_text(game_row.get("AWAY_NM")),
+            "home_team_name": PreviewCrawler._clean_text(game_row.get("HOME_NM")),
             "away_starter": away_starter,
-            "away_starter_id": self._extract_starter_id(game_row, "away"),
+            "away_starter_id": PreviewCrawler._extract_starter_id(game_row, "away"),
             "home_starter": home_starter,
-            "home_starter_id": self._extract_starter_id(game_row, "home"),
-            "start_pitcher_announced": self._to_flag(game_row.get("START_PIT_CK"))
+            "home_starter_id": PreviewCrawler._extract_starter_id(game_row, "home"),
+            "start_pitcher_announced": PreviewCrawler._to_flag(game_row.get("START_PIT_CK"))
             or bool(away_starter and home_starter),
-            "lineup_announced": self._to_flag(game_row.get("LINEUP_CK")),
+            "lineup_announced": PreviewCrawler._to_flag(game_row.get("LINEUP_CK")),
             "away_lineup": [],
             "home_lineup": [],
         }
@@ -375,24 +390,25 @@ class PreviewCrawler:
         if not lineup_data:
             return
         try:
-            self._apply_lineup_payload(preview_data, self._extract_list_payload(lineup_data))
+            PreviewCrawler._apply_lineup_payload(preview_data, PreviewCrawler._extract_list_payload(lineup_data))
         except LINEUP_PARSE_EXCEPTIONS:
             logger.exception("⚠️ Error parsing lineup for %s", preview_data["game_id"])
 
-    def _apply_lineup_payload(self, preview_data: dict[str, Any], lineup_rows: list[dict[str, Any]]) -> None:
-        preview_data["lineup_announced"] = self._extract_lineup_announced(
+    @staticmethod
+    def _apply_lineup_payload(preview_data: dict[str, Any], lineup_rows: list[dict[str, Any]]) -> None:
+        preview_data["lineup_announced"] = PreviewCrawler._extract_lineup_announced(
             lineup_rows,
             fallback=bool(preview_data["lineup_announced"]),
         )
-        if not self._lineup_rows_match_game(lineup_rows, preview_data["game_id"]):
+        if not PreviewCrawler._lineup_rows_match_game(lineup_rows, preview_data["game_id"]):
             logger.warning("⚠️ Ignoring stale lineup payload for %s", preview_data["game_id"])
             return
         if not preview_data["lineup_announced"]:
             return
         if len(lineup_rows) > 3:
-            preview_data["home_lineup"] = self._parse_lineup_grid(lineup_rows[3])
+            preview_data["home_lineup"] = PreviewCrawler._parse_lineup_grid(lineup_rows[3])
         if len(lineup_rows) > 4:
-            preview_data["away_lineup"] = self._parse_lineup_grid(lineup_rows[4])
+            preview_data["away_lineup"] = PreviewCrawler._parse_lineup_grid(lineup_rows[4])
 
     @staticmethod
     def _log_preview_result(preview_data: dict[str, Any]) -> None:
@@ -405,7 +421,8 @@ class PreviewCrawler:
             len(preview_data["home_lineup"]),
         )
 
-    def _parse_lineup_grid(self, grid_str_list: list[str]) -> list[dict[str, str]]:
+    @staticmethod
+    def _parse_lineup_grid(grid_str_list: list[str]) -> list[dict[str, str]]:
         """Parses the nested KBO Lineup grid JSON string into a structured list."""
         lineup = []
         if not grid_str_list or not isinstance(grid_str_list, list):

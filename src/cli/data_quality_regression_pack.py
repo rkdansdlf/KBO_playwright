@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Run data quality regression invariants")
     parser.add_argument(
         "--database-url",

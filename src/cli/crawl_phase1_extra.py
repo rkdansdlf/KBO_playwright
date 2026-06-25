@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_broadcast(*, save: bool = False) -> None:
+    """Runs broadcast."""
     from src.crawlers.broadcast_crawler import BroadcastCrawler
 
     crawler = BroadcastCrawler()
@@ -20,6 +21,12 @@ async def run_broadcast(*, save: bool = False) -> None:
 
 
 async def run_game_mvp(game_ids: list[str] | None = None, *, save: bool = False) -> None:
+    """Runs game mvp.
+
+    Args:
+        game_ids: Game Ids.
+
+    """
     from src.crawlers.game_mvp_crawler import GameMvpCrawler
 
     crawler = GameMvpCrawler()
@@ -27,6 +34,7 @@ async def run_game_mvp(game_ids: list[str] | None = None, *, save: bool = False)
 
 
 async def run_injury(*, save: bool = False) -> None:
+    """Runs injury."""
     from src.crawlers.injury_crawler import InjuryCrawler
 
     crawler = InjuryCrawler()
@@ -34,6 +42,7 @@ async def run_injury(*, save: bool = False) -> None:
 
 
 async def run_foreign_player(*, save: bool = False) -> None:
+    """Runs foreign player."""
     from src.crawlers.foreign_player_crawler import ForeignPlayerCrawler
 
     crawler = ForeignPlayerCrawler()
@@ -41,6 +50,7 @@ async def run_foreign_player(*, save: bool = False) -> None:
 
 
 async def run_manager_change(*, save: bool = False) -> None:
+    """Runs manager change."""
     from src.crawlers.manager_change_crawler import ManagerChangeCrawler
 
     crawler = ManagerChangeCrawler()
@@ -48,6 +58,7 @@ async def run_manager_change(*, save: bool = False) -> None:
 
 
 async def run_fan_culture(*, save: bool = False) -> None:
+    """Runs fan culture."""
     from src.crawlers.fan_culture_crawler import FanCultureCrawler
 
     crawler = FanCultureCrawler()
@@ -55,6 +66,7 @@ async def run_fan_culture(*, save: bool = False) -> None:
 
 
 def seed_stadium_info() -> None:
+    """Seeds stadium info."""
     from scripts.seed_stadium_info import seed_stadium_info
 
     seed_stadium_info()
@@ -85,6 +97,7 @@ async def run_all(*, save: bool = False) -> None:
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Phase 1 Supplementary Crawlers")
     parser.add_argument(
         "--type",

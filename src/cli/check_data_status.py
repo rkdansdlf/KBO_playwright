@@ -207,6 +207,15 @@ def check_futures_data(session: Session) -> dict[str, Any]:
 
 
 def check_game_data(session: Session) -> dict[str, Any]:
+    """Checks game data.
+
+    Args:
+        session: Session.
+
+    Returns:
+        Dictionary result.
+
+    """
     from src.models.game import PlayerGameBatting, PlayerGamePitching
 
     logger.info("\n=== Game-Level Stats ===")

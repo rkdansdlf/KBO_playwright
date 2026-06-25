@@ -101,6 +101,15 @@ def _percentile(sorted_vals: list[int], pct: float) -> int:
 
 
 def compute_length_stats(chunks: list[dict]) -> dict[str, Any]:
+    """Computes length stats.
+
+    Args:
+        chunks: Chunks.
+
+    Returns:
+        Dictionary result.
+
+    """
     lengths = sorted(len(c["content"]) for c in chunks)
     if not lengths:
         return {"count": 0, "avg": 0, "min": 0, "max": 0, "p50": 0, "p95": 0}
@@ -116,10 +125,28 @@ def compute_length_stats(chunks: list[dict]) -> dict[str, Any]:
 
 
 def count_empty_chunks(chunks: list[dict]) -> int:
+    """Handles the count empty chunks operation.
+
+    Args:
+        chunks: Chunks.
+
+    Returns:
+        Integer result.
+
+    """
     return sum(1 for c in chunks if not c["content"].strip())
 
 
 def count_stub_chunks(chunks: list[dict]) -> int:
+    """Handles the count stub chunks operation.
+
+    Args:
+        chunks: Chunks.
+
+    Returns:
+        Integer result.
+
+    """
     return sum(1 for c in chunks if 0 < len(c["content"].strip()) < MIN_CHUNK_LENGTH)
 
 
@@ -142,6 +169,15 @@ def find_duplicates(chunks: list[dict]) -> tuple[int, list[str]]:
 
 
 def keyword_coverage(chunks: list[dict]) -> float:
+    """Handles the keyword coverage operation.
+
+    Args:
+        chunks: Chunks.
+
+    Returns:
+        float instance.
+
+    """
     if not chunks:
         return 0.0
     with_kw = sum(1 for c in chunks if c["meta"].get("keywords"))
@@ -149,10 +185,28 @@ def keyword_coverage(chunks: list[dict]) -> float:
 
 
 def category_distribution(chunks: list[dict]) -> Counter:
+    """Handles the category distribution operation.
+
+    Args:
+        chunks: Chunks.
+
+    Returns:
+        Counter instance.
+
+    """
     return Counter(c["meta"].get("category", "unknown") for c in chunks)
 
 
 def chunks_per_source(chunks: list[dict]) -> dict[str, int]:
+    """Handles the chunks per source operation.
+
+    Args:
+        chunks: Chunks.
+
+    Returns:
+        Dictionary result.
+
+    """
     dist: dict[str, int] = defaultdict(int)
     for c in chunks:
         src = c["meta"].get("source", c["source_table"] or "unknown")
@@ -284,6 +338,7 @@ def remove_duplicate_chunks(session: Session) -> int:
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO RAG chunk quality verifier")
     parser.add_argument(
         "--source",

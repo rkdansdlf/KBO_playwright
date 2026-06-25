@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class QualityRegressionResult:
+    """QualityRegressionResult class."""
+
     check_id: str
     description: str
     status: str
@@ -25,6 +27,12 @@ class QualityRegressionResult:
     sample_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        """Handles the to dict operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "check_id": self.check_id,
             "description": self.description,
@@ -37,21 +45,47 @@ class QualityRegressionResult:
 
 @dataclass(frozen=True)
 class QualityRegressionReport:
+    """QualityRegressionReport class."""
+
     results: tuple[QualityRegressionResult, ...]
 
     @property
     def ok(self) -> bool:
+        """Handles the ok operation.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         return all(result.status != "fail" for result in self.results)
 
     @property
     def check_count(self) -> int:
+        """Checks count.
+
+        Returns:
+            Integer result.
+
+        """
         return len(self.results)
 
     @property
     def failure_count(self) -> int:
+        """Handles the failure count operation.
+
+        Returns:
+            Integer result.
+
+        """
         return sum(1 for result in self.results if result.status == "fail")
 
     def to_dict(self) -> dict[str, Any]:
+        """Handles the to dict operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "ok": self.ok,
             "check_count": self.check_count,
@@ -258,6 +292,15 @@ def run_regression_pack(conn: Connection, checks: Sequence[_SqlCheck] = _CHECKS)
 
 
 def render_regression_report(report: QualityRegressionReport) -> str:
+    """Reports render regression.
+
+    Args:
+        report: Report.
+
+    Returns:
+        String result.
+
+    """
     lines = [
         f"Data quality regression pack: {'PASS' if report.ok else 'FAIL'}",
         f"Checks: {report.check_count}",
@@ -273,6 +316,15 @@ def render_regression_report(report: QualityRegressionReport) -> str:
 
 
 def report_to_json(report: QualityRegressionReport) -> str:
+    """Reports to json.
+
+    Args:
+        report: Report.
+
+    Returns:
+        String result.
+
+    """
     return json.dumps(report.to_dict(), ensure_ascii=False)
 
 

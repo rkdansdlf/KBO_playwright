@@ -100,6 +100,7 @@ class FanCultureCrawler:
     """
 
     def __init__(self, season: int | None = None, max_results_per_team: int = 50) -> None:
+        """Initializes a new instance."""
         self.season = season or datetime.now(KST).year
         self.max_results = max_results_per_team
         self.client = YouTubeAPIClient()

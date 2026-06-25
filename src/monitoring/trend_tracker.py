@@ -21,10 +21,22 @@ QUALITY_REPORT_DIR = Path("logs/quality_reports")
 
 
 class TrendTracker:
+    """TrendTracker class."""
+
     def __init__(self, report_dir: str | Path = QUALITY_REPORT_DIR) -> None:
+        """Initializes a new instance."""
         self.report_dir = Path(report_dir)
 
     def load_reports(self, days: int = 30) -> list[dict]:
+        """Loads reports.
+
+        Args:
+            days: Days.
+
+        Returns:
+            List of results.
+
+        """
         reports_by_date: dict[str, dict] = {}
         cutoff = datetime.now(KST) - timedelta(days=days)
         if not self.report_dir.exists():
@@ -45,6 +57,16 @@ class TrendTracker:
         return sorted(reports_by_date.values(), key=lambda r: r["_report_date"])
 
     def get_trend(self, metric_key: str, days: int = 7) -> dict[str, Any]:
+        """Gets trend.
+
+        Args:
+            metric_key: Metric Key.
+            days: Days.
+
+        Returns:
+            Dictionary result.
+
+        """
         reports = self.load_reports(days=days)
         values = []
         for r in reports:
@@ -63,6 +85,16 @@ class TrendTracker:
         return {"metric": metric_key, "values": values, "direction": direction}
 
     def detect_degradations(self, threshold_map: dict[str, float], days: int = 14) -> list[dict]:
+        """Handles the detect degradations operation.
+
+        Args:
+            threshold_map: Threshold Map.
+            days: Days.
+
+        Returns:
+            List of results.
+
+        """
         alerts = []
         reports = self.load_reports(days=days)
         if len(reports) < 2:
@@ -116,6 +148,12 @@ class TrendTracker:
         return ""
 
     def print_trend_summary(self, days: int = 14) -> None:
+        """Prints trend summary.
+
+        Args:
+            days: Days.
+
+        """
         reports = self.load_reports(days=days)
         if not reports:
             logger.info("[TrendTracker] No quality reports found in last %s days.", days)

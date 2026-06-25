@@ -90,6 +90,15 @@ def _compute_min_ip_outs(session: Session, season: int) -> int:
 
 
 def rebuild_rankings(season: int) -> int:
+    """Handles the rebuild rankings operation.
+
+    Args:
+        season: Season year.
+
+    Returns:
+        Integer result.
+
+    """
     with SessionLocal() as session:
         batting_rows = (
             session.query(PlayerSeasonBatting)
@@ -173,6 +182,7 @@ def rebuild_rankings(season: int) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Rebuild supported stat_rankings")
     parser.add_argument("--year", type=int, required=True, help="Season year to rebuild")
     args = parser.parse_args(argv)

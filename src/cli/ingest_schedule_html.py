@@ -80,6 +80,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Iterable[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     ingest_schedule_html(args)

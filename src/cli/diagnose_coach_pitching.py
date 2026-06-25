@@ -84,6 +84,7 @@ def _print_text_report(rows: list[dict]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Trace completed-game Coach starter/bullpen data by game.")
     parser.add_argument("--date", help="Completed game date to inspect (YYYYMMDD)")
     parser.add_argument(

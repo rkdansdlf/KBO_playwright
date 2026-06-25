@@ -156,6 +156,14 @@ def save_baserunning_stats(
     year: int | None = None,
     db_path: str | None = None,
 ) -> None:
+    """Saves baserunning stats.
+
+    Args:
+        player_list: Player List.
+        year: Season year.
+        db_path: Db file path.
+
+    """
     if year is None:
         year = datetime.now(KST).year
     if db_path is None:

@@ -8,11 +8,23 @@ from .base import NormalizedRelayResult, RelaySourceAdapter, events_have_minimum
 
 
 class NaverRelayAdapter(RelaySourceAdapter):
+    """NaverRelayAdapter class."""
+
     def __init__(self, crawler: RelayCrawler | None = None) -> None:
+        """Initializes a new instance."""
         super().__init__("naver")
         self.crawler = crawler or RelayCrawler()
 
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
+        """Fetches game.
+
+        Args:
+            game_id: Game ID.
+
+        Returns:
+            NormalizedRelayResult instance.
+
+        """
         result = await self.crawler.crawl_game_relay(game_id)
         events = list((result or {}).get("events") or [])
         raw_pbp_rows = list((result or {}).get("raw_pbp_rows") or [])

@@ -148,6 +148,8 @@ def _inning_regression_warnings(
 
 @dataclass
 class OutCountContext:
+    """OutCountContext class."""
+
     index: int
     outs: int | None
     inning: int | None

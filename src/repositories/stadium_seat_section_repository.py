@@ -13,10 +13,22 @@ if TYPE_CHECKING:
 
 
 class StadiumSeatSectionRepository:
+    """StadiumSeatSectionRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save(self, data: dict) -> StadiumSeatSection:
+        """Saves save.
+
+        Args:
+            data: Data.
+
+        Returns:
+            StadiumSeatSection instance.
+
+        """
         stadium_id = data["stadium_id"]
         name = data.get("section_name", "")
         code = data.get("section_code")
@@ -42,6 +54,15 @@ class StadiumSeatSectionRepository:
         return new_record
 
     def get_by_stadium(self, stadium_id: str) -> list[StadiumSeatSection]:
+        """Gets by stadium.
+
+        Args:
+            stadium_id: Stadium ID.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(StadiumSeatSection)
             .where(StadiumSeatSection.stadium_id == stadium_id)
@@ -50,6 +71,15 @@ class StadiumSeatSectionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_cheering_sections(self, stadium_id: str) -> list[StadiumSeatSection]:
+        """Gets cheering sections.
+
+        Args:
+            stadium_id: Stadium ID.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(StadiumSeatSection)
             .where(
@@ -61,6 +91,15 @@ class StadiumSeatSectionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
+        """Saves bulk.
+
+        Args:
+            records: Records.
+
+        Returns:
+            Integer result.
+
+        """
         count = 0
         for data in records:
             self.save(data)

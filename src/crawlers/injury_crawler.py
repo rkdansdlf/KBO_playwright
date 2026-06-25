@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 class InjuryCrawler(NaverNewsCrawlerBase):
+    """InjuryCrawler class."""
+
     KEYWORDS = ["부상", "IL", "전력이탈", "이탈", "재활", "복귀"]
     LABEL = "injury"
 
