@@ -94,3 +94,4 @@ data/kbo_auth_state.json
 /debug_shots
 /.antigravitycli
 data/archive/
+*,cover
