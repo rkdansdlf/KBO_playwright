@@ -29,12 +29,30 @@ UNKNOWN_ID_NAME_RE = re.compile(r"^unknown\s+\d+$", re.IGNORECASE)
 
 
 def normalize_player_name(name: object) -> str:
+    """Normalizes player name.
+
+    Args:
+        name: Name.
+
+    Returns:
+        String result.
+
+    """
     if name is None:
         return ""
     return str(name).strip()
 
 
 def is_invalid_player_name(name: object) -> bool:
+    """Returns whether the invalid player name.
+
+    Args:
+        name: Name.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     normalized = normalize_player_name(name)
     return (
         not normalized
@@ -44,6 +62,15 @@ def is_invalid_player_name(name: object) -> bool:
 
 
 def normalize_player_id(player_id: object) -> int | None:
+    """Normalizes player id.
+
+    Args:
+        player_id: Player ID.
+
+    Returns:
+        The result of the operation.
+
+    """
     if player_id is None:
         return None
     try:
@@ -54,6 +81,15 @@ def normalize_player_id(player_id: object) -> int | None:
 
 
 def validate_player_payload(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
+    """Validates player payload.
+
+    Args:
+        payload: Data payload to process.
+
+    Returns:
+        Tuple result.
+
+    """
     player_id = normalize_player_id(payload.get("player_id"))
     if player_id is None:
         return False, "invalid_player_id"
@@ -73,6 +109,15 @@ def validate_player_payload(payload: Mapping[str, Any]) -> tuple[bool, str | Non
 def filter_valid_player_payloads(
     payloads: Iterable[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], Counter]:
+    """Filters valid player payloads.
+
+    Args:
+        payloads: Payloads.
+
+    Returns:
+        Tuple result.
+
+    """
     filtered: list[dict[str, Any]] = []
     reasons: Counter = Counter()
 

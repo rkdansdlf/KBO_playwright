@@ -109,13 +109,26 @@ class NaverSearchClient:
     """
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.client_id = os.getenv("NAVER_CLIENT_ID", "")
         self.client_secret = os.getenv("NAVER_CLIENT_SECRET", "")
 
     def _is_configured(self) -> bool:
+        """Handles the is configured operation.
+
+        Returns:
+            True if the condition is met, False otherwise.
+
+        """
         return bool(self.client_id and self.client_secret)
 
     def _headers(self) -> dict[str, Any]:
+        """Handles the headers operation.
+
+        Returns:
+            Dictionary mapping.
+
+        """
         return {
             "X-Naver-Client-Id": self.client_id,
             "X-Naver-Client-Secret": self.client_secret,

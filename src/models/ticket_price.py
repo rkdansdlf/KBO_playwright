@@ -46,4 +46,5 @@ class TicketPrice(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<TicketPrice(team='{self.team_id}', grade='{self.seat_grade}', price={self.price})>"

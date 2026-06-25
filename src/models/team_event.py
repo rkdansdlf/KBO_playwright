@@ -69,4 +69,5 @@ class TeamEvent(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<TeamEvent(id={self.id}, title='{self.title}', scope='{self.event_scope}', status='{self.status}')>"

@@ -44,9 +44,16 @@ class PlayerProfileParsed(BaseModel):
 
     @property
     def education_path(self) -> list[str]:
+        """Handles the education path operation.
+
+        Returns:
+            List of results.
+
+        """
         return self.education_or_career_path
 
     def __getitem__(self, item: str) -> object:
+        """Returns the item at the given key."""
         if item == "education_path":
             return self.education_path
         if hasattr(self, item):
@@ -54,6 +61,16 @@ class PlayerProfileParsed(BaseModel):
         raise KeyError(item)
 
     def get(self, item: str, default: object = None) -> object:
+        """Gets get.
+
+        Args:
+            item: Item.
+            default: Default.
+
+        Returns:
+            object instance.
+
+        """
         try:
             return self[item]
         except KeyError:
@@ -100,6 +117,15 @@ POS_MAP = {
 
 
 def _clean(s: str | None) -> str:
+    """Handles the clean operation.
+
+    Args:
+        s: S.
+
+    Returns:
+        String result.
+
+    """
     if not s:
         return ""
     # Normalize whitespaces

@@ -94,6 +94,19 @@ def _score_regression_warnings(
     prev_home_score: int,
     prev_away_score: int,
 ) -> list[str]:
+    """Handles the score regression warnings operation.
+
+    Args:
+        index: Index.
+        home_score: Home Score.
+        away_score: Away Score.
+        prev_home_score: Prev Home Score.
+        prev_away_score: Prev Away Score.
+
+    Returns:
+        List of results.
+
+    """
     warnings = []
     if home_score < prev_home_score:
         warnings.append(f"event_{index}: home_score decreased {prev_home_score}->{home_score}")
@@ -109,6 +122,19 @@ def _inning_regression_warnings(
     prev_inning: int | None,
     prev_half: str | None,
 ) -> list[str]:
+    """Handles the inning regression warnings operation.
+
+    Args:
+        index: Index.
+        inning: Inning number.
+        half: Half.
+        prev_inning: Prev Inning.
+        prev_half: Prev Half.
+
+    Returns:
+        List of results.
+
+    """
     if prev_inning is None:
         return []
     if inning < prev_inning:
@@ -132,6 +158,15 @@ class OutCountContext:
 
 
 def _out_count_warnings(ctx: OutCountContext) -> list[str]:
+    """Handles the out count warnings operation.
+
+    Args:
+        ctx: Ctx.
+
+    Returns:
+        List of results.
+
+    """
     if ctx.outs is None or ctx.prev_outs is None:
         return []
     if ctx.outs < 0 or ctx.outs > MAX_OUTS:
@@ -148,6 +183,17 @@ def _out_count_warnings(ctx: OutCountContext) -> list[str]:
 
 
 def _event_sequence_warnings(index: int, event: dict[str, Any], events: list[dict[str, Any]]) -> list[str]:
+    """Handles the event sequence warnings operation.
+
+    Args:
+        index: Index.
+        event: Event.
+        events: List of events.
+
+    Returns:
+        List of results.
+
+    """
     seq = event.get("event_seq")
     if seq is None or index <= 0:
         return []
@@ -251,6 +297,16 @@ def validate_pbp_payload(
 
 
 def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[str, Any]]) -> str | None:
+    """Validates pbp innings.
+
+    Args:
+        events: List of events.
+        raw_pbp_rows: Raw Pbp Rows.
+
+    Returns:
+        The result of the operation.
+
+    """
     innings_in_pbp = sorted({row.get("inning") for row in raw_pbp_rows if row.get("inning") is not None})
     if not innings_in_pbp:
         innings_in_pbp = sorted({event.get("inning") for event in events if event.get("inning") is not None})
@@ -270,6 +326,16 @@ def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[
 
 
 def _validate_pbp_final_score(game: Game, events: list[dict[str, Any]]) -> str | None:
+    """Validates pbp final score.
+
+    Args:
+        game: Game.
+        events: List of events.
+
+    Returns:
+        The result of the operation.
+
+    """
     db_home_score = game.home_score
     db_away_score = game.away_score
 
@@ -287,6 +353,15 @@ def _validate_pbp_final_score(game: Game, events: list[dict[str, Any]]) -> str |
 
 
 def _last_pbp_score(events: list[dict[str, Any]]) -> tuple[int, int] | None:
+    """Handles the last pbp score operation.
+
+    Args:
+        events: List of events.
+
+    Returns:
+        The result of the operation.
+
+    """
     for event in reversed(events):
         h_sc = event.get("home_score")
         a_sc = event.get("away_score")

@@ -51,4 +51,5 @@ class RagChunk(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<RagChunk(id={self.id}, source='{self.source_table}', title='{self.title}')>"

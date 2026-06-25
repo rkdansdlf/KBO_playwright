@@ -78,6 +78,15 @@ def parse_innings(value: str | None) -> float:
 
 
 def _parse_fraction_innings(cleaned: str) -> int | None:
+    """Parses fraction innings.
+
+    Args:
+        cleaned: Cleaned.
+
+    Returns:
+        The result of the operation.
+
+    """
     frac_match = re.match(r"^(\d+)\s+(\d+)/(\d+)$", cleaned)
     if frac_match:
         whole = int(frac_match.group(1))
@@ -93,6 +102,15 @@ def _parse_fraction_innings(cleaned: str) -> int | None:
 
 
 def _parse_decimal_innings(cleaned: str) -> int | None:
+    """Parses decimal innings.
+
+    Args:
+        cleaned: Cleaned.
+
+    Returns:
+        The result of the operation.
+
+    """
     if "." not in cleaned:
         return None
     try:
@@ -134,6 +152,15 @@ def parse_innings_to_outs(text: str | None) -> int | None:
 
 
 def _clean_innings_text(text: str | None) -> str | None:
+    """Handles the clean innings text operation.
+
+    Args:
+        text: Input text content.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not text:
         return None
     cleaned = str(text).strip().replace("⅓", " 1/3").replace("⅔", " 2/3").strip()
@@ -143,6 +170,15 @@ def _clean_innings_text(text: str | None) -> str | None:
 
 
 def _parse_colon_innings(cleaned: str) -> int:
+    """Parses colon innings.
+
+    Args:
+        cleaned: Cleaned.
+
+    Returns:
+        Integer result.
+
+    """
     parts = cleaned.split(":")
     innings = int(parts[0])
     remainder = int(parts[1]) if len(parts) > 1 else 0

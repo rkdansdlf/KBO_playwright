@@ -131,6 +131,7 @@ class TeamMapper:
     """팀명 매핑 관리 클래스."""
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.static_mapping = self._get_static_mapping()
         self.oci_mapping = {}
         self.year_specific_mapping = {}
@@ -185,6 +186,15 @@ class TeamMapper:
             return True
 
     def _load_team_history_rows(self, oci_url: str) -> list[Sequence[object]] | None:
+        """Loads team history rows.
+
+        Args:
+            oci_url: Oci URL.
+
+        Returns:
+            The result of the operation.
+
+        """
         engine = create_engine(oci_url)
         session_maker = sessionmaker(bind=engine)
         session = session_maker()
@@ -204,6 +214,12 @@ class TeamMapper:
 
     @staticmethod
     def _log_team_history_columns(session: Session) -> None:
+        """Logs team history columns.
+
+        Args:
+            session: Database session.
+
+        """
         try:
             structure_query = text("""
                 SELECT column_name
@@ -218,6 +234,15 @@ class TeamMapper:
 
     @staticmethod
     def _query_team_history(session: Session) -> list[Sequence[object]] | None:
+        """Handles the query team history operation.
+
+        Args:
+            session: Database session.
+
+        Returns:
+            The result of the operation.
+
+        """
         for index, query_sql in enumerate(TEAM_HISTORY_QUERIES, start=1):
             try:
                 session.rollback()
@@ -231,10 +256,22 @@ class TeamMapper:
         return None
 
     def _apply_oci_mapping_rows(self, rows: Iterable[Sequence[object]]) -> None:
+        """Handles the apply oci mapping rows operation.
+
+        Args:
+            rows: Rows.
+
+        """
         for row in rows:
             self._apply_oci_mapping_row(row)
 
     def _apply_oci_mapping_row(self, row: Sequence[object]) -> None:
+        """Handles the apply oci mapping row operation.
+
+        Args:
+            row: Row.
+
+        """
         team_name = row[0]
         team_code = row[1]
         try:
@@ -248,6 +285,15 @@ class TeamMapper:
             self._add_mapping_for_years(franchise, team_code, start_year, end_year)
 
     def _add_mapping_for_years(self, team_name: str, team_code: str, start_year: int, end_year: int) -> None:
+        """Adds mapping for years.
+
+        Args:
+            team_name: Team Name.
+            team_code: Team code identifier.
+            start_year: Start Year.
+            end_year: End Year.
+
+        """
         self.oci_mapping[team_name] = team_code
         for year in range(start_year, end_year + 1):
             self.year_specific_mapping.setdefault(year, {})[team_name] = team_code
@@ -271,6 +317,16 @@ class TeamMapper:
 
     def _resolve_team_code(self, team_name: str, year: int | None = None) -> str | None:
         # 1.5 Standard Resolution via team_codes (Superior to static/fuzzy)
+        """Resolves team code.
+
+        Args:
+            team_name: Team Name.
+            year: Season year.
+
+        Returns:
+            The result of the operation.
+
+        """
         resolved = resolve_team_code(team_name, year)
         if resolved:
             return resolved
@@ -296,6 +352,15 @@ class TeamMapper:
 
     @staticmethod
     def _partial_fuzzy_match(team_name: str) -> str | None:
+        """Handles the partial fuzzy match operation.
+
+        Args:
+            team_name: Team Name.
+
+        Returns:
+            The result of the operation.
+
+        """
         for pattern, code in HISTORICAL_PATTERNS.items():
             if pattern in team_name or team_name in pattern:
                 return code
@@ -303,6 +368,16 @@ class TeamMapper:
 
     @staticmethod
     def _year_specific_fuzzy_match(team_name: str, year: int | None = None) -> str | None:
+        """Handles the year specific fuzzy match operation.
+
+        Args:
+            team_name: Team Name.
+            year: Season year.
+
+        Returns:
+            The result of the operation.
+
+        """
         if not year:
             return None
         if year <= 1985:
@@ -315,6 +390,15 @@ class TeamMapper:
 
     @staticmethod
     def _early_kbo_fuzzy_match(team_name: str) -> str | None:
+        """Handles the early kbo fuzzy match operation.
+
+        Args:
+            team_name: Team Name.
+
+        Returns:
+            The result of the operation.
+
+        """
         if "MBC" in team_name or "청룡" in team_name:
             return "LG"
         if "해태" in team_name or "타이거즈" in team_name:
@@ -327,6 +411,15 @@ class TeamMapper:
 
     @staticmethod
     def _nineties_fuzzy_match(team_name: str) -> str | None:
+        """Handles the nineties fuzzy match operation.
+
+        Args:
+            team_name: Team Name.
+
+        Returns:
+            The result of the operation.
+
+        """
         if "빙그레" in team_name:
             return "BE"
         if "태평양" in team_name:
@@ -335,6 +428,15 @@ class TeamMapper:
 
     @staticmethod
     def _late_nineties_fuzzy_match(team_name: str) -> str | None:
+        """Handles the late nineties fuzzy match operation.
+
+        Args:
+            team_name: Team Name.
+
+        Returns:
+            The result of the operation.
+
+        """
         if "현대" in team_name:
             return "HU"
         if "쌍방울" in team_name:

@@ -27,6 +27,15 @@ _GAME_ID_RE = re.compile(r"^(\d{8})([A-Z]+)(\d)$")
 
 
 def parse_schedule_date(value: object) -> date | None:
+    """Parses schedule date.
+
+    Args:
+        value: Value.
+
+    Returns:
+        The result of the operation.
+
+    """
     text = str(value or "").replace("-", "").strip()
     if len(text) != DATE_STR_LEN or not text.isdigit():
         return None
@@ -37,6 +46,15 @@ def parse_schedule_date(value: object) -> date | None:
 
 
 def split_schedule_game_id(game_id: object) -> tuple[str, str, str, str] | None:
+    """Splits schedule game id.
+
+    Args:
+        game_id: Game ID.
+
+    Returns:
+        The result of the operation.
+
+    """
     raw = str(game_id or "").strip().upper()
     if not raw:
         return None
@@ -62,6 +80,15 @@ def validate_schedule_game_payload(
     expected_year: int | None = None,
     expected_month: int | None = None,
 ) -> tuple[bool, str | None]:
+    """Validates schedule game payload.
+
+    Args:
+        game: Game.
+
+    Returns:
+        Tuple result.
+
+    """
     game_id_status = _validate_schedule_game_id(game)
     if game_id_status[0] is None:
         return False, game_id_status[1]
@@ -79,6 +106,15 @@ def validate_schedule_game_payload(
 
 
 def _validate_schedule_fields(game: Mapping[str, Any]) -> tuple[bool, str | None]:
+    """Validates schedule fields.
+
+    Args:
+        game: Game.
+
+    Returns:
+        Tuple result.
+
+    """
     for field in ("away_team_code", "home_team_code"):
         if not str(game.get(field) or "").strip():
             return False, f"missing_{field}"
@@ -90,6 +126,15 @@ def _validate_schedule_fields(game: Mapping[str, Any]) -> tuple[bool, str | None
 
 
 def _validate_schedule_game_id(game: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """Validates schedule game id.
+
+    Args:
+        game: Game.
+
+    Returns:
+        Tuple result.
+
+    """
     game_id = str(game.get("game_id") or "").strip()
     if not game_id:
         return None, "missing_game_id"
@@ -102,6 +147,15 @@ def _validate_schedule_date(
     expected_year: int | None,
     expected_month: int | None,
 ) -> tuple[date | None, str | None]:
+    """Validates schedule date.
+
+    Args:
+        game: Game.
+
+    Returns:
+        Tuple result.
+
+    """
     game_date = parse_schedule_date(game.get("game_date"))
     if not game_date:
         return None, "invalid_game_date"
@@ -113,6 +167,16 @@ def _validate_schedule_date(
 
 
 def _validate_schedule_id_date(game_id: str, game_date: date) -> str | None:
+    """Validates schedule id date.
+
+    Args:
+        game_id: Game ID.
+        game_date: Game Date.
+
+    Returns:
+        The result of the operation.
+
+    """
     id_parts = split_schedule_game_id(game_id)
     if not id_parts:
         return "invalid_game_id"
@@ -123,6 +187,15 @@ def _validate_schedule_id_date(game_id: str, game_date: date) -> str | None:
 
 
 def is_detail_candidate_game(game: Mapping[str, Any], *, today: date | None = None) -> bool:
+    """Returns whether the detail candidate game.
+
+    Args:
+        game: Game.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     game_date = parse_schedule_date(game.get("game_date"))
     if not game_date:
         return False

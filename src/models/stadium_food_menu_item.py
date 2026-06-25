@@ -47,4 +47,5 @@ class StadiumFoodMenuItem(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("vendor_id", "menu_name", name="uq_food_menu_item"),)
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<StadiumFoodMenuItem(vendor_id={self.vendor_id}, menu='{self.menu_name}')>"

@@ -12,13 +12,42 @@ if TYPE_CHECKING:
 
 
 def parse_date_str(value: str, fmt: str = "%Y%m%d") -> date:
+    """Parses date str.
+
+    Args:
+        value: Value.
+        fmt: Fmt.
+
+    Returns:
+        date instance.
+
+    """
     return datetime.strptime(value, fmt).replace(tzinfo=KST).date()
 
 
 def parse_datetime_str(value: str, fmt: str = "%Y%m%d") -> datetime:
+    """Parses datetime str.
+
+    Args:
+        value: Value.
+        fmt: Fmt.
+
+    Returns:
+        datetime instance.
+
+    """
     return datetime.strptime(value, fmt).replace(tzinfo=KST)
 
 
 def normalize_to_date(value: str) -> date:
+    """Normalizes to date.
+
+    Args:
+        value: Value.
+
+    Returns:
+        date instance.
+
+    """
     cleaned = value.replace("-", "").replace("/", "").replace(".", "")
     return datetime.strptime(cleaned, "%Y%m%d").replace(tzinfo=KST).date()

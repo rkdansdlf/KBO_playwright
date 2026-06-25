@@ -19,6 +19,7 @@ class AsyncThrottle:
 
     def __init__(self, delay: float = 1.0, jitter: float = 0.3) -> None:
         # Override with env vars if present
+        """Initializes a new instance."""
         env_delay = os.getenv("KBO_REQUEST_DELAY")
         env_jitter = os.getenv("KBO_REQUEST_JITTER")
 
@@ -29,6 +30,12 @@ class AsyncThrottle:
         self._locks_lock = threading.Lock()
 
     def _get_lock(self) -> asyncio.Lock:
+        """Gets lock.
+
+        Returns:
+            The result of the operation.
+
+        """
         loop = asyncio.get_running_loop()
         loop_id = id(loop)
         if loop_id not in self._locks:
@@ -39,13 +46,31 @@ class AsyncThrottle:
 
     @property
     def default_delay(self) -> float:
+        """Handles the default delay operation.
+
+        Returns:
+            float instance.
+
+        """
         return self._default_delay
 
     @default_delay.setter
     def default_delay(self, val: float) -> None:
+        """Handles the default delay operation.
+
+        Args:
+            val: Val.
+
+        """
         self._default_delay = val
 
     def _get_target_delay(self) -> float:
+        """Gets target delay.
+
+        Returns:
+            float instance.
+
+        """
         current_jitter = random.uniform(-self.jitter / 2, self.jitter)
         return max(0.0, self._default_delay + current_jitter)
 

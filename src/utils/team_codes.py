@@ -93,6 +93,16 @@ KBO_LEGACY_TECHNICAL_CODE = {
 
 
 def resolve_team_code(name: str | None, season_year: int | None = None) -> str | None:
+    """Resolves team code.
+
+    Args:
+        name: Name.
+        season_year: Season Year.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not name:
         return None
     key = " ".join(name.replace("\n", " ").split())
@@ -112,6 +122,16 @@ def resolve_team_code(name: str | None, season_year: int | None = None) -> str |
 
 
 def resolve_kbo_legacy_team_code(name: str | None, season_year: int | None = None) -> str | None:
+    """Resolves kbo legacy team code.
+
+    Args:
+        name: Name.
+        season_year: Season Year.
+
+    Returns:
+        The result of the operation.
+
+    """
     code = resolve_team_code(name, season_year)
     return KBO_LEGACY_TECHNICAL_CODE.get(code or "", code)
 
@@ -196,6 +216,16 @@ GAME_ID_SEGMENT_TO_CODE = {
 
 
 def team_code_from_game_id_segment(segment: str | None, season_year: int | None = None) -> str | None:
+    """Handles the team code from game id segment operation.
+
+    Args:
+        segment: Segment.
+        season_year: Season Year.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not segment:
         return None
     segment = segment.upper()

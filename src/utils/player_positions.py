@@ -106,12 +106,39 @@ def get_primary_position(raw_pos: str | None) -> PositionCode:
 
 
 def is_infield(pos: PositionCode) -> bool:
+    """Returns whether the infield.
+
+    Args:
+        pos: Pos.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     return pos in {PositionCode.B1, PositionCode.B2, PositionCode.B3, PositionCode.SS}
 
 
 def is_outfield(pos: PositionCode) -> bool:
+    """Returns whether the outfield.
+
+    Args:
+        pos: Pos.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     return pos in {PositionCode.LF, PositionCode.CF, PositionCode.RF}
 
 
 def is_battery(pos: PositionCode) -> bool:
+    """Returns whether the battery.
+
+    Args:
+        pos: Pos.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     return pos in {PositionCode.P, PositionCode.C}

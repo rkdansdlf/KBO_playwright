@@ -23,4 +23,5 @@ class KboSeason(Base, TimestampMixin):
     end_date: Mapped[Date | None] = mapped_column(Date, nullable=True, comment="시즌 종료일")
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<KboSeason(season_id={self.season_id}, year={self.season_year}, name='{self.league_type_name}')>"

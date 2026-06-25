@@ -37,4 +37,5 @@ class GameBroadcast(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<GameBroadcast(game={self.game_id}, broadcaster='{self.broadcaster}')>"

@@ -15,6 +15,15 @@ def parse_status_from_text(text: str) -> tuple[str, str | None] | None:
     lowered = text.lower()
 
     def contains(keywords: tuple[str, ...]) -> bool:
+        """Handles the contains operation.
+
+        Args:
+            keywords: Keywords.
+
+        Returns:
+            True if the condition is met, False otherwise.
+
+        """
         return any(keyword in lowered for keyword in keywords)
 
     if contains(PROFILE_MANAGER_KEYWORDS):

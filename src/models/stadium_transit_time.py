@@ -101,6 +101,7 @@ class StadiumTransitTime(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return (
             f"<StadiumTransitTime("
             f"stadium='{self.stadium_code}', "

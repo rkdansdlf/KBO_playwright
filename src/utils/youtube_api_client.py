@@ -119,6 +119,15 @@ class YouTubeVideoItem:
 
 
 def _classify_song_type(title: str) -> str:
+    """Classifies song type.
+
+    Args:
+        title: Title.
+
+    Returns:
+        String result.
+
+    """
     for pattern, song_type in SONG_TYPE_RULES:
         if pattern.search(title):
             return song_type
@@ -126,6 +135,15 @@ def _classify_song_type(title: str) -> str:
 
 
 def _extract_player_name(title: str) -> str | None:
+    """Extracts player name.
+
+    Args:
+        title: Title.
+
+    Returns:
+        The result of the operation.
+
+    """
     m = PLAYER_NAME_PATTERN.search(title)
     return m.group(1) if m else None
 
@@ -139,12 +157,29 @@ class YouTubeAPIClient:
     """
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.api_key = os.getenv("YOUTUBE_API_KEY", "")
 
     def is_configured(self) -> bool:
+        """Returns whether the configured.
+
+        Returns:
+            True if the condition is met, False otherwise.
+
+        """
         return bool(self.api_key)
 
     async def _get(self, endpoint: str, params: dict) -> dict[str, Any]:
+        """Gets  get.
+
+        Args:
+            endpoint: Endpoint.
+            params: Parameters dictionary.
+
+        Returns:
+            Dictionary mapping.
+
+        """
         params["key"] = self.api_key
         url = f"{YOUTUBE_API_BASE}/{endpoint}"
         async with httpx.AsyncClient(timeout=15) as client:

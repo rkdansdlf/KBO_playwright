@@ -43,6 +43,7 @@ class ProcessLock:
         *,
         blocking: bool = True,
     ) -> None:
+        """Initializes a new instance."""
         self.name = name
         self.blocking = blocking
 
@@ -144,6 +145,7 @@ class ProcessLock:
             logger.debug("Released ProcessLock: %s", self.name)
 
     def __enter__(self) -> Self:
+        """Enters the runtime context."""
         if not self.acquire():
             msg = f"Could not acquire ProcessLock: {self.name}"
             raise LockAcquisitionError(msg)
@@ -155,4 +157,5 @@ class ProcessLock:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
+        """Exits the runtime context."""
         self.release()

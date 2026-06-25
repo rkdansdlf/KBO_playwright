@@ -54,4 +54,5 @@ class InjuryEntry(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<InjuryEntry(player='{self.player_name}', team='{self.team_id}', status='{self.status}')>"

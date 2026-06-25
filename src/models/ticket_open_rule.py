@@ -47,4 +47,5 @@ class TicketOpenRule(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<TicketOpenRule(team='{self.team_id}', platform='{self.platform}', offset={self.open_offset_days}d, at={self.open_time})>"

@@ -117,6 +117,7 @@ class PlayerBasic(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<PlayerBasic(player_id={self.player_id}, name='{self.name}', team='{self.team}')>"
 
 
@@ -185,6 +186,7 @@ class Player(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<Player(id={self.id}, status={self.status})>"
 
 
@@ -397,6 +399,7 @@ class PlayerMovement(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<PlayerMovement(date={self.movement_date}, section='{self.section}', player='{self.player_name}')>"
 
 
@@ -436,6 +439,7 @@ class PlayerSeasonFielding(Base, TimestampMixin):
     source: Mapped[str | None] = mapped_column(String(20), nullable=True, default="CRAWLER")
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<PlayerSeasonFielding(player_id={self.player_id}, year={self.year}, pos='{self.position_id}')>"
 
 
@@ -466,4 +470,5 @@ class PlayerSeasonBaserunning(Base, TimestampMixin):
     source: Mapped[str | None] = mapped_column(String(20), nullable=True, default="CRAWLER")
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<PlayerSeasonBaserunning(player_id={self.player_id}, year={self.year})>"
