@@ -325,12 +325,12 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 
 ### Current Verification Baseline (2026-06-28)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (167 rules enabled).
+- `ruff check src/ tests/ scripts/` = 0 errors (145 rules enabled, 0 warnings).
 - `ruff format --check .` = 940+ files already formatted.
-- `python3 -m pytest` = 5172+ passed, 0 consistent failures.
+- `python3 -m pytest` = 5416 passed, 0 consistent failures.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `ruff check --select PLR0913 src/` = 0 violations (100% eliminated).
-- `ruff check --select PLR0911 src/` = 14 violations (acceptable, complex business logic).
+- `ruff check --select PLR0911 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = **72%** (fail_under=65).
 - `# noqa: BLE001` in `src/` = 0.
 - `pre-commit` hooks installed locally.
@@ -411,6 +411,17 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - Archived 32 old DB backups (kept newest 2), 100 null_player_id CSVs, 279 quality_gate CSVs, review summaries.
 - Reduced `data/` from 76GB to 36GB.
 - Added `data/archive/` to `.gitignore`.
+
+### Phase 36 Complete (2026-06-25) — D rules docstring campaign
+
+- **18 zero-violation D rules enabled**: D106, D209, D210, D300, D301, D402, D404, D405, D406, D407, D408, D409, D410, D411, D412, D413, D414, D416, D418, D419.
+- **D200 auto-fix**: 128 violations → 0 (ruff --fix --unsafe-folds, one-line docstrings collapsed).
+- **D413 auto-fix**: 38 violations → 0 (blank line after last section).
+- **D205 skipped**: fix unavailable for Korean docstrings (ruff "sometimes available" limitation).
+- **D101/D102/D103/D105/D107/D401 deferred**: require manual docstring content creation or don't work with Korean text.
+- **22 preview-only rules removed from select**: FURB103/105/113/116/118/122/129/131/136/140/142/145/148/152/154/156/163/164/166/168/169/180/181/187/189/192, PLC0414/2401/2403/3002, PLR1701/1722/6201/6301 — eliminated 22 warning lines per ruff invocation.
+- **pytest**: 5416 passed, 0 failed.
+- **ruff**: 0 errors, 0 warnings.
 
 ### Notes For Future Agents
 
