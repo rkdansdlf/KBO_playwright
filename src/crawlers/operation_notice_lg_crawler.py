@@ -13,17 +13,16 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
 from http import HTTPStatus
 
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
+from src.utils.naver_helpers import parse_multi_format_date
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -59,13 +58,7 @@ def _is_urgent(title: str) -> bool:
 
 
 def _parse_date(raw: str) -> datetime | None:
-    """Parse date strings like '2026.06.03' or '2026-06-03'."""
-    for fmt in ("%Y.%m.%d", "%Y-%m-%d", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(raw.strip(), fmt).replace(tzinfo=KST)
-        except ValueError:
-            continue
-    return None
+    return parse_multi_format_date(raw)
 
 
 def _extract_article_id(href: str) -> str | None:

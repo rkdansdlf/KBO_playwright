@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import logging
 import re
 from datetime import datetime
@@ -12,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.crawlers.base_naver_crawler import NaverNewsCrawlerBase
 from src.db.engine import SessionLocal
 from src.repositories.injury_repository import InjuryRepository
+from src.utils.naver_helpers import build_naver_sports_url, parse_iso_date
 
 logger = logging.getLogger(__name__)
 
@@ -73,14 +73,11 @@ class InjuryCrawler(NaverNewsCrawlerBase):
                 break
 
         pub_date = article.get("dateTime", "")
-        injury_date = None
-        if pub_date:
-            with contextlib.suppress(ValueError, AttributeError):
-                injury_date = datetime.fromisoformat(pub_date.replace("Z", "+00:00")).date()
+        injury_date = parse_iso_date(pub_date) if pub_date else None
 
         oid = article.get("oid", "")
         aid = article.get("aid", "")
-        url = f"https://sports.news.naver.com/kbaseball/news/read?oid={oid}&aid={aid}" if oid and aid else ""
+        url = build_naver_sports_url(oid, aid)
 
         return {
             "player_name": player_name,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import logging
 import re
 from datetime import datetime
@@ -9,10 +8,10 @@ from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import KST
 from src.crawlers.base_naver_crawler import NaverNewsCrawlerBase
 from src.db.engine import SessionLocal
 from src.repositories.foreign_player_repository import ForeignPlayerRepository
+from src.utils.naver_helpers import NAVER_TEAM_MAP, build_naver_sports_url, parse_iso_date
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +19,6 @@ logger = logging.getLogger(__name__)
 class ForeignPlayerCrawler(NaverNewsCrawlerBase):
     KEYWORDS = ["외국인", "대체", "교체", "방출", "영입", "재계약", "웨이버", "퇴출"]
     LABEL = "foreign player change"
-
-    TEAM_MAP: dict[str, str] = {
-        "LG": "LG",
-        "KT": "KT",
-        "NC": "NC",
-        "두산": "DB",
-        "롯데": "LT",
-        "삼성": "SS",
-        "키움": "KH",
-        "한화": "HH",
-        "KIA": "KIA",
-        "SSG": "SSG",
-    }
 
     def _parse_article(self, article: dict) -> dict[str, Any] | None:
         text = (article.get("title", "") or "") + " " + (article.get("subContent", "") or "")
@@ -113,7 +99,7 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
         return None
 
     def _extract_team_id(self, text: str) -> str | None:
-        for kr, code in self.TEAM_MAP.items():
+        for kr, code in NAVER_TEAM_MAP.items():
             if kr in text:
                 return code
         return None
@@ -137,18 +123,12 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
         return None
 
     @staticmethod
-    def _parse_date(pub_date: str) -> object:
-        if not pub_date:
-            return None
-        with contextlib.suppress(ValueError, AttributeError):
-            return datetime.fromisoformat(pub_date.replace("Z", "+00:00")).date()
-        return None
+    def _parse_date(pub_date: str) -> date:
+        return parse_iso_date(pub_date)
 
     @staticmethod
     def _build_naver_url(oid: str, aid: str) -> str:
-        if oid and aid:
-            return f"https://sports.news.naver.com/kbaseball/news/read?oid={oid}&aid={aid}"
-        return ""
+        return build_naver_sports_url(oid, aid)
 
     def _save_to_db(self, data: list[dict]) -> None:
         session = SessionLocal()
