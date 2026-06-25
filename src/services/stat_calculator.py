@@ -32,7 +32,6 @@ class BattingStatCalculator:
         avg = round(h / ab, 3) if ab > 0 else 0.0
 
         # 2. OBP (On-Base Percentage)
-        # Formula: (H + BB + HBP) / (AB + BB + HBP + SF)
         obp_denom = ab + bb + hbp + sf
         obp = round((h + bb + hbp) / obp_denom, 3) if obp_denom > 0 else 0.0
 
@@ -49,7 +48,6 @@ class BattingStatCalculator:
         iso = round(slg - avg, 3)
 
         # 6. BABIP (Batting Average on Balls In Play)
-        # Formula: (H - HR) / (AB - SO - HR + SF)
         babip_denom = ab - so - hr + sf
         babip = round((h - hr) / babip_denom, 3) if babip_denom > 0 else 0.0
 
@@ -128,11 +126,9 @@ class PitchingStatCalculator:
         hbp = data.get("hit_batters", 0) or 0
 
         # 1. ERA (Earned Run Average)
-        # ERA = (ER / IP) * 9
         era = round((er / ip) * 9, 2) if ip > 0 else 0.0
 
         # 2. WHIP (Walks + Hits per Innings Pitched)
-        # WHIP = (BB + H) / IP
         whip = round((bb + h) / ip, 2) if ip > 0 else 0.0
 
         # 3. K/9 (Strikeouts per 9 innings)
