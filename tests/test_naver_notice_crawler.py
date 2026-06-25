@@ -15,9 +15,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from src.crawlers.operation_notice_common import classify_notice as _classify, is_urgent as _is_urgent
 from src.crawlers.operation_notice_naver_crawler import (
-    _classify,
-    _is_urgent,
     _result_to_notice,
 )
 from src.utils.naver_search_client import (

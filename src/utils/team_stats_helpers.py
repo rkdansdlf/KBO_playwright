@@ -1,3 +1,5 @@
+"""유틸리티: team stats helpers."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -81,7 +83,9 @@ def parse_team_stats_html(
     stat_rows = extract_team_stat_rows(table)
     results: list[dict[str, Any]] = []
     for row in stat_rows:
-        payload = _parse_one_team_row(row, indexes, season, league, team_mapping, stat_fields, float_fields, value_parser)
+        payload = _parse_one_team_row(
+            row, indexes, season, league, team_mapping, stat_fields, float_fields, value_parser
+        )
         if payload is not None:
             results.append(payload)
     return results

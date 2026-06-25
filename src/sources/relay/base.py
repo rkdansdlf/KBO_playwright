@@ -1,3 +1,5 @@
+"""데이터 소스: base."""
+
 from __future__ import annotations
 
 import csv

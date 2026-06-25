@@ -1,3 +1,5 @@
+"""데이터 모델: team event."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

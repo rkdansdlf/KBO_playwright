@@ -1,3 +1,5 @@
+"""데이터 모델: stadium info."""
+
 from __future__ import annotations
 
 from sqlalchemy import JSON, Boolean, Float, Integer, String, Text

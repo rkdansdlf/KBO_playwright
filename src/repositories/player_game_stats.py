@@ -1,3 +1,5 @@
+"""player game stats 모듈."""
+
 from __future__ import annotations
 
 from collections import defaultdict

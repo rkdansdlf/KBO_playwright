@@ -1,3 +1,5 @@
+"""데이터 모델: matchup."""
+
 from __future__ import annotations
 
 from sqlalchemy import (

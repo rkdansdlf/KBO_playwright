@@ -1,3 +1,5 @@
+"""CLI 명령: crawl stadium food."""
+
 from __future__ import annotations
 
 import argparse

@@ -1,3 +1,5 @@
+"""wpa calculator 모듈."""
+
 from __future__ import annotations
 
 import logging
@@ -29,8 +31,7 @@ class WpaInput:
 
 class WPACalculator:
     def __init__(self, matrix_path: str | None = None) -> None:
-        """Initialize calculator with Win Expectancy Matrix from CSV.
-        """
+        """Initialize calculator with Win Expectancy Matrix from CSV."""
         if matrix_path is None:
             # Default path relative to project root
             base_dir = Path(__file__).resolve().parent.parent.parent
@@ -126,8 +127,7 @@ class WPACalculator:
         )
 
     def _fallback_formula(self, inning: int, *, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
-        """Legacy logistic formula for edge cases not covered by matrix.
-        """
+        """Legacy logistic formula for edge cases not covered by matrix."""
         import math
 
         # End Game Conditions

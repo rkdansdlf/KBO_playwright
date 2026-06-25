@@ -1,3 +1,5 @@
+"""season stat aggregator 집계기."""
+
 from __future__ import annotations
 
 import logging
@@ -92,8 +94,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """Aggregate batting stats for all players in a season/series in a single query.
-        """
+        """Aggregate batting stats for all players in a season/series in a single query."""
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         logger.info("🚀 [BULK] Aggregating batting stats for %s %s...", year, series)
 
@@ -202,8 +203,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """Aggregate pitching stats for all players in a season/series in a single query.
-        """
+        """Aggregate pitching stats for all players in a season/series in a single query."""
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         logger.info("🚀 [BULK] Aggregating pitching stats for %s %s...", year, series)
 
@@ -258,8 +258,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
-        """Aggregate cumulative baserunning stats from game batting stats.
-        """
+        """Aggregate cumulative baserunning stats from game batting stats."""
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
 
         query = (
@@ -296,8 +295,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """Aggregate baserunning stats for all players in bulk.
-        """
+        """Aggregate baserunning stats for all players in bulk."""
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         logger.info("🚀 [BULK] Aggregating baserunning stats for %s %s...", year, series)
 
@@ -336,8 +334,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """Aggregate fielding stats for all players and positions in bulk.
-        """
+        """Aggregate fielding stats for all players and positions in bulk."""
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         logger.info("🚀 [BULK] Aggregating fielding stats for %s %s...", year, series)
 

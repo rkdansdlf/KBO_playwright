@@ -1,3 +1,5 @@
+"""유틸리티: playwright helpers."""
+
 from __future__ import annotations
 
 import logging

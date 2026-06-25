@@ -1,3 +1,5 @@
+"""CLI 명령: backfill advanced stats."""
+
 from __future__ import annotations
 
 import logging

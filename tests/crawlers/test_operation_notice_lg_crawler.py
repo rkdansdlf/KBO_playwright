@@ -3,11 +3,10 @@ from src.constants import KST
 
 from datetime import datetime
 
+from src.crawlers.operation_notice_common import classify_notice as _classify_notice, is_urgent as _is_urgent
 from src.crawlers.operation_notice_lg_crawler import (
     OperationNoticeLGCrawler,
-    _classify_notice,
     _extract_article_id,
-    _is_urgent,
     _parse_date,
 )
 

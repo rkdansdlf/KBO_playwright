@@ -1,3 +1,5 @@
+"""데이터 모델: roster transaction."""
+
 from __future__ import annotations
 
 from datetime import date
