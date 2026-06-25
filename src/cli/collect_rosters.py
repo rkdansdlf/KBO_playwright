@@ -1,4 +1,4 @@
-"""Daily Roster Collector CLI
+"""Daily Roster Collector CLI.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """Crawler for daily roster transactions (call-up / send-down).
 Sources:
   - KBO mobile registration page: https://m.koreabaseball.com/Kbo/PlayerAdd.aspx
-  - KBO player register page: https://www.koreabaseball.com/Player/Register.aspx
+  - KBO player register page: https://www.koreabaseball.com/Player/Register.aspx.
 """
 
 from __future__ import annotations

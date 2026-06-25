@@ -1,4 +1,4 @@
-"""KBO Pipeline Auto-Healer
+"""KBO Pipeline Auto-Healer.
 
 Two healing modes:
 

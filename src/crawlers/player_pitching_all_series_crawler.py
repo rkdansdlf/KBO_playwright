@@ -1,4 +1,4 @@
-"""KBO 전체 시리즈 투수 기록 크롤러
+"""KBO 전체 시리즈 투수 기록 크롤러.
 
 요구사항 요약:
 1. https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx 페이지에서
@@ -192,7 +192,7 @@ def wait_for_table(page: Page, timeout: int = 30000) -> None:
 
 
 def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None = None) -> bool:
-    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
+    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복).
     """
     try:
         # 1→2,3,4,5→다음→6,7,8,9,10→다음 패턴
@@ -334,7 +334,7 @@ class PitcherStats:
     extra_stats: dict[str, object] = field(default_factory=lambda: {"rankings": {}})
 
     def to_repository_payload(self) -> dict[str, object | None]:
-        """타자 크롤러 방식의 단순 데이터 구조"""
+        """타자 크롤러 방식의 단순 데이터 구조."""
         data = {
             "player_id": self.player_id,
             "player_name": self.player_name,

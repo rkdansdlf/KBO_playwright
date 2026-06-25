@@ -1,4 +1,4 @@
-"""verify_chunk_quality.py
+"""verify_chunk_quality.py.
 
 CLI tool to measure and report the quality of RAG chunks stored in the local SQLite database.
 

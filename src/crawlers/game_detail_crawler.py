@@ -1236,7 +1236,7 @@ class GameDetailCrawler:
         return await page.evaluate(script, selector)
 
     async def _extract_game_summary(self, page: Page) -> list[dict[str, str]]:
-        """Extracts game summary details from #tblEtc (Winning hit, HR, Errors, Umpires, etc.)"""
+        """Extracts game summary details from #tblEtc (Winning hit, HR, Errors, Umpires, etc.)."""
         selector = GAME_DETAIL.etc_table
         if not await page.query_selector(selector):
             return []
