@@ -243,7 +243,7 @@ class TicketCrawler:
             return []
 
         try:
-            async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True, verify=False) as c:
+            async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as c:
                 host = urlparse(url).hostname or "koreabaseball.com"
                 await throttle.wait(host)
                 resp = await c.get(url)

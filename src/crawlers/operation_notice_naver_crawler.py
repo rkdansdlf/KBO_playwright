@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -26,7 +27,7 @@ from src.repositories.operation_notice_repository import OperationNoticeReposito
 from src.utils.naver_search_client import NaverSearchClient, NaverSearchResult
 
 if TYPE_CHECKING:
-    from datetime import date, datetime
+    from datetime import date
 
 logger = logging.getLogger(__name__)
 

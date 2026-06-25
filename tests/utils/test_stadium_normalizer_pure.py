@@ -49,5 +49,5 @@ class TestStadiumMap:
     def test_major_stadiums_present(self):
         assert "잠실" in STADIUM_MAP
         assert "문학" in STADIUM_MAP
-        assert "고�" in STADIUM_MAP
+        assert "고척" in STADIUM_MAP
         assert "수원" in STADIUM_MAP
