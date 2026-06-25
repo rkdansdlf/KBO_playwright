@@ -915,16 +915,27 @@ def _collect_pitcher_basic2_additional(ctx: Basic2AdditionalContext) -> None:
         logger.warning("⚠️  Basic2 페이지 설정 실패. 추가 지표 없이 종료합니다.")
         return
 
+    league = ctx.series_info.get("league", ctx.league_name)
+
     for display_name, sort_code in BASIC2_SORT_SEQUENCE:
         if not apply_sort(ctx.page, display_name, sort_code, policy=ctx.policy):
             continue
         wait_for_table(ctx.page)
 
+        page_ctx = Basic2PageContext(
+            page=ctx.page,
+            season=ctx.year,
+            league=league,
+            pitchers=ctx.pitchers,
+            sort_key=display_name,
+            max_players=ctx.limit,
+        )
+
         page_number = 1
         total_processed = 0
 
         while True:
-            processed = parse_basic2_page(ctx)
+            processed = parse_basic2_page(page_ctx)
             total_processed += processed
 
             if not go_to_next_page(ctx.page, page_number, policy=ctx.policy):
