@@ -36,8 +36,5 @@ class Franchise(Base, TimestampMixin):
     metadata_json: Mapped[dict] = mapped_column(JSON, nullable=True, comment="Owner, CEO, Found Date, etc.")
     web_url: Mapped[str] = mapped_column(String(255), nullable=True, comment="KBO Team Info URL")
 
-    # Relationship to Teams
-    # teams: Mapped[list["Team"]] = relationship(back_populates="franchise")
-
     def __repr__(self) -> str:
         return f"<Franchise(code='{self.original_code}', current='{self.current_code}')>"
