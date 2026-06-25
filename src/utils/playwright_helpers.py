@@ -18,6 +18,16 @@ logger = logging.getLogger(__name__)
 
 
 def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
+    """Handles the goto next page operation.
+
+    Args:
+        page: Playwright page object.
+        policy: Policy.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     try:
         pagination = page.query_selector(".paging")
         if not pagination:

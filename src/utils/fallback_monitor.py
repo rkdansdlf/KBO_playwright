@@ -60,6 +60,15 @@ class FallbackMonitor:
 
         class DateTimeEncoder(json.JSONEncoder):
             def default(self, o: object) -> object:
+                """Handles the default operation.
+
+                Args:
+                    o: O.
+
+                Returns:
+                    object instance.
+
+                """
                 if isinstance(o, (datetime, date)):
                     return o.isoformat()
                 return super().default(o)

@@ -85,4 +85,5 @@ class StadiumSeatSection(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<StadiumSeatSection(stadium='{self.stadium_id}', name='{self.section_name}')>"

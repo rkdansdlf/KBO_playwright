@@ -103,6 +103,12 @@ class AtBatContext:
 
 
 def _needs_new_at_bat(*, ctx: AtBatContext) -> bool:
+    """Handles the needs new at bat operation.
+
+    Returns:
+        True if the condition is met, False otherwise.
+
+    """
     return (
         (ctx.current_batter_key is not None and ctx.current_batter_key[:2] != (ctx.inning, ctx.half))
         or (ctx.batter_name and ctx.current_batter is not None and ctx.batter_name != ctx.current_batter)
@@ -112,6 +118,16 @@ def _needs_new_at_bat(*, ctx: AtBatContext) -> bool:
 
 
 def _event_role(event_type: str, description: str) -> str:
+    """Handles the event role operation.
+
+    Args:
+        event_type: Event Type.
+        description: Description.
+
+    Returns:
+        String result.
+
+    """
     if event_type in AT_BAT_TERMINAL_EVENTS:
         desc_clean = description.replace(" ", "")
         if "구" in desc_clean and not any(kw in desc_clean for kw in ["안타", "아웃", "홈런", "볼넷", "삼진"]):

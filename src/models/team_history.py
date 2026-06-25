@@ -36,4 +36,5 @@ class TeamHistory(Base, TimestampMixin):
     color: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<TeamHistory(season={self.season}, name='{self.team_name}')>"

@@ -41,6 +41,7 @@ class Team(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<Team(team_id='{self.team_id}', name='{self.team_name}')>"
 
 
@@ -83,6 +84,7 @@ class TeamDailyRoster(Base, TimestampMixin):
     # But position string is descriptive.
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<Roster({self.roster_date}, {self.team_code}, {self.player_name})>"
 
 
@@ -106,6 +108,7 @@ class TeamCodeMap(Base, TimestampMixin):
     is_canonical: Mapped[bool] = mapped_column(Boolean, default=False, comment="Is this the modern canonical code?")
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<TeamCodeMap(season={self.season}, code='{self.curr_code}', franchise={self.franchise_id})>"
 
 

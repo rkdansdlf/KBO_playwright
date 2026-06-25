@@ -24,6 +24,7 @@ class ComplianceChecker:
     _instance: ComplianceChecker | None = None
 
     def __init__(self, robots_url: str = "https://www.koreabaseball.com/robots.txt") -> None:
+        """Initializes a new instance."""
         self.robots_url = robots_url
         self.parser = urllib.robotparser.RobotFileParser()
         self.last_fetch_time = 0
@@ -32,6 +33,12 @@ class ComplianceChecker:
 
     @classmethod
     def get_instance(cls) -> ComplianceChecker:
+        """Gets instance.
+
+        Returns:
+            ComplianceChecker instance.
+
+        """
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance

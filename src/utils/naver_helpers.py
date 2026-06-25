@@ -22,6 +22,15 @@ NAVER_TEAM_MAP: dict[str, str] = {
 
 
 def parse_iso_date(pub_date: str) -> date | None:
+    """Parses iso date.
+
+    Args:
+        pub_date: Pub Date.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not pub_date:
         return None
     with contextlib.suppress(ValueError, AttributeError):
@@ -30,6 +39,15 @@ def parse_iso_date(pub_date: str) -> date | None:
 
 
 def parse_multi_format_date(raw: str) -> datetime | None:
+    """Parses multi date.
+
+    Args:
+        raw: Raw.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not raw:
         return None
     for fmt in ("%Y.%m.%d", "%Y-%m-%d", "%Y/%m/%d"):
@@ -41,6 +59,16 @@ def parse_multi_format_date(raw: str) -> datetime | None:
 
 
 def build_naver_sports_url(oid: str, aid: str) -> str:
+    """Builds naver sports url.
+
+    Args:
+        oid: Oid.
+        aid: Aid.
+
+    Returns:
+        String result.
+
+    """
     if oid and aid:
         return f"https://sports.news.naver.com/kbaseball/news/read?oid={oid}&aid={aid}"
     return ""

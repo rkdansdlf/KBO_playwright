@@ -26,4 +26,5 @@ class EmbeddingCache(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this object."""
         return f"<EmbeddingCache(model='{self.model_name}', hash='{self.text_hash[:8]}')>"
