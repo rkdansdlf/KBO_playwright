@@ -1,4 +1,5 @@
 """AST-based docstring generator for KBO Playwright codebase."""
+
 from __future__ import annotations
 import argparse
 import ast
@@ -7,27 +8,88 @@ import sys
 from pathlib import Path
 
 VERB_MAP = {
-    "save": "Saves", "add": "Adds", "insert": "Inserts", "upsert": "Inserts or updates",
-    "update": "Updates", "delete": "Deletes", "remove": "Removes", "get": "Gets",
-    "fetch": "Fetches", "find": "Finds", "lookup": "Looks up", "search": "Searches for",
-    "retrieve": "Retrieves", "crawl": "Crawls", "scrape": "Scrapes", "parse": "Parses",
-    "extract": "Extracts", "build": "Builds", "create": "Creates", "make": "Makes",
-    "generate": "Generates", "compute": "Computes", "calculate": "Calculates",
-    "aggregate": "Aggregates", "normalize": "Normalizes", "format": "Formats",
-    "validate": "Validates", "verify": "Verifies", "check": "Checks", "resolve": "Resolves",
-    "determine": "Determines", "derive": "Derives", "classify": "Classifies", "filter": "Filters",
-    "transform": "Transforms", "convert": "Converts", "map": "Maps", "reduce": "Reduces",
-    "load": "Loads", "dump": "Dumps", "read": "Reads", "write": "Writes", "send": "Sends",
-    "receive": "Receives", "sync": "Syncs", "merge": "Merges", "split": "Splits",
-    "run": "Runs", "execute": "Executes", "process": "Processes", "handle": "Handles",
-    "dispatch": "Dispatches", "emit": "Emits", "log": "Logs", "print": "Prints",
-    "report": "Reports", "alert": "Alerts", "notify": "Notifies", "enrich": "Enriches",
-    "augment": "Augments", "backfill": "Backfills", "repair": "Repairs", "fix": "Fixes",
-    "heal": "Heals", "recalc": "Recalculates", "recompute": "Recalculates", "seed": "Seeds",
-    "initialize": "Initializes", "init": "Initializes", "setup": "Sets up",
-    "configure": "Configures", "reset": "Resets", "clear": "Clears", "cleanup": "Cleans up",
-    "purge": "Purges", "archive": "Archives", "collect": "Collects", "gather": "Gathers",
-    "prepare": "Prepares", "ensure": "Ensures", "wait": "Waits for", "expect": "Expects",
+    "save": "Saves",
+    "add": "Adds",
+    "insert": "Inserts",
+    "upsert": "Inserts or updates",
+    "update": "Updates",
+    "delete": "Deletes",
+    "remove": "Removes",
+    "get": "Gets",
+    "fetch": "Fetches",
+    "find": "Finds",
+    "lookup": "Looks up",
+    "search": "Searches for",
+    "retrieve": "Retrieves",
+    "crawl": "Crawls",
+    "scrape": "Scrapes",
+    "parse": "Parses",
+    "extract": "Extracts",
+    "build": "Builds",
+    "create": "Creates",
+    "make": "Makes",
+    "generate": "Generates",
+    "compute": "Computes",
+    "calculate": "Calculates",
+    "aggregate": "Aggregates",
+    "normalize": "Normalizes",
+    "format": "Formats",
+    "validate": "Validates",
+    "verify": "Verifies",
+    "check": "Checks",
+    "resolve": "Resolves",
+    "determine": "Determines",
+    "derive": "Derives",
+    "classify": "Classifies",
+    "filter": "Filters",
+    "transform": "Transforms",
+    "convert": "Converts",
+    "map": "Maps",
+    "reduce": "Reduces",
+    "load": "Loads",
+    "dump": "Dumps",
+    "read": "Reads",
+    "write": "Writes",
+    "send": "Sends",
+    "receive": "Receives",
+    "sync": "Syncs",
+    "merge": "Merges",
+    "split": "Splits",
+    "run": "Runs",
+    "execute": "Executes",
+    "process": "Processes",
+    "handle": "Handles",
+    "dispatch": "Dispatches",
+    "emit": "Emits",
+    "log": "Logs",
+    "print": "Prints",
+    "report": "Reports",
+    "alert": "Alerts",
+    "notify": "Notifies",
+    "enrich": "Enriches",
+    "augment": "Augments",
+    "backfill": "Backfills",
+    "repair": "Repairs",
+    "fix": "Fixes",
+    "heal": "Heals",
+    "recalc": "Recalculates",
+    "recompute": "Recalculates",
+    "seed": "Seeds",
+    "initialize": "Initializes",
+    "init": "Initializes",
+    "setup": "Sets up",
+    "configure": "Configures",
+    "reset": "Resets",
+    "clear": "Clears",
+    "cleanup": "Cleans up",
+    "purge": "Purges",
+    "archive": "Archives",
+    "collect": "Collects",
+    "gather": "Gathers",
+    "prepare": "Prepares",
+    "ensure": "Ensures",
+    "wait": "Waits for",
+    "expect": "Expects",
 }
 
 MAGIC_DOCSTRINGS = {
@@ -287,10 +349,7 @@ def _generate_function_docstring(node):
     elif name.startswith("is_"):
         property_name = _humanize(name[3:])
         summary = f"Returns whether the {property_name}."
-    elif name.startswith("has_"):
-        property_name = _humanize(name[4:])
-        summary = f"Returns whether the {property_name}."
-    elif name.startswith("can_"):
+    elif name.startswith("has_") or name.startswith("can_"):
         property_name = _humanize(name[4:])
         summary = f"Returns whether the {property_name}."
     elif name.startswith("should_"):
@@ -364,7 +423,11 @@ def _process_directory(dirpath):
     for pyfile in sorted(dirpath.rglob("*.py")):
         if "investigations" in pyfile.parts:
             continue
-        changes = _process_file(pyfile)
+        try:
+            changes = _process_file(pyfile)
+        except (IndentationError, SyntaxError) as e:
+            all_changes.append(f"\n{pyfile}: SKIPPED ({type(e).__name__}: {e})")
+            continue
         if changes:
             all_changes.append(f"\n{pyfile}:")
             all_changes.extend(changes)
