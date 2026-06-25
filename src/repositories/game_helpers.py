@@ -272,7 +272,6 @@ def _resolve_schedule_season_id(
 
     season_year = _coerce_int(game_data.get("season_year"))
     game_date_obj = _resolve_game_date_obj(game_data.get("game_date"))
-
     if game_date_obj is not None:
         season_year = game_date_obj.year
         mapped = _query_db_season_by_date_range(session, season_year, game_date_obj)
@@ -281,10 +280,17 @@ def _resolve_schedule_season_id(
         mapped = _apply_season_date_rules(session, season_year, game_date_obj)
         if mapped is not None:
             return mapped
+    return _resolve_season_id_fallback(session, game_data, existing_season_id, season_year)
 
+
+def _resolve_season_id_fallback(
+    session: Session,
+    game_data: dict[str, Any],
+    existing_season_id: int | None,
+    season_year: int | None,
+) -> int | None:
     if season_year is None:
         return existing_season_id
-
     league_type_code = _resolve_league_type_code(game_data.get("season_type"))
     mapped = _query_db_season_by_code(session, season_year, league_type_code)
     if mapped is not None:
@@ -622,6 +628,10 @@ def _derive_game_status(status_input: DerivedGameStatusInput | None = None, **kw
         return _resolve_terminal_status(status_input.home_score, status_input.away_score)
     if status_input.game_date and status_input.game_date > status_input.today:
         return GAME_STATUS_SCHEDULED
+    return _derive_in_progress_status(status_input)
+
+
+def _derive_in_progress_status(status_input: DerivedGameStatusInput) -> str:
     has_any_detail = (
         status_input.has_inning_scores
         or status_input.has_lineups
