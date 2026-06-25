@@ -1,3 +1,5 @@
+"""모니터링: fallback monitor."""
+
 from __future__ import annotations
 
 import json
@@ -19,8 +21,7 @@ class FallbackMonitor:
 
     @staticmethod
     def log_fallback(year: int, series: str, stat_type: str, reason: str, player_count: int | None = None) -> None:
-        """폴백 이벤트 로그 기록 및 알림 전송.
-        """
+        """폴백 이벤트 로그 기록 및 알림 전송."""
         msg = f"🔄 [FALLBACK TRIGGERED] {year} {series} {stat_type} fallback initiated. Reason: {reason}"
         if player_count is not None:
             msg += f" (Processed {player_count} players)"
@@ -100,8 +101,7 @@ class FallbackMonitor:
 
     @staticmethod
     def save_audit_event(category: str, event_type: str, data: dict) -> None:
-        """Saves an audit event (e.g. warning, abort) to logs/audit_fixes/{date}_{event_type}_{category}.json.
-        """
+        """Saves an audit event (e.g. warning, abort) to logs/audit_fixes/{date}_{event_type}_{category}.json."""
         from pathlib import Path
 
         project_root = Path(__file__).resolve().parent.parent.parent

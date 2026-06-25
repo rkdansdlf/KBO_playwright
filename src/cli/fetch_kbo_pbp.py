@@ -1,3 +1,5 @@
+"""CLI 명령: fetch kbo pbp."""
+
 from __future__ import annotations
 
 import argparse

@@ -1,3 +1,5 @@
+"""데이터 모델: ticket open rule."""
+
 from __future__ import annotations
 
 from datetime import time

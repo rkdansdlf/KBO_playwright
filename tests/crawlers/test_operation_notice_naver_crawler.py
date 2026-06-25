@@ -3,10 +3,9 @@ from src.constants import KST
 
 from datetime import datetime
 
+from src.crawlers.operation_notice_common import classify_notice as _classify, is_urgent as _is_urgent
 from src.crawlers.operation_notice_naver_crawler import (
-    _classify,
     _infer_game_date,
-    _is_urgent,
     _result_to_notice,
 )
 from src.utils.naver_search_client import NaverSearchResult

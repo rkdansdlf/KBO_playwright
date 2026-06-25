@@ -194,32 +194,32 @@ class TestOperationNoticeRepositoryRead:
 
 class TestNoticeCrawlerHelpers:
     def test_classify_cancel(self):
-        from src.crawlers.operation_notice_lg_crawler import _classify_notice
+        from src.crawlers.operation_notice_common import classify_notice
 
-        assert _classify_notice("경기 우천 취소 안내") == "CANCEL"
-        assert _classify_notice("노게임 처리") == "CANCEL"
+        assert classify_notice("경기 우천 취소 안내") == "CANCEL"
+        assert classify_notice("노게임 처리") == "CANCEL"
 
     def test_classify_gate_change(self):
-        from src.crawlers.operation_notice_lg_crawler import _classify_notice
+        from src.crawlers.operation_notice_common import classify_notice
 
-        assert _classify_notice("게이트 변경 안내") == "GATE_CHANGE"
+        assert classify_notice("게이트 변경 안내") == "GATE_CHANGE"
 
     def test_classify_entry_rule(self):
-        from src.crawlers.operation_notice_lg_crawler import _classify_notice
+        from src.crawlers.operation_notice_common import classify_notice
 
-        assert _classify_notice("입장 제한 사항 안내") == "ENTRY_RULE"
+        assert classify_notice("입장 제한 사항 안내") == "ENTRY_RULE"
 
     def test_classify_general(self):
-        from src.crawlers.operation_notice_lg_crawler import _classify_notice
+        from src.crawlers.operation_notice_common import classify_notice
 
-        assert _classify_notice("홈 개막전 이벤트 안내") == "GENERAL"
+        assert classify_notice("홈 개막전 이벤트 안내") == "GENERAL"
 
     def test_is_urgent_detection(self):
-        from src.crawlers.operation_notice_lg_crawler import _is_urgent
+        from src.crawlers.operation_notice_common import is_urgent
 
-        assert _is_urgent("[긴급] 경기 취소") is True
-        assert _is_urgent("[필독] 주요 공지") is True
-        assert _is_urgent("일반 공지 사항") is False
+        assert is_urgent("[긴급] 경기 취소") is True
+        assert is_urgent("[필독] 주요 공지") is True
+        assert is_urgent("일반 공지 사항") is False
 
     def test_parse_date_formats(self):
         from src.crawlers.operation_notice_lg_crawler import _parse_date
@@ -247,11 +247,11 @@ class TestNoticeCrawlerHelpers:
         assert _extract_article_id("https://example.com/notice/777") == "777"
 
     def test_doosan_classify_cancel(self):
-        from src.crawlers.operation_notice_doosan_crawler import _classify_notice
+        from src.crawlers.operation_notice_common import classify_notice
 
-        assert _classify_notice("경기 취소 공지") == "CANCEL"
+        assert classify_notice("경기 취소 공지") == "CANCEL"
 
     def test_doosan_is_urgent(self):
-        from src.crawlers.operation_notice_doosan_crawler import _is_urgent
+        from src.crawlers.operation_notice_common import is_urgent
 
-        assert _is_urgent("[중요] 필독 공지") is True
+        assert is_urgent("[중요] 필독 공지") is True

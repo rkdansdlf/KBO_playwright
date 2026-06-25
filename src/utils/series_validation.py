@@ -1,3 +1,5 @@
+"""유틸리티: series validation."""
+
 from __future__ import annotations
 
 import logging
@@ -82,8 +84,7 @@ def filter_series_for_year(year: int, requested_series: list[str]) -> list[str]:
 
 
 def get_series_info() -> dict[str, dict]:
-    """시리즈별 상세 정보 반환.
-    """
+    """시리즈별 상세 정보 반환."""
     return {
         "regular": {"name": "KBO 정규시즌", "description": "4월-10월 정규 경기", "since": KBO_FOUNDING_YEAR},
         "exhibition": {"name": "KBO 시범경기", "description": "시즌 전 연습 경기", "since": 1986},

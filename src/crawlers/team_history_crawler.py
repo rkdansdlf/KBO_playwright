@@ -1,3 +1,5 @@
+"""KBO team history crawler 크롤러."""
+
 from __future__ import annotations
 
 import asyncio

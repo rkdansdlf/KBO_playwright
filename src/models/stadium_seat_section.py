@@ -1,3 +1,5 @@
+"""데이터 모델: stadium seat section."""
+
 from __future__ import annotations
 
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint

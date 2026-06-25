@@ -1,3 +1,5 @@
+"""데이터 모델: parking fee rule."""
+
 from __future__ import annotations
 
 from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint

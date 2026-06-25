@@ -1,3 +1,5 @@
+"""CLI 명령: crawl seat sections."""
+
 from __future__ import annotations
 
 import argparse

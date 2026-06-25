@@ -1,3 +1,5 @@
+"""유틸리티: relay text."""
+
 from __future__ import annotations
 
 import re

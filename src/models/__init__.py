@@ -1,3 +1,5 @@
+"""models 패키지."""
+
 from __future__ import annotations
 
 from .award import Award as Award

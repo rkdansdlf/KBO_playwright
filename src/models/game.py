@@ -1,3 +1,5 @@
+"""데이터 모델: game."""
+
 from __future__ import annotations
 
 from sqlalchemy import (

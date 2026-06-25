@@ -1,3 +1,5 @@
+"""CLI 명령: rebuild relay events."""
+
 from __future__ import annotations
 
 import argparse

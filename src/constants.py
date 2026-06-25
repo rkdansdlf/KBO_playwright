@@ -1,3 +1,5 @@
+"""constants 모듈."""
+
 from __future__ import annotations
 
 from http import HTTPStatus

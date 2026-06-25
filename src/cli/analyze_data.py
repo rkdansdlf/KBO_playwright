@@ -1,3 +1,5 @@
+"""CLI 명령: analyze data."""
+
 from __future__ import annotations
 
 import argparse

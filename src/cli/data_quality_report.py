@@ -1,3 +1,5 @@
+"""CLI 명령: data quality report."""
+
 from __future__ import annotations
 
 import logging
