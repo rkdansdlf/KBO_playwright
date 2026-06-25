@@ -8,7 +8,6 @@ import argparse
 import logging
 from typing import TYPE_CHECKING, Any
 
-from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -21,7 +20,12 @@ from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
-from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
+from src.utils.team_stats_helpers import (
+    _parse_one_team_row,
+    get_cell_value,
+    parse_numeric,
+    parse_team_stats_html,
+)
 from src.utils.type_helpers import parse_innings
 
 if TYPE_CHECKING:
@@ -199,60 +203,19 @@ def parse_team_pitching_html(
     league: str,
     team_mapping: dict[str, str],
 ) -> list[dict[str, Any]]:
-    soup = BeautifulSoup(html, "lxml")
-    table = soup.select_one("table.tData01") or soup.select_one("table")
-    if not table:
-        return []
-
-    header_cells = table.select("thead tr th")
-    if not header_cells:
-        header_cells = table.select("tr th")
-    headers = [cell.get_text(strip=True).lower() for cell in header_cells]
-    indexes = _build_column_map(headers)
-    if "team_name" not in indexes:
-        return []
-
-    rows = _extract_stat_rows(table)
-    return [
-        payload
-        for row in rows
-        if (payload := _parse_team_pitching_row(row, indexes, season, league, team_mapping)) is not None
-    ]
+    return parse_team_stats_html(
+        html, season, league, team_mapping, HEADER_MAP, PITCHING_FIELDS, FLOAT_FIELDS,
+        value_parser=_parse_pitching_value,
+    )
 
 
-def _extract_stat_rows(table: Tag) -> list[Tag]:
-    rows = table.select("tbody tr")
-    if rows:
-        return rows
-    return [row for row in table.select("tr") if row.find_all("td")]
+def _parse_pitching_value(header_key: str, value_str: str) -> int | float | str | None:
+    if header_key == "innings_pitched":
+        return parse_innings(value_str)
+    return parse_numeric(value_str, as_float=header_key in FLOAT_FIELDS)
 
 
-def _parse_team_pitching_row(
-    row: Tag,
-    indexes: dict[str, int],
-    season: int,
-    league: str,
-    team_mapping: dict[str, str],
-) -> dict[str, Any] | None:
-    cells = row.find_all("td")
-    if len(cells) < len(indexes):
-        return None
-    team_name = get_cell_value(cells, indexes["team_name"])
-    if not team_name:
-        return None
-    payload: dict[str, Any] = {
-        "team_id": resolve_team_id(team_name, team_mapping) or team_name,
-        "team_name": team_name,
-        "season": season,
-        "league": league,
-    }
-    extras = _add_pitching_values(payload, cells, indexes)
-    if extras:
-        payload["extra_stats"] = extras
-    return payload
-
-
-def _add_pitching_values(payload: dict[str, Any], cells: list[Tag], indexes: dict[str, int]) -> dict[str, Any]:
+def _add_pitching_values(payload: dict[str, Any], cells: list, indexes: dict[str, int]) -> dict[str, Any]:
     extras: dict[str, Any] = {}
     for header_key, idx in indexes.items():
         if header_key == "team_name":
@@ -268,22 +231,10 @@ def _add_pitching_values(payload: dict[str, Any], cells: list[Tag], indexes: dic
     return extras
 
 
-def _parse_pitching_value(header_key: str, value_str: str) -> int | float | str | None:
-    if header_key == "innings_pitched":
-        return parse_innings(value_str)
-    return parse_numeric(value_str, as_float=header_key in FLOAT_FIELDS)
-
-
-def _build_column_map(headers: list[str]) -> dict[str, int]:
-    indexes: dict[str, int] = {}
-    for idx, raw in enumerate(headers):
-        key = raw.strip().lower()
-        normalized = HEADER_MAP.get(key)
-        if normalized:
-            indexes[normalized] = idx
-    if "team_name" not in indexes:
-        indexes["team_name"] = 1 if len(headers) > 1 else 0
-    return indexes
+def _parse_team_pitching_row(
+    row: Tag, indexes: dict[str, int], season: int, league: str, team_mapping: dict[str, str],
+) -> dict[str, Any] | None:
+    return _parse_one_team_row(row, indexes, season, league, team_mapping, PITCHING_FIELDS, FLOAT_FIELDS, _parse_pitching_value)
 
 
 def main() -> None:

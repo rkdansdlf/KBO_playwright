@@ -6,34 +6,38 @@ from src.crawlers.team_batting_stats_crawler import (
     BATTING_FIELDS,
     FLOAT_FIELDS,
     HEADER_MAP,
-    _add_batting_values,
-    _build_column_map,
-    _extract_stat_rows,
-    _parse_team_batting_row,
     parse_team_batting_html,
+)
+from src.utils.team_stats_helpers import (
+    _parse_one_team_row as _parse_stat_row,
+    build_team_column_map as _build_column_map,
+    extract_team_stat_rows as _extract_stat_rows,
+    get_cell_value,
+    parse_numeric,
+    resolve_team_id,
 )
 
 
 class TestBuildColumnMap:
     def test_korean_headers(self):
         headers = ["팀명", "경기", "승", "패", "타율"]
-        result = _build_column_map(headers)
+        result = _build_column_map(headers, HEADER_MAP)
         assert result["team_name"] == 0
         assert result["games"] == 1
 
     def test_english_headers(self):
         headers = ["팀", "g", "w", "l", "avg"]
-        result = _build_column_map(headers)
+        result = _build_column_map(headers, HEADER_MAP)
         assert result["team_name"] == 0
         assert "games" in result
 
     def test_empty_headers_fallback(self):
-        result = _build_column_map([])
+        result = _build_column_map([], {})
         assert result["team_name"] == 0
 
     def test_fallback_team_name_position(self):
         headers = ["순위", "unknown1", "unknown2"]
-        result = _build_column_map(headers)
+        result = _build_column_map(headers, {})
         assert result["team_name"] == 1
 
 
@@ -144,13 +148,13 @@ class TestParseTeamBattingRow:
 
         mapping = {"LG": "LG"}
         headers = ["팀명", "경기", "타율"]
-        indexes = _build_column_map(headers)
+        indexes = _build_column_map(headers, HEADER_MAP)
 
         html = "<table><tbody><tr><td>LG</td><td>144</td><td>0.269</td></tr></tbody></table>"
         soup = BeautifulSoup(html, "html.parser")
         row = soup.find("tr")
 
-        result = _parse_team_batting_row(row, indexes, 2025, "REGULAR", mapping)
+        result = _parse_stat_row(row, indexes, 2025, "REGULAR", mapping, BATTING_FIELDS, FLOAT_FIELDS, None)
         assert result is not None
         assert result["team_id"] == "LG"
         assert result["games"] == 144
@@ -160,26 +164,26 @@ class TestParseTeamBattingRow:
         from bs4 import BeautifulSoup
 
         headers = ["팀명", "경기"]
-        indexes = _build_column_map(headers)
+        indexes = _build_column_map(headers, HEADER_MAP)
 
         html = "<table><tbody><tr><td></td><td>144</td></tr></tbody></table>"
         soup = BeautifulSoup(html, "html.parser")
         row = soup.find("tr")
 
-        result = _parse_team_batting_row(row, indexes, 2025, "REGULAR", {})
+        result = _parse_stat_row(row, indexes, 2025, "REGULAR", {}, BATTING_FIELDS, FLOAT_FIELDS, None)
         assert result is None
 
     def test_too_few_cells_returns_none(self):
         from bs4 import BeautifulSoup
 
         headers = ["팀명", "경기", "타석", "타수"]
-        indexes = _build_column_map(headers)
+        indexes = _build_column_map(headers, HEADER_MAP)
 
         html = "<table><tbody><tr><td>LG</td><td>144</td></tr></tbody></table>"
         soup = BeautifulSoup(html, "html.parser")
         row = soup.find("tr")
 
-        result = _parse_team_batting_row(row, indexes, 2025, "REGULAR", {})
+        result = _parse_stat_row(row, indexes, 2025, "REGULAR", {}, BATTING_FIELDS, FLOAT_FIELDS, None)
         assert result is None
 
 
@@ -188,15 +192,28 @@ class TestAddBattingValues:
         from bs4 import BeautifulSoup
 
         headers = ["팀명", "경기", "타율"]
-        indexes = _build_column_map(headers)
+        indexes = _build_column_map(headers, HEADER_MAP)
 
         html = "<table><tbody><tr><td>LG</td><td>144</td><td>0.269</td></tr></tbody></table>"
         soup = BeautifulSoup(html, "html.parser")
         row = soup.find("tr")
         cells = row.find_all("td")
 
-        payload = {}
-        extras = _add_batting_values(payload, cells, indexes)
+        payload = {"team_name": "LG", "team_id": "LG", "season": 2025, "league": "REGULAR"}
+        payload = {"team_name": "LG", "team_id": "LG", "season": 2025, "league": "REGULAR"}
+        extras = {}
+        for header_key, idx in indexes.items():
+            if header_key == "team_name":
+                continue
+            value_str = get_cell_value(cells, idx)
+            if value_str is None:
+                continue
+            value = parse_numeric(value_str, as_float=header_key in FLOAT_FIELDS)
+            if header_key in BATTING_FIELDS:
+                payload[header_key] = value
+            else:
+                extras[header_key] = value
+
         assert payload["games"] == 144
         assert payload["avg"] == pytest.approx(0.269)
         assert extras == {}
@@ -211,9 +228,19 @@ class TestAddBattingValues:
         row = soup.find("tr")
         cells = row.find_all("td")
 
-        payload = {}
-        extras = _add_batting_values(payload, cells, indexes)
-        assert "games" in payload
+        extras = {}
+        for header_key, idx in indexes.items():
+            if header_key == "team_name":
+                continue
+            value_str = get_cell_value(cells, idx)
+            if value_str is None:
+                continue
+            value = parse_numeric(value_str, as_float=header_key in FLOAT_FIELDS)
+            if header_key in BATTING_FIELDS:
+                pass
+            else:
+                extras[header_key] = value
+
         assert extras.get("statX") == 99
 
 

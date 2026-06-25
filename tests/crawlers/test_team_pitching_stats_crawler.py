@@ -5,35 +5,35 @@ from src.crawlers.team_pitching_stats_crawler import (
     HEADER_MAP,
     PITCHING_FIELDS,
     _add_pitching_values,
-    _build_column_map,
-    _extract_stat_rows,
     _parse_pitching_value,
     _parse_team_pitching_row,
     parse_team_pitching_html,
 )
+from src.utils.team_stats_helpers import build_team_column_map as _build_column_map
+from src.utils.team_stats_helpers import extract_team_stat_rows as _extract_stat_rows
 from src.utils.type_helpers import parse_innings
 
 
 class TestBuildColumnMap:
     def test_korean_headers(self):
         headers = ["팀명", "경기", "승", "패", "방어율"]
-        result = _build_column_map(headers)
+        result = _build_column_map(headers, HEADER_MAP)
         assert result["team_name"] == 0
         assert "games" in result
         assert "era" in result
 
     def test_english_headers(self):
         headers = ["팀", "g", "w", "l", "era"]
-        result = _build_column_map(headers)
+        result = _build_column_map(headers, HEADER_MAP)
         assert result["team_name"] == 0
 
     def test_empty_headers_fallback(self):
-        result = _build_column_map([])
+        result = _build_column_map([], HEADER_MAP)
         assert result["team_name"] == 0
 
     def test_missing_team_name_fallback(self):
         headers = ["a", "b", "c"]
-        result = _build_column_map(headers)
+        result = _build_column_map(headers, {})
         assert result["team_name"] == 1
 
 
@@ -144,7 +144,7 @@ class TestParseTeamPitchingRow:
 
         mapping = {"LG": "LG"}
         headers = ["팀명", "경기", "이닝", "era"]
-        indexes = _build_column_map(headers)
+        indexes = _build_column_map(headers, HEADER_MAP)
 
         html = "<table><tbody><tr><td>LG</td><td>144</td><td>1200.1</td><td>4.50</td></tr></tbody></table>"
         soup = BeautifulSoup(html, "html.parser")
@@ -160,7 +160,7 @@ class TestParseTeamPitchingRow:
         from bs4 import BeautifulSoup
 
         headers = ["팀명", "경기"]
-        indexes = _build_column_map(headers)
+        indexes = _build_column_map(headers, HEADER_MAP)
 
         html = "<table><tbody><tr><td></td><td>144</td></tr></tbody></table>"
         soup = BeautifulSoup(html, "html.parser")
