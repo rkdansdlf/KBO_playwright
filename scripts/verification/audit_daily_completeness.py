@@ -80,7 +80,8 @@ def _coerce_date(raw: str | None) -> date | None:
     if len(text) == 10 and text.count("-") == 2:
         return datetime.strptime(text, "%Y-%m-%d").date()
 
-    raise ValueError(f"Unsupported date format: {raw}. Use YYYYMMDD or YYYY-MM-DD.")
+    msg = f"Unsupported date format: {raw}. Use YYYYMMDD or YYYY-MM-DD."
+    raise ValueError(msg)
 
 
 def _resolve_db_url(raw: str | None) -> str:
@@ -88,7 +89,8 @@ def _resolve_db_url(raw: str | None) -> str:
         env_name = raw[4:]
         db_url = os.getenv(env_name)
         if not db_url:
-            raise ValueError(f"Environment variable {env_name} is not set for --db-url.")
+            msg = f"Environment variable {env_name} is not set for --db-url."
+            raise ValueError(msg)
         return db_url
 
     if raw:

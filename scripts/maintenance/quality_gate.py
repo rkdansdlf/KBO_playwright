@@ -69,7 +69,8 @@ def load_baseline(path: Path) -> dict[str, int]:
     data = json.loads(path.read_text(encoding="utf-8"))
     missing = [key for key in BASELINE_KEYS if key not in data]
     if missing:
-        raise ValueError(f"Baseline file missing keys: {missing}")
+        msg = f"Baseline file missing keys: {missing}"
+        raise ValueError(msg)
     return {k: int(v) for k, v in data.items()}
 
 

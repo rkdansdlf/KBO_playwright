@@ -352,7 +352,8 @@ def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
     }
     method_name = method_by_kind.get(sync_kind)
     if method_name is None:
-        raise ValueError(f"Unsupported realtime OCI sync kind: {sync_kind}")
+        msg = f"Unsupported realtime OCI sync kind: {sync_kind}"
+        raise ValueError(msg)
 
     if not REALTIME_OCI_SYNC_LOCK.acquire(blocking=False):
         logger.warning(
@@ -539,7 +540,8 @@ def _find_detail_gaps(session, start_date: date) -> list[str]:
 def _to_compact_date(value: str) -> str:
     if isinstance(value, str) and len(value) == 8 and value.isdigit():
         return value
-    raise ValueError(f"invalid compact date value: {value!r}")
+    msg = f"invalid compact date value: {value!r}"
+    raise ValueError(msg)
 
 
 def _from_compact_date(value: str) -> date:
