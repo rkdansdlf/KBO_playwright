@@ -266,7 +266,8 @@ class RelayCrawler:
                 status = response.status_code
                 if status in self.PERMANENT_HTTP_ERRORS:
                     raise _PermanentStatusError(status)
-                raise RuntimeError(f"status_{status}")
+                msg = f"status_{status}"
+                raise RuntimeError(msg)
             payload = response.json()
             if not isinstance(payload, dict):
                 msg = "non-object JSON response"
