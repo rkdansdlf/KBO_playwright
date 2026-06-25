@@ -1,6 +1,18 @@
-from unittest.mock import patch
+from __future__ import annotations
 
-from src.cli.gap_report import main, send_gap_alerts
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from src.cli.gap_report import (
+    check_relay_gaps,
+    check_profile_gaps,
+    check_standings_gaps,
+    check_team_stats_gaps,
+    main,
+    run_gap_report,
+    send_gap_alerts,
+)
 
 
 class TestGapReport:
