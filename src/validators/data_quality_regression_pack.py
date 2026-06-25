@@ -207,6 +207,45 @@ _CHECKS: tuple[_SqlCheck, ...] = (
             LIMIT 5
         """,
     ),
+    _SqlCheck(
+        check_id="batting_avg_range",
+        description="Season batting average should be between 0.0 and 1.0",
+        table="player_season_batting",
+        required_columns=("batting_avg",),
+        count_sql="SELECT COUNT(*) FROM player_season_batting WHERE batting_avg < 0 OR batting_avg > 1.0",
+        sample_sql="""
+            SELECT COALESCE(CAST(player_id AS TEXT), ''), batting_avg
+            FROM player_season_batting
+            WHERE batting_avg < 0 OR batting_avg > 1.0
+            LIMIT 5
+        """,
+    ),
+    _SqlCheck(
+        check_id="era_range",
+        description="Season ERA should be between 0.0 and 30.0",
+        table="player_season_pitching",
+        required_columns=("era",),
+        count_sql="SELECT COUNT(*) FROM player_season_pitching WHERE era < 0 OR era > 30.0",
+        sample_sql="""
+            SELECT COALESCE(CAST(player_id AS TEXT), ''), era
+            FROM player_season_pitching
+            WHERE era < 0 OR era > 30.0
+            LIMIT 5
+        """,
+    ),
+    _SqlCheck(
+        check_id="hits_lte_at_bats_season",
+        description="Season hits should not exceed at-bats",
+        table="player_season_batting",
+        required_columns=("hits", "at_bats"),
+        count_sql="SELECT COUNT(*) FROM player_season_batting WHERE hits > at_bats AND at_bats > 0",
+        sample_sql="""
+            SELECT COALESCE(CAST(player_id AS TEXT), ''), hits, at_bats
+            FROM player_season_batting
+            WHERE hits > at_bats AND at_bats > 0
+            LIMIT 5
+        """,
+    ),
 )
 
 
