@@ -138,6 +138,7 @@ def run_recalc(
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Recalculate team cumulative statistics from player stats.")
 
     # We allow --season as a required argument but support --year/--season flexibly

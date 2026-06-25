@@ -73,10 +73,17 @@ class OperationNoticeDoosanCrawler:
     """
 
     def __init__(self, max_pages: int = 5) -> None:
+        """Initializes a new instance."""
         self.max_pages = max_pages
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
+        """Runs run.
+
+        Returns:
+            List of results.
+
+        """
         all_notices: list[dict] = []
         from src.utils.playwright_pool import AsyncPlaywrightPool
 

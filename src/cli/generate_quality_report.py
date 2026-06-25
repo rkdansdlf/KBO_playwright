@@ -456,6 +456,15 @@ def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
 
 
 def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
+    """Gets team stats integrity.
+
+    Args:
+        gate_result: Gate Result.
+
+    Returns:
+        Dictionary result.
+
+    """
     team_batting = gate_result.get("team_batting", {})
     team_pitching = gate_result.get("team_pitching", {})
     batting_ok = team_batting.get("ok", True)
@@ -823,6 +832,7 @@ def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> 
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Generate KBO Daily Quality Report")
     parser.add_argument("--date", type=str, help="Target date YYYYMMDD (defaults to today)")
     parser.add_argument("--notify", action="store_true", help="Send to Telegram if issues found")

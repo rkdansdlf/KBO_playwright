@@ -32,6 +32,8 @@ KST = ZoneInfo("Asia/Seoul")
 
 @dataclass(frozen=True)
 class PregameBackfillDate:
+    """PregameBackfillDate class."""
+
     target_date: str
     scheduled_total: int
     starters_complete: int
@@ -75,6 +77,12 @@ def find_missing_pregame_dates(
     include_complete: bool = False,
     limit_dates: int | None = None,
 ) -> list[PregameBackfillDate]:
+    """Finds missing pregame dates.
+
+    Returns:
+        List of results.
+
+    """
     query = """
         SELECT
             REPLACE(CAST(g.game_date AS TEXT), '-', '') AS target_date,
@@ -146,6 +154,15 @@ def find_missing_pregame_dates(
 
 
 def get_pregame_date_status(target_date: str) -> PregameBackfillDate | None:
+    """Gets pregame date status.
+
+    Args:
+        target_date: Target Date.
+
+    Returns:
+        The result of the operation.
+
+    """
     statuses = find_missing_pregame_dates(
         start_date=target_date,
         end_date=target_date,
@@ -207,6 +224,15 @@ def _log_backfill_result(saved_total: int, failed: list[str], incomplete: list[s
 
 
 async def run_backfill(args: argparse.Namespace) -> int:
+    """Runs run backfill.
+
+    Args:
+        args: Args.
+
+    Returns:
+        Integer result.
+
+    """
     start_date, end_date = _resolve_backfill_range(args)
     targets = find_missing_pregame_dates(
         start_date=start_date,
@@ -247,6 +273,12 @@ async def run_backfill(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Backfill missing scheduled pregame previews")
     parser.add_argument("--start-date", type=_yyyymmdd, help="Start date YYYYMMDD. Defaults to today in KST.")
     parser.add_argument("--end-date", type=_yyyymmdd, help="End date YYYYMMDD. Defaults to today + --days-ahead.")
@@ -269,6 +301,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     return asyncio.run(run_backfill(args))

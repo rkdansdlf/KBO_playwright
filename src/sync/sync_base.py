@@ -72,6 +72,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class GameSyncEligibility:
+    """GameSyncEligibility class."""
+
     parent_game_ids: list[str] = field(default_factory=list)
     detail_game_ids: list[str] = field(default_factory=list)
     relay_game_ids: list[str] = field(default_factory=list)
@@ -81,6 +83,12 @@ class GameSyncEligibility:
     skipped_cancelled: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
+        """Handles the counts operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "skipped_schedule_only": len(self.skipped_schedule_only),
             "skipped_incomplete_detail": len(self.skipped_incomplete_detail),
@@ -91,6 +99,8 @@ class GameSyncEligibility:
 
 @dataclass
 class SyncBatchConfig:
+    """SyncBatchConfig class."""
+
     model: type
     query: Query
     total_count: int
@@ -217,6 +227,15 @@ def load_game_sync_signatures(
     *,
     game_ids: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
+    """Loads game signatures.
+
+    Args:
+        session_or_conn: Session Or Conn.
+
+    Returns:
+        Dictionary result.
+
+    """
     composite_sql = _build_composite_signature_query(game_ids)
     rows = _execute_signature_query(session_or_conn, composite_sql, game_ids=game_ids).mappings().all()
 
@@ -319,6 +338,16 @@ def detect_dirty_game_ids(
     *,
     game_ids: list[str] | None = None,
 ) -> list[str]:
+    """Handles the detect dirty game ids operation.
+
+    Args:
+        local_session_or_conn: Local Session Or Conn.
+        remote_session_or_conn: Remote Session Or Conn.
+
+    Returns:
+        List of results.
+
+    """
     local_signatures = load_game_sync_signatures(local_session_or_conn, game_ids=game_ids)
     remote_signatures = load_game_sync_signatures(remote_session_or_conn, game_ids=list(local_signatures.keys()))
 
@@ -332,6 +361,16 @@ def detect_dirty_game_ids(
 
 
 def filter_game_ids_by_year(game_ids: list[str], year: int | None) -> list[str]:
+    """Filters game ids by year.
+
+    Args:
+        game_ids: Game Ids.
+        year: Season year.
+
+    Returns:
+        List of results.
+
+    """
     if year is None:
         return list(game_ids)
     prefix = str(int(year))

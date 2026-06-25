@@ -11,6 +11,8 @@ from typing import Any
 
 @dataclass
 class ChunkingContext:
+    """ChunkingContext class."""
+
     doc_title: str
     meta: dict[str, Any]
     chunks: list[dict[str, Any]]
@@ -97,6 +99,16 @@ class TextTransformer:
         # 3. Calculate cosine similarity between adjacent sentences
         def cosine_similarity(v1: list[float], v2: list[float]) -> float:
             # Since our embeddings are already L2 normalized: similarity = dot product
+            """Handles the cosine similarity operation.
+
+            Args:
+                v1: V1.
+                v2: V2.
+
+            Returns:
+                float instance.
+
+            """
             return sum(x * y for x, y in zip(v1, v2, strict=False))
 
         similarities = []

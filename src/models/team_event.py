@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class TeamEvent(Base, TimestampMixin):
+    """TeamEvent class."""
+
     __tablename__ = "team_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

@@ -91,6 +91,12 @@ async def fix_player_names(
     save: bool = False,
     sync_oci: bool = False,
 ) -> None:
+    """Fixes player names.
+
+    Args:
+        max_pages: Max Pages.
+
+    """
     logger.info("=" * 60)
     logger.info("Fix Player Names - Re-crawl from KBO Website")
     logger.info("=" * 60)
@@ -118,6 +124,7 @@ async def fix_player_names(
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     _configure_cli_logging()
     parser = argparse.ArgumentParser(description="Fix player names by re-crawling from KBO website")
     parser.add_argument("--crawl", action="store_true", help="Crawl players from website")

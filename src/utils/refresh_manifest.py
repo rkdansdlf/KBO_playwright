@@ -52,6 +52,8 @@ def infer_topics(
 
 @dataclass(frozen=True)
 class RefreshManifestSpec:
+    """RefreshManifestSpec class."""
+
     phase: str
     target_date: str
     game_ids: Iterable[str]

@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class ManagerChangeCrawler(NaverNewsCrawlerBase):
+    """ManagerChangeCrawler class."""
+
     KEYWORDS = ["감독", "선임", "경질", "사임", "대행", "사퇴"]
     LABEL = "manager change"
 

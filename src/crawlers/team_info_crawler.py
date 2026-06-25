@@ -27,6 +27,7 @@ class TeamInfoCrawler:
     BASE_URL = "https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx"
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.browser = None
         self.page = None
         self.playwright = None
@@ -34,6 +35,7 @@ class TeamInfoCrawler:
         self._raw_pages: list[dict] = []
 
     async def start(self) -> None:
+        """Handles the start operation."""
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=True)
         self.context = await self.browser.new_context()
@@ -41,6 +43,7 @@ class TeamInfoCrawler:
         self.page = await self.context.new_page()
 
     async def close(self) -> None:
+        """Handles the close operation."""
         if self.context:
             await self.context.close()
         if self.browser:
@@ -49,6 +52,12 @@ class TeamInfoCrawler:
             await self.playwright.stop()
 
     async def crawl(self, *, save: bool = False) -> list[dict]:
+        """Crawls crawl.
+
+        Returns:
+            List of results.
+
+        """
         logger.info("Crawling Team Info from %s", self.BASE_URL)
         if not self.page:
             await self.start()
@@ -162,6 +171,12 @@ class TeamInfoCrawler:
             logger.info("Saved %d raw snapshots for team info.", count)
 
     async def save(self, data: list[dict]) -> None:
+        """Saves save.
+
+        Args:
+            data: Data.
+
+        """
         logger.info("Saving %d team profiles...", len(data))
         with SessionLocal() as session:
             for item in data:

@@ -66,6 +66,8 @@ NOTICE_QUERIES: list[dict] = [
 
 @dataclass
 class NaverSearchResult:
+    """NaverSearchResult class."""
+
     title: str
     description: str
     link: str

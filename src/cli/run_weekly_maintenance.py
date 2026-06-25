@@ -128,6 +128,12 @@ async def run_weekly_maintenance(
     *,
     sync: bool = False,
 ) -> None:
+    """Runs weekly maintenance.
+
+    Args:
+        profile_limit: Profile Limit.
+
+    """
     logger.info("\n%s", "=" * 60)
     logger.info("🚀 KBO Weekly Maintenance Started: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("%s", "=" * 60)
@@ -154,6 +160,7 @@ async def run_weekly_maintenance(
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Weekly Maintenance Orchestrator")
     parser.add_argument("--profile-limit", type=int, default=200, help="Max profiles to enrich")
     parser.add_argument("--sync", action="store_true", help="Sync updated profiles to OCI")

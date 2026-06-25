@@ -105,11 +105,21 @@ class TeamPitchingStatsCrawler:
     """Collects and persists team-level pitching stats for a season."""
 
     def __init__(self, league: str = "REGULAR", policy: RequestPolicy | None = None) -> None:
+        """Initializes a new instance."""
         self.league = league
         self.repo = TeamSeasonPitchingRepository()
         self.policy = policy or RequestPolicy()
 
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
+        """Crawls crawl.
+
+        Args:
+            season: Season year.
+
+        Returns:
+            List of results.
+
+        """
         mapping = get_team_mapping_for_year(season)
         stats = []
         try:
@@ -201,6 +211,18 @@ def parse_team_pitching_html(
     league: str,
     team_mapping: dict[str, str],
 ) -> list[dict[str, Any]]:
+    """Parses team pitching html.
+
+    Args:
+        html: Html.
+        season: Season year.
+        league: League.
+        team_mapping: Team Mapping.
+
+    Returns:
+        List of results.
+
+    """
     return parse_team_stats_html(
         html,
         season,
@@ -248,6 +270,7 @@ def _parse_team_pitching_row(
 
 
 def main() -> None:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Crawl team-level pitching stats.")
     parser.add_argument("--season", type=int, required=True, help="Season year (e.g., 2023)")
     parser.add_argument("--league", type=str, default="REGULAR", help="League code (default: REGULAR)")

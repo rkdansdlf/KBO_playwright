@@ -19,10 +19,22 @@ _HEADERS = {
 
 
 class DataSourceRepository:
+    """DataSourceRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save(self, data: dict) -> DataSource:
+        """Saves save.
+
+        Args:
+            data: Data.
+
+        Returns:
+            DataSource instance.
+
+        """
         source_key = data["source_key"]
         stmt = select(DataSource).where(DataSource.source_key == source_key)
         existing = self.session.execute(stmt).scalar_one_or_none()
@@ -36,14 +48,41 @@ class DataSourceRepository:
         return new_record
 
     def get_by_key(self, source_key: str) -> DataSource | None:
+        """Gets by key.
+
+        Args:
+            source_key: Source Key.
+
+        Returns:
+            The result of the operation.
+
+        """
         stmt = select(DataSource).where(DataSource.source_key == source_key)
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_by_domain(self, target_domain: str) -> list[DataSource]:
+        """Gets by domain.
+
+        Args:
+            target_domain: Target Domain.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(DataSource).where(DataSource.target_domain == target_domain).order_by(DataSource.source_key)
         return list(self.session.execute(stmt).scalars().all())
 
     def get_active_by_domain(self, target_domain: str) -> list[DataSource]:
+        """Gets active by domain.
+
+        Args:
+            target_domain: Target Domain.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(DataSource)
             .where(DataSource.target_domain == target_domain, DataSource.is_active)
@@ -52,10 +91,26 @@ class DataSourceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_all_active(self) -> list[DataSource]:
+        """Gets all active.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(DataSource).where(DataSource.is_active).order_by(DataSource.source_key)
         return list(self.session.execute(stmt).scalars().all())
 
     def mark_success(self, source_key: str, content_hash: str) -> DataSource | None:
+        """Handles the mark success operation.
+
+        Args:
+            source_key: Source Key.
+            content_hash: Content Hash.
+
+        Returns:
+            The result of the operation.
+
+        """
         now = datetime.now(UTC).replace(tzinfo=None)
         stmt = (
             update(DataSource)
@@ -66,6 +121,15 @@ class DataSourceRepository:
         return self.get_by_key(source_key)
 
     def get_stale_sources(self, max_hours: int = 48) -> list[DataSource]:
+        """Gets stale sources.
+
+        Args:
+            max_hours: Max Hours.
+
+        Returns:
+            List of results.
+
+        """
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=max_hours)
         stmt = select(DataSource).where(
             DataSource.is_active,
@@ -75,16 +139,38 @@ class DataSourceRepository:
 
 
 class RawSourceSnapshotRepository:
+    """RawSourceSnapshotRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save(self, data: dict) -> RawSourceSnapshot:
+        """Saves save.
+
+        Args:
+            data: Data.
+
+        Returns:
+            RawSourceSnapshot instance.
+
+        """
         new_record = RawSourceSnapshot(**data)
         self.session.add(new_record)
         self.session.flush()
         return new_record
 
     def get_by_source_id(self, data_source_id: int, limit: int = 50) -> list[RawSourceSnapshot]:
+        """Gets by source id.
+
+        Args:
+            data_source_id: Data Source ID.
+            limit: Limit.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(RawSourceSnapshot)
             .where(RawSourceSnapshot.data_source_id == data_source_id)
@@ -94,6 +180,16 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_hash(self, data_source_id: int, content_hash: str) -> RawSourceSnapshot | None:
+        """Gets by hash.
+
+        Args:
+            data_source_id: Data Source ID.
+            content_hash: Content Hash.
+
+        Returns:
+            The result of the operation.
+
+        """
         stmt = select(RawSourceSnapshot).where(
             RawSourceSnapshot.data_source_id == data_source_id,
             RawSourceSnapshot.content_hash == content_hash,
@@ -101,6 +197,15 @@ class RawSourceSnapshotRepository:
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_unparsed(self, limit: int = 100) -> list[RawSourceSnapshot]:
+        """Gets unparsed.
+
+        Args:
+            limit: Limit.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(RawSourceSnapshot)
             .where(RawSourceSnapshot.parse_status == "pending")
@@ -110,6 +215,16 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_failed_for_retry(self, retry_after_hours: int = 1, limit: int = 50) -> list[RawSourceSnapshot]:
+        """Gets failed for retry.
+
+        Args:
+            retry_after_hours: Retry After Hours.
+            limit: Limit.
+
+        Returns:
+            List of results.
+
+        """
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=retry_after_hours)
         from sqlalchemy import and_
 
@@ -127,6 +242,15 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_reprocess_pending(self, limit: int = 100) -> list[RawSourceSnapshot]:
+        """Gets reprocess pending.
+
+        Args:
+            limit: Limit.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(RawSourceSnapshot)
             .where(RawSourceSnapshot.reprocess_status == "pending")
@@ -142,6 +266,15 @@ class RawSourceSnapshotRepository:
         parser_version: str | None = None,
         error_message: str | None = None,
     ) -> None:
+        """Updates status.
+
+        Args:
+            snapshot_id: Snapshot ID.
+            status: Status.
+            parser_version: Parser Version.
+            error_message: Error Message.
+
+        """
         record = self.session.get(RawSourceSnapshot, snapshot_id)
         if record:
             record.parse_status = status

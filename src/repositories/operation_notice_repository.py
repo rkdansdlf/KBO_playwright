@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 class OperationNoticeRepository:
+    """OperationNoticeRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     # ─────────────────────────────────────────────
@@ -118,6 +121,16 @@ class OperationNoticeRepository:
         *,
         urgent_only: bool = False,
     ) -> list[StadiumOperationNotice]:
+        """Gets by game date.
+
+        Args:
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(StadiumOperationNotice).where(
             and_(
                 StadiumOperationNotice.stadium_code == stadium_code,
@@ -137,6 +150,15 @@ class OperationNoticeRepository:
         notice_type: str | None = None,
         source_name: str | None = None,
     ) -> list[StadiumOperationNotice]:
+        """Gets recent.
+
+        Args:
+            stadium_code: Stadium Code.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(StadiumOperationNotice).where(StadiumOperationNotice.stadium_code == stadium_code)
         if notice_type:
             stmt = stmt.where(StadiumOperationNotice.notice_type == notice_type)
@@ -146,6 +168,15 @@ class OperationNoticeRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_urgent_today(self, stadium_code: str) -> list[StadiumOperationNotice]:
+        """Gets urgent today.
+
+        Args:
+            stadium_code: Stadium Code.
+
+        Returns:
+            List of results.
+
+        """
         today = datetime.now(KST).date()
         return self.get_by_game_date(stadium_code, today, urgent_only=True)
 

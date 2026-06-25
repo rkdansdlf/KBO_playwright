@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class TeamHistoryEntry:
+    """TeamHistoryEntry class."""
+
     franchise_id: int
     team_code: str
     start_season: int

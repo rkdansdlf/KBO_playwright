@@ -93,6 +93,8 @@ def group_events_into_at_bats(
 
 @dataclass
 class AtBatContext:
+    """AtBatContext class."""
+
     current_batter_key: tuple[int | str | None, str | None, str] | None
     inning: int | str | None
     half: str | None

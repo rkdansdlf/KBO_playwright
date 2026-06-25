@@ -52,6 +52,8 @@ DEFAULT_CAPABILITY_PATH = PROJECT_ROOT / "data" / "recovery" / "source_capabilit
 
 @dataclass
 class GameStateInput:
+    """GameStateInput class."""
+
     game_id: str
     league_type_name: str | None
     bucket_id: str | None
@@ -62,6 +64,8 @@ class GameStateInput:
 
 @dataclass(frozen=True)
 class RelayRecoveryTarget:
+    """RelayRecoveryTarget class."""
+
     game_id: str
     league_type_name: str | None = None
     bucket_id: str | None = None
@@ -77,6 +81,12 @@ class RelayRecoveryTarget:
         *,
         state: GameStateInput,
     ) -> RelayRecoveryTarget:
+        """Handles the from game state operation.
+
+        Returns:
+            RelayRecoveryTarget instance.
+
+        """
         return cls(
             game_id=state.game_id,
             league_type_name=state.league_type_name,
@@ -91,6 +101,8 @@ class RelayRecoveryTarget:
 
 @dataclass
 class RelayRecoveryResult:
+    """RelayRecoveryResult class."""
+
     total_targets: int = 0
     saved_games: int = 0
     saved_rows: int = 0
@@ -104,6 +116,8 @@ class RelayRecoveryResult:
 
 @dataclass(frozen=True)
 class RelaySaveCounts:
+    """RelaySaveCounts class."""
+
     saved_rows: int
     saved_event_rows: int = 0
     saved_pbp_rows: int = 0
@@ -112,6 +126,8 @@ class RelaySaveCounts:
 
 @dataclass
 class RecoveryTargetCriteria:
+    """RecoveryTargetCriteria class."""
+
     season: int | None = None
     month: int | None = None
     date: str | None = None
@@ -124,6 +140,8 @@ class RecoveryTargetCriteria:
 
 @dataclass
 class RelayRecoveryConfig:
+    """RelayRecoveryConfig class."""
+
     dry_run: bool = False
     source_order_override: Sequence[str] | None = None
     import_manifest: str | Path | Iterable[str | Path] = DEFAULT_MANIFEST_PATH
@@ -140,6 +158,8 @@ class RelayRecoveryConfig:
 
 @dataclass
 class RelayValidationConfig:
+    """RelayValidationConfig class."""
+
     final_scores: dict[str, tuple[int | None, int | None]]
     min_result_events: int | None = None
     validate_final_score: bool = True
@@ -148,6 +168,8 @@ class RelayValidationConfig:
 
 @dataclass
 class RecoveryLoopContext:
+    """RecoveryLoopContext class."""
+
     target: RelayRecoveryTarget
     bucket_id: str
     source_order: Sequence[str]
@@ -157,6 +179,15 @@ class RecoveryLoopContext:
 
 
 def parse_source_order(value: str | None) -> list[str] | None:
+    """Parses source order.
+
+    Args:
+        value: Value.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not value:
         return None
     tokens = [token.strip() for token in value.split(",") if token.strip()]
@@ -164,6 +195,15 @@ def parse_source_order(value: str | None) -> list[str] | None:
 
 
 def load_game_ids_from_file(path: str | Path | None) -> list[str]:
+    """Loads game ids from file.
+
+    Args:
+        path: Path.
+
+    Returns:
+        List of results.
+
+    """
     if not path:
         return []
     file_path = Path(path)
@@ -191,6 +231,15 @@ def load_relay_recovery_targets(
     *,
     log: Callable[[str], None] = logger.info,
 ) -> list[RelayRecoveryTarget]:
+    """Loads relay recovery targets.
+
+    Args:
+        criteria: Criteria.
+
+    Returns:
+        List of results.
+
+    """
     allowed_statuses = list(COMPLETED_LIKE_GAME_STATUSES)
     if criteria.include_incomplete:
         allowed_statuses.extend([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED])
@@ -254,6 +303,17 @@ async def recover_relay_data(
     config: RelayRecoveryConfig | None = None,
     orchestrator: RelayRecoveryOrchestrator | None = None,
 ) -> RelayRecoveryResult:
+    """Handles the recover relay data operation.
+
+    Args:
+        targets: Targets.
+        config: Config.
+        orchestrator: Orchestrator.
+
+    Returns:
+        RelayRecoveryResult instance.
+
+    """
     cfg = config or RelayRecoveryConfig()
     target_list = list(targets)
     run_result = RelayRecoveryResult(total_targets=len(target_list))
@@ -364,6 +424,15 @@ def _relay_validator(
     config: RelayValidationConfig,
 ) -> Callable[[NormalizedRelayResult], str | None]:
     def validator(relay_result: NormalizedRelayResult) -> str | None:
+        """Handles the validator operation.
+
+        Args:
+            relay_result: Relay Result.
+
+        Returns:
+            The result of the operation.
+
+        """
         return _validate_relay_result(
             game_id,
             relay_result,
@@ -532,6 +601,12 @@ def build_relay_recovery_orchestrator(
     capability_path: str | Path = DEFAULT_CAPABILITY_PATH,
     source_timeout: float = 30.0,
 ) -> RelayRecoveryOrchestrator:
+    """Builds relay recovery orchestrator.
+
+    Returns:
+        RelayRecoveryOrchestrator instance.
+
+    """
     manifest_entries = read_manifest_entries(import_manifest)
     manifest_base_dir = _manifest_base_dir(import_manifest)
     adapters = {
@@ -563,6 +638,13 @@ def write_relay_recovery_report(
     *,
     log: Callable[[str], None] = logger.info,
 ) -> None:
+    """Writes relay recovery.
+
+    Args:
+        report_path: Report file path.
+        rows: Rows.
+
+    """
     if not report_path:
         return
     path = Path(report_path)

@@ -13,11 +13,23 @@ if TYPE_CHECKING:
 
 
 async def run(args: argparse.Namespace) -> None:
+    """Runs run.
+
+    Args:
+        args: Args.
+
+    """
     crawler = RosterTransactionCrawler()
     await crawler.run(save=args.save, target_date=args.date)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="KBO roster transaction crawler")
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument("--date", type=str, default=None, help="Target date (YYYY-MM-DD, default: today)")
@@ -25,6 +37,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     asyncio.run(run(args))

@@ -145,6 +145,12 @@ async def run_advanced_update(
     sync: bool = False,
     headless: bool = True,
 ) -> None:
+    """Runs advanced.
+
+    Args:
+        year: Season year.
+
+    """
     logger.info("\n%s", "=" * 60)
     logger.info("🚀 KBO Advanced Daily Sync Started for Year: %s", year)
     logger.info("%s", "=" * 60)
@@ -191,6 +197,7 @@ async def run_advanced_update(
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Advanced Daily Data Orchestrator")
     parser.add_argument("--year", type=int, help="Target year. Defaults to current year.")
     parser.add_argument("--sync", action="store_true", help="Sync to OCI")

@@ -63,6 +63,16 @@ class GameStoryBuilder:
     """Derive a compact, structured game story from stored play-by-play events."""
 
     def build(self, game: Game, events: Iterable[GameEvent]) -> dict[str, Any]:
+        """Builds build.
+
+        Args:
+            game: Game.
+            events: Events.
+
+        Returns:
+            Dictionary result.
+
+        """
         ordered_events = sorted(
             events,
             key=lambda event: (

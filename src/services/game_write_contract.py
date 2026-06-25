@@ -12,11 +12,19 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class GameWriteSource:
+    """GameWriteSource class."""
+
     stage: str
     crawler: str
     reason: str = ""
 
     def label(self) -> str:
+        """Handles the label operation.
+
+        Returns:
+            String result.
+
+        """
         parts = [self.stage, self.crawler]
         if self.reason:
             parts.append(self.reason)
@@ -33,6 +41,7 @@ class GameWriteContract:
         log: Callable[[str], None] | None = None,
         log_duplicate_fields: bool = False,
     ) -> None:
+        """Initializes a new instance."""
         self.run_label = run_label or f"game-write:{datetime.now(UTC).replace(tzinfo=None):%Y%m%dT%H%M%SZ}"
         self.log = log
         self.log_duplicate_fields = log_duplicate_fields
@@ -44,6 +53,13 @@ class GameWriteContract:
         self.duplicate_datasets = 0
 
     def claim_game(self, game_id: str, source: GameWriteSource) -> None:
+        """Handles the claim game operation.
+
+        Args:
+            game_id: Game ID.
+            source: Source.
+
+        """
         claims = self.claimed_games.setdefault(game_id, set())
         if source in claims:
             return
@@ -58,6 +74,16 @@ class GameWriteContract:
         )
 
     def field_updated(self, game_id: str, source: GameWriteSource, field: str, old: object, new: object) -> None:
+        """Handles the field updated operation.
+
+        Args:
+            game_id: Game ID.
+            source: Source.
+            field: Field.
+            old: Old.
+            new: New.
+
+        """
         self.updated_fields += 1
         previous = self.field_claims.get((game_id, field))
         if previous and previous != source:
@@ -72,6 +98,15 @@ class GameWriteContract:
         )
 
     def field_duplicate(self, game_id: str, source: GameWriteSource, field: str, value: object) -> None:
+        """Handles the field duplicate operation.
+
+        Args:
+            game_id: Game ID.
+            source: Source.
+            field: Field.
+            value: Value.
+
+        """
         self.duplicate_fields += 1
         if self.log_duplicate_fields:
             self._emit(
@@ -80,6 +115,15 @@ class GameWriteContract:
             )
 
     def dataset_replaced(self, game_id: str, source: GameWriteSource, dataset: str, rows: int) -> None:
+        """Handles the dataset replaced operation.
+
+        Args:
+            game_id: Game ID.
+            source: Source.
+            dataset: Dataset.
+            rows: Rows.
+
+        """
         self.replaced_datasets += 1
         self._emit(
             f"[WRITE] run={self.run_label} game={game_id} stage={source.stage} "
@@ -87,6 +131,15 @@ class GameWriteContract:
         )
 
     def dataset_duplicate(self, game_id: str, source: GameWriteSource, dataset: str, rows: int) -> None:
+        """Handles the dataset duplicate operation.
+
+        Args:
+            game_id: Game ID.
+            source: Source.
+            dataset: Dataset.
+            rows: Rows.
+
+        """
         self.duplicate_datasets += 1
         self._emit(
             f"[SKIP] run={self.run_label} game={game_id} stage={source.stage} "
@@ -94,6 +147,12 @@ class GameWriteContract:
         )
 
     def summary(self) -> str:
+        """Handles the summary operation.
+
+        Returns:
+            String result.
+
+        """
         return (
             f"[WRITE-SUMMARY] run={self.run_label} games={len(self.claimed_games)} "
             f"field_updates={self.updated_fields} field_duplicates={self.duplicate_fields} "

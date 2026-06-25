@@ -363,6 +363,12 @@ def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, An
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="KBO Unified Data Gap Report")
     parser.add_argument("--no-alert", action="store_true", help="Suppress Slack/Telegram alerts")
     parser.add_argument("--dry-run", action="store_true", help="Print only, no alerts")
@@ -370,6 +376,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     run_gap_report(alert=not args.no_alert, dry_run=args.dry_run)

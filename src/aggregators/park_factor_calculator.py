@@ -21,10 +21,22 @@ logger = logging.getLogger(__name__)
 
 
 class ParkFactorCalculator:
+    """ParkFactorCalculator class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def calculate(self, year: int) -> list[dict]:
+        """Calculates calculate.
+
+        Args:
+            year: Season year.
+
+        Returns:
+            List of results.
+
+        """
         games = (
             self.session.query(Game)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
@@ -105,6 +117,12 @@ class ParkFactorCalculator:
         return "투수친화"
 
     def print_report(self, year: int) -> None:
+        """Prints print report.
+
+        Args:
+            year: Season year.
+
+        """
         results = self.calculate(year)
         if not results:
             return

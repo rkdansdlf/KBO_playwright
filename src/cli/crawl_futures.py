@@ -41,6 +41,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class FuturesPlayerTarget:
+    """FuturesPlayerTarget class."""
+
     player_id: str
     position: str
     player_name: str
@@ -141,6 +143,17 @@ async def process_player_result(
     repository: PlayerRepository,
     pool: AsyncPlaywrightPool,
 ) -> dict[str, Any]:
+    """Processes player result.
+
+    Args:
+        target: Target.
+        repository: Repository.
+        pool: Pool.
+
+    Returns:
+        Dictionary result.
+
+    """
     normalized_id = normalize_player_id(target.player_id)
     if normalized_id is None:
         return _fail_result(target.player_id, "invalid_player_id", status="failed")
@@ -364,6 +377,13 @@ async def _run_futures_players(
     failure_counts: Counter = Counter()
 
     async def runner(pid: str, meta: dict) -> None:
+        """Handles the runner operation.
+
+        Args:
+            pid: Pid.
+            meta: Meta.
+
+        """
         async with semaphore:
             pos = meta["position"]
             name = meta["name"]
@@ -517,6 +537,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
+    """Main entry point for this CLI command."""
     _configure_cli_logging()
     parser = build_arg_parser()
     args = parser.parse_args(argv)

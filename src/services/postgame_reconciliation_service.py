@@ -41,17 +41,23 @@ logger = logging.getLogger(__name__)
 
 
 class DetailCrawler(Protocol):
+    """DetailCrawler class."""
+
     async def crawl_games(
         self,
         games: list[dict[str, str]],
         concurrency: int | None = None,
         *,
         lightweight: bool = False,
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[dict[str, Any]]:
+        """Crawls game details for the given game list."""
+        ...
 
 
 @dataclass(frozen=True)
 class GameScoreStatusSnapshot:
+    """GameScoreStatusSnapshot class."""
+
     game_id: str
     game_date: str
     game_status: str | None
@@ -60,11 +66,19 @@ class GameScoreStatusSnapshot:
 
     @property
     def score_tuple(self) -> tuple[int | None, int | None]:
+        """Handles the score tuple operation.
+
+        Returns:
+            Tuple result.
+
+        """
         return self.away_score, self.home_score
 
 
 @dataclass(frozen=True)
 class PostgameReconciliationChange:
+    """PostgameReconciliationChange class."""
+
     game_id: str
     game_date: str
     before_status: str | None
@@ -78,10 +92,22 @@ class PostgameReconciliationChange:
 
     @property
     def status_changed(self) -> bool:
+        """Handles the status changed operation.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         return self.before_status != self.after_status
 
     @property
     def score_changed(self) -> bool:
+        """Handles the score changed operation.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         return (self.before_away_score, self.before_home_score) != (
             self.after_away_score,
             self.after_home_score,
@@ -90,6 +116,8 @@ class PostgameReconciliationChange:
 
 @dataclass
 class PostgameReconciliationResult:
+    """PostgameReconciliationResult class."""
+
     start_date: str
     end_date: str
     candidates: int = 0
@@ -98,6 +126,12 @@ class PostgameReconciliationResult:
 
     @property
     def changed_game_ids(self) -> list[str]:
+        """Handles the changed game ids operation.
+
+        Returns:
+            List of results.
+
+        """
         return [change.game_id for change in self.changes]
 
 
@@ -157,6 +191,8 @@ def find_postgame_reconciliation_targets(
 
 @dataclass
 class ReconciliationRequest:
+    """ReconciliationRequest class."""
+
     start_date: str
     end_date: str
     detail_crawler: DetailCrawler
@@ -268,6 +304,16 @@ def write_reconciliation_csv(
     changes: Iterable[PostgameReconciliationChange],
     output_path: str | Path,
 ) -> Path:
+    """Writes reconciliation csv.
+
+    Args:
+        changes: Changes.
+        output_path: Output file path.
+
+    Returns:
+        Path object.
+
+    """
     import csv
 
     path = Path(output_path)

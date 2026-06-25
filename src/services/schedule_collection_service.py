@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ScheduleSaveResult:
+    """ScheduleSaveResult class."""
+
     games: list[dict[str, Any]]
     saved_games: list[dict[str, Any]]
     failed_games: list[dict[str, Any]]
@@ -28,6 +30,12 @@ class ScheduleSaveResult:
 
     @property
     def discovered(self) -> int:
+        """Handles the discovered operation.
+
+        Returns:
+            Integer result.
+
+        """
         return len(self.games)
 
 
@@ -39,6 +47,15 @@ def save_schedule_games(
     source_crawler: str = "ScheduleCrawler",
     source_reason: str = "schedule_refresh",
 ) -> ScheduleSaveResult:
+    """Saves schedule games.
+
+    Args:
+        games: Games.
+
+    Returns:
+        ScheduleSaveResult instance.
+
+    """
     game_list = list(games)
     result = ScheduleSaveResult(games=game_list, saved_games=[], failed_games=[], filtered_games=[])
     contract = write_contract or GameWriteContract(run_label="schedule_collection", log=log)

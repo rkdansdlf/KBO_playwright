@@ -16,6 +16,7 @@ class HighlightAggregator:
     """Computes and tags game highlights from Play-by-Play event records."""
 
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def _query_play_events(self, game_id: str) -> list[GameEvent]:

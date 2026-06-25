@@ -83,12 +83,21 @@ TEAM_TO_SOURCE_KEY = {
 
 
 class TeamEventCrawler:
+    """TeamEventCrawler class."""
+
     def __init__(self, days_back: int = 30) -> None:
+        """Initializes a new instance."""
         self.days_back = days_back
         self.cutoff_date = datetime.now(KST) - timedelta(days=days_back)
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict]:
+        """Runs run.
+
+        Returns:
+            List of results.
+
+        """
         all_events = []
         for team_code, config in TEAM_NEWS_SOURCES.items():
             if team_filter and team_code != team_filter:

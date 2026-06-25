@@ -36,6 +36,8 @@ JAMSIL_AREA_CODES = [
 
 @dataclass
 class CongestionSnapshot:
+    """CongestionSnapshot class."""
+
     location_label: str
     congestion_level: str  # 여유 / 보통 / 약간 붐빔 / 붐빔 → mapped to low/normal/high/very_high
     congestion_index: float | None

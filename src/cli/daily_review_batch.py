@@ -113,6 +113,15 @@ def _trusted_relay_game_ids(session: Session, game_ids: Sequence[str]) -> set[st
 
 
 async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
+    """Runs review batch.
+
+    Args:
+        target_date: Target Date.
+
+    Returns:
+        List of results.
+
+    """
     logger.info("🚀 Starting Post-game Review Data Batch for %s...", target_date)
 
     target_dt_obj = parse_date_str(target_date)
@@ -209,6 +218,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Daily Review Context Generator")
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")

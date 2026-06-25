@@ -69,6 +69,12 @@ class RelayRow:
     description: str = ""
 
     def to_dict(self) -> dict[str, Any]:
+        """Handles the to dict operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "이닝": self.inning,
             "이닝_초말": self.inning_half,
@@ -97,6 +103,12 @@ class RelayCrawlResult:
     error_message: str | None = None
 
     def to_dataframe(self) -> pd.DataFrame:
+        """Handles the to dataframe operation.
+
+        Returns:
+            The result of the operation.
+
+        """
         if not self.rows:
             return pd.DataFrame(
                 columns=[
@@ -119,6 +131,15 @@ class RelayCrawlResult:
         return pd.DataFrame(data)
 
     def save_csv(self, output_dir: str = DEFAULT_OUTPUT_DIR) -> Path:
+        """Saves csv.
+
+        Args:
+            output_dir: Output directory path.
+
+        Returns:
+            Path object.
+
+        """
         df = self.to_dataframe()
         output_path = Path(output_dir) / f"{self.game_id}_text_relay.csv"
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,6 +171,7 @@ class TextRelayCrawler:
         pool: AsyncPlaywrightPool | None = None,
         output_dir: str = DEFAULT_OUTPUT_DIR,
     ) -> None:
+        """Initializes a new instance."""
         self.base_url = LIVE_TEXT_URL
         self.policy = policy or RequestPolicy.with_delay(request_delay, request_delay + 0.5)
         self.pool = pool

@@ -30,7 +30,15 @@ HEADERS = {
 
 
 class GameMvpCrawler:
+    """GameMvpCrawler class."""
+
     async def run(self, game_ids: list[str] | None = None, *, save: bool = False) -> None:
+        """Runs run.
+
+        Args:
+            game_ids: Game Ids.
+
+        """
         if game_ids:
             results = []
             for gid in game_ids:

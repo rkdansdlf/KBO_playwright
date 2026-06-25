@@ -25,6 +25,15 @@ logger = logging.getLogger(__name__)
 
 
 async def run_reconciliation(args: argparse.Namespace) -> int:
+    """Runs reconciliation.
+
+    Args:
+        args: Args.
+
+    Returns:
+        Integer result.
+
+    """
     start_date, end_date = _resolve_date_range(args)
     year = int(end_date[:4])
 
@@ -67,6 +76,12 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Revisit recently started KBO games and report rows whose final "
@@ -95,6 +110,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     try:

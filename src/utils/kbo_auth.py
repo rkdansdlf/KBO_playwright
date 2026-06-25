@@ -21,6 +21,8 @@ load_dotenv()
 
 
 class KboAuthenticator:
+    """KboAuthenticator class."""
+
     LOGIN_URL = "https://www.koreabaseball.com/Member/Login.aspx"
     AUTH_STATE_PATH = "data/kbo_auth_state.json"
 

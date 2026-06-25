@@ -229,6 +229,7 @@ def run_morning_report(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Morning PBP Report — Telegram notification")
     parser.add_argument(
         "--date",

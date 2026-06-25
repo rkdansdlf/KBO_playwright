@@ -285,6 +285,12 @@ async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(
         description="Smart polling gate: check if today's KBO games are finished",
     )
@@ -297,6 +303,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 async def main_async(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
@@ -319,6 +326,7 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     exit_code = asyncio.run(main_async(argv))
     sys.exit(exit_code)
 

@@ -50,6 +50,12 @@ def _get_stale_threshold_hours(source: DataSource) -> int:
 
 
 def check_freshness(*, dry_run: bool = False) -> list[str]:
+    """Checks freshness.
+
+    Returns:
+        List of results.
+
+    """
     alerts = []
     with SessionLocal() as session:
         ds_repo = DataSourceRepository(session)
@@ -80,6 +86,12 @@ def check_freshness(*, dry_run: bool = False) -> list[str]:
 
 
 def check_table_completeness(*, dry_run: bool = False) -> list[str]:
+    """Checks table completeness.
+
+    Returns:
+        List of results.
+
+    """
     alerts = []
     with SessionLocal() as session:
         for domain, (table, date_col) in DOMAIN_TABLE_CHECKS.items():
@@ -103,6 +115,12 @@ def check_table_completeness(*, dry_run: bool = False) -> list[str]:
 
 
 def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
+    """Checks p0 readiness.
+
+    Returns:
+        List of results.
+
+    """
     alerts = []
     target_date = (datetime.now(KST).date() - timedelta(days=1)).strftime("%Y%m%d")
     with SessionLocal() as session:
@@ -126,6 +144,12 @@ def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
 
 
 def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[str]]:
+    """Runs monitor.
+
+    Returns:
+        Dictionary result.
+
+    """
     stale = check_freshness(dry_run=dry_run)
     empty = check_table_completeness(dry_run=dry_run)
     p0_issues = check_p0_readiness(dry_run=dry_run)
@@ -148,6 +172,12 @@ def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Monitor KBO data freshness and completeness")
     parser.add_argument("--no-alert", action="store_true", help="Suppress Slack/Telegram alerts")
     parser.add_argument("--dry-run", action="store_true", help="Scan only, do not alert")
@@ -155,6 +185,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     run_monitor(alert=not args.no_alert, dry_run=args.dry_run)

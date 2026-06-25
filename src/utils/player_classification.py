@@ -6,6 +6,8 @@ from enum import StrEnum
 
 
 class PlayerCategory(StrEnum):
+    """PlayerCategory class."""
+
     ACTIVE = "ACTIVE"
     RETIRED = "RETIRED"
     MANAGER = "MANAGER"

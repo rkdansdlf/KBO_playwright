@@ -66,6 +66,12 @@ async def _run_naver_crawler(args: argparse.Namespace) -> None:
 
 
 async def run(args: argparse.Namespace) -> None:
+    """Runs run.
+
+    Args:
+        args: Args.
+
+    """
     source = getattr(args, "source", "official")
 
     if source == "naver":
@@ -79,6 +85,12 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Crawl stadium operation notices (official + Naver search)")
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument(
@@ -110,6 +122,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     asyncio.run(run(args))

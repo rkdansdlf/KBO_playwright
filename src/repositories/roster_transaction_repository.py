@@ -17,10 +17,22 @@ if TYPE_CHECKING:
 
 
 class RosterTransactionRepository:
+    """RosterTransactionRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save(self, data: dict) -> RosterTransaction:
+        """Saves save.
+
+        Args:
+            data: Data.
+
+        Returns:
+            RosterTransaction instance.
+
+        """
         data = dict(data)
         if not self._player_basic_exists(data.get("player_id")):
             data["player_id"] = None
@@ -54,6 +66,16 @@ class RosterTransactionRepository:
         )
 
     def get_by_team_date(self, team_id: str, transaction_date: date) -> list[RosterTransaction]:
+        """Gets by team date.
+
+        Args:
+            team_id: Team ID.
+            transaction_date: Transaction Date.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(RosterTransaction)
             .where(
@@ -65,6 +87,15 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_date(self, transaction_date: date) -> list[RosterTransaction]:
+        """Gets by date.
+
+        Args:
+            transaction_date: Transaction Date.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(RosterTransaction)
             .where(RosterTransaction.transaction_date == transaction_date)
@@ -73,6 +104,16 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_player(self, player_id: int, limit: int = 50) -> list[RosterTransaction]:
+        """Gets by player.
+
+        Args:
+            player_id: Player ID.
+            limit: Limit.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(RosterTransaction)
             .where(RosterTransaction.player_id == player_id)
@@ -82,6 +123,16 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_recent_by_team(self, team_id: str, days: int = 7) -> list[RosterTransaction]:
+        """Gets recent by team.
+
+        Args:
+            team_id: Team ID.
+            days: Days.
+
+        Returns:
+            List of results.
+
+        """
         since = datetime.now(KST).date() - timedelta(days=days)
         stmt = (
             select(RosterTransaction)
@@ -94,10 +145,28 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def exists(self, dedupe_key: str) -> bool:
+        """Handles the exists operation.
+
+        Args:
+            dedupe_key: Dedupe Key.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         stmt = select(RosterTransaction).where(RosterTransaction.dedupe_key == dedupe_key)
         return self.session.execute(stmt).scalar_one_or_none() is not None
 
     def bulk_save(self, records: list[dict]) -> int:
+        """Saves bulk.
+
+        Args:
+            records: Records.
+
+        Returns:
+            Integer result.
+
+        """
         count = 0
         for data in records:
             self.save(data)

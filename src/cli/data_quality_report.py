@@ -139,6 +139,15 @@ def _write_csv_report(report_data: dict, path: str) -> None:
 
 
 def generate_report(years: list[int], output_format: str, output_dir: str, db_url: str | None = None) -> None:
+    """Generates generate report.
+
+    Args:
+        years: Years.
+        output_format: Output Format.
+        output_dir: Output directory path.
+        db_url: Db URL.
+
+    """
     report_data = _build_report_data(years, db_url)
     path = _report_path(output_dir, db_url, output_format)
     if output_format == "json":
@@ -149,6 +158,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Generate KBO Data Quality Report")
     parser.add_argument("--years", type=str, default="2020-2026", help="Year range (e.g., 2020-2026)")
     parser.add_argument("--format", choices=["json", "csv"], default="json", help="Output format")

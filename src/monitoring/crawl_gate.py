@@ -15,12 +15,24 @@ logger = logging.getLogger(__name__)
 
 
 class CrawlGate:
+    """CrawlGate class."""
+
     def __init__(self, session: Session, *, enforce: bool = False) -> None:
+        """Initializes a new instance."""
         self.session = session
         self.enforce = enforce
         self.issues: list[str] = []
 
     def check_freshness(self, target_date: str) -> bool:
+        """Checks freshness.
+
+        Args:
+            target_date: Target Date.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         from src.cli.freshness_gate import collect_freshness_issues
 
         issues = collect_freshness_issues(self.session, target_date)
@@ -33,6 +45,15 @@ class CrawlGate:
         return len(issues) == 0
 
     def check_game_completion_rate(self, target_date: str) -> bool:
+        """Checks game completion rate.
+
+        Args:
+            target_date: Target Date.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         from src.models.game import Game
         from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
@@ -53,6 +74,15 @@ class CrawlGate:
         return True
 
     def check_standings_integrity(self, target_date: str) -> bool:
+        """Checks standings integrity.
+
+        Args:
+            target_date: Target Date.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         from src.validators.standings_integrity import validate_standings_integrity
 
         result = validate_standings_integrity(self.session, target_date)
@@ -71,6 +101,15 @@ class CrawlGate:
         return True
 
     def run_all_checks(self, target_date: str) -> bool:
+        """Runs all checks.
+
+        Args:
+            target_date: Target Date.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         logger.info("\n%s", "=" * 50)
         logger.info("  CrawlGate: Checking %s", target_date)
         logger.info("%s", "=" * 50)

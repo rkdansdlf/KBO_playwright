@@ -27,6 +27,12 @@ BATTING_CONFLICT_KEYS = ["player_id", "season", "league", "level"]
 
 
 def get_last_filter_counts() -> dict[str, int]:
+    """Gets last counts.
+
+    Returns:
+        Dictionary result.
+
+    """
     return dict(LAST_FILTER_COUNTS)
 
 
@@ -298,6 +304,18 @@ def cleanup_invalid_batting_data(session: Session | None = None) -> int:
 
 
 def save_futures_batting(player_id_db: int, rows: list[dict], league: str = "FUTURES", level: str = "KBO2") -> int:
+    """Saves futures batting.
+
+    Args:
+        player_id_db: Player Id Db.
+        rows: Rows.
+        league: League.
+        level: Level.
+
+    Returns:
+        Integer result.
+
+    """
     if not rows:
         return 0
     payloads = [

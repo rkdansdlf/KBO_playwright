@@ -174,6 +174,15 @@ class MiscSyncMixin:
             logger.exception("metadata create_all error (might already exist)")
 
         def transform_rag_chunk(data: dict[str, Any]) -> dict[str, Any]:
+            """Transforms rag chunk.
+
+            Args:
+                data: Data.
+
+            Returns:
+                Dictionary result.
+
+            """
             embedding = data.get("embedding")
             if embedding is not None:
                 if isinstance(embedding, str):
@@ -535,6 +544,15 @@ class MiscSyncMixin:
         franchise_mapping = self._get_franchise_id_mapping()
 
         def transform(data: dict) -> dict[str, Any]:
+            """Transforms transform.
+
+            Args:
+                data: Data.
+
+            Returns:
+                Dictionary result.
+
+            """
             fid = data.get("franchise_id")
             if fid:
                 data["franchise_id"] = franchise_mapping.get(fid, fid)

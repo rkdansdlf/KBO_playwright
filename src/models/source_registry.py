@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class DataSource(Base, TimestampMixin):
+    """DataSource class."""
+
     __tablename__ = "data_sources"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -65,6 +67,8 @@ class DataSource(Base, TimestampMixin):
 
 
 class RawSourceSnapshot(Base, TimestampMixin):
+    """RawSourceSnapshot class."""
+
     __tablename__ = "raw_source_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

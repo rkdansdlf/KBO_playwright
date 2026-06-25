@@ -18,11 +18,21 @@ class BaseStatsUpsertRepository:
     """Shared UPSERT helpers for stat tables."""
 
     def __init__(self, model: type[TeamSeasonBatting | TeamSeasonPitching], unique_keys: list[str]) -> None:
+        """Initializes a new instance."""
         self.model = model
         self.unique_keys = unique_keys
         self.dialect = Engine.dialect.name
 
     def upsert_many(self, records: list[dict[str, Any]]) -> int:
+        """Inserts or updates many.
+
+        Args:
+            records: Records.
+
+        Returns:
+            Integer result.
+
+        """
         if not records:
             return 0
 
@@ -92,6 +102,7 @@ class TeamSeasonBattingRepository(BaseStatsUpsertRepository):
     """UPSERT logic for team-level batting aggregates."""
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         super().__init__(TeamSeasonBatting, ["team_id", "season", "league"])
 
 
@@ -99,4 +110,5 @@ class TeamSeasonPitchingRepository(BaseStatsUpsertRepository):
     """UPSERT logic for team-level pitching aggregates."""
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         super().__init__(TeamSeasonPitching, ["team_id", "season", "league"])

@@ -75,6 +75,8 @@ GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, ValueError, TypeError, OSError)
 
 @dataclass(frozen=True)
 class DetailSaveContext:
+    """DetailSaveContext class."""
+
     game_id: str
     game_date: date
     source: GameWriteSource
@@ -83,6 +85,8 @@ class DetailSaveContext:
 
 @dataclass(frozen=True)
 class SnapshotContext:
+    """SnapshotContext class."""
+
     game_data: dict[str, Any]
     game_date: date
     metadata: dict[str, Any]
@@ -94,6 +98,8 @@ class SnapshotContext:
 
 @dataclass(frozen=True)
 class PregameContext:
+    """PregameContext class."""
+
     game_id: str
     game_date: date
     away_code: str | None
@@ -102,6 +108,8 @@ class PregameContext:
 
 @dataclass(frozen=True)
 class PregameGameFieldInput:
+    """PregameGameFieldInput class."""
+
     game_date: date
     away_code: str | None
     home_code: str | None
@@ -111,6 +119,8 @@ class PregameGameFieldInput:
 
 @dataclass(frozen=True)
 class PregameLineupContext:
+    """PregameLineupContext class."""
+
     game_id: str
     season_year: int
     away_code: str | None
@@ -119,6 +129,8 @@ class PregameLineupContext:
 
 @dataclass(frozen=True)
 class StartersInfo:
+    """StartersInfo class."""
+
     away_starter: str | None
     away_starter_id: int | None
     home_starter: str | None

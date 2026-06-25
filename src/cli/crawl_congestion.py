@@ -19,6 +19,12 @@ if TYPE_CHECKING:
 
 
 async def run(args: argparse.Namespace) -> None:
+    """Runs run.
+
+    Args:
+        args: Args.
+
+    """
     game_date = None
     if args.game_date:
         game_date = parse_date_str(args.game_date)
@@ -28,6 +34,12 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Collect real-time congestion data for Jamsil Stadium area")
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument(
@@ -41,6 +53,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     asyncio.run(run(args))

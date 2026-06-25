@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class TeamAggregationQuery:
+    """TeamAggregationQuery class."""
+
     season: int | None = None
     team_id: str | None = None
     rows: Iterable[Any] | None = None
@@ -56,6 +58,7 @@ class TeamStatAggregator:
     """
 
     def __init__(self, session: Session | None = None) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     @staticmethod

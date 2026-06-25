@@ -30,16 +30,39 @@ STANDINGS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeErro
 
 
 def calculate_games_behind(wins: int, losses: int, leader_wins: int, leader_losses: int) -> float:
+    """Calculates games behind.
+
+    Args:
+        wins: Wins.
+        losses: Losses.
+        leader_wins: Leader Wins.
+        leader_losses: Leader Losses.
+
+    Returns:
+        float instance.
+
+    """
     return ((leader_wins - wins) + (losses - leader_losses)) / 2.0
 
 
 def iso_week_number(d: date) -> str:
+    """Handles the iso week number operation.
+
+    Args:
+        d: D.
+
+    Returns:
+        String result.
+
+    """
     iso = d.isocalendar()
     return f"{iso[0]}-W{iso[1]:02d}"
 
 
 @dataclass(frozen=True)
 class GameResultData:
+    """GameResultData class."""
+
     is_win: bool
     is_loss: bool
     is_draw: bool
@@ -50,7 +73,10 @@ class GameResultData:
 
 
 class TeamState:
+    """TeamState class."""
+
     def __init__(self, team_code: str) -> None:
+        """Initializes a new instance."""
         self.team_code = team_code
         self.wins = 0
         self.losses = 0
@@ -68,26 +94,62 @@ class TeamState:
 
     @property
     def games_played(self) -> int:
+        """Handles the games played operation.
+
+        Returns:
+            Integer result.
+
+        """
         return self.wins + self.losses + self.draws
 
     @property
     def win_pct(self) -> float:
+        """Handles the win pct operation.
+
+        Returns:
+            float instance.
+
+        """
         total = self.wins + self.losses
         return self.wins / total if total > 0 else 0.0
 
     @property
     def recent_10_wins(self) -> int:
+        """Handles the recent 10 wins operation.
+
+        Returns:
+            Integer result.
+
+        """
         return sum(1 for r in self.recent_games if r == "W")
 
     @property
     def recent_10_losses(self) -> int:
+        """Handles the recent 10 losses operation.
+
+        Returns:
+            Integer result.
+
+        """
         return sum(1 for r in self.recent_games if r == "L")
 
     @property
     def recent_10_draws(self) -> int:
+        """Handles the recent 10 draws operation.
+
+        Returns:
+            Integer result.
+
+        """
         return sum(1 for r in self.recent_games if r == "D")
 
     def add_game(self, result: GameResultData) -> None:
+        """Adds game.
+
+        Args:
+            result: Result.
+
+        """
         self.runs_scored += result.runs_for
         self.runs_allowed += result.runs_against
 
@@ -285,7 +347,10 @@ def _build_daily_snapshots(games: list[Game]) -> list[TeamStandingsDaily]:
 
 
 class StandingsCalculator:
+    """StandingsCalculator class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def _load_completed_games(self, year: int) -> list[Game]:
@@ -310,6 +375,12 @@ class StandingsCalculator:
         self.session.commit()
 
     def calculate_year(self, year: int) -> None:
+        """Calculates year.
+
+        Args:
+            year: Season year.
+
+        """
         games = self._load_completed_games(year)
 
         if not games:
@@ -321,6 +392,13 @@ class StandingsCalculator:
         logger.info("[Standings] %s 시즌 순위표 계산 완료!", year)
 
     def print_report(self, year: int, target_date: date | None = None) -> None:
+        """Prints print report.
+
+        Args:
+            year: Season year.
+            target_date: Target Date.
+
+        """
         query = self.session.query(TeamStandingsDaily).filter(
             extract("year", TeamStandingsDaily.standings_date) == year,
         )
@@ -408,6 +486,13 @@ class StandingsCalculator:
         logger.info("  ★ 상위 5팀 (5강)" if top_5_rows else "")
 
     def print_trend(self, year: int, team_code: str | None = None) -> None:
+        """Prints trend.
+
+        Args:
+            year: Season year.
+            team_code: Team Code.
+
+        """
         rows = (
             self.session.query(TeamStandingsDaily)
             .filter(extract("year", TeamStandingsDaily.standings_date) == year)
@@ -455,6 +540,7 @@ class StandingsCalculator:
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Standings Calculator")
     parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="대상 년도")
     parser.add_argument("--all", action="store_true", help="전체 년도 재계산")

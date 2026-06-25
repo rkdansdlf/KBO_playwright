@@ -36,6 +36,8 @@ SAMSUNG_LEE_SEUNGHYUN_SEASON = 2026
 
 @dataclass(frozen=True)
 class PlayerIdentity:
+    """PlayerIdentity class."""
+
     player_name: str
     team_code: str | None
     season: int | None
@@ -54,6 +56,7 @@ class PlayerIdResolver:
         strict_game_resolution: bool = False,
         allow_auto_register: bool | None = None,
     ) -> None:
+        """Initializes a new instance."""
         self.session = session
         if allow_auto_register is not None:
             allow_unknown_registration = allow_auto_register
@@ -237,10 +240,24 @@ class PlayerIdResolver:
         return self._return_ambiguous(cache_key, identity.player_name, identity.team_code, identity.season, candidates)
 
     def preload_season_index(self, season: int) -> None:
+        """Handles the preload season index operation.
+
+        Args:
+            season: Season year.
+
+        """
         logger.info("🔄 Preloading player index for season %s...", season)
         season_index: dict[str, dict[str, object]] = {}
 
         def add_index_entry(name: str, team: str, pid: int, *, is_pitcher: bool | None) -> None:
+            """Adds index entry.
+
+            Args:
+                name: Name.
+                team: Team.
+                pid: Pid.
+
+            """
             cache_key = self._cache_key(name, team, season, None, is_pitcher=is_pitcher)
             entry = season_index.setdefault(cache_key, {"name": name, "ids": set()})
             entry_ids = entry["ids"]
@@ -669,6 +686,18 @@ class PlayerIdResolver:
         *,
         is_pitcher: bool | None = None,
     ) -> int | None:
+        """Resolves id.
+
+        Args:
+            player_name: Player Name.
+            team_code: Team Code.
+            season: Season year.
+            uniform_no: Uniform No.
+
+        Returns:
+            The result of the operation.
+
+        """
         if not player_name:
             return None
 
@@ -789,6 +818,17 @@ class PlayerIdResolver:
         return None
 
     def register_unknown_player(self, name: str, team_code: str, uniform_no: str | None) -> int | None:
+        """Handles the register unknown player operation.
+
+        Args:
+            name: Name.
+            team_code: Team Code.
+            uniform_no: Uniform No.
+
+        Returns:
+            The result of the operation.
+
+        """
         existing_id = self._find_existing_unknown_player(name, team_code, uniform_no)
         if existing_id:
             logger.info("   [UNKNOWN PLAYER REUSED] %s (%s) -> %s", name, team_code, existing_id)

@@ -104,6 +104,8 @@ SEASON_DATE_RULES: dict[int, list[tuple[str, str, str]]] = {
 
 @dataclass(frozen=True)
 class CanonicalGameIdPayload:
+    """CanonicalGameIdPayload class."""
+
     game_date: object = None
     away_team_code: object = None
     home_team_code: object = None
@@ -113,6 +115,8 @@ class CanonicalGameIdPayload:
 
 @dataclass(frozen=True)
 class FieldChangeContext:
+    """FieldChangeContext class."""
+
     game_id: str
     source: GameWriteSource
     write_contract: GameWriteContract | None
@@ -122,6 +126,8 @@ class FieldChangeContext:
 
 @dataclass(frozen=True)
 class DerivedGameStatusInput:
+    """DerivedGameStatusInput class."""
+
     game_date: date | None
     home_score: object
     away_score: object
@@ -136,12 +142,16 @@ class DerivedGameStatusInput:
 
 @dataclass(frozen=True)
 class RecordReplaceContext:
+    """RecordReplaceContext class."""
+
     source: GameWriteSource | None = None
     write_contract: GameWriteContract | None = None
 
 
 @dataclass(frozen=True)
 class RecordKey:
+    """RecordKey class."""
+
     model: type[Any]
     game_id: str
     team_side: str | None = None
@@ -149,6 +159,8 @@ class RecordKey:
 
 @dataclass(frozen=True)
 class TeamSideContext:
+    """TeamSideContext class."""
+
     team_side: str
     team_code: str | None
     season_year: int
@@ -156,6 +168,8 @@ class TeamSideContext:
 
 @dataclass(frozen=True)
 class GameSummaryEntry:
+    """GameSummaryEntry class."""
+
     game_id: str
     summary_type: str
     detail_text: str

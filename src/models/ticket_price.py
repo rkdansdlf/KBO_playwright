@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class TicketPrice(Base, TimestampMixin):
+    """TicketPrice class."""
+
     __tablename__ = "ticket_prices"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

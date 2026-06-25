@@ -77,6 +77,7 @@ class OperationNoticeLGCrawler:
     """
 
     def __init__(self, max_pages: int = 5) -> None:
+        """Initializes a new instance."""
         self.max_pages = max_pages
         self._raw_pages: list[dict] = []
 

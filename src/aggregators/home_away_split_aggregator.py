@@ -19,10 +19,22 @@ logger = logging.getLogger(__name__)
 
 
 class HomeAwaySplitAggregator:
+    """HomeAwaySplitAggregator class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def aggregate_batting(self, year: int) -> list[dict]:
+        """Aggregates batting.
+
+        Args:
+            year: Season year.
+
+        Returns:
+            List of results.
+
+        """
         rows = (
             self.session.query(GameBattingStat, Game.away_team, Game.home_team)
             .join(Game, GameBattingStat.game_id == Game.game_id)
@@ -104,6 +116,12 @@ class HomeAwaySplitAggregator:
         return results
 
     def persist_batting(self, year: int) -> None:
+        """Handles the persist batting operation.
+
+        Args:
+            year: Season year.
+
+        """
         results = self.aggregate_batting(year)
         self.session.query(BatterHomeAwaySplit).filter(BatterHomeAwaySplit.season_year == year).delete(
             synchronize_session=False,
@@ -115,6 +133,13 @@ class HomeAwaySplitAggregator:
         logger.info("[HomeAway] %s batting split rows saved for %s.", len(results), year)
 
     def print_report(self, year: int, top_n: int = 5) -> None:
+        """Prints print report.
+
+        Args:
+            year: Season year.
+            top_n: Top N.
+
+        """
         results = self.aggregate_batting(year)
         if not results:
             return

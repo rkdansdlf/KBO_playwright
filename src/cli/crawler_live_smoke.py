@@ -109,6 +109,12 @@ async def run_smoke(
     detail_crawler: GameDetailCrawler | None = None,
     relay_crawler: RelayCrawler | None = None,
 ) -> dict[str, Any]:
+    """Runs smoke.
+
+    Returns:
+        Dictionary result.
+
+    """
     if scope not in SCOPES:
         msg = f"Unsupported scope: {scope}"
         raise ValueError(msg)
@@ -206,6 +212,12 @@ def _print_human_summary(result: Mapping[str, Any]) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Opt-in live smoke check for KBO crawler release verification")
     parser.add_argument("--date", required=True, help="Target date in YYYYMMDD format")
     parser.add_argument("--game-id", help="Specific game_id to smoke test")
@@ -217,6 +229,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     if len(args.date) != 8 or not args.date.isdigit():

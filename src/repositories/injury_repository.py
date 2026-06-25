@@ -15,10 +15,22 @@ if TYPE_CHECKING:
 
 
 class InjuryRepository:
+    """InjuryRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save_injury(self, data: dict) -> InjuryEntry:
+        """Saves injury.
+
+        Args:
+            data: Data.
+
+        Returns:
+            InjuryEntry instance.
+
+        """
         player_id = data.get("player_id")
         il_placement_date = data.get("il_placement_date")
 
@@ -39,6 +51,15 @@ class InjuryRepository:
         return new_record
 
     def get_active_by_team(self, team_id: str) -> list[InjuryEntry]:
+        """Gets active by team.
+
+        Args:
+            team_id: Team ID.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(InjuryEntry)
             .where(
@@ -50,6 +71,12 @@ class InjuryRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_all_active(self) -> list[InjuryEntry]:
+        """Gets all active.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(InjuryEntry)
             .where(InjuryEntry.status.in_(["ACTIVE", "15_IL", "60_IL"]))
@@ -58,6 +85,13 @@ class InjuryRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def mark_returned(self, injury_id: int, return_date: date) -> None:
+        """Handles the mark returned operation.
+
+        Args:
+            injury_id: Injury ID.
+            return_date: Return Date.
+
+        """
         record = self.session.get(InjuryEntry, injury_id)
         if record:
             record.status = "RETURNED"

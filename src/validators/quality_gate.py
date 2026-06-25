@@ -24,6 +24,7 @@ class QualityGate:
     """Validate consistency between cumulative and game-by-game records."""
 
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def _get_regular_season_ids(self, year: int) -> list[int]:
@@ -601,6 +602,16 @@ class QualityGate:
 
 
 def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
+    """Runs quality gate.
+
+    Args:
+        session: Session.
+        season: Season year.
+
+    Returns:
+        Dictionary result.
+
+    """
     gate = QualityGate(session)
     batting_result = gate.validate_season_batting(season)
     pitching_result = gate.validate_season_pitching(season)

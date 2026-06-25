@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class ForeignPlayerCrawler(NaverNewsCrawlerBase):
+    """ForeignPlayerCrawler class."""
+
     KEYWORDS = ["외국인", "대체", "교체", "방출", "영입", "재계약", "웨이버", "퇴출"]
     LABEL = "foreign player change"
 

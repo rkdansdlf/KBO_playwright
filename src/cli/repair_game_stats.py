@@ -108,6 +108,7 @@ def _repair_pitching() -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Repair NULL/zero game stats")
     parser.add_argument("--type", choices=["batting", "pitching", "all"], default="all", help="Stat type to repair")
     args = parser.parse_args(argv)
