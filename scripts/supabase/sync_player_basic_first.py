@@ -26,7 +26,6 @@ def get_supabase_connection():
 
 def sync_player_basic():
     """SQLite player_basic 데이터를 Supabase로 동기화"""
-
     # SQLite에서 데이터 읽기
     with SessionLocal() as sqlite_session:
         logger.info("📥 SQLite에서 선수 기본정보 가져오는 중...")
