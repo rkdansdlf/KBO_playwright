@@ -10,7 +10,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -25,6 +24,7 @@ from src.repositories.game_helpers import (
     _derive_game_status,
     _has_game_child_rows,
 )
+from src.utils.date_helpers import parse_date_str
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def update_game_status(game_id: str, status: str) -> bool:
 def refresh_game_status_for_date(target_date: str, today: date | None = None) -> dict[str, Any]:
     """Recompute game_status only for one target date (YYYYMMDD)."""
     try:
-        dt = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
+        dt = parse_date_str(target_date)
     except ValueError:
         return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
 

@@ -73,7 +73,7 @@ class TestExtractTeamIdManager:
             assert result == expected_id, f"Expected {expected_id} for {keyword}, got {result}"
 
     def test_unknown_team(self):
-        result = self.crawler._extract_team_id("� 감독 선임")
+        result = self.crawler._extract_team_id("해외 감독 선임")
         assert result is None
 
 

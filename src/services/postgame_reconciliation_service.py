@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import and_, func, or_
 
-from src.constants import DATE_STR_LEN, KST
+from src.constants import DATE_STR_LEN
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.repositories.game_repository import (
@@ -23,6 +23,7 @@ from src.services.game_collection_service import (
     GameCollectionTarget,
     crawl_and_save_game_details,
 )
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
@@ -357,7 +358,7 @@ def _normalize_range(start_date: str, end_date: str) -> tuple[str, str]:
 
 
 def _parse_yyyymmdd(value: str) -> date:
-    return datetime.strptime(value, "%Y%m%d").replace(tzinfo=KST).date()
+    return parse_date_str(value)
 
 
 def _format_game_date(value: object, *, fallback_game_id: str) -> str:

@@ -11,11 +11,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING
 
-from src.constants import KST
 from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS, TransitTimeCrawler
+from src.utils.date_helpers import parse_date_str
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 async def run(args: argparse.Namespace) -> None:
     game_date = None
     if args.game_date:
-        game_date = datetime.strptime(args.game_date, "%Y%m%d").replace(tzinfo=KST).date()
+        game_date = parse_date_str(args.game_date)
 
     origins = JAMSIL_ORIGINS
     if args.origin:

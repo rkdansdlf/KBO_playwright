@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
+from src.utils.date_helpers import parse_date_str, parse_datetime_str
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -96,7 +97,7 @@ def _within_days(record: dict[str, Any], days: int | None) -> bool:
     if days is None:
         return True
     try:
-        report_date = datetime.strptime(str(record["date"]), "%Y%m%d").replace(tzinfo=KST).date()
+        report_date = parse_date_str(str(record["date"]))
     except ValueError:
         return True
     cutoff = datetime.now(KST).date() - timedelta(days=days)
@@ -107,7 +108,7 @@ def _is_yyyymmdd(value: str) -> bool:
     if len(value) != 8 or not value.isdigit():
         return False
     try:
-        datetime.strptime(value, "%Y%m%d").replace(tzinfo=KST)
+        parse_datetime_str(value)
     except ValueError:
         return False
     return True

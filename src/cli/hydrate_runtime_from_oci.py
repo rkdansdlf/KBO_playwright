@@ -5,15 +5,14 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker
 
-from src.constants import KST
 from src.db.engine import SessionLocal, create_engine_for_url
 from src.sync.runtime_hydrator import RuntimeHydrator
+from src.utils.date_helpers import parse_date_str
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -38,7 +37,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         msg = "OCI_DB_URL or --source-url is required"
         raise SystemExit(msg)
 
-    target_date = datetime.strptime(args.date, "%Y%m%d").replace(tzinfo=KST).date() if args.date else None
+    target_date = parse_date_str(args.date) if args.date else None
     source_engine = create_engine_for_url(args.source_url, disable_sqlite_wal=True)
     source_session_factory = sessionmaker(bind=source_engine, autoflush=False, autocommit=False, expire_on_commit=False)
 

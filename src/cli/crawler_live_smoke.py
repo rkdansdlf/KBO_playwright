@@ -9,13 +9,12 @@ import io
 import json
 import logging
 import os
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from src.constants import KST
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
+from src.utils.date_helpers import parse_date_str
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
 
@@ -53,7 +52,7 @@ def _select_schedule_candidates(
     limit: int,
 ) -> list[dict[str, str]]:
     selected: list[dict[str, str]] = []
-    target_day = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
+    target_day = parse_date_str(target_date)
     for game in games:
         game_date = str(game.get("game_date") or "").replace("-", "")
         if game_date != target_date:

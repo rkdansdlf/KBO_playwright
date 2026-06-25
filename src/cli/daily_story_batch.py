@@ -18,6 +18,7 @@ from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
 from src.repositories.game_repository import refresh_game_status_for_date
 from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
 
@@ -111,7 +112,7 @@ def _sync_story_summaries(game_ids: Sequence[str]) -> None:
 async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
     logger.info("🚀 Starting Post-game Story Data Batch for %s...", target_date)
 
-    target_dt_obj = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
+    target_dt_obj = parse_date_str(target_date)
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
         logger.info(

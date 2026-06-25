@@ -24,6 +24,7 @@ from sqlalchemy import func
 
 from src.constants import KST
 from src.db.engine import SessionLocal
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import (
     GAME_STATUS_UNRESOLVED,
     is_terminal_status,
@@ -63,7 +64,7 @@ class IntegrityReport:
 def _parse_target_date(date_str: str) -> date:
     """Parse YYYYMMDD string to date."""
     try:
-        return datetime.strptime(date_str, "%Y%m%d").replace(tzinfo=KST).date()
+        return parse_date_str(date_str)
     except ValueError:
         msg = f"Invalid date format: {date_str}. Expected YYYYMMDD."
         raise ValueError(msg) from None

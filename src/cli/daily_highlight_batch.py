@@ -19,6 +19,7 @@ from src.db.engine import SessionLocal
 from src.models.game import Game, GameHighlight
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 if TYPE_CHECKING:
@@ -172,7 +173,7 @@ async def run_highlight_batch(
     logger.info("🎬 Starting Daily Highlight Batch for %s...", target_date_str)
 
     try:
-        target_date = datetime.strptime(target_date_str, "%Y%m%d").replace(tzinfo=KST).date()
+        target_date = parse_date_str(target_date_str)
     except ValueError:
         logger.exception("❌ Invalid date format: %s. Expected YYYYMMDD.", target_date_str)
         return []

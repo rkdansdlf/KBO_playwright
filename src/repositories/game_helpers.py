@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
+from src.utils.date_helpers import parse_date_str
 
 logger = logging.getLogger(__name__)
 
@@ -545,7 +546,7 @@ def _ensure_game_stub(session: Session, game_id: str) -> None:
         return
 
     try:
-        game_date = datetime.strptime(game_id[:8], "%Y%m%d").replace(tzinfo=KST).date()
+        game_date = parse_date_str(game_id[:8])
     except ValueError:
         logger.warning("Failed to parse game date from game_id")
         game_date = datetime.now(KST).date()

@@ -9,7 +9,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from src.constants import KST
+from src.utils.date_helpers import parse_datetime_str
 
 try:
     from datetime import UTC
@@ -83,7 +83,7 @@ class SlaTracker:
         }
 
     def compute_weekly_sla(self, end_date: str, days: int = 7) -> list[dict]:
-        end = datetime.strptime(end_date, "%Y%m%d").replace(tzinfo=KST)
+        end = parse_datetime_str(end_date)
         results = []
         for i in range(days):
             d = (end - timedelta(days=i)).strftime("%Y%m%d")

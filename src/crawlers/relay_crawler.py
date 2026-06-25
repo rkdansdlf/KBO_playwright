@@ -20,6 +20,7 @@ from src.constants import DATE_STR_LEN, GAME_ID_YEAR_LEN, KST
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
 from src.utils.compliance import compliance
+from src.utils.date_helpers import parse_date_str
 from src.utils.relay_text import (
     advance_pitch_count,
     detect_relay_event_type,
@@ -226,7 +227,7 @@ class RelayCrawler:
         return away_field == away_code and home_field == home_code
 
     def _schedule_query_dates(self, kbo_game_id: str) -> list[str]:
-        base_date = datetime.strptime(kbo_game_id[:8], "%Y%m%d").replace(tzinfo=KST).date()
+        base_date = parse_date_str(kbo_game_id[:8])
         query_dates = [base_date.isoformat()]
         for offset in range(1, self.schedule_fallback_window_days + 1):
             query_dates.append((base_date + timedelta(days=offset)).isoformat())
