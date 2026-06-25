@@ -248,7 +248,6 @@ class StatsSyncMixin:
 
     def sync_team_season_batting(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
         """Sync team_season_batting data from SQLite to OCI"""
-
         if year and not force:
             sig = self._get_table_signature(TeamSeasonBatting, year)
             if sig["match"]:
@@ -269,7 +268,6 @@ class StatsSyncMixin:
 
     def sync_team_season_pitching(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
         """Sync team_season_pitching data from SQLite to OCI"""
-
         if year and not force:
             sig = self._get_table_signature(TeamSeasonPitching, year)
             if sig["match"]:

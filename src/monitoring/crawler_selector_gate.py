@@ -120,7 +120,6 @@ class SelectorGateSummary:
 
 def evaluate_html_target(target: SelectorTarget, html: str) -> SelectorGateResult:
     """Evaluate one target against already-captured HTML."""
-
     soup = BeautifulSoup(html, "html.parser")
     check_payloads: dict[str, dict[str, Any]] = {}
     issues: list[SelectorIssue] = []
@@ -198,7 +197,6 @@ def evaluate_html_target(target: SelectorTarget, html: str) -> SelectorGateResul
 
 def load_selector_config(path: str | Path) -> list[SelectorTarget]:
     """Load selector targets from a JSON config file."""
-
     config_path = Path(path)
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     targets = payload.get("targets", [])
@@ -215,7 +213,6 @@ def run_selector_gate(
     output_dir: str | Path | None = None,
 ) -> SelectorGateSummary:
     """Run selector checks for all targets and optionally write a JSON report."""
-
     output_path = Path(output_dir) if output_dir else None
     if output_path:
         output_path.mkdir(parents=True, exist_ok=True)
@@ -242,7 +239,6 @@ def run_selector_gate(
 
 def render_selector_summary(summary: SelectorGateSummary) -> str:
     """Render a compact text report for terminal use."""
-
     lines = [
         f"Selector gate: {'PASS' if summary.ok else 'FAIL'}",
         f"Targets: {summary.target_count}",

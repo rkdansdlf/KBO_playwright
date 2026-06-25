@@ -314,7 +314,6 @@ class ScheduleCrawler:
 
         `gameId`가 포함된 모든 링크를 찾아, 각 링크에서 경기 ID, 날짜, 팀 정보 등을 파싱합니다.
         """
-
         # JS를 사용하여 모든 게임 정보를 한 번에 추출
         extraction_script = r"""
         ({year, season_type}) => {

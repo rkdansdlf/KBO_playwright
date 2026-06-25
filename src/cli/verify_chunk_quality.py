@@ -173,7 +173,6 @@ def _status(*, ok: bool) -> str:
 
 def print_report(chunks: list[dict], source_filter: str | None) -> bool:
     """Prints the quality report. Returns True if all checks pass."""
-
     total = len(chunks)
     if total == 0:
         logger.warning("\n⚠️  No chunks found%s.", " for source=" + source_filter if source_filter else "")

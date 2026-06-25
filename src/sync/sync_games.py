@@ -144,7 +144,6 @@ class GameSyncMixin:
 
     def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
-
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
         season_map = self._get_season_map()
 
@@ -742,7 +741,6 @@ class GameSyncMixin:
 
     def sync_pregame_game(self, game_id: str) -> dict[str, int]:
         """Sync only pregame publish tables for one game without touching completed detail datasets."""
-
         if not game_id:
             return {}
 
@@ -804,7 +802,6 @@ class GameSyncMixin:
         summary_type: str = "리뷰_WPA",
     ) -> dict[str, int]:
         """Replace and sync review summary rows for a bounded game_id set."""
-
         target_game_ids = sorted({game_id for game_id in game_ids if game_id})
         if not target_game_ids:
             return {"summary": 0, "games": 0}

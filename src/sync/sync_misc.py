@@ -91,7 +91,6 @@ class MiscSyncMixin:
 
     def sync_teams(self) -> int:
         """Sync teams from SQLite to OCI"""
-
         franchise_mapping = self._get_franchise_id_mapping()
         teams = self.sqlite_session.query(Team).all()
         if not teams:
