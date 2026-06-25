@@ -1,6 +1,23 @@
-from unittest.mock import patch
+from __future__ import annotations
 
-from src.cli.morning_pbp_report import main
+import logging
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from src.cli.morning_pbp_report import (
+    _append_affected_games,
+    _append_detail_failures,
+    _append_oci_skips,
+    _append_relay_section,
+    _append_validation_section,
+    _build_telegram_message,
+    _find_latest_summary,
+    _query_pbp_validation_summary,
+    _read_pbp_report_csv,
+    main,
+    run_morning_report,
+)
 
 
 class TestMorningPbpReport:
@@ -22,3 +39,89 @@ class TestMorningPbpReport:
             with patch("src.cli.morning_pbp_report._query_pbp_validation_summary", return_value={}):
                 result = main(["--date", "20250101", "--dry-run"])
                 assert result == 0
+
+
+class TestAppendRelaySection:
+    def test_appends_relay_data(self):
+        lines = []
+        _append_relay_section(lines, {"relay": {"20250101LGSS0": {"status": "ok"}}}, [])
+        assert len(lines) > 0
+        assert "RELAY" in lines[0] or "relay" in lines[0].lower()
+
+    def test_appends_failures(self):
+        lines = []
+        _append_relay_section(lines, {}, ["G1 failed"])
+        assert any("G1" in line for line in lines)
+
+
+class TestAppendDetailFailures:
+    def test_appends_failures(self):
+        lines = []
+        _append_detail_failures(lines, ["fail1", "fail2"])
+        assert len(lines) >= 2
+
+
+class TestAppendValidationSection:
+    def test_appends_validation(self):
+        lines = []
+        _append_validation_section(lines, {"verified": 5, "unverified": 2})
+        assert len(lines) > 0
+
+
+class TestAppendOciSkips:
+    def test_appends_skips(self):
+        lines = []
+        _append_oci_skips(lines, {"skip_counts": {"no_data": 1}})
+        assert len(lines) > 0
+
+
+class TestAppendAffectedGames:
+    def test_appends_games(self):
+        lines = []
+        _append_affected_games(lines, ["G1", "G2"])
+        assert len(lines) >= 2
+
+
+class TestBuildTelegramMessage:
+    def test_builds_message(self):
+        msg = _build_telegram_message(
+            target_date="20250101",
+            validation_counts={"verified": 5},
+            relay_data={},
+            relay_failures=[],
+            detail_failures=[],
+            oci_data={},
+            affected_games=[],
+        )
+        assert isinstance(msg, str)
+        assert "20250101" in msg
+
+
+class TestReadPbpReportCsv:
+    def test_reads_csv(self, tmp_path):
+        import csv
+
+        csv_path = tmp_path / "report.csv"
+        with csv_path.open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["game_id", "status"])
+            writer.writeheader()
+            writer.writerow({"game_id": "G1", "status": "ok"})
+        result = _read_pbp_report_csv(str(csv_path))
+        assert len(result) == 1
+        assert result[0]["game_id"] == "G1"
+
+
+class TestFindLatestSummary:
+    def test_returns_none_when_no_files(self, tmp_path):
+        result = _find_latest_summary(str(tmp_path))
+        assert result is None
+
+
+class TestQueryPbpValidationSummary:
+    def test_returns_dict(self):
+        with patch("src.db.engine.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_session.query.return_value.group_by.return_value.all.return_value = []
+            result = _query_pbp_validation_summary()
+            assert isinstance(result, dict)
