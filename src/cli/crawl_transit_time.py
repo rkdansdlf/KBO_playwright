@@ -15,6 +15,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.constants import KST
 from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS, TransitTimeCrawler
 
 if TYPE_CHECKING:
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 async def run(args: argparse.Namespace) -> None:
     game_date = None
     if args.game_date:
-        game_date = datetime.strptime(args.game_date, "%Y%m%d").date()
+        game_date = datetime.strptime(args.game_date, "%Y%m%d").replace(tzinfo=KST).date()
 
     origins = JAMSIL_ORIGINS
     if args.origin:

@@ -4,6 +4,7 @@ Tests selector-based extraction across multiple team site layouts.
 """
 
 from __future__ import annotations
+from src.constants import KST
 
 from datetime import datetime
 from pathlib import Path
@@ -82,7 +83,7 @@ class TestLGEventsIntegration:
         html = _load_fixture("lg_events_notice.html")
         result = parse_team_events(html, "lg_twins_events", recent_metadata)
         for event in result:
-            assert event["published_at"] >= datetime(2025, 3, 18)
+            assert event["published_at"] >= datetime(2025, 3, 18, tzinfo=KST)
 
 
 class TestHHEventsIntegration:

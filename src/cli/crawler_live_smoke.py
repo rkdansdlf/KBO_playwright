@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from src.constants import KST
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
@@ -52,7 +53,7 @@ def _select_schedule_candidates(
     limit: int,
 ) -> list[dict[str, str]]:
     selected: list[dict[str, str]] = []
-    target_day = datetime.strptime(target_date, "%Y%m%d").date()
+    target_day = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     for game in games:
         game_date = str(game.get("game_date") or "").replace("-", "")
         if game_date != target_date:

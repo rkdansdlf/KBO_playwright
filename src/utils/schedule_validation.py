@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
-from src.constants import DATE_STR_LEN
+from src.constants import DATE_STR_LEN, KST
 from src.utils.game_status import (
     COMPLETED_LIKE_GAME_STATUSES,
     GAME_STATUS_CANCELLED,
@@ -28,7 +28,7 @@ def parse_schedule_date(value: object) -> date | None:
     if len(text) != DATE_STR_LEN or not text.isdigit():
         return None
     try:
-        return datetime.strptime(text, "%Y%m%d").date()
+        return datetime.strptime(text, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         return None
 

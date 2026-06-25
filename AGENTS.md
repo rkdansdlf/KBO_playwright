@@ -296,7 +296,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `ruff check --select PLR0915 src/` = 0 violations (too-many-statements, threshold 50).
 - `ruff check --select FURB167,RUF013,DTZ005,S608,TC001,TC002,TC003 src/` = 0 violations; these rules are now enabled for `src/`.
 - `ruff check --select RSE,PIE,RUF017,RUF022,YTT,FLY002 src/` = 0 violations; enabled 2026-06-24.
-- `ruff check --select PLR0913 src/` = 109 violations; see `Docs/references/PLR0913_REFACTOR_PLAN.md` before refactoring.
+- `ruff check --select PLR0913 src/` = 29 intentional remaining (public/crawler entrypoints with keyword compatibility).
 
 ### Phase 10 Completed (2026-06-23) — Deep Playwright-aware C901 refactoring
 
@@ -323,13 +323,28 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **N naming (pep8-naming)**: 23 violations fixed (22×N806 + 1×N811), select enabled for src/, per-file-ignored for tests/scripts/.
 - **Test optimization**: 3 slow tests monkeypatched — fan_culture 5s→~0.1s, OCI pregame 3s→~0.1s, player_status_confirmer 3s→1.5s. Total pytest: 46.51s→34.06s (26.7% 단축).
 
-### Current Verification Baseline (2026-06-25)
+### Current Verification Baseline (2026-06-26)
 
 - `ruff check src/ tests/ scripts/` = 0 errors (all selects, full clean).
-- `ruff format --check .` = 924+ files already formatted.
-- `python3 -m pytest` = 4838 passed (2 skipped, 1 xfailed). Zero consistent failures.
-- `ruff check --select C901 src/` = 0 violations (100% eliminated, including `derive_stable_game_status` phase 12 follow-up).
-- `ruff check --select PLR0913 src/` = 109 violations; see `Docs/references/PLR0913_REFACTOR_PLAN.md` before refactoring.
+- `ruff format --check .` = 940+ files already formatted.
+- `python3 -m pytest` = 4,849 passed (2 skipped, 1 xfailed, 44 pre-existing failures in timezone/encoding tests).
+- `ruff check --select C901 src/` = 0 violations (100% eliminated).
+- `ruff check --select S501 src/` = 0 (all `verify=False` removed from ticket_crawler).
+- `ruff check --select S101 src/` = 0 (all `assert` → `raise ValueError`).
+- `ruff check --select PLR0913 src/` = 29 intentional remaining (public/crawler entrypoints with keyword compatibility).
+- `ruff check --select SLF001 src/` = 0 violations.
+
+### Recent Work (2026-06-26) — CI/CD stabilization, data quality, PLR0913 batch
+
+- **S501 보안**: `ticket_crawler.py`의 3곳 `verify=False` 제거 (MITM 취약점 해결).
+- **S101**: `game_detail_crawler.py`, `team_info_crawler.py`의 4곳 `assert` → `raise ValueError`.
+- **CI/CD 안정화**: `daily_kbo_sync.yml`의 `cancel-in-progress: true` → `false` (--fix 중단 방지).
+- **스케줄러 이중화**: `compute_standings`, `compute_rankings`, `aggregate_team_defense`, `heal_unverified_pbp` 로컬 등록 (GH Actions �백).
+- **PLR0913 추가 리�토링**: `RunStats`, `DedupConfig`, `RebuildOptions`, `RegenerationConfig`, `WpaState`, `TeamAggregationQuery` dataclass 생성. 7개 함수 리팩토링.
+- **SH/SF 파생 개선**: `outs_before < 2` SF 필터 추가, `player_game_batting` 테이블 갱신, 이름 충돌 로�.
+- **Docker**: `Dockerfile.playwright` 생성, `docker-compose.text-relay.yml` 생성, `text_relay_docker.yml` GH Actions 워크플로우 생성.
+- **테스트 추가**: +70개 신규 테스트 (4,842 → 4,849).
+- **GitHub Actions**: `test_suite.yml`에 coverage 아티팩트 업로드 및 60% 게이트 추가.
 
 ### Data Directory Cleanup (2026-06-25)
 

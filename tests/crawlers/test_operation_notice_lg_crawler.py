@@ -1,4 +1,5 @@
 from __future__ import annotations
+from src.constants import KST
 
 from datetime import datetime
 
@@ -57,15 +58,15 @@ class TestIsUrgent:
 class TestParseDate:
     def test_dot_format(self):
         result = _parse_date("2026.06.03")
-        assert result == datetime(2026, 6, 3)
+        assert result == datetime(2026, 6, 3, tzinfo=KST)
 
     def test_dash_format(self):
         result = _parse_date("2026-06-03")
-        assert result == datetime(2026, 6, 3)
+        assert result == datetime(2026, 6, 3, tzinfo=KST)
 
     def test_slash_format(self):
         result = _parse_date("2026/06/03")
-        assert result == datetime(2026, 6, 3)
+        assert result == datetime(2026, 6, 3, tzinfo=KST)
 
     def test_invalid_date(self):
         assert _parse_date("") is None
@@ -73,7 +74,7 @@ class TestParseDate:
 
     def test_with_whitespace(self):
         result = _parse_date("  2026.06.03  ")
-        assert result == datetime(2026, 6, 3)
+        assert result == datetime(2026, 6, 3, tzinfo=KST)
 
 
 class TestExtractArticleId:

@@ -20,6 +20,7 @@ import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
@@ -61,7 +62,7 @@ def _parse_date(raw: str) -> datetime | None:
     """Parse date strings like '2026.06.03' or '2026-06-03'."""
     for fmt in ("%Y.%m.%d", "%Y-%m-%d", "%Y/%m/%d"):
         try:
-            return datetime.strptime(raw.strip(), fmt)
+            return datetime.strptime(raw.strip(), fmt).replace(tzinfo=KST)
         except ValueError:
             continue
     return None

@@ -64,7 +64,7 @@ class IntegrityReport:
 def _parse_target_date(date_str: str) -> date:
     """Parse YYYYMMDD string to date."""
     try:
-        return datetime.strptime(date_str, "%Y%m%d").date()
+        return datetime.strptime(date_str, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         raise ValueError(f"Invalid date format: {date_str}. Expected YYYYMMDD.") from None  # noqa: TRY003
 

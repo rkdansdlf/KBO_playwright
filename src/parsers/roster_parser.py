@@ -9,6 +9,8 @@ import re
 from datetime import date, datetime
 from typing import Any
 
+from src.constants import KST
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,10 +44,10 @@ def _map_team_name(name: str) -> str | None:
 def _parse_target_date(metadata: dict | None) -> date:
     target_date_str = (metadata or {}).get("fetched_at", "")
     try:
-        return datetime.fromisoformat(target_date_str).date() if target_date_str else date.today()
+        return datetime.fromisoformat(target_date_str).date() if target_date_str else datetime.now(KST).date()
     except (ValueError, TypeError):
         logger.debug("Invalid target_date_str: %s", target_date_str)
-        return date.today()
+        return datetime.now(KST).date()
 
 
 def _transaction_row(

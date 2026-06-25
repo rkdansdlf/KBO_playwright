@@ -55,8 +55,8 @@ class DailyRosterCrawler:
         save_callback: Callable[[list[dict[str, Any]]], Awaitable[object] | object] | None = None,
     ) -> list[dict[str, Any]]:
         """Crawl roster for a range of dates (format: YYYY-MM-DD)."""
-        s_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-        e_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+        s_date = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=KST).date()
+        e_date = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=KST).date()
 
         results = []
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)

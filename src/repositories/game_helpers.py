@@ -541,7 +541,7 @@ def _ensure_game_stub(session: Session, game_id: str) -> None:
         return
 
     try:
-        game_date = datetime.strptime(game_id[:8], "%Y%m%d").date()
+        game_date = datetime.strptime(game_id[:8], "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         logger.warning("Failed to parse game date from game_id")
         game_date = datetime.now(KST).date()
@@ -1034,7 +1034,7 @@ def _safe_time(value: object) -> time | None:
     try:
         parts = str(value).split(":")
         if len(parts) >= 2:
-            return datetime.strptime(":".join(parts[:2]), "%H:%M").time()
+            return datetime.strptime(":".join(parts[:2]), "%H:%M").replace(tzinfo=KST).time()
     except ValueError:
         logger.info("Failed to parse start_time value")
         return None

@@ -15,6 +15,7 @@ import sys
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.services.context_aggregator import ContextAggregator
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def _game_ids_for_date(session: Session, target_date: str) -> list[str]:
-    target = datetime.strptime(target_date, "%Y%m%d").date()
+    target = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     return [
         row[0]
         for row in session.query(Game.game_id)

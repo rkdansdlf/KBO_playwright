@@ -61,7 +61,7 @@ def _normalize_daily_roster_date(value: date | datetime | str | None) -> date | 
             return None
         for date_format in ("%Y-%m-%d", "%Y%m%d"):
             try:
-                return datetime.strptime(raw, date_format).date()
+                return datetime.strptime(raw, date_format).replace(tzinfo=KST).date()
             except ValueError:
                 continue
     msg = "daily roster date must be YYYY-MM-DD or YYYYMMDD"

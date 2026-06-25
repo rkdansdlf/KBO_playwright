@@ -21,6 +21,7 @@ from typing import Any
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Locator, Page
 
+from src.constants import KST
 from src.crawlers.selectors import PLAYER_SEARCH
 from src.services.player_status_confirmer import PlayerStatusConfirmer
 from src.utils.compliance import compliance
@@ -464,7 +465,7 @@ def parse_birth_date(raw: str | None) -> date_type | None:
     )
     for date_format in formats:
         try:
-            return datetime.strptime(text, date_format).date()
+            return datetime.strptime(text, date_format).replace(tzinfo=KST).date()
         except ValueError:
             continue
 
@@ -473,7 +474,7 @@ def parse_birth_date(raw: str | None) -> date_type | None:
         if len(parts) == 3 and all(part.isdigit() for part in parts):
             year, month, day = (int(part) for part in parts)
             if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
-                return datetime(year, month, day).date()
+                return datetime(year, month, day, tzinfo=KST).date()
     except ValueError:
         logger.warning("Failed to parse date from text: %s", text)
         return None
