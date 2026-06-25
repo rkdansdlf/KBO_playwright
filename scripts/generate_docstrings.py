@@ -349,7 +349,7 @@ def _generate_function_docstring(node):
     elif name.startswith("is_"):
         property_name = _humanize(name[3:])
         summary = f"Returns whether the {property_name}."
-    elif name.startswith("has_") or name.startswith("can_"):
+    elif name.startswith(("has_", "can_")):
         property_name = _humanize(name[4:])
         summary = f"Returns whether the {property_name}."
     elif name.startswith("should_"):
@@ -411,7 +411,7 @@ def _process_file(filepath):
             body_indent = " " * (len(body_line) - len(body_line.lstrip()))
             insert_pos = body_lineno - 1
             lines.insert(insert_pos, f"{body_indent}{quoted}\n")
-        first_line = quoted.split("\n")[0].strip('"""')
+        first_line = quoted.split("\n")[0].removeprefix('"""').removesuffix('"""')
         changes.append(f"  L{lineno}: {name} -> {first_line}")
     source = "".join(lines)
     filepath.write_text(source, encoding="utf-8")
