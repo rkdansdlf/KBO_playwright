@@ -144,7 +144,6 @@ class PitchingStatCalculator:
         kbb = round(so / bb, 2) if bb > 0 else (float(so) if so > 0 else 0.0)
 
         # 6. FIP (Fielding Independent Pitching)
-        # FIP = ((13 * HR) + (3 * (BB + HBP)) - (2 * SO)) / IP + fip_constant
         fip = round(((13 * hr) + (3 * (bb + hbp)) - (2 * so)) / ip + fip_constant, 2) if ip > 0 else 0.0
 
         return {"era": era, "whip": whip, "k_per_nine": k_per_nine, "bb_per_nine": bb_per_nine, "kbb": kbb, "fip": fip}
