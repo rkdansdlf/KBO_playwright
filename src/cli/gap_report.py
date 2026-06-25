@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select, text
@@ -295,20 +295,19 @@ def _team_stats_detail_items(gap_data: dict[str, Any]) -> list[str]:
     return detail_items
 
 
+_GAP_DETAIL_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
+    "RELAY": lambda d: [f"{gid}" for gid in (d.get("missing_game_ids") or [])[:5]],
+    "PROFILE": lambda d: [f"player_id={pid}" for pid in (d.get("missing_player_ids") or [])[:5]],
+    "STALENESS": lambda d: d.get("details", [])[:5],
+    "FRESHNESS": _freshness_detail_items,
+    "PA_FORMULA": _pa_formula_detail_items,
+    "TEAM_STATS": _team_stats_detail_items,
+}
+
+
 def _gap_detail_items(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
-    if gap_type == "RELAY":
-        return [f"{gid}" for gid in (gap_data.get("missing_game_ids") or [])[:5]]
-    if gap_type == "PROFILE":
-        return [f"player_id={pid}" for pid in (gap_data.get("missing_player_ids") or [])[:5]]
-    if gap_type == "STALENESS":
-        return gap_data.get("details", [])[:5]
-    if gap_type == "FRESHNESS":
-        return _freshness_detail_items(gap_data)
-    if gap_type == "PA_FORMULA":
-        return _pa_formula_detail_items(gap_data)
-    if gap_type == "TEAM_STATS":
-        return _team_stats_detail_items(gap_data)
-    return []
+    formatter = _GAP_DETAIL_FORMATTERS.get(gap_type)
+    return formatter(gap_data) if formatter else []
 
 
 def send_gap_alerts(report: dict[str, Any]) -> None:

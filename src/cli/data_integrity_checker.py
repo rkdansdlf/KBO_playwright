@@ -66,7 +66,8 @@ def _parse_target_date(date_str: str) -> date:
     try:
         return datetime.strptime(date_str, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
-        raise ValueError(f"Invalid date format: {date_str}. Expected YYYYMMDD.") from None  # noqa: TRY003
+        msg = f"Invalid date format: {date_str}. Expected YYYYMMDD."
+        raise ValueError(msg) from None
 
 
 def check_games_exist(session: Session, target: date) -> CheckResult:
@@ -310,6 +311,101 @@ def check_scores_populated(session: Session, target: date) -> CheckResult:
     )
 
 
+def check_winning_team_consistency(session: Session, target: date) -> CheckResult:
+    """Verify winning_team matches home_score vs away_score."""
+    from src.models.game import Game
+
+    games = (
+        session.query(Game)
+        .filter(
+            Game.game_date == target,
+            Game.game_status.in_(["COMPLETED", "DRAW"]),
+        )
+        .all()
+    )
+
+    mismatches = []
+    for game in games:
+        if game.home_score is None or game.away_score is None:
+            continue
+        if game.home_score > game.away_score:
+            expected = game.home_team
+        elif game.away_score > game.home_score:
+            expected = game.away_team
+        else:
+            continue
+
+        if game.winning_team and game.winning_team != expected:
+            mismatches.append(
+                {
+                    "game_id": game.game_id,
+                    "winning_team": game.winning_team,
+                    "expected": expected,
+                    "home_score": game.home_score,
+                    "away_score": game.away_score,
+                }
+            )
+
+    if mismatches:
+        return CheckResult(
+            name="winning_team_consistency",
+            passed=False,
+            message=f"{len(mismatches)} games have inconsistent winning_team",
+            details={"mismatches": mismatches},
+        )
+
+    return CheckResult(
+        name="winning_team_consistency",
+        passed=True,
+        message=f"All {len(games)} completed games have consistent winning_team",
+        details={"total": len(games)},
+    )
+
+
+def check_duplicate_games(session: Session, target: date) -> CheckResult:
+    """Detect duplicate games (same date + home_team + away_team)."""
+    from sqlalchemy import func as sqlfunc
+
+    from src.models.game import Game
+
+    dupes = (
+        session.query(
+            Game.game_date,
+            Game.home_team,
+            Game.away_team,
+            sqlfunc.count(Game.id).label("cnt"),
+        )
+        .filter(Game.game_date == target)
+        .group_by(Game.game_date, Game.home_team, Game.away_team)
+        .having(sqlfunc.count(Game.id) > 1)
+        .all()
+    )
+
+    if dupes:
+        details = [
+            {
+                "game_date": str(d.game_date),
+                "home_team": d.home_team,
+                "away_team": d.away_team,
+                "count": d.cnt,
+            }
+            for d in dupes
+        ]
+        return CheckResult(
+            name="duplicate_games",
+            passed=False,
+            message=f"{len(dupes)} duplicate game combinations found",
+            details={"duplicates": details},
+        )
+
+    return CheckResult(
+        name="duplicate_games",
+        passed=True,
+        message="No duplicate games found",
+        details={"total": 0},
+    )
+
+
 CHECKS = [
     check_games_exist,
     check_game_status_populated,
@@ -317,6 +413,8 @@ CHECKS = [
     check_scores_populated,
     check_child_stats_exist,
     check_no_null_player_ids,
+    check_winning_team_consistency,
+    check_duplicate_games,
 ]
 
 

@@ -145,21 +145,21 @@ EVENT_ONLY_URL_MARKERS = (
 )
 
 
+_EVENT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "giveaway": ("증정", "경품", "굿즈", "기념품"),
+    "first_pitch": ("시구",),
+    "discount": ("할인", "프로모션"),
+    "fan_participation": ("사인회", "팬"),
+    "festival": ("공연", "페스티벌", "축제"),
+    "promotion": ("신청", "모집", "클래스"),
+    "notice": ("개막", "안내", "공지"),
+}
+
+
 def _classify_event(title: str) -> str:
-    if any(kw in title for kw in ["증정", "경품", "굿즈", "기념품"]):
-        return "giveaway"
-    if "시구" in title:
-        return "first_pitch"
-    if any(kw in title for kw in ["할인", "프로모션"]):
-        return "discount"
-    if any(kw in title for kw in ["사인회", "팬"]):
-        return "fan_participation"
-    if any(kw in title for kw in ["공연", "페스티벌", "축제"]):
-        return "festival"
-    if any(kw in title for kw in ["신청", "모집", "클래스"]):
-        return "promotion"
-    if any(kw in title for kw in ["개막", "안내", "공지"]):
-        return "notice"
+    for event_type, keywords in _EVENT_KEYWORDS.items():
+        if any(kw in title for kw in keywords):
+            return event_type
     return "promotion"
 
 
@@ -199,27 +199,36 @@ def _is_event_title(title: str, page_url: str) -> bool:
     return any(kw in title for kw in EVENT_KEYWORDS)
 
 
+def _filter_dict_rows(items: object) -> list[dict]:
+    if isinstance(items, list):
+        return [item for item in items if isinstance(item, dict)]
+    return []
+
+
 def _iter_json_rows(payload: object) -> list[dict]:
     if isinstance(payload, list):
-        return [item for item in payload if isinstance(item, dict)]
+        return _filter_dict_rows(payload)
     if not isinstance(payload, dict):
         return []
 
     content = payload.get("content")
     if isinstance(content, list):
-        return [item for item in content if isinstance(item, dict)]
+        return _filter_dict_rows(content)
 
     result = payload.get("result")
-    if isinstance(result, dict) and isinstance(result.get("data"), list):
-        return [item for item in result["data"] if isinstance(item, dict)]
-    if isinstance(result, dict) and isinstance(result.get("content"), list):
-        return [item for item in result["content"] if isinstance(item, dict)]
+    if isinstance(result, dict):
+        for key in ("data", "content"):
+            value = result.get(key)
+            if isinstance(value, list):
+                return _filter_dict_rows(value)
 
     data = payload.get("data")
     if isinstance(data, list):
-        return [item for item in data if isinstance(item, dict)]
-    if isinstance(data, dict) and isinstance(data.get("content"), list):
-        return [item for item in data["content"] if isinstance(item, dict)]
+        return _filter_dict_rows(data)
+    if isinstance(data, dict):
+        inner = data.get("content")
+        if isinstance(inner, list):
+            return _filter_dict_rows(inner)
 
     return []
 
