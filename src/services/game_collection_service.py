@@ -557,14 +557,14 @@ def _normalize_detail_failure_reason(raw_reason: str | None, *, default: str) ->
     if not reason:
         return default
     if reason in DETAIL_COLLECTION_FAILURE_REASONS_NON_RETRYABLE:
-        if reason in {"filtered", "detail_payload_filtered"}:
-            return "filtered"
-        if reason in {"save_failed", "detail_save_failed"}:
-            return "save_failed"
-        return reason
+        normalized = {
+            "filtered": "filtered",
+            "detail_payload_filtered": "filtered",
+            "save_failed": "save_failed",
+            "detail_save_failed": "save_failed",
+        }
+        return normalized.get(reason, reason)
     if reason in DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE:
-        return reason
-    if reason in {"incomplete_detail", "no_detail_payload", "timeout", "navigation_error", "exception", "missing"}:
         return reason
     return default
 

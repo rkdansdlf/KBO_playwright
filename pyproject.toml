@@ -81,8 +81,11 @@ select = [
     "PTH",     # pathlib (os.path 대체)
     "ARG",     # unused-function-argument
     "T20",     # print / pdb
+    "FLY002",  # static-format-to-fstring
     "FURB167", # regex-flag-alias
     "RUF013",  # implicit-optional
+    "DTZ001",  # call-date-from-datetime-without-tz
+    "DTZ003",  # datetime-combine-without-tz
     "DTZ005",  # datetime-now-without-tz
     "DTZ007",  # call-datetime-strptime-without-zone
     "DTZ011",  # call-date-today
@@ -133,7 +136,10 @@ ignore = [
     "G010",    # logging-warn vs logging-warning (redundant alias)
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
     "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
-    "PLR0911", # too-many-return-statements (pragmatic ignore for existing baseline)
+    "PLR0911", # too-many-return-statements (14 KEEP: complex domain/crawler logic)
+    "RUF001",  # ambiguous-unicode (intentional: Korean text, regex patterns, logger icons)
+    "RUF002",  # ambiguous-unicode-docstring (intentional: Korean comments)
+    "RUF003",  # ambiguous-unicode-comment (intentional: EN DASH in formulas)
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -167,8 +173,8 @@ ignore = [
 "src/cli/run_daily_update.py" = ["S603"]
 "src/cli/run_periodic_extras.py" = ["S603"]
 "src/cli/run_all_crawlers.py" = ["ASYNC240"]
-"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "ARG", "T201", "T20", "FURB167", "RUF013", "DTZ005", "DTZ007", "DTZ011", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF401", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "ASYNC109", "ASYNC212", "ASYNC240", "FURB110"]
-"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ005", "DTZ007", "DTZ011", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "ASYNC109", "ASYNC212", "ASYNC240", "FURB110"]
+"tests/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "ARG", "T201", "T20", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF401", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "ASYNC109", "ASYNC212", "ASYNC240", "FURB110"]
+"scripts/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "ASYNC109", "ASYNC212", "ASYNC240", "FURB110"]
 "migrations/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "T201", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001"]
 
 
