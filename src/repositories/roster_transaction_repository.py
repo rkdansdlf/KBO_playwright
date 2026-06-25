@@ -11,9 +11,8 @@ from sqlalchemy import inspect, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
-
-from ..models.player import PlayerBasic
-from ..models.roster_transaction import RosterTransaction
+from src.models.player import PlayerBasic
+from src.models.roster_transaction import RosterTransaction
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

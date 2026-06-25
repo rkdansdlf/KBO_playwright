@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.parking_fee_rule import ParkingFeeRule
-from ..models.parking_lot import ParkingLot
+from src.models.parking_fee_rule import ParkingFeeRule
+from src.models.parking_lot import ParkingLot
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

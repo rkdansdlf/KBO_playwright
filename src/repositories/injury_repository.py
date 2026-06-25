@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.injury import InjuryEntry
+from src.models.injury import InjuryEntry
 
 if TYPE_CHECKING:
     from datetime import date

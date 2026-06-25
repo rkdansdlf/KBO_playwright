@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.manager_change import ManagerChange
+from src.models.manager_change import ManagerChange
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

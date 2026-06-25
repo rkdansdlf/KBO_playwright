@@ -31,7 +31,7 @@ from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitc
 from src.parsers.player_profile_parser import PlayerProfileParsed
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.player_season_pitching_repository import get_last_filter_counts, save_pitching_stats_to_db
-from src.repositories.save_futures_batting import save_futures_batting
+from src.repositories.safe_batting_repository import save_futures_batting
 from src.utils.lock import ProcessLock
 from src.utils.player_validation import normalize_player_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
