@@ -156,7 +156,6 @@ ignore = [
     "G010",    # logging-warn vs logging-warning (redundant alias)
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
     "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
-    "PLR0911", # too-many-return-statements (14 KEEP: complex domain/crawler logic)
     "RUF001",  # ambiguous-unicode (intentional: Korean text, regex patterns, logger icons)
     "RUF002",  # ambiguous-unicode-docstring (intentional: Korean comments)
     "RUF003",  # ambiguous-unicode-comment (intentional: EN DASH in formulas)
