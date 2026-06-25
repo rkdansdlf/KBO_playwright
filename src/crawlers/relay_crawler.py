@@ -391,13 +391,7 @@ class RelayCrawler:
             return 0
         else:
             diff_mins = abs((k_hours * 60 + k_mins) - (g_hours * 60 + g_mins))
-            if diff_mins == 0:
-                return 25
-            if diff_mins <= 30:
-                return 15
-            if diff_mins > 120:
-                return -30
-            return -10
+            return _time_diff_score(diff_mins)
 
     def _score_stadium_match(self, game: dict, stadium: str | None) -> int:
         if not stadium:
@@ -1093,6 +1087,16 @@ class RelayCrawler:
 
     def _apply_wpa_transitions(self, events: list[dict[str, Any]]) -> None:
         apply_wpa_transitions(events, calculator=self.wpa_calc)
+
+
+def _time_diff_score(diff_mins: int) -> int:
+    if diff_mins == 0:
+        return 25
+    if diff_mins <= 30:
+        return 15
+    if diff_mins > 120:
+        return -30
+    return -10
 
 
 def _events_to_legacy_innings(events: list[dict[str, Any]]) -> list[dict[str, Any]]:

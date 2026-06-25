@@ -173,7 +173,10 @@ def derive_bucket_id(game_id: str, league_type_name: str | None = None) -> str:
         return f"{year}_postseason"
     if any(token in league_name for token in ("international", "wbc", "premier", "대표팀", "국가대표")):
         return f"{year}_international"
+    return _derive_bucket_by_date(game_id, year, team_code)
 
+
+def _derive_bucket_by_date(game_id: str, year: int, team_code: str) -> str:
     game_date = str(game_id)[:8]
     ps_range = POSTSEASON_DATE_RANGES.get(year)
     if ps_range and ps_range[0] <= game_date <= ps_range[1]:
