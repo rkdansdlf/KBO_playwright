@@ -3,7 +3,15 @@ import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from src.cli.freshness_gate import _check_past_scheduled_games, _check_scores, main
+import pytest
+
+from src.cli.freshness_gate import (
+    _check_past_scheduled_games,
+    _check_scores,
+    _evaluate_issues,
+    _format_freshness_output,
+    main,
+)
 
 
 class TestFreshnessGate:
@@ -95,3 +103,39 @@ class TestFreshnessGate:
         _check_scores(SimpleNamespace(game_id="20250101LGKT0", away_score=None, home_score=3), issues)
 
         assert issues["missing_scores"] == ["20250101LGKT0"]
+
+    def test_both_scores_missing(self):
+        issues = {"missing_scores": []}
+        _check_scores(SimpleNamespace(game_id="G1", away_score=None, home_score=None), issues)
+        assert issues["missing_scores"] == ["G1"]
+
+    def test_no_scores_missing(self):
+        issues = {"missing_scores": []}
+        _check_scores(SimpleNamespace(game_id="G1", away_score=3, home_score=2), issues)
+        assert issues["missing_scores"] == []
+
+    def test_away_score_missing_only(self):
+        issues = {"missing_scores": []}
+        _check_scores(SimpleNamespace(game_id="G1", away_score=None, home_score=2), issues)
+        assert issues["missing_scores"] == ["G1"]
+
+
+class TestEvaluateIssues:
+    def test_no_issues_returns_empty(self):
+        result = _evaluate_issues({"past_scheduled_games": [], "missing_scores": []})
+        assert result == []
+
+    def test_with_issues_returns_list(self):
+        result = _evaluate_issues({"past_scheduled_games": ["G1"], "missing_scores": []})
+        assert len(result) > 0
+        assert "G1" in result[0]
+
+
+class TestFormatFreshnessOutput:
+    def test_format_with_issues(self):
+        result = _format_freshness_output(False, ["issue1", "issue2"], {})
+        assert "issue1" in result
+
+    def test_format_ok(self):
+        result = _format_freshness_output(True, [], {})
+        assert result == "PASS" or "ok" in result.lower()
