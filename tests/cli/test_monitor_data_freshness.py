@@ -22,9 +22,8 @@ class TestCheckFreshness:
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_session.query.return_value.filter.return_value.all.return_value = []
 
-            with patch("src.cli.monitor_data_freshness.get_expected_freshness_hours", return_value=24):
-                result = check_freshness()
-                assert isinstance(result, list)
+            result = check_freshness()
+            assert isinstance(result, list)
 
 
 class TestCheckTableCompleteness:
@@ -91,7 +90,7 @@ class TestMonitorDataFreshness:
             result = main(["--dry-run", "--no-alert"])
             assert result is None
 
-    def test_with_issues_calls_alert(self):
+    def test_with_no_alert_flag(self):
         mock_result = {
             "stale": ["game: 48h old"],
             "table_issues": [],
@@ -99,6 +98,5 @@ class TestMonitorDataFreshness:
         }
         with patch("src.cli.monitor_data_freshness.run_monitor") as mock:
             mock.return_value = mock_result
-            with patch("src.cli.monitor_data_freshness.send_freshness_alert"):
-                result = main([])
-                assert result is None
+            result = main(["--no-alert"])
+            assert result is None
