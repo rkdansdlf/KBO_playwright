@@ -96,7 +96,7 @@ class StadiumFoodMenuItemRepository:
             .order_by(StadiumFoodVendor.vendor_name, StadiumFoodMenuItem.menu_name)
         )
         rows = self.session.execute(stmt).all()
-        return [dict(row._mapping) for row in rows]  # noqa: SLF001
+        return [dict(row._mapping) for row in rows]
 
     def bulk_save(self, records: list[dict]) -> int:
         count = 0

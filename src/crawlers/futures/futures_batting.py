@@ -74,18 +74,18 @@ def _norm_header(txt: str) -> str:
 
 def _compute_missing(row: dict) -> dict[str, Any]:
     """Compute missing derived stats (SLG, OBP) if possible."""
-    H = row.get("H")  # noqa: N806
-    _2B = row.get("2B")  # noqa: N806
-    _3B = row.get("3B")  # noqa: N806
-    HR = row.get("HR")  # noqa: N806
-    AB = row.get("AB")  # noqa: N806
-    BB = row.get("BB")  # noqa: N806
-    HBP = row.get("HBP")  # noqa: N806
-    SF = row.get("SF")  # noqa: N806
+    H = row.get("H")
+    _2B = row.get("2B")
+    _3B = row.get("3B")
+    HR = row.get("HR")
+    AB = row.get("AB")
+    BB = row.get("BB")
+    HBP = row.get("HBP")
+    SF = row.get("SF")
 
     # Compute SLG if missing
     if ("SLG" not in row or row.get("SLG") is None) and None not in (H, _2B, _3B, HR, AB) and AB and AB > 0:
-        _1B = H - sum(v or 0 for v in [_2B, _3B, HR])  # noqa: N806
+        _1B = H - sum(v or 0 for v in [_2B, _3B, HR])
         tb = (_1B or 0) + 2 * (_2B or 0) + 3 * (_3B or 0) + 4 * (HR or 0)
         row["SLG"] = round(tb / AB, 3)
 

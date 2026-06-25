@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """
 Game-level sync: games, details, PBP, play-by-play, player game stats.
 """
@@ -143,7 +142,7 @@ class GameSyncMixin:
         data["batting_order"] = None
         return data
 
-    def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:  # noqa: ARG002
+    def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
 
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)

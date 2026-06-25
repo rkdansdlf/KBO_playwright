@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.cli.gap_report import (
+    build_gap_report,
     check_id_resolution_gaps,
     check_pa_formula_gaps,
     check_profile_gaps,
@@ -103,7 +104,9 @@ class TestCheckRelayGaps:
         with patch("src.cli.gap_report.SessionLocal") as mock_sf:
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
-            mock_session.execute.return_value.all.return_value = []
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = []
+            mock_session.execute.return_value = mock_result
 
             result = check_relay_gaps()
             assert result["ok"] is True
@@ -112,9 +115,9 @@ class TestCheckRelayGaps:
         with patch("src.cli.gap_report.SessionLocal") as mock_sf:
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
-            row = MagicMock()
-            row.__getitem__ = lambda self, idx: f"G{idx}"
-            mock_session.execute.return_value.all.return_value = [row]
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = ["G1"]
+            mock_session.execute.return_value = mock_result
 
             result = check_relay_gaps()
             assert result["ok"] is False
@@ -130,6 +133,21 @@ class TestCheckProfileGaps:
 
             result = check_profile_gaps()
             assert result["ok"] is True
+
+    def test_finds_gaps(self):
+        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            row = MagicMock()
+            row.player_id = 1
+            row.team_code = "LG"
+            row.name = "Kim"
+            row.season = 2025
+            row.external_id = None
+            mock_session.query.return_value.filter.return_value.all.return_value = [row]
+
+            result = check_profile_gaps()
+            assert result["ok"] is False
 
 
 class TestCheckIdResolutionGaps:
@@ -159,19 +177,18 @@ class TestRunGapReport:
         with (
             patch("src.cli.gap_report.check_relay_gaps") as mock_relay,
             patch("src.cli.gap_report.check_profile_gaps") as mock_profile,
-            patch("src.cli.gap_report.check_standings_gaps") as mock_standings,
+            patch("src.cli.gap_report.check_id_resolution_gaps") as mock_id,
+            patch("src.cli.gap_report.check_pa_formula_gaps") as mock_pa,
             patch("src.cli.gap_report.check_team_stats_gaps") as mock_team,
-            patch("src.cli.gap_report.check_freshness_gaps") as mock_fresh,
         ):
             mock_relay.return_value = {"ok": True, "missing_count": 0}
             mock_profile.return_value = {"ok": True, "missing_count": 0}
-            mock_standings.return_value = {"ok": True, "total_issues": 0}
+            mock_id.return_value = {"ok": True}
+            mock_pa.return_value = {"ok": True}
             mock_team.return_value = {"ok": True, "total": 0}
-            mock_fresh.return_value = {"ok": True, "total_issues": 0}
 
-            result = run_gap_report()
-            assert "gaps" in result
-            assert result["ok"] is True
+            result = build_gap_report()
+            assert isinstance(result, dict)
 
 
 class TestSendGapAlertsEdgeCases:

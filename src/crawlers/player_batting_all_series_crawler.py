@@ -1030,7 +1030,7 @@ def _handle_batting_fallback(
     return all_players_data
 
 
-def crawl_series_batting_stats(  # noqa: PLR0913
+def crawl_series_batting_stats(
     year: int | None = None,
     series_key: str = "regular",
     limit: int | None = None,

@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """
 Season stats sync: batting, pitching, fielding, baserunning, standings, rankings.
 """

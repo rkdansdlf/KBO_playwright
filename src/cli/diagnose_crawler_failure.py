@@ -23,9 +23,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = diagnose_sources(sources)
 
     if args.json:
-        print(report_to_json(report))  # noqa: T201
+        print(report_to_json(report))
     else:
-        print(render_diagnosis_text(report))  # noqa: T201
+        print(render_diagnosis_text(report))
     return report.exit_code
 
 

@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """
 Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
 Dual-repository pattern: SQLite (dev/validation) → OCI (production)
@@ -870,7 +869,7 @@ class OCISyncBase:
                 logger.info("ℹ️ Skipping game_metadata.source_payload for legacy OCI varchar column")
         return columns
 
-    def sync_simple_table(  # noqa: PLR0913
+    def sync_simple_table(
         self,
         model: type,
         conflict_keys: list[str],

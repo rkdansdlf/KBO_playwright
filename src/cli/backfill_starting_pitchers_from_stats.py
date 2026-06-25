@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """Backfill missing game starting pitchers from pitching stats.
 
 This command repairs ``game.away_pitcher`` and ``game.home_pitcher`` when

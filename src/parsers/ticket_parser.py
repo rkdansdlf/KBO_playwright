@@ -96,4 +96,4 @@ if __name__ == "__main__":
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>테이블석 : 150,000원</p></body></html>"
     result = parse_ticket_page(html, "lg_twins_ticket", {"season": 2025})
     for item in result:
-        print(item)  # noqa: T201  # noqa: T201
+        print(item)

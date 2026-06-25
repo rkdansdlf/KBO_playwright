@@ -65,7 +65,6 @@ TEAM_NAME_TO_CODE = {
     # Dissolved
     "쌍방울": "SL",
     "쌍방울 레이더스": "SL",
-    # Special / National (same)
     "나눔": "EA",
     "드림": "WE",
     "대한민국": "KR",
