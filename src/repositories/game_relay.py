@@ -1,5 +1,4 @@
-"""
-Relay data persistence and backfill functions.
+"""Relay data persistence and backfill functions.
 """
 
 from __future__ import annotations
@@ -235,8 +234,7 @@ def backfill_missing_game_stubs_for_relays(
     seasons: Iterable[int] | None = None,
     sync_to_oci: bool = False,
 ) -> int:
-    """
-    Ensure a parent `game` row exists for any relay-bearing game_id.
+    """Ensure a parent `game` row exists for any relay-bearing game_id.
 
     This repairs local integrity when historical backfills inserted `game_events`
     or `game_play_by_play` before the corresponding `game` row existed.
@@ -421,8 +419,7 @@ def repair_game_parent_from_existing_children(
     *,
     sync_to_oci: bool = False,
 ) -> bool:
-    """
-    Rebuild/repair one parent `game` row from existing child tables.
+    """Rebuild/repair one parent `game` row from existing child tables.
 
     Historical backfills sometimes inserted box-score children before the parent
     `game` row. If those children exist, they are more authoritative than a
@@ -949,8 +946,7 @@ def save_relay_data(
     options: RelaySaveOptions | None = None,
     **overrides: object,
 ) -> int:
-    """
-    Persist normalized relay data.
+    """Persist normalized relay data.
 
     Rules:
     - When normalized events have enough state, persist both game_events and game_play_by_play.

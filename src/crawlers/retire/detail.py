@@ -1,5 +1,4 @@
-"""
-Fetch retired/inactive player detail pages (hitter & pitcher).
+"""Fetch retired/inactive player detail pages (hitter & pitcher).
 """
 
 from __future__ import annotations
@@ -51,8 +50,7 @@ class RetiredPlayerDetailCrawler:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
     async def fetch_player(self, player_id: str, retries: int = 2) -> dict[str, Any]:
-        """
-        Fetch hitter & pitcher pages for the given player ID.
+        """Fetch hitter & pitcher pages for the given player ID.
         """
         pool = await self._get_pool()
         hitter_payload = None

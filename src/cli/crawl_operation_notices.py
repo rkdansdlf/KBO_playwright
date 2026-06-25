@@ -1,5 +1,4 @@
-"""
-CLI for crawling stadium operation notices from LG Twins, Doosan Bears, and Naver Search.
+"""CLI for crawling stadium operation notices from LG Twins, Doosan Bears, and Naver Search.
 
 Usage:
     python -m src.cli.crawl_operation_notices --team LG --save

@@ -1,5 +1,4 @@
-"""
-Unit tests for PBP auto-healing (run_pbp_healer_async, _find_unverified_pbp_games).
+"""Unit tests for PBP auto-healing (run_pbp_healer_async, _find_unverified_pbp_games).
 
 Async tests use asyncio.run() to avoid requiring pytest-asyncio plugin.
 In-memory SQLite uses per-table creation (not Base.metadata.create_all)

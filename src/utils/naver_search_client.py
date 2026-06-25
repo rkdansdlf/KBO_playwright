@@ -1,5 +1,4 @@
-"""
-Naver Search API client for KBO operation notice crawling.
+"""Naver Search API client for KBO operation notice crawling.
 
 Uses the Naver Open API (검색 API) to query news and blog posts
 related to stadium operations. This is a free alternative to Twitter/X API.
@@ -102,8 +101,7 @@ def _clean_html(text: str) -> str:
 
 
 class NaverSearchClient:
-    """
-    Async client for Naver Open Search API.
+    """Async client for Naver Open Search API.
 
     Usage:
         client = NaverSearchClient()
@@ -130,8 +128,7 @@ class NaverSearchClient:
         display: int = 20,
         sort: str = "date",
     ) -> list[NaverSearchResult]:
-        """
-        Search Naver for news/blog/cafe articles.
+        """Search Naver for news/blog/cafe articles.
 
         Args:
             query: Search query string.
@@ -181,8 +178,7 @@ class NaverSearchClient:
         self,
         days_back: int = 3,
     ) -> list[NaverSearchResult]:
-        """
-        Run all KBO notice queries and return deduplicated results.
+        """Run all KBO notice queries and return deduplicated results.
 
         Args:
             days_back: Only return results from the last N days.

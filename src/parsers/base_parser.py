@@ -1,5 +1,4 @@
-"""
-Base class for stadium-related HTML parsers.
+"""Base class for stadium-related HTML parsers.
 Provides shared BeautifulSoup initialization and text extraction.
 """
 

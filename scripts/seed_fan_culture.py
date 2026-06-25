@@ -1,5 +1,4 @@
-"""
-Seed team rivalry data from CSV into the team_rivalries table.
+"""Seed team rivalry data from CSV into the team_rivalries table.
 
 Usage:
     python scripts/seed_fan_culture.py

@@ -1,5 +1,4 @@
-"""
-Repository for StadiumSeatSection operations.
+"""Repository for StadiumSeatSection operations.
 """
 
 from __future__ import annotations

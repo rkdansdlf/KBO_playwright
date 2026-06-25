@@ -1,5 +1,4 @@
-"""
-Parser for team event/news HTML pages. Extracts event title, date, type, and source URL.
+"""Parser for team event/news HTML pages. Extracts event title, date, type, and source URL.
 """
 
 from __future__ import annotations

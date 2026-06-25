@@ -1,5 +1,4 @@
-"""
-KBO Player Profile Parser
+"""KBO Player Profile Parser
 Parses raw KBO profile texts and original string fields into structured attributes.
 """
 
@@ -185,8 +184,7 @@ def parse_path(s: str) -> list[str]:
 
 
 def parse_money(s: str) -> dict[str, Any | None]:
-    """
-    Parse currency amounts:
+    """Parse currency amounts:
     - '200000달러' -> amount=200000, currency='USD'
     - '160000만원' -> amount=1600000000, currency='KRW'
     """
@@ -216,8 +214,7 @@ def parse_money(s: str) -> dict[str, Any | None]:
 
 
 def parse_draft(s: str) -> dict[str, Any | None]:
-    """
-    Parse draft info like '06 두산 2차 8라운드 59순위', '25 삼성 자유선발', or '98 삼성 1차'.
+    """Parse draft info like '06 두산 2차 8라운드 59순위', '25 삼성 자유선발', or '98 삼성 1차'.
     """
     default_res = {
         "draft_year": None,
@@ -300,8 +297,7 @@ def parse_profile(
     is_active: bool | None = None,
     is_foreign: bool | None = None,
 ) -> dict[str, Any]:
-    """
-    Main entry point. Tokenizes raw profile text and returns a structured dictionary
+    """Main entry point. Tokenizes raw profile text and returns a structured dictionary
     of all parsed values.
     """
     tokens = tokenize_profile(raw_text)

@@ -42,8 +42,7 @@ class PlayerIdentity:
 
 
 class PlayerIdResolver:
-    """
-    Resolver ensuring player IDs are found even if missing in game crawl data.
+    """Resolver ensuring player IDs are found even if missing in game crawl data.
     """
 
     def __init__(

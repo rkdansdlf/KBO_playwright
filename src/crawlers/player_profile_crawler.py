@@ -1,5 +1,4 @@
-"""
-KBO Player Profile Crawler (Enhanced)
+"""KBO Player Profile Crawler (Enhanced)
 Collects extended player profile: photo_url, bats, throws, salary, draft info, debut_year.
 Source: KBO HitterDetail/PitcherDetail Basic.aspx
 """
@@ -173,8 +172,7 @@ def _clean_photo_url(raw: str | None) -> str | None:
 
 
 class PlayerProfileCrawler:
-    """
-    선수 고유 ID를 사용하여 KBO 공식 사이트에서 상세 프로필을 크롤링.
+    """선수 고유 ID를 사용하여 KBO 공식 사이트에서 상세 프로필을 크롤링.
     타자/투수 페이지를 포지션 기준으로 자동 선택.
     """
 
@@ -227,8 +225,7 @@ class PlayerProfileCrawler:
         *,
         position: str | None = None,
     ) -> dict[str, Any] | None:
-        """
-        Crawl the profile detail page for player_id.
+        """Crawl the profile detail page for player_id.
         Returns a dict with photo_url, bats, throws, debut_year,
         salary_original, signing_bonus_original, draft_info.
         """

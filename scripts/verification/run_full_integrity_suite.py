@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-KBO Unified Data Integrity Audit Runner.
+"""KBO Unified Data Integrity Audit Runner.
 Executes referential, logical, and statistical checks across local SQLite DB
 (and optionally remote OCI PostgreSQL DB) and compiles results into a Markdown report.
 """

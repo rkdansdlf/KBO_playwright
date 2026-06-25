@@ -1,5 +1,4 @@
-"""
-Backfill player birthdate ISO date values.
+"""Backfill player birthdate ISO date values.
 Parses various representations of birth_date into ISO standard birth_date_date column.
 """
 
@@ -32,8 +31,7 @@ _FORMATS: tuple[str, ...] = (
 
 
 def _parse_birth_date(raw: str | None) -> date | None:
-    """
-    Parses birthdate string into a datetime.date object.
+    """Parses birthdate string into a datetime.date object.
     Supports standard separator variations, 2-digit years, Korean characters,
     and single-digit month/day fields (e.g. '1990.7.3', '1990년 7월 3일').
     """
@@ -82,8 +80,7 @@ def _parse_birth_date(raw: str | None) -> date | None:
 
 
 def backfill(limit: int = 0, dry_run: bool = False, verbose: bool = False) -> int:
-    """
-    Finds player_basic rows where birth_date exists but birth_date_date is NULL.
+    """Finds player_basic rows where birth_date exists but birth_date_date is NULL.
     Parses and updates the records.
     """
     updated_count = 0

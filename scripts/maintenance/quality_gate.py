@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Quality gate for local + OCI KBO game data.
+"""Quality gate for local + OCI KBO game data.
 
 Checks:
   - Baseline thresholds (no degradation)

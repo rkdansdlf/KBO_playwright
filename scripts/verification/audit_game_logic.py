@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Deep Statistical Audit for KBO Game Data.
+"""Deep Statistical Audit for KBO Game Data.
 Verifies logical consistency across different tables:
 1. Score consistency (Innings vs Final)
 2. Batting formula (PA = AB + BB + HBP + SH + SF)

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Audit script to verify that games have essential detail data.
+"""Audit script to verify that games have essential detail data.
 
 By default, this keeps existing behavior:
   - checks only completed-like games in a rolling lookback window

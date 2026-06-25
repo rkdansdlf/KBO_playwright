@@ -1,5 +1,4 @@
-"""
-Repository for StadiumTransitTime CRUD operations.
+"""Repository for StadiumTransitTime CRUD operations.
 """
 
 from __future__ import annotations
@@ -28,8 +27,7 @@ class TransitTimeRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumTransitTime, bool]:
-        """
-        Insert or update a transit time measurement.
+        """Insert or update a transit time measurement.
         Dedup key: (stadium_code, origin_label, transport_mode, measured_at).
 
         Returns (record, created: bool).

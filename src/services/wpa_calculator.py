@@ -29,8 +29,7 @@ class WpaInput:
 
 class WPACalculator:
     def __init__(self, matrix_path: str | None = None) -> None:
-        """
-        Initialize calculator with Win Expectancy Matrix from CSV.
+        """Initialize calculator with Win Expectancy Matrix from CSV.
         """
         if matrix_path is None:
             # Default path relative to project root
@@ -41,8 +40,7 @@ class WPACalculator:
         self._load_matrix(matrix_path)
 
     def _load_matrix(self, path: str) -> None:
-        """
-        Load Win Expectancy Matrix from CSV.
+        """Load Win Expectancy Matrix from CSV.
         Expected columns: inning, half, outs, runners, score_diff, win_prob
         """
         if not Path(path).exists():
@@ -64,8 +62,7 @@ class WPACalculator:
         logger.info("✅ Loaded %s Win Expectancy entries from %s", len(self._matrix), path)
 
     def calculate_wpa(self, *, data: WpaInput) -> float:
-        """
-        Calculates WPA = WinProb(After) - WinProb(Before).
+        """Calculates WPA = WinProb(After) - WinProb(Before).
         Returns WPA from the perspective of the Batting Team.
         """
         # 1. Get WE Before (Home Perspective)
@@ -92,8 +89,7 @@ class WPACalculator:
         return round(wpa, 4)
 
     def get_win_probability(self, inning: int, *, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
-        """
-        Returns probability (0.0 to 1.0) that HOME team wins.
+        """Returns probability (0.0 to 1.0) that HOME team wins.
         Uses Matrix lookup with fallback interpolation for missing keys.
         """
         half = "bottom" if is_bottom else "top"
@@ -130,8 +126,7 @@ class WPACalculator:
         )
 
     def _fallback_formula(self, inning: int, *, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
-        """
-        Legacy logistic formula for edge cases not covered by matrix.
+        """Legacy logistic formula for edge cases not covered by matrix.
         """
         import math
 

@@ -1,5 +1,4 @@
-"""
-Check if there's a total count indicator on the player search page
+"""Check if there's a total count indicator on the player search page
 """
 
 import asyncio

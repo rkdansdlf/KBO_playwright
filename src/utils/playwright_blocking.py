@@ -1,5 +1,4 @@
-"""
-Resource blocking helpers for Playwright (sync + async).
+"""Resource blocking helpers for Playwright (sync + async).
 """
 
 from __future__ import annotations

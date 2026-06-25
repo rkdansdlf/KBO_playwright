@@ -1,5 +1,4 @@
-"""
-Text Parser for KBO Relay.
+"""Text Parser for KBO Relay.
 Extracts:
 - Outs (from "1사", "2사", etc.)
 - Runners (from "1루", "1,2루", "만루")
@@ -14,8 +13,7 @@ import re
 class KBOTextParser:
     @staticmethod
     def parse_runners(text: str) -> int:
-        """
-        Parses runner state bitmask from text.
+        """Parses runner state bitmask from text.
         0=Empty, 1=1B, 2=2B, 4=3B
         Combinations: 3=1,2B, 5=1,3B, 6=2,3B, 7=Full
 
@@ -50,8 +48,7 @@ class KBOTextParser:
 
     @staticmethod
     def parse_score_change(text: str) -> int:
-        """
-        Parses runs scored from event description.
+        """Parses runs scored from event description.
         e.g. "좌월 1점 홈런", "1타점 적시타", "밀어내기 볼넷 (1점 득점)"
         """
         # Explicit score mention

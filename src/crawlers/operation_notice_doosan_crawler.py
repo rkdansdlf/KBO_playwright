@@ -1,5 +1,4 @@
-"""
-Crawler for Doosan Bears official operation notices (doosanbears.com).
+"""Crawler for Doosan Bears official operation notices (doosanbears.com).
 
 Targets the Doosan Bears event/notice board to capture game-day
 operational announcements for Jamsil Stadium (Doosan's home).
@@ -69,8 +68,7 @@ def _extract_article_id(href: str) -> str | None:
 
 
 class OperationNoticeDoosanCrawler:
-    """
-    Crawls Doosan Bears official announcements and maps them to
+    """Crawls Doosan Bears official announcements and maps them to
     StadiumOperationNotice records for JAMSIL stadium.
     """
 

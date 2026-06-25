@@ -1,5 +1,4 @@
-"""
-Seed script to populate stadium_seat_sections table with known seat section data.
+"""Seed script to populate stadium_seat_sections table with known seat section data.
 This data should be updated when new seat configurations are announced.
 """
 

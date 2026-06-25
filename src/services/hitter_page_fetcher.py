@@ -1,5 +1,4 @@
-"""
-Fetch HITTER section HTML from KBO GameCenter and extract SH/SF values.
+"""Fetch HITTER section HTML from KBO GameCenter and extract SH/SF values.
 
 The HITTER section of KBO GameCenter pages includes dedicated columns
 for 희타 (sacrifice hits) and 희비 (sacrifice flies) in the batter stat tables.

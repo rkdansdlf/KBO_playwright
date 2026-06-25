@@ -1,5 +1,4 @@
-"""
-Tests for Naver Search-based operation notice crawler.
+"""Tests for Naver Search-based operation notice crawler.
 
 Covers:
   - NaverSearchClient configuration check

@@ -1,5 +1,4 @@
-"""
-Parser for team ticket pages. Extracts seat grades and prices (weekday/weekend).
+"""Parser for team ticket pages. Extracts seat grades and prices (weekday/weekend).
 """
 
 from __future__ import annotations

@@ -28,8 +28,7 @@ if TYPE_CHECKING:
 
 
 class SituationalSplitCalculator:
-    """
-    Computes situational batting splits from game_events (PBP) data.
+    """Computes situational batting splits from game_events (PBP) data.
     """
 
     def __init__(self, session: Session | None = None) -> None:
@@ -89,8 +88,7 @@ class SituationalSplitCalculator:
     # L/R Splits: vs Left-handed / Right-handed Pitcher
     # ------------------------------------------------------------------ #
     def get_lr_splits(self, player_id: int, season: int) -> dict[str, Any]:
-        """
-        Returns batting splits vs LHP and RHP.
+        """Returns batting splits vs LHP and RHP.
         Joins game_events → game_pitching_stats → player_basic (throws).
         Uses batter_name since batter_id may be NULL in game_events.
         """

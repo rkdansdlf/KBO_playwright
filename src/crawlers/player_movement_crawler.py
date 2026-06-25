@@ -1,5 +1,4 @@
-"""
-Crawler for Player Movement (Trade, FA, Waiver, etc.).
+"""Crawler for Player Movement (Trade, FA, Waiver, etc.).
 Source: https://www.koreabaseball.com/Player/Trade.aspx
 """
 

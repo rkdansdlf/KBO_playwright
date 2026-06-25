@@ -1,5 +1,4 @@
-"""
-Utility to standardize KBO player positions from raw strings (Korean/Hanja) to standard codes.
+"""Utility to standardize KBO player positions from raw strings (Korean/Hanja) to standard codes.
 """
 
 from __future__ import annotations
@@ -51,8 +50,7 @@ RAW_MAP = {
 
 
 def normalize_position(raw_pos: str | None) -> list[PositionCode]:
-    """
-    Normalizes a KBO position string into a list of PositionCode.
+    """Normalizes a KBO position string into a list of PositionCode.
     Handles composite strings like '타一', '주二', '유三'.
 
     Examples:
@@ -93,8 +91,7 @@ def normalize_position(raw_pos: str | None) -> list[PositionCode]:
 
 
 def get_primary_position(raw_pos: str | None) -> PositionCode:
-    """
-    Returns the most 'final' position in a sequence.
+    """Returns the most 'final' position in a sequence.
     Example: '타一' -> 1B (since they entered as PH but played 1B)
              '유三' -> 3B (moved from SS to 3B)
              '주'   -> PR

@@ -1489,8 +1489,7 @@ class GameDetailCrawler:
         return None
 
     async def _extract_roster_from_lineup(self, page: Page) -> dict[str, list[dict[str, Any]]]:
-        """
-        Extracts a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
+        """Extracts a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
         Used to resolve player IDs when the Review page boxscore lacks links (legacy games).
         """
         script = r"""

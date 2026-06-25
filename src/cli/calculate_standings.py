@@ -1,5 +1,4 @@
-"""
-KBO 순위 자동 연산 엔진 (Standings Calculator)
+"""KBO 순위 자동 연산 엔진 (Standings Calculator)
 경기 결과 데이터로부터 일일 순위, 5강, 최근10경기, 홈/원정, 주차별 승률추이 계산.
 """
 

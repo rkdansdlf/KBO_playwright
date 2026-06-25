@@ -1,5 +1,4 @@
-"""
-Integration tests for team_event_parser with realistic fixture HTML.
+"""Integration tests for team_event_parser with realistic fixture HTML.
 Tests selector-based extraction across multiple team site layouts.
 """
 

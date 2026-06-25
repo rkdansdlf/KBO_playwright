@@ -1,5 +1,4 @@
-"""
-verify_sync_consistency.py
+"""verify_sync_consistency.py
 
 CLI tool to verify data consistency between the local SQLite database
 and the remote OCI PostgreSQL database.

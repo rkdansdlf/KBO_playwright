@@ -1,5 +1,4 @@
-"""
-KBO Schedule Crawler POC
+"""KBO Schedule Crawler POC
 Collects game IDs from the KBO schedule page
 """
 
@@ -65,8 +64,7 @@ class ScheduleCrawler:
         return f"{year}-{month:02d}:{suffix}"
 
     async def crawl_schedule(self, year: int, month: int, series_id: str | None = None) -> list[dict]:
-        """
-        지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
+        """지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
         Args:
             year: 시즌 연도 (예: 2024)
@@ -100,8 +98,7 @@ class ScheduleCrawler:
     async def crawl_season(
         self, year: int, months: list[int] | None = None, series_id: str | None = None
     ) -> list[dict]:
-        """
-        주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
+        """주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
         Args:
             year: 시즌 연도

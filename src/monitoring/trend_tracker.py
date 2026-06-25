@@ -1,5 +1,4 @@
-"""
-Quality metric trend tracker.
+"""Quality metric trend tracker.
 Reads daily quality report JSONs to compute trends over time.
 Detects metric degradation (recent trend worsening).
 """
@@ -158,8 +157,7 @@ class TrendTracker:
         logger.info("")
 
     def send_degradation_alert(self, days: int = 14) -> None:
-        """
-        Detect metric degradations over the last `days` days and send an alert
+        """Detect metric degradations over the last `days` days and send an alert
         via Telegram/Slack if any are found. Stays quiet when everything is healthy.
         """
         default_thresholds = {

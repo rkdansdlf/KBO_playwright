@@ -1,5 +1,4 @@
-"""
-Monthly PA Formula Audit Job for Scheduler.
+"""Monthly PA Formula Audit Job for Scheduler.
 
 Imported by scripts/scheduler.py as the crawl_monthly_pa_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
@@ -41,8 +40,7 @@ def run_monthly_pa_audit(target_year: int) -> int:
 
 
 def crawl_monthly_pa_audit_job() -> None:
-    """
-    Audit PA formula for the previous year and apply ratio-based fix.
+    """Audit PA formula for the previous year and apply ratio-based fix.
     """
     kst = ZoneInfo("Asia/Seoul")
     current_year = datetime.now(kst).year

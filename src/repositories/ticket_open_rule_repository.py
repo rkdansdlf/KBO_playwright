@@ -1,5 +1,4 @@
-"""
-Repository for TicketOpenRule operations.
+"""Repository for TicketOpenRule operations.
 """
 
 from __future__ import annotations

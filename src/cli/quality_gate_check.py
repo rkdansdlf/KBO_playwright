@@ -1,5 +1,4 @@
-"""
-CLI tool for running statistical quality gate checks.
+"""CLI tool for running statistical quality gate checks.
 """
 
 from __future__ import annotations

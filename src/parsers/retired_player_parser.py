@@ -1,5 +1,4 @@
-"""
-Parser utilities for retired/inactive player statistics tables.
+"""Parser utilities for retired/inactive player statistics tables.
 """
 
 from __future__ import annotations

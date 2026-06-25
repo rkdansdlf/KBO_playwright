@@ -1,5 +1,4 @@
-"""
-Season stats sync: batting, pitching, fielding, baserunning, standings, rankings.
+"""Season stats sync: batting, pitching, fielding, baserunning, standings, rankings.
 """
 
 from __future__ import annotations
@@ -148,8 +147,7 @@ class StatsSyncMixin:
             logger.exception("⚠️ OCI 데이터 조회 실패")
 
     def _get_table_signature(self, model: type, year: int | None = None, year_col: str = "season") -> dict[str, Any]:
-        """
-        Calculate a unique signature for a table/year combination to detect changes.
+        """Calculate a unique signature for a table/year combination to detect changes.
         Signature includes ROW COUNT and MAX(updated_at).
         """
 

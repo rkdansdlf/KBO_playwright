@@ -1,5 +1,4 @@
-"""
-PA formula audit for game_batting_stats.
+"""PA formula audit for game_batting_stats.
 
 PA = AB + BB + HBP + SH + SF
 
@@ -245,8 +244,7 @@ def fix_year_formula(year: int, dry_run: bool = False) -> int:
 
 
 def auto_fix_year(year: int) -> int:
-    """
-    Perform a complete PBP-based correction, and ratio-based fix fallback,
+    """Perform a complete PBP-based correction, and ratio-based fix fallback,
     followed by stats recalculation and OCI sync.
     """
     import os

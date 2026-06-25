@@ -1,5 +1,4 @@
-"""
-Seed script to populate stadium_info and stadium_regulations tables.
+"""Seed script to populate stadium_info and stadium_regulations tables.
 This data is static and should be updated manually when stadiums change.
 """
 

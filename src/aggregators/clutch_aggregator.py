@@ -1,5 +1,4 @@
-"""
-Clutch/WPA aggregator.
+"""Clutch/WPA aggregator.
 Computes per-player, per-season clutch metrics from GameEvent WPA data.
 """
 

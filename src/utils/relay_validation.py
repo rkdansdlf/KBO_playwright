@@ -1,5 +1,4 @@
-"""
-Play-by-play (PBP) data validation rules.
+"""Play-by-play (PBP) data validation rules.
 Validates structural integrity (e.g. missing innings) and score correctness.
 Supports two-phase validation: live (structural) and post-game (cross-check).
 """
@@ -231,8 +230,7 @@ def validate_pbp_payload(
     events: list[dict[str, Any]],
     raw_pbp_rows: list[dict[str, Any]],
 ) -> tuple[bool, str | None]:
-    """
-    Validate final PBP payload for structural integrity and score correctness.
+    """Validate final PBP payload for structural integrity and score correctness.
     Returns (is_valid, error_reason).
     """
     if not events and not raw_pbp_rows:

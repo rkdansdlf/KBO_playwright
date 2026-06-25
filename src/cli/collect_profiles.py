@@ -1,5 +1,4 @@
-"""
-Player Profile Enrichment CLI
+"""Player Profile Enrichment CLI
 Identifies players with missing basic info (e.g. birth_date, debut_year) and crawls them.
 """
 

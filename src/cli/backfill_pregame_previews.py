@@ -1,5 +1,4 @@
-"""
-Backfill missing pregame preview data for scheduled games.
+"""Backfill missing pregame preview data for scheduled games.
 
 This CLI finds scheduled game dates whose preview summaries or starting
 pitcher fields are incomplete, then runs daily_preview_batch for those dates.

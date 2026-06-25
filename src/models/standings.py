@@ -1,5 +1,4 @@
-"""
-ORM models for daily team standings and magic numbers.
+"""ORM models for daily team standings and magic numbers.
 """
 
 from __future__ import annotations
@@ -13,8 +12,7 @@ from .base import Base, TimestampMixin
 
 
 class TeamStandingsDaily(Base, TimestampMixin):
-    """
-    Daily snapshot of Team Standings.
+    """Daily snapshot of Team Standings.
     Calculated from Game results.
     """
 

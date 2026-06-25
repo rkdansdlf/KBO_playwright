@@ -1,5 +1,4 @@
-"""
-Derive sacrifice_hits (SH) and sacrifice_flies (SF) from game_events PBP data.
+"""Derive sacrifice_hits (SH) and sacrifice_flies (SF) from game_events PBP data.
 
 The Naver/KBO box score HTML often omits the SH/SF columns, causing
 game_batting_stats.sacrifice_hits and .sacrifice_flies to remain 0.

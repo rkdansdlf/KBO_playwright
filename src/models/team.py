@@ -1,5 +1,4 @@
-"""
-Team-related ORM models
+"""Team-related ORM models
 """
 
 from __future__ import annotations
@@ -11,8 +10,7 @@ from .base import Base, TimestampMixin
 
 
 class Team(Base, TimestampMixin):
-    """
-    Represents a KBO team.
+    """Represents a KBO team.
     Data is seeded from Docs/schema/teams (구단 정보).csv
     """
 
@@ -48,8 +46,7 @@ class Team(Base, TimestampMixin):
 
 
 class TeamDailyRoster(Base, TimestampMixin):
-    """
-    Daily snapshot of 1st team registration.
+    """Daily snapshot of 1st team registration.
     Source: https://www.koreabaseball.com/Player/Register.aspx
     """
 
@@ -91,8 +88,7 @@ class TeamDailyRoster(Base, TimestampMixin):
 
 
 class TeamCodeMap(Base, TimestampMixin):
-    """
-    Canonical mapping of team codes by season.
+    """Canonical mapping of team codes by season.
     Bridging legacy codes, external codes, and franchise IDs.
     """
 
@@ -115,8 +111,7 @@ class TeamCodeMap(Base, TimestampMixin):
 
 
 class TeamSeasonFielding(Base, TimestampMixin):
-    """
-    Team-level fielding stats aggregated from player data per season.
+    """Team-level fielding stats aggregated from player data per season.
     """
 
     __tablename__ = "team_season_fielding"
@@ -143,8 +138,7 @@ class TeamSeasonFielding(Base, TimestampMixin):
 
 
 class TeamSeasonBaserunning(Base, TimestampMixin):
-    """
-    Team-level baserunning stats aggregated from player data per season.
+    """Team-level baserunning stats aggregated from player data per season.
     """
 
     __tablename__ = "team_season_baserunning"

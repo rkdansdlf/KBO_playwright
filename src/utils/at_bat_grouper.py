@@ -1,5 +1,4 @@
-"""
-At-Bat grouping logic for KBO PBP events.
+"""At-Bat grouping logic for KBO PBP events.
 
 Groups sequential game_event dicts into at-bats by tracking
 batter identity, result events, and inning/half boundaries.

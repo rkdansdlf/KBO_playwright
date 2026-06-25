@@ -1,5 +1,4 @@
-"""
-OCI sync — thin composite of domain-specific mixins.
+"""OCI sync — thin composite of domain-specific mixins.
 """
 
 from __future__ import annotations

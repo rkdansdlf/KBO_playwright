@@ -1,5 +1,4 @@
-"""
-Tests to verify that crawl_daily_games() correctly passes --fix to run_daily_update_main
+"""Tests to verify that crawl_daily_games() correctly passes --fix to run_daily_update_main
 based on the DAILY_AUTO_REMEDIATION environment variable.
 
 Strategy: patch DAILY_LOCK, run_daily_update_main, _previous_day_kst, and alert_success/alert_failure

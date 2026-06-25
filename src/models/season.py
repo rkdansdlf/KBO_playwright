@@ -1,5 +1,4 @@
-"""
-KBO Season metadata model.
+"""KBO Season metadata model.
 """
 
 from __future__ import annotations
@@ -11,8 +10,7 @@ from .base import Base, TimestampMixin
 
 
 class KboSeason(Base, TimestampMixin):
-    """
-    Represents a specific KBO season (e.g., 2024 Regular Season).
+    """Represents a specific KBO season (e.g., 2024 Regular Season).
     Mirrors `Docs/schema/KBO_시즌별 메타 테이블 제약조건.csv`.
     """
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Batch-resolve NULL player_ids in game_batting_stats, game_pitching_stats, game_lineups.
+"""Batch-resolve NULL player_ids in game_batting_stats, game_pitching_stats, game_lineups.
 
 Uses PlayerIdResolver (name + team_code + season) to match against
 player_basic / player_season_batting / player_season_pitching.

@@ -1,5 +1,4 @@
-"""
-Tests for preview crawler API payload normalization logic.
+"""Tests for preview crawler API payload normalization logic.
 """
 
 import asyncio

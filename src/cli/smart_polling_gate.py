@@ -1,5 +1,4 @@
-"""
-Smart polling gate for KBO daily data collection.
+"""Smart polling gate for KBO daily data collection.
 
 Layer 1 lightweight checker: queries the Naver Sports schedule API to determine
 whether all of today's KBO games have finished. Exits with code 0 if crawling

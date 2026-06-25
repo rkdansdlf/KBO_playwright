@@ -1,5 +1,4 @@
-"""
-통합 KBO 데이터 대시보드 CLI.
+"""통합 KBO 데이터 대시보드 CLI.
 standings, park_factor, quality, freshness, rankings, team_defense 섹션을 한 번에 출력.
 
 Usage:

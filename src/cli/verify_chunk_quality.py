@@ -1,5 +1,4 @@
-"""
-verify_chunk_quality.py
+"""verify_chunk_quality.py
 
 CLI tool to measure and report the quality of RAG chunks stored in the local SQLite database.
 
@@ -57,8 +56,7 @@ KEYWORD_COVERAGE_TARGET = 0.80  # 80%
 
 
 def load_chunks(session: Session, source_filter: str | None = None) -> list[dict[str, Any]]:
-    """
-    Loads rag_chunks rows from the local SQLite database.
+    """Loads rag_chunks rows from the local SQLite database.
     Returns a list of dicts with keys: id, source_table, source_row_id, content, metadata.
     """
     from sqlalchemy import text
@@ -261,8 +259,7 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
 
 
 def remove_duplicate_chunks(session: Session) -> int:
-    """
-    Removes duplicate rag_chunks rows keeping the one with the lowest id.
+    """Removes duplicate rag_chunks rows keeping the one with the lowest id.
     Returns the number of rows deleted.
     """
     from sqlalchemy import text

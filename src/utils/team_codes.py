@@ -1,5 +1,4 @@
-"""
-Utility helpers for mapping KBO team names to canonical short codes.
+"""Utility helpers for mapping KBO team names to canonical short codes.
 """
 
 from __future__ import annotations
@@ -217,8 +216,7 @@ def team_code_from_game_id_segment(segment: str | None, season_year: int | None 
 
 
 def normalize_kbo_game_id(game_id: str) -> str:
-    """
-    Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
+    """Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
 
     Some KBO internal APIs (like GetKboGameList) have started returning modern codes
     (SSG, KH, DB, KIA) in the G_ID field for 2026, while the public GameCenter

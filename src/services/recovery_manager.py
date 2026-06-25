@@ -1,5 +1,4 @@
-"""
-Recovery Manager to handle checkpoints for large-scale data repair jobs.
+"""Recovery Manager to handle checkpoints for large-scale data repair jobs.
 """
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
-"""
-전체 선수의 수비 기록을 포지션별 랭킹 페이지에서 크롤링하고 DB에 저장합니다.
+"""전체 선수의 수비 기록을 포지션별 랭킹 페이지에서 크롤링하고 DB에 저장합니다.
 (2025년 10월 업데이트: KBO 웹사이트에서 개별 선수 수비 페이지가 제거되어 포지션별 랭킹 페이지 사용)
 """
 
@@ -292,8 +291,7 @@ def _crawl_catcher_fielding_details(
 
 
 def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
-    """
-    KBO 공식 홈페이지에서 팀별 수비 기록을 크롤링하여 전체 선수의 수비 기록을 수집합니다.
+    """KBO 공식 홈페이지에서 팀별 수비 기록을 크롤링하여 전체 선수의 수비 기록을 수집합니다.
     팀별로 조회하여 전체 수비수(투수 포함)를 누락 없이 가져옵니다.
     포수의 경우 별도의 포지션 필터링을 통해 상세 지표(도루저지 등)를 추가 수집합니다.
 
@@ -360,8 +358,7 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
 
 
 def save_fielding_stats(year: int | None = None, db_path: str | None = None) -> None:
-    """
-    수비 기록을 크롤링하여 DB에 저장합니다.
+    """수비 기록을 크롤링하여 DB에 저장합니다.
 
     Args:
         year: 시즌 연도 (None이면 현재 연도)

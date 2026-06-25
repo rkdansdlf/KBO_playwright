@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-1982-2001년 레거시 데이터 재크롤링 스크립트
+"""1982-2001년 레거시 데이터 재크롤링 스크립트
 기존 데이터를 삭제하고 새로운 레거시 크롤러로 다시 수집
 """
 
@@ -16,8 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_first: bool = True, headless: bool = True):
-    """
-    레거시 연도 재크롤링
+    """레거시 연도 재크롤링
     """
     logger.info("🔄 KBO 레거시 연도 재크롤링")
     logger.info("=" * 50)

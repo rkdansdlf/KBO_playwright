@@ -1,5 +1,4 @@
-"""
-Model representing a RAG text chunk with its metadata and vector embedding.
+"""Model representing a RAG text chunk with its metadata and vector embedding.
 """
 
 from __future__ import annotations
@@ -13,8 +12,7 @@ from .base import Base, TimestampMixin
 
 
 class RagChunk(Base, TimestampMixin):
-    """
-    Represents an unstructured knowledge chunk (rules, news, historical logs)
+    """Represents an unstructured knowledge chunk (rules, news, historical logs)
     processed and embedded for semantic retrieval.
     """
 
