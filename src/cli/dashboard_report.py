@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -472,28 +473,33 @@ def _append_quality_notify_lines(msg_lines: list[str], quality: dict[str, Any]) 
     )
 
 
-def _append_quality_violation_lines(  # noqa: PLR0913
+@dataclass
+class ViolationContext:
+    pa_ok: bool
+    team_bat_ok: bool
+    team_pit_ok: bool
+
+
+def _append_quality_violation_lines(
     msg_lines: list[str],
     quality: dict[str, Any],
     gate: dict[str, Any],
     *,
-    pa_ok: bool,
-    team_bat_ok: bool,
-    team_pit_ok: bool,
+    ctx: ViolationContext,
 ) -> None:
     violations = []
-    if not pa_ok:
+    if not ctx.pa_ok:
         pa_formula = quality.get("pa_formula_integrity", {})
         violations.append(f"PA {pa_formula.get('violation_count', 0)}건")
-    if not team_bat_ok:
+    if not ctx.team_bat_ok:
         bat_mismatches = gate.get("team_batting", {}).get("mismatches", [])
         violations.append(f"팀타격 {len(bat_mismatches)}건")
-    if not team_pit_ok:
+    if not ctx.team_pit_ok:
         pit_mismatches = gate.get("team_pitching", {}).get("mismatches", [])
         violations.append(f"팀투수 {len(pit_mismatches)}건")
     msg_lines.append(f"통합 감사: ❌ ({', '.join(violations)})")
-    _append_first_mismatch_line(msg_lines, gate, "team_batting", "팀타격", is_ok=team_bat_ok)
-    _append_first_mismatch_line(msg_lines, gate, "team_pitching", "팀투수", is_ok=team_pit_ok)
+    _append_first_mismatch_line(msg_lines, gate, "team_batting", "팀타격", is_ok=ctx.team_bat_ok)
+    _append_first_mismatch_line(msg_lines, gate, "team_pitching", "팀투수", is_ok=ctx.team_pit_ok)
 
 
 def _append_first_mismatch_line(

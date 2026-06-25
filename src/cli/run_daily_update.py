@@ -488,57 +488,62 @@ async def _step_1_schedule(ctx: _RunContext) -> None:
     ctx.detail_games = detail_games
 
 
-async def _run_detail_recovery_passes(  # noqa: PLR0913
-    ctx: _RunContext,
-    g_crawler: GameDetailCrawler,
-    detail_results_by_game: dict,
-    unrecovered_game_ids: set[str],
-    recoverable_failure_ids: set[str],
-    max_recovery_rounds: int,
-) -> None:
-    for _ in range(max_recovery_rounds - 1):
+@dataclass
+class RecoveryConfig:
+    ctx: _RunContext
+    g_crawler: GameDetailCrawler
+    detail_results_by_game: dict
+    unrecovered_game_ids: set[str]
+    recoverable_failure_ids: set[str]
+    max_recovery_rounds: int
+
+
+async def _run_detail_recovery_passes(config: RecoveryConfig) -> None:
+    for _ in range(config.max_recovery_rounds - 1):
         retry_game_ids = sorted(
             game_id
-            for game_id in recoverable_failure_ids
-            if ctx.detail_recovery_attempts.get(game_id, 0) < max_recovery_rounds
+            for game_id in config.recoverable_failure_ids
+            if config.ctx.detail_recovery_attempts.get(game_id, 0) < config.max_recovery_rounds
         )
         if not retry_game_ids:
             break
 
-        ctx.detail_recovery_passes += 1
+        config.ctx.detail_recovery_passes += 1
         retry_targets = [
-            ctx.detail_games_by_id[game_id] for game_id in retry_game_ids if game_id in ctx.detail_games_by_id
+            config.ctx.detail_games_by_id[game_id]
+            for game_id in retry_game_ids
+            if game_id in config.ctx.detail_games_by_id
         ]
         for game_id in retry_game_ids:
-            ctx.detail_recovery_attempts[game_id] = ctx.detail_recovery_attempts.get(game_id, 0) + 1
+            config.ctx.detail_recovery_attempts[game_id] = config.ctx.detail_recovery_attempts.get(game_id, 0) + 1
 
         logger.info(
-            "   \U0001f501 Detail recovery pass #%s (%s game(s))", ctx.detail_recovery_passes, len(retry_targets)
+            "   🔁 Detail recovery pass #%s (%s game(s))", config.ctx.detail_recovery_passes, len(retry_targets)
         )
         retry_result = await crawl_and_save_game_details(
             retry_targets,
-            detail_crawler=g_crawler,
+            detail_crawler=config.g_crawler,
             config=GameCollectionConfig(
                 force=True,
                 concurrency=1,
                 log=logger.info,
-                write_contract=ctx.write_contract,
-                source_reason=f"postgame_finalize:{ctx.target_date}:recovery",
+                write_contract=config.ctx.write_contract,
+                source_reason=f"postgame_finalize:{config.ctx.target_date}:recovery",
             ),
         )
 
         for game_id, item in retry_result.items.items():
             normalized_game_id = normalize_kbo_game_id(game_id)
-            detail_results_by_game[normalized_game_id] = item
+            config.detail_results_by_game[normalized_game_id] = item
 
             if item.detail_saved:
-                if normalized_game_id in unrecovered_game_ids:
-                    unrecovered_game_ids.remove(normalized_game_id)
-                    ctx.detail_recovered_after_retry += 1
-                recoverable_failure_ids.discard(normalized_game_id)
+                if normalized_game_id in config.unrecovered_game_ids:
+                    config.unrecovered_game_ids.remove(normalized_game_id)
+                    config.ctx.detail_recovered_after_retry += 1
+                config.recoverable_failure_ids.discard(normalized_game_id)
             elif not _is_recoverable_detail_reason(item.failure_reason):
-                unrecovered_game_ids.discard(normalized_game_id)
-                recoverable_failure_ids.discard(normalized_game_id)
+                config.unrecovered_game_ids.discard(normalized_game_id)
+                config.recoverable_failure_ids.discard(normalized_game_id)
 
 
 def _process_detail_results(
@@ -616,12 +621,14 @@ async def _collect_detail_results(ctx: _RunContext, g_crawler: GameDetailCrawler
         if _is_recoverable_detail_reason(detail_results_by_game[game_id].failure_reason)
     }
     await _run_detail_recovery_passes(
-        ctx,
-        g_crawler,
-        detail_results_by_game,
-        unrecovered_game_ids,
-        recoverable_failure_ids,
-        max(1, int(DETAIL_RECOVERY_MAX_ROUNDS)),
+        RecoveryConfig(
+            ctx=ctx,
+            g_crawler=g_crawler,
+            detail_results_by_game=detail_results_by_game,
+            unrecovered_game_ids=unrecovered_game_ids,
+            recoverable_failure_ids=recoverable_failure_ids,
+            max_recovery_rounds=max(1, int(DETAIL_RECOVERY_MAX_ROUNDS)),
+        )
     )
     return detail_results_by_game
 
