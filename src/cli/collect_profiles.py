@@ -32,6 +32,13 @@ PROFILE_COLLECTION_EXCEPTIONS = (
 
 
 async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None) -> None:
+    """Handles the collect profiles operation.
+
+    Args:
+        limit: Limit.
+        target_ids: Target Ids.
+
+    """
     session = SessionLocal()
     repo = PlayerRepository()
     pool = AsyncPlaywrightPool(max_pages=1)
@@ -110,6 +117,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Collect Missing Player Profiles")
     parser.add_argument("--limit", type=int, default=1000, help="Max players to process")
     parser.add_argument("--ids", type=str, help="Comma-separated List of KBO Player IDs")

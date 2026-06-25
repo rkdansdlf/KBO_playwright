@@ -37,6 +37,12 @@ def seed_relay_validation_metrics(
     season: int | None = None,
     mark_legacy_unavailable: bool = True,
 ) -> dict[str, int]:
+    """Seeds relay validation metrics.
+
+    Returns:
+        Dictionary result.
+
+    """
     counts: dict[str, int] = {}
     with SessionLocal() as session:
         query = session.query(Game).filter(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
@@ -113,6 +119,7 @@ def seed_relay_validation_metrics(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Seed relay validation metrics for completed games")
     parser.add_argument("--season", type=int, help="Optional season year")
     parser.add_argument(

@@ -32,6 +32,7 @@ class MatchupEngine:
     """Service to aggregate splits matrices natively from Box Scores and Play-by-Play."""
 
     def __init__(self, session: Session | None = None) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def execute_all(self, season_year: int) -> None:

@@ -42,6 +42,8 @@ DEFAULT_MIN_EVENTS = 20
 
 @dataclass
 class RebuildReportRow:
+    """RebuildReportRow class."""
+
     game_id: str
     status: str
     old_rows: int
@@ -64,6 +66,12 @@ def rebuild_relay_events(
     oci_url: str | None = None,
     log: Callable[..., Any] = logger.info,
 ) -> list[RebuildReportRow]:
+    """Handles the rebuild relay events operation.
+
+    Returns:
+        List of results.
+
+    """
     season_values = tuple(int(season) for season in seasons)
     timestamp = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
     report_path = Path(report_out) if report_out else DEFAULT_REPORT_DIR / f"relay_event_rebuild_report_{timestamp}.csv"
@@ -423,6 +431,15 @@ def _chunked(values: Sequence[str], size: int) -> Iterable[Sequence[str]]:
 
 
 def run(argv: Sequence[str] | None = None) -> int:
+    """Runs run.
+
+    Args:
+        argv: Argv.
+
+    Returns:
+        Integer result.
+
+    """
     parser = argparse.ArgumentParser(description="Rebuild noisy relay game_events from existing local rows")
     parser.add_argument("--season", type=int, action="append", help="Season to rebuild. Repeatable.")
     parser.add_argument("--game-id", action="append", default=[], help="Specific game_id to rebuild. Repeatable.")
@@ -463,6 +480,7 @@ def run(argv: Sequence[str] | None = None) -> int:
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     return run()
 
 

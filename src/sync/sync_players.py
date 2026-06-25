@@ -234,6 +234,12 @@ class PlayerSyncMixin:
         )
 
     def sync_crawl_runs(self) -> int:
+        """Syncs runs.
+
+        Returns:
+            Integer result.
+
+        """
         return self.sync_simple_table(
             CrawlRun,
             conflict_keys=["label", "started_at"],

@@ -11,6 +11,8 @@ from .base import Base
 
 
 class CrawlRun(Base):
+    """CrawlRun class."""
+
     __tablename__ = "crawl_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

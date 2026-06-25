@@ -13,7 +13,10 @@ if TYPE_CHECKING:
 
 
 class AwardRepository:
+    """AwardRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save_award(self, award_data: dict) -> Award:
@@ -56,9 +59,24 @@ class AwardRepository:
         return new_award
 
     def get_awards_by_year(self, year: int) -> list[Award]:
+        """Gets awards by year.
+
+        Args:
+            year: Season year.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(Award).where(Award.year == year)
         return list(self.session.execute(stmt).scalars().all())
 
     def clear_awards_by_year(self, year: int) -> None:
+        """Clears awards by year.
+
+        Args:
+            year: Season year.
+
+        """
         stmt = delete(Award).where(Award.year == year)
         self.session.execute(stmt)

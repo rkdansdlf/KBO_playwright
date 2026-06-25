@@ -13,11 +13,23 @@ if TYPE_CHECKING:
 
 
 async def run(args: argparse.Namespace) -> None:
+    """Runs run.
+
+    Args:
+        args: Args.
+
+    """
     crawler = TeamEventCrawler(days_back=args.days)
     await crawler.run(save=args.save, team_filter=args.team)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="KBO team event/news crawler")
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument("--days", type=int, default=30, help="Days back to crawl")
@@ -26,6 +38,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     asyncio.run(run(args))

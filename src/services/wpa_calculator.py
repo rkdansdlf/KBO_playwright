@@ -19,6 +19,8 @@ from pathlib import Path
 
 @dataclass
 class WpaInput:
+    """WpaInput class."""
+
     inning: int
     is_bottom: bool
     outs_before: int
@@ -30,6 +32,8 @@ class WpaInput:
 
 
 class WPACalculator:
+    """WPACalculator class."""
+
     def __init__(self, matrix_path: str | None = None) -> None:
         """Initialize calculator with Win Expectancy Matrix from CSV."""
         if matrix_path is None:

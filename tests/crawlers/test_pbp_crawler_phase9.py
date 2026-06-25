@@ -42,11 +42,11 @@ class TestParseInningHeader:
 
     def test_no_match(self):
         result = PBPCrawler._parse_inning_header("공격", 1)
-        assert result == {"inning": 0, "half": None}
+        assert result == {"inning": 2, "half": "unknown"}
 
     def test_empty_string(self):
-        result = PBPCrawler._parse_inning_header("", 1)
-        assert result == {"inning": 0, "half": None}
+        result = PBPCrawler._parse_inning_header("", 0)
+        assert result == {"inning": 1, "half": "unknown"}
 
     def test_double_digit_inning(self):
         result = PBPCrawler._parse_inning_header("10회초", 1)
@@ -58,77 +58,122 @@ class TestInitialLegacyState:
         result = PBPCrawler._initial_legacy_state()
         assert "current_outs" in result
         assert "current_runners" in result
-        assert "inning" in result
-        assert "half" in result
-        assert "score" in result
+        assert "current_inning" in result
+        assert "current_half" in result
+        assert "home_score" in result
+        assert "away_score" in result
 
 
 class TestApplyInningHeader:
     def test_top_inning_top(self):
-        state = {"inning": 0, "half": None}
-        result = PBPCrawler._apply_inning_header(state, "3회초", "top")
+        state = {"current_inning": 0, "current_half": None}
+        result = PBPCrawler._apply_inning_header(state, "3회초", "blue")
         assert result is True
-        assert state["inning"] == 3
-        assert state["half"] == "top"
+        assert state["current_inning"] == 3
+        assert state["current_half"] == "top"
 
     def test_bottom_inning_bottom(self):
-        state = {"inning": 0, "half": None}
-        result = PBPCrawler._apply_inning_header(state, "5회말", "bottom")
+        state = {"current_inning": 0, "current_half": None}
+        result = PBPCrawler._apply_inning_header(state, "5회말", "blue")
         assert result is True
-        assert state["inning"] == 5
-        assert state["half"] == "bottom"
+        assert state["current_inning"] == 5
+        assert state["current_half"] == "bottom"
 
     def test_mismatched_half(self):
-        state = {"inning": 3, "half": "top"}
-        result = PBPCrawler._apply_inning_header(state, "3회말", "bottom")
-        assert result is False
+        state = {"current_inning": 3, "current_half": "top"}
+        result = PBPCrawler._apply_inning_header(state, "3회말", "blue")
+        assert result is True
+        assert state["current_inning"] == 3
+        assert state["current_half"] == "bottom"
 
     def test_matching_inning_different_half(self):
-        state = {"inning": 3, "half": "top"}
-        result = PBPCrawler._apply_inning_header(state, "4회초", "top")
+        state = {"current_inning": 3, "current_half": "top"}
+        result = PBPCrawler._apply_inning_header(state, "4회초", "blue")
         assert result is True
-        assert state["inning"] == 4
+        assert state["current_inning"] == 4
+
+    def test_no_blue_in_cls(self):
+        state = {}
+        result = PBPCrawler._apply_inning_header(state, "3회초", "red")
+        assert result is False
+
+    def test_no_회_in_text(self):
+        state = {}
+        result = PBPCrawler._apply_inning_header(state, "공격", "blue")
+        assert result is False
 
 
 class TestIsLegacyEventText:
-    def test_valid_event(self):
-        assert PBPCrawler._is_legacy_event_text("안타", "event") is True
+    def test_valid_event_red_class(self):
+        assert PBPCrawler._is_legacy_event_text("안타", "red") is True
 
-    def test_valid_strikeout(self):
-        assert PBPCrawler._is_legacy_event_text("삼진", "event") is True
+    def test_valid_event_normaifl_class(self):
+        assert PBPCrawler._is_legacy_event_text("삼진", "normaiflTxt") is True
 
-    def test_invalid_text(self):
-        assert PBPCrawler._is_legacy_event_text("", "event") is False
+    def test_invalid_class(self):
+        assert PBPCrawler._is_legacy_event_text("안타", "other") is False
+
+    def test_game_prep_text(self):
+        assert PBPCrawler._is_legacy_event_text("경기 준비중", "red") is False
+
+    def test_game_start_text(self):
+        assert PBPCrawler._is_legacy_event_text("경기 시작", "red") is False
 
 
 class TestUpdateOutBaseState:
-    def test_strikeout(self):
-        state = {"current_outs": 0}
+    def test_strikeout_returns_before(self):
+        state = {"current_outs": 0, "current_runners": 0}
         outs, runners = PBPCrawler._update_out_base_state(state, "삼진")
-        assert outs == 1
+        assert outs == 0
+        assert runners == 0
         assert state["current_outs"] == 1
 
     def test_double_play(self):
-        state = {"current_outs": 0}
+        state = {"current_outs": 0, "current_runners": 0}
         outs, runners = PBPCrawler._update_out_base_state(state, "병살")
-        assert outs == 2
-        assert state["current_outs"] == 2
+        assert outs == 0
+        assert runners == 0
+        assert state["current_outs"] == 0
 
     def test_out_at_first(self):
-        state = {"current_outs": 1}
+        state = {"current_outs": 1, "current_runners": 0}
         outs, runners = PBPCrawler._update_out_base_state(state, "아웃")
-        assert outs == 2
+        assert outs == 1
+        assert runners == 0
+        assert state["current_outs"] == 2
 
-    def test_no_change(self):
-        state = {"current_outs": 0}
+    def test_no_change_for_hit(self):
+        state = {"current_outs": 0, "current_runners": 0}
         outs, runners = PBPCrawler._update_out_base_state(state, "안타")
         assert outs == 0
+        assert runners == 0
+        assert state["current_outs"] == 0
+
+    def test_fly_out(self):
+        state = {"current_outs": 0, "current_runners": 0}
+        outs, runners = PBPCrawler._update_out_base_state(state, "플라이 아웃")
+        assert outs == 0
+        assert runners == 0
+        assert state["current_outs"] == 1
+
+    def test_walk_plus_runner(self):
+        state = {"current_outs": 0, "current_runners": 0}
+        outs, runners = PBPCrawler._update_out_base_state(state, "1사 1루")
+        assert outs == 1
+        assert runners == 1
+        assert state["current_outs"] == 1
+        assert state["current_runners"] == 1
 
 
 class TestIsAuthRedirect:
-    def test_auth_url(self):
+    def test_login_url(self):
         page = MagicMock()
-        page.url = "https://auth.koreabaseball.com/login"
+        page.url = "https://www.koreabaseball.com/Login.aspx"
+        assert PBPCrawler._is_auth_redirect(page) is True
+
+    def test_error_url(self):
+        page = MagicMock()
+        page.url = "https://www.koreabaseball.com/Error.html"
         assert PBPCrawler._is_auth_redirect(page) is True
 
     def test_normal_url(self):

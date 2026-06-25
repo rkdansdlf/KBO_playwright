@@ -46,6 +46,12 @@ def run_parallel_sync(
     logger.info("🚀 Starting parallel sync with %s workers for years: %s", workers, years)
 
     def sync_worker(year: int) -> None:
+        """Syncs worker.
+
+        Args:
+            year: Season year.
+
+        """
         logger.info("🧵 Worker started for year %s", year)
         with SessionLocal() as session:
             try:
@@ -378,6 +384,8 @@ def get_available_years(session: Session, model: type[object], column_name: str 
 
 @dataclass
 class SyncRunConfig:
+    """SyncRunConfig class."""
+
     parallel_support: bool = False
     header: str | None = None
     years_getter: Callable[[Session], list[int]] | None = None

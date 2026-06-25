@@ -41,4 +41,13 @@ PARSER_REGISTRY: dict[str, ParserFunc] = {
 
 
 def get_parser(source_key: str) -> ParserFunc | None:
+    """Gets parser.
+
+    Args:
+        source_key: Source Key.
+
+    Returns:
+        The result of the operation.
+
+    """
     return PARSER_REGISTRY.get(source_key)

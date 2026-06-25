@@ -21,6 +21,7 @@ class EmbeddingService:
     """Connects to external embedding providers to generate vector arrays for chunk texts."""
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.api_key = os.getenv("GEMINI_API_KEY")
         if not self.api_key:
             logger.warning("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")

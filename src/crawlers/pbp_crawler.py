@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GameEventsContext:
+    """GameEventsContext class."""
+
     pool: AsyncPlaywrightPool
     page: Page
     game_id: str
@@ -36,6 +38,8 @@ class GameEventsContext:
 
 @dataclass
 class AuthRedirectContext:
+    """AuthRedirectContext class."""
+
     pool: AsyncPlaywrightPool
     page: Page
     game_id: str
@@ -56,6 +60,8 @@ PBP_CRAWLER_EXCEPTIONS = (
 
 
 class PBPCrawler:
+    """PBPCrawler class."""
+
     def __init__(
         self,
         request_delay: float = 1.0,
@@ -63,6 +69,7 @@ class PBPCrawler:
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
         # Using the older but more robust LiveText.aspx which behaves better with Referer checks
+        """Initializes a new instance."""
         self.base_url = "https://www.koreabaseball.com/Game/LiveText.aspx"
         self.policy = policy or RequestPolicy.with_delay(request_delay, request_delay + 0.5)
         self.pool = pool
@@ -339,7 +346,8 @@ class PBPCrawler:
         s += "3" if (runners & 4) else "-"
         return s
 
-    def _parse_inning_header(self, text: str, idx: int) -> dict[str, Any]:
+    @staticmethod
+    def _parse_inning_header(text: str, idx: int) -> dict[str, Any]:
         match = re.search(r"(\d+)회(초|말)", text)
         if match:
             return {"inning": int(match.group(1)), "half": "top" if match.group(2) == "초" else "bottom"}

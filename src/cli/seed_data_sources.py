@@ -403,6 +403,7 @@ SEED_DATA: list[dict] = [
 
 
 def run_seed(*, dry_run: bool = False) -> None:
+    """Runs run seed."""
     with SessionLocal() as session:
         repo = DataSourceRepository(session)
         created = 0
@@ -425,12 +426,19 @@ def run_seed(*, dry_run: bool = False) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Seed initial DataSource entries")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     run_seed(dry_run=args.dry_run)

@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class MetricConfig:
+    """MetricConfig class."""
+
     name: str
     source: str
     value_key: str
@@ -93,6 +95,7 @@ class RankingAggregator:
     """Aggregates per-metric rankings across stat categories."""
 
     def __init__(self, repository: RankingRepository | None = None) -> None:
+        """Initializes a new instance."""
         self.repository = repository or RankingRepository()
 
     def generate_rankings(
@@ -107,6 +110,15 @@ class RankingAggregator:
         min_pa: int | None = None,
         min_ip_outs: int | None = None,
     ) -> list[dict[str, Any]]:
+        """Generates rankings.
+
+        Args:
+            season: Season year.
+
+        Returns:
+            List of results.
+
+        """
         rankings: list[dict[str, Any]] = []
 
         if fielding_stats:

@@ -277,6 +277,16 @@ def _group_pitching_by_game_player(rows: list[GamePitchingStat]) -> dict[tuple[s
 
 
 def aggregate_game_batting_batch(session: Session, game_ids: list[str]) -> list[dict[str, Any]]:
+    """Aggregates game batting batch.
+
+    Args:
+        session: Session.
+        game_ids: Game Ids.
+
+    Returns:
+        List of results.
+
+    """
     valid_ids = [
         row[0]
         for row in session.query(Game.game_id)
@@ -311,6 +321,16 @@ def aggregate_game_batting_batch(session: Session, game_ids: list[str]) -> list[
 
 
 def aggregate_game_pitching_batch(session: Session, game_ids: list[str]) -> list[dict[str, Any]]:
+    """Aggregates game pitching batch.
+
+    Args:
+        session: Session.
+        game_ids: Game Ids.
+
+    Returns:
+        List of results.
+
+    """
     valid_ids = [
         row[0]
         for row in session.query(Game.game_id)
@@ -370,20 +390,60 @@ def _upsert_bulk(
 
 
 def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
+    """Inserts or updates player game batting.
+
+    Args:
+        session: Session.
+        records: Records.
+
+    Returns:
+        Integer result.
+
+    """
     count = _upsert_bulk(session, PlayerGameBatting, records)
     session.commit()
     return count
 
 
 def upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
+    """Inserts or updates player game pitching.
+
+    Args:
+        session: Session.
+        records: Records.
+
+    Returns:
+        Integer result.
+
+    """
     count = _upsert_bulk(session, PlayerGamePitching, records)
     session.commit()
     return count
 
 
 def bulk_upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
+    """Inserts or updates bulk player game batting.
+
+    Args:
+        session: Session.
+        records: Records.
+
+    Returns:
+        Integer result.
+
+    """
     return _upsert_bulk(session, PlayerGameBatting, records)
 
 
 def bulk_upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
+    """Inserts or updates bulk player game pitching.
+
+    Args:
+        session: Session.
+        records: Records.
+
+    Returns:
+        Integer result.
+
+    """
     return _upsert_bulk(session, PlayerGamePitching, records)

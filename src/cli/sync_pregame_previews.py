@@ -32,6 +32,8 @@ KST = ZoneInfo("Asia/Seoul")
 
 @dataclass(frozen=True)
 class PregameSyncTarget:
+    """PregameSyncTarget class."""
+
     game_date: str
     game_id: str
     away_pitcher: str
@@ -57,6 +59,16 @@ def _default_end_date(days_ahead: int) -> str:
 
 
 def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyncTarget]:
+    """Finds pregame targets.
+
+    Args:
+        start_date: Start Date.
+        end_date: End Date.
+
+    Returns:
+        List of results.
+
+    """
     query = text(
         """
         SELECT
@@ -96,6 +108,15 @@ def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyn
 
 
 def run_sync(args: argparse.Namespace) -> int:
+    """Runs run sync.
+
+    Args:
+        args: Args.
+
+    Returns:
+        Integer result.
+
+    """
     load_dotenv()
     target_url = args.target_url or get_oci_url()
     if not target_url:
@@ -149,6 +170,12 @@ def run_sync(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Sync collected pregame previews to OCI/Postgres")
     parser.add_argument("--start-date", type=_yyyymmdd, help="Start date YYYYMMDD. Defaults to today in KST.")
     parser.add_argument("--end-date", type=_yyyymmdd, help="End date YYYYMMDD. Defaults to today + --days-ahead.")
@@ -159,6 +186,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     return run_sync(parser.parse_args(argv))
 

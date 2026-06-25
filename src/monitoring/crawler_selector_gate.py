@@ -50,6 +50,12 @@ class SelectorIssue:
     observed_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
+        """Handles the to dict operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "category": self.category,
             "check_name": self.check_name,
@@ -71,13 +77,31 @@ class SelectorGateResult:
 
     @property
     def ok(self) -> bool:
+        """Handles the ok operation.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         return not self.issues
 
     @property
     def issue_count(self) -> int:
+        """Handles the issue count operation.
+
+        Returns:
+            Integer result.
+
+        """
         return len(self.issues)
 
     def to_dict(self) -> dict[str, Any]:
+        """Handles the to dict operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "target": self.target,
             "source": self.source,
@@ -98,17 +122,41 @@ class SelectorGateSummary:
 
     @property
     def ok(self) -> bool:
+        """Handles the ok operation.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         return all(target.ok for target in self.targets)
 
     @property
     def target_count(self) -> int:
+        """Handles the target count operation.
+
+        Returns:
+            Integer result.
+
+        """
         return len(self.targets)
 
     @property
     def issue_count(self) -> int:
+        """Handles the issue count operation.
+
+        Returns:
+            Integer result.
+
+        """
         return sum(target.issue_count for target in self.targets)
 
     def to_dict(self) -> dict[str, Any]:
+        """Handles the to dict operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "ok": self.ok,
             "target_count": self.target_count,

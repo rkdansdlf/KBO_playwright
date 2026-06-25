@@ -13,10 +13,22 @@ if TYPE_CHECKING:
 
 
 class TicketOpenRuleRepository:
+    """TicketOpenRuleRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save(self, data: dict) -> TicketOpenRule:
+        """Saves save.
+
+        Args:
+            data: Data.
+
+        Returns:
+            TicketOpenRule instance.
+
+        """
         stmt = select(TicketOpenRule).where(
             TicketOpenRule.team_id == data["team_id"],
             TicketOpenRule.platform == data["platform"],
@@ -34,6 +46,15 @@ class TicketOpenRuleRepository:
         return new_record
 
     def get_by_team(self, team_id: str) -> list[TicketOpenRule]:
+        """Gets by team.
+
+        Args:
+            team_id: Team ID.
+
+        Returns:
+            List of results.
+
+        """
         stmt = (
             select(TicketOpenRule)
             .where(TicketOpenRule.team_id == team_id)
@@ -42,10 +63,25 @@ class TicketOpenRuleRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_all_active(self) -> list[TicketOpenRule]:
+        """Gets all active.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(TicketOpenRule).order_by(TicketOpenRule.team_id)
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
+        """Saves bulk.
+
+        Args:
+            records: Records.
+
+        Returns:
+            Integer result.
+
+        """
         count = 0
         for data in records:
             self.save(data)

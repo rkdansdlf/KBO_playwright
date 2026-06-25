@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 class TransitTimeRepository:
+    """TransitTimeRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     # ─────────────────────────────────────────────
@@ -83,6 +86,16 @@ class TransitTimeRepository:
         origin_label: str | None = None,
         transport_mode: str | None = None,
     ) -> list[StadiumTransitTime]:
+        """Gets by game date.
+
+        Args:
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(StadiumTransitTime).where(
             and_(
                 StadiumTransitTime.stadium_code == stadium_code,
@@ -102,6 +115,17 @@ class TransitTimeRepository:
         origin_label: str,
         transport_mode: str,
     ) -> StadiumTransitTime | None:
+        """Gets latest.
+
+        Args:
+            stadium_code: Stadium Code.
+            origin_label: Origin Label.
+            transport_mode: Transport Mode.
+
+        Returns:
+            The result of the operation.
+
+        """
         stmt = (
             select(StadiumTransitTime)
             .where(

@@ -13,10 +13,22 @@ if TYPE_CHECKING:
 
 
 class BroadcastRepository:
+    """BroadcastRepository class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     def save_broadcast(self, data: dict) -> GameBroadcast:
+        """Saves broadcast.
+
+        Args:
+            data: Data.
+
+        Returns:
+            GameBroadcast instance.
+
+        """
         game_id = data["game_id"]
         broadcaster = data["broadcaster"]
 
@@ -37,9 +49,24 @@ class BroadcastRepository:
         return new_record
 
     def get_by_game(self, game_id: str) -> list[GameBroadcast]:
+        """Gets by game.
+
+        Args:
+            game_id: Game ID.
+
+        Returns:
+            List of results.
+
+        """
         stmt = select(GameBroadcast).where(GameBroadcast.game_id == game_id)
         return list(self.session.execute(stmt).scalars().all())
 
     def delete_by_game(self, game_id: str) -> None:
+        """Deletes by game.
+
+        Args:
+            game_id: Game ID.
+
+        """
         stmt = delete(GameBroadcast).where(GameBroadcast.game_id == game_id)
         self.session.execute(stmt)

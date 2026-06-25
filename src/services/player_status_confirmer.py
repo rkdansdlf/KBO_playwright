@@ -25,6 +25,7 @@ class PlayerStatusConfirmer:
         headless: bool = True,
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
+        """Initializes a new instance."""
         self.base_url = HITTER_DETAIL
         self.request_delay = request_delay
         self.max_confirmations = max_confirmations

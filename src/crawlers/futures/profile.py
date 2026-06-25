@@ -22,10 +22,13 @@ logger = logging.getLogger(__name__)
 
 
 class FuturesProfileCrawler:
+    """FuturesProfileCrawler class."""
+
     hitter_profile_url = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     pitcher_profile_url = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.request_delay = request_delay
         self.pool = pool
 
@@ -216,6 +219,7 @@ class FuturesProfileCrawler:
 
 
 async def main() -> None:
+    """Main entry point for this CLI command."""
     crawler = FuturesProfileCrawler()
     sample_id = "78137"
     payload = await crawler.fetch_player_futures(sample_id)

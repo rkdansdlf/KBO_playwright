@@ -20,10 +20,17 @@ class BaseStadiumParser:
     """
 
     def __init__(self, html: str, source_key: str, metadata: dict[str, Any] | None = None) -> None:
+        """Initializes a new instance."""
         self.source_key = source_key
         self.metadata = metadata or {}
         self.soup = BeautifulSoup(html, "html.parser")
         self.text = self.soup.get_text(separator=" ", strip=True)
 
     def parse(self) -> list[dict[str, Any]]:
+        """Parses parse.
+
+        Returns:
+            List of results.
+
+        """
         raise NotImplementedError

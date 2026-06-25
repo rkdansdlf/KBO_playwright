@@ -36,6 +36,7 @@ class RetiredPlayerListingCrawler:
     """Fetch player ID sets for historical seasons and compute inactive (retired) candidates."""
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.request_delay = request_delay
         self.pool = pool
         self.hitter_url = HITTER_BASIC1
@@ -218,6 +219,15 @@ class RetiredPlayerListingCrawler:
         return players
 
     async def collect_historical_player_ids(self, seasons: Iterable[int]) -> dict[str, str]:
+        """Handles the collect historical player ids operation.
+
+        Args:
+            seasons: Seasons.
+
+        Returns:
+            Dictionary result.
+
+        """
         historical_players: dict[str, str] = {}
         seasons_list = list(seasons)
         logger.info("🔍 Collecting historical player IDs for %s seasons in parallel...", len(seasons_list))
@@ -225,6 +235,15 @@ class RetiredPlayerListingCrawler:
         semaphore = asyncio.Semaphore(10)  # Allow 10 concurrent years
 
         async def fetch_year(season: int) -> dict[str, str]:
+            """Fetches year.
+
+            Args:
+                season: Season year.
+
+            Returns:
+                Dictionary result.
+
+            """
             async with semaphore:
                 logger.info("  Fetching IDs for %s...", season)
                 try:
@@ -276,6 +295,7 @@ class RetiredPlayerListingCrawler:
 
 
 async def main() -> None:
+    """Main entry point for this CLI command."""
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
     inactive_ids = await crawler.determine_inactive_player_ids(start_year=1982, end_year=2023, active_year=2024)
     logger.info("Inactive player IDs discovered: %s", len(inactive_ids))

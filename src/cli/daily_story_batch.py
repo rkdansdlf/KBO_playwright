@@ -33,6 +33,15 @@ TRUSTED_RELAY_STATUSES = {"verified", "recovered"}
 
 
 def dump_story_json(story_data: dict) -> str:
+    """Dumps story json.
+
+    Args:
+        story_data: Story Data.
+
+    Returns:
+        String result.
+
+    """
     return json.dumps(story_data, ensure_ascii=False)
 
 
@@ -110,6 +119,15 @@ def _sync_story_summaries(game_ids: Sequence[str]) -> None:
 
 
 async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
+    """Runs story batch.
+
+    Args:
+        target_date: Target Date.
+
+    Returns:
+        List of results.
+
+    """
     logger.info("🚀 Starting Post-game Story Data Batch for %s...", target_date)
 
     target_dt_obj = parse_date_str(target_date)
@@ -183,6 +201,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Daily Game Story Generator")
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")

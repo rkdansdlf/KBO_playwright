@@ -43,40 +43,64 @@ DETAIL_COLLECTION_FAILURE_REASONS_NON_RETRYABLE = {
 
 
 class DetailCrawler(Protocol):
+    """DetailCrawler class."""
+
     async def crawl_games(
         self,
         games: list[dict[str, str]],
         concurrency: int | None = None,
         *,
         lightweight: bool = False,
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[dict[str, Any]]:
+        """Crawls game details for the given game list."""
+        ...
 
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        """Closes the crawler."""
+        ...
 
 
 class RelayCrawler(Protocol):
-    async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None: ...
+    """RelayCrawler class."""
 
-    async def close(self) -> None: ...
+    async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
+        """Crawls game events for a given game ID."""
+        ...
+
+    async def close(self) -> None:
+        """Closes the crawler."""
+        ...
 
 
 @dataclass(frozen=True)
 class GameCollectionTarget:
+    """GameCollectionTarget class."""
+
     game_id: str
     game_date: str
 
     def as_crawler_input(self) -> dict[str, str]:
+        """Handles the as crawler input operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {"game_id": self.game_id, "game_date": self.game_date}
 
 
 @dataclass(frozen=True)
 class ExistingGameData:
+    """ExistingGameData class."""
+
     has_detail: bool = False
     has_relay: bool = False
 
 
 @dataclass
 class GameCollectionResult:
+    """GameCollectionResult class."""
+
     total_targets: int = 0
     detail_targets: int = 0
     detail_saved: int = 0
@@ -93,6 +117,8 @@ class GameCollectionResult:
 
 @dataclass
 class GameCollectionConfig:
+    """GameCollectionConfig class."""
+
     relay_crawler: RelayCrawler | None = None
     force: bool = False
     concurrency: int | None = None
@@ -110,6 +136,8 @@ class GameCollectionConfig:
 
 @dataclass
 class DetailProcessingContext:
+    """DetailProcessingContext class."""
+
     detail_crawler: DetailCrawler
     contract: GameWriteContract
     detail_source: GameWriteSource
@@ -120,6 +148,8 @@ class DetailProcessingContext:
 
 @dataclass
 class RelayProcessingContext:
+    """RelayProcessingContext class."""
+
     relay_crawler: RelayCrawler
     contract: GameWriteContract
     cfg: GameCollectionConfig
@@ -128,6 +158,8 @@ class RelayProcessingContext:
 
 @dataclass
 class GameCollectionItemResult:
+    """GameCollectionItemResult class."""
+
     game_id: str
     game_date: str
     detail_status: str = "pending"
@@ -138,6 +170,16 @@ class GameCollectionItemResult:
 
 
 def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
+    """Builds game id range.
+
+    Args:
+        year: Season year.
+        month: Month number (1-12).
+
+    Returns:
+        Tuple result.
+
+    """
     if month:
         start = date(year, month, 1)
         end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
@@ -148,6 +190,16 @@ def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
 
 
 def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameCollectionTarget]:
+    """Loads game targets from db.
+
+    Args:
+        year: Season year.
+        month: Month number (1-12).
+
+    Returns:
+        List of results.
+
+    """
     start_id, end_id = build_game_id_range(year, month)
     with SessionLocal() as session:
         rows = (
@@ -184,6 +236,15 @@ def load_game_targets_by_ids(game_ids: list[str]) -> list[GameCollectionTarget]:
 
 
 def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
+    """Normalizes game targets.
+
+    Args:
+        games: Games.
+
+    Returns:
+        List of results.
+
+    """
     targets: list[GameCollectionTarget] = []
     seen: set[str] = set()
     for game in games:
@@ -200,6 +261,15 @@ def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
 
 
 def inspect_existing_game_data(targets: Iterable[GameCollectionTarget]) -> dict[str, ExistingGameData]:
+    """Handles the inspect existing game data operation.
+
+    Args:
+        targets: Targets.
+
+    Returns:
+        Dictionary result.
+
+    """
     target_list = list(targets)
     game_ids = [target.game_id for target in target_list]
     if not game_ids:
@@ -227,6 +297,15 @@ async def crawl_and_save_game_details(
     detail_crawler: DetailCrawler,
     config: GameCollectionConfig | None = None,
 ) -> GameCollectionResult:
+    """Crawls and game details.
+
+    Args:
+        games: Games.
+
+    Returns:
+        GameCollectionResult instance.
+
+    """
     targets = normalize_game_targets(games)
     result = GameCollectionResult(total_targets=len(targets))
     result.items = {

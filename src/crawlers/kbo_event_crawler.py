@@ -108,10 +108,17 @@ class KboEventCrawler:
     """Fetch KBO official page and extract event/promotion link candidates."""
 
     def __init__(self, base_url: str | None = None) -> None:
+        """Initializes a new instance."""
         self.urls = (base_url,) if base_url else KBO_EVENT_DEFAULT_URLS
         self._raw_pages: list[dict[str, object]] = []
 
     async def run(self, *, save: bool = False) -> list[dict[str, object]]:
+        """Runs run.
+
+        Returns:
+            List of results.
+
+        """
         events: list[dict[str, object]] = []
         seen_urls: set[str] = set()
         for url in self.urls:

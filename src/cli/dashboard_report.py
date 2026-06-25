@@ -476,6 +476,8 @@ def _append_quality_notify_lines(msg_lines: list[str], quality: dict[str, Any]) 
 
 @dataclass
 class ViolationContext:
+    """ViolationContext class."""
+
     pa_ok: bool
     team_bat_ok: bool
     team_pit_ok: bool
@@ -532,6 +534,7 @@ def _send_dashboard_notification(data: dict[str, Any], date_str: str) -> None:
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     args = _parse_args()
 
     date_str = _date_or_today(args.date)

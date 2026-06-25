@@ -46,6 +46,7 @@ def batch_calculate_matchups(years: list[int], *, sync_oci: bool = False) -> Non
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Calculate Matchup and Split matrices.")
     parser.add_argument("--years", type=str, default="2020-2026")
     parser.add_argument("--sync", action="store_true", help="Sync results to OCI")

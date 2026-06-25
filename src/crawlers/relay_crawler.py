@@ -43,6 +43,7 @@ class _PermanentStatusError(Exception):
     """Raised when the HTTP response indicates a permanent (non-retryable) error."""
 
     def __init__(self, status_code: int) -> None:
+        """Initializes a new instance."""
         self.status_code = status_code
         super().__init__(f"permanent_http_{status_code}")
 
@@ -76,6 +77,8 @@ KBO_TO_NAVER_TEAM_CODE = {
 
 @dataclass
 class GameMatchContext:
+    """GameMatchContext class."""
+
     game: dict[str, Any]
     games: list[dict[str, Any]]
     away_code: str
@@ -85,6 +88,8 @@ class GameMatchContext:
 
 @dataclass
 class NaverSegmentIdentity:
+    """NaverSegmentIdentity class."""
+
     payload_hash: str
     inning: int | None
     half: str | None
@@ -95,6 +100,8 @@ class NaverSegmentIdentity:
 
 @dataclass
 class NaverHeaderRowContext:
+    """NaverHeaderRowContext class."""
+
     payload_hash: str
     inning: int
     half: str
@@ -105,6 +112,8 @@ class NaverHeaderRowContext:
 
 @dataclass
 class NaverPbpRowContext:
+    """NaverPbpRowContext class."""
+
     payload_hash: str
     inning: int
     half: str
@@ -118,6 +127,8 @@ class NaverPbpRowContext:
 
 @dataclass
 class NaverEventContext:
+    """NaverEventContext class."""
+
     sequence: int
     inning: int
     half: str
@@ -135,6 +146,8 @@ class NaverEventContext:
 
 
 class RelayCrawler:
+    """RelayCrawler class."""
+
     schedule_fallback_window_days = 7
 
     def __init__(
@@ -159,6 +172,15 @@ class RelayCrawler:
         self._last_fetch_failure_reason: str | None = None
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
+        """Gets last failure reason.
+
+        Args:
+            game_id: Game ID.
+
+        Returns:
+            The result of the operation.
+
+        """
         return self._last_failure_reason.get(normalize_kbo_game_id(game_id))
 
     def _set_failure_reason(self, game_id: str, reason: str) -> None:
@@ -339,6 +361,15 @@ class RelayCrawler:
         dh_no: str,
     ) -> int:
         def is_dh_truthy(v: object) -> bool:
+            """Returns whether the dh truthy.
+
+            Args:
+                v: V.
+
+            Returns:
+                True if successful, False otherwise.
+
+            """
             if isinstance(v, bool):
                 return v
             if v is None:
@@ -591,6 +622,17 @@ class RelayCrawler:
         stadium: str | None = None,
         game_time: str | None = None,
     ) -> dict[str, Any] | None:
+        """Crawls game relay.
+
+        Args:
+            kbo_game_id: Kbo Game ID.
+            stadium: Stadium.
+            game_time: Game Time.
+
+        Returns:
+            The result of the operation.
+
+        """
         kbo_game_id = normalize_kbo_game_id(kbo_game_id)
         self._last_failure_reason.pop(kbo_game_id, None)
         self.last_failure_reason = None

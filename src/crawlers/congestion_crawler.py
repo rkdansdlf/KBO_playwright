@@ -70,6 +70,7 @@ class CongestionCrawler:
     """Orchestrates congestion data collection from multiple sources."""
 
     def __init__(self, stadium_code: str = STADIUM_CODE) -> None:
+        """Initializes a new instance."""
         self.stadium_code = stadium_code
 
     async def run(
@@ -78,6 +79,15 @@ class CongestionCrawler:
         *,
         save: bool = False,
     ) -> list[dict]:
+        """Runs run.
+
+        Args:
+            game_date: Game Date.
+
+        Returns:
+            List of results.
+
+        """
         game_date = game_date or datetime.now(KST).date()
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 

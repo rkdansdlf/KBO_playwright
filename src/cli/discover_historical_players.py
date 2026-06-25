@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 async def discover_and_save_players(start_year: int, end_year: int, active_year: int) -> None:
+    """Saves discover and players.
+
+    Args:
+        start_year: Start Year.
+        end_year: End Year.
+        active_year: Active Year.
+
+    """
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
 
     logger.info("🚀 Starting historical player discovery from %s to %s...", start_year, end_year)
@@ -72,6 +80,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     _current_year = datetime.now(KST).year
     parser = argparse.ArgumentParser(description="Discover and store historical player IDs")
     parser.add_argument("--start", type=int, default=1982)

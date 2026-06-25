@@ -87,6 +87,8 @@ POSTBACK_EVAL = """
 
 @dataclass
 class PlayerRow:
+    """PlayerRow class."""
+
     player_id: int
     uniform_no: str | None
     name: str
@@ -99,6 +101,8 @@ class PlayerRow:
 
 
 class PlayerSearchCrawler:
+    """PlayerSearchCrawler class."""
+
     def __init__(
         self,
         pool: AsyncPlaywrightPool | None = None,
@@ -106,6 +110,7 @@ class PlayerSearchCrawler:
         *,
         headless: bool = True,
     ) -> None:
+        """Initializes a new instance."""
         self.pool = pool
         self.request_delay = request_delay
         self.headless = headless
@@ -116,6 +121,12 @@ class PlayerSearchCrawler:
         self.failure_counts[reason] += 1
 
     def get_failure_summary(self) -> dict[str, Any]:
+        """Gets failure summary.
+
+        Returns:
+            Dictionary result.
+
+        """
         return dict(self.failure_counts)
 
     async def _navigate_search_page(
@@ -180,6 +191,15 @@ class PlayerSearchCrawler:
                 await active_pool.close()
 
     async def crawl_all_players(self, max_pages: int | None = None) -> list[PlayerRow]:
+        """Crawls all players.
+
+        Args:
+            max_pages: Max Pages.
+
+        Returns:
+            List of results.
+
+        """
         active_pool = self.pool or AsyncPlaywrightPool(max_pages=1, headless=self.headless)
         owns_pool = self.pool is None
         if owns_pool:
@@ -445,10 +465,28 @@ class PlayerSearchCrawler:
 
     @staticmethod
     def row_to_dict(row: PlayerRow) -> dict[str, Any]:
+        """Handles the row to dict operation.
+
+        Args:
+            row: Row.
+
+        Returns:
+            Dictionary result.
+
+        """
         return player_row_to_dict(row)
 
 
 def parse_birth_date(raw: str | None) -> date_type | None:
+    """Parses birth date.
+
+    Args:
+        raw: Raw.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not raw:
         return None
 
@@ -481,6 +519,15 @@ def parse_birth_date(raw: str | None) -> date_type | None:
 
 
 def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
+    """Handles the player row to dict operation.
+
+    Args:
+        row: Row.
+
+    Returns:
+        Dictionary result.
+
+    """
     category = classify_player({"team": row.team, "position": row.position})
     status = "active"
     staff_role = None
@@ -515,6 +562,15 @@ async def crawl_all_players(
     request_delay: float = REQUEST_DELAY_SEC,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[PlayerRow]:
+    """Crawls all players.
+
+    Args:
+        max_pages: Max Pages.
+
+    Returns:
+        List of results.
+
+    """
     crawler = PlayerSearchCrawler(
         pool=pool,
         request_delay=request_delay,
@@ -606,6 +662,7 @@ def _sync_to_oci(oci_url: str) -> None:
 
 
 async def main() -> None:
+    """Main entry point for this CLI command."""
     args = _parse_crawl_args()
 
     logger.info("=" * 60)

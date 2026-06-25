@@ -235,6 +235,8 @@ JAMSIL_LNG = 127.0719
 
 @dataclass
 class TransitRequest:
+    """TransitRequest class."""
+
     origin_label: str
     origin_lat: float
     origin_lng: float

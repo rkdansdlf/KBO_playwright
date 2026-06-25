@@ -105,7 +105,10 @@ TEAM_TICKET_INFO: dict[str, dict[str, Any]] = {
 
 
 class TicketCrawler:
+    """TicketCrawler class."""
+
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.kbo_ticket_url = "https://www.koreabaseball.com/Kbo/League/Map.aspx"
         self.current_season = datetime.now(KST).year
         self._raw_pages: list[dict] = []
@@ -124,6 +127,12 @@ class TicketCrawler:
     }
 
     async def run(self, *, save: bool = False, season: int | None = None) -> list[dict[str, Any]]:
+        """Runs run.
+
+        Returns:
+            List of results.
+
+        """
         if season:
             self.current_season = season
 

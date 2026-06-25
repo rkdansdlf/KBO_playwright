@@ -322,6 +322,15 @@ def _write_daily_update_summary(
 
 
 def format_stability_alert_summary(result: object) -> str | None:
+    """Formats stability summary.
+
+    Args:
+        result: Result.
+
+    Returns:
+        The result of the operation.
+
+    """
     if not isinstance(result, dict):
         return None
     stability = result.get("stability")
@@ -490,6 +499,8 @@ async def _step_1_schedule(ctx: _RunContext) -> None:
 
 @dataclass
 class RecoveryConfig:
+    """RecoveryConfig class."""
+
     ctx: _RunContext
     g_crawler: GameDetailCrawler
     detail_results_by_game: dict
@@ -1627,6 +1638,12 @@ async def run_update(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="KBO Daily Data Finalize Orchestrator")
     parser.add_argument(
         "--date",
@@ -1705,6 +1722,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 

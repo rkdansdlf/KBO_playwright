@@ -59,7 +59,10 @@ TEAM_CODES = [
 
 
 class RosterTransactionCrawler:
+    """RosterTransactionCrawler class."""
+
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.mobile_url = "https://m.koreabaseball.com/Kbo/PlayerAdd.aspx"
         self.register_url = REGISTER
         self.request_delay = request_delay
@@ -67,6 +70,12 @@ class RosterTransactionCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
+        """Runs run.
+
+        Returns:
+            List of results.
+
+        """
         crawl_date = (
             datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=KST).date()
             if target_date

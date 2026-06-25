@@ -6,6 +6,8 @@ from enum import StrEnum
 
 
 class PositionCode(StrEnum):
+    """PositionCode class."""
+
     P = "P"  # Pitcher (투)
     C = "C"  # Catcher (포)
     B1 = "1B"  # 1st Base (一)

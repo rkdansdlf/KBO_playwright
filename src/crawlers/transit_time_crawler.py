@@ -82,6 +82,7 @@ class TransitTimeCrawler:
         stadium_code: str = STADIUM_CODE,
         origins: list[dict] | None = None,
     ) -> None:
+        """Initializes a new instance."""
         self.stadium_code = stadium_code
         self.origins = origins or JAMSIL_ORIGINS
 

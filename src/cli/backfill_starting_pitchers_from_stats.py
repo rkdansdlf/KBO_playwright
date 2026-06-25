@@ -44,6 +44,12 @@ def _is_blank(value: object) -> bool:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parses args.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(description="Fill missing game starting pitchers from game_pitching_stats.")
     parser.add_argument("--start-date", help="Start date, YYYYMMDD or YYYY-MM-DD")
     parser.add_argument("--end-date", help="End date, YYYYMMDD or YYYY-MM-DD")
@@ -76,6 +82,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Loads candidates.
+
+    Args:
+        session: Session.
+        args: Args.
+
+    Returns:
+        List of results.
+
+    """
     start_date = _normalize_date(args.start_date)
     end_date = _normalize_date(args.end_date)
     overwrite_filter = (
@@ -148,6 +164,16 @@ def repair_candidates(
     overwrite: bool,
     dry_run: bool,
 ) -> tuple[list[str], int, int]:
+    """Repairs candidates.
+
+    Args:
+        session: Session.
+        candidates: Candidates.
+
+    Returns:
+        Tuple result.
+
+    """
     updated_game_ids: list[str] = []
     away_updates = 0
     home_updates = 0
@@ -199,6 +225,15 @@ def repair_candidates(
 
 
 def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
+    """Syncs to oci.
+
+    Args:
+        game_ids: Game Ids.
+
+    Returns:
+        Tuple result.
+
+    """
     from src.sync.oci_sync import OCISync
 
     target_url = get_oci_url()
@@ -223,6 +258,16 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
 
 
 def find_target_missing_ready_games(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Finds target missing ready games.
+
+    Args:
+        session: Session.
+        args: Args.
+
+    Returns:
+        List of results.
+
+    """
     target_url = get_oci_url()
     if not target_url:
         msg = "OCI_DB_URL or TARGET_DATABASE_URL is required for --sync-target-missing"
@@ -287,6 +332,15 @@ def find_target_missing_ready_games(session: Session, args: argparse.Namespace) 
 
 
 def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
+    """Updates target pitcher fields.
+
+    Args:
+        rows: Rows.
+
+    Returns:
+        Integer result.
+
+    """
     if not rows:
         return 0
 
@@ -319,6 +373,7 @@ def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
 
 
 def main() -> int:
+    """Main entry point for this CLI command."""
     load_dotenv(PROJECT_ROOT / ".env")
     args = parse_args()
 

@@ -117,6 +117,15 @@ def _is_yyyymmdd(value: str) -> bool:
 def load_quality_records(
     report_dir: Path, *, days: int | None = None, limit: int | None = None
 ) -> list[dict[str, Any]]:
+    """Loads quality records.
+
+    Args:
+        report_dir: Report directory path.
+
+    Returns:
+        List of results.
+
+    """
     records: list[dict[str, Any]] = []
     for path in sorted(report_dir.glob("*.json")):
         report = _load_report(path)
@@ -132,6 +141,15 @@ def load_quality_records(
 
 
 def build_quality_dashboard(report_dir: Path, *, days: int | None = None, limit: int | None = None) -> dict[str, Any]:
+    """Builds quality dashboard.
+
+    Args:
+        report_dir: Report directory path.
+
+    Returns:
+        Dictionary result.
+
+    """
     records = load_quality_records(report_dir, days=days, limit=limit)
     failure_counts: dict[str, int] = {}
     for record in records:
@@ -177,6 +195,7 @@ def _log_dashboard_summary(dashboard: dict[str, Any]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description="Summarize generated quality report JSON files")
     parser.add_argument(

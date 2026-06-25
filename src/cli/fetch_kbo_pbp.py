@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 
 
 async def run_fetcher(argv: Sequence[str] | None = None) -> int:
+    """Runs fetcher.
+
+    Args:
+        argv: Argv.
+
+    Returns:
+        Integer result.
+
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Deprecated KBO play-by-play fetcher alias. Prefer "
@@ -89,6 +98,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     return asyncio.run(run_fetcher(argv))

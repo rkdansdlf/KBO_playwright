@@ -59,6 +59,8 @@ class FallbackMonitor:
         from pathlib import Path
 
         class DateTimeEncoder(json.JSONEncoder):
+            """DateTimeEncoder class."""
+
             def default(self, o: object) -> object:
                 """Handles the default operation.
 

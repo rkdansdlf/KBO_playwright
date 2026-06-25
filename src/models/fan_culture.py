@@ -9,6 +9,8 @@ from .base import Base, TimestampMixin
 
 
 class TeamRivalry(Base, TimestampMixin):
+    """TeamRivalry class."""
+
     __tablename__ = "team_rivalries"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -30,6 +32,8 @@ class TeamRivalry(Base, TimestampMixin):
 
 
 class CheerSong(Base, TimestampMixin):
+    """CheerSong class."""
+
     __tablename__ = "cheer_songs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -58,6 +62,8 @@ class CheerSong(Base, TimestampMixin):
 
 
 class CheerChant(Base, TimestampMixin):
+    """CheerChant class."""
+
     __tablename__ = "cheer_chants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

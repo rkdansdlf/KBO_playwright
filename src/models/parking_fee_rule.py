@@ -9,6 +9,8 @@ from .base import Base, TimestampMixin
 
 
 class ParkingFeeRule(Base, TimestampMixin):
+    """ParkingFeeRule class."""
+
     __tablename__ = "parking_fee_rules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

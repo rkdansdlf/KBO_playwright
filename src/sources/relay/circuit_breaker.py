@@ -31,6 +31,7 @@ class SourceCircuitBreaker:
         cooldown_seconds: float = 60.0,
         persist_path: str | Path | None = None,
     ) -> None:
+        """Initializes a new instance."""
         self._threshold = threshold
         self._cooldown = cooldown_seconds
         self._failures: dict[tuple[str, str], int] = {}
@@ -109,6 +110,13 @@ class SourceCircuitBreaker:
     # ------------------------------------------------------------------
 
     def record_success(self, source_name: str, bucket_id: str) -> None:
+        """Handles the record success operation.
+
+        Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+
+        """
         key = (source_name, bucket_id)
         cleared = key in self._failures or key in self._cooldowns
         self._failures.pop(key, None)
@@ -122,6 +130,13 @@ class SourceCircuitBreaker:
         self._save_state()
 
     def record_failure(self, source_name: str, bucket_id: str) -> None:
+        """Handles the record failure operation.
+
+        Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+
+        """
         key = (source_name, bucket_id)
         count = self._failures.get(key, 0) + 1
         self._failures[key] = count
@@ -137,6 +152,16 @@ class SourceCircuitBreaker:
         self._save_state()
 
     def is_available(self, source_name: str, bucket_id: str) -> bool:
+        """Returns whether the available.
+
+        Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         key = (source_name, bucket_id)
         expiry = self._cooldowns.get(key)
         if expiry is None:
@@ -160,12 +185,33 @@ class SourceCircuitBreaker:
         return False
 
     def consecutive_failures(self, source_name: str, bucket_id: str) -> int:
+        """Handles the consecutive failures operation.
+
+        Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+
+        Returns:
+            Integer result.
+
+        """
         return self._failures.get((source_name, bucket_id), 0)
 
     def is_open(self, source_name: str, bucket_id: str) -> bool:
+        """Returns whether the open.
+
+        Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+
+        Returns:
+            True if successful, False otherwise.
+
+        """
         return not self.is_available(source_name, bucket_id)
 
     def reset_all(self) -> None:
+        """Resets all."""
         self._failures.clear()
         self._cooldowns.clear()
         self._save_state()

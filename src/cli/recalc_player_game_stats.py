@@ -82,6 +82,16 @@ def _print_pitching_records(records: list[dict[str, object]]) -> None:
 
 
 def recalc_for_game(session: Session, game_id: str, *, dry_run: bool = False) -> dict[str, int]:
+    """Recalculates for game.
+
+    Args:
+        session: Session.
+        game_id: Game ID.
+
+    Returns:
+        Dictionary result.
+
+    """
     batting = aggregate_game_batting(session, game_id)
     pitching = aggregate_game_pitching(session, game_id)
 
@@ -123,6 +133,17 @@ def run_recalc(
     dry_run: bool = False,
     include_futures: bool = False,
 ) -> int:
+    """Runs run recalc.
+
+    Args:
+        game_id: Game ID.
+        date: Target date in YYYYMMDD format.
+        season: Season year.
+
+    Returns:
+        Integer result.
+
+    """
     with SessionLocal() as session:
         game_ids: list[str] = []
 
@@ -190,6 +211,7 @@ def run_recalc(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Recalculate player-game-level stats from game-level data.")
     parser.add_argument("--game-id", help="Single game ID to recalc")
     parser.add_argument("--date", help="Game date (YYYYMMDD) to recalc all completed games")

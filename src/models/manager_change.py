@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class ManagerChange(Base, TimestampMixin):
+    """ManagerChange class."""
+
     __tablename__ = "manager_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

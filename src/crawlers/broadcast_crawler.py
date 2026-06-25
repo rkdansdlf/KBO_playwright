@@ -22,10 +22,20 @@ from src.utils.team_codes import build_kbo_game_id
 
 
 class BroadcastCrawler:
+    """BroadcastCrawler class."""
+
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.url = SCHEDULE
 
     async def run(self, year: int | None = None, month: int | None = None, *, save: bool = False) -> None:
+        """Runs run.
+
+        Args:
+            year: Season year.
+            month: Month number (1-12).
+
+        """
         year = year or datetime.now(KST).year
         month = month or datetime.now(KST).month
 

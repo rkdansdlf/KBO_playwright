@@ -40,7 +40,10 @@ def _classify_final_payload(final_payload: dict[str, Any], raw: dict[str, Any]) 
 
 
 class ContextAggregator:
+    """ContextAggregator class."""
+
     def __init__(self, session: Session) -> None:
+        """Initializes a new instance."""
         self.session = session
 
     @staticmethod

@@ -220,6 +220,15 @@ def collect_freshness_issues(
     days: int | None = None,
     max_hours: int | None = None,
 ) -> dict[str, list[str]]:
+    """Handles the collect freshness issues operation.
+
+    Args:
+        session: Session.
+
+    Returns:
+        Dictionary result.
+
+    """
     query = _apply_freshness_date_filter(_freshness_base_query(session), target_date, days, max_hours)
     games = query.order_by(Game.game_date, Game.game_id).all()
     issues = _empty_issue_map()
@@ -269,6 +278,15 @@ def evaluate_freshness_gate(
     days: int | None = None,
     max_hours: int | None = None,
 ) -> list[str]:
+    """Handles the evaluate freshness gate operation.
+
+    Args:
+        session: Session.
+
+    Returns:
+        List of results.
+
+    """
     issues = collect_freshness_issues(session, target_date=target_date, days=days, max_hours=max_hours)
     failures: list[str] = []
     for key, game_ids in issues.items():
@@ -287,6 +305,7 @@ def _send_freshness_alert(failures: list[str]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description="Validate operational freshness requirements for completed games")
     parser.add_argument("--date", type=str, help="Target date in YYYYMMDD format")

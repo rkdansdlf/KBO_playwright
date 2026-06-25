@@ -185,6 +185,7 @@ class StaffRegisterCrawler:
     """
 
     def __init__(self, *, headless: bool = True, request_delay: float = 1.5) -> None:
+        """Initializes a new instance."""
         self.headless = headless
         self.policy = RequestPolicy.with_delay(request_delay, request_delay)
 

@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class RosterTransaction(Base, TimestampMixin):
+    """RosterTransaction class."""
+
     __tablename__ = "roster_transactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

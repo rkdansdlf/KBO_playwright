@@ -20,6 +20,8 @@ DEFAULT_REGULAR_SUFFIXES = ("0", "1", "2")
 
 @dataclass(frozen=True)
 class DeduplicationWindow:
+    """DeduplicationWindow class."""
+
     label: str
     start_date: str
     end_date: str
@@ -28,6 +30,8 @@ class DeduplicationWindow:
 
 @dataclass(frozen=True)
 class DeduplicationResult:
+    """DeduplicationResult class."""
+
     scanned_slots: int
     marked_primary: int
 

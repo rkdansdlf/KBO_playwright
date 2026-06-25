@@ -8,6 +8,8 @@ from typing import Any
 
 
 class BattingStatCalculator:
+    """Batting stat calculator for KBO player statistics."""
+
     @staticmethod
     def calculate_ratios(data: dict[str, Any]) -> dict[str, float | None]:
         """Calculates advanced/ratio stats from a dictionary of raw stats.

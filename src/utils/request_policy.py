@@ -29,6 +29,8 @@ DEFAULT_USER_AGENTS = [
 
 @dataclass(frozen=True)
 class RequestPolicyConfig:
+    """RequestPolicyConfig class."""
+
     min_delay: float | None = None
     max_delay: float | None = None
     user_agents: Iterable[str] | None = None

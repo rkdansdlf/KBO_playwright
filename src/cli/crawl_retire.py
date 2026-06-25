@@ -144,6 +144,12 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     semaphore = asyncio.Semaphore(args.concurrency)  # 동시 요청 수 제어
 
     async def runner(pid: str) -> None:
+        """Handles the runner operation.
+
+        Args:
+            pid: Pid.
+
+        """
         async with semaphore:
             try:
                 logger.info("📡 Processing player %s...", pid)
@@ -172,6 +178,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     asyncio.run(crawl_retired_players(args))

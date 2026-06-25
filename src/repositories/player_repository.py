@@ -31,6 +31,7 @@ class PlayerRepository:
     """Persist player-related entities with SQLite/MySQL compatible UPSERT logic."""
 
     def __init__(self) -> None:
+        """Initializes a new instance."""
         self.dialect = Engine.dialect.name
 
     # ------------------------------------------------------------------
@@ -213,9 +214,23 @@ class PlayerRepository:
     # Season aggregates (batting/pitching)
     # ------------------------------------------------------------------
     def upsert_season_batting(self, player_id: int, season_data: dict[str, Any]) -> None:
+        """Inserts or updates season batting.
+
+        Args:
+            player_id: Player ID.
+            season_data: Season Data.
+
+        """
         self._upsert_season_stats(PlayerSeasonBatting, player_id, season_data)
 
     def upsert_season_pitching(self, player_id: int, season_data: dict[str, Any]) -> None:
+        """Inserts or updates season pitching.
+
+        Args:
+            player_id: Player ID.
+            season_data: Season Data.
+
+        """
         self._upsert_season_stats(PlayerSeasonPitching, player_id, season_data)
 
     def _upsert_season_stats(
@@ -258,6 +273,15 @@ class PlayerRepository:
     # Player Movements
     # ------------------------------------------------------------------
     def save_player_movements(self, movements: list[dict[str, Any]]) -> int:
+        """Saves player movements.
+
+        Args:
+            movements: Movements.
+
+        Returns:
+            Integer result.
+
+        """
         saved_count = 0
         with SessionLocal() as session:
             for item in movements:

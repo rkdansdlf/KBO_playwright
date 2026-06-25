@@ -184,12 +184,22 @@ class PlayerProfileCrawler:
     FUTURES_PITCHER_URL = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
     def __init__(self, request_delay: float = 1.2, pool: AsyncPlaywrightPool | None = None) -> None:
+        """Initializes a new instance."""
         self.request_delay = request_delay
         self.pool = pool
         self.policy = RequestPolicy.with_delay(request_delay, request_delay)
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, player_id: str) -> str | None:
+        """Gets last failure reason.
+
+        Args:
+            player_id: Player ID.
+
+        Returns:
+            The result of the operation.
+
+        """
         return self._last_failure_reason.get(str(player_id))
 
     def _select_urls(self, player_id: str, position: str | None) -> list[str]:

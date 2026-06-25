@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class StadiumSeatSection(Base, TimestampMixin):
+    """StadiumSeatSection class."""
+
     __tablename__ = "stadium_seat_sections"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

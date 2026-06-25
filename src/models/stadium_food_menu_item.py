@@ -11,6 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class StadiumFoodMenuItem(Base, TimestampMixin):
+    """StadiumFoodMenuItem class."""
+
     __tablename__ = "stadium_food_menu_items"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

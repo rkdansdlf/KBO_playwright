@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class HydrationSpec:
+    """HydrationSpec class."""
+
     label: str
     model: type
     source_filters: Sequence
@@ -61,6 +63,7 @@ class RuntimeHydrator:
     }
 
     def __init__(self, source_session: Session, target_session: Session) -> None:
+        """Initializes a new instance."""
         self.source_session = source_session
         self.target_session = target_session
 
@@ -71,6 +74,15 @@ class RuntimeHydrator:
         target_date: date | None = None,
         preserve_aliases: bool = False,
     ) -> dict[str, int]:
+        """Handles the hydrate year operation.
+
+        Args:
+            year: Season year.
+
+        Returns:
+            Dictionary result.
+
+        """
         specs = self._hydration_specs(year, target_date=target_date, preserve_aliases=preserve_aliases)
         try:
             return self._run_hydration_specs(year, specs, preserve_aliases=preserve_aliases)

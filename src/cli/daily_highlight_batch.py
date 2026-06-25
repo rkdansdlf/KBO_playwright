@@ -170,6 +170,15 @@ async def run_highlight_batch(
     sync_to_oci: bool | None = None,
     notify: bool = True,
 ) -> list[str]:
+    """Runs highlight batch.
+
+    Args:
+        target_date_str: Target Date Str.
+
+    Returns:
+        List of results.
+
+    """
     logger.info("🎬 Starting Daily Highlight Batch for %s...", target_date_str)
 
     try:
@@ -200,6 +209,7 @@ async def run_highlight_batch(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Daily Highlights Generator")
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
     parser.add_argument("--force", action="store_true", help="Re-generate and overwrite highlights if they exist")

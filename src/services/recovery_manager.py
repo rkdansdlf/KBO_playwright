@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 class RecoveryManager:
+    """RecoveryManager class."""
+
     def __init__(self, checkpoint_path: str = "data/recovery/healer_checkpoint.json") -> None:
+        """Initializes a new instance."""
         self.path = Path(checkpoint_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.state: dict[str, Any] = {
@@ -68,6 +71,15 @@ class RecoveryManager:
         cooldown_minutes: int | None = None,
         now: datetime | None = None,
     ) -> list[str]:
+        """Gets due detail recovery targets.
+
+        Args:
+            target_date: Target Date.
+
+        Returns:
+            List of results.
+
+        """
         queue = self._get_detail_recovery_queue()
         if not queue:
             return []
@@ -95,6 +107,13 @@ class RecoveryManager:
         return sorted(set(game_ids))
 
     def mark_detail_recovery_success(self, target_date: str, game_id: str) -> None:
+        """Handles the mark detail recovery success operation.
+
+        Args:
+            target_date: Target Date.
+            game_id: Game ID.
+
+        """
         queue = self._get_detail_recovery_queue()
         key = self._detail_queue_key(target_date, game_id)
         if key in queue:
@@ -108,6 +127,13 @@ class RecoveryManager:
         *,
         failure_reason: str | None = None,
     ) -> None:
+        """Handles the mark detail recovery failure operation.
+
+        Args:
+            target_date: Target Date.
+            game_id: Game ID.
+
+        """
         queue = self._get_detail_recovery_queue()
         key = self._detail_queue_key(target_date, game_id)
         existing = queue.get(key)
@@ -125,6 +151,7 @@ class RecoveryManager:
         self.save()
 
     def purge_detail_recovery_queue(self, *, max_age_days: int = 7) -> None:
+        """Purges detail recovery queue."""
         queue = self._get_detail_recovery_queue()
         if not queue:
             return
@@ -149,6 +176,7 @@ class RecoveryManager:
             self.save()
 
     def load(self) -> None:
+        """Loads load."""
         if self.path.exists():
             try:
                 with self.path.open(encoding="utf-8") as f:
@@ -157,11 +185,19 @@ class RecoveryManager:
                 logger.debug("No existing recovery state at %s", self.path)
 
     def save(self) -> None:
+        """Saves save."""
         with self.path.open("w", encoding="utf-8") as f:
             json.dump(self.state, f, indent=2, ensure_ascii=False)
 
     def initialize_run(self, run_id: str, targets: list[str]) -> None:
         # If it's a new run ID, reset everything
+        """Initializes initialize run.
+
+        Args:
+            run_id: Run ID.
+            targets: Targets.
+
+        """
         if self.state.get("run_id") != run_id:
             queue = self.state.get("detail_recovery_queue", {})
             self.state = {
@@ -175,6 +211,12 @@ class RecoveryManager:
             self.save()
 
     def mark_completed(self, game_id: str) -> None:
+        """Handles the mark completed operation.
+
+        Args:
+            game_id: Game ID.
+
+        """
         if game_id not in self.state["completed"]:
             self.state["completed"].append(game_id)
         if game_id in self.state["pending"]:
@@ -182,15 +224,29 @@ class RecoveryManager:
         self.save()
 
     def mark_failed(self, game_id: str, reason: str) -> None:
+        """Handles the mark failed operation.
+
+        Args:
+            game_id: Game ID.
+            reason: Reason.
+
+        """
         self.state["failed"][game_id] = reason
         if game_id in self.state["pending"]:
             self.state["pending"].remove(game_id)
         self.save()
 
     def get_pending_targets(self) -> list[str]:
+        """Gets pending targets.
+
+        Returns:
+            List of results.
+
+        """
         return self.state.get("pending", [])
 
     def clear(self) -> None:
+        """Clears clear."""
         if self.path.exists():
             self.path.unlink()
         self.state = {

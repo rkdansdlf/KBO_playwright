@@ -33,6 +33,15 @@ def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
 
 
 def get_game_relay_summary(game_id: str) -> dict[str, Any]:
+    """Gets game relay summary.
+
+    Args:
+        game_id: Game ID.
+
+    Returns:
+        Dictionary result.
+
+    """
     with SessionLocal() as session:
         plays = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).all()
 

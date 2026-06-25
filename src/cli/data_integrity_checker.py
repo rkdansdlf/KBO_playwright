@@ -44,6 +44,8 @@ PLAYER_ID_TABLES = [
 
 @dataclass
 class CheckResult:
+    """CheckResult class."""
+
     name: str
     passed: bool
     message: str
@@ -52,6 +54,8 @@ class CheckResult:
 
 @dataclass
 class IntegrityReport:
+    """IntegrityReport class."""
+
     target_date: str
     timestamp_kst: str
     total_checks: int
@@ -460,6 +464,12 @@ def run_integrity_checks(target_date: str) -> IntegrityReport:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
     parser = argparse.ArgumentParser(
         description="Post-crawl data integrity checker",
     )
@@ -478,6 +488,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Main entry point for this CLI command."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 

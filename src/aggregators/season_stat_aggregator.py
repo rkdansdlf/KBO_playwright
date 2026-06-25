@@ -42,6 +42,19 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
+        """Aggregates batting season.
+
+        Args:
+            session: Session.
+            player_id: Player ID.
+            year: Season year.
+            series: Series.
+            source: Source.
+
+        Returns:
+            The result of the operation.
+
+        """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
 
         query = (
@@ -148,6 +161,19 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
+        """Aggregates pitching season.
+
+        Args:
+            session: Session.
+            player_id: Player ID.
+            year: Season year.
+            series: Series.
+            source: Source.
+
+        Returns:
+            The result of the operation.
+
+        """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
 
         query = (

@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 @dataclass
 class RunStats:
+    """RunStats class."""
+
     label: str | None
     started_at: datetime
     finished_at: datetime
@@ -25,7 +27,18 @@ class RunStats:
 
 
 class CrawlRunRepository:
+    """CrawlRunRepository class."""
+
     def create_run(self, stats: RunStats) -> CrawlRun:
+        """Creates create run.
+
+        Args:
+            stats: Stats.
+
+        Returns:
+            CrawlRun instance.
+
+        """
         with SessionLocal() as session:
             run = CrawlRun(
                 label=stats.label,

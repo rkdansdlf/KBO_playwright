@@ -42,6 +42,8 @@ REVIEW_REGEN_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeErr
 
 @dataclass
 class ReviewRegenReportRow:
+    """ReviewRegenReportRow class."""
+
     game_id: str
     game_date: str
     status: str
@@ -54,6 +56,12 @@ class ReviewRegenReportRow:
     message: str = ""
 
     def as_csv_row(self) -> dict[str, Any]:
+        """Handles the as csv row operation.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "game_id": self.game_id,
             "game_date": self.game_date,
@@ -319,6 +327,12 @@ def regenerate_review_summaries(
     backup_out: Path | None = None,
     log: Callable[[str], object] = logger.info,
 ) -> list[ReviewRegenReportRow]:
+    """Handles the regenerate review summaries operation.
+
+    Returns:
+        List of results.
+
+    """
     target_game_ids = list(game_ids or [])
     target_dates = list(dates or [])
     target_seasons = list(seasons or [])
@@ -369,6 +383,7 @@ def _collect_game_ids(args: argparse.Namespace) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Regenerate Coach review summaries for selected games")
     parser.add_argument("--game-id", action="append", default=[], help="Target game_id. May be repeated.")
     parser.add_argument("--game-ids-file", type=str, help="Newline-delimited file of game_ids")

@@ -33,6 +33,7 @@ class SituationalSplitCalculator:
     """Computes situational batting splits from game_events (PBP) data."""
 
     def __init__(self, session: Session | None = None) -> None:
+        """Initializes a new instance."""
         self._session = session
 
     def _session_ctx(self) -> Session:
@@ -164,6 +165,16 @@ class SituationalSplitCalculator:
     # Full profile helper
     # ------------------------------------------------------------------ #
     def get_full_splits(self, player_id: int, season: int) -> dict[str, Any]:
+        """Gets full splits.
+
+        Args:
+            player_id: Player ID.
+            season: Season year.
+
+        Returns:
+            Dictionary result.
+
+        """
         return {
             "player_id": player_id,
             "season": season,

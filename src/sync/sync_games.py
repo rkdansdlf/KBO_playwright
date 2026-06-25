@@ -147,6 +147,15 @@ class GameSyncMixin:
 
         def transform(data: dict[str, Any]) -> dict[str, Any]:
             # If season_id looks like a year (e.g. > 1900), map it
+            """Transforms transform.
+
+            Args:
+                data: Data.
+
+            Returns:
+                Dictionary result.
+
+            """
             raw_sid = data.get("season_id")
             if raw_sid and raw_sid > 1900:
                 # Default to Regular season (type 0) for these legacy years
@@ -226,6 +235,7 @@ class GameSyncMixin:
         ]
 
         def purge_child_rows() -> None:
+            """Purges child rows."""
             for table_name in child_tables:
                 self.target_session.execute(
                     text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),
@@ -255,6 +265,7 @@ class GameSyncMixin:
             return
 
         def replace_child_rows() -> None:
+            """Handles the replace child rows operation."""
             for child_model in child_models:
                 if not self._target_table_exists(child_model):
                     logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
@@ -410,6 +421,16 @@ class GameSyncMixin:
         unsynced_only: bool = False,
         batch_size: int = 5000,
     ) -> dict[str, int]:
+        """Syncs game details.
+
+        Args:
+            days: Days.
+            year: Season year.
+
+        Returns:
+            Dictionary result.
+
+        """
         if not self.test_connection():
             logger.error("❌ OCI connection failed. Aborting sync_game_details.")
             return {}
@@ -540,6 +561,15 @@ class GameSyncMixin:
             )
 
         def get_child_filters(model_cls: type) -> list | None:
+            """Gets child filters.
+
+            Args:
+                model_cls: Model Cls.
+
+            Returns:
+                The result of the operation.
+
+            """
             return self._child_filter_for_model(model_cls, child_filters, chunk_ids, eligibility)
 
         # 1. Game Metadata
@@ -757,6 +787,7 @@ class GameSyncMixin:
         results["player_basic"] = self._sync_referenced_player_basic_for_games([game_id])
 
         def delete_existing_lineups() -> None:
+            """Deletes existing lineups."""
             self.target_session.query(GameLineup).filter(GameLineup.game_id == game_id).delete(
                 synchronize_session=False,
             )
@@ -804,6 +835,7 @@ class GameSyncMixin:
             return {"summary": 0, "games": 0}
 
         def delete_existing_summaries() -> None:
+            """Deletes existing summaries."""
             for batch in self._chunked(target_game_ids, 500):
                 self.target_session.query(GameSummary).filter(
                     GameSummary.game_id.in_(batch),
@@ -850,6 +882,7 @@ class GameSyncMixin:
         if game_ids:
 
             def delete_existing_game_summaries() -> None:
+                """Deletes existing game summaries."""
                 for batch in self._chunked(game_ids, 500):
                     delete_query = self.target_session.query(GameSummary).filter(GameSummary.game_id.in_(batch))
                     if summary_type:
@@ -892,6 +925,7 @@ class GameSyncMixin:
         self._reset_target_sequence_for_table("game_play_by_play")
 
         def delete_existing_play_by_play() -> None:
+            """Deletes existing play by play."""
             for batch in self._chunked(game_ids, 500):
                 self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(
                     synchronize_session=False,
