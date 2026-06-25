@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, desc, func, or_
 
-from src.constants import KST
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -22,6 +21,7 @@ from src.models.game import (
 )
 from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import TeamDailyRoster
+from src.utils.date_helpers import normalize_to_date
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
 
@@ -706,7 +706,7 @@ class ContextAggregator:
     ) -> list[dict[str, Any]]:
         """최근 N일간 해당 팀의 선수 이동 현황(부상, 트레이드 등) 조회."""
         if isinstance(target_date, str):
-            target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").replace(tzinfo=KST).date()
+            target_date = normalize_to_date(target_date)
 
         # HT -> KIA, LT -> 롯데 등 한국어 이름으로도 검색 가능하도록 확장
         # (테이블에 한국어 이름과 영문 코드가 섞여 있을 수 있음)
@@ -791,7 +791,7 @@ class ContextAggregator:
     def get_daily_roster_changes(self, team_code: str, target_date: str | date | datetime) -> dict[str, list[str]]:
         """해당 날짜의 1군 등록/말소 현황 비교 (어제와 비교)."""
         if isinstance(target_date, str):
-            target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").replace(tzinfo=KST).date()
+            target_date = normalize_to_date(target_date)
 
         prev_date = target_date - timedelta(days=1)
 
@@ -827,7 +827,7 @@ class ContextAggregator:
     ) -> list[dict[str, Any]]:
         """팀이 특정 경기에서 실책을 범한 경기 목록 및 실책 상세 정보 반환."""
         if isinstance(target_date, str):
-            target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").replace(tzinfo=KST).date()
+            target_date = normalize_to_date(target_date)
 
         # Resolve team code to canonical/aliases
         canonical_map = {
@@ -911,7 +911,7 @@ class ContextAggregator:
     ) -> list[dict[str, Any]]:
         """상대팀별 승률을 계산하여 가장 까다로운(우리팀 승률이 낮은) 순으로 정렬하여 반환."""
         if isinstance(target_date, str):
-            target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").replace(tzinfo=KST).date()
+            target_date = normalize_to_date(target_date)
 
         query = self.session.query(Game).filter(
             or_(Game.home_team == team_code, Game.away_team == team_code),

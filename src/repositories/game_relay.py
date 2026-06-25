@@ -42,6 +42,7 @@ from src.repositories.game_helpers import (
 )
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.sources.relay.base import event_has_minimum_state, event_to_pbp_row, normalize_pbp_row
+from src.utils.date_helpers import parse_date_str
 from src.utils.team_codes import team_code_from_game_id_segment
 
 if TYPE_CHECKING:
@@ -335,7 +336,7 @@ def _has_repairable_game_children(session: Session, game_id: str) -> bool:
 
 def _game_date_from_game_id(game_id: str) -> date:
     try:
-        return datetime.strptime(game_id[:8], "%Y%m%d").replace(tzinfo=KST).date()
+        return parse_date_str(game_id[:8])
     except ValueError:
         return datetime.now(KST).date()
 

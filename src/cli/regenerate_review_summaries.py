@@ -26,6 +26,7 @@ from src.db.engine import SessionLocal
 from src.models.game import Game, GameSummary
 from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
 
@@ -88,7 +89,7 @@ def _short_hash(value: str | None) -> str:
 
 
 def _parse_date(value: str) -> date:
-    return datetime.strptime(value, "%Y%m%d").replace(tzinfo=KST).date()
+    return parse_date_str(value)
 
 
 def _load_game_ids_file(path: Path) -> list[str]:

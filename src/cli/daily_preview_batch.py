@@ -19,6 +19,7 @@ from src.db.engine import SessionLocal
 from src.repositories.game_repository import save_pregame_lineups
 from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
+from src.utils.date_helpers import parse_date_str
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.team_codes import resolve_team_code
 
@@ -90,7 +91,7 @@ def _add_pitcher_context(preview: dict[str, object], agg: ContextAggregator, sea
 
 def _save_preview_contexts(previews: list[dict[str, object]], target_date: str) -> list[str]:
     saved_ids: list[str] = []
-    target_dt_obj = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
+    target_dt_obj = parse_date_str(target_date)
     season_year = target_dt_obj.year
 
     with SessionLocal() as session:

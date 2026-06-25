@@ -14,12 +14,10 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 
-from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.repositories.player_game_stats import (
@@ -32,6 +30,7 @@ from src.repositories.player_game_stats import (
     upsert_player_game_batting,
     upsert_player_game_pitching,
 )
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 if TYPE_CHECKING:
@@ -43,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 def _game_ids_for_date(session: Session, target_date: str) -> list[str]:
-    target = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
+    target = parse_date_str(target_date)
     return [
         row[0]
         for row in session.query(Game.game_id)

@@ -15,7 +15,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import MetaData, Table, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import KST
 from src.db.engine import SessionLocal, get_oci_url
 from src.models.game import (
     Game,
@@ -29,6 +28,7 @@ from src.models.game import (
 from src.models.player import PlayerBasic, PlayerSeasonBatting
 from src.models.season import KboSeason
 from src.utils.alerting import SlackWebhookClient
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.validators.quality_gate import run_quality_gate
 from src.validators.standings_integrity import validate_standings_integrity
@@ -507,7 +507,7 @@ def get_daily_metrics(
     session: Session, target_date_str: str, gate_result: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
-    target_dt = datetime.strptime(target_date_str, "%Y%m%d").replace(tzinfo=KST).date()
+    target_dt = parse_date_str(target_date_str)
 
     # 1. Game Status Counts
     status_counts = (

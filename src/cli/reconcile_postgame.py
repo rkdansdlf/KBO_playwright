@@ -5,10 +5,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from src.constants import KST
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.services.player_id_resolver import PlayerIdResolver
@@ -17,6 +16,7 @@ from src.services.postgame_reconciliation_service import (
     reconcile_postgame_range,
     write_reconciliation_csv,
 )
+from src.utils.date_helpers import parse_date_str, parse_datetime_str
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -113,7 +113,7 @@ def _resolve_date_range(args: argparse.Namespace) -> tuple[str, str]:
         _validate_date(args.date)
         if args.lookback_days is None:
             return args.date, args.date
-        end_day = datetime.strptime(args.date, "%Y%m%d").replace(tzinfo=KST).date()
+        end_day = parse_date_str(args.date)
         start_day = end_day - timedelta(days=max(0, args.lookback_days))
         return start_day.strftime("%Y%m%d"), args.date
 
@@ -124,7 +124,7 @@ def _resolve_date_range(args: argparse.Namespace) -> tuple[str, str]:
 
     if args.end_date and args.lookback_days is not None:
         _validate_date(args.end_date)
-        end_day = datetime.strptime(args.end_date, "%Y%m%d").replace(tzinfo=KST).date()
+        end_day = parse_date_str(args.end_date)
         start_day = end_day - timedelta(days=max(0, args.lookback_days))
         return start_day.strftime("%Y%m%d"), args.end_date
 
@@ -133,8 +133,8 @@ def _resolve_date_range(args: argparse.Namespace) -> tuple[str, str]:
 
 
 def _ordered_range(start_date: str, end_date: str) -> tuple[str, str]:
-    start_day = datetime.strptime(start_date, "%Y%m%d").replace(tzinfo=KST).date()
-    end_day = datetime.strptime(end_date, "%Y%m%d").replace(tzinfo=KST).date()
+    start_day = parse_date_str(start_date)
+    end_day = parse_date_str(end_date)
     if start_day > end_day:
         start_day, end_day = end_day, start_day
     return start_day.strftime("%Y%m%d"), end_day.strftime("%Y%m%d")
@@ -144,7 +144,7 @@ def _validate_date(value: str) -> None:
     if len(value) != 8 or not value.isdigit():
         msg = f"Invalid date format: {value}. Use YYYYMMDD."
         raise ValueError(msg)
-    datetime.strptime(value, "%Y%m%d").replace(tzinfo=KST)
+    parse_datetime_str(value)
 
 
 if __name__ == "__main__":

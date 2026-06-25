@@ -25,6 +25,7 @@ from src.models.game import (
     GameSummary,
 )
 from src.utils.alerting import SlackWebhookClient
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 from src.utils.relay_text import is_relay_noise_text
 
@@ -73,7 +74,7 @@ def _apply_freshness_date_filter(
     query: Query, target_date: str | None, days: int | None, max_hours: int | None = None
 ) -> Query:
     if target_date:
-        return query.filter(Game.game_date == datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date())
+        return query.filter(Game.game_date == parse_date_str(target_date))
     if max_hours:
         return query.filter(Game.game_date >= (datetime.now(KST) - timedelta(hours=max_hours)).date())
     if days:
