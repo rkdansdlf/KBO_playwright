@@ -210,18 +210,19 @@ def _iter_json_rows(payload: object) -> list[dict]:
         return _filter_dict_rows(payload)
     if not isinstance(payload, dict):
         return []
-
     content = payload.get("content")
     if isinstance(content, list):
         return _filter_dict_rows(content)
+    return _extract_rows_from_dict_payload(payload)
 
+
+def _extract_rows_from_dict_payload(payload: dict[str, Any]) -> list[dict]:
     result = payload.get("result")
     if isinstance(result, dict):
         for key in ("data", "content"):
             value = result.get(key)
             if isinstance(value, list):
                 return _filter_dict_rows(value)
-
     data = payload.get("data")
     if isinstance(data, list):
         return _filter_dict_rows(data)
@@ -229,7 +230,6 @@ def _iter_json_rows(payload: object) -> list[dict]:
         inner = data.get("content")
         if isinstance(inner, list):
             return _filter_dict_rows(inner)
-
     return []
 
 
