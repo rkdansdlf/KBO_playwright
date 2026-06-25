@@ -43,8 +43,6 @@ class Team(Base, TimestampMixin):
         comment="List of team name aliases",
     )
 
-    # franchise: Mapped["Franchise"] = relationship(back_populates="teams")
-
     def __repr__(self) -> str:
         return f"<Team(team_id='{self.team_id}', name='{self.team_name}')>"
 
