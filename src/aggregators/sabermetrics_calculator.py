@@ -73,7 +73,7 @@ class SabermetricsCalculator:
         )
 
         # 1. League wOBA
-        # wOBA = (0.69*uBB + 0.72*HBP + 0.89*1B + 1.27*2B + 1.62*3B + 2.10*HR) / (AB + BB – IBB + HBP + SF)
+        # wOBA = (0.69*uBB + 0.72*HBP + 0.89*1B + 1.27*2B + 1.62*3B + 2.10*HR) / (AB + BB - IBB + HBP + SF)
         h_1b = (bat_query.h or 0) - (bat_query.d2 or 0) - (bat_query.d3 or 0) - (bat_query.hr or 0)
         u_bb = (bat_query.bb or 0) - (bat_query.ibb or 0)
         numerator = (
