@@ -345,8 +345,7 @@ def _parse_duration_minutes(duration: str | None) -> int | None:
 
 
 def _resolve_missing_player_id(db_session: Session, player_name: str, team_code: str) -> int | None:
-    """
-    Fallback resolution of player_id via name and team search.
+    """Fallback resolution of player_id via name and team search.
     Useful for exhibition games where IDs are missing from the HTML.
     """
     if not db_session or not player_name:

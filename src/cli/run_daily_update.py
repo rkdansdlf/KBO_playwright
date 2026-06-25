@@ -1,5 +1,4 @@
-"""
-KBO Daily Data Update Orchestrator.
+"""KBO Daily Data Update Orchestrator.
 
 This entrypoint is the postgame finalize + daily reconciliation job.
 """

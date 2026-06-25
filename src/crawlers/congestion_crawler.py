@@ -1,5 +1,4 @@
-"""
-Congestion crawler for Jamsil Stadium area.
+"""Congestion crawler for Jamsil Stadium area.
 
 Collects real-time congestion data from:
   1. 서울시 실시간 도시데이터 API (Seoul Open Data) — primary
@@ -67,8 +66,7 @@ def _snapshot_to_record(
 
 
 class CongestionCrawler:
-    """
-    Orchestrates congestion data collection from multiple sources.
+    """Orchestrates congestion data collection from multiple sources.
     """
 
     def __init__(self, stadium_code: str = STADIUM_CODE) -> None:

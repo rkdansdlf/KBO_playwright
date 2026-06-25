@@ -1,5 +1,4 @@
-"""
-PlayerGame data quality verification.
+"""PlayerGame data quality verification.
 
 Verifies integrity of player_game_batting and player_game_pitching tables:
   - No duplicate (game_id, player_id) pairs

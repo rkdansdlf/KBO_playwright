@@ -1,5 +1,4 @@
-"""
-Repository for stat rankings.
+"""Repository for stat rankings.
 """
 
 from __future__ import annotations

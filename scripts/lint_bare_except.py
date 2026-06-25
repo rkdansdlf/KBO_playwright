@@ -1,5 +1,4 @@
-"""
-Custom lint check: detect bare except Exception without logging or re-raise.
+"""Custom lint check: detect bare except Exception without logging or re-raise.
 Usage: python scripts/lint_bare_except.py [--fix FILE]
 """
 

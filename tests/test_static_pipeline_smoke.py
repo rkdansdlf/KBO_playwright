@@ -1,5 +1,4 @@
-"""
-test_static_pipeline_smoke.py
+"""test_static_pipeline_smoke.py
 
 Smoke tests for the Phase 1 static text pipeline.
 Loads real markdown documents from Docs/baseball, runs the TextTransformer,

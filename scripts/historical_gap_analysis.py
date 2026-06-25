@@ -1,5 +1,4 @@
-"""
-Phase 4f: Historical gap analysis — identify missing data across seasons.
+"""Phase 4f: Historical gap analysis — identify missing data across seasons.
 """
 
 from __future__ import annotations

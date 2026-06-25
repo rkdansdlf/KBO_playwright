@@ -1,5 +1,4 @@
-"""
-Franchise model definition.
+"""Franchise model definition.
 """
 
 from __future__ import annotations
@@ -11,8 +10,7 @@ from .base import Base, TimestampMixin
 
 
 class Franchise(Base, TimestampMixin):
-    """
-    Represents a KBO Franchise (the entity behind the persistent technical ID).
+    """Represents a KBO Franchise (the entity behind the persistent technical ID).
     e.g., The 'SK' technical ID represents the franchise that is now 'SSG'.
     """
 

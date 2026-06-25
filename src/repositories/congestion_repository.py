@@ -1,5 +1,4 @@
-"""
-Repository for StadiumCongestion CRUD operations.
+"""Repository for StadiumCongestion CRUD operations.
 """
 
 from __future__ import annotations
@@ -28,8 +27,7 @@ class CongestionRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumCongestion, bool]:
-        """
-        Insert or update a congestion measurement.
+        """Insert or update a congestion measurement.
         Dedup key: (stadium_code, location_label, measured_at).
 
         Returns (record, created: bool).

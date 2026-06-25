@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""
-Fetch and validate koreabaseball.com robots.txt before running crawlers.
+"""Fetch and validate koreabaseball.com robots.txt before running crawlers.
 """
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
-"""
-Database engine configuration
+"""Database engine configuration
 Supports both SQLite (dev) and MySQL (production)
 """
 

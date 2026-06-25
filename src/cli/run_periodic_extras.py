@@ -1,5 +1,4 @@
-"""
-KBO Periodic Extras Orchestrator.
+"""KBO Periodic Extras Orchestrator.
 Fetches Futures league data and retired player listings.
 """
 

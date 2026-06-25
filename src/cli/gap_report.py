@@ -1,5 +1,4 @@
-"""
-Unified data gap reporter for KBO pipeline.
+"""Unified data gap reporter for KBO pipeline.
 
 Aggregates gap checks from multiple existing monitors into a single
 structured report, then sends gap-type-aware alerts via Slack/Telegram.

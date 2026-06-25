@@ -1,5 +1,4 @@
-"""
-Sync collected pregame preview rows for scheduled games to OCI/Postgres.
+"""Sync collected pregame preview rows for scheduled games to OCI/Postgres.
 
 This is intentionally scoped to games that already have local preview summaries
 or registered starting pitchers, so backfilled pregame data can be published

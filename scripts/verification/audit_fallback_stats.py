@@ -34,8 +34,7 @@ AUDIT_EXCEPTIONS = (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeErro
 
 
 class StatAudit:
-    """
-    Compares officially crawled KBO stats with our fallback aggregation logic
+    """Compares officially crawled KBO stats with our fallback aggregation logic
     to identify discrepancies and optionally fix them if they pass safety checks.
     """
 

@@ -1,5 +1,4 @@
-"""
-Naver Search-based operation notice crawler.
+"""Naver Search-based operation notice crawler.
 
 Supplements the LG/Doosan website crawlers by querying Naver News API
 for real-time game-day notices and urgent announcements.
@@ -96,8 +95,7 @@ def _result_to_notice(result: NaverSearchResult) -> dict[str, Any]:
 
 
 class OperationNoticeNaverCrawler:
-    """
-    Crawls Naver News for KBO game-day operation notices.
+    """Crawls Naver News for KBO game-day operation notices.
 
     Complements official team website crawlers with real-time news coverage.
     Results are tagged is_confirmed=False to distinguish from official notices.

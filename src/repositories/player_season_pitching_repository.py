@@ -1,5 +1,4 @@
-"""
-PlayerSeasonPitching 전용 리포지토리
+"""PlayerSeasonPitching 전용 리포지토리
 투수 시즌 데이터를 player_season_pitching 테이블에 올바르게 저장
 """
 
@@ -41,8 +40,7 @@ def _prefer_payload_value(
 
 
 def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
-    """
-    투수 시즌 통계를 player_season_pitching 테이블에 UPSERT 저장
+    """투수 시즌 통계를 player_season_pitching 테이블에 UPSERT 저장
 
     Args:
         payloads: 투수 데이터 딕셔너리 리스트

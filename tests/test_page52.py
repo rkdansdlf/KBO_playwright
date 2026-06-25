@@ -1,5 +1,4 @@
-"""
-Test navigation to page 52 to see why pagination stopped
+"""Test navigation to page 52 to see why pagination stopped
 """
 
 import asyncio

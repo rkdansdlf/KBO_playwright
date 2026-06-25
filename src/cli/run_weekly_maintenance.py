@@ -1,5 +1,4 @@
-"""
-KBO Weekly Maintenance Orchestrator.
+"""KBO Weekly Maintenance Orchestrator.
 Performs player profile enrichment, DB health checks, team events, fan culture crawling, and OCI cleanup/sync.
 """
 

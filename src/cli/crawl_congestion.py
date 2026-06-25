@@ -1,5 +1,4 @@
-"""
-CLI for collecting congestion data for Jamsil Stadium.
+"""CLI for collecting congestion data for Jamsil Stadium.
 
 Usage:
     python -m src.cli.crawl_congestion --save

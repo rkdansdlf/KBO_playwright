@@ -1,5 +1,4 @@
-"""
-APScheduler-based automation for KBO data collection.
+"""APScheduler-based automation for KBO data collection.
 
 Note: Daily post-processing (finalize, standings, defense, rankings, PBP healer,
 batch parse, quality report, gap report, freshness monitor) and Tier 2 backfills
@@ -458,8 +457,7 @@ def _run_hydration(year: int, target_date: str | None = None):
     retry_error_callback=alert_failure,
 )
 def crawl_daily_games():
-    """
-    Daily job: Run unified daily update entrypoint.
+    """Daily job: Run unified daily update entrypoint.
 
     Runs at 03:00 KST daily to collect previous KST day's schedule+details.
     Uses exponential backoff retry on failures (3 attempts max).
@@ -619,8 +617,7 @@ def _compact_date(d) -> str:
 
 
 def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
-    """
-    Multi-phase backfill orchestrator for the last N days:
+    """Multi-phase backfill orchestrator for the last N days:
 
     Phase 1 — Game detail (batting/pitching) via run_daily_update_main
     Phase 2 — PBP / relay via run_daily_update_main
@@ -819,8 +816,7 @@ def crawl_pregame_refresh():
 
 
 def _get_live_poll_interval_seconds() -> int:
-    """
-    Calculate the appropriate polling interval in seconds by querying the
+    """Calculate the appropriate polling interval in seconds by querying the
     local SQLite database for today's KBO games.
 
     Database state rules:
@@ -1006,8 +1002,7 @@ def crawl_live_refresh():
     retry_error_callback=alert_failure,
 )
 def crawl_retired_players_job(limit: int | None = None):
-    """
-    Monthly job: Crawl retired/inactive player statistics.
+    """Monthly job: Crawl retired/inactive player statistics.
 
     Runs on the 1st of every month at 02:00 KST.
     Uses exponential backoff retry on failures (3 attempts max).
@@ -1051,8 +1046,7 @@ def crawl_retired_players_job(limit: int | None = None):
     retry_error_callback=alert_failure,
 )
 def crawl_p1p2_data_job():
-    """
-    P1/P2 Crawlers: seat sections, parking, stadium food.
+    """P1/P2 Crawlers: seat sections, parking, stadium food.
     Runs daily at 06:30 KST (after Phase 1 extra crawlers).
     """
     with DAILY_LOCK:
@@ -1106,8 +1100,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def sync_from_oci_job():
-    """
-    Sync job: Hydrate local DB from OCI after GitHub Actions run window.
+    """Sync job: Hydrate local DB from OCI after GitHub Actions run window.
     Runs daily at 05:00 KST.
     """
     with MAINTENANCE_LOCK:
@@ -1139,8 +1132,7 @@ def _crawl_team_info_history():
 
 
 def weekly_sla_report_job():
-    """
-    Weekly SLA report job: computes past 7 days SLA and alerts.
+    """Weekly SLA report job: computes past 7 days SLA and alerts.
     Runs weekly on Monday at 06:00 KST.
     """
     from src.monitoring.sla_tracker import SlaTracker
@@ -1154,8 +1146,7 @@ def weekly_sla_report_job():
 
 
 def crawl_phase1_extra_job():
-    """
-    Phase 1: Supplementary crawlers (broadcast, MVP, injury, foreign players, manager changes).
+    """Phase 1: Supplementary crawlers (broadcast, MVP, injury, foreign players, manager changes).
     Runs daily at 06:00 KST (after daily game crawl and standings compute).
     """
     with MAINTENANCE_LOCK:
@@ -1170,8 +1161,7 @@ def crawl_phase1_extra_job():
 
 
 def compute_standings_job():
-    """
-    Compute daily standings with home/away splits, recent 10, weekly trends.
+    """Compute daily standings with home/away splits, recent 10, weekly trends.
     Runs daily at 03:30 KST (after game crawl at 03:00).
     """
     with DAILY_LOCK:
@@ -1187,8 +1177,7 @@ def compute_standings_job():
 
 
 def aggregate_team_defense_job():
-    """
-    Aggregate team-level fielding and baserunning stats.
+    """Aggregate team-level fielding and baserunning stats.
     Runs daily at 03:45 KST (after standings).
     """
     with MAINTENANCE_LOCK:
@@ -1209,8 +1198,7 @@ def aggregate_team_defense_job():
 
 
 def compute_rankings_job():
-    """
-    Compute sabermetric rankings (wOBA, wRC+, WAR, OPS+).
+    """Compute sabermetric rankings (wOBA, wRC+, WAR, OPS+).
     Runs daily at 04:00 KST.
     """
     with MAINTENANCE_LOCK:
@@ -1229,8 +1217,7 @@ def compute_rankings_job():
 
 
 def heal_unverified_pbp_job():
-    """
-    PBP Healer: scan for unverified PBP games and re-crawl from KBO official site.
+    """PBP Healer: scan for unverified PBP games and re-crawl from KBO official site.
     Runs daily at 04:30 KST (after rankings, before OCI sync).
     Uses MAINTENANCE_LOCK to avoid overlapping with other heavy jobs.
     """
@@ -1252,8 +1239,7 @@ def heal_unverified_pbp_job():
 
 
 def compute_park_factor_job():
-    """
-    Compute park factor for all stadiums.
+    """Compute park factor for all stadiums.
     Runs weekly Sunday at 05:30 KST.
     """
     with MAINTENANCE_LOCK:
@@ -1287,8 +1273,7 @@ def compute_park_factor_job():
 
 
 def crawl_transit_time_job():
-    """
-    Transit time measurement job: measure travel times from nearby stations to
+    """Transit time measurement job: measure travel times from nearby stations to
     Jamsil Stadium every 15 minutes on game days (D-2h ~ D+1h window).
     Uses LIVE_LOCK to prevent conflicts with live crawlers.
     """
@@ -1304,8 +1289,7 @@ def crawl_transit_time_job():
 
 
 def crawl_congestion_job():
-    """
-    Congestion data job: collect real-time congestion for Jamsil area
+    """Congestion data job: collect real-time congestion for Jamsil area
     every 5 minutes on game days (D-3h ~ D+2h window).
     Uses LIVE_LOCK to stay in the same priority tier as live crawlers.
     """
@@ -1321,8 +1305,7 @@ def crawl_congestion_job():
 
 
 def crawl_operation_notices_job():
-    """
-    Operation notice job: crawl LG Twins and Doosan Bears official notices
+    """Operation notice job: crawl LG Twins and Doosan Bears official notices
     once daily at 09:00 KST (before gates open for evening games).
     Also triggered at 11:30 KST for day-of-game notices.
     Uses DAILY_LOCK.
@@ -1339,8 +1322,7 @@ def crawl_operation_notices_job():
 
 
 def crawl_operation_notices_naver_job():
-    """
-    Naver Search-based operation notice job.
+    """Naver Search-based operation notice job.
     Queries Naver News API for real-time KBO/stadium notices.
     Runs at 09:30 and 13:00 KST. Uses DAILY_LOCK.
     """
@@ -1356,8 +1338,7 @@ def crawl_operation_notices_naver_job():
 
 
 def crawl_fan_culture_job():
-    """
-    Fan culture data job: crawl cheer songs, chants, and rivalries from
+    """Fan culture data job: crawl cheer songs, chants, and rivalries from
     Namuwiki. Runs weekly on Saturday 04:00 KST. Uses MAINTENANCE_LOCK.
     """
     with MAINTENANCE_LOCK:
@@ -1372,8 +1353,7 @@ def crawl_fan_culture_job():
 
 
 def crawl_p0_non_game_job():
-    """
-    P0 non-game job: crawl team events, roster transactions, and ticket info.
+    """P0 non-game job: crawl team events, roster transactions, and ticket info.
     Runs daily before the freshness monitor. Uses MAINTENANCE_LOCK.
     """
     with MAINTENANCE_LOCK:

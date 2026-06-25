@@ -1,5 +1,4 @@
-"""
-Real-time KBO live crawler.
+"""Real-time KBO live crawler.
 
 Polls today's schedule, captures relay events plus a lightweight scoreboard snapshot,
 then explicitly syncs changed games to OCI.

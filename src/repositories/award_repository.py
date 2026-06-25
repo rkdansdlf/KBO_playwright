@@ -15,8 +15,7 @@ class AwardRepository:
         self.session = session
 
     def save_award(self, award_data: dict) -> Award:
-        """
-        Insert or update an award record.
+        """Insert or update an award record.
         Uses unique constraints to detect duplicates.
         For now, we'll strive for upsert-like behavior or just ignore if exists.
         But given the unique constraint on (year, award_type, category, player_name, team_name),

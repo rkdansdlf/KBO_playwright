@@ -1,5 +1,4 @@
-"""
-Collect Naver/KBO API responses as test fixtures.
+"""Collect Naver/KBO API responses as test fixtures.
 
 Usage:
     python3 scripts/diagnostic/collect_relay_fixtures.py --game-id 20260412SKLG0

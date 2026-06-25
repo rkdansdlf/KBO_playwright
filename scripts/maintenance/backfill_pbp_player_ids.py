@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Batch-resolve NULL player_ids in game_play_by_play table.
+"""Batch-resolve NULL player_ids in game_play_by_play table.
 
 Uses PlayerIdResolver and game_relay helper logic to resolve player IDs.
 

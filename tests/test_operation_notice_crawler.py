@@ -1,5 +1,4 @@
-"""
-Tests for StadiumOperationNotice repository and crawler infrastructure.
+"""Tests for StadiumOperationNotice repository and crawler infrastructure.
 
 Covers:
   - OperationNoticeRepository upsert / bulk_upsert / dedup logic

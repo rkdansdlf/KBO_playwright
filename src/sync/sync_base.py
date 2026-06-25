@@ -1,5 +1,4 @@
-"""
-Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
+"""Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
 Dual-repository pattern: SQLite (dev/validation) → OCI (production)
 """
 
@@ -473,8 +472,7 @@ class OCISyncBase:
     """Sync data from SQLite to OCI"""
 
     def __init__(self, oci_url: str, sqlite_session: Session) -> None:
-        """
-        Initialize OCI sync
+        """Initialize OCI sync
 
         Args:
             oci_url: PostgreSQL connection string for OCI

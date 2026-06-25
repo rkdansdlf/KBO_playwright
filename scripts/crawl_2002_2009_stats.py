@@ -1,5 +1,4 @@
-"""
-Crawler for 2002-2009 batting and pitching stats.
+"""Crawler for 2002-2009 batting and pitching stats.
 Adapts the robust 2001 crawler logic to loop through years.
 """
 
@@ -111,8 +110,7 @@ EXTRACT_PITCHING_JS = r"""
 
 
 def crawl_stats_for_year(page, year, mode="batting"):
-    """
-    Crawls stats for a specific year and mode (batting/pitching).
+    """Crawls stats for a specific year and mode (batting/pitching).
     Returns list of data dicts.
     """
     if mode == "batting":

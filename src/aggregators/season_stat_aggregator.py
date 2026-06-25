@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class SeasonStatAggregator:
-    """
-    Service to aggregate transactional game stats into season-level cumulative stats.
+    """Service to aggregate transactional game stats into season-level cumulative stats.
     Acts as a fallback when KBO's cumulative record pages are unavailable.
     """
 
@@ -93,8 +92,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate batting stats for all players in a season/series in a single query.
+        """Aggregate batting stats for all players in a season/series in a single query.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         logger.info("🚀 [BULK] Aggregating batting stats for %s %s...", year, series)
@@ -204,8 +202,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate pitching stats for all players in a season/series in a single query.
+        """Aggregate pitching stats for all players in a season/series in a single query.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         logger.info("🚀 [BULK] Aggregating pitching stats for %s %s...", year, series)
@@ -261,8 +258,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
-        """
-        Aggregate cumulative baserunning stats from game batting stats.
+        """Aggregate cumulative baserunning stats from game batting stats.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
 
@@ -300,8 +296,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate baserunning stats for all players in bulk.
+        """Aggregate baserunning stats for all players in bulk.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         logger.info("🚀 [BULK] Aggregating baserunning stats for %s %s...", year, series)
@@ -341,8 +336,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate fielding stats for all players and positions in bulk.
+        """Aggregate fielding stats for all players and positions in bulk.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         logger.info("🚀 [BULK] Aggregating fielding stats for %s %s...", year, series)
@@ -415,8 +409,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate fielding stats (primarily errors) by parsing GameEvents for a single player.
+        """Aggregate fielding stats (primarily errors) by parsing GameEvents for a single player.
         Returns a list of dicts, one per position played.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)

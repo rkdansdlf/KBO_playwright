@@ -1,5 +1,4 @@
-"""
-Team-level batting stats crawler.
+"""Team-level batting stats crawler.
 """
 
 from __future__ import annotations

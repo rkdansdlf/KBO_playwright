@@ -1,5 +1,4 @@
-"""
-통합 Game Stat 복구 스크립트. --type batting|pitching 으로 선택.
+"""통합 Game Stat 복구 스크립트. --type batting|pitching 으로 선택.
 NULL/zero AVG, OBP, ERA, WHIP 등을 계산하여 채웁니다.
 """
 

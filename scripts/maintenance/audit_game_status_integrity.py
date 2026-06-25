@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Audit script to detect anomalies in game_status and associated data.
+"""Audit script to detect anomalies in game_status and associated data.
 Checks for:
 1. Future games not marked as SCHEDULED (or CANCELLED/POSTPONED)
 2. LIVE games without any progress evidence (inning scores, events, pbp)

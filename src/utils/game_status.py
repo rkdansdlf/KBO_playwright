@@ -106,8 +106,7 @@ def _resolve_past_status(current_status: str | None, new_status: str | None) -> 
 
 
 def derive_stable_game_status(evidence: GameStatusEvidence | None = None, **kwargs: object) -> str:
-    """
-    Central logic to resolve game status based on date and evidence.
+    """Central logic to resolve game status based on date and evidence.
     Ensures stability and prevents premature LIVE/COMPLETED transitions.
     """
     if evidence is None:

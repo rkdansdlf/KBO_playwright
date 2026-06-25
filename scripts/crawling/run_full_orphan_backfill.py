@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Robust backfill for all missing game metadata.
+"""Robust backfill for all missing game metadata.
 Features:
 - Batched processing
 - Automatic retries on DB locks or network errors

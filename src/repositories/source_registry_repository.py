@@ -1,5 +1,4 @@
-"""
-Repository for DataSource and RawSourceSnapshot operations.
+"""Repository for DataSource and RawSourceSnapshot operations.
 """
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
-"""
-Crawl gate: enforce data freshness and quality before allowing pipeline to proceed.
+"""Crawl gate: enforce data freshness and quality before allowing pipeline to proceed.
 Can be used as a blocking gate or non-blocking alert.
 """
 

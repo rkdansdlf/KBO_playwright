@@ -1,5 +1,4 @@
-"""
-Context Aggregator Service
+"""Context Aggregator Service
 Calculates derived metrics (Head-to-head, Streaks, Trends, WPA moments)
 to provide rich context for LLM analysis.
 """

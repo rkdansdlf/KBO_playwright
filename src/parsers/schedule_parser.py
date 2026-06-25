@@ -1,5 +1,4 @@
-"""
-Parse offline schedule HTML into structured game schedule rows.
+"""Parse offline schedule HTML into structured game schedule rows.
 """
 
 from __future__ import annotations
@@ -21,8 +20,7 @@ def parse_schedule_html(
     default_year: int | None = None,
     season_type: str = "regular",
 ) -> list[dict[str, Any]]:
-    """
-    Extract schedule entries from a saved schedule page.
+    """Extract schedule entries from a saved schedule page.
 
     Args:
         html: Raw HTML string.

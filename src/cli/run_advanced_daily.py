@@ -1,5 +1,4 @@
-"""
-KBO Advanced Daily Data Update Orchestrator.
+"""KBO Advanced Daily Data Update Orchestrator.
 Fetches fielding, baserunning, and team-level cumulative stats.
 """
 

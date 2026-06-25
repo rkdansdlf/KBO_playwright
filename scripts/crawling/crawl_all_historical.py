@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-KBO 전체 연도 크롤링 - 자동 전략 선택
+"""KBO 전체 연도 크롤링 - 자동 전략 선택
 2001년까지: 레거시 단순 컬럼 구조
 2002년부터: 기존 복합 구조
 """
@@ -43,8 +42,7 @@ def determine_crawling_strategy(year: int) -> str:
 
 
 def run_legacy_crawling(year: int, series: str, data_type: str, headless: bool = True) -> tuple:
-    """
-    레거시 크롤링 실행 (2001년 이전)
+    """레거시 크롤링 실행 (2001년 이전)
 
     Returns:
         (success: bool, output: str)
@@ -88,8 +86,7 @@ def run_legacy_crawling(year: int, series: str, data_type: str, headless: bool =
 
 
 def run_modern_crawling(year: int, series: str, data_type: str, headless: bool = True) -> tuple:
-    """
-    현대 크롤링 실행 (2002년 이후)
+    """현대 크롤링 실행 (2002년 이후)
 
     Returns:
         (success: bool, output: str)
@@ -139,8 +136,7 @@ def crawl_historical_data(
     headless: bool = True,
     reset_db: bool = True,
 ) -> dict[str, Any]:
-    """
-    전체 KBO 역사 데이터 크롤링
+    """전체 KBO 역사 데이터 크롤링
     년도별 자동 전략 선택
     """
     if end_year is None:

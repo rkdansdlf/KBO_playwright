@@ -1,5 +1,4 @@
-"""
-Integration tests for ticket_parser with realistic fixture HTML.
+"""Integration tests for ticket_parser with realistic fixture HTML.
 Tests price extraction from different team ticket page layouts.
 """
 

@@ -1,5 +1,4 @@
-"""
-Model representing ticket reservation booking times and schedules.
+"""Model representing ticket reservation booking times and schedules.
 """
 
 from __future__ import annotations
@@ -13,8 +12,7 @@ from .base import Base, TimestampMixin
 
 
 class TicketSchedule(Base, TimestampMixin):
-    """
-    Represents structured game ticketing open schedule.
+    """Represents structured game ticketing open schedule.
     """
 
     __tablename__ = "ticket_schedules"
