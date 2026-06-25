@@ -1,5 +1,4 @@
-"""Check if there are any filters applied on the search page
-"""
+"""Check if there are any filters applied on the search page"""
 
 import asyncio
 

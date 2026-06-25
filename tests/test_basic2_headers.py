@@ -1,5 +1,4 @@
-"""Basic2 헤더 클릭 기능 테스트 - 11개 헤더 모두 검증
-"""
+"""Basic2 헤더 클릭 기능 테스트 - 11개 헤더 모두 검증"""
 
 import logging
 import os

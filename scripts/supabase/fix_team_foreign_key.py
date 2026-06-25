@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-team_history 테이블 기반 외래키 제약조건 문제 해결
+"""team_history 테이블 기반 외래키 제약조건 문제 해결
 같은 team_code를 여러 시대가 공유하는 문제 해결
 """
 

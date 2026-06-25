@@ -1,5 +1,4 @@
-"""Unit tests for the local SQLite EmbeddingCache system in EmbeddingService.
-"""
+"""Unit tests for the local SQLite EmbeddingCache system in EmbeddingService."""
 
 from __future__ import annotations
 

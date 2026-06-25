@@ -86,8 +86,7 @@ def get_invalid_games_for_year(year: int) -> list[dict[str, str]]:
 
 
 async def remediate_year(year: int, limit: int | None = None, request_delay: float = 1.0) -> bool:
-    """Finds and repairs invalid games for a single year.
-    """
+    """Finds and repairs invalid games for a single year."""
     logger.info(f"\n📂 Processing Year: {year}")
     logger.info("-" * 40)
 

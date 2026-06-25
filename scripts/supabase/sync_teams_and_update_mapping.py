@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Supabase teams 데이터를 SQLite로 가져와서 팀 매핑 업데이트
+"""Supabase teams 데이터를 SQLite로 가져와서 팀 매핑 업데이트
 team_name이나 team_short_name으로 강제 매핑하여 데이터 정리
 """
 
