@@ -51,6 +51,18 @@ jobs:
           python3 -m src.cli.run_weekly_maintenance \
             --profile-limit "$LIMIT" --sync
 
+      - name: Run SLA Weekly Report
+        env:
+          DATABASE_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -c "
+          from src.monitoring.sla_tracker import SlaTracker
+          from src.db.engine import SessionLocal
+          with SessionLocal() as session:
+              tracker = SlaTracker(session)
+              tracker.print_weekly_report()
+          "
+
       - uses: ./.github/actions/notify
         if: always()
         with:

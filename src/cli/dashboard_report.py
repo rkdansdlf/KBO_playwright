@@ -467,9 +467,11 @@ def _append_quality_notify_lines(msg_lines: list[str], quality: dict[str, Any]) 
         msg_lines,
         quality,
         gate,
-        pa_ok=pa_ok,
-        team_bat_ok=team_bat_ok,
-        team_pit_ok=team_pit_ok,
+        ctx=ViolationContext(
+            pa_ok=pa_ok,
+            team_bat_ok=team_bat_ok,
+            team_pit_ok=team_pit_ok,
+        ),
     )
 
 
