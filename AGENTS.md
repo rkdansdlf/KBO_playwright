@@ -89,11 +89,11 @@ These modules are operational or diagnostic entrypoints that are less frequently
 
 | Category | CLI modules |
 | --- | --- |
-| Data collection | `collect_profiles`, `collect_rosters`, `crawl_congestion`, `crawl_operation_notices`, `crawl_parking`, `crawl_retire`, `crawl_seat_sections`, `crawl_stadium_food`, `crawl_staff_register`, `crawl_transit_time` |
+| Data collection | `collect_profiles`, `collect_rosters`, `crawl_congestion`, `crawl_operation_notices`, `crawl_parking`, `crawl_retire`, `crawl_seat_sections`, `crawl_stadium_food`, `crawl_staff_register`, `crawl_text_relay`, `crawl_transit_time` |
 | Pipeline / jobs | `run_all_crawlers`, `run_advanced_daily`, `daily_highlight_batch`, `daily_review_batch`, `daily_story_batch`, `crawl_phase1_extra`, `run_pipeline_demo` |
-| Repair / backfill | `auto_healer`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `retry_daily_failures` |
+| Repair / backfill | `auto_healer`, `backfill_advanced_stats`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `retry_daily_failures` |
 | Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
-| Monitoring / reports | `check_data_status`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `monitor_data_freshness`, `morning_pbp_report`, `crawler_live_smoke`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
+| Monitoring / reports | `check_data_status`, `crawler_live_smoke`, `crawler_selector_gate`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `monitor_data_freshness`, `morning_pbp_report`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
 | Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `verify_chunk_quality`, `verify_sync_consistency`, `load_text_relay` |
 
 ## Code Quality & Linting
