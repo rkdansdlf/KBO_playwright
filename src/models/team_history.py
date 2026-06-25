@@ -37,9 +37,5 @@ class TeamHistory(Base, TimestampMixin):
     city: Mapped[str | None] = mapped_column(String(30), nullable=True)
     color: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    # Relationships
-    # franchise: Mapped["Franchise"] = relationship()
-    # team: Mapped["Team"] = relationship()
-
     def __repr__(self) -> str:
         return f"<TeamHistory(season={self.season}, name='{self.team_name}')>"
