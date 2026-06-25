@@ -1,13 +1,14 @@
 """AST-based docstring generator for KBO Playwright codebase."""
 
 from __future__ import annotations
+
 import argparse
 import ast
 import re
 import sys
 from pathlib import Path
 
-VERB_MAP = {
+VERB_MAP: dict[str, str] = {
     "save": "Saves",
     "add": "Adds",
     "insert": "Inserts",
@@ -77,22 +78,16 @@ VERB_MAP = {
     "seed": "Seeds",
     "initialize": "Initializes",
     "init": "Initializes",
-    "setup": "Sets up",
+    "setup": "Set up",
     "configure": "Configures",
     "reset": "Resets",
     "clear": "Clears",
     "cleanup": "Cleans up",
     "purge": "Purges",
     "archive": "Archives",
-    "collect": "Collects",
-    "gather": "Gathers",
-    "prepare": "Prepares",
-    "ensure": "Ensures",
-    "wait": "Waits for",
-    "expect": "Expects",
 }
 
-MAGIC_DOCSTRINGS = {
+MAGIC_DOCSTRINGS: dict[str, str] = {
     "__repr__": "Returns a string representation of this object.",
     "__str__": "Returns a user-friendly string representation.",
     "__len__": "Returns the number of items.",
@@ -118,41 +113,32 @@ MAGIC_DOCSTRINGS = {
     "__del__": "Destroys this object.",
     "__sizeof__": "Returns the size of this object in bytes.",
     "__reversed__": "Returns a reversed iterator.",
-    "__aenter__": "Enters the async runtime context.",
-    "__aexit__": "Exits the async runtime context.",
 }
 
 SKIP_PREFIXES = ("test_",)
 CLI_MAIN_RE = re.compile(r"^main(_[a-z0-9_]+)?$")
 
 
-def _strip_self(args):
+def _strip_self(args: list[str]) -> list[str]:
     if args and args[0] in ("self", "cls"):
         return args[1:]
     return args
 
 
-def _humanize(name):
-    words = name.replace("-", "_").split("_")
-    return " ".join(words).lower()
-
-
-def _param_desc(name):
-    readable = _humanize(name)
+def _param_desc(name: str) -> str:
+    readable = name.replace("_", " ").strip()
     if readable == "db":
         return "Database session."
     if readable == "db session":
         return "Database session."
-    if readable == "session":
-        return "Database session."
     if readable.endswith(" id"):
-        return f"{_humanize(name[:-3]).title()} ID."
+        return f"{readable.replace(' id', '').replace('_', ' ').title()} ID."
     if readable.endswith(" url"):
-        return f"{_humanize(name[:-4]).title()} URL."
+        return f"{readable.replace(' url', '').replace('_', ' ').title()} URL."
     if readable.endswith(" dir"):
-        return f"{_humanize(name[:-4]).title()} directory path."
+        return f"{readable.replace(' dir', '').replace('_', ' ').title()} directory path."
     if readable.endswith(" path"):
-        return f"{_humanize(name[:-5]).title()} file path."
+        return f"{readable.replace(' path', '').replace('_', ' ').title()} file path."
     if readable == "save":
         return "Whether to persist the results."
     if readable == "headless":
@@ -179,90 +165,10 @@ def _param_desc(name):
         return "Output file path."
     if readable == "input":
         return "Input file or directory path."
-    if readable == "html":
-        return "Raw HTML content."
-    if readable == "text":
-        return "Input text content."
-    if readable == "data":
-        return "Data payload to process."
-    if readable == "payload":
-        return "Data payload to process."
-    if readable == "url":
-        return "Target URL."
-    if readable == "pool":
-        return "AsyncPlaywrightPool instance."
-    if readable == "page":
-        return "Playwright page object."
-    if readable == "logger":
-        return "Logger instance."
-    if readable == "query":
-        return "Database query."
-    if readable == "result":
-        return "Operation result."
-    if readable == "results":
-        return "List of operation results."
-    if readable == "config":
-        return "Configuration object."
-    if readable == "options":
-        return "Options dictionary."
-    if readable == "params":
-        return "Parameters dictionary."
-    if readable == "kwargs":
-        return "Additional keyword arguments."
-    if readable == "args":
-        return "Additional positional arguments."
-    if readable == "player id":
-        return "KBO player ID."
-    if readable == "game id":
-        return "KBO game ID."
-    if readable == "team code":
-        return "Team code identifier."
-    if readable == "league":
-        return "League identifier."
-    if readable == "series":
-        return "Series identifier."
-    if readable == "category":
-        return "Category identifier."
-    if readable == "source":
-        return "DataSource instance."
-    if readable == "snapshot":
-        return "Raw snapshot content."
-    if readable == "events":
-        return "List of events."
-    if readable == "standings":
-        return "Standings data."
-    if readable == "stats":
-        return "Statistics data."
-    if readable == "trend":
-        return "Trend data."
-    if readable == "matrix":
-        return "Matrix data."
-    if readable == "runners":
-        return "Base runners state."
-    if readable == "score":
-        return "Score value."
-    if readable == "inning":
-        return "Inning number."
-    if readable == "outs":
-        return "Number of outs."
-    if readable == "wins":
-        return "Number of wins."
-    if readable == "losses":
-        return "Number of losses."
-    if readable == "streak":
-        return "Streak information."
-    if readable == "rankings":
-        return "Rankings data."
-    if readable == "matchups":
-        return "Matchup data."
-    if readable == "splits":
-        return "Split statistics."
-    if readable == "defense":
-        return "Defensive statistics."
-    return f"{readable.title()}."
+    return f"{readable.replace('_', ' ').title()}."
 
 
-def _return_desc(node):
+def _return_desc(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
     returns = node.returns
     if returns is None:
         return None
@@ -275,7 +181,7 @@ def _return_desc(node):
         if name == "None":
             return None
         if name == "bool":
-            return "True if the condition is met, False otherwise."
+            return "True if successful, False otherwise."
         if name == "int":
             return "Integer result."
         if name == "str":
@@ -288,15 +194,13 @@ def _return_desc(node):
             return "Tuple result."
         if name == "Path":
             return "Path object."
-        if name == "bytes":
-            return "Bytes result."
         return f"{name} instance."
     if isinstance(returns, ast.Subscript):
         if isinstance(returns.value, ast.Name):
             if returns.value.id == "list":
                 return "List of results."
             if returns.value.id == "dict":
-                return "Dictionary mapping."
+                return "Dictionary result."
             if returns.value.id == "tuple":
                 return "Tuple result."
             if returns.value.id == "Sequence":
@@ -305,16 +209,10 @@ def _return_desc(node):
                 return "The result if found, None otherwise."
             if returns.value.id == "Callable":
                 return "Callable object."
-            if returns.value.id == "Generator":
-                return "Generator yielding results."
-            if returns.value.id == "Iterator":
-                return "Iterator yielding results."
-            if returns.value.id == "Awaitable":
-                return "Awaitable result."
     return "The result of the operation."
 
 
-def _infer_verb(name):
+def _infer_verb(name: str) -> str | None:
     parts = name.split("_")
     for part in parts:
         if part in VERB_MAP:
@@ -322,19 +220,14 @@ def _infer_verb(name):
     return None
 
 
-def _noun_from_name(name, verb):
-    verb_parts = set()
-    if verb:
-        for part in name.split("_"):
-            if part in VERB_MAP:
-                verb_parts.add(part)
-    parts = [p for p in name.split("_") if p and p not in verb_parts]
+def _noun_from_name(name: str) -> str:
+    parts = [p for p in name.split("_") if p and p not in VERB_MAP]
     if not parts:
-        return _humanize(name).title()
+        return name.replace("_", " ").title()
     return " ".join(parts).replace("-", " ").title()
 
 
-def _generate_function_docstring(node):
+def _generate_function_docstring(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     name = node.name
     if name in MAGIC_DOCSTRINGS:
         return MAGIC_DOCSTRINGS[name]
@@ -343,17 +236,17 @@ def _generate_function_docstring(node):
     if CLI_MAIN_RE.match(name):
         return "Main entry point for this CLI command."
     verb = _infer_verb(name)
-    noun = _noun_from_name(name, verb)
+    noun = _noun_from_name(name)
     if verb:
         summary = f"{verb} {noun.lower()}."
-    elif name.startswith("is_"):
-        property_name = _humanize(name[3:])
+    elif name.startswith(("is_", "has_")):
+        property_name = name.replace("is_", "").replace("has_", "").replace("_", " ")
         summary = f"Returns whether the {property_name}."
-    elif name.startswith(("has_", "can_")):
-        property_name = _humanize(name[4:])
+    elif name.startswith("can_"):
+        property_name = name[4:].replace("_", " ")
         summary = f"Returns whether the {property_name}."
     elif name.startswith("should_"):
-        property_name = _humanize(name[7:])
+        property_name = name[7:].replace("_", " ")
         summary = f"Returns whether the {property_name}."
     else:
         summary = f"Handles the {noun.lower()} operation."
@@ -372,7 +265,11 @@ def _generate_function_docstring(node):
     return "\n".join(lines)
 
 
-def _has_docstring(node):
+def _generate_class_docstring(node: ast.ClassDef) -> str:
+    return f"{node.name} class."
+
+
+def _has_docstring(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> bool:
     return (
         isinstance(node.body[0], ast.Expr)
         and isinstance(node.body[0].value, ast.Constant)
@@ -380,16 +277,51 @@ def _has_docstring(node):
     )
 
 
-def _process_file(filepath):
+def _get_def_indent(lines: list[str], lineno: int) -> str:
+    def_line = lines[lineno - 1]
+    return " " * (len(def_line) - len(def_line.lstrip()))
+
+
+def _find_body_start(lines: list[str], lineno: int, body_lineno: int) -> int:
+    if body_lineno <= lineno:
+        return lineno
+    body_line = lines[body_lineno - 1]
+    stripped = body_line.strip()
+    if stripped.endswith("...") and not stripped.startswith("def "):
+        return body_lineno
+    if body_lineno == lineno + 1:
+        return body_lineno - 1
+    return body_lineno - 1
+
+
+def _process_file(filepath: Path) -> list[str]:
     source = filepath.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(filepath))
-    targets = []
+    targets: list[tuple[int, str, str, int]] = []
     for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            if node.name.startswith("_"):
+                continue
+            if _has_docstring(node):
+                continue
+            docstring = _generate_class_docstring(node)
+            quoted = f'"""{docstring}"""'
+            body_lineno = node.body[0].lineno
+            targets.append((node.lineno, node.name, quoted, body_lineno))
+            continue
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         if node.name.startswith(SKIP_PREFIXES):
             continue
+        if node.name.startswith("_") and not node.name.startswith("__"):
+            continue
         if _has_docstring(node):
+            continue
+        if (
+            isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and node.body[0].value.value is ...
+        ):
             continue
         docstring = _generate_function_docstring(node)
         quoted = f'"""{docstring}"""'
@@ -399,27 +331,28 @@ def _process_file(filepath):
         return []
     targets.sort(key=lambda t: t[0], reverse=True)
     lines = source.splitlines(keepends=True)
-    changes = []
+    changes: list[str] = []
     for lineno, name, quoted, body_lineno in targets:
+        indent = _get_def_indent(lines, lineno)
+        body_indent = indent + "    "
+        insert_pos = _find_body_start(lines, lineno, body_lineno)
         if body_lineno <= lineno:
-            def_line = lines[lineno - 1]
-            def_indent = " " * (len(def_line) - len(def_line.lstrip()))
-            body_indent = def_indent + "    "
             lines.insert(lineno, f"{body_indent}{quoted}\n")
         else:
-            body_line = lines[body_lineno - 1]
-            body_indent = " " * (len(body_line) - len(body_line.lstrip()))
-            insert_pos = body_lineno - 1
             lines.insert(insert_pos, f"{body_indent}{quoted}\n")
         first_line = quoted.split("\n")[0].removeprefix('"""').removesuffix('"""')
         changes.append(f"  L{lineno}: {name} -> {first_line}")
-    source = "".join(lines)
-    filepath.write_text(source, encoding="utf-8")
+    result = "".join(lines)
+    try:
+        ast.parse(result)
+    except SyntaxError as e:
+        return [f"SKIPPED: syntax error at line {e.lineno}: {e.msg}"]
+    filepath.write_text(result, encoding="utf-8")
     return changes
 
 
-def _process_directory(dirpath):
-    all_changes = []
+def _process_directory(dirpath: Path) -> list[str]:
+    all_changes: list[str] = []
     for pyfile in sorted(dirpath.rglob("*.py")):
         if "investigations" in pyfile.parts:
             continue
@@ -434,7 +367,7 @@ def _process_directory(dirpath):
     return all_changes
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Generate missing docstrings.")
     parser.add_argument("path", help="File or directory to process")
     args = parser.parse_args()
