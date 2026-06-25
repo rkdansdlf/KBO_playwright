@@ -106,9 +106,7 @@ class HomeAwaySplitAggregator:
         return results
 
     def persist_batting(self, year: int) -> None:
-        from src.aggregators.team_stat_aggregator import TeamAggregationQuery
-
-        results = self.aggregate_batting(TeamAggregationQuery(season=year))
+        results = self.aggregate_batting(year)
         self.session.query(BatterHomeAwaySplit).filter(BatterHomeAwaySplit.season_year == year).delete(
             synchronize_session=False,
         )

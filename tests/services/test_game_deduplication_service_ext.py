@@ -7,6 +7,7 @@ import pytest
 from src.services.game_deduplication_service import (
     DEFAULT_PRIMARY_CODE_PREFERENCES,
     DeduplicationWindow,
+    _CandidateQuery,
     _load_candidates,
     _load_slots,
     _mark_window,
@@ -112,13 +113,13 @@ class TestLoadCandidates:
         cursor = sqlite3.connect(db_path).cursor()
         candidates = _load_candidates(
             cursor,
-            game_date="2024-03-15",
-            home_fid=1,
-            away_fid=2,
-            suffix="0",
-            start_date=None,
-            end_date=None,
-            suffixes=("0",),
+            query=_CandidateQuery(
+                game_date="2024-03-15",
+                home_fid=1,
+                away_fid=2,
+                suffix="0",
+                suffixes=("0",),
+            ),
         )
         assert len(candidates) == 1
         assert candidates[0][1] == 9
@@ -131,13 +132,13 @@ class TestLoadCandidates:
         cursor = sqlite3.connect(db_path).cursor()
         candidates = _load_candidates(
             cursor,
-            game_date="2024-03-16",
-            home_fid=1,
-            away_fid=2,
-            suffix="0",
-            start_date=None,
-            end_date=None,
-            suffixes=("0",),
+            query=_CandidateQuery(
+                game_date="2024-03-16",
+                home_fid=1,
+                away_fid=2,
+                suffix="0",
+                suffixes=("0",),
+            ),
         )
         assert candidates == []
 
