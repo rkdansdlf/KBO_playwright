@@ -86,12 +86,9 @@ class TestBuildTelegramMessage:
     def test_builds_message(self):
         msg = _build_telegram_message(
             target_date="20250101",
+            summary={"stability": {}},
             validation_counts={"verified": 5},
-            relay_data={},
-            relay_failures=[],
-            detail_failures=[],
-            oci_data={},
-            affected_games=[],
+            dry_run=True,
         )
         assert isinstance(msg, str)
         assert "20250101" in msg
