@@ -327,7 +327,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 
 - `ruff check src/ tests/ scripts/` = 0 errors (all selects, full clean, EM102/EM103/DTZ001/DTZ007/DTZ011 enabled).
 - `ruff format --check .` = 933 files already formatted.
-- `python3 -m pytest` = 4,811 passed (2 skipped, 1 xfailed, 10 pre-existing failures in standings/stadium tests).
+- `python3 -m pytest` = 5,040 passed (2 skipped, 1 xfailed).
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `ruff check --select S501 src/` = 0 (all `verify=False` removed from ticket_crawler).
 - `ruff check --select S101 src/` = 0 (all `assert` → `raise ValueError`).
