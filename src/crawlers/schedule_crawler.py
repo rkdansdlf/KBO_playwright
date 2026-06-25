@@ -223,7 +223,6 @@ class ScheduleCrawler:
         seen_game_ids = set()
 
         # Mapping from numeric series ID to canonical season_type
-        # Source: src/crawlers/player_batting_all_series_crawler.py
         series_id_to_key = {
             "0": "regular",
             "1": "exhibition",
