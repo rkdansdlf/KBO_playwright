@@ -88,7 +88,8 @@ select = [
     "DTZ011",  # call-date-today
     "S608",    # hardcoded-sql-expression
     "N",       # pep8-naming
-    "FLY002",  # f-string instead of string join
+    "FBT001",  # boolean-type-hint-positional-argument
+    "FBT002",  # boolean-default-value-positional-argument
     "RSE",     # redundant-exception (bare Exception)
     "PIE",     # flake8-pie (miscellaneous simplifications)
     "YTT",     # sys.version checks

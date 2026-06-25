@@ -144,7 +144,8 @@ def _resolve_db_url(raw_url: str) -> str:
         env_name = raw_url.removeprefix("env:")
         value = os.getenv(env_name)
         if not value:
-            raise ValueError(f"Environment variable {env_name} is not set")
+            msg = f"Environment variable {env_name} is not set"
+            raise ValueError(msg)
         return value
     return raw_url
 

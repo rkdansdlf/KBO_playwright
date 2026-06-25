@@ -26,7 +26,8 @@ def get_year_range_validation(start_year: int, end_year: int) -> tuple:
         raise ValueError("KBO는 1982년에 창설되었습니다.")
 
     if end_year > current_year:
-        raise ValueError(f"미래 연도는 크롤링할 수 없습니다. (현재: {current_year}년)")
+        msg = f"미래 연도는 크롤링할 수 없습니다. (현재: {current_year}년)"
+        raise ValueError(msg)
 
     if start_year > end_year:
         raise ValueError("시작 년도가 끝 년도보다 클 수 없습니다.")

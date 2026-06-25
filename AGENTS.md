@@ -379,5 +379,11 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - Do not rename unused public/helper parameters when tests or callers pass them by keyword; prefer targeted `# noqa: ARG001` or `# noqa: ARG002`.
 - `tests/**` and `scripts/**` intentionally ignore selected annotation, `TRY003`, `ARG`, and `T20` rules because fixture signatures, monkeypatch callbacks, debug scripts, and CLI utilities commonly require broad or unused arguments, inline fixture exceptions, and stdout output.
 - `from src.db.engine import SessionLocal` and model imports in relay_crawler._load_game_metadata_from_db, player_search_crawler helpers are intentionally lazily imported to avoid circular deps — do not `PLC0415`-fix them.
-- For `regenerate_review_summaries`, always use `--backup-out` before `--apply` to enable rollback.
 - C901 refactoring of Playwright-dependent functions is feasible: keep `page.evaluate()`/`page.locator()` in the original method, extract only data-assembly/ID-resolution/payload-building logic into helpers.
+
+### CI & 테스트 안정화 (2026-06-25)
+
+- **`player_pitching_all_series_crawler.py` AttributeError 수정**: `_collect_pitcher_basic2_additional`가 `Basic2AdditionalContext`를 `parse_basic2_page`에 직접 전달하여 `AttributeError: has no attribute 'season'` 발생. 루프마다 `Basic2PageContext` 래퍼를 생성(`year→season`, `series_info["league"]→league`, `display_name→sort_key`, `limit→max_players`)하여 전달하도록 수정. Daily Pipeline CI `finalize` 잡 복구.
+- **`full_audit.py` OCI 병목 해소**: `table_columns()`에 `_COLUMNS_CACHE` 전역 딕셔너리 캐시를 추가하여 `information_schema.columns` 반복 조회를 1회로 줄임. PostgreSQL `AND table_schema = CURRENT_SCHEMA()` 필터로 공유 환경 크로스-스키마 오탐 방지.
+- **`test_scheduler.py` fixture 격리 복구**: `_inject_mock_module` (autouse)가 `sys.modules["scripts.scheduler"]`를 stub으로 교체 후 미복구하여 이후 테스트(`test_scheduler_alerting.py`)가 `compute_standings_job NameError` 발생. `yield` 이후 원본 모듈을 복구하는 teardown 로직 추가.
+- **테스트 결과**: 3 failed → **0 failed**, 4835 → **5040 passed** (전체 스위트 정상화).

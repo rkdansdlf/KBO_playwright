@@ -431,6 +431,7 @@ class TextRelayCrawler:
     async def crawl_game_relay(
         self,
         game_id: str,
+        *,
         save: bool = False,
     ) -> RelayCrawlResult:
         """
@@ -514,6 +515,7 @@ class TextRelayCrawler:
     async def crawl_games(
         self,
         game_ids: list[str],
+        *,
         save: bool = False,
     ) -> list[RelayCrawlResult]:
         """
@@ -541,6 +543,7 @@ class TextRelayCrawler:
 
 async def crawl_text_relay(
     game_id: str,
+    *,
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> pd.DataFrame | None:
@@ -565,6 +568,7 @@ async def crawl_text_relay(
 
 async def crawl_text_relays(
     game_ids: list[str],
+    *,
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> list[str]:
