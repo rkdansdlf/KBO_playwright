@@ -331,7 +331,8 @@ class PBPCrawler:
         else:
             return events
 
-    def _format_base_string(self, runners: int) -> str:
+    @staticmethod
+    def _format_base_string(runners: int) -> str:
         s = ""
         s += "1" if (runners & 1) else "-"
         s += "2" if (runners & 2) else "-"
@@ -344,7 +345,8 @@ class PBPCrawler:
             return {"inning": int(match.group(1)), "half": "top" if match.group(2) == "초" else "bottom"}
         return {"inning": idx + 1, "half": "unknown"}
 
-    def _format_base_string(self, runners: int) -> str:
+    @staticmethod
+    def _format_base_string(runners: int) -> str:
         s = ""
         s += "1" if (runners & 1) else "-"
         s += "2" if (runners & 2) else "-"
