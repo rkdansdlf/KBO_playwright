@@ -1,5 +1,5 @@
 """Database engine configuration
-Supports both SQLite (dev) and MySQL (production)
+Supports both SQLite (dev) and MySQL (production).
 """
 
 from __future__ import annotations

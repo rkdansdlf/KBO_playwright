@@ -1,6 +1,6 @@
 """CLI tool to recalculate player-level season stats from game-level (transactional) data.
 Aggregates GameBattingStat -> PlayerSeasonBatting
-Aggregates GamePitchingStat -> PlayerSeasonPitching
+Aggregates GamePitchingStat -> PlayerSeasonPitching.
 
 Resolves mismatches detected by QualityGate:
   - "Transactional PA > Cumulative PA"

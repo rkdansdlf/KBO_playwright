@@ -94,7 +94,7 @@ def get_primary_position(raw_pos: str | None) -> PositionCode:
     """Returns the most 'final' position in a sequence.
     Example: '타一' -> 1B (since they entered as PH but played 1B)
              '유三' -> 3B (moved from SS to 3B)
-             '주'   -> PR
+             '주'   -> PR.
     """
     codes = normalize_position(raw_pos)
     if not codes:

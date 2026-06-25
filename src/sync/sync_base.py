@@ -1,5 +1,5 @@
 """Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
-Dual-repository pattern: SQLite (dev/validation) → OCI (production)
+Dual-repository pattern: SQLite (dev/validation) → OCI (production).
 """
 
 from __future__ import annotations
@@ -469,10 +469,10 @@ def _log_sync_eligibility(eligibility: GameSyncEligibility) -> None:
 
 
 class OCISyncBase:
-    """Sync data from SQLite to OCI"""
+    """Sync data from SQLite to OCI."""
 
     def __init__(self, oci_url: str, sqlite_session: Session) -> None:
-        """Initialize OCI sync
+        """Initialize OCI sync.
 
         Args:
             oci_url: PostgreSQL connection string for OCI
@@ -573,7 +573,7 @@ class OCISyncBase:
         return True
 
     def test_connection(self) -> bool:
-        """Test OCI connection"""
+        """Test OCI connection."""
         try:
             self.target_session.execute(text("SELECT 1"))
         except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
@@ -1089,6 +1089,6 @@ class OCISyncBase:
         Base.metadata.create_all(self.oci_engine, tables=[model.__table__])
 
     def close(self) -> None:
-        """Close OCI session"""
+        """Close OCI session."""
         self.target_session.close()
         self.oci_engine.dispose()

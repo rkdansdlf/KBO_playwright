@@ -1,6 +1,6 @@
 """CLI tool to recalculate player-game-level stats from game-level (transactional) data.
 Aggregates GameBattingStat -> PlayerGameBatting
-Aggregates GamePitchingStat -> PlayerGamePitching
+Aggregates GamePitchingStat -> PlayerGamePitching.
 
 Usage:
   python -m src.cli.recalc_player_game_stats --game-id 20250401LGSS0 --save

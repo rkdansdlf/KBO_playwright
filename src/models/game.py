@@ -21,7 +21,7 @@ from src.models.base import Base, TimestampMixin
 
 
 class Game(Base, TimestampMixin):
-    """KBO Game basic information"""
+    """KBO Game basic information."""
 
     __tablename__ = "game"
 
@@ -75,7 +75,7 @@ class GameIdAlias(Base, TimestampMixin):
 
 
 class GameSummary(Base, TimestampMixin):
-    """Summary of game results (pitcher decisions, home runs, etc.)"""
+    """Summary of game results (pitcher decisions, home runs, etc.)."""
 
     __tablename__ = "game_summary"
 
@@ -90,7 +90,7 @@ class GameSummary(Base, TimestampMixin):
 
 
 class GamePlayByPlay(Base, TimestampMixin):
-    """Detailed event logs (play-by-play)"""
+    """Detailed event logs (play-by-play)."""
 
     __tablename__ = "game_play_by_play"
 

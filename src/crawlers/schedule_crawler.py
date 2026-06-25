@@ -1,5 +1,5 @@
 """KBO Schedule Crawler POC
-Collects game IDs from the KBO schedule page
+Collects game IDs from the KBO schedule page.
 """
 
 from __future__ import annotations
@@ -307,7 +307,7 @@ class ScheduleCrawler:
         return labels.get(text, GAME_STATUS_SCHEDULED)
 
     async def _extract_games(self, page: Page, year: int, month: int, season_type: str = "regular") -> list[dict]:
-        """페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path)
+        """페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path).
 
         `gameId`가 포함된 모든 링크를 찾아, 각 링크에서 경기 ID, 날짜, 팀 정보 등을 파싱합니다.
         """
@@ -596,7 +596,7 @@ class ScheduleCrawler:
 
 
 async def main() -> None:
-    """Test the schedule crawler"""
+    """Test the schedule crawler."""
     crawler = ScheduleCrawler()
 
     # Crawl current month schedule

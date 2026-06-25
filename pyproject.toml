@@ -146,6 +146,10 @@ select = [
     "PLW0245",  # super-without-brackets
     "PLW1509",  # subprocess-popen-preexec-fn
     "B026",     # star-args-unpacked-after-keyword-arg
+    "D212",    # multi-line-summary-first-line
+    "D205",    # missing-blank-line-after-summary
+    "D400",    # missing-trailing-period
+    "D415",    # missing-terminal-punctuation
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
@@ -172,7 +176,6 @@ ignore = [
 "src/crawlers/manager_change_crawler.py" = ["RUF012", "RUF001", "F821"]
 "src/crawlers/preview_crawler.py" = ["RUF012", "RUF001"]
 "src/crawlers/ticket_crawler.py" = ["RUF012", "S501"]
-"src/crawlers/fa_crawler.py" = ["A004"]
 "src/crawlers/game_mvp_crawler.py" = ["ASYNC212"]
 "src/crawlers/game_detail_crawler.py" = ["ASYNC240", "RUF001"]
 "src/crawlers/player_search_crawler.py" = ["ASYNC109", "ARG001"]
@@ -218,9 +221,6 @@ ignore = [
 "src/crawlers/player_pitching_all_series_crawler.py" = ["PLR0913", "RUF001"]
 "src/crawlers/operation_notice_doosan_crawler.py" = ["F821"]
 "src/crawlers/operation_notice_lg_crawler.py" = ["F821"]
-"src/parsers/food_parser.py" = ["T201"]
-"src/parsers/parking_parser.py" = ["T201"]
-"src/parsers/seat_parser.py" = ["T201"]
 "src/parsers/ticket_parser.py" = ["T201"]
 "src/cli/crawl_retire.py" = ["ASYNC230"]
 "src/cli/recalc_player_stats.py" = ["FBT003"]

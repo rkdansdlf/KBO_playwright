@@ -44,7 +44,7 @@ class StatsSyncMixin:
         return [*filters, existing_player_filter]
 
     def sync_pitcher_data(self) -> int:
-        """새로운 player_season_pitching 테이블의 투수 데이터를 OCI로 동기화 (고속 Batch COPY)"""
+        """새로운 player_season_pitching 테이블의 투수 데이터를 OCI로 동기화 (고속 Batch COPY)."""
         return self.sync_simple_table(
             PlayerSeasonPitching,
             conflict_keys=["player_id", "season", "league", "level"],
@@ -52,7 +52,7 @@ class StatsSyncMixin:
         )
 
     def sync_batting_data(self) -> int:
-        """타자 데이터를 OCI로 동기화 (고속 Batch COPY)"""
+        """타자 데이터를 OCI로 동기화 (고속 Batch COPY)."""
         return self.sync_simple_table(
             PlayerSeasonBatting,
             conflict_keys=["player_id", "season", "league", "level"],
@@ -60,7 +60,7 @@ class StatsSyncMixin:
         )
 
     def verify_pitcher_sync(self, expected_count: int) -> None:
-        """투수 데이터 동기화 결과 검증"""
+        """투수 데이터 동기화 결과 검증."""
         try:
             result = self.target_session.execute(
                 text("""
@@ -81,7 +81,7 @@ class StatsSyncMixin:
             logger.exception("⚠️ 투수 데이터 동기화 검증 실패")
 
     def verify_batting_sync(self, expected_count: int) -> None:
-        """타자 데이터 동기화 결과 검증"""
+        """타자 데이터 동기화 결과 검증."""
         try:
             result = self.target_session.execute(
                 text("""
@@ -102,7 +102,7 @@ class StatsSyncMixin:
             logger.exception("⚠️ 타자 데이터 동기화 검증 실패")
 
     def show_oci_data_sample(self) -> None:
-        """OCI의 데이터 샘플 표시"""
+        """OCI의 데이터 샘플 표시."""
         try:
             # 투수 데이터 샘플
             pitcher_result = self.target_session.execute(
@@ -186,7 +186,7 @@ class StatsSyncMixin:
     def sync_player_season_batting(
         self, year: int | None = None, batch_size: int = 5000, *, force: bool = False
     ) -> int:
-        """Sync player_season_batting data from SQLite to OCI using fast bulk COPY"""
+        """Sync player_season_batting data from SQLite to OCI using fast bulk COPY."""
         from src.models.player import PlayerSeasonBatting
 
         if year and not force:
@@ -211,7 +211,7 @@ class StatsSyncMixin:
     def sync_player_season_pitching(
         self, year: int | None = None, batch_size: int = 5000, *, force: bool = False
     ) -> int:
-        """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY"""
+        """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY."""
         from src.models.player import PlayerSeasonPitching
 
         if year and not force:
@@ -234,7 +234,7 @@ class StatsSyncMixin:
         )
 
     def sync_all_player_data(self) -> dict[str, int]:
-        """Sync all player-related data"""
+        """Sync all player-related data."""
         return {
             "players": self.sync_players(),
             "player_identities": self.sync_player_identities(),
@@ -245,7 +245,7 @@ class StatsSyncMixin:
         }
 
     def sync_team_season_batting(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
-        """Sync team_season_batting data from SQLite to OCI"""
+        """Sync team_season_batting data from SQLite to OCI."""
         if year and not force:
             sig = self._get_table_signature(TeamSeasonBatting, year)
             if sig["match"]:
@@ -265,7 +265,7 @@ class StatsSyncMixin:
         )
 
     def sync_team_season_pitching(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
-        """Sync team_season_pitching data from SQLite to OCI"""
+        """Sync team_season_pitching data from SQLite to OCI."""
         if year and not force:
             sig = self._get_table_signature(TeamSeasonPitching, year)
             if sig["match"]:
@@ -285,7 +285,7 @@ class StatsSyncMixin:
         )
 
     def sync_standings(self, year: int | None = None, days: int | None = None, batch_size: int = 10000) -> int:
-        """Sync calculated daily standings snapshots to OCI"""
+        """Sync calculated daily standings snapshots to OCI."""
         from src.models.base import Base
         from src.models.standings import TeamStandingsDaily
 

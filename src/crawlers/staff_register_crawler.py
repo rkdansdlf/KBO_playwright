@@ -1,6 +1,6 @@
 """KBO Staff Register Crawler
 Collects manager (감독) and coach (코치) data from
-https://www.koreabaseball.com/Player/Register.aspx
+https://www.koreabaseball.com/Player/Register.aspx.
 
 This page shows the current day's 1st-team registered roster by team,
 with separate tables for 감독, 코치, and players by position.

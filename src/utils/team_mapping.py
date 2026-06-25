@@ -126,7 +126,7 @@ HISTORICAL_PATTERNS = {
 
 
 class TeamMapper:
-    """팀명 매핑 관리 클래스"""
+    """팀명 매핑 관리 클래스."""
 
     def __init__(self) -> None:
         self.static_mapping = self._get_static_mapping()
@@ -135,7 +135,7 @@ class TeamMapper:
         self._oci_loaded = False
 
     def _get_static_mapping(self) -> dict[str, str]:
-        """기본 정적 매핑 (현재 팀들)"""
+        """기본 정적 매핑 (현재 팀들)."""
         return {
             "LG": "LG",
             "NC": "NC",
@@ -161,7 +161,7 @@ class TeamMapper:
         }
 
     def load_oci_mapping(self) -> bool:
-        """OCI team_history 테이블에서 매핑 데이터 로드"""
+        """OCI team_history 테이블에서 매핑 데이터 로드."""
         from src.db.engine import get_oci_url
 
         oci_url = get_oci_url()
@@ -251,7 +251,7 @@ class TeamMapper:
             self.year_specific_mapping.setdefault(year, {})[team_name] = team_code
 
     def get_team_code(self, team_name: str, year: int | None = None) -> str | None:
-        """팀명으로 팀 코드 조회 (년도 고려)"""
+        """팀명으로 팀 코드 조회 (년도 고려)."""
         if not team_name:
             return None
 
@@ -282,7 +282,7 @@ class TeamMapper:
         return self._fuzzy_match(team_name, year)
 
     def _fuzzy_match(self, team_name: str, year: int | None = None) -> str | None:
-        """퍼지 매칭으로 팀 코드 찾기"""
+        """퍼지 매칭으로 팀 코드 찾기."""
         if team_name in HISTORICAL_PATTERNS:
             return HISTORICAL_PATTERNS[team_name]
 
@@ -340,7 +340,7 @@ class TeamMapper:
         return None
 
     def get_all_teams_for_year(self, year: int) -> dict[str, str]:
-        """특정 년도의 모든 팀 매핑 반환 (정적 매핑과 통합)"""
+        """특정 년도의 모든 팀 매핑 반환 (정적 매핑과 통합)."""
         # 기본적으로 정적 매핑에서 시작
         mapping = self.static_mapping.copy()
 
@@ -351,7 +351,7 @@ class TeamMapper:
         return mapping
 
     def validate_team_code(self, team_code: str, _year: int | None = None) -> bool:
-        """팀 코드 유효성 검증"""
+        """팀 코드 유효성 검증."""
         if not team_code:
             return False
 
@@ -369,7 +369,7 @@ _team_mapper = None
 
 
 def get_team_mapper() -> TeamMapper:
-    """TeamMapper 싱글톤 인스턴스 반환"""
+    """TeamMapper 싱글톤 인스턴스 반환."""
     global _team_mapper
     if _team_mapper is None:
         _team_mapper = TeamMapper()
@@ -379,19 +379,19 @@ def get_team_mapper() -> TeamMapper:
 
 
 def get_team_code(team_name: str, year: int | None = None) -> str | None:
-    """간편 함수: 팀명으로 팀 코드 조회"""
+    """간편 함수: 팀명으로 팀 코드 조회."""
     mapper = get_team_mapper()
     return mapper.get_team_code(team_name, year)
 
 
 def get_team_mapping_for_year(year: int) -> dict[str, str]:
-    """간편 함수: 특정 년도의 팀 매핑 반환"""
+    """간편 함수: 특정 년도의 팀 매핑 반환."""
     mapper = get_team_mapper()
     return mapper.get_all_teams_for_year(year)
 
 
 def refresh_oci_mapping() -> bool:
-    """OCI 매핑 갱신"""
+    """OCI 매핑 갱신."""
     mapper = get_team_mapper()
     return mapper.load_oci_mapping()
 

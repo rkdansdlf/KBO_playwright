@@ -1,6 +1,6 @@
 """KBO Player Profile Crawler (Enhanced)
 Collects extended player profile: photo_url, bats, throws, salary, draft info, debut_year.
-Source: KBO HitterDetail/PitcherDetail Basic.aspx
+Source: KBO HitterDetail/PitcherDetail Basic.aspx.
 """
 
 from __future__ import annotations
@@ -193,7 +193,7 @@ class PlayerProfileCrawler:
         return self._last_failure_reason.get(str(player_id))
 
     def _select_urls(self, player_id: str, position: str | None) -> list[str]:
-        """순차적으로 시도할 URL 후보 목록을 반환"""
+        """순차적으로 시도할 URL 후보 목록을 반환."""
         is_pitcher = position and (
             position.strip() in PITCHER_POSITIONS or any(p in (position or "") for p in ["투수", "P"])
         )
@@ -372,7 +372,7 @@ def _build_profile_result(player_id: str, raw: dict[str, Any], parsed: dict[str,
 
 
 async def main() -> None:
-    """Quick test for a known problematic ID (900076)"""
+    """Quick test for a known problematic ID (900076)."""
     crawler = PlayerProfileCrawler()
     result = await crawler.crawl_player_profile("900076")
     if result:

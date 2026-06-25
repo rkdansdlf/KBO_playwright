@@ -1,5 +1,5 @@
 """Player Basic Repository
-UPSERT operations for player_basic table
+UPSERT operations for player_basic table.
 """
 
 from __future__ import annotations
@@ -24,14 +24,14 @@ if TYPE_CHECKING:
 
 
 class PlayerBasicRepository:
-    """Repository for player_basic table operations"""
+    """Repository for player_basic table operations."""
 
     def __init__(self) -> None:
         self.dialect = Engine.dialect.name
         self.last_filter_counts: Counter = Counter()
 
     def upsert_players(self, players: list[dict[str, Any]]) -> int:
-        """UPSERT player_basic records (idempotent)
+        """UPSERT player_basic records (idempotent).
 
         Args:
             players: List of player dictionaries with keys:
@@ -67,7 +67,7 @@ class PlayerBasicRepository:
                 raise
 
     def _upsert_one(self, session: Session, player_data: dict[str, Any]) -> None:
-        """UPSERT single player (SQLite/PostgreSQL compatible)"""
+        """UPSERT single player (SQLite/PostgreSQL compatible)."""
         ok, reason = validate_player_payload(player_data)
         if not ok:
             self.last_filter_counts[reason or "invalid_player_payload"] += 1
@@ -157,7 +157,7 @@ class PlayerBasicRepository:
         }
 
     def get_all(self, limit: int | None = None) -> list[PlayerBasic]:
-        """Get all players (optionally limited)"""
+        """Get all players (optionally limited)."""
         with SessionLocal() as session:
             query = session.query(PlayerBasic)
             if limit:
@@ -188,12 +188,12 @@ class PlayerBasicRepository:
                 raise
 
     def get_by_id(self, player_id: int) -> PlayerBasic | None:
-        """Get player by ID"""
+        """Get player by ID."""
         with SessionLocal() as session:
             return session.query(PlayerBasic).filter_by(player_id=player_id).first()
 
     def get_by_team(self, team: str, limit: int | None = None) -> list[PlayerBasic]:
-        """Get players by team"""
+        """Get players by team."""
         with SessionLocal() as session:
             query = session.query(PlayerBasic).filter_by(team=team)
             if limit:

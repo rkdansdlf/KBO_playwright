@@ -81,15 +81,15 @@ class MiscSyncMixin:
     """Mixin for misc sync operations."""
 
     def sync_franchises(self) -> int:
-        """Sync franchises from SQLite to OCI"""
+        """Sync franchises from SQLite to OCI."""
         return self.sync_simple_table(Franchise, ["original_code"])
 
     def sync_kbo_seasons(self) -> int:
-        """Sync kbo_seasons reference table from SQLite to OCI"""
+        """Sync kbo_seasons reference table from SQLite to OCI."""
         return self.sync_simple_table(KboSeason, ["season_id"])
 
     def sync_teams(self) -> int:
-        """Sync teams from SQLite to OCI"""
+        """Sync teams from SQLite to OCI."""
         franchise_mapping = self._get_franchise_id_mapping()
         teams = self.sqlite_session.query(Team).all()
         if not teams:
@@ -138,7 +138,7 @@ class MiscSyncMixin:
         return len(records)
 
     def sync_stadium_info(self) -> int:
-        """Sync stadium_info from SQLite to OCI"""
+        """Sync stadium_info from SQLite to OCI."""
         self._ensure_table(StadiumInfo)
         return self.sync_simple_table(
             StadiumInfo,
@@ -147,7 +147,7 @@ class MiscSyncMixin:
         )
 
     def sync_awards(self) -> int:
-        """Sync awards from SQLite to OCI"""
+        """Sync awards from SQLite to OCI."""
         try:
             migration_path = Path("migrations/oci/019_create_awards.sql")
             if migration_path.exists():
@@ -166,7 +166,7 @@ class MiscSyncMixin:
         )
 
     def sync_rag_chunks(self, batch_size: int = 1000) -> int:
-        """Sync RAG chunks from SQLite to OCI Postgres"""
+        """Sync RAG chunks from SQLite to OCI Postgres."""
         logger.info("📁 Ensure RAG chunks table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
@@ -207,7 +207,7 @@ class MiscSyncMixin:
         )
 
     def sync_ticket_schedules(self, batch_size: int = 1000) -> int:
-        """Sync ticket schedules from SQLite to OCI Postgres"""
+        """Sync ticket schedules from SQLite to OCI Postgres."""
         logger.info("📁 Ensure Ticket schedules table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
@@ -222,7 +222,7 @@ class MiscSyncMixin:
         )
 
     def sync_stadium_foods(self, batch_size: int = 1000) -> int:
-        """Sync stadium foods from SQLite to OCI Postgres"""
+        """Sync stadium foods from SQLite to OCI Postgres."""
         logger.info("📁 Ensure Stadium foods table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
@@ -237,7 +237,7 @@ class MiscSyncMixin:
         )
 
     def sync_game_broadcasts(self) -> int:
-        """Sync game_broadcasts from SQLite to OCI"""
+        """Sync game_broadcasts from SQLite to OCI."""
         self._ensure_table(GameBroadcast)
         return self.sync_simple_table(
             GameBroadcast,
@@ -246,7 +246,7 @@ class MiscSyncMixin:
         )
 
     def sync_stadium_regulations(self) -> int:
-        """Sync stadium_regulations from SQLite to OCI"""
+        """Sync stadium_regulations from SQLite to OCI."""
         self._ensure_table(StadiumRegulation)
         return self.sync_simple_table(
             StadiumRegulation,
@@ -255,7 +255,7 @@ class MiscSyncMixin:
         )
 
     def sync_game_mvps(self) -> int:
-        """Sync game_mvps from SQLite to OCI"""
+        """Sync game_mvps from SQLite to OCI."""
         self._ensure_table(GameMvp)
         return self.sync_simple_table(
             GameMvp,
@@ -264,7 +264,7 @@ class MiscSyncMixin:
         )
 
     def sync_injury_entries(self) -> int:
-        """Sync injury_entries from SQLite to OCI"""
+        """Sync injury_entries from SQLite to OCI."""
         self._ensure_table(InjuryEntry)
         return self.sync_simple_table(
             InjuryEntry,
@@ -273,7 +273,7 @@ class MiscSyncMixin:
         )
 
     def sync_foreign_player_changes(self) -> int:
-        """Sync foreign_player_changes from SQLite to OCI"""
+        """Sync foreign_player_changes from SQLite to OCI."""
         self._ensure_table(ForeignPlayerChange)
         return self.sync_simple_table(
             ForeignPlayerChange,
@@ -282,7 +282,7 @@ class MiscSyncMixin:
         )
 
     def sync_manager_changes(self) -> int:
-        """Sync manager_changes from SQLite to OCI"""
+        """Sync manager_changes from SQLite to OCI."""
         self._ensure_table(ManagerChange)
         return self.sync_simple_table(
             ManagerChange,
@@ -291,7 +291,7 @@ class MiscSyncMixin:
         )
 
     def sync_team_rivalries(self) -> int:
-        """Sync team_rivalries from SQLite to OCI"""
+        """Sync team_rivalries from SQLite to OCI."""
         self._ensure_table(TeamRivalry)
         return self.sync_simple_table(
             TeamRivalry,
@@ -300,7 +300,7 @@ class MiscSyncMixin:
         )
 
     def sync_cheer_songs(self) -> int:
-        """Sync cheer_songs from SQLite to OCI"""
+        """Sync cheer_songs from SQLite to OCI."""
         self._ensure_table(CheerSong)
         return self.sync_simple_table(
             CheerSong,
@@ -309,7 +309,7 @@ class MiscSyncMixin:
         )
 
     def sync_cheer_chants(self) -> int:
-        """Sync cheer_chants from SQLite to OCI"""
+        """Sync cheer_chants from SQLite to OCI."""
         self._ensure_table(CheerChant)
         return self.sync_simple_table(
             CheerChant,
@@ -318,7 +318,7 @@ class MiscSyncMixin:
         )
 
     def sync_team_events(self) -> int:
-        """Sync team_events from SQLite to OCI"""
+        """Sync team_events from SQLite to OCI."""
         self._ensure_table(TeamEvent)
         return self.sync_simple_table(
             TeamEvent,
@@ -327,7 +327,7 @@ class MiscSyncMixin:
         )
 
     def sync_phase1_all(self) -> dict[str, int]:
-        """Sync all Phase 1 tables to OCI"""
+        """Sync all Phase 1 tables to OCI."""
         results = {}
         results["game_broadcasts"] = self.sync_game_broadcasts()
         results["stadium_info"] = self.sync_stadium_info()
@@ -439,7 +439,7 @@ class MiscSyncMixin:
         start_date: date | datetime | str | None = None,
         end_date: date | datetime | str | None = None,
     ) -> int:
-        """Sync team_daily_roster from SQLite to OCI"""
+        """Sync team_daily_roster from SQLite to OCI."""
         start = _normalize_daily_roster_date(start_date)
         end = _normalize_daily_roster_date(end_date)
         if start and end and start > end:
@@ -490,7 +490,7 @@ class MiscSyncMixin:
             data["team_code"] = resolved
 
     def sync_team_history(self) -> int:
-        """Sync team_history table"""
+        """Sync team_history table."""
         if not self._target_table_exists(TeamHistory):
             return 0
 
@@ -528,7 +528,7 @@ class MiscSyncMixin:
         return len(records)
 
     def sync_team_code_map(self) -> int:
-        """Sync team_code_map table using bulk COPY upsert"""
+        """Sync team_code_map table using bulk COPY upsert."""
         franchise_mapping = self._get_franchise_id_mapping()
 
         def transform(data: dict) -> dict[str, Any]:
@@ -544,7 +544,7 @@ class MiscSyncMixin:
         )
 
     def sync_matchups(self, year: int | None = None, batch_size: int = 10000) -> dict[str, int]:
-        """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI"""
+        """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI."""
         logger.info("📁 Ensuring matchup tables exist on OCI...")
         Base.metadata.create_all(self.oci_engine)
 

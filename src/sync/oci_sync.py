@@ -60,7 +60,7 @@ def _log_sync_completion(total_synced: int, batting_count: int, pitching_count: 
 
 
 def main() -> None:
-    """타자 및 투수 데이터 OCI 동기화"""
+    """타자 및 투수 데이터 OCI 동기화."""
     oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
         logger.error("❌ OCI_DB_URL environment variable not set")
