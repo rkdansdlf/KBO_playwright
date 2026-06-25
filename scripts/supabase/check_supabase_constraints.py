@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Supabase 테이블 제약조건 및 구조 확인 스크립트
-"""
+"""Supabase 테이블 제약조건 및 구조 확인 스크립트"""
 
 import logging
 

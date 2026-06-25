@@ -1,5 +1,4 @@
-"""
-Migration 032: Fix INTEGER columns that should be REAL/FLOAT in
+"""Migration 032: Fix INTEGER columns that should be REAL/FLOAT in
 team_season_fielding and team_season_baserunning.
 
 SQLite doesn't support ALTER COLUMN TYPE, so we read the CREATE TABLE
