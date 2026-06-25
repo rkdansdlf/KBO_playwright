@@ -130,7 +130,7 @@ class StartersInfo:
 def get_games_by_date(target_date: str) -> list[Game]:
     """Retrieve Game objects for a specific date (YYYYMMDD)."""
     try:
-        dt = datetime.strptime(target_date, "%Y%m%d").date()
+        dt = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         return []
 
@@ -197,7 +197,7 @@ def save_schedule_game(
     """Persist basic game info from schedule crawler."""
     game_date_str = str(game_data.get("game_date", "")).replace("-", "")
     try:
-        game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
+        game_date = datetime.strptime(game_date_str, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         return False
 
@@ -320,7 +320,7 @@ def save_schedule_game(
 def _parse_detail_game_date(game_data: dict[str, Any], provisional_game_id: str | None) -> tuple[str, date]:
     game_date_str = str(game_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
     try:
-        return game_date_str, datetime.strptime(game_date_str, "%Y%m%d").date()
+        return game_date_str, datetime.strptime(game_date_str, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         return game_date_str, datetime.now(KST).date()
 
@@ -672,7 +672,7 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
     provisional_game_id, _ = _canonicalize_game_id(game_data.get("game_id"))
     game_date_str = str(game_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
     try:
-        game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
+        game_date = datetime.strptime(game_date_str, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         game_date = datetime.now(KST).date()
 
@@ -812,7 +812,7 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
         return False
 
     try:
-        game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
+        game_date = datetime.strptime(game_date_str, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         return False
 

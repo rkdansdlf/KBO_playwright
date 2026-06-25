@@ -231,7 +231,7 @@ class RelayCrawler:
         return away_field == away_code and home_field == home_code
 
     def _schedule_query_dates(self, kbo_game_id: str) -> list[str]:
-        base_date = datetime.strptime(kbo_game_id[:8], "%Y%m%d").date()
+        base_date = datetime.strptime(kbo_game_id[:8], "%Y%m%d").replace(tzinfo=KST).date()
         query_dates = [base_date.isoformat()]
         for offset in range(1, self.schedule_fallback_window_days + 1):
             query_dates.append((base_date + timedelta(days=offset)).isoformat())

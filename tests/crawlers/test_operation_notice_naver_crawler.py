@@ -1,4 +1,5 @@
 from __future__ import annotations
+from src.constants import KST
 
 from datetime import datetime
 
@@ -68,7 +69,7 @@ class TestInferGameDate:
                 raw={},
             )
         )
-        assert result == datetime(2026, 6, 3).date()
+        assert result == datetime(2026, 6, 3, tzinfo=KST).date()
 
     def test_no_pub_date(self):
         result = _infer_game_date(
@@ -106,7 +107,7 @@ class TestResultToNotice:
         assert notice["source_url"] == "https://example.com/news/123"
         assert notice["external_id"] == "https://example.com/news/123"
         assert notice["published_at"] == datetime(2026, 6, 3, 10, 0)
-        assert notice["game_date"] == datetime(2026, 6, 3).date()
+        assert notice["game_date"] == datetime(2026, 6, 3, tzinfo=KST).date()
         assert notice["is_confirmed"] is False
         assert notice["raw_snapshot"] == {}
 

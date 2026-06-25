@@ -85,7 +85,7 @@ class InternationalScheduleCrawler:
         date_clean = re.sub(r"\(.*\)", "", date_str).strip()  # "11.13"
         try:
             month, day = map(int, date_clean.split("."))
-            game_date = datetime(year, month, day).date()
+            game_date = datetime(year, month, day, tzinfo=KST).date()
             game_time = time_str.strip() if time_str else "00:00"
         except ValueError:
             # Often first row is header or empty or special

@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import logging
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
@@ -36,6 +37,17 @@ def calculate_games_behind(wins: int, losses: int, leader_wins: int, leader_loss
 def iso_week_number(d: date) -> str:
     iso = d.isocalendar()
     return f"{iso[0]}-W{iso[1]:02d}"
+
+
+@dataclass(frozen=True)
+class GameResultData:
+    is_win: bool
+    is_loss: bool
+    is_draw: bool
+    runs_for: int
+    runs_against: int
+    is_home: bool
+    game_date: date
 
 
 class TeamState:
@@ -76,32 +88,22 @@ class TeamState:
     def recent_10_draws(self) -> int:
         return sum(1 for r in self.recent_games if r == "D")
 
-    def add_game(  # noqa: PLR0913
-        self,
-        *,
-        is_win: bool,
-        is_loss: bool,
-        is_draw: bool,
-        runs_for: int,
-        runs_against: int,
-        is_home: bool,
-        game_date: date,
-    ) -> None:
-        self.runs_scored += runs_for
-        self.runs_allowed += runs_against
+    def add_game(self, result: GameResultData) -> None:
+        self.runs_scored += result.runs_for
+        self.runs_allowed += result.runs_against
 
-        if is_win:
-            self._add_win(is_home=is_home)
-        elif is_loss:
-            self._add_loss(is_home=is_home)
-        elif is_draw:
+        if result.is_win:
+            self._add_win(is_home=result.is_home)
+        elif result.is_loss:
+            self._add_loss(is_home=result.is_home)
+        elif result.is_draw:
             self.draws += 1
             self.recent_games.append("D")
 
-        week_key = iso_week_number(game_date)
-        if is_win:
+        week_key = iso_week_number(result.game_date)
+        if result.is_win:
             self.weekly_wins[week_key] += 1
-        elif is_loss:
+        elif result.is_loss:
             self.weekly_losses[week_key] += 1
 
     def _add_win(self, *, is_home: bool) -> None:
@@ -147,60 +149,72 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
 
     if home_score > away_score:
         home_state.add_game(
-            is_win=True,
-            is_loss=False,
-            is_draw=False,
-            runs_for=home_score,
-            runs_against=away_score,
-            is_home=True,
-            game_date=game_date,
+            GameResultData(
+                is_win=True,
+                is_loss=False,
+                is_draw=False,
+                runs_for=home_score,
+                runs_against=away_score,
+                is_home=True,
+                game_date=game_date,
+            )
         )
         away_state.add_game(
-            is_win=False,
-            is_loss=True,
-            is_draw=False,
-            runs_for=away_score,
-            runs_against=home_score,
-            is_home=False,
-            game_date=game_date,
+            GameResultData(
+                is_win=False,
+                is_loss=True,
+                is_draw=False,
+                runs_for=away_score,
+                runs_against=home_score,
+                is_home=False,
+                game_date=game_date,
+            )
         )
     elif away_score > home_score:
         home_state.add_game(
-            is_win=False,
-            is_loss=True,
-            is_draw=False,
-            runs_for=home_score,
-            runs_against=away_score,
-            is_home=True,
-            game_date=game_date,
+            GameResultData(
+                is_win=False,
+                is_loss=True,
+                is_draw=False,
+                runs_for=home_score,
+                runs_against=away_score,
+                is_home=True,
+                game_date=game_date,
+            )
         )
         away_state.add_game(
-            is_win=True,
-            is_loss=False,
-            is_draw=False,
-            runs_for=away_score,
-            runs_against=home_score,
-            is_home=False,
-            game_date=game_date,
+            GameResultData(
+                is_win=True,
+                is_loss=False,
+                is_draw=False,
+                runs_for=away_score,
+                runs_against=home_score,
+                is_home=False,
+                game_date=game_date,
+            )
         )
     else:
         home_state.add_game(
-            is_win=False,
-            is_loss=False,
-            is_draw=True,
-            runs_for=home_score,
-            runs_against=away_score,
-            is_home=True,
-            game_date=game_date,
+            GameResultData(
+                is_win=False,
+                is_loss=False,
+                is_draw=True,
+                runs_for=home_score,
+                runs_against=away_score,
+                is_home=True,
+                game_date=game_date,
+            )
         )
         away_state.add_game(
-            is_win=False,
-            is_loss=False,
-            is_draw=True,
-            runs_for=away_score,
-            runs_against=home_score,
-            is_home=False,
-            game_date=game_date,
+            GameResultData(
+                is_win=False,
+                is_loss=False,
+                is_draw=True,
+                runs_for=away_score,
+                runs_against=home_score,
+                is_home=False,
+                game_date=game_date,
+            )
         )
 
 

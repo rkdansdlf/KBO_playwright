@@ -338,7 +338,7 @@ def _has_repairable_game_children(session: Session, game_id: str) -> bool:
 
 def _game_date_from_game_id(game_id: str) -> date:
     try:
-        return datetime.strptime(game_id[:8], "%Y%m%d").date()
+        return datetime.strptime(game_id[:8], "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         return datetime.now(KST).date()
 

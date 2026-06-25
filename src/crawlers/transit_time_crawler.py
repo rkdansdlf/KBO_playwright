@@ -23,6 +23,7 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.transit_time_repository import TransitTimeRepository
 from src.utils.map_api_client import get_transit_times_batch
@@ -100,7 +101,7 @@ class TransitTimeCrawler:
                        Defaults to today.
             save: Persist results to the database.
         """
-        game_date = game_date or date.today()
+        game_date = game_date or datetime.now(KST).date()
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 
         logger.info(
@@ -185,6 +186,6 @@ if __name__ == "__main__":
 
     gdate = None
     if args.game_date:
-        gdate = datetime.strptime(args.game_date, "%Y%m%d").date()
+        gdate = datetime.strptime(args.game_date, "%Y%m%d").replace(tzinfo=KST).date()
 
     asyncio.run(TransitTimeCrawler().run(game_date=gdate, save=args.save))

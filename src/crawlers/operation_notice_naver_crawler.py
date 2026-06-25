@@ -16,14 +16,17 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.naver_search_client import NaverSearchClient, NaverSearchResult
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +70,7 @@ def _infer_game_date(result: NaverSearchResult) -> date | None:
     """Infer game date from publication date (assume same-day notice)."""
     if result.pub_date:
         return result.pub_date.date()
-    return date.today()
+    return datetime.now(KST).date()
 
 
 def _result_to_notice(result: NaverSearchResult) -> dict[str, Any]:

@@ -173,7 +173,7 @@ def _unknown_games_are_today_or_future(unknown: list[dict[str, Any]], today_date
         if not game_date_str:
             continue
         try:
-            game_date = datetime.strptime(game_date_str[:10], "%Y-%m-%d").date()
+            game_date = datetime.strptime(game_date_str[:10], "%Y-%m-%d").replace(tzinfo=KST).date()
             if game_date >= today_date:
                 logger.info("  ⏳ Unknown game is today or future: %s", _format_game_label(game))
                 return True

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.repositories.player_game_stats import (
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 def _game_ids_for_date(session: Session, target_date: str) -> list[str]:
-    target = datetime.strptime(target_date, "%Y%m%d").date()
+    target = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     return [
         row[0]
         for row in session.query(Game.game_id)

@@ -102,7 +102,7 @@ class DynamicDataCrawler:
 
             # Open date calculation
             open_date = g.game_date - timedelta(days=days_before)
-            open_time = datetime(open_date.year, open_date.month, open_date.day, hour, 0, 0)
+            open_time = datetime(open_date.year, open_date.month, open_date.day, hour, 0, 0, tzinfo=KST)
 
             # Check if this record already exists
             existing_ticket = self.db_session.scalar(

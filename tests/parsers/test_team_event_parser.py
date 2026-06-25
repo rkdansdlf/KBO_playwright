@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from src.constants import KST
 
 from src.parsers.team_event_parser import (
     CUTOFF_DAYS,
@@ -207,7 +208,7 @@ class TestExtractPublishedAt:
         html = "<tr><td class='date'>2025-03-15</td><td class='title'>Event</td></tr>"
         soup = BeautifulSoup(html, "html.parser")
         title_tag = soup.select_one(".title")
-        cutoff = datetime(2025, 1, 1)
+        cutoff = datetime(2025, 1, 1, tzinfo=KST)
         result = _extract_published_at(title_tag, ".date", cutoff)
         assert result is not None
         assert result.year == 2025
@@ -217,7 +218,7 @@ class TestExtractPublishedAt:
 
         html = "<tr><td class='date'>2024-01-01</td><td class='title'>Event</td></tr>"
         soup = BeautifulSoup(html, "html.parser")
-        cutoff = datetime(2025, 1, 1)
+        cutoff = datetime(2025, 1, 1, tzinfo=KST)
         result = _extract_published_at(soup.select_one(".title"), ".date", cutoff)
         assert result is None
 
@@ -226,7 +227,7 @@ class TestExtractPublishedAt:
 
         html = "<tr>2025-06-15<td class='title'>Event</td></tr>"
         soup = BeautifulSoup(html, "html.parser")
-        cutoff = datetime(2025, 1, 1)
+        cutoff = datetime(2025, 1, 1, tzinfo=KST)
         result = _extract_published_at(soup.select_one(".title"), "", cutoff)
         assert result is not None
 
@@ -235,7 +236,7 @@ class TestExtractPublishedAt:
 
         html = "<tr><td>No date here</td></tr>"
         soup = BeautifulSoup(html, "html.parser")
-        cutoff = datetime(2025, 1, 1)
+        cutoff = datetime(2025, 1, 1, tzinfo=KST)
         result = _extract_published_at(soup.td, "", cutoff)
         assert result is None
 
@@ -250,7 +251,7 @@ class TestParseJsonTeamEvents:
         )
         metadata = {"url": "https://example.com/feed/events", "fetched_at": "2025-06-01T00:00:00"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1), datetime(2025, 6, 1)
+            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
         )
         assert len(events) == 2
         assert events[0]["title"] == "2025 시즌 이벤트"
@@ -258,7 +259,9 @@ class TestParseJsonTeamEvents:
 
     def test_title_too_short(self):
         payload = json.dumps([{"TITLE": "AB", "PUB_DATE": "2025-03-15"}])
-        events = _parse_json_team_events(payload, "lg_twins_events", {}, datetime(2025, 1, 1), datetime(2025, 6, 1))
+        events = _parse_json_team_events(
+            payload, "lg_twins_events", {}, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+        )
         assert len(events) == 0
 
     def test_deduplicates_titles(self):
@@ -268,16 +271,22 @@ class TestParseJsonTeamEvents:
                 {"TITLE": "이벤트 안내", "PUB_DATE": "2025-03-16"},
             ]
         )
-        events = _parse_json_team_events(payload, "lg_twins_events", {}, datetime(2025, 1, 1), datetime(2025, 6, 1))
+        events = _parse_json_team_events(
+            payload, "lg_twins_events", {}, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+        )
         assert len(events) == 1
 
     def test_unparsable_json(self):
-        events = _parse_json_team_events("not json", "lg_twins_events", {}, datetime(2025, 1, 1), datetime(2025, 6, 1))
+        events = _parse_json_team_events(
+            "not json", "lg_twins_events", {}, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+        )
         assert events == []
 
     def test_unknown_team_returns_empty(self):
         payload = json.dumps([{"TITLE": "Event", "PUB_DATE": "2025-03-15"}])
-        events = _parse_json_team_events(payload, "unknown_key", {}, datetime(2025, 1, 1), datetime(2025, 6, 1))
+        events = _parse_json_team_events(
+            payload, "unknown_key", {}, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+        )
         assert events == []
 
 

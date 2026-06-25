@@ -8,6 +8,8 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.constants import KST
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -66,7 +68,7 @@ def _normalize_target_date(value: str | None) -> str | None:
         return None
     for date_format in ("%Y-%m-%d", "%Y%m%d"):
         try:
-            return datetime.strptime(raw, date_format).strftime("%Y-%m-%d")
+            return datetime.strptime(raw, date_format).replace(tzinfo=KST).strftime("%Y-%m-%d")
         except ValueError:
             continue
     msg = f"Invalid --target-date: {value!r}. Use YYYYMMDD or YYYY-MM-DD."

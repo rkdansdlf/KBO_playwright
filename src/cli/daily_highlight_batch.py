@@ -173,7 +173,7 @@ async def run_highlight_batch(
     logger.info("🎬 Starting Daily Highlight Batch for %s...", target_date_str)
 
     try:
-        target_date = datetime.strptime(target_date_str, "%Y%m%d").date()
+        target_date = datetime.strptime(target_date_str, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         logger.exception("❌ Invalid date format: %s. Expected YYYYMMDD.", target_date_str)
         return []

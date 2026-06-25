@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
+from src.constants import KST
 from src.db.engine import Engine, SessionLocal
 from src.models.player import (
     Player,
@@ -92,7 +93,7 @@ class PlayerRepository:
         if profile.birth_date:
             basic.birth_date = profile.birth_date
             with contextlib.suppress(ValueError):
-                basic.birth_date_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").date()
+                basic.birth_date_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").replace(tzinfo=KST).date()
 
     def _sync_basic_draft_and_career(self, basic: PlayerBasic, profile: PlayerProfileParsed) -> None:
         if profile.draft_year:
@@ -143,7 +144,7 @@ class PlayerRepository:
     def _apply_profile_fields(self, player: Player, profile: PlayerProfileParsed) -> None:
         if profile.birth_date:
             with contextlib.suppress(ValueError):
-                player.birth_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").date()
+                player.birth_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").replace(tzinfo=KST).date()
         player.height_cm = profile.height_cm or player.height_cm
         player.weight_kg = profile.weight_kg or player.weight_kg
         player.bats = profile.batting_hand or player.bats
@@ -266,7 +267,7 @@ class PlayerRepository:
                 # Convert date string to object if needed
                 d_val = item["date"]
                 if isinstance(d_val, str):
-                    d_val = datetime.strptime(d_val, "%Y-%m-%d").date()
+                    d_val = datetime.strptime(d_val, "%Y-%m-%d").replace(tzinfo=KST).date()
 
                 team_code = item["team_code"]
                 player_name = item["player_name"]
