@@ -22,11 +22,11 @@ class TestLifecycleStates:
         assert "final" in LIFECYCLE_STATES
 
     def test_terminal_states_subset(self) -> None:
-        assert TERMINAL_STATES == {"cancelled", "final"}  # noqa: SIM300
+        assert {"cancelled", "final"} == TERMINAL_STATES
         assert TERMINAL_STATES < LIFECYCLE_STATES
 
     def test_relay_active_states_subset(self) -> None:
-        assert RELAY_ACTIVE_STATES == {"running", "delayed", "suspended", "result_pending_stabilization"}  # noqa: SIM300
+        assert {"running", "delayed", "suspended", "result_pending_stabilization"} == RELAY_ACTIVE_STATES
         assert RELAY_ACTIVE_STATES < LIFECYCLE_STATES
         assert RELAY_ACTIVE_STATES.isdisjoint(TERMINAL_STATES)
 
