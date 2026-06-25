@@ -1,5 +1,4 @@
-"""Bulk recalculate team statistics for all years from 1982 to 2026.
-"""
+"""Bulk recalculate team statistics for all years from 1982 to 2026."""
 
 import logging
 import subprocess

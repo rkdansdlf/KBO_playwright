@@ -9,8 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class TeamStatAudit:
-    """Audit tool to compare official team season stats with calculated fallback stats.
-    """
+    """Audit tool to compare official team season stats with calculated fallback stats."""
 
     @staticmethod
     def audit_batting(year: int, league: str = "REGULAR"):

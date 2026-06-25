@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-선수 기본정보를 먼저 Supabase에 동기화하는 스크립트
+"""선수 기본정보를 먼저 Supabase에 동기화하는 스크립트
 시즌 기록 동기화 전에 player_basic 테이블을 먼저 채움
 """
 

@@ -163,9 +163,7 @@ class TestResolveCandidates:
     @pytest.mark.asyncio
     async def test_without_game_id(self):
         mock_crawler = MagicMock()
-        mock_crawler.crawl_schedule = AsyncMock(
-            return_value=[{"game_date": "2025-06-15", "game_id": "G1"}]
-        )
+        mock_crawler.crawl_schedule = AsyncMock(return_value=[{"game_date": "2025-06-15", "game_id": "G1"}])
         with patch("src.cli.crawler_live_smoke.is_detail_candidate_game", return_value=True):
             result = await _resolve_candidates(
                 target_date="20250615",
@@ -180,9 +178,7 @@ class TestRunSmoke:
     @pytest.mark.asyncio
     async def test_schedule_scope_returns_ok(self):
         mock_schedule = MagicMock()
-        mock_schedule.crawl_schedule = AsyncMock(
-            return_value=[{"game_date": "2025-06-15", "game_id": "G1"}]
-        )
+        mock_schedule.crawl_schedule = AsyncMock(return_value=[{"game_date": "2025-06-15", "game_id": "G1"}])
         result = await run_smoke(
             target_date="20250615",
             scope="schedule",
@@ -215,9 +211,7 @@ class TestRunSmoke:
     @pytest.mark.asyncio
     async def test_detail_scope_success(self):
         mock_schedule = MagicMock()
-        mock_schedule.crawl_schedule = AsyncMock(
-            return_value=[{"game_date": "2025-06-15", "game_id": "G1"}]
-        )
+        mock_schedule.crawl_schedule = AsyncMock(return_value=[{"game_date": "2025-06-15", "game_id": "G1"}])
         mock_detail = MagicMock()
         mock_detail.crawl_game = AsyncMock(
             return_value={
@@ -236,9 +230,7 @@ class TestRunSmoke:
     @pytest.mark.asyncio
     async def test_detail_scope_failure(self):
         mock_schedule = MagicMock()
-        mock_schedule.crawl_schedule = AsyncMock(
-            return_value=[{"game_date": "2025-06-15", "game_id": "G1"}]
-        )
+        mock_schedule.crawl_schedule = AsyncMock(return_value=[{"game_date": "2025-06-15", "game_id": "G1"}])
         mock_detail = MagicMock()
         mock_detail.crawl_game = AsyncMock(return_value=None)
         mock_detail.get_last_failure_reason = MagicMock(return_value="timeout")

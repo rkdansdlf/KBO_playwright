@@ -1,5 +1,4 @@
-"""End-to-end test: Fetch Futures pitching stats and save to database.
-"""
+"""End-to-end test: Fetch Futures pitching stats and save to database."""
 
 import asyncio
 import logging

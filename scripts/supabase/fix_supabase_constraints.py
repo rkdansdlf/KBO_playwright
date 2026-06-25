@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Supabase 투수 테이블 제약조건 문제 해결 스크립트
-"""
+"""Supabase 투수 테이블 제약조건 문제 해결 스크립트"""
 
 import logging
 
