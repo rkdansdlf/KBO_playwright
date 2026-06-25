@@ -130,6 +130,7 @@ async def process_player(
 
     Returns:
         (player_id, 저장된 시즌 기록 수)
+
     """
     result = await process_player_result(target, repository, pool)
     return (str(result["player_id"]), int(result["saved"]))

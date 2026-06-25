@@ -300,6 +300,7 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
 
     Returns:
         list: 수비 기록 딕셔너리 리스트
+
     """
     if year is None:
         year = datetime.now(KST).year
@@ -363,6 +364,7 @@ def save_fielding_stats(year: int | None = None, db_path: str | None = None) -> 
     Args:
         year: 시즌 연도 (None이면 현재 연도)
         db_path: 데이터베이스 파일 경로 (None이면 data/kbo_{year}.db)
+
     """
     if year is None:
         year = datetime.now(KST).year

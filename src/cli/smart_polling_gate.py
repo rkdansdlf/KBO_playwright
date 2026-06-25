@@ -220,6 +220,7 @@ async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
         - should_proceed: True if Layer 2 crawling should run
         - has_games_today: True if there were any games scheduled today
         - details: dict with counts and game info for logging
+
     """
     today_str = get_kst_today_str()
     today_date = get_kst_today_date()

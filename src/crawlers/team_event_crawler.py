@@ -1,5 +1,4 @@
-"""Crawler for KBO and team events/news from official team websites.
-"""
+"""Crawler for KBO and team events/news from official team websites."""
 
 from __future__ import annotations
 

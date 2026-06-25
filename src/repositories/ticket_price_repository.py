@@ -1,5 +1,4 @@
-"""Repository for TicketPrice operations.
-"""
+"""Repository for TicketPrice operations."""
 
 from __future__ import annotations
 

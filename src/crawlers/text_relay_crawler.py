@@ -140,6 +140,7 @@ class TextRelayCrawler:
         policy: 요청 정책 (딜레이, 재시도 등)
         pool: Playwright 브라우저 풀
         output_dir: CSV 출력 디렉토리
+
     """
 
     def __init__(
@@ -440,6 +441,7 @@ class TextRelayCrawler:
 
         Returns:
             RelayCrawlResult 객체
+
         """
         self.last_failure_reason = None
         game_date = game_id[:8]
@@ -523,6 +525,7 @@ class TextRelayCrawler:
 
         Returns:
             RelayCrawlResult 리스트
+
         """
         results: list[RelayCrawlResult] = []
         for game_id in game_ids:
@@ -552,6 +555,7 @@ async def crawl_text_relay(
 
     Returns:
         DataFrame 또는 None (실패 시)
+
     """
     crawler = TextRelayCrawler(output_dir=output_dir)
     result = await crawler.crawl_game_relay(game_id, save=save)
@@ -576,6 +580,7 @@ async def crawl_text_relays(
 
     Returns:
         저장된 파일 경로 리스트
+
     """
     crawler = TextRelayCrawler(output_dir=output_dir)
     results = await crawler.crawl_games(game_ids, save=save)

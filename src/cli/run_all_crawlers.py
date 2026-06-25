@@ -1,5 +1,4 @@
-"""CLI entrypoint and scheduler daemon to execute KBO crawlers, transform text, generate embeddings, and load to database.
-"""
+"""CLI entrypoint and scheduler daemon to execute KBO crawlers, transform text, generate embeddings, and load to database."""
 
 from __future__ import annotations
 
@@ -55,8 +54,7 @@ _CATEGORY_MAP: dict[str, str] = {
 
 
 def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
-    """Enriches chunk metadata using LLM and prepares content strings for vector embedding.
-    """
+    """Enriches chunk metadata using LLM and prepares content strings for vector embedding."""
     from src.services.metadata_enrichment_service import MetadataEnrichmentService
 
     enrich_svc = MetadataEnrichmentService()
@@ -199,8 +197,7 @@ def _sync_static_chunks_to_oci(session: Session) -> None:
 
 
 async def run_static_pipeline(pdf_path: str | None = None) -> None:
-    """Runs extraction, chunking, and embedding for static rulebooks and wikis.
-    """
+    """Runs extraction, chunking, and embedding for static rulebooks and wikis."""
     logger.info("\n🏁 Starting Static Text Pipeline...")
 
     crawler = StaticTextCrawler()
@@ -216,8 +213,7 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
 
 
 async def run_dynamic_pipeline() -> None:
-    """Runs extraction and DB updates for schedules, rosters, and ticket times.
-    """
+    """Runs extraction and DB updates for schedules, rosters, and ticket times."""
     logger.info("\n🏁 Starting Dynamic Data Pipeline...")
 
     with get_db_session() as session:
@@ -257,8 +253,7 @@ async def run_dynamic_pipeline() -> None:
 
 
 async def run_realtime_pipeline() -> None:
-    """Runs news and community thread crawler, transforms text, embeds and loads.
-    """
+    """Runs news and community thread crawler, transforms text, embeds and loads."""
     logger.info("\n🏁 Starting Realtime Issue Pipeline...")
 
     crawler = RealtimeIssueCrawler()
@@ -373,8 +368,7 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
 
 
 def start_scheduler() -> None:
-    """Starts APScheduler daemon in the background to execute pipelines periodically.
-    """
+    """Starts APScheduler daemon in the background to execute pipelines periodically."""
     logger.info("\n⏰ Starting background scheduler daemon...")
     scheduler = BlockingScheduler()
 

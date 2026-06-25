@@ -1,5 +1,4 @@
-"""Determine retired/inactive player IDs by comparing historical rosters with current active rosters.
-"""
+"""Determine retired/inactive player IDs by comparing historical rosters with current active rosters."""
 
 from __future__ import annotations
 
@@ -34,8 +33,7 @@ RETIRE_LISTING_CRAWL_EXCEPTIONS = (
 
 
 class RetiredPlayerListingCrawler:
-    """Fetch player ID sets for historical seasons and compute inactive (retired) candidates.
-    """
+    """Fetch player ID sets for historical seasons and compute inactive (retired) candidates."""
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay

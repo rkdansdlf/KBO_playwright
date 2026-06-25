@@ -74,8 +74,7 @@ JAMSIL_ORIGINS: list[dict] = [
 
 
 class TransitTimeCrawler:
-    """Collects transit time measurements from map APIs and persists them.
-    """
+    """Collects transit time measurements from map APIs and persists them."""
 
     def __init__(
         self,
@@ -97,6 +96,7 @@ class TransitTimeCrawler:
             game_date: The game date to associate with measurements.
                        Defaults to today.
             save: Persist results to the database.
+
         """
         game_date = game_date or datetime.now(KST).date()
         measured_at = datetime.now(UTC).replace(tzinfo=None)

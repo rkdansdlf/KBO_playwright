@@ -114,6 +114,7 @@ def safe_parse_number(value_str: str, data_type: type, *, _allow_zero: bool = Tr
 
     Returns:
         파싱된 숫자 또는 None
+
     """
     if not value_str:
         return None
@@ -221,8 +222,7 @@ def _build_batting_data(ctx: BattingRowData) -> dict[str, Any]:
 
 
 def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | None = None) -> list[dict]:
-    """Parse batting table using JS extraction for reduced RPC.
-    """
+    """Parse batting table using JS extraction for reduced RPC."""
     year = year or datetime.now(KST).year
     get_team_mapping_for_year(year)
 
@@ -384,8 +384,7 @@ def build_batting_crawl_summary(rows: list[dict]) -> tuple[dict[str, object], li
 
 
 def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | None = None) -> bool:
-    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복).
-    """
+    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)."""
     try:
         if current_page_num % 5 == 0:  # 5페이지마다 "다음" 버튼 클릭
             selector = 'a[href*="btnNext"]'
@@ -495,8 +494,7 @@ def crawl_basic2_with_headers(
     series_info: dict,
     policy: RequestPolicy | None = None,
 ) -> dict[int, dict]:
-    """정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집.
-    """
+    """정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집."""
     all_player_data = {}
 
     try:
@@ -774,8 +772,7 @@ def parse_basic2_header_data(
 
 
 def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> list[dict]:
-    """KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다.
-    """
+    """KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다."""
     FallbackMonitor.log_fallback(year, series_key, "BATTING", reason)
     logger.info("🔄 로컬 DB 기반 타자 기록 집계 시작 (연도: %s, 시리즈: %s)...", year, series_key)
     all_players_data = []
@@ -1043,6 +1040,7 @@ def crawl_series_batting_stats(
 
     Returns:
         수집된 타자 기록 리스트
+
     """
     year = year or datetime.now(KST).year
     series_mapping = get_series_mapping()
@@ -1155,6 +1153,7 @@ def crawl_all_series(
 
     Returns:
         시리즈별 수집된 데이터 딕셔너리
+
     """
     year = year or datetime.now(KST).year
     policy = RequestPolicy()

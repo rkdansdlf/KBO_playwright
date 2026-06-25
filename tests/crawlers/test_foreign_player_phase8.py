@@ -58,13 +58,13 @@ class TestExtractForeignPlayerNameExtended:
         result = crawler._extract_foreign_player_name(text)
         assert result is not None
 
-    def test_invalid_name_부상(self):
+    def test_invalid_name_injury(self):
         crawler = ForeignPlayerCrawler.__new__(ForeignPlayerCrawler)
         text = "외국인 부상 교체"
         result = crawler._extract_foreign_player_name(text)
         assert result is None
 
-    def test_invalid_name_대체(self):
+    def test_invalid_name_replacement(self):
         crawler = ForeignPlayerCrawler.__new__(ForeignPlayerCrawler)
         text = "외국인 대체 영입"
         result = crawler._extract_foreign_player_name(text)
@@ -96,45 +96,45 @@ class TestExtractForeignPlayerNameExtended:
 
 
 class TestDetectChangeTypeExtended:
-    def test_퇴출_is_released(self):
+    def test_quit_is_released(self):
         assert ForeignPlayerCrawler._detect_change_type("외국인 선수 퇴출") == "RELEASED"
 
-    def test_방출_is_released(self):
+    def test_release_is_released(self):
         assert ForeignPlayerCrawler._detect_change_type("선수 방출") == "RELEASED"
 
-    def test_웨이버_is_released(self):
+    def test_waiver_is_released(self):
         assert ForeignPlayerCrawler._detect_change_type("웨이버 공시") == "RELEASED"
 
-    def test_교체_is_replaced(self):
+    def test_replacement_is_replaced(self):
         assert ForeignPlayerCrawler._detect_change_type("외국인 교체") == "REPLACED"
 
-    def test_대체_is_replaced(self):
+    def test_substitute_is_replaced(self):
         assert ForeignPlayerCrawler._detect_change_type("대체 선수") == "REPLACED"
 
-    def test_재계약_is_renewed(self):
+    def test_renewal_is_renewed(self):
         assert ForeignPlayerCrawler._detect_change_type("재계약 체결") == "RENEWED"
 
-    def test_영입_is_signed(self):
+    def test_signing_is_signed(self):
         assert ForeignPlayerCrawler._detect_change_type("영입 발표") == "SIGNED"
 
-    def test_빈_문자열_is_signed(self):
+    def test_empty_string_is_signed(self):
         assert ForeignPlayerCrawler._detect_change_type("") == "SIGNED"
 
 
 class TestDetectReasonExtended:
-    def test_부상_is_injury(self):
+    def test_injury_is_injury(self):
         assert ForeignPlayerCrawler._detect_reason("부상으로 교체") == "INJURY"
 
-    def test_성적_부진_is_performance(self):
+    def test_poor_performance_is(self):
         assert ForeignPlayerCrawler._detect_reason("성적 부진") == "PERFORMANCE"
 
-    def test_부진_is_performance(self):
+    def test_slump_is_performance(self):
         assert ForeignPlayerCrawler._detect_reason("실력 부진") == "PERFORMANCE"
 
-    def test_이유없음_none(self):
+    def test_no_reason_none(self):
         assert ForeignPlayerCrawler._detect_reason("새 영입") is None
 
-    def test_빈_문자열_none(self):
+    def test_empty_string_none(self):
         assert ForeignPlayerCrawler._detect_reason("") is None
 
 

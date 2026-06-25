@@ -1,5 +1,4 @@
-"""Relay data persistence and backfill functions.
-"""
+"""Relay data persistence and backfill functions."""
 
 from __future__ import annotations
 

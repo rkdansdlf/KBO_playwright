@@ -1,5 +1,4 @@
-"""Validation helpers for parsed game detail payloads.
-"""
+"""Validation helpers for parsed game detail payloads."""
 
 from __future__ import annotations
 
@@ -13,6 +12,7 @@ def validate_game_data(game_data: dict[str, Any]) -> tuple[bool, list[str], list
         (is_valid, errors, warnings)
         - errors: Critical issues that prevent saving
         - warnings: Non-critical issues that should be logged
+
     """
     errors: list[str] = []
     warnings: list[str] = []

@@ -7,6 +7,7 @@ import pytest
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
+    GAME_STATUS_DELAYED,
     GAME_STATUS_DRAW,
     GAME_STATUS_LIVE,
     GAME_STATUS_POSTPONED,

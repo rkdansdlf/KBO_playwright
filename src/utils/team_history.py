@@ -1,5 +1,4 @@
-"""Team history helpers loaded from Docs/team_history definitions.
-"""
+"""Team history helpers loaded from Docs/team_history definitions."""
 
 from __future__ import annotations
 

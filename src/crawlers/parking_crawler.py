@@ -1,5 +1,4 @@
-"""Crawler for stadium parking lot and fee information from team websites.
-"""
+"""Crawler for stadium parking lot and fee information from team websites."""
 
 from __future__ import annotations
 

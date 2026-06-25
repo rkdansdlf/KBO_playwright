@@ -1,5 +1,4 @@
-"""Crawler for dynamic structured data: schedules, ticket open times, and rosters.
-"""
+"""Crawler for dynamic structured data: schedules, ticket open times, and rosters."""
 
 from __future__ import annotations
 
@@ -49,16 +48,14 @@ TEAM_TICKET_RULES = {
 
 
 class DynamicDataCrawler:
-    """Manages daily crawls of schedules, ticket open times, and roster entries.
-    """
+    """Manages daily crawls of schedules, ticket open times, and roster entries."""
 
     def __init__(self, db_session: Session) -> None:
         self.db_session = db_session
         self.roster_crawler = DailyRosterCrawler()
 
     async def crawl_roster_changes(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
-        """Crawls daily 1st team registration changes using the existing DailyRosterCrawler.
-        """
+        """Crawls daily 1st team registration changes using the existing DailyRosterCrawler."""
         logger.info("📋 Crawling roster changes from %s to %s...", start_date, end_date)
         try:
             records = await self.roster_crawler.crawl_date_range(start_date, end_date)

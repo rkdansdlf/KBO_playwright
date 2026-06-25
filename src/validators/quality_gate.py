@@ -61,8 +61,7 @@ class QualityGate:
         )
 
     def validate_season_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
-        """Compare PlayerSeasonBatting (cumulative) with GameBattingStat sum (transactional).
-        """
+        """Compare PlayerSeasonBatting (cumulative) with GameBattingStat sum (transactional)."""
         if league != "REGULAR":
             return self._result(season=season, league=league)
 
@@ -184,8 +183,7 @@ class QualityGate:
         }
 
     def validate_season_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
-        """Compare PlayerSeasonPitching (cumulative) with GamePitchingStat sum (transactional).
-        """
+        """Compare PlayerSeasonPitching (cumulative) with GamePitchingStat sum (transactional)."""
         if league != "REGULAR":
             return self._result(season=season, league=league)
 
@@ -253,8 +251,7 @@ class QualityGate:
         )
 
     def validate_season_pa_formula(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
-        """Validate PA = AB + BB + HBP + SH + SF consistency for game batting stats.
-        """
+        """Validate PA = AB + BB + HBP + SH + SF consistency for game batting stats."""
         if league != "REGULAR":
             return self._result(season=season, league=league)
 

@@ -1,5 +1,4 @@
-"""Repository for managing RAG chunks in the SQLite/Postgres database.
-"""
+"""Repository for managing RAG chunks in the SQLite/Postgres database."""
 
 from __future__ import annotations
 
@@ -16,12 +15,10 @@ if TYPE_CHECKING:
 
 
 class RagChunkRepository:
-    """Data Access Object (DAO) for managing rag_chunks.
-    """
+    """Data Access Object (DAO) for managing rag_chunks."""
 
     def upsert_chunks(self, session: Session, chunks: list[dict[str, Any]]) -> int:
-        """Saves or updates RAG chunks using a clean, database-agnostic query-and-upsert approach.
-        """
+        """Saves or updates RAG chunks using a clean, database-agnostic query-and-upsert approach."""
         upserted_count = 0
         now = datetime.now(KST)
 

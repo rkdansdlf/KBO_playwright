@@ -1,5 +1,4 @@
-"""Season stats sync: batting, pitching, fielding, baserunning, standings, rankings.
-"""
+"""Season stats sync: batting, pitching, fielding, baserunning, standings, rankings."""
 
 from __future__ import annotations
 

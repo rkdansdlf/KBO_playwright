@@ -1,5 +1,4 @@
-"""Repository for RosterTransaction operations.
-"""
+"""Repository for RosterTransaction operations."""
 
 from __future__ import annotations
 

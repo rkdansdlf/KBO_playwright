@@ -1,5 +1,4 @@
-"""Utility helpers to classify player rows into active/retired/staff buckets.
-"""
+"""Utility helpers to classify player rows into active/retired/staff buckets."""
 
 from __future__ import annotations
 

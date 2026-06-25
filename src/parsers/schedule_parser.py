@@ -1,5 +1,4 @@
-"""Parse offline schedule HTML into structured game schedule rows.
-"""
+"""Parse offline schedule HTML into structured game schedule rows."""
 
 from __future__ import annotations
 
@@ -25,6 +24,7 @@ def parse_schedule_html(
     Args:
         html: Raw HTML string.
         default_year: Optional year to fallback if it can't be inferred.
+
     """
     soup = BeautifulSoup(html, "html.parser")
     games: dict[str, dict[str, Any]] = {}

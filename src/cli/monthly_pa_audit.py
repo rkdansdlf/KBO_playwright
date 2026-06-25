@@ -40,8 +40,7 @@ def run_monthly_pa_audit(target_year: int) -> int:
 
 
 def crawl_monthly_pa_audit_job() -> None:
-    """Audit PA formula for the previous year and apply ratio-based fix.
-    """
+    """Audit PA formula for the previous year and apply ratio-based fix."""
     kst = ZoneInfo("Asia/Seoul")
     current_year = datetime.now(kst).year
     target_year = current_year - 1

@@ -1,5 +1,4 @@
-"""Unified Game Data Collector (Details + optional direct relay fallback).
-"""
+"""Unified Game Data Collector (Details + optional direct relay fallback)."""
 
 from __future__ import annotations
 

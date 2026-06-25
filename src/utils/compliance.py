@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ComplianceChecker:
-    """Fetches and parses robots.txt to check crawling permissions.
-    """
+    """Fetches and parses robots.txt to check crawling permissions."""
 
     _instance: ComplianceChecker | None = None
 
