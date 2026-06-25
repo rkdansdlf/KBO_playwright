@@ -212,7 +212,7 @@ class TestResolveTerminalStatus:
 class TestOutsToDecimal:
     def test_outs_to_decimal_full_innings(self):
         result = _outs_to_decimal(9)
-        assert result == Decimal("3")
+        assert result == Decimal(3)
 
     def test_outs_to_decimal_partial(self):
         result = _outs_to_decimal(10)
@@ -224,7 +224,7 @@ class TestOutsToDecimal:
         assert _outs_to_decimal("") is None
 
     def test_outs_to_decimal_zero(self):
-        assert _outs_to_decimal(0) == Decimal("0")
+        assert _outs_to_decimal(0) == Decimal(0)
 
 
 class TestSafeTime:
