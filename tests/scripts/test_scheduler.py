@@ -8,6 +8,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _inject_mock_module():
     key = "scripts.scheduler"
+    _original = sys.modules.get(key)
     if key in sys.modules:
         mod = sys.modules[key]
     else:
@@ -29,6 +30,11 @@ def _inject_mock_module():
 
     scripts.scheduler = mod
     yield
+    # Restore original module to avoid polluting other test modules
+    if _original is None:
+        sys.modules.pop(key, None)
+    else:
+        sys.modules[key] = _original
 
 
 class TestScheduler:

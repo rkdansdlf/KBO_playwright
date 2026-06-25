@@ -53,6 +53,9 @@ GATE_METRIC_KEYS = (
 )
 
 
+_COLUMNS_CACHE: dict[str, set[str]] = {}
+
+
 def _execute_scalar(conn, sql: str, params: Mapping[str, Any] | None = None) -> int:
     return int(conn.execute(text(sql), dict(params or {})).scalar() or 0)
 
@@ -85,22 +88,30 @@ def table_exists(conn, table_name: str) -> bool:
 
 
 def table_columns(conn, table_name: str) -> set[str]:
+    if table_name in _COLUMNS_CACHE:
+        return _COLUMNS_CACHE[table_name]
     if not table_exists(conn, table_name):
+        _COLUMNS_CACHE[table_name] = set()
         return set()
     dialect = _dialect_name(conn)
     if dialect == "sqlite":
-        return {str(row[1]) for row in conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
+        cols = {str(row[1]) for row in conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
+        _COLUMNS_CACHE[table_name] = cols
+        return cols
     rows = conn.execute(
         text(
             """
             SELECT column_name
             FROM information_schema.columns
             WHERE table_name = :table_name
+              AND table_schema = CURRENT_SCHEMA()
             """
         ),
         {"table_name": table_name},
     ).fetchall()
-    return {str(row[0]) for row in rows}
+    cols = {str(row[0]) for row in rows}
+    _COLUMNS_CACHE[table_name] = cols
+    return cols
 
 
 def _has_columns(conn, table_name: str, columns: Iterable[str]) -> bool:
