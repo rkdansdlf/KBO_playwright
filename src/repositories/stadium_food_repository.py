@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.stadium_food_menu_item import StadiumFoodMenuItem
-from ..models.stadium_food_vendor import StadiumFoodVendor
+from src.models.stadium_food_menu_item import StadiumFoodMenuItem
+from src.models.stadium_food_vendor import StadiumFoodVendor
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

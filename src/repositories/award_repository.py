@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select
 
-from ..models.award import Award
+from src.models.award import Award
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

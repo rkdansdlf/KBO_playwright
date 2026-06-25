@@ -15,8 +15,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
-
-from ..models.stadium_operation_notice import StadiumOperationNotice
+from src.models.stadium_operation_notice import StadiumOperationNotice
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

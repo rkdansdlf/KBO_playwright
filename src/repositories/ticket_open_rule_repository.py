@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.ticket_open_rule import TicketOpenRule
+from src.models.ticket_open_rule import TicketOpenRule
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

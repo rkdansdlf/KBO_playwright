@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.stadium_info import StadiumInfo, StadiumRegulation
+from src.models.stadium_info import StadiumInfo, StadiumRegulation
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

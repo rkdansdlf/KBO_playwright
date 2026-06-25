@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select
 
-from ..models.broadcast import GameBroadcast
+from src.models.broadcast import GameBroadcast
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

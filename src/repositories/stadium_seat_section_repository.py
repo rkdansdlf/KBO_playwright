@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.stadium_seat_section import StadiumSeatSection
+from src.models.stadium_seat_section import StadiumSeatSection
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

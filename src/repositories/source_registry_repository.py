@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 
-from ..models.source_registry import DataSource, RawSourceSnapshot
+from src.models.source_registry import DataSource, RawSourceSnapshot
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

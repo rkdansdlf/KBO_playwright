@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.fan_culture import CheerChant, CheerSong, TeamRivalry
+from src.models.fan_culture import CheerChant, CheerSong, TeamRivalry
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
