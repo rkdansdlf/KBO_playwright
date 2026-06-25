@@ -20,6 +20,7 @@ from sqlalchemy import text
 
 from src.cli.daily_preview_batch import run_preview_batch
 from src.db.engine import SessionLocal
+from src.utils.date_helpers import parse_datetime_str
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -43,7 +44,7 @@ def _yyyymmdd(value: str) -> str:
     if len(normalized) != 8 or not normalized.isdigit():
         msg = f"Invalid date: {value}. Use YYYYMMDD."
         raise argparse.ArgumentTypeError(msg)
-    datetime.strptime(normalized, "%Y%m%d").replace(tzinfo=KST)
+    parse_datetime_str(normalized)
     return normalized
 
 

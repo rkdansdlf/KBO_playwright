@@ -30,6 +30,7 @@ from src.models.game import (
 )
 from src.models.roster_transaction import RosterTransaction
 from src.models.team import TeamDailyRoster
+from src.utils.date_helpers import parse_date_str, parse_datetime_str
 from src.utils.game_status import (
     COMPLETED_LIKE_GAME_STATUSES,
     GAME_STATUS_CANCELLED,
@@ -64,12 +65,12 @@ def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
     if len(normalized) != DATE_STR_LEN or not normalized.isdigit():
         msg = f"Invalid date: {value!r}. Use YYYYMMDD."
         raise ValueError(msg)
-    datetime.strptime(normalized, "%Y%m%d").replace(tzinfo=KST)
+    parse_datetime_str(normalized)
     return normalized
 
 
 def _date_from_yyyymmdd(value: str) -> date:
-    return datetime.strptime(value, "%Y%m%d").replace(tzinfo=KST).date()
+    return parse_date_str(value)
 
 
 def _date_key(value: object) -> str:

@@ -25,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.transit_time_repository import TransitTimeRepository
+from src.utils.date_helpers import parse_date_str
 from src.utils.map_api_client import get_transit_times_batch
 
 logger = logging.getLogger(__name__)
@@ -183,6 +184,6 @@ if __name__ == "__main__":
 
     gdate = None
     if args.game_date:
-        gdate = datetime.strptime(args.game_date, "%Y%m%d").replace(tzinfo=KST).date()
+        gdate = parse_date_str(args.game_date)
 
     asyncio.run(TransitTimeCrawler().run(game_date=gdate, save=args.save))

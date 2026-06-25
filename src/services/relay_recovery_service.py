@@ -7,11 +7,9 @@ import csv
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
 from src.models.season import KboSeason
@@ -33,6 +31,7 @@ from src.sources.relay import (
     normalize_pbp_row,
     read_manifest_entries,
 )
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import (
     COMPLETED_LIKE_GAME_STATUSES,
     GAME_STATUS_SCHEDULED,
@@ -618,7 +617,7 @@ def _load_target_rows(
     )
     if criteria.date:
         try:
-            target_dt = datetime.strptime(criteria.date, "%Y%m%d").replace(tzinfo=KST).date()
+            target_dt = parse_date_str(criteria.date)
         except ValueError as exc:
             msg = f"Invalid date format: {criteria.date}. Use YYYYMMDD."
             raise ValueError(msg) from exc

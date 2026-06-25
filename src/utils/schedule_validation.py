@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
-from src.constants import DATE_STR_LEN, KST
+if TYPE_CHECKING:
+    from datetime import date
+
+from src.constants import DATE_STR_LEN
+from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import (
     COMPLETED_LIKE_GAME_STATUSES,
     GAME_STATUS_CANCELLED,
@@ -28,7 +31,7 @@ def parse_schedule_date(value: object) -> date | None:
     if len(text) != DATE_STR_LEN or not text.isdigit():
         return None
     try:
-        return datetime.strptime(text, "%Y%m%d").replace(tzinfo=KST).date()
+        return parse_date_str(text)
     except ValueError:
         return None
 

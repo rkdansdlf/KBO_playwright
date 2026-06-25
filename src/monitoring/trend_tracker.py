@@ -13,6 +13,7 @@ from typing import Any
 
 from src.constants import DATE_STR_LEN, KST
 from src.utils.alerting import SlackWebhookClient
+from src.utils.date_helpers import parse_datetime_str
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +106,8 @@ class TrendTracker:
         if isinstance(raw_date, str):
             normalized = raw_date.replace("-", "")
             if len(normalized) == DATE_STR_LEN and normalized.isdigit():
-                return datetime.strptime(normalized, "%Y%m%d").replace(tzinfo=KST)
-        return datetime.strptime(path.stem, "%Y%m%d").replace(tzinfo=KST)
+                return parse_datetime_str(normalized)
+        return parse_datetime_str(path.stem)
 
     def _generated_at_key(self, report: dict) -> str:
         generated_at = report.get("generated_at")
