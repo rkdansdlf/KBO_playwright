@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.ticket_price import TicketPrice
+from src.models.ticket_price import TicketPrice
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

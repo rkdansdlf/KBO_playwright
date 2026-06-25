@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 
-from ..models.team_event import TeamEvent
+from src.models.team_event import TeamEvent
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

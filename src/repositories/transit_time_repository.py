@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import and_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from ..models.stadium_transit_time import StadiumTransitTime
+from src.models.stadium_transit_time import StadiumTransitTime
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

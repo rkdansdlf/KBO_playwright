@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from ..models.foreign_player import ForeignPlayerChange
+from src.models.foreign_player import ForeignPlayerChange
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

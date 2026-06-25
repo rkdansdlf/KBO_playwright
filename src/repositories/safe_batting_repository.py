@@ -296,3 +296,37 @@ def cleanup_invalid_batting_data(session: Session | None = None) -> int:
     finally:
         if not session:
             cleanup_session.close()
+
+
+def save_futures_batting(player_id_db: int, rows: list[dict], league: str = "FUTURES", level: str = "KBO2") -> int:
+    if not rows:
+        return 0
+    payloads = [
+        {
+            "player_id": player_id_db,
+            "season": r.get("season"),
+            "league": league,
+            "level": level,
+            "games": r.get("G"),
+            "at_bats": r.get("AB"),
+            "runs": r.get("R"),
+            "hits": r.get("H"),
+            "doubles": r.get("2B"),
+            "triples": r.get("3B"),
+            "home_runs": r.get("HR"),
+            "rbi": r.get("RBI"),
+            "walks": r.get("BB"),
+            "hbp": r.get("HBP"),
+            "strikeouts": r.get("SO"),
+            "stolen_bases": r.get("SB"),
+            "avg": r.get("AVG"),
+            "obp": r.get("OBP"),
+            "slg": r.get("SLG"),
+            "source": "PROFILE",
+        }
+        for r in rows
+        if r.get("season")
+    ]
+    if not payloads:
+        return 0
+    return save_batting_stats_safe(payloads)
