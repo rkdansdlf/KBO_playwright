@@ -68,6 +68,7 @@ select = [
     "BLE",     # flake8-blind-except
     "RUF100",  # unused noqa
     "RUF005",  # collection literal concatenation
+    "RUF006",  # asyncio-dangling-task
     "RUF017",  # avoid-six
     "RUF022",  # unsorted-dunder-all
     "RUF015",  # unnecessary-iterable-allocation-for-first-element
