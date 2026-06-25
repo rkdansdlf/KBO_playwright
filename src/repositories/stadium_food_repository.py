@@ -1,5 +1,4 @@
-"""
-Repository for StadiumFoodVendor and StadiumFoodMenuItem operations.
+"""Repository for StadiumFoodVendor and StadiumFoodMenuItem operations.
 """
 
 from __future__ import annotations

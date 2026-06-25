@@ -1,5 +1,4 @@
-"""
-Seed script to populate stadium_food_vendors and stadium_food_menu_items tables.
+"""Seed script to populate stadium_food_vendors and stadium_food_menu_items tables.
 Initial seed data based on known stadium food information.
 """
 

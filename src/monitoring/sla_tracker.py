@@ -1,5 +1,4 @@
-"""
-SLA tracker: measure data freshness SLAs over time.
+"""SLA tracker: measure data freshness SLAs over time.
 Tracks PBP coverage rate, game completion rate, detail capture rate.
 Generates daily/weekly/monthly SLA reports.
 """
@@ -125,8 +124,7 @@ class SlaTracker:
         logger.info("")
 
     def send_weekly_sla_report(self, end_date: str | None = None) -> None:
-        """
-        Compute the past 7-day SLA data and send a summary to Telegram/Slack.
+        """Compute the past 7-day SLA data and send a summary to Telegram/Slack.
         If end_date is None, uses today (UTC).
         """
         if end_date is None:

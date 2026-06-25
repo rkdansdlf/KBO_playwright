@@ -1,5 +1,4 @@
-"""
-Seed script to populate parking_lots and parking_fee_rules tables.
+"""Seed script to populate parking_lots and parking_fee_rules tables.
 Sources: official stadium/team parking information pages.
 """
 

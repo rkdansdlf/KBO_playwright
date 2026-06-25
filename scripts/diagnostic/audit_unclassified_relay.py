@@ -1,5 +1,4 @@
-"""
-진단 스크립트: 미분류(unnclassified) 문자 중계 텍스트 분석.
+"""진단 스크립트: 미분류(unnclassified) 문자 중계 텍스트 분석.
 
 특정 기간의 game_play_by_play 테이블에서 event_type='unclassified' 또는
 detect_relay_event_type()이 'unknown'을 반환한 텍스트를 수집/분석하여

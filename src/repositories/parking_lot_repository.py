@@ -1,5 +1,4 @@
-"""
-Repository for ParkingLot and ParkingFeeRule operations.
+"""Repository for ParkingLot and ParkingFeeRule operations.
 """
 
 from __future__ import annotations

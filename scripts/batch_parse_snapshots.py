@@ -1,5 +1,4 @@
-"""
-Batch parser middleware: processes pending RawSourceSnapshot records.
+"""Batch parser middleware: processes pending RawSourceSnapshot records.
 
 For each pending snapshot:
   1. Re-fetches the raw content from the URL

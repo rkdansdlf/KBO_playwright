@@ -1,5 +1,4 @@
-"""
-Compatibility wrapper around the new player search crawler.
+"""Compatibility wrapper around the new player search crawler.
 Old pipelines expect a PlayerListCrawler that returns hitters/pitchers buckets.
 """
 

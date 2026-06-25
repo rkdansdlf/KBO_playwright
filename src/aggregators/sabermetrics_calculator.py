@@ -11,15 +11,13 @@ if TYPE_CHECKING:
 
 
 class SabermetricsCalculator:
-    """
-    Service to calculate advanced Sabermetrics (wOBA, wRC+, WAR)
+    """Service to calculate advanced Sabermetrics (wOBA, wRC+, WAR)
     using league-specific constants per season.
     """
 
     @staticmethod
     def get_league_constants(session: Session, year: int) -> dict[str, Any]:
-        """
-        Calculates league-wide averages and constants for a given year.
+        """Calculates league-wide averages and constants for a given year.
         """
         # Aggregate league batting stats
         # Filter: Exclude players that likely have incomplete data (e.g., 0 HR and 0 BB despite high PA)
@@ -134,8 +132,7 @@ class SabermetricsCalculator:
 
     @staticmethod
     def calculate_batting_metrics(stat: PlayerSeasonBatting, lg: dict[str, Any]) -> dict[str, Any]:
-        """
-        Calculates wOBA, wRC+, wRAA, and WAR for a batter.
+        """Calculates wOBA, wRC+, wRAA, and WAR for a batter.
         """
         h_1b = (stat.hits or 0) - (stat.doubles or 0) - (stat.triples or 0) - (stat.home_runs or 0)
         u_bb = (stat.walks or 0) - (stat.intentional_walks or 0)
@@ -182,8 +179,7 @@ class SabermetricsCalculator:
 
     @staticmethod
     def calculate_pitching_metrics(stat: PlayerSeasonPitching, lg: dict[str, Any]) -> dict[str, Any]:
-        """
-        Calculates adjusted FIP and Pitching WAR.
+        """Calculates adjusted FIP and Pitching WAR.
         """
         ip = (stat.innings_outs or 0) / 3.0
 

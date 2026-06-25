@@ -1,5 +1,4 @@
-"""
-CLI for measuring transit times from transit hubs to Jamsil Stadium.
+"""CLI for measuring transit times from transit hubs to Jamsil Stadium.
 
 Usage:
     python -m src.cli.crawl_transit_time --save

@@ -1,5 +1,4 @@
-"""
-OCI sync performance benchmark.
+"""OCI sync performance benchmark.
 
 Measures throughput of key OCI sync operations:
   1. sync_simple_table — read-side throughput (batch size sweep, record count sweep)

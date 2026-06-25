@@ -1,5 +1,4 @@
-"""
-퓨처스리그 선수들의 연도별 타격 기록을 수집하는 CLI 스크립트.
+"""퓨처스리그 선수들의 연도별 타격 기록을 수집하는 CLI 스크립트.
 
 이 스크립트는 다음 단계를 수행합니다:
 1. 특정 시즌의 모든 현역 선수 ID 목록을 가져옵니다.
@@ -127,8 +126,7 @@ async def process_player(
     repository: PlayerRepository,
     pool: AsyncPlaywrightPool,
 ) -> tuple[str, int]:
-    """
-    단일 선수의 퓨처스리그 기록을 크롤링하고 데이터베이스에 저장합니다.
+    """단일 선수의 퓨처스리그 기록을 크롤링하고 데이터베이스에 저장합니다.
 
     Returns:
         (player_id, 저장된 시즌 기록 수)

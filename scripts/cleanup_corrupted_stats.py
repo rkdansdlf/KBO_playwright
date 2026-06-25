@@ -1,5 +1,4 @@
-"""
-Cleanup script to remove corrupted historical player records.
+"""Cleanup script to remove corrupted historical player records.
 Targets records with unrealistic values (e.g., wins > 35, games > 165).
 """
 

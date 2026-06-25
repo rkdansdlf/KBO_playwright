@@ -1,5 +1,4 @@
-"""
-Ranking aggregator that normalizes fielding/baserunning stats.
+"""Ranking aggregator that normalizes fielding/baserunning stats.
 """
 
 from __future__ import annotations

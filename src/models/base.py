@@ -1,5 +1,4 @@
-"""
-Base models and common types for SQLAlchemy ORM
+"""Base models and common types for SQLAlchemy ORM
 """
 
 from __future__ import annotations

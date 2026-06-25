@@ -1,5 +1,4 @@
-"""
-CLI tool to recalculate player-level season stats from game-level (transactional) data.
+"""CLI tool to recalculate player-level season stats from game-level (transactional) data.
 Aggregates GameBattingStat -> PlayerSeasonBatting
 Aggregates GamePitchingStat -> PlayerSeasonPitching
 

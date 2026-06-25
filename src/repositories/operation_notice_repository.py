@@ -1,5 +1,4 @@
-"""
-Repository for StadiumOperationNotice CRUD operations.
+"""Repository for StadiumOperationNotice CRUD operations.
 
 Handles upsert logic based on (stadium_code, source_name, external_id)
 or (stadium_code, source_name, title, published_at) as fallback.
@@ -32,8 +31,7 @@ class OperationNoticeRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumOperationNotice, bool]:
-        """
-        Insert or update a notice.
+        """Insert or update a notice.
 
         Returns (record, created: bool).
         """
@@ -82,8 +80,7 @@ class OperationNoticeRepository:
         return record, True
 
     def bulk_upsert(self, notices: list[dict]) -> tuple[int, int]:
-        """
-        Upsert multiple notices.
+        """Upsert multiple notices.
 
         Returns (created, updated) counts.
         """
@@ -153,8 +150,7 @@ class OperationNoticeRepository:
         return self.get_by_game_date(stadium_code, today, urgent_only=True)
 
     def get_latest_external_id(self, stadium_code: str, source_name: str) -> str | None:
-        """
-        Returns the most recently published external_id for incremental crawling.
+        """Returns the most recently published external_id for incremental crawling.
         """
         stmt = (
             select(StadiumOperationNotice.external_id)

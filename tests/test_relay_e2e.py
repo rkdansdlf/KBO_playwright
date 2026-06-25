@@ -1,5 +1,4 @@
-"""
-End-to-end test for RELAY crawler.
+"""End-to-end test for RELAY crawler.
 Tests fetching and saving play-by-play data.
 """
 

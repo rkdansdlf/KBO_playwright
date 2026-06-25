@@ -1,5 +1,4 @@
-"""
-Service to fetch vector embeddings from Gemini API or OpenRouter API.
+"""Service to fetch vector embeddings from Gemini API or OpenRouter API.
 """
 
 from __future__ import annotations
@@ -20,8 +19,7 @@ EMBEDDING_HTTP_EXCEPTIONS = (httpx.HTTPError, ValueError, TypeError, RuntimeErro
 
 
 class EmbeddingService:
-    """
-    Connects to external embedding providers to generate vector arrays for chunk texts.
+    """Connects to external embedding providers to generate vector arrays for chunk texts.
     """
 
     def __init__(self) -> None:
@@ -30,8 +28,7 @@ class EmbeddingService:
             logger.warning("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
 
     def adjust_embedding_dimension(self, embedding: list[float], target_dim: int = 256) -> list[float]:
-        """
-        Truncates or pads embedding list to target_dim.
+        """Truncates or pads embedding list to target_dim.
         If truncating, L2 normalization is applied.
         """
         if not embedding:
@@ -59,15 +56,13 @@ class EmbeddingService:
         return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
     def get_embedding(self, text: str) -> list[float]:
-        """
-        Generates embedding for a single text string.
+        """Generates embedding for a single text string.
         """
         results = self.get_embeddings_batch([text])
         return results[0] if results else [0.0] * 256
 
     def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
-        """
-        Generates embeddings for a batch of text strings, utilizing a local SQLite cache.
+        """Generates embeddings for a batch of text strings, utilizing a local SQLite cache.
         """
         if not texts:
             return []
@@ -168,8 +163,7 @@ class EmbeddingService:
             cached_map[hashes[missing_indices[idx]]] = emb
 
     def _fetch_openrouter_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """
-        Calls OpenRouter's OpenAI-compatible embeddings endpoint.
+        """Calls OpenRouter's OpenAI-compatible embeddings endpoint.
         """
         url = "https://openrouter.ai/api/v1/embeddings"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
@@ -197,8 +191,7 @@ class EmbeddingService:
         return [[0.0] * 256 for _ in texts]
 
     def _fetch_google_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """
-        Calls standard Google Gemini AI Studio Embeddings API.
+        """Calls standard Google Gemini AI Studio Embeddings API.
         """
         # Google text-embedding-004 supports batching via batchEmbedContents
         url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key={self.api_key}"

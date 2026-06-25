@@ -1,5 +1,4 @@
-"""
-Park Factor calculator for KBO stadiums.
+"""Park Factor calculator for KBO stadiums.
 Calculates run factor (PF) and home run factor (HRF) per stadium per season.
 Formula: (RS + RA)_home / (RS + RA)_away  (standardized to 1.00 = neutral)
 """

@@ -1,5 +1,4 @@
-"""
-Crawler for static text sources: rulebooks (PDF) and baseball encyclopedias/wikis (Namuwiki).
+"""Crawler for static text sources: rulebooks (PDF) and baseball encyclopedias/wikis (Namuwiki).
 """
 
 from __future__ import annotations
@@ -22,8 +21,7 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 
 
 class StaticTextCrawler:
-    """
-    Crawls and extracts static text (rules, history, terminology)
+    """Crawls and extracts static text (rules, history, terminology)
     from local/remote PDFs and wikis.
     """
 
@@ -32,8 +30,7 @@ class StaticTextCrawler:
         self._raw_pages: list[dict] = []
 
     def parse_local_pdf(self, pdf_path: str) -> list[dict[str, Any]]:
-        """
-        Parses a local PDF rulebook using pypdf and extracts text by page.
+        """Parses a local PDF rulebook using pypdf and extracts text by page.
         """
         logger.info("📄 Parsing local PDF: %s", pdf_path)
         if not Path(pdf_path).exists():
@@ -68,8 +65,7 @@ class StaticTextCrawler:
         return chunks
 
     async def crawl_namuwiki(self, url: str, *, save: bool = False) -> dict[str, Any]:
-        """
-        Crawls a Namuwiki page using Playwright to bypass Cloudflare protection
+        """Crawls a Namuwiki page using Playwright to bypass Cloudflare protection
         and extracts cleaned main content with BeautifulSoup.
         """
         logger.info("🌐 Crawling Namuwiki page: %s", url)

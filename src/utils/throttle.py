@@ -11,8 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncThrottle:
-    """
-    A centralized throttling service with random jitter to prevent IP blocks.
+    """A centralized throttling service with random jitter to prevent IP blocks.
     Respects global delays configured via environment variables.
     """
 
@@ -49,8 +48,7 @@ class AsyncThrottle:
         return max(0.0, self._default_delay + current_jitter)
 
     async def wait(self, host: str = "koreabaseball.com") -> None:
-        """
-        Wait for the required delay plus jitter since the last request to this host.
+        """Wait for the required delay plus jitter since the last request to this host.
         Safe for concurrent use.
         """
         lock = self._get_lock()
@@ -70,8 +68,7 @@ class AsyncThrottle:
             self._last_request_times[host] = time.monotonic()
 
     def wait_sync(self, host: str = "koreabaseball.com") -> None:
-        """
-        Synchronous version of wait.
+        """Synchronous version of wait.
         """
         now = time.monotonic()
         last_time = self._last_request_times.get(host, 0.0)

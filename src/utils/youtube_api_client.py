@@ -1,5 +1,4 @@
-"""
-YouTube Data API v3 client for KBO cheer song collection.
+"""YouTube Data API v3 client for KBO cheer song collection.
 
 Fetches cheer song playlists from official KBO team YouTube channels.
 This replaces the Namu Wiki crawler which is blocked.
@@ -132,8 +131,7 @@ def _extract_player_name(title: str) -> str | None:
 
 
 class YouTubeAPIClient:
-    """
-    Async client for YouTube Data API v3.
+    """Async client for YouTube Data API v3.
 
     Usage:
         client = YouTubeAPIClient()

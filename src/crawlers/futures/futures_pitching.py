@@ -181,8 +181,7 @@ async def fetch_and_parse_futures_pitching(
     profile_url: str,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[dict]:
-    """
-    Fetch Futures pitching stats from player profile page.
+    """Fetch Futures pitching stats from player profile page.
     """
     active_pool = pool or AsyncPlaywrightPool(max_pages=1, context_kwargs={"locale": "ko-KR"})
     owns_pool = pool is None

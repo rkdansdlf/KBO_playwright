@@ -21,8 +21,7 @@ SABERMETRICS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeE
 
 
 def batch_calculate_sabermetrics(years: list[int], *, sync_oci: bool = False) -> None:
-    """
-    Batches through years and updates all players with advanced Sabermetrics.
+    """Batches through years and updates all players with advanced Sabermetrics.
     """
     with SessionLocal() as session:
         for year in years:

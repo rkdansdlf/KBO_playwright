@@ -1,5 +1,4 @@
-"""
-Utility helpers to classify player rows into active/retired/staff buckets.
+"""Utility helpers to classify player rows into active/retired/staff buckets.
 """
 
 from __future__ import annotations
@@ -35,8 +34,7 @@ def _normalize(value: str | None) -> str:
 
 
 def classify_player(entry: dict[str, object]) -> PlayerCategory:
-    """
-    Rough heuristic to classify player search rows.
+    """Rough heuristic to classify player search rows.
     - Position strings with 감독/코치 계열 → staff categories
     - Empty team/position or explicit '은퇴' 키워드 → RETIRED
     - Otherwise treated as ACTIVE

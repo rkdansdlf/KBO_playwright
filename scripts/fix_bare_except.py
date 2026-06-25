@@ -1,5 +1,4 @@
-"""
-Auto-fix silent bare except Exception blocks in crawler files.
+"""Auto-fix silent bare except Exception blocks in crawler files.
 Adds logger.exception() before pass/continue/return to prevent silent error swallowing.
 """
 

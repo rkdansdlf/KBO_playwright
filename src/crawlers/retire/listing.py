@@ -1,5 +1,4 @@
-"""
-Determine retired/inactive player IDs by comparing historical rosters with current active rosters.
+"""Determine retired/inactive player IDs by comparing historical rosters with current active rosters.
 """
 
 from __future__ import annotations
@@ -35,8 +34,7 @@ RETIRE_LISTING_CRAWL_EXCEPTIONS = (
 
 
 class RetiredPlayerListingCrawler:
-    """
-    Fetch player ID sets for historical seasons and compute inactive (retired) candidates.
+    """Fetch player ID sets for historical seasons and compute inactive (retired) candidates.
     """
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
@@ -250,8 +248,7 @@ class RetiredPlayerListingCrawler:
         end_year: int,
         active_year: int,
     ) -> set[str]:
-        """
-        Determine inactive player IDs by diffing historical seasons with active roster.
+        """Determine inactive player IDs by diffing historical seasons with active roster.
         Returns ONLY the set of IDs for backward compatibility.
         """
         if start_year > end_year:

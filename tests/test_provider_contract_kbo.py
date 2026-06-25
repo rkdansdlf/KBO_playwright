@@ -1,5 +1,4 @@
-"""
-Contract tests for KBO LiveText.aspx HTML structure.
+"""Contract tests for KBO LiveText.aspx HTML structure.
 
 Validates that the KBO website relay page structure matches
 what PBPCrawler expects. Uses fixtures from tests/fixtures/kbo_live_text/.

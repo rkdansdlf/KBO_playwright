@@ -1,5 +1,4 @@
-"""
-Map API client utilities for transit time measurement.
+"""Map API client utilities for transit time measurement.
 
 Provides a unified interface to call Kakao, Naver, and TMAP direction APIs
 to measure real travel times from transit hubs to the stadium.
@@ -203,8 +202,7 @@ class TransitRequest:
 
 
 async def get_transit_time(req: TransitRequest) -> TransitResult | None:
-    """
-    Fetch transit duration from origin to Jamsil Stadium using available APIs.
+    """Fetch transit duration from origin to Jamsil Stadium using available APIs.
 
     Falls through Kakao → Naver → TMAP until one succeeds.
     Returns None if all APIs fail or no keys are configured.
@@ -237,8 +235,7 @@ async def get_transit_times_batch(
     dest_lat: float = JAMSIL_LAT,
     dest_lng: float = JAMSIL_LNG,
 ) -> list[TransitResult]:
-    """
-    Batch transit time lookup for multiple origins.
+    """Batch transit time lookup for multiple origins.
 
     origins: list of {"label": str, "lat": float, "lng": float}
     """

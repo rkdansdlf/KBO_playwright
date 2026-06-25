@@ -1,5 +1,4 @@
-"""
-선수의 시즌별 주루 기록을 크롤링하고 DB에 저장합니다.
+"""선수의 시즌별 주루 기록을 크롤링하고 DB에 저장합니다.
 """
 
 from __future__ import annotations
@@ -50,8 +49,7 @@ def crawl_baserunning_stats(
     max_retries: int = 3,
     timeout: int = LONG_TIMEOUT,
 ) -> list[dict[str, Any]]:
-    """
-    전체 선수의 주루 기록을 크롤링합니다.
+    """전체 선수의 주루 기록을 크롤링합니다.
 
     Args:
         year: 시즌 연도 (None이면 현재 연도)

@@ -1,5 +1,4 @@
-"""
-Repository utilities for player domain (profiles, identities, seasons).
+"""Repository utilities for player domain (profiles, identities, seasons).
 """
 
 from __future__ import annotations
@@ -39,8 +38,7 @@ class PlayerRepository:
     # Profile / identity handling
     # ------------------------------------------------------------------
     def upsert_player_profile(self, kbo_player_id: str, profile: PlayerProfileParsed) -> Player | None:
-        """
-        Upsert player and primary identity based on parsed profile info.
+        """Upsert player and primary identity based on parsed profile info.
         Also synchronizes status and key fields to PlayerBasic.
         """
         if not kbo_player_id:

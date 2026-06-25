@@ -1,5 +1,4 @@
-"""
-KBO Daily Data Quality Report Generator.
+"""KBO Daily Data Quality Report Generator.
 Analyzes daily data integrity and statistical consistency.
 """
 
@@ -270,8 +269,7 @@ def _auto_remediation_status(*, has_abort: bool, has_warning: bool, has_fixed: b
 
 
 def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = None) -> dict[str, Any]:
-    """
-    Scans logs/audit_fixes/ for files starting with target_date_str.
+    """Scans logs/audit_fixes/ for files starting with target_date_str.
     Parses warning, abort, and fixed player details to return a status summary.
     """
     audit_dir = audit_dir or _default_audit_fix_dir()

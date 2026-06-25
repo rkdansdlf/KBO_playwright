@@ -1,5 +1,4 @@
-"""
-Robots.txt compliance checker for KBO Data Crawler.
+"""Robots.txt compliance checker for KBO Data Crawler.
 Ensures that we follow Disallow rules from koreabaseball.com.
 """
 
@@ -20,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ComplianceChecker:
-    """
-    Fetches and parses robots.txt to check crawling permissions.
+    """Fetches and parses robots.txt to check crawling permissions.
     """
 
     _instance: ComplianceChecker | None = None

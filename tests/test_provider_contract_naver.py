@@ -1,5 +1,4 @@
-"""
-Contract tests for Naver Sports API relay response structure.
+"""Contract tests for Naver Sports API relay response structure.
 
 Validates that the Naver API response matches the expected schema
 so that parser assumptions hold. Uses fixtures captured from real API calls

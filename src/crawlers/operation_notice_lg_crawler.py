@@ -1,5 +1,4 @@
-"""
-Crawler for LG Twins official operation notices (lgtwins.com).
+"""Crawler for LG Twins official operation notices (lgtwins.com).
 
 Scrapes game-day notices including gate changes, entry restrictions,
 rain delays, and general announcements. Supports incremental crawling
@@ -73,8 +72,7 @@ def _extract_article_id(href: str) -> str | None:
 
 
 class OperationNoticeLGCrawler:
-    """
-    Crawls LG Twins official announcements and maps them to
+    """Crawls LG Twins official announcements and maps them to
     StadiumOperationNotice records for JAMSIL stadium.
     """
 
@@ -83,8 +81,7 @@ class OperationNoticeLGCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
-        """
-        Crawl notices. If stop_at_external_id is provided, stops when
+        """Crawl notices. If stop_at_external_id is provided, stops when
         a previously seen article is encountered (incremental mode).
         """
         all_notices: list[dict] = []

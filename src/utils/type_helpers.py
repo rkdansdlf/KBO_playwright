@@ -105,8 +105,7 @@ def _parse_decimal_innings(cleaned: str) -> int | None:
 
 
 def parse_innings_to_outs(text: str | None) -> int | None:
-    """
-    Convert innings string to total outs.
+    """Convert innings string to total outs.
 
     Supports:
       - 'X Y/3'   (e.g. '5 1/3' -> 16)

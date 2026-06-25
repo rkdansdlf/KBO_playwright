@@ -1,5 +1,4 @@
-"""
-Data integrity checker for post-crawl validation.
+"""Data integrity checker for post-crawl validation.
 
 Runs after the main daily update pipeline to verify that the collected data
 meets quality standards. Checks for:

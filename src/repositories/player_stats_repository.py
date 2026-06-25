@@ -1,5 +1,4 @@
-"""
-Repositories for player-level advanced season statistics (Fielding, Baserunning).
+"""Repositories for player-level advanced season statistics (Fielding, Baserunning).
 """
 
 from __future__ import annotations

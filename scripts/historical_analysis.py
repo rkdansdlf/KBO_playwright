@@ -1,5 +1,4 @@
-"""
-Historical analysis of KBO statistics from 1982 to 2026.
+"""Historical analysis of KBO statistics from 1982 to 2026.
 Generates Hall of Fame style rankings and historical team records.
 """
 

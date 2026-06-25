@@ -1,5 +1,4 @@
-"""
-Aggregate player-level fielding & baserunning stats to team-season level.
+"""Aggregate player-level fielding & baserunning stats to team-season level.
 """
 
 from __future__ import annotations

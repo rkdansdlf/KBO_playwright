@@ -18,8 +18,7 @@ TEAM_INFO_MODAL_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, Value
 
 
 class TeamInfoCrawler:
-    """
-    Crawls KBO Team Info page (https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx)
+    """Crawls KBO Team Info page (https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx)
     Collects: CEO, Owner, Founded Date, Homepage, Phone, Address
     """
 

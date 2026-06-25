@@ -1,5 +1,4 @@
-"""
-PBP Crawler - Historical Play-by-play data collection (`LiveTextView2.aspx`).
+"""PBP Crawler - Historical Play-by-play data collection (`LiveTextView2.aspx`).
 Navigaes directly to the Live Text View page to collect events.
 Computes WPA transitions based on the events.
 """
@@ -194,8 +193,7 @@ class PBPCrawler:
         }
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """
-        Loads the LiveText page for a specific game and extracts PBP data.
+        """Loads the LiveText page for a specific game and extracts PBP data.
         """
         self.last_failure_reason = None
         game_date = game_id[:8]

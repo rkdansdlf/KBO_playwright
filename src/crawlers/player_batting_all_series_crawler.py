@@ -1,5 +1,4 @@
-"""
-KBO 전체 시리즈 타자 기록 크롤러
+"""KBO 전체 시리즈 타자 기록 크롤러
 - 정규시즌, 시범경기, 와일드카드, 준플레이오프, 플레이오프, 한국시리즈
 
 Usage:
@@ -106,8 +105,7 @@ def get_series_mapping() -> dict[str, dict[str, str]]:
 
 
 def safe_parse_number(value_str: str, data_type: type, *, _allow_zero: bool = True) -> int | float | None:
-    """
-    안전하게 숫자를 파싱하는 함수
+    """안전하게 숫자를 파싱하는 함수
 
     Args:
         value_str: 파싱할 문자열
@@ -223,8 +221,7 @@ def _build_batting_data(ctx: BattingRowData) -> dict[str, Any]:
 
 
 def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | None = None) -> list[dict]:
-    """
-    Parse batting table using JS extraction for reduced RPC.
+    """Parse batting table using JS extraction for reduced RPC.
     """
     year = year or datetime.now(KST).year
     get_team_mapping_for_year(year)
@@ -387,8 +384,7 @@ def build_batting_crawl_summary(rows: list[dict]) -> tuple[dict[str, object], li
 
 
 def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | None = None) -> bool:
-    """
-    다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
+    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
     """
     try:
         if current_page_num % 5 == 0:  # 5페이지마다 "다음" 버튼 클릭
@@ -499,8 +495,7 @@ def crawl_basic2_with_headers(
     series_info: dict,
     policy: RequestPolicy | None = None,
 ) -> dict[int, dict]:
-    """
-    정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집
+    """정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집
     """
     all_player_data = {}
 
@@ -645,8 +640,7 @@ def _parse_basic2_header_data_legacy(
     description: str,
     year: int | None = None,
 ) -> dict[int, dict]:
-    """
-    Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
+    """Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
     각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집
     """
     year = year or datetime.now(KST).year
@@ -780,8 +774,7 @@ def parse_basic2_header_data(
 
 
 def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> list[dict]:
-    """
-    KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다.
+    """KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다.
     """
     FallbackMonitor.log_fallback(year, series_key, "BATTING", reason)
     logger.info("🔄 로컬 DB 기반 타자 기록 집계 시작 (연도: %s, 시리즈: %s)...", year, series_key)
@@ -1039,8 +1032,7 @@ def crawl_series_batting_stats(
     headless: bool = False,
     by_team: bool = False,
 ) -> list[dict]:
-    """
-    특정 시리즈의 타자 기록을 크롤링
+    """특정 시리즈의 타자 기록을 크롤링
 
     Args:
         year: 시즌 연도
@@ -1159,8 +1151,7 @@ def crawl_all_series(
     headless: bool = False,
     by_team: bool = False,
 ) -> dict[str, list[dict]]:
-    """
-    모든 시리즈의 타자 기록을 크롤링
+    """모든 시리즈의 타자 기록을 크롤링
 
     Returns:
         시리즈별 수집된 데이터 딕셔너리

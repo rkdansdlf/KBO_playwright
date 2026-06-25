@@ -1,5 +1,4 @@
-"""
-KBO 전체 시리즈 투수 기록 크롤러
+"""KBO 전체 시리즈 투수 기록 크롤러
 
 요구사항 요약:
 1. https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx 페이지에서
@@ -193,8 +192,7 @@ def wait_for_table(page: Page, timeout: int = 30000) -> None:
 
 
 def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None = None) -> bool:
-    """
-    다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
+    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
     """
     try:
         # 1→2,3,4,5→다음→6,7,8,9,10→다음 패턴
@@ -747,8 +745,7 @@ def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[s
 
 
 def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> list[PitcherStats]:
-    """
-    KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 투수 시즌 기록을 생성합니다.
+    """KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 투수 시즌 기록을 생성합니다.
     """
     FallbackMonitor.log_fallback(year, series_key, "PITCHING", reason)
     logger.info("🔄 로컬 DB 기반 투수 기록 집계 시작 (연도: %s, 시리즈: %s)...", year, series_key)

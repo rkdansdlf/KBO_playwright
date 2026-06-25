@@ -14,8 +14,7 @@ from src.db.engine import SessionLocal
 
 
 def fix_lotte_code():
-    """
-    Updates the Lotte Giants team code in the team_franchises table from 'LOT' to 'LT'.
+    """Updates the Lotte Giants team code in the team_franchises table from 'LOT' to 'LT'.
     """
     logger.info("Starting Lotte team code fix...")
 

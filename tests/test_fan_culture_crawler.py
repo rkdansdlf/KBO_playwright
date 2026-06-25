@@ -1,5 +1,4 @@
-"""
-Tests for YouTube Data API-based fan culture crawler.
+"""Tests for YouTube Data API-based fan culture crawler.
 
 Covers:
   - YouTubeAPIClient: configuration check

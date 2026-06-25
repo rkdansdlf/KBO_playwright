@@ -1,5 +1,4 @@
-"""
-Async Playwright browser/page pool with optional resource blocking.
+"""Async Playwright browser/page pool with optional resource blocking.
 """
 
 from __future__ import annotations

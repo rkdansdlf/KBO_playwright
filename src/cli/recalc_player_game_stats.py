@@ -1,5 +1,4 @@
-"""
-CLI tool to recalculate player-game-level stats from game-level (transactional) data.
+"""CLI tool to recalculate player-game-level stats from game-level (transactional) data.
 Aggregates GameBattingStat -> PlayerGameBatting
 Aggregates GamePitchingStat -> PlayerGamePitching
 

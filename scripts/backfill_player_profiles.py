@@ -1,5 +1,4 @@
-"""
-Backfill Player Profiles
+"""Backfill Player Profiles
 Collects missing photo_url, salary, draft_info, etc. for existing players in player_basic table.
 Usage: python3 scripts/backfill_player_profiles.py --limit 10 --delay 2.0
 """

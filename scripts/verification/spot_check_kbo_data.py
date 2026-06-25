@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-KBO Live Data Spot-Checker.
+"""KBO Live Data Spot-Checker.
 Randomly samples database records (players, games) and verifies them
 against live data on the official KBO website.
 """

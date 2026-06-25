@@ -1,5 +1,4 @@
-"""
-One-time backfill: derive SH/SF from PBP events for existing game_batting_stats.
+"""One-time backfill: derive SH/SF from PBP events for existing game_batting_stats.
 
 Scans completed games where sacrifice_hits=0 and sacrifice_flies=0,
 queries game_events for SAC_BUNT (SH) and qualifying FLYOUT (SF) events,

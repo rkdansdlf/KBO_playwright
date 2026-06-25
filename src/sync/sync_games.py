@@ -1,5 +1,4 @@
-"""
-Game-level sync: games, details, PBP, play-by-play, player game stats.
+"""Game-level sync: games, details, PBP, play-by-play, player game stats.
 """
 
 from __future__ import annotations
@@ -208,8 +207,7 @@ class GameSyncMixin:
         }
 
     def _purge_game_detail_children_for_year(self, year: int) -> None:
-        """
-        Delete year-scoped child detail rows on OCI before re-sync.
+        """Delete year-scoped child detail rows on OCI before re-sync.
         This prevents stale duplicates when mutable fields (e.g. player_id) change.
         """
         pattern = f"{year}%"

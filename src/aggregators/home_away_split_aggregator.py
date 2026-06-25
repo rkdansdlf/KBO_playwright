@@ -1,5 +1,4 @@
-"""
-Aggregate player batting/pitching home/away splits from game-level stats.
+"""Aggregate player batting/pitching home/away splits from game-level stats.
 """
 
 from __future__ import annotations
