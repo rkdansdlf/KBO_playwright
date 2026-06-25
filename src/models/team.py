@@ -1,4 +1,4 @@
-"""Team-related ORM models
+"""Team-related ORM models.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from .base import Base, TimestampMixin
 
 class Team(Base, TimestampMixin):
     """Represents a KBO team.
-    Data is seeded from Docs/schema/teams (구단 정보).csv
+    Data is seeded from Docs/schema/teams (구단 정보).csv.
     """
 
     __tablename__ = "teams"
@@ -47,7 +47,7 @@ class Team(Base, TimestampMixin):
 
 class TeamDailyRoster(Base, TimestampMixin):
     """Daily snapshot of 1st team registration.
-    Source: https://www.koreabaseball.com/Player/Register.aspx
+    Source: https://www.koreabaseball.com/Player/Register.aspx.
     """
 
     __tablename__ = "team_daily_roster"

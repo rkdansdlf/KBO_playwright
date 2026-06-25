@@ -142,7 +142,7 @@ class GameSyncMixin:
         return data
 
     def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:
-        """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
+        """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY."""
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
         season_map = self._get_season_map()
 
@@ -178,7 +178,7 @@ class GameSyncMixin:
         )
 
     def sync_player_game_batting(self, year: int | None = None, batch_size: int = 5000) -> int:
-        """Sync player game batting stats from SQLite to OCI"""
+        """Sync player game batting stats from SQLite to OCI."""
         filters = [PlayerGameBatting.game_id.like(f"{year}%")] if year else None
         return self.sync_simple_table(
             PlayerGameBatting,
@@ -188,7 +188,7 @@ class GameSyncMixin:
         )
 
     def sync_player_game_pitching(self, year: int | None = None, batch_size: int = 5000) -> int:
-        """Sync player game pitching stats from SQLite to OCI"""
+        """Sync player game pitching stats from SQLite to OCI."""
         filters = [PlayerGamePitching.game_id.like(f"{year}%")] if year else None
         return self.sync_simple_table(
             PlayerGamePitching,
@@ -198,7 +198,7 @@ class GameSyncMixin:
         )
 
     def sync_all_game_data(self, limit: int | None = None) -> dict[str, int]:
-        """Sync all game-related data"""
+        """Sync all game-related data."""
         return {
             "game_schedules": self.sync_game_schedules(limit=limit),
             "games": self.sync_games(limit=limit),
@@ -625,7 +625,7 @@ class GameSyncMixin:
         return results
 
     def sync_specific_game(self, game_id: str) -> dict[str, int]:
-        """Sync all related data for a single game_id"""
+        """Sync all related data for a single game_id."""
         if not self.test_connection():
             logger.error("❌ OCI connection failed. Aborting sync_specific_game.")
             return {}

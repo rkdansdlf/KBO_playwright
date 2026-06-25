@@ -80,14 +80,14 @@ class PlayerSyncMixin:
         return self._player_id_mapping_cache
 
     def sync_all_batting_data(self) -> dict[str, int]:
-        """모든 타격 관련 데이터 동기화 (타자 + 투수)"""
+        """모든 타격 관련 데이터 동기화 (타자 + 투수)."""
         return {
             "pitcher_data": self.sync_pitcher_data(),
             "batting_data": self.sync_batting_data(),
         }
 
     def sync_player_basic(self, limit: int | None = None) -> int:
-        """Sync player_basic data from SQLite to OCI using fast bulk COPY"""
+        """Sync player_basic data from SQLite to OCI using fast bulk COPY."""
         return self.sync_simple_table(
             PlayerBasic,
             conflict_keys=["player_id"],

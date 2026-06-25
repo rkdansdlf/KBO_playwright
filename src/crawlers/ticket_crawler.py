@@ -1,7 +1,7 @@
 """Crawler for ticket prices, open rules, and seat information from KBO and team pages.
 Sources:
   - KBO ticket info: https://www.koreabaseball.com/Kbo/League/Map.aspx
-  - Team ticket pages (LG, etc.)
+  - Team ticket pages (LG, etc.).
 """
 
 from __future__ import annotations

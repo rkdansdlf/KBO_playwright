@@ -1,4 +1,4 @@
-"""Repository for Team related data (Roster, Info, etc.)
+"""Repository for Team related data (Roster, Info, etc.).
 """
 
 from __future__ import annotations

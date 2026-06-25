@@ -107,7 +107,7 @@ def _clean(s: str | None) -> str:
 
 
 def _to_year(two_digits: int, cutoff: int = 50) -> int:
-    """00~cutoff-1 -> 2000s, cutoff~99 -> 1900s (e.g. 06 -> 2006, 98 -> 1998)"""
+    """00~cutoff-1 -> 2000s, cutoff~99 -> 1900s (e.g. 06 -> 2006, 98 -> 1998)."""
     return (2000 + two_digits) if two_digits < cutoff else (1900 + two_digits)
 
 
@@ -186,7 +186,7 @@ def parse_path(s: str) -> list[str]:
 def parse_money(s: str) -> dict[str, Any | None]:
     """Parse currency amounts:
     - '200000달러' -> amount=200000, currency='USD'
-    - '160000만원' -> amount=1600000000, currency='KRW'
+    - '160000만원' -> amount=1600000000, currency='KRW'.
     """
     if not s:
         return {"amount": None, "currency": None, "original": None}

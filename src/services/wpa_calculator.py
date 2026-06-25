@@ -41,7 +41,7 @@ class WPACalculator:
 
     def _load_matrix(self, path: str) -> None:
         """Load Win Expectancy Matrix from CSV.
-        Expected columns: inning, half, outs, runners, score_diff, win_prob
+        Expected columns: inning, half, outs, runners, score_diff, win_prob.
         """
         if not Path(path).exists():
             logger.warning("⚠️ Win Expectancy Matrix not found at %s. Using fallback formula.", path)

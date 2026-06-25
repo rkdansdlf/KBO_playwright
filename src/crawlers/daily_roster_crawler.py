@@ -1,5 +1,5 @@
 """Crawler for Daily 1st Team Registration Status.
-Source: https://www.koreabaseball.com/Player/Register.aspx
+Source: https://www.koreabaseball.com/Player/Register.aspx.
 """
 
 from __future__ import annotations

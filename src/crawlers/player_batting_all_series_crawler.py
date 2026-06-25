@@ -1,5 +1,5 @@
 """KBO 전체 시리즈 타자 기록 크롤러
-- 정규시즌, 시범경기, 와일드카드, 준플레이오프, 플레이오프, 한국시리즈
+- 정규시즌, 시범경기, 와일드카드, 준플레이오프, 플레이오프, 한국시리즈.
 
 Usage:
     # 2025년 모든 시리즈 크롤링
@@ -93,7 +93,7 @@ DB_SAVE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
 
 
 def get_series_mapping() -> dict[str, dict[str, str]]:
-    """시리즈 이름과 선택 값 매핑 (실제 페이지에서 확인된 값)"""
+    """시리즈 이름과 선택 값 매핑 (실제 페이지에서 확인된 값)."""
     return {
         "regular": {"name": "KBO 정규시즌", "value": "0", "league": "REGULAR"},
         "exhibition": {"name": "KBO 시범경기", "value": "1", "league": "EXHIBITION"},
@@ -105,7 +105,7 @@ def get_series_mapping() -> dict[str, dict[str, str]]:
 
 
 def safe_parse_number(value_str: str, data_type: type, *, _allow_zero: bool = True) -> int | float | None:
-    """안전하게 숫자를 파싱하는 함수
+    """안전하게 숫자를 파싱하는 함수.
 
     Args:
         value_str: 파싱할 문자열
@@ -384,7 +384,7 @@ def build_batting_crawl_summary(rows: list[dict]) -> tuple[dict[str, object], li
 
 
 def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | None = None) -> bool:
-    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
+    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복).
     """
     try:
         if current_page_num % 5 == 0:  # 5페이지마다 "다음" 버튼 클릭
@@ -495,7 +495,7 @@ def crawl_basic2_with_headers(
     series_info: dict,
     policy: RequestPolicy | None = None,
 ) -> dict[int, dict]:
-    """정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집
+    """정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집.
     """
     all_player_data = {}
 
@@ -641,7 +641,7 @@ def _parse_basic2_header_data_legacy(
     year: int | None = None,
 ) -> dict[int, dict]:
     """Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
-    각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집
+    각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집.
     """
     year = year or datetime.now(KST).year
     players_data = {}
@@ -1032,7 +1032,7 @@ def crawl_series_batting_stats(
     headless: bool = False,
     by_team: bool = False,
 ) -> list[dict]:
-    """특정 시리즈의 타자 기록을 크롤링
+    """특정 시리즈의 타자 기록을 크롤링.
 
     Args:
         year: 시즌 연도
@@ -1151,7 +1151,7 @@ def crawl_all_series(
     headless: bool = False,
     by_team: bool = False,
 ) -> dict[str, list[dict]]:
-    """모든 시리즈의 타자 기록을 크롤링
+    """모든 시리즈의 타자 기록을 크롤링.
 
     Returns:
         시리즈별 수집된 데이터 딕셔너리

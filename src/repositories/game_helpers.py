@@ -1360,7 +1360,7 @@ def _json_dumps(payload: dict[str, Any]) -> str:
 def _extract_players_from_text(category: str, text: str) -> list[tuple[str, str | None]]:
     """Extract (player_name, detail) from summary text blocks.
     Example: '강민호1호(2회1점 쿠에바스) 로하스1호(4회1점 코너)'
-             -> [('강민호', '강민호1호(...)'), ('로하스', '로하스1호(...)')]
+             -> [('강민호', '강민호1호(...)'), ('로하스', '로하스1호(...)')].
     """
     if not text or text == "없음":
         return []

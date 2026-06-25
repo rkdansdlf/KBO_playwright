@@ -37,7 +37,7 @@ def classify_player(entry: dict[str, object]) -> PlayerCategory:
     """Rough heuristic to classify player search rows.
     - Position strings with 감독/코치 계열 → staff categories
     - Empty team/position or explicit '은퇴' 키워드 → RETIRED
-    - Otherwise treated as ACTIVE
+    - Otherwise treated as ACTIVE.
     """
     status_source = entry.get("status_source")
     if status_source == "register":

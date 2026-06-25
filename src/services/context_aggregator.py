@@ -383,7 +383,7 @@ class ContextAggregator:
         return _classify_final_payload(final_payload, raw)
 
     def get_team_l10_summary(self, team_code: str, target_date: date) -> dict[str, Any]:
-        """최근 10경기 승패 및 연승/연패 흐름 계산"""
+        """최근 10경기 승패 및 연승/연패 흐름 계산."""
         games = (
             self.session.query(Game)
             .filter(
@@ -439,7 +439,7 @@ class ContextAggregator:
         }
 
     def get_head_to_head_summary(self, team_a: str, team_b: str, season_year: int, target_date: date) -> dict[str, Any]:
-        """올 시즌 두 팀간의 맞대결 전적 계산"""
+        """올 시즌 두 팀간의 맞대결 전적 계산."""
         games = (
             self.session.query(Game)
             .filter(
@@ -484,7 +484,7 @@ class ContextAggregator:
         }
 
     def get_crucial_moments(self, game_id: str, limit: int = 3) -> list[dict[str, Any]]:
-        """WPA 기반 승부처(하이라이트) 추출"""
+        """WPA 기반 승부처(하이라이트) 추출."""
         candidate_limit = max(limit * 10, 25)
         events = (
             self.session.query(GameEvent)
@@ -518,7 +518,7 @@ class ContextAggregator:
         return moments
 
     def get_team_recent_metrics(self, team_code: str, target_date: date, limit_games: int = 10) -> dict[str, Any]:
-        """최근 N경기 동안의 팀 타격/투구 지표 요약"""
+        """최근 N경기 동안의 팀 타격/투구 지표 요약."""
         # 최근 경기들 ID 확보
         game_ids = [
             r[0]
@@ -600,7 +600,7 @@ class ContextAggregator:
         season_year: int,
         target_date: date,
     ) -> dict[str, Any] | None:
-        """포스트시즌 시리즈 전적(예: 준플레이오프 1승 2패) 계산"""
+        """포스트시즌 시리즈 전적(예: 준플레이오프 1승 2패) 계산."""
         # 현재 경기의 시리즈 유형 파악을 위해 1경기 조회
         sample_game = (
             self.session.query(Game)
@@ -671,7 +671,7 @@ class ContextAggregator:
         }
 
     def get_pitcher_season_stats(self, player_id: int, season_year: int) -> dict[str, Any] | None:
-        """선발 투수의 해당 시즌 성적 조회"""
+        """선발 투수의 해당 시즌 성적 조회."""
         if not player_id:
             return None
 
@@ -704,7 +704,7 @@ class ContextAggregator:
     def get_recent_player_movements(
         self, team_code: str, target_date: str | date | datetime, days: int = 7
     ) -> list[dict[str, Any]]:
-        """최근 N일간 해당 팀의 선수 이동 현황(부상, 트레이드 등) 조회"""
+        """최근 N일간 해당 팀의 선수 이동 현황(부상, 트레이드 등) 조회."""
         if isinstance(target_date, str):
             target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").replace(tzinfo=KST).date()
 
@@ -789,7 +789,7 @@ class ContextAggregator:
         ]
 
     def get_daily_roster_changes(self, team_code: str, target_date: str | date | datetime) -> dict[str, list[str]]:
-        """해당 날짜의 1군 등록/말소 현황 비교 (어제와 비교)"""
+        """해당 날짜의 1군 등록/말소 현황 비교 (어제와 비교)."""
         if isinstance(target_date, str):
             target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").replace(tzinfo=KST).date()
 
@@ -825,7 +825,7 @@ class ContextAggregator:
         season_year: int,
         target_date: str | date | datetime | None = None,
     ) -> list[dict[str, Any]]:
-        """팀이 특정 경기에서 실책을 범한 경기 목록 및 실책 상세 정보 반환"""
+        """팀이 특정 경기에서 실책을 범한 경기 목록 및 실책 상세 정보 반환."""
         if isinstance(target_date, str):
             target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").replace(tzinfo=KST).date()
 
@@ -909,7 +909,7 @@ class ContextAggregator:
         season_year: int,
         target_date: str | date | datetime | None = None,
     ) -> list[dict[str, Any]]:
-        """상대팀별 승률을 계산하여 가장 까다로운(우리팀 승률이 낮은) 순으로 정렬하여 반환"""
+        """상대팀별 승률을 계산하여 가장 까다로운(우리팀 승률이 낮은) 순으로 정렬하여 반환."""
         if isinstance(target_date, str):
             target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").replace(tzinfo=KST).date()
 
@@ -965,7 +965,7 @@ class ContextAggregator:
         return results
 
     def get_position_avg_comparison(self, player_id: int, position: str, season_year: int) -> dict[str, Any]:
-        """특정 선수의 성적을 동종 포지션의 리그 평균 성적과 비교"""
+        """특정 선수의 성적을 동종 포지션의 리그 평균 성적과 비교."""
         player_stat = (
             self.session.query(
                 PlayerSeasonBatting.avg,
