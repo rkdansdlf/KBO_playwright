@@ -1,6 +1,13 @@
 from unittest.mock import MagicMock, patch
 
-from src.cli.backfill_starting_pitchers_from_stats import main
+import pytest
+
+from src.cli.backfill_starting_pitchers_from_stats import (
+    _is_blank,
+    _normalize_date,
+    parse_args,
+    repair_candidates,
+)
 
 
 class TestBackfillStartingPitchersFromStats:

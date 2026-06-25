@@ -138,7 +138,7 @@ def audit_year(year: int) -> dict[str, Any]:
         "total_games": total_games,
         "total_batting_rows": total_rows,
         "violation_rows": len(rows),
-        "violation_games": len(set(r.game_id for r in rows)),
+        "violation_games": len({r.game_id for r in rows}),
         "categories": dict(categories),
     }
 
@@ -194,8 +194,8 @@ def fix_year_formula(year: int, dry_run: bool = False) -> int:
 
     if dry_run:
         logger.info(f"  [DRY RUN] Would fix {len(candidates)} rows for {year}")
-        game_ids = set(c["game_id"] for c in candidates)
-        player_ids = set(c["player_id"] for c in candidates)
+        game_ids = {c["game_id"] for c in candidates}
+        player_ids = {c["player_id"] for c in candidates}
         logger.info(f"    Games affected: {len(game_ids)}")
         logger.info(f"    Players affected: {len(player_ids)}")
         missing_pa_total = sum(c["missing_pa"] for c in candidates)
@@ -231,8 +231,8 @@ def fix_year_formula(year: int, dry_run: bool = False) -> int:
         session.commit()
         count = fixed.rowcount
 
-    game_ids = set(c["game_id"] for c in candidates)
-    player_ids = set(c["player_id"] for c in candidates)
+    game_ids = {c["game_id"] for c in candidates}
+    player_ids = {c["player_id"] for c in candidates}
     missing_pa_total = sum(c["missing_pa"] for c in candidates)
     sh_total = sum(int(c["missing_pa"] * 0.54) for c in candidates)
     sf_total = sum(c["missing_pa"] - int(c["missing_pa"] * 0.54) for c in candidates)

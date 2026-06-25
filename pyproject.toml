@@ -140,6 +140,12 @@ select = [
     "RUF021",   # parenthesize-chained-operators
     "ERA001",  # commented-out-code
     "RUF019",   # unnecessary-key-check
+    "C4",       # flake8-comprehensions
+    "T10",      # debugger
+    "PLC0208",  # unnecessary-else-after-return
+    "PLW0245",  # super-without-brackets
+    "PLW1509",  # subprocess-popen-preexec-fn
+    "B026",     # star-args-unpacked-after-keyword-arg
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)

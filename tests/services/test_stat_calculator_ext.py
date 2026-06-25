@@ -5,9 +5,8 @@ from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalc
 
 class TestBattingStatCalculator:
     def test_all_zeros(self):
-        data = {
-            k: 0
-            for k in (
+        data = dict.fromkeys(
+            (
                 "at_bats",
                 "hits",
                 "walks",
@@ -19,8 +18,9 @@ class TestBattingStatCalculator:
                 "home_runs",
                 "strikeouts",
                 "plate_appearances",
-            )
-        }
+            ),
+            0,
+        )
         result = BattingStatCalculator.calculate_ratios(data)
         assert result["avg"] == 0.0
         assert result["obp"] == 0.0
@@ -126,9 +126,8 @@ class TestBattingStatCalculator:
 
 class TestPitchingStatCalculator:
     def test_all_zeros(self):
-        data = {
-            k: 0
-            for k in (
+        data = dict.fromkeys(
+            (
                 "innings_outs",
                 "earned_runs",
                 "hits_allowed",
@@ -137,8 +136,9 @@ class TestPitchingStatCalculator:
                 "home_runs_allowed",
                 "hit_batters",
                 "batters_faced",
-            )
-        }
+            ),
+            0,
+        )
         result = PitchingStatCalculator.calculate_ratios(data)
         assert result["era"] == 0.0
         assert result["whip"] == 0.0
