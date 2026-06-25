@@ -183,7 +183,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-06-23
+Last updated: 2026-06-25
 
 ### Current Sprint (2026-06-23)
 
@@ -323,28 +323,47 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **N naming (pep8-naming)**: 23 violations fixed (22×N806 + 1×N811), select enabled for src/, per-file-ignored for tests/scripts/.
 - **Test optimization**: 3 slow tests monkeypatched — fan_culture 5s→~0.1s, OCI pregame 3s→~0.1s, player_status_confirmer 3s→1.5s. Total pytest: 46.51s→34.06s (26.7% 단축).
 
-### Current Verification Baseline (2026-06-26)
+### Current Verification Baseline (2026-06-25)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (all selects, full clean).
-- `ruff format --check .` = 940+ files already formatted.
-- `python3 -m pytest` = 4,849 passed (2 skipped, 1 xfailed, 44 pre-existing failures in timezone/encoding tests).
+- `ruff check src/ tests/ scripts/` = 0 errors (all selects, full clean, EM102/EM103/DTZ001/DTZ007/DTZ011 enabled).
+- `ruff format --check .` = 933 files already formatted.
+- `python3 -m pytest` = 4,811 passed (2 skipped, 1 xfailed, 10 pre-existing failures in standings/stadium tests).
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `ruff check --select S501 src/` = 0 (all `verify=False` removed from ticket_crawler).
 - `ruff check --select S101 src/` = 0 (all `assert` → `raise ValueError`).
-- `ruff check --select PLR0913 src/` = 29 intentional remaining (public/crawler entrypoints with keyword compatibility).
+- `ruff check --select PLR0913 src/` = 0 violations (100% eliminated, enabled 2026-06-24).
 - `ruff check --select SLF001 src/` = 0 violations.
+- `ruff check --select EM102 src/` = 0 violations (2 fixed in data_integrity_checker + relay_crawler).
+- `ruff check --select DTZ007,DTZ011,DTZ001 src/` = 0 violations (76 fixed across 50 files).
 
 ### Recent Work (2026-06-26) — CI/CD stabilization, data quality, PLR0913 batch
 
 - **S501 보안**: `ticket_crawler.py`의 3곳 `verify=False` 제거 (MITM 취약점 해결).
 - **S101**: `game_detail_crawler.py`, `team_info_crawler.py`의 4곳 `assert` → `raise ValueError`.
 - **CI/CD 안정화**: `daily_kbo_sync.yml`의 `cancel-in-progress: true` → `false` (--fix 중단 방지).
-- **스케줄러 이중화**: `compute_standings`, `compute_rankings`, `aggregate_team_defense`, `heal_unverified_pbp` 로컬 등록 (GH Actions �백).
-- **PLR0913 추가 리�토링**: `RunStats`, `DedupConfig`, `RebuildOptions`, `RegenerationConfig`, `WpaState`, `TeamAggregationQuery` dataclass 생성. 7개 함수 리팩토링.
-- **SH/SF 파생 개선**: `outs_before < 2` SF 필터 추가, `player_game_batting` 테이블 갱신, 이름 충돌 로�.
+- **스케줄러 이중화**: `compute_standings`, `compute_rankings`, `aggregate_team_defense`, `heal_unverified_pbp` 로컬 등록 (GH Actions 백업).
+- **PLR0913 추가 리팩토링**: `RunStats`, `DedupConfig`, `RebuildOptions`, `RegenerationConfig`, `WpaState`, `TeamAggregationQuery` dataclass 생성. 7개 함수 리팩토링.
+- **SH/SF 파생 개선**: `outs_before < 2` SF 필터 추가, `player_game_batting` 테이블 갱신, 이름 충돌 로직.
 - **Docker**: `Dockerfile.playwright` 생성, `docker-compose.text-relay.yml` 생성, `text_relay_docker.yml` GH Actions 워크플로우 생성.
 - **테스트 추가**: +70개 신규 테스트 (4,842 → 4,849).
 - **GitHub Actions**: `test_suite.yml`에 coverage 아티팩트 업로드 및 60% 게이트 추가.
+
+### Phase 17 Complete (2026-06-25) — EM102/EM103/DTZ timezone hygiene
+
+- **PLR0913 문서 정리**: `Docs/references/PLR0913_REFACTOR_PLAN.md` → COMPLETE 상태로 업데이트 (PLR0913 enabled + 0 violations).
+- **EM102 enable**: `data_integrity_checker.py`, `relay_crawler.py` 2건 f-string-in-exception 수정.
+- **EM103 enable**: 0 violations 확인 후 select 추가.
+- **DTZ007/DTZ011/DTZ001 enable**: 76 violations 수정 (50 files).
+  - `datetime.strptime(X, Y)` → `datetime.strptime(X, Y).replace(tzinfo=KST)` (64건)
+  - `date.today()` → `datetime.now(KST).date()` (8건)
+  - `datetime(Y, M, D)` → `datetime(Y, M, D, tzinfo=KST)` (4건)
+  - `team_event_parser.py:_parse_fetched_at`에서 naive → aware datetime으로 통일.
+- **isort 설정**: `known-first-party = ["src"]` 추가.
+- **Import 정리**: 50개 파일에 KST import 추가 (기존 `from src.constants import`에 merge).
+- **테스트 업데이트**: 25개 테스트의 datetime aware assertion 수정, mock chain 업데이트.
+- **per-file-ignore**: tests/scripts에 DTZ007/DTZ011/DTZ001 추가.
+- **pytest**: 4,811 passed (10 pre-existing failures: standings 7 + stadium 1 + type_helpers 1 + season_aggregator 1).
+- **ruff**: EM102, EM103, DTZ001, DTZ007, DTZ011 src/ select 추가 (tests/scripts는 per-file-ignore).
 
 ### Data Directory Cleanup (2026-06-25)
 
