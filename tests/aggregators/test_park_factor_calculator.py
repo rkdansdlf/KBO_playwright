@@ -128,3 +128,40 @@ class TestParkFactorCalculator:
         assert calc._label(0.96) == "약간 투수친화"  # boundary
         assert calc._label(0.9001) == "약간 투수친화"
         assert calc._label(0.90) == "투수친화"  # boundary
+
+
+class TestParkFactorEdgeCases:
+    def test_returns_empty_when_no_games(self, session):
+        _add_season(session)
+        calc = ParkFactorCalculator(session)
+        assert calc.calculate(2025) == []
+
+    def test_handles_null_stadium(self, session):
+        _add_season(session)
+        _add_game(session, game_id="20250101", stadium=None)
+        calc = ParkFactorCalculator(session)
+        results = calc.calculate(2025)
+        assert len(results) == 1
+        assert results[0]["stadium"] == "UNKNOWN"
+
+    def test_label_neutral_boundary(self, session):
+        calc = ParkFactorCalculator(session)
+        assert calc._label(1.04) == "중립"
+        assert calc._label(0.96) == "약간 투수친화"
+
+
+class TestPrintReport:
+    def test_returns_early_when_empty(self, session, caplog):
+        _add_season(session)
+        calc = ParkFactorCalculator(session)
+        with caplog.at_level("INFO"):
+            calc.print_report(2025)
+        assert "파크팩터" not in caplog.text
+
+    def test_outputs_report_when_results(self, session, caplog):
+        _add_season(session)
+        _add_game(session)
+        calc = ParkFactorCalculator(session)
+        with caplog.at_level("INFO"):
+            calc.print_report(2025)
+        assert "파크팩터" in caplog.text or "구장" in caplog.text

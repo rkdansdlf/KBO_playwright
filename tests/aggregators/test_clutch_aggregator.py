@@ -3,12 +3,14 @@
 from datetime import date
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, exc, text
 from sqlalchemy.orm import sessionmaker
 
 from src.aggregators.clutch_aggregator import ClutchAggregator
 from src.models.game import Game, GameEvent
+from src.models.player import PlayerBasic, PlayerSeasonBatting
 from src.models.season import KboSeason
+from src.models.team import Team
 
 
 @pytest.fixture
@@ -17,6 +19,9 @@ def session():
     Game.__table__.create(bind=engine)
     GameEvent.__table__.create(bind=engine)
     KboSeason.__table__.create(bind=engine)
+    PlayerBasic.__table__.create(bind=engine)
+    Team.__table__.create(bind=engine)
+    PlayerSeasonBatting.__table__.create(bind=engine)
     sess = sessionmaker(bind=engine)()
     yield sess
     sess.close()
@@ -157,3 +162,132 @@ class TestClutchAggregator:
         _add_event(session)
         agg = ClutchAggregator(session)
         assert agg.aggregate(2025) == []
+
+
+def _add_player(session, player_id, name="테스트"):
+    session.add(PlayerBasic(player_id=player_id, name=name))
+    session.commit()
+
+
+def _add_team(session, team_id="LG"):
+    session.add(Team(team_id=team_id, team_name="LG", team_short_name="LG", city="서울", is_active=True))
+    session.commit()
+
+
+def _add_player_season_batting(session, player_id, season=2025, league="REGULAR"):
+    session.add(
+        PlayerSeasonBatting(
+            player_id=player_id,
+            season=season,
+            league=league,
+            level="KBO1",
+            source="ROLLUP",
+            team_code="LG",
+        )
+    )
+    session.commit()
+
+
+class TestPersistToExtraStats:
+    def test_nothing_to_persist_when_empty(self, session, caplog):
+        _add_season(session)
+        agg = ClutchAggregator(session)
+        agg.persist_to_extra_stats(2025)
+
+    def test_persists_wpa_to_extra_stats(self, session):
+        _add_season(session)
+        _add_game(session)
+        _add_event(session, batter_id=10001, wpa=0.15)
+        _add_player(session, player_id=10001)
+        _add_team(session)
+        _add_player_season_batting(session, player_id=10001)
+        agg = ClutchAggregator(session)
+        agg.persist_to_extra_stats(2025)
+        psb = session.query(PlayerSeasonBatting).filter_by(player_id=10001, season=2025).first()
+        assert psb is not None
+        assert psb.extra_stats is not None
+        assert psb.extra_stats["wpa_sum"] == 0.15
+        assert psb.extra_stats["clutch"] is not None
+
+    def test_skips_null_batter_id(self, session):
+        _add_season(session)
+        _add_game(session)
+        _add_event(session, batter_id=None, wpa=0.10)
+        _add_player(session, player_id=10001)
+        _add_team(session)
+        _add_player_season_batting(session, player_id=10001)
+        agg = ClutchAggregator(session)
+        agg.persist_to_extra_stats(2025)
+        psb = session.query(PlayerSeasonBatting).filter_by(player_id=10001, season=2025).first()
+        assert psb.extra_stats is None
+
+    def test_skips_missing_player_season(self, session):
+        _add_season(session)
+        _add_game(session)
+        _add_event(session, batter_id=10001, wpa=0.10)
+        _add_player(session, player_id=10001)
+        _add_team(session)
+        agg = ClutchAggregator(session)
+        agg.persist_to_extra_stats(2025)
+        session.commit()
+
+    def test_fk_error_fallback_to_raw_sql(self, session):
+        _add_season(session)
+        _add_game(session)
+        _add_event(session, batter_id=10001, wpa=0.20)
+        _add_player(session, player_id=10001)
+        _add_team(session)
+        _add_player_season_batting(session, player_id=10001)
+        agg = ClutchAggregator(session)
+        original_commit = session.commit
+        call_count = 0
+
+        def raise_fk_commit():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise exc.IntegrityError("INSERT ...", {}, Exception("foreign key constraint failed"))
+            return original_commit()
+
+        session.commit = raise_fk_commit
+        agg.persist_to_extra_stats(2025)
+        session.commit = original_commit
+        psb = session.query(PlayerSeasonBatting).filter_by(player_id=10001, season=2025).first()
+        assert psb is not None
+        assert psb.extra_stats is not None
+        assert psb.extra_stats["wpa_sum"] == 0.20
+
+    def test_non_fk_error_reraises(self, session):
+        _add_season(session)
+        _add_game(session)
+        _add_event(session, batter_id=10001, wpa=0.10)
+        _add_player(session, player_id=10001)
+        _add_team(session)
+        _add_player_season_batting(session, player_id=10001)
+        agg = ClutchAggregator(session)
+
+        def raise_other_commit():
+            raise exc.IntegrityError("INSERT ...", {}, Exception("some other error"))
+
+        session.commit = raise_other_commit
+        with pytest.raises(exc.IntegrityError):
+            agg.persist_to_extra_stats(2025)
+        session.rollback()
+
+
+class TestPrintReport:
+    def test_returns_early_when_empty(self, session, caplog):
+        _add_season(session)
+        agg = ClutchAggregator(session)
+        with caplog.at_level("INFO"):
+            agg.print_report(2025)
+        assert "WPA합계" not in caplog.text
+
+    def test_outputs_report_when_results(self, session, caplog):
+        _add_season(session)
+        _add_game(session)
+        _add_event(session, batter_id=10001, wpa=0.15)
+        agg = ClutchAggregator(session)
+        with caplog.at_level("INFO"):
+            agg.print_report(2025)
+        assert "WPA합계" in caplog.text or "순위" in caplog.text
