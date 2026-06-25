@@ -12,6 +12,7 @@ from src.services.embedding_service import EmbeddingService
 
 
 def test_embedding_cache_mechanism():
+    Engine.dispose()
     EmbeddingCache.__table__.create(bind=Engine, checkfirst=True)
 
     # 1. Initialize the service and mock API key

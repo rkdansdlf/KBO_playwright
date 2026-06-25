@@ -1168,6 +1168,88 @@ def crawl_phase1_extra_job():
             logger.exception("Phase 1 extra crawlers failed")
 
 
+def compute_standings_job():
+    """
+    Compute daily standings with home/away splits, recent 10, weekly trends.
+    Runs daily at 03:30 KST (after game crawl at 03:00).
+    """
+    with DAILY_LOCK:
+        logger.info("=== Starting Standings Computation ===")
+        try:
+            from src.cli.calculate_standings import main as standings_main
+
+            current_year = datetime.now(KST).year
+            standings_main(["--year", str(current_year)])
+            logger.info("=== Standings Computation Completed ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Standings computation failed")
+
+
+def aggregate_team_defense_job():
+    """
+    Aggregate team-level fielding and baserunning stats.
+    Runs daily at 03:45 KST (after standings).
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Team Defense Aggregation ===")
+        try:
+            from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
+            from src.db.engine import SessionLocal
+            from src.models.team import Team
+
+            current_year = datetime.now(KST).year
+            with SessionLocal() as session:
+                teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
+                agg = TeamFieldingAggregator(session)
+                agg.run_all(current_year, teams)
+                logger.info("=== Team Defense Aggregation Completed ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Team defense aggregation failed")
+
+
+def compute_rankings_job():
+    """
+    Compute sabermetric rankings (wOBA, wRC+, WAR, OPS+).
+    Runs daily at 04:00 KST.
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Rankings Computation ===")
+        try:
+            from src.aggregators.ranking_aggregator import RankingAggregator
+            from src.db.engine import SessionLocal
+
+            current_year = datetime.now(KST).year
+            with SessionLocal() as session:
+                agg = RankingAggregator(session)
+                agg.run_for_season(current_year)
+                logger.info("=== Rankings Computation Completed ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Rankings computation failed")
+
+
+def heal_unverified_pbp_job():
+    """
+    PBP Healer: scan for unverified PBP games and re-crawl from KBO official site.
+    Runs daily at 04:30 KST (after rankings, before OCI sync).
+    Uses MAINTENANCE_LOCK to avoid overlapping with other heavy jobs.
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting PBP Auto-Healer ===")
+        try:
+            import os
+
+            from src.cli.auto_healer import run_pbp_healer
+
+            lookback = os.getenv("PBP_HEALER_LOOKBACK_DAYS", "3")
+            exit_code = run_pbp_healer(["--lookback-days", lookback])
+            if exit_code == 0:
+                logger.info("=== PBP Auto-Healer Completed (no failures) ===")
+            else:
+                logger.warning("=== PBP Auto-Healer Completed with some failures (exit_code=%d) ===", exit_code)
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("PBP Auto-Healer job failed")
+
+
 def compute_park_factor_job():
     """
     Compute park factor for all stadiums.
@@ -1447,6 +1529,54 @@ def main(argv: Sequence[str] | None = None):
     logger.info("Registered job: crawl_live_refresh (Every 10s, 12:00-23:30 KST)")
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Tier 2 Maintenance Jobs (local fallback for GH Actions)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # Job T1: Daily Standings (03:30 KST) — after game crawl at 03:00
+    scheduler.add_job(
+        compute_standings_job,
+        trigger=CronTrigger(hour=3, minute=30),
+        id="compute_standings",
+        name="Daily Standings Computation",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: compute_standings (Daily 03:30 KST)")
+
+    # Job T2: Team Defense Aggregation (03:45 KST)
+    scheduler.add_job(
+        aggregate_team_defense_job,
+        trigger=CronTrigger(hour=3, minute=45),
+        id="aggregate_team_defense",
+        name="Team Defense Aggregation",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: aggregate_team_defense (Daily 03:45 KST)")
+
+    # Job T3: Rankings (04:00 KST) — local fallback
+    scheduler.add_job(
+        compute_rankings_job,
+        trigger=CronTrigger(hour=4, minute=0),
+        id="compute_rankings",
+        name="Sabermetric Rankings",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: compute_rankings (Daily 04:00 KST)")
+
+    # Job T4: PBP Healer (04:30 KST) — before OCI sync
+    scheduler.add_job(
+        heal_unverified_pbp_job,
+        trigger=CronTrigger(hour=4, minute=30),
+        id="heal_pbp",
+        name="PBP Auto-Healer",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: heal_pbp (Daily 04:30 KST)")
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Stadium Real-Time Data Jobs
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -1575,8 +1705,12 @@ def main(argv: Sequence[str] | None = None):
     logger.info(" 12. Operation Notices (Official): Daily 09:00 + 11:30 KST")
     logger.info(" 13. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
     logger.info(" 14. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
-    logger.info(" 15. OCI Hydration: Daily 05:00 KST (local fallback)")
-    logger.info(" 15. OCI Hydration: Daily 05:00 KST (local fallback)")
+    logger.info(" 15. Standings: Daily 03:30 KST (local fallback)")
+    logger.info(" 16. Team Defense: Daily 03:45 KST (local fallback)")
+    logger.info(" 17. Rankings: Daily 04:00 KST (local fallback)")
+    logger.info(" 18. PBP Healer: Daily 04:30 KST (local fallback)")
+    logger.info(" 19. OCI Hydration: Daily 05:00 KST (local fallback)")
+    logger.info(" 20. Team Info/History: Weekly Sunday 06:00 KST")
     logger.info("%s\n", "=" * 60)
 
     try:

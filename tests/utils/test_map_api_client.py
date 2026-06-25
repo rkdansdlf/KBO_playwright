@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from src.utils.map_api_client import (
+    TransitRequest,
     TransitResult,
     _call_kakao,
     _call_naver,
@@ -84,7 +85,7 @@ class TestGetTransitTime:
         monkeypatch.setenv("NAVER_CLIENT_ID", "")
         monkeypatch.setenv("NAVER_CLIENT_SECRET", "")
         monkeypatch.setenv("TMAP_API_KEY", "")
-        result = await get_transit_time("test", 37.0, 127.0)
+        result = await get_transit_time(TransitRequest("test", 37.0, 127.0))
         assert result is None
 
 

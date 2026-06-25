@@ -296,28 +296,30 @@ def _upsert_story_summary(
     session.add(GameSummary(game_id=game_id, summary_type=STORY_SUMMARY_TYPE, detail_text=new_json))
 
 
-def _process_story_game(  # noqa: PLR0913
-    session: Session,
-    game: Game,
-    events: list[GameEvent],
-    builder: GameStoryBuilder,
-    *,
-    ctx: StoryContext,
-    apply: bool,
-) -> tuple[StoryRegenReportRow, bool]:
-    if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
-        return _skipped_story_row(game), False
+@dataclass
+class StoryGameContext:
+    session: Session
+    game: Game
+    events: list[GameEvent]
+    builder: GameStoryBuilder
+    inner_ctx: StoryContext
+    apply: bool
 
-    old_json = ctx.existing_summaries.get(game.game_id)
-    story_data = builder.build(game, events)
+
+def _process_story_game(ctx: StoryGameContext) -> tuple[StoryRegenReportRow, bool]:
+    if ctx.game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
+        return _skipped_story_row(ctx.game), False
+
+    old_json = ctx.inner_ctx.existing_summaries.get(ctx.game.game_id)
+    story_data = ctx.builder.build(ctx.game, ctx.events)
     new_json = dump_story_json(story_data)
-    row = _build_story_report_row(game, old_json, story_data, new_json)
+    row = _build_story_report_row(ctx.game, old_json, story_data, new_json)
 
-    if not apply:
+    if not ctx.apply:
         row.status = "DRY_RUN_READY" if row.changed else "DRY_RUN_UNCHANGED"
         return row, False
     if row.changed:
-        _upsert_story_summary(session, game.game_id, new_json, ctx.existing_summary_rows)
+        _upsert_story_summary(ctx.session, ctx.game.game_id, new_json, ctx.inner_ctx.existing_summary_rows)
         row.status = "APPLIED"
     else:
         row.status = "UNCHANGED"
@@ -341,12 +343,14 @@ def _process_story_batches(
         )
         for game in game_batch:
             row, should_sync = _process_story_game(
-                session,
-                game,
-                batch_event_map.get(game.game_id, []),
-                builder,
-                ctx=ctx,
-                apply=apply,
+                StoryGameContext(
+                    session=session,
+                    game=game,
+                    events=batch_event_map.get(game.game_id, []),
+                    builder=builder,
+                    inner_ctx=ctx,
+                    apply=apply,
+                ),
             )
             rows.append(row)
             if should_sync:

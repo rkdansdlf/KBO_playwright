@@ -1,4 +1,4 @@
-from src.services.wpa_calculator import WPACalculator
+from src.services.wpa_calculator import WpaInput, WPACalculator
 
 
 def test_wpa_calculator_initialization():
@@ -35,14 +35,16 @@ def test_calculate_wpa_perspective():
     # Home team hits a walk-off HR (score_diff goes from 0 to 1)
     # WPA for home team should be significantly positive
     wpa = calc.calculate_wpa(
-        inning=9,
-        is_bottom=True,
-        outs_before=2,
-        runners_before=0,
-        score_diff_before=0,
-        outs_after=2,
-        runners_after=0,
-        score_diff_after=1,
+        data=WpaInput(
+            inning=9,
+            is_bottom=True,
+            outs_before=2,
+            runners_before=0,
+            score_diff_before=0,
+            outs_after=2,
+            runners_after=0,
+            score_diff_after=1,
+        )
     )
 
     assert wpa > 0
