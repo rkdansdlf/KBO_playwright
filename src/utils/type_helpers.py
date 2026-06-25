@@ -116,27 +116,35 @@ def parse_innings_to_outs(text: str | None) -> int | None:
       - 'X:Y'     (e.g. '5:1' -> 16)
       - Plain int (e.g. '5' -> 15)
     """
+    cleaned = _clean_innings_text(text)
+    if cleaned is None:
+        return None
+
+    if ":" in cleaned:
+        return _parse_colon_innings(cleaned)
+    result = _parse_fraction_innings(cleaned)
+    if result is not None:
+        return result
+    result = _parse_decimal_innings(cleaned)
+    if result is not None:
+        return result
+    try:
+        return int(cleaned) * 3
+    except ValueError:
+        return None
+
+
+def _clean_innings_text(text: str | None) -> str | None:
     if not text:
         return None
     cleaned = str(text).strip().replace("⅓", " 1/3").replace("⅔", " 2/3").strip()
     if cleaned in _EMPTY_SENTINELS:
         return None
+    return cleaned
 
-    if ":" in cleaned:
-        parts = cleaned.split(":")
-        innings = int(parts[0])
-        remainder = int(parts[1]) if len(parts) > 1 else 0
-        return innings * 3 + remainder
 
-    result = _parse_fraction_innings(cleaned)
-    if result is not None:
-        return result
-
-    result = _parse_decimal_innings(cleaned)
-    if result is not None:
-        return result
-
-    try:
-        return int(cleaned) * 3
-    except ValueError:
-        return None
+def _parse_colon_innings(cleaned: str) -> int:
+    parts = cleaned.split(":")
+    innings = int(parts[0])
+    remainder = int(parts[1]) if len(parts) > 1 else 0
+    return innings * 3 + remainder

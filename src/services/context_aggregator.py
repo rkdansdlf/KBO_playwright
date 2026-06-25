@@ -30,6 +30,16 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
+def _classify_final_payload(final_payload: dict[str, Any], raw: dict[str, Any]) -> str:
+    if not final_payload["found"]:
+        return "final_review_payload_missing"
+    if not final_payload["has_pitching"]:
+        return "final_review_payload_missing_pitching"
+    if final_payload["starter_rows"] == 0 or (raw["bullpen_rows"] > 0 and final_payload["bullpen_rows"] == 0):
+        return "final_review_payload_pitching_empty"
+    return "ok"
+
+
 class ContextAggregator:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -371,13 +381,7 @@ class ContextAggregator:
             return "raw_starter_flags_missing"
         if repository_starter_rows == 0 or (raw["bullpen_rows"] > 0 and repository_bullpen_rows == 0):
             return "repository_pitching_rows_missing"
-        if not final_payload["found"]:
-            return "final_review_payload_missing"
-        if not final_payload["has_pitching"]:
-            return "final_review_payload_missing_pitching"
-        if final_payload["starter_rows"] == 0 or (raw["bullpen_rows"] > 0 and final_payload["bullpen_rows"] == 0):
-            return "final_review_payload_pitching_empty"
-        return "ok"
+        return _classify_final_payload(final_payload, raw)
 
     def get_team_l10_summary(self, team_code: str, target_date: date) -> dict[str, Any]:
         """최근 10경기 승패 및 연승/연패 흐름 계산"""

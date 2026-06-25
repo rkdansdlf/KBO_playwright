@@ -72,17 +72,17 @@ def validate_schedule_game_payload(
     id_date_status = _validate_schedule_id_date(game_id, game_date)
     if id_date_status is not None:
         return False, id_date_status
+    return _validate_schedule_fields(game)
 
+
+def _validate_schedule_fields(game: Mapping[str, Any]) -> tuple[bool, str | None]:
     for field in ("away_team_code", "home_team_code"):
         if not str(game.get(field) or "").strip():
             return False, f"missing_{field}"
-
     if normalize_game_status(game.get("game_status")) is None:
         return False, "invalid_game_status"
-
     if "stadium" not in game or game.get("stadium") is None:
         return False, "missing_stadium"
-
     return True, None
 
 

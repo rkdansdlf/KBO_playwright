@@ -261,26 +261,23 @@ class TeamMapper:
         if year and self._oci_loaded and year in self.year_specific_mapping:
             year_mapping = self.year_specific_mapping[year]
             if team_name in year_mapping:
-                # [REFINED] If we have a year, ensure it follows historical resolution
-                # to avoid legacy overrides for modern years or vice versa.
                 canonical_code = resolve_team_code(team_name, year)
                 if canonical_code:
                     return canonical_code
                 return year_mapping[team_name]
+        return self._resolve_team_code(team_name, year)
 
+    def _resolve_team_code(self, team_name: str, year: int | None = None) -> str | None:
         # 1.5 Standard Resolution via team_codes (Superior to static/fuzzy)
         resolved = resolve_team_code(team_name, year)
         if resolved:
             return resolved
-
         # 2. OCI 매핑 확인
         if self._oci_loaded and team_name in self.oci_mapping:
             return self.oci_mapping[team_name]
-
         # 3. 정적 매핑 확인
         if team_name in self.static_mapping:
             return self.static_mapping[team_name]
-
         # 4. 부분 매칭 시도 (역대 팀명 변화 고려)
         return self._fuzzy_match(team_name, year)
 

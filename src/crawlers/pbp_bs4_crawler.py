@@ -70,38 +70,36 @@ class PBPBS4Crawler:
 
         try:
             logger.info("[FETCH] BS4 PBP Data: %s", url)
-            # Use a longer timeout for KBO server stability, though 15s is usually plenty.
             response = httpx.get(url, headers=self.headers, timeout=15.0, follow_redirects=True)
             response.raise_for_status()
             html = response.text
-
-            # If redirected to KBO global Error page
-            if "Error.html" in str(response.url):
-                logger.info("[WARN] Redirected to Error page for %s (No PBP data available).", game_id)
-                return None
-
-            if "경기 준비중" in html or "취소" in html:
-                logger.info("[INFO] Game %s seems to have no relay data.", game_id)
-                return None
-
-            # Quick check for relay elements before full BS4 parsing
-            if "relay-bx" not in html and "relay-txt" not in html:
-                logger.info("[WARN] No relay containers found in HTML for %s.", game_id)
-                return None
-
-            logger.info("[INFO] Extracting Relay Data via BeautifulSoup...")
-            events = self._parse_html_to_events(html)
-
         except httpx.HTTPError:
             logger.exception("[ERROR] HTTP fetch failed for %s", game_id)
             return None
         except PBP_BS4_PARSE_EXCEPTIONS:
             logger.exception("BS4 PBP crawl failed for %s", game_id)
             return None
-        else:
-            if not events:
-                return None
-            return {"game_id": game_id, "game_date": game_date, "events": events}
+
+        if not self._validate_pbp_html(html, game_id, str(response.url)):
+            return None
+        events = self._parse_html_to_events(html)
+        if not events:
+            return None
+        return {"game_id": game_id, "game_date": game_date, "events": events}
+
+    @staticmethod
+    def _validate_pbp_html(html: str, game_id: str, response_url: str) -> bool:
+        if "Error.html" in response_url:
+            logger.info("[WARN] Redirected to Error page for %s (No PBP data available).", game_id)
+            return False
+        if "경기 준비중" in html or "취소" in html:
+            logger.info("[INFO] Game %s seems to have no relay data.", game_id)
+            return False
+        if "relay-bx" not in html and "relay-txt" not in html:
+            logger.info("[WARN] No relay containers found in HTML for %s.", game_id)
+            return False
+        logger.info("[INFO] Extracting Relay Data via BeautifulSoup...")
+        return True
 
     def _parse_html_to_events(self, html: str) -> list[dict[str, Any]]:
         """Extract all PBP events using BeautifulSoup and compute states."""
