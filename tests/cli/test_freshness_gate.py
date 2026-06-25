@@ -122,10 +122,12 @@ class TestFreshnessGate:
 class TestEvaluateIssues:
     def test_no_issues_returns_empty(self):
         mock_session = MagicMock()
-        result = evaluate_freshness_gate(mock_session, [])
+        result = evaluate_freshness_gate(mock_session)
         assert result == []
 
     def test_with_issues_returns_list(self):
         mock_session = MagicMock()
-        result = evaluate_freshness_gate(mock_session, ["issue1"])
-        assert len(result) > 0
+        with patch("src.cli.freshness_gate.collect_freshness_issues") as mock_collect:
+            mock_collect.return_value = {"past_scheduled_games": ["G1"]}
+            result = evaluate_freshness_gate(mock_session)
+            assert len(result) > 0

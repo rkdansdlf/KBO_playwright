@@ -155,10 +155,21 @@ class TestCheckIdResolutionGaps:
         with patch("src.cli.gap_report.SessionLocal") as mock_sf:
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
-            mock_session.query.return_value.filter.return_value.all.return_value = []
+            mock_session.execute.return_value.scalar.return_value = 0
 
             result = check_id_resolution_gaps()
             assert result["ok"] is True
+            assert result["total"] == 0
+
+    def test_finds_gaps(self):
+        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_session.execute.return_value.scalar.side_effect = [5, 3, 2]
+
+            result = check_id_resolution_gaps()
+            assert result["ok"] is False
+            assert result["total"] == 10
 
 
 class TestCheckTeamStatsGaps:
@@ -166,10 +177,23 @@ class TestCheckTeamStatsGaps:
         with patch("src.cli.gap_report.SessionLocal") as mock_sf:
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
-            mock_session.query.return_value.all.return_value = []
+            with patch("src.validators.quality_gate.run_quality_gate") as mock_gate:
+                mock_gate.return_value = {"team_batting": {"ok": True}, "team_pitching": {"ok": True}}
+                result = check_team_stats_gaps()
+                assert result["ok"] is True
 
-            result = check_team_stats_gaps()
-            assert result["ok"] is True
+    def test_finds_gaps(self):
+        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            with patch("src.validators.quality_gate.run_quality_gate") as mock_gate:
+                mock_gate.return_value = {
+                    "team_batting": {"ok": False, "mismatches": [{"team_id": "LG"}]},
+                    "team_pitching": {"ok": True},
+                }
+                result = check_team_stats_gaps()
+                assert result["ok"] is False
+                assert result["batting_mismatches"] == 1
 
 
 class TestRunGapReport:
@@ -180,15 +204,18 @@ class TestRunGapReport:
             patch("src.cli.gap_report.check_id_resolution_gaps") as mock_id,
             patch("src.cli.gap_report.check_pa_formula_gaps") as mock_pa,
             patch("src.cli.gap_report.check_team_stats_gaps") as mock_team,
+            patch("src.cli.gap_report.collect_freshness_issues") as mock_fresh,
         ):
             mock_relay.return_value = {"ok": True, "missing_count": 0}
             mock_profile.return_value = {"ok": True, "missing_count": 0}
             mock_id.return_value = {"ok": True}
             mock_pa.return_value = {"ok": True}
             mock_team.return_value = {"ok": True, "total": 0}
+            mock_fresh.return_value = {}
 
             result = build_gap_report()
             assert isinstance(result, dict)
+            assert "gaps" in result
 
 
 class TestSendGapAlertsEdgeCases:
