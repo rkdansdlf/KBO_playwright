@@ -39,8 +39,6 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from src.repositories.player_repository import PlayerRepository
-
 
 @dataclass(frozen=True, slots=True)
 class FuturesPlayerTarget:
@@ -414,7 +412,7 @@ def _filter_changed_since(
         return player_positions
     if isinstance(cutoff, str):
         try:
-            cutoff = datetime.fromisoformat(cutoff.replace("Z", "+00:00"))
+            cutoff = datetime.fromisoformat(cutoff)
             if cutoff.tzinfo is not None:
                 cutoff = cutoff.replace(tzinfo=None)
         except ValueError:

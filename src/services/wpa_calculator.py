@@ -115,7 +115,7 @@ class WPACalculator:
             # Adjust slightly for runners (rough heuristic)
             base_prob = self._matrix[fallback_key]
             # Runners on base favor batting team slightly
-            runner_bonus = 0.02 * bin(runners).count("1")  # +2% per runner
+            runner_bonus = 0.02 * runners.bit_count()  # +2% per runner
             if is_bottom:
                 return min(1.0, base_prob + runner_bonus)
             return max(0.0, base_prob - runner_bonus)

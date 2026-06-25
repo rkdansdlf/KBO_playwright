@@ -19,7 +19,7 @@ from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 class BaseStatsUpsertRepository:
     """Shared UPSERT helpers for stat tables."""
 
-    def __init__(self, model: type[TeamSeasonBatting] | type[TeamSeasonPitching], unique_keys: list[str]) -> None:
+    def __init__(self, model: type[TeamSeasonBatting | TeamSeasonPitching], unique_keys: list[str]) -> None:
         self.model = model
         self.unique_keys = unique_keys
         self.dialect = Engine.dialect.name

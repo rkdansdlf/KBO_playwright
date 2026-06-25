@@ -223,7 +223,7 @@ class PlayerRepository:
 
     def _upsert_season_stats(
         self,
-        model: type[PlayerSeasonBatting] | type[PlayerSeasonPitching],
+        model: type[PlayerSeasonBatting | PlayerSeasonPitching],
         player_id: int,
         payload: dict[str, Any],
     ) -> None:
