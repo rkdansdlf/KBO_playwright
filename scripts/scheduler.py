@@ -627,7 +627,6 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
     Phase 3 — Pregame previews via run_preview_batch
     Phase 4 — Player profiles via backfill_player_profiles.backfill
     """
-
     from src.db.engine import SessionLocal
 
     start = datetime.now(KST).date() - timedelta(days=lookback_days)
