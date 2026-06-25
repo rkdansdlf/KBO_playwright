@@ -150,13 +150,11 @@ _RULES: tuple[_DiagnosisRule, ...] = (
 
 def diagnose_text(text: str, *, source: str = "stdin") -> DiagnosisReport:
     """Diagnose one log text blob."""
-
     return diagnose_sources({source: text})
 
 
 def diagnose_sources(sources: Mapping[str, str]) -> DiagnosisReport:
     """Diagnose one or more named log sources."""
-
     findings: list[DiagnosisFinding] = []
     seen_categories: set[str] = set()
     for source_name, text in sources.items():
@@ -184,7 +182,6 @@ def diagnose_sources(sources: Mapping[str, str]) -> DiagnosisReport:
 
 def render_diagnosis_text(report: DiagnosisReport) -> str:
     """Render a human-readable diagnosis report."""
-
     lines = [
         f"Failure diagnosis: {'PASS' if not report.findings else 'ISSUES'}",
         f"Sources: {report.source_count}",

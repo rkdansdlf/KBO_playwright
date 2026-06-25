@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.crawlers.base_naver_crawler import NaverNewsCrawlerBase
 from src.db.engine import SessionLocal
 from src.repositories.manager_change_repository import ManagerChangeRepository

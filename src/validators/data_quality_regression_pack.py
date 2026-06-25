@@ -251,7 +251,6 @@ _CHECKS: tuple[_SqlCheck, ...] = (
 
 def run_regression_pack(conn: Connection, checks: Sequence[_SqlCheck] = _CHECKS) -> QualityRegressionReport:
     """Run data quality invariants against a SQLAlchemy connection."""
-
     inspector = inspect(conn)
     table_names = set(inspector.get_table_names())
     results = tuple(_run_check(conn, inspector, table_names, check) for check in checks)
