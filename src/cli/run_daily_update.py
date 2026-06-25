@@ -1559,7 +1559,7 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
     }
 
 
-async def run_update(  # noqa: PLR0913
+async def run_update(
     target_date: str,
     *,
     sync: bool = False,

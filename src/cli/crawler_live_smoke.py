@@ -100,7 +100,7 @@ async def _resolve_candidates(
     return _select_schedule_candidates(games, target_date=target_date, limit=limit)
 
 
-async def run_smoke(  # noqa: PLR0913
+async def run_smoke(
     *,
     target_date: str,
     scope: str,

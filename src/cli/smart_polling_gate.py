@@ -111,7 +111,7 @@ async def _fetch_naver_games(
             )
         else:
             logger.info("[GATE] No games found for date %s (confirmed by API)", date_str)
-        return games  # noqa: TRY300
+        return games
     except (httpx.HTTPError, ValueError, TypeError, KeyError):
         logger.exception("[GATE] Failed to fetch/parse Naver schedule")
         return []
@@ -311,7 +311,7 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
             "timestamp_kst": datetime.now(KST).isoformat(),
             **details,
         }
-        print(json.dumps(result, ensure_ascii=False, indent=2))  # noqa: T201
+        print(json.dumps(result, ensure_ascii=False, indent=2))
 
     if should_proceed:
         return 0

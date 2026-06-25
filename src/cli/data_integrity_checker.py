@@ -211,7 +211,7 @@ def check_no_null_player_ids(session: Session, target: date) -> CheckResult:
     game_ids = [g.game_id for g in games]
     null_counts: dict[str, int] = {}
 
-    from src.models.game import GameBattingStat, GamePitchingStat, GameLineup  # noqa: I001
+    from src.models.game import GameBattingStat, GameLineup, GamePitchingStat
 
     table_map = {
         "game_batting_stats": GameBattingStat,
@@ -506,7 +506,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 for r in report.results
             ],
         }
-        print(json.dumps(output, ensure_ascii=False, indent=2))  # noqa: T201
+        print(json.dumps(output, ensure_ascii=False, indent=2))
 
     if not report.overall_passed:
         logger.error(

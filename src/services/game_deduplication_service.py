@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """Shared SQLite helpers for selecting primary game rows."""
 
 from __future__ import annotations
@@ -33,7 +32,7 @@ class DeduplicationResult:
     marked_primary: int
 
 
-def mark_primary_games(  # noqa: PLR0913
+def mark_primary_games(
     db_path: str | Path = DEFAULT_DB_PATH,
     *,
     windows: Iterable[DeduplicationWindow] | None = None,

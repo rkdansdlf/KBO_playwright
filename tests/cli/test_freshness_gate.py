@@ -121,9 +121,11 @@ class TestFreshnessGate:
 
 class TestEvaluateIssues:
     def test_no_issues_returns_empty(self):
-        result = evaluate_freshness_gate([])
+        mock_session = MagicMock()
+        result = evaluate_freshness_gate(mock_session, [])
         assert result == []
 
     def test_with_issues_returns_list(self):
-        result = evaluate_freshness_gate(["issue1"])
+        mock_session = MagicMock()
+        result = evaluate_freshness_gate(mock_session, ["issue1"])
         assert len(result) > 0
