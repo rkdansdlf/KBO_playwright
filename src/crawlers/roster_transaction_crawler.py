@@ -22,6 +22,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.roster_transaction_repository import RosterTransactionRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
@@ -67,7 +68,11 @@ class RosterTransactionCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
-        crawl_date = datetime.strptime(target_date, "%Y-%m-%d").date() if target_date else date.today()
+        crawl_date = (
+            datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=KST).date()
+            if target_date
+            else datetime.now(KST).date()
+        )
 
         # Try mobile page first (simpler, structured)
         data = await self._crawl_mobile_page(crawl_date)

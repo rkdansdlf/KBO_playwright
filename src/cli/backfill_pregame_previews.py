@@ -44,7 +44,7 @@ def _yyyymmdd(value: str) -> str:
     if len(normalized) != 8 or not normalized.isdigit():
         msg = f"Invalid date: {value}. Use YYYYMMDD."
         raise argparse.ArgumentTypeError(msg)
-    datetime.strptime(normalized, "%Y%m%d")
+    datetime.strptime(normalized, "%Y%m%d").replace(tzinfo=KST)
     return normalized
 
 

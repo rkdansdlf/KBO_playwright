@@ -115,7 +115,7 @@ def _trusted_relay_game_ids(session: Session, game_ids: Sequence[str]) -> set[st
 async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
     logger.info("🚀 Starting Post-game Review Data Batch for %s...", target_date)
 
-    target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
+    target_dt_obj = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
         logger.info(

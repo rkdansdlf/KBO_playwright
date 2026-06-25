@@ -91,7 +91,7 @@ def _add_pitcher_context(preview: dict[str, object], agg: ContextAggregator, sea
 
 def _save_preview_contexts(previews: list[dict[str, object]], target_date: str) -> list[str]:
     saved_ids: list[str] = []
-    target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
+    target_dt_obj = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     season_year = target_dt_obj.year
 
     with SessionLocal() as session:

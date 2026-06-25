@@ -91,7 +91,7 @@ def _short_hash(value: str | None) -> str:
 
 
 def _parse_date(value: str) -> date:
-    return datetime.strptime(value, "%Y%m%d").date()
+    return datetime.strptime(value, "%Y%m%d").replace(tzinfo=KST).date()
 
 
 def _load_game_ids_file(path: Path) -> list[str]:

@@ -7,11 +7,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
+
+from src.constants import KST
 
 if TYPE_CHECKING:
     from bs4.element import Tag
@@ -163,13 +165,16 @@ def _classify_event(title: str) -> str:
 
 def _parse_fetched_at(metadata: dict | None) -> datetime:
     fetched_at_str = (metadata or {}).get("fetched_at", "")
-    if fetched_at_str:
-        try:
-            fetched_at = datetime.fromisoformat(fetched_at_str)
-            return fetched_at.replace(tzinfo=None)
-        except (ValueError, TypeError):
-            logger.debug("Invalid fetched_at string: %s", fetched_at_str)
-    return datetime.now(UTC).replace(tzinfo=None)
+    if not fetched_at_str:
+        return datetime.now(KST)
+    try:
+        fetched_at = datetime.fromisoformat(fetched_at_str)
+    except (ValueError, TypeError):
+        logger.debug("Invalid fetched_at string: %s", fetched_at_str)
+        return datetime.now(KST)
+    if fetched_at.tzinfo is None:
+        fetched_at = fetched_at.replace(tzinfo=KST)
+    return fetched_at
 
 
 def _parse_date_text(text: str) -> datetime | None:
@@ -178,7 +183,7 @@ def _parse_date_text(text: str) -> datetime | None:
         return None
     year, month, day = (int(part) for part in match.groups())
     try:
-        return datetime(year, month, day)
+        return datetime(year, month, day, tzinfo=KST)
     except ValueError:
         return None
 

@@ -96,7 +96,7 @@ def _within_days(record: dict[str, Any], days: int | None) -> bool:
     if days is None:
         return True
     try:
-        report_date = datetime.strptime(str(record["date"]), "%Y%m%d").date()
+        report_date = datetime.strptime(str(record["date"]), "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         return True
     cutoff = datetime.now(KST).date() - timedelta(days=days)
@@ -107,7 +107,7 @@ def _is_yyyymmdd(value: str) -> bool:
     if len(value) != 8 or not value.isdigit():
         return False
     try:
-        datetime.strptime(value, "%Y%m%d")
+        datetime.strptime(value, "%Y%m%d").replace(tzinfo=KST)
     except ValueError:
         return False
     return True

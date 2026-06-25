@@ -111,7 +111,7 @@ def _sync_story_summaries(game_ids: Sequence[str]) -> None:
 async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
     logger.info("🚀 Starting Post-game Story Data Batch for %s...", target_date)
 
-    target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
+    target_dt_obj = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
         logger.info(

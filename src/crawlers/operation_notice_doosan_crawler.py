@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.throttle import throttle
@@ -57,7 +58,7 @@ def _is_urgent(title: str) -> bool:
 def _parse_date(raw: str) -> datetime | None:
     for fmt in ("%Y.%m.%d", "%Y-%m-%d", "%Y/%m/%d"):
         try:
-            return datetime.strptime(raw.strip(), fmt)
+            return datetime.strptime(raw.strip(), fmt).replace(tzinfo=KST)
         except ValueError:
             continue
     return None

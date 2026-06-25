@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import and_, select
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
+
 from ..models.stadium_operation_notice import StadiumOperationNotice
 
 if TYPE_CHECKING:
@@ -148,7 +150,7 @@ class OperationNoticeRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_urgent_today(self, stadium_code: str) -> list[StadiumOperationNotice]:
-        today = date.today()
+        today = datetime.now(KST).date()
         return self.get_by_game_date(stadium_code, today, urgent_only=True)
 
     def get_latest_external_id(self, stadium_code: str, source_name: str) -> str | None:

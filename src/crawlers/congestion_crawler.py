@@ -25,6 +25,7 @@ from typing import Any
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.repositories.congestion_repository import CongestionRepository
 from src.utils.seoul_api_client import CongestionSnapshot, get_jamsil_congestion_batch
@@ -79,7 +80,7 @@ class CongestionCrawler:
         *,
         save: bool = False,
     ) -> list[dict]:
-        game_date = game_date or date.today()
+        game_date = game_date or datetime.now(KST).date()
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 
         logger.info("[Congestion] Collecting for %s at %s UTC", game_date, measured_at.strftime("%H:%M"))
@@ -136,6 +137,6 @@ if __name__ == "__main__":
 
     gdate = None
     if args.game_date:
-        gdate = datetime.strptime(args.game_date, "%Y%m%d").date()
+        gdate = datetime.strptime(args.game_date, "%Y%m%d").replace(tzinfo=KST).date()
 
     asyncio.run(CongestionCrawler().run(game_date=gdate, save=args.save))

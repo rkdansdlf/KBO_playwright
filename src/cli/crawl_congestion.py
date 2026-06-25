@@ -13,6 +13,7 @@ import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.constants import KST
 from src.crawlers.congestion_crawler import CongestionCrawler
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 async def run(args: argparse.Namespace) -> None:
     game_date = None
     if args.game_date:
-        game_date = datetime.strptime(args.game_date, "%Y%m%d").date()
+        game_date = datetime.strptime(args.game_date, "%Y%m%d").replace(tzinfo=KST).date()
 
     crawler = CongestionCrawler()
     await crawler.run(game_date=game_date, save=args.save)

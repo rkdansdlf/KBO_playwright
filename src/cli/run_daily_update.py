@@ -358,7 +358,7 @@ def _failure_status(target_date: str, failure_reason: str | None, today: date) -
     if failure_reason == "cancelled":
         return GAME_STATUS_CANCELLED
     try:
-        target_day = datetime.strptime(target_date, "%Y%m%d").date()
+        target_day = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
         return None
     if target_day < today:
@@ -721,7 +721,8 @@ async def _run_postgame_reconciliation(ctx: _RunContext, g_crawler: GameDetailCr
         return
 
     reconcile_start = (
-        datetime.strptime(ctx.target_date, "%Y%m%d") - timedelta(days=max(0, ctx.postgame_reconcile_lookback_days))
+        datetime.strptime(ctx.target_date, "%Y%m%d").replace(tzinfo=KST)
+        - timedelta(days=max(0, ctx.postgame_reconcile_lookback_days))
     ).strftime("%Y%m%d")
     logger.info("\n🧩 Step 2.5: Reconciling recently started games (%s~%s)...", reconcile_start, ctx.target_date)
     reconciliation_result = await reconcile_postgame_range(
@@ -1008,7 +1009,7 @@ async def _step_6_5_maintenance(ctx: _RunContext) -> None:
 
 
 async def _step_7_rosters(ctx: _RunContext) -> None:
-    ctx.r_target_date = datetime.strptime(ctx.target_date, "%Y%m%d").strftime("%Y-%m-%d")
+    ctx.r_target_date = datetime.strptime(ctx.target_date, "%Y%m%d").replace(tzinfo=KST).strftime("%Y-%m-%d")
 
     logger.info("\n\U0001f504 Step 7: Updating player movements and daily rosters...")
     try:
@@ -1310,7 +1311,9 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
 
 async def _step_14_tomorrow_preview(ctx: _RunContext) -> None:
     if ctx.seed_tomorrow_preview:
-        tomorrow_date = (datetime.strptime(ctx.target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
+        tomorrow_date = (datetime.strptime(ctx.target_date, "%Y%m%d").replace(tzinfo=KST) + timedelta(days=1)).strftime(
+            "%Y%m%d"
+        )
         logger.info("\n\U0001f52e Step 14: Seeding tomorrow preview contexts (%s)...", tomorrow_date)
         try:
             preview_args = ["-m", "src.cli.daily_preview_batch", "--date", tomorrow_date]

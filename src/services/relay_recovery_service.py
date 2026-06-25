@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
 from src.models.season import KboSeason
@@ -617,7 +618,7 @@ def _load_target_rows(
     )
     if criteria.date:
         try:
-            target_dt = datetime.strptime(criteria.date, "%Y%m%d").date()
+            target_dt = datetime.strptime(criteria.date, "%Y%m%d").replace(tzinfo=KST).date()
         except ValueError as exc:
             msg = f"Invalid date format: {criteria.date}. Use YYYYMMDD."
             raise ValueError(msg) from exc

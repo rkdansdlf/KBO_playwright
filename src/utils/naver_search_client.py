@@ -90,7 +90,7 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
     # Fallback: simple date only
     for fmt in ("%Y.%m.%d.", "%Y-%m-%d", "%Y.%m.%d"):
         try:
-            return datetime.strptime(pub_date_str.strip().rstrip("."), fmt)
+            return datetime.strptime(pub_date_str.strip().rstrip("."), fmt).replace(tzinfo=KST)
         except ValueError:
             continue
     return None

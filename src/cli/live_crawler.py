@@ -493,44 +493,49 @@ def _resolve_live_lifecycle(
     return "running"
 
 
-async def _save_live_relay_and_snapshot(  # noqa: PLR0913
-    game_id: str,
-    today_str: str,
-    flat_events: list[dict[str, Any]],
-    raw_pbp_rows: list[dict[str, Any]],
-    relay_data: dict[str, Any] | None,
-    resolved_lifecycle: str,
+@dataclass(frozen=True)
+class RelaySaveInput:
+    game_id: str
+    today_str: str
+    flat_events: list[dict[str, Any]]
+    raw_pbp_rows: list[dict[str, Any]]
+    relay_data: dict[str, Any] | None
+    resolved_lifecycle: str
+
+
+async def _save_live_relay_and_snapshot(
+    input_: RelaySaveInput,
     *,
     save_options: LiveSaveOptions,
 ) -> bool:
-    if not flat_events and not raw_pbp_rows:
+    if not input_.flat_events and not input_.raw_pbp_rows:
         return False
 
     touched = False
     saved_rows = save_relay_data(
-        game_id,
-        flat_events,
-        raw_pbp_rows=raw_pbp_rows,
+        input_.game_id,
+        input_.flat_events,
+        raw_pbp_rows=input_.raw_pbp_rows,
         source_name="naver_live",
-        parser_version=(relay_data or {}).get("parser_version"),
-        source_schema_version=(relay_data or {}).get("source_schema_version"),
-        payload_hash=(relay_data or {}).get("payload_hash"),
-        game_lifecycle_state=resolved_lifecycle,
+        parser_version=(input_.relay_data or {}).get("parser_version"),
+        source_schema_version=(input_.relay_data or {}).get("source_schema_version"),
+        payload_hash=(input_.relay_data or {}).get("payload_hash"),
+        game_lifecycle_state=input_.resolved_lifecycle,
     )
     if saved_rows:
         touched = True
-        logger.info("[LIVE] 📝 Synced %s relay rows for %s", saved_rows, game_id)
+        logger.info("[LIVE] 📝 Synced %s relay rows for %s", saved_rows, input_.game_id)
 
     if save_options.detail_snapshot_background:
-        _submit_live_detail_snapshot_background(game_id, today_str)
+        _submit_live_detail_snapshot_background(input_.game_id, input_.today_str)
     elif save_options.detail_crawler is not None:
-        detail = await save_options.detail_crawler.crawl_game(game_id, today_str, lightweight=True)
+        detail = await save_options.detail_crawler.crawl_game(input_.game_id, input_.today_str, lightweight=True)
         if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
             touched = True
-            logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", game_id)
+            logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", input_.game_id)
 
-    if resolved_lifecycle == "result_pending_stabilization":
-        _trigger_fallback_healing_if_unverified(game_id)
+    if input_.resolved_lifecycle == "result_pending_stabilization":
+        _trigger_fallback_healing_if_unverified(input_.game_id)
 
     return touched
 
@@ -548,37 +553,44 @@ def _trigger_fallback_healing_if_unverified(game_id: str) -> None:
             asyncio.create_task(_run_kbo_fallback_healing(game_id))
 
 
-async def _process_single_live_game(  # noqa: PLR0913
-    game: dict[str, Any],
-    lifecycle_state: str | None,
-    nav_status_raw: str | None,
-    relay_crawler: NaverRelayCrawler,
-    today_str: str,
+@dataclass(frozen=True)
+class LiveGameInput:
+    game: dict[str, Any]
+    lifecycle_state: str | None
+    nav_status_raw: str | None
+    relay_crawler: NaverRelayCrawler
+    today_str: str
+
+
+async def _process_single_live_game(
+    input_: LiveGameInput,
     *,
     save_options: LiveSaveOptions,
 ) -> tuple[str | None, str]:
-    game_id = game["game_id"]
+    game_id = input_.game["game_id"]
 
     logger.info(
         "[LIVE] 🔍 Crawling active game: %s (lifecycle=%s, nav_status=%s)",
         game_id,
-        lifecycle_state,
-        nav_status_raw or "UNKNOWN",
+        input_.lifecycle_state,
+        input_.nav_status_raw or "UNKNOWN",
     )
 
-    relay_data = await relay_crawler.crawl_game_events(game_id)
+    relay_data = await input_.relay_crawler.crawl_game_events(game_id)
     flat_events = list((relay_data or {}).get("events") or [])
     raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
 
-    resolved_lifecycle = _resolve_live_lifecycle(lifecycle_state, flat_events, raw_pbp_rows)
+    resolved_lifecycle = _resolve_live_lifecycle(input_.lifecycle_state, flat_events, raw_pbp_rows)
 
     touched = await _save_live_relay_and_snapshot(
-        game_id,
-        today_str,
-        flat_events,
-        raw_pbp_rows,
-        relay_data,
-        resolved_lifecycle,
+        RelaySaveInput(
+            game_id=game_id,
+            today_str=input_.today_str,
+            flat_events=flat_events,
+            raw_pbp_rows=raw_pbp_rows,
+            relay_data=relay_data,
+            resolved_lifecycle=resolved_lifecycle,
+        ),
         save_options=save_options,
     )
 
@@ -647,11 +659,13 @@ async def run_live_crawler_cycle(
     if selected_candidates:
         tasks = [
             _process_single_live_game(
-                game,
-                lifecycle_state,
-                nav_status_raw,
-                relay_crawler,
-                today_str,
+                LiveGameInput(
+                    game=game,
+                    lifecycle_state=lifecycle_state,
+                    nav_status_raw=nav_status_raw,
+                    relay_crawler=relay_crawler,
+                    today_str=today_str,
+                ),
                 save_options=LiveSaveOptions(
                     detail_crawler=detail_crawler,
                     detail_snapshot_background=detail_snapshot_background,

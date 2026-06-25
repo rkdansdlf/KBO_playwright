@@ -65,12 +65,12 @@ def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
     if len(normalized) != DATE_STR_LEN or not normalized.isdigit():
         msg = f"Invalid date: {value!r}. Use YYYYMMDD."
         raise ValueError(msg)
-    datetime.strptime(normalized, "%Y%m%d")
+    datetime.strptime(normalized, "%Y%m%d").replace(tzinfo=KST)
     return normalized
 
 
 def _date_from_yyyymmdd(value: str) -> date:
-    return datetime.strptime(value, "%Y%m%d").date()
+    return datetime.strptime(value, "%Y%m%d").replace(tzinfo=KST).date()
 
 
 def _date_key(value: object) -> str:
@@ -111,7 +111,11 @@ def _coerce_date(value: object) -> date | None:
         return None
     for fmt in ("%Y-%m-%d", "%Y%m%d"):
         try:
-            return datetime.strptime(raw_value[:10] if fmt == "%Y-%m-%d" else raw_value[:8], fmt).date()
+            return (
+                datetime.strptime(raw_value[:10] if fmt == "%Y-%m-%d" else raw_value[:8], fmt)
+                .replace(tzinfo=KST)
+                .date()
+            )
         except ValueError:
             continue
     return None
