@@ -179,7 +179,7 @@ class PBPCrawler:
             "inning_half": state["current_half"],
             "description": text,
             "event_type": "batting" if "타자" in text or "전환" in text else "unknown",
-            "batter": text.split(":")[0].replace("타자", "").strip() if ":" in text else None,
+            "batter": text.split(":", maxsplit=1)[0].replace("타자", "").strip() if ":" in text else None,
             "result": text.split(":")[1].strip() if ":" in text else None,
             "wpa": wpa,
             "win_expectancy_before": wp_before,
