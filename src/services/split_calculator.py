@@ -1,3 +1,5 @@
+"""split calculator 모듈."""
+
 from __future__ import annotations
 
 import logging
@@ -28,8 +30,7 @@ if TYPE_CHECKING:
 
 
 class SituationalSplitCalculator:
-    """Computes situational batting splits from game_events (PBP) data.
-    """
+    """Computes situational batting splits from game_events (PBP) data."""
 
     def __init__(self, session: Session | None = None) -> None:
         self._session = session

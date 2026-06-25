@@ -1,3 +1,5 @@
+"""데이터 소스: naver."""
+
 from __future__ import annotations
 
 from src.crawlers.relay_crawler import RelayCrawler

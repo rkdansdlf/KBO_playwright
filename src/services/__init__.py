@@ -1,3 +1,5 @@
+"""services 패키지."""
+
 from __future__ import annotations
 
 """Service layer: business logic, aggregators, and orchestrators.

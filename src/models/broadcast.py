@@ -1,3 +1,5 @@
+"""데이터 모델: broadcast."""
+
 from __future__ import annotations
 
 from sqlalchemy import JSON, Index, Integer, String, UniqueConstraint

@@ -1,3 +1,5 @@
+"""CLI 명령: recalc season stats."""
+
 from __future__ import annotations
 
 import argparse

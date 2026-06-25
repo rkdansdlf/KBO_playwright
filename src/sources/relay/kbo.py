@@ -1,3 +1,5 @@
+"""데이터 소스: kbo."""
+
 from __future__ import annotations
 
 from src.crawlers.pbp_crawler import PBPCrawler

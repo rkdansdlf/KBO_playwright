@@ -1,3 +1,5 @@
+"""유틸리티: lock."""
+
 from __future__ import annotations
 
 import logging

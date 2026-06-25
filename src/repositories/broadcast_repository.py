@@ -1,3 +1,5 @@
+"""broadcast repository 리포지토리."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

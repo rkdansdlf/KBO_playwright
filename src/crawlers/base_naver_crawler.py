@@ -1,3 +1,5 @@
+"""KBO base naver crawler 크롤러."""
+
 from __future__ import annotations
 
 import logging

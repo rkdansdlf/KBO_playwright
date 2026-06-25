@@ -1,3 +1,5 @@
+"""데이터 모델: stat dataclasses."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

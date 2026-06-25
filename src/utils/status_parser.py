@@ -1,3 +1,5 @@
+"""KBO status parser 파서."""
+
 from __future__ import annotations
 
 PROFILE_RETIRE_KEYWORDS = ("은퇴", "명예의 전당")

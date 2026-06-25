@@ -1,3 +1,5 @@
+"""CLI 명령: monitor data freshness."""
+
 from __future__ import annotations
 
 import argparse

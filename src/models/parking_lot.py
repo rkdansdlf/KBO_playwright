@@ -1,3 +1,5 @@
+"""데이터 모델: parking lot."""
+
 from __future__ import annotations
 
 from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, UniqueConstraint

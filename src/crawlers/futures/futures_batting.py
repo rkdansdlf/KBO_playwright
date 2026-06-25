@@ -1,3 +1,5 @@
+"""futures batting 모듈."""
+
 from __future__ import annotations
 
 import logging

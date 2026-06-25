@@ -1,3 +1,5 @@
+"""urls 모듈."""
+
 from __future__ import annotations
 
 KBO_BASE = "https://www.koreabaseball.com"

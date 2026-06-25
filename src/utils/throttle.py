@@ -1,3 +1,5 @@
+"""유틸리티: throttle."""
+
 from __future__ import annotations
 
 import asyncio
@@ -68,8 +70,7 @@ class AsyncThrottle:
             self._last_request_times[host] = time.monotonic()
 
     def wait_sync(self, host: str = "koreabaseball.com") -> None:
-        """Synchronous version of wait.
-        """
+        """Synchronous version of wait."""
         now = time.monotonic()
         last_time = self._last_request_times.get(host, 0.0)
         elapsed = now - last_time

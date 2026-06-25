@@ -1,3 +1,5 @@
+"""player status confirmer 모듈."""
+
 from __future__ import annotations
 
 import asyncio

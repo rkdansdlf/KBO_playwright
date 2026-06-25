@@ -1,3 +1,5 @@
+"""CLI 명령: http client."""
+
 from __future__ import annotations
 
 DEFAULT_HEADERS = {

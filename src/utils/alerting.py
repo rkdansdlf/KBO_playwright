@@ -1,3 +1,5 @@
+"""유틸리티: alerting."""
+
 from __future__ import annotations
 
 import json
