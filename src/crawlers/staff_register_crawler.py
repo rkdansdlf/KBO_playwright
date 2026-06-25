@@ -108,7 +108,7 @@ def _parse_hands(text: str) -> tuple[str | None, str | None]:
 
 
 # ---------------------------------------------------------------------------
-# Core extraction JS – runs in browser context
+# Core extraction JS - runs in browser context
 # ---------------------------------------------------------------------------
 _EXTRACT_JS = """
 (teamCode) => {
@@ -323,7 +323,7 @@ class StaffRegisterCrawler:
 
 
 async def main() -> None:
-    """Quick standalone test – print staff for LG and Kiwoom."""
+    """Quick standalone test - print staff for LG and Kiwoom."""
     crawler = StaffRegisterCrawler(headless=True)
     records = await crawler.crawl_all_teams(team_codes=["LG", "WO"])
     logger.info("\nTotal staff records collected: %s", len(records))

@@ -136,8 +136,10 @@ select = [
     "TC004",   # runtime-import-in-type-checking-block
     "D202",    # blank-line-after-function
     "TID252",  # relative-imports
-    "RUF001",  # ambiguous-unicode-character
-    "RUF021",   # parenthesize-chained-operators
+     "RUF001",  # ambiguous-unicode-character
+     "RUF002",  # ambiguous-unicode-character-docstring
+     "RUF003",  # ambiguous-unicode-character-comment
+     "RUF021",   # parenthesize-chained-operators
     "ERA001",  # commented-out-code
     "RUF019",   # unnecessary-key-check
     "C4",       # flake8-comprehensions
