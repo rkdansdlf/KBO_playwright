@@ -106,16 +106,17 @@ class PlayerIdResolver(Protocol):
         *,
         uniform_no: str | None = None,
         is_pitcher: bool = False,
-    """Resolves id.
+    ) -> int | None:
+        """Resolves id.
 
-Args:
-    player_name: Player Name.
-    team_code: Team code identifier.
-    season_year: Season Year.
+        Args:
+            player_name: Player Name.
+            team_code: Team code identifier.
+            season_year: Season Year.
 
-Returns:
-    The result of the operation."""
-    ) -> int | None: ...
+        Returns:
+            The result of the operation."""
+        ...
 
 
 @dataclass
