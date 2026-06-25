@@ -29,7 +29,6 @@ class TeamRepository:
         """
         Save daily roster records with UPSERT logic.
         """
-
         # Deduplicate input list by unique key (date, team, player)
         # to prevent IntegrityError if the list contains duplicates
         unique_rosters = {}

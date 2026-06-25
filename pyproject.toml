@@ -119,6 +119,7 @@ select = [
     "ASYNC240", # blocking-path-method-in-async-function
     "FURB110", # if-exp-instead-of-or-operator
     "TID252",  # relative-imports
+    "D202",    # blank-line-after-function
     "RUF001",  # ambiguous-unicode-character
     "RUF021",   # parenthesize-chained-operators
     "ERA001",  # commented-out-code
@@ -256,3 +257,6 @@ exclude_also = [
     "if TYPE_CHECKING:",
     "pragma: no cover",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
