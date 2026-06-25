@@ -23,7 +23,7 @@ def parse_iso_date(pub_date: str) -> date | None:
     if not pub_date:
         return None
     with contextlib.suppress(ValueError, AttributeError):
-        return datetime.fromisoformat(pub_date.replace("Z", "+00:00")).date()
+        return datetime.fromisoformat(pub_date).date()
     return None
 
 

@@ -136,8 +136,7 @@ class OperationNoticeDoosanCrawler:
                 continue
 
             href = anchor["href"]
-            if href.startswith("./"):
-                href = href[2:]
+            href = href.removeprefix("./")
             if not href.startswith("http"):
                 if href.startswith("notice/"):
                     href = "https://www.doosanbears.com/doorundoorun/" + href
