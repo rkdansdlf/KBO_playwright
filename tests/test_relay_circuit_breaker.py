@@ -138,7 +138,8 @@ class _FailingAdapter:
 
 class TestOrchestratorCircuitBreakerIntegration:
     """Verifies that the circuit breaker is checked during fetch_game and that
-    sources on cooldown are skipped with status='cb_open'."""
+    sources on cooldown are skipped with status='cb_open'.
+    """
 
     def _run_fetch(self, orch, game_id, bucket_id, source_order, validator=None):
         return asyncio.run(orch.fetch_game(game_id, bucket_id, source_order, validator=validator))
@@ -179,7 +180,8 @@ class TestOrchestratorCircuitBreakerIntegration:
 
     def test_source_skipped_when_circuit_open(self):
         """When a source exceeds threshold, the orchestrator should emit
-        cb_open attempt records instead of fetching from it."""
+        cb_open attempt records instead of fetching from it.
+        """
         cb = SourceCircuitBreaker(threshold=1)
         cb.record_failure("naver", "bucket1")
         cb.record_failure("naver", "bucket1")
@@ -349,7 +351,8 @@ class TestCircuitBreakerPersistence:
 
     def test_cooldown_carryover_after_restart(self, tmp_path: Path):
         """Simulate a crash during cooldown: the remaining cooldown time
-        should carry over to the new process."""
+        should carry over to the new process.
+        """
         p = tmp_path / "cb_state.csv"
         cb = SourceCircuitBreaker(threshold=2, cooldown_seconds=10, persist_path=p)
         cb.record_failure("n", "b")

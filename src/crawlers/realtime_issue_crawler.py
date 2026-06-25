@@ -1,5 +1,4 @@
-"""Crawler for real-time issue text: Naver Sports baseball news headlines and MLBPark popular threads.
-"""
+"""Crawler for real-time issue text: Naver Sports baseball news headlines and MLBPark popular threads."""
 
 from __future__ import annotations
 
@@ -21,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class RealtimeIssueCrawler:
-    """Scrapes real-time baseball topics, headlines, and forum discussions.
-    """
+    """Scrapes real-time baseball topics, headlines, and forum discussions."""
 
     def __init__(self, timeout: int = 15) -> None:
         self.timeout = timeout
@@ -157,8 +155,7 @@ class RealtimeIssueCrawler:
         return articles
 
     def fetch_mlbpark_bullpen_posts(self, *, save: bool = False) -> list[dict[str, Any]]:
-        """Crawls popular titles and post details from MLBPark Bullpen forum.
-        """
+        """Crawls popular titles and post details from MLBPark Bullpen forum."""
         url = "https://mlbpark.donga.com/mp/b.php?b=bullpen"
         logger.info("Fetching posts from MLBPark Bullpen: %s", url)
 

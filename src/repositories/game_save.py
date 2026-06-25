@@ -1,5 +1,4 @@
-"""Public save functions for game details, snapshots, and schedules.
-"""
+"""Public save functions for game details, snapshots, and schedules."""
 
 from __future__ import annotations
 

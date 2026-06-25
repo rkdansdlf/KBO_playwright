@@ -176,6 +176,7 @@ async def fetch_and_parse_futures_batting(
 
     Returns:
         List of dicts, each representing one season's stats
+
     """
     active_pool = pool or AsyncPlaywrightPool(max_pages=1, context_kwargs={"locale": "ko-KR"})
     owns_pool = pool is None

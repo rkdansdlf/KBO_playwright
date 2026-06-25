@@ -1,5 +1,4 @@
-"""Model representing a RAG text chunk with its metadata and vector embedding.
-"""
+"""Model representing a RAG text chunk with its metadata and vector embedding."""
 
 from __future__ import annotations
 

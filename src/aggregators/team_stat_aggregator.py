@@ -79,8 +79,7 @@ class TeamStatAggregator:
 
     @staticmethod
     def _get_team_record_from_standings(session: Session, team_id: str, year: int) -> dict[str, int]:
-        """Get the team win/loss/tie record from standings.
-        """
+        """Get the team win/loss/tie record from standings."""
         start_date = date_type(year, 1, 1)
         end_date = date_type(year, 12, 31)
         latest_standings = (
@@ -210,8 +209,7 @@ class TeamStatAggregator:
         *,
         dry_run: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
-        """Aggregates and updates both batting and pitching stats.
-        """
+        """Aggregates and updates both batting and pitching stats."""
         batting_results = self.aggregate_batting(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
         pitching_results = self.aggregate_pitching(
             TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run)

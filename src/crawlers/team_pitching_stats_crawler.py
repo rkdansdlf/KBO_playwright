@@ -1,5 +1,4 @@
-"""Team-level pitching stats crawler.
-"""
+"""Team-level pitching stats crawler."""
 
 from __future__ import annotations
 
@@ -203,7 +202,13 @@ def parse_team_pitching_html(
     team_mapping: dict[str, str],
 ) -> list[dict[str, Any]]:
     return parse_team_stats_html(
-        html, season, league, team_mapping, HEADER_MAP, PITCHING_FIELDS, FLOAT_FIELDS,
+        html,
+        season,
+        league,
+        team_mapping,
+        HEADER_MAP,
+        PITCHING_FIELDS,
+        FLOAT_FIELDS,
         value_parser=_parse_pitching_value,
     )
 
@@ -231,9 +236,15 @@ def _add_pitching_values(payload: dict[str, Any], cells: list, indexes: dict[str
 
 
 def _parse_team_pitching_row(
-    row: Tag, indexes: dict[str, int], season: int, league: str, team_mapping: dict[str, str],
+    row: Tag,
+    indexes: dict[str, int],
+    season: int,
+    league: str,
+    team_mapping: dict[str, str],
 ) -> dict[str, Any] | None:
-    return _parse_one_team_row(row, indexes, season, league, team_mapping, PITCHING_FIELDS, FLOAT_FIELDS, _parse_pitching_value)
+    return _parse_one_team_row(
+        row, indexes, season, league, team_mapping, PITCHING_FIELDS, FLOAT_FIELDS, _parse_pitching_value
+    )
 
 
 def main() -> None:

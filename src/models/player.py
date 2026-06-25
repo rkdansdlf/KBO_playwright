@@ -121,8 +121,7 @@ class PlayerBasic(Base, TimestampMixin):
 
 
 class Player(Base, TimestampMixin):
-    """Player master record representing an individual person.
-    """
+    """Player master record representing an individual person."""
 
     __tablename__ = "players"
 
@@ -212,8 +211,7 @@ class PlayerIdentity(Base, TimestampMixin):
 
 
 class PlayerSeasonBatting(Base, TimestampMixin):
-    """Season-level batting aggregates by league/split.
-    """
+    """Season-level batting aggregates by league/split."""
 
     __tablename__ = "player_season_batting"
     __table_args__ = (

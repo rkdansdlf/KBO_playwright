@@ -1,5 +1,4 @@
-"""Crawler for static text sources: rulebooks (PDF) and baseball encyclopedias/wikis (Namuwiki).
-"""
+"""Crawler for static text sources: rulebooks (PDF) and baseball encyclopedias/wikis (Namuwiki)."""
 
 from __future__ import annotations
 
@@ -30,8 +29,7 @@ class StaticTextCrawler:
         self._raw_pages: list[dict] = []
 
     def parse_local_pdf(self, pdf_path: str) -> list[dict[str, Any]]:
-        """Parses a local PDF rulebook using pypdf and extracts text by page.
-        """
+        """Parses a local PDF rulebook using pypdf and extracts text by page."""
         logger.info("📄 Parsing local PDF: %s", pdf_path)
         if not Path(pdf_path).exists():
             msg = f"PDF file not found at: {pdf_path}"

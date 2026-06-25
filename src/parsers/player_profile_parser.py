@@ -214,8 +214,7 @@ def parse_money(s: str) -> dict[str, Any | None]:
 
 
 def parse_draft(s: str) -> dict[str, Any | None]:
-    """Parse draft info like '06 두산 2차 8라운드 59순위', '25 삼성 자유선발', or '98 삼성 1차'.
-    """
+    """Parse draft info like '06 두산 2차 8라운드 59순위', '25 삼성 자유선발', or '98 삼성 1차'."""
     default_res = {
         "draft_year": None,
         "draft_team_code": None,

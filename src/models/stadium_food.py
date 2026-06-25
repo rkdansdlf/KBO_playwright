@@ -1,5 +1,4 @@
-"""Model representing stadium foods and restaurant recommendations.
-"""
+"""Model representing stadium foods and restaurant recommendations."""
 
 from __future__ import annotations
 
@@ -10,8 +9,7 @@ from .base import Base, TimestampMixin
 
 
 class StadiumFood(Base, TimestampMixin):
-    """Represents a food item or restaurant at/near a KBO stadium.
-    """
+    """Represents a food item or restaurant at/near a KBO stadium."""
 
     __tablename__ = "stadium_foods"
     __table_args__ = (UniqueConstraint("stadium_name", "restaurant_name", "menu_item", name="uq_stadium_food"),)

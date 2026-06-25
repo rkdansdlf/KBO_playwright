@@ -45,6 +45,7 @@ class PlayerBasicRepository:
 
         Returns:
             Number of players upserted
+
         """
         self.last_filter_counts = Counter()
         if not players:

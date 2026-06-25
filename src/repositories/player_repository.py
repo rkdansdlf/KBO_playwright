@@ -1,5 +1,4 @@
-"""Repository utilities for player domain (profiles, identities, seasons).
-"""
+"""Repository utilities for player domain (profiles, identities, seasons)."""
 
 from __future__ import annotations
 

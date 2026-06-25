@@ -1,5 +1,4 @@
-"""ORM model for normalized stat rankings.
-"""
+"""ORM model for normalized stat rankings."""
 
 from __future__ import annotations
 

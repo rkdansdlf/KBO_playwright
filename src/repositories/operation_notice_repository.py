@@ -150,8 +150,7 @@ class OperationNoticeRepository:
         return self.get_by_game_date(stadium_code, today, urgent_only=True)
 
     def get_latest_external_id(self, stadium_code: str, source_name: str) -> str | None:
-        """Returns the most recently published external_id for incremental crawling.
-        """
+        """Returns the most recently published external_id for incremental crawling."""
         stmt = (
             select(StadiumOperationNotice.external_id)
             .where(

@@ -1,5 +1,4 @@
-"""Repository for saving game details, box scores, and normalized relay data.
-"""
+"""Repository for saving game details, box scores, and normalized relay data."""
 
 from __future__ import annotations
 

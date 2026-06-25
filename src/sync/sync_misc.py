@@ -356,6 +356,7 @@ class MiscSyncMixin:
         Args:
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
             batch_size: Records per UPSERT batch.
+
         """
         self._ensure_table(StadiumTransitTime)
         filters = None
@@ -381,6 +382,7 @@ class MiscSyncMixin:
         Args:
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
             batch_size: Records per UPSERT batch.
+
         """
         self._ensure_table(StadiumCongestion)
         filters = None
@@ -406,6 +408,7 @@ class MiscSyncMixin:
         Args:
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
             batch_size: Records per UPSERT batch.
+
         """
         self._ensure_table(StadiumOperationNotice)
         filters = None

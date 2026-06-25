@@ -1,5 +1,4 @@
-"""Repositories for team-level season statistics.
-"""
+"""Repositories for team-level season statistics."""
 
 from __future__ import annotations
 

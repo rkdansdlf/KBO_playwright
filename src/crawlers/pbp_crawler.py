@@ -193,8 +193,7 @@ class PBPCrawler:
         }
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """Loads the LiveText page for a specific game and extracts PBP data.
-        """
+        """Loads the LiveText page for a specific game and extracts PBP data."""
         self.last_failure_reason = None
         game_date = game_id[:8]
         # Common ids: leagueId=1 (KBO), seriesId=0 (Regular)

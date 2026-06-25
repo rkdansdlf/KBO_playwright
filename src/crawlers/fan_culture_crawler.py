@@ -117,6 +117,7 @@ class FanCultureCrawler:
             save: Persist results to database.
             team_filter: Only crawl this team code (e.g. 'LG').
             dry_run: Print results without saving.
+
         """
         if not self.client.is_configured():
             logger.warning("[FanCulture] ⚠️  YOUTUBE_API_KEY not set.")

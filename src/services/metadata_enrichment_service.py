@@ -18,8 +18,7 @@ METADATA_ENRICHMENT_EXCEPTIONS = (httpx.HTTPError, json.JSONDecodeError, Runtime
 
 
 class MetadataEnrichmentService:
-    """Calls Gemini API to analyze text content and extract keywords, summaries, and questions.
-    """
+    """Calls Gemini API to analyze text content and extract keywords, summaries, and questions."""
 
     def __init__(self) -> None:
         self.api_key = os.getenv("GEMINI_API_KEY")

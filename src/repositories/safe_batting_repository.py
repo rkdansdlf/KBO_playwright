@@ -211,6 +211,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
 
     Returns:
         저장된 레코드 수
+
     """
     global LAST_FILTER_COUNTS
     LAST_FILTER_COUNTS = Counter()

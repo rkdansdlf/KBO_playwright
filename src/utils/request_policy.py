@@ -1,5 +1,4 @@
-"""Shared request policy for throttling, UA rotation, and retries.
-"""
+"""Shared request policy for throttling, UA rotation, and retries."""
 
 from __future__ import annotations
 

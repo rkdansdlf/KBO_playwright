@@ -72,6 +72,7 @@ class ProcessLock:
 
         Returns:
             True if the lock was successfully acquired, False otherwise.
+
         """
         if self.thread_lock_acquired:
             logger.debug("ProcessLock is already held by this instance: %s", self.name)

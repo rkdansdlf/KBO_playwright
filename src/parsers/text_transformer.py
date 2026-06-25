@@ -1,5 +1,4 @@
-"""Data transformer for cleansing and chunking extracted raw text before embedding.
-"""
+"""Data transformer for cleansing and chunking extracted raw text before embedding."""
 
 from __future__ import annotations
 
@@ -20,12 +19,10 @@ class ChunkingContext:
 
 
 class TextTransformer:
-    """Cleans raw text and splits it into semantic chunks based on document type (rules vs news).
-    """
+    """Cleans raw text and splits it into semantic chunks based on document type (rules vs news)."""
 
     def clean_text(self, text: str) -> str:
-        """Removes noisy characters, consecutive whitespace, tabs, and markdown clutter.
-        """
+        """Removes noisy characters, consecutive whitespace, tabs, and markdown clutter."""
         if not text:
             return ""
 
