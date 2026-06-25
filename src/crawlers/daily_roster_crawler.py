@@ -132,8 +132,6 @@ class DailyRosterCrawler:
         daily_records = []
 
         # The page has a list of teams. We need to click each or call `fnSearchChange('CODE')`.
-        # Team codes map:
-        # LG, HH(Hanwha), SS(Samsung), KT, ...
         # Standard KBO codes are used.
 
         # 10 Teams

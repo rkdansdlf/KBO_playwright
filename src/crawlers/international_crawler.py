@@ -128,7 +128,6 @@ class InternationalScheduleCrawler:
             venue = await cols[3].inner_text()
 
         # 5. Synthesize Game ID
-        # Format: YYYYMMDD + Home + Away + 0
         game_id = f"{year}{month:02d}{day:02d}{away_code}{home_code}0"
 
         # Construct Game Object (Dict for now)

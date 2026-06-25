@@ -96,8 +96,6 @@ class SabermetricsCalculator:
         lg_r_per_pa = (bat_query.r or 0) / (bat_query.pa or 1)
 
         # 4. FIP Constant
-        # FIP = ((13*HR + 3*(BB+HBP) - 2*K) / IP) + constant
-        # constant = LeagueERA - (((13*lgHR + 3*(lgBB+lgHBP) - 2*lgK) / lgIP))
         lg_ip = (pit_query.outs or 0) / 3.0
         lg_era = ((pit_query.er or 0) / lg_ip) * 9 if lg_ip > 0 else 4.50
         raw_fip = (
