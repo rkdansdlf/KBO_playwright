@@ -98,7 +98,7 @@ def analyze_texts(rows: list[dict], top_words: int = 15) -> None:
 
     from src.utils.relay_text import _RELAY_NOISE_PATTERNS, _RELAY_NOISE_TOKENS
 
-    set(t.lower() for t in _RELAY_NOISE_TOKENS)
+    {t.lower() for t in _RELAY_NOISE_TOKENS}
     candidate_noise = Counter()
     for text in texts:
         text_lower = text.lower()
