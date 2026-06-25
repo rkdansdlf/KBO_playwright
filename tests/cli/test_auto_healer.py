@@ -11,7 +11,9 @@ from src.cli.auto_healer import (
     _find_inconsistent_games,
     _find_recovery_targets,
     _find_stuck_games,
+    _log_anomaly_summary,
     _log_healer_summary,
+    _pending_recovery_candidates,
     main,
     run_healer_async,
 )
@@ -58,10 +60,39 @@ class TestFindInconsistentGames:
 
 
 class TestApplyHealOutcome:
-    def test_returns_status_from_resolution(self):
+    def test_completed_when_detail_saved(self):
+        mock_item = MagicMock()
+        mock_item.detail_saved = True
+        mock_item.failure_reason = None
         with patch("src.cli.auto_healer._send_healer_start_alert"):
-            result = _apply_heal_outcome("G1", None)
-            assert isinstance(result, str)
+            result = _apply_heal_outcome("G1", mock_item)
+        assert result == "completed"
+
+    def test_cancelled_when_failure_reason(self):
+        mock_item = MagicMock()
+        mock_item.detail_saved = False
+        mock_item.failure_reason = "cancelled"
+        with patch("src.cli.auto_healer.update_game_status") as mock_update:
+            with patch("src.cli.auto_healer._send_healer_start_alert"):
+                result = _apply_heal_outcome("G1", mock_item)
+        assert result == "cancelled"
+        mock_update.assert_called_once()
+
+    def test_unresolved_when_no_item(self):
+        with patch("src.cli.auto_healer.update_game_status") as mock_update:
+            with patch("src.cli.auto_healer._send_healer_start_alert"):
+                result = _apply_heal_outcome("G1", None)
+        assert result == "unresolved"
+        mock_update.assert_called_once()
+
+    def test_unresolved_with_other_reason(self):
+        mock_item = MagicMock()
+        mock_item.detail_saved = False
+        mock_item.failure_reason = "timeout"
+        with patch("src.cli.auto_healer.update_game_status"):
+            with patch("src.cli.auto_healer._send_healer_start_alert"):
+                result = _apply_heal_outcome("G1", mock_item)
+        assert result == "unresolved"
 
 
 class TestLogHealerSummary:
@@ -69,6 +100,93 @@ class TestLogHealerSummary:
         with caplog.at_level(logging.INFO):
             _log_healer_summary({"fixed": 5, "failed": 1, "completed": 5}, dry_run=True)
         assert "5" in caplog.text
+
+
+class TestLogAnomalySummary:
+    def test_logs_stuck_games_warning(self, caplog):
+        mock_game = MagicMock()
+        mock_game.game_id = "G1"
+        mock_game.game_status = "SCHEDULED"
+
+        with caplog.at_level(logging.WARNING):
+            _log_anomaly_summary(
+                all_found=[mock_game],
+                inconsistent_games=[],
+                pending_ids={"G1"},
+                anomaly_dates=[],
+            )
+        assert "stuck" in caplog.text.lower() or "Anomaly" in caplog.text
+
+    def test_logs_inconsistent_warning(self, caplog):
+        mock_game = MagicMock()
+        mock_game.game_id = "G2"
+        mock_game.game_status = "FINAL"
+
+        with caplog.at_level(logging.WARNING):
+            _log_anomaly_summary(
+                all_found=[mock_game],
+                inconsistent_games=[mock_game],
+                pending_ids={"G2"},
+                anomaly_dates=["2025-06-15"],
+            )
+        assert "inconsistent" in caplog.text.lower() or "Anomaly" in caplog.text
+
+    def test_no_warning_when_not_pending(self, caplog):
+        mock_game = MagicMock()
+        mock_game.game_id = "G3"
+        mock_game.game_status = "SCHEDULED"
+
+        with caplog.at_level(logging.WARNING):
+            _log_anomaly_summary(
+                all_found=[mock_game],
+                inconsistent_games=[],
+                pending_ids=set(),
+                anomaly_dates=[],
+            )
+        assert "stuck" not in caplog.text.lower()
+
+
+class TestFindRecoveryTargets:
+    def test_with_target_game_ids(self):
+        with patch("src.cli.auto_healer.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_game = MagicMock()
+            mock_game.game_id = "G1"
+            mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_game]
+
+            all_found, stuck, inconsistent = _find_recovery_targets(["G1"])
+
+        assert len(all_found) == 1
+        assert stuck == []
+        assert inconsistent == []
+
+    def test_without_targets_uses_find_functions(self):
+        with patch("src.cli.auto_healer._find_stuck_games", return_value=[]):
+            with patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]):
+                all_found, stuck, inconsistent = _find_recovery_targets(None)
+
+        assert all_found == []
+        assert stuck == []
+        assert inconsistent == []
+
+
+class TestPendingRecoveryCandidates:
+    def test_filters_to_pending(self):
+
+        mock_game1 = MagicMock()
+        mock_game1.game_id = "G1"
+        mock_game2 = MagicMock()
+        mock_game2.game_id = "G2"
+
+        mock_mgr = MagicMock()
+        mock_mgr.initialize_run.return_value = None
+        mock_mgr.get_pending_targets.return_value = ["G1"]
+
+        pending_ids, candidates = _pending_recovery_candidates(mock_mgr, [mock_game1, mock_game2])
+        assert pending_ids == {"G1"}
+        assert len(candidates) == 1
+        assert candidates[0].game_id == "G1"
 
 
 class TestRunHealerAsync:

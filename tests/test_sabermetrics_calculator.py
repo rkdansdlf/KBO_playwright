@@ -25,37 +25,37 @@ LG_BATTING = {
 
 def _make_batting(**overrides) -> PlayerSeasonBatting:
     """Factory for PlayerSeasonBatting with sensible defaults."""
-    defaults = dict(
-        plate_appearances=600,
-        at_bats=500,
-        hits=150,
-        doubles=30,
-        triples=5,
-        home_runs=25,
-        walks=80,
-        intentional_walks=5,
-        hbp=10,
-        sacrifice_flies=5,
-        runs=90,
-        obp=0.380,
-        slg=0.500,
-    )
+    defaults = {
+        "plate_appearances": 600,
+        "at_bats": 500,
+        "hits": 150,
+        "doubles": 30,
+        "triples": 5,
+        "home_runs": 25,
+        "walks": 80,
+        "intentional_walks": 5,
+        "hbp": 10,
+        "sacrifice_flies": 5,
+        "runs": 90,
+        "obp": 0.380,
+        "slg": 0.500,
+    }
     defaults.update(overrides)
     return MagicMock(spec=PlayerSeasonBatting, **defaults)
 
 
 def _make_pitching(**overrides) -> PlayerSeasonPitching:
     """Factory for PlayerSeasonPitching with sensible defaults."""
-    defaults = dict(
-        innings_outs=300,
-        earned_runs=60,
-        home_runs_allowed=15,
-        walks_allowed=50,
-        hit_batters=10,
-        strikeouts=180,
-        runs_allowed=70,
-        hits_allowed=200,
-    )
+    defaults = {
+        "innings_outs": 300,
+        "earned_runs": 60,
+        "home_runs_allowed": 15,
+        "walks_allowed": 50,
+        "hit_batters": 10,
+        "strikeouts": 180,
+        "runs_allowed": 70,
+        "hits_allowed": 200,
+    }
     defaults.update(overrides)
     return MagicMock(spec=PlayerSeasonPitching, **defaults)
 

@@ -453,7 +453,7 @@ class StatAudit:
             repo = PlayerSeasonFieldingRepository()
 
             # Group official by player to reduce redundant aggregations
-            players = sorted(list({off.player_id for off in official_stats}))
+            players = sorted({off.player_id for off in official_stats})
 
             for pid in players:
                 calc_list = SeasonStatAggregator.aggregate_fielding_season(

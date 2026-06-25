@@ -13,41 +13,41 @@ from src.services.game_story_builder import (
 
 
 def _make_game(**kwargs):
-    defaults = dict(
-        game_id="20240501LGSS0",
-        game_date=date(2024, 5, 1),
-        away_team="LG",
-        home_team="SS",
-        away_score=3,
-        home_score=5,
-        game_status="completed",
-    )
+    defaults = {
+        "game_id": "20240501LGSS0",
+        "game_date": date(2024, 5, 1),
+        "away_team": "LG",
+        "home_team": "SS",
+        "away_score": 3,
+        "home_score": 5,
+        "game_status": "completed",
+    }
     defaults.update(kwargs)
     return MagicMock(spec=Game, **defaults)
 
 
 def _make_event(**kwargs):
-    defaults = dict(
-        id=1,
-        event_seq=1,
-        inning=1,
-        inning_half="top",
-        away_score=0,
-        home_score=0,
-        description="안타",
-        event_type="hit",
-        result_code="H",
-        rbi=0,
-        wpa=0.05,
-        batter_name="Kim",
-        pitcher_name="Park",
-        batter_id=1,
-        pitcher_id=2,
-        outs_before=0,
-        outs_after=1,
-        bases_before="000",
-        bases_after="100",
-    )
+    defaults = {
+        "id": 1,
+        "event_seq": 1,
+        "inning": 1,
+        "inning_half": "top",
+        "away_score": 0,
+        "home_score": 0,
+        "description": "안타",
+        "event_type": "hit",
+        "result_code": "H",
+        "rbi": 0,
+        "wpa": 0.05,
+        "batter_name": "Kim",
+        "pitcher_name": "Park",
+        "batter_id": 1,
+        "pitcher_id": 2,
+        "outs_before": 0,
+        "outs_after": 1,
+        "bases_before": "000",
+        "bases_after": "100",
+    }
     defaults.update(kwargs)
     return MagicMock(spec=GameEvent, **defaults)
 
