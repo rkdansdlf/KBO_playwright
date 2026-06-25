@@ -32,3 +32,4 @@ tiktoken>=0.6.0  # Recommended for token counting
 
 # 설치 후 반드시 실행:
 # playwright install chromium
+pre-commit>=4.0
