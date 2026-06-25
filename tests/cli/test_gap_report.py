@@ -5,9 +5,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.cli.gap_report import (
-    check_relay_gaps,
+    check_id_resolution_gaps,
+    check_pa_formula_gaps,
     check_profile_gaps,
-    check_standings_gaps,
+    check_relay_gaps,
     check_team_stats_gaps,
     main,
     run_gap_report,
@@ -131,18 +132,15 @@ class TestCheckProfileGaps:
             assert result["ok"] is True
 
 
-class TestCheckStandingsGaps:
+class TestCheckIdResolutionGaps:
     def test_no_gaps(self):
-        with patch("src.cli.gap_report.validate_standings_integrity") as mock_val:
-            mock_val.return_value = []
-            result = check_standings_gaps()
-            assert result["ok"] is True
+        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_session.query.return_value.filter.return_value.all.return_value = []
 
-    def test_finds_gaps(self):
-        with patch("src.cli.gap_report.validate_standings_integrity") as mock_val:
-            mock_val.return_value = ["LG: mismatch"]
-            result = check_standings_gaps()
-            assert result["ok"] is False
+            result = check_id_resolution_gaps()
+            assert result["ok"] is True
 
 
 class TestCheckTeamStatsGaps:
