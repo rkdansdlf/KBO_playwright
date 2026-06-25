@@ -32,7 +32,11 @@ class TestPlayerStatusConfirmer:
         assert result == {"attempted": 0, "confirmed": 0}
 
     @pytest.mark.asyncio
-    async def test_confirms_retired_entry(self, mock_pool):
+    async def test_confirms_retired_entry(self, mock_pool, monkeypatch):
+        async def _no_sleep(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _no_sleep)
         page = AsyncMock()
         page.goto = AsyncMock()
         page.inner_text = AsyncMock(return_value="은퇴 선수 정보")
@@ -46,7 +50,11 @@ class TestPlayerStatusConfirmer:
         assert entries[0]["status_source"] == "profile"
 
     @pytest.mark.asyncio
-    async def test_confirms_staff_entry(self, mock_pool):
+    async def test_confirms_staff_entry(self, mock_pool, monkeypatch):
+        async def _no_sleep(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _no_sleep)
         page = AsyncMock()
         page.goto = AsyncMock()
         page.inner_text = AsyncMock(return_value="코치 정보")
@@ -82,7 +90,11 @@ class TestPlayerStatusConfirmer:
         assert result == {"attempted": 2, "confirmed": 2}
 
     @pytest.mark.asyncio
-    async def test_parse_returning_none_skips(self, mock_pool):
+    async def test_parse_returning_none_skips(self, mock_pool, monkeypatch):
+        async def _no_sleep(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _no_sleep)
         page = AsyncMock()
         page.goto = AsyncMock()
         page.inner_text = AsyncMock(return_value="some text")
@@ -104,13 +116,18 @@ class TestPlayerStatusConfirmer:
             mock_pool_instance.acquire = AsyncMock(return_value=page)
             MockPool.return_value = mock_pool_instance
             confirmer = PlayerStatusConfirmer()
+            confirmer.request_delay = 0
             with patch("src.services.player_status_confirmer.parse_status_from_text", return_value=None):
                 await confirmer.confirm_entries([{"player_id": "1", "status": "retired"}])
             mock_pool_instance.start.assert_called_once()
             mock_pool_instance.close.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_injected_pool_not_closed(self, mock_pool):
+    async def test_injected_pool_not_closed(self, mock_pool, monkeypatch):
+        async def _no_sleep(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _no_sleep)
         page = AsyncMock()
         page.goto = AsyncMock()
         page.inner_text = AsyncMock(return_value="text")
