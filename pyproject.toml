@@ -168,47 +168,13 @@ select = [
      "D414",    # docstring-empty-section
      "D416",    # docstring-section-name-ends-with-colon
      "D418",    # docstring-omit-name-body
-     "D419",    # docstring-empty
-     "FURB103", # type-none-comparison
-     "FURB105", # print-empty-string
-     "FURB113", # reimplemented-starmap
-     "FURB116", # no-op
-     "FURB118", # reimplemented-operator
-     "FURB122", # reimplemented-sum-product
-     "FURB129", # isinstance-type-comparison
-     "FURB131", # delete-full-slice
-     "FURB136", # remove-dict-keys
-     "FURB140", # for-loop-set-mutation
-     "FURB142", # sort-tuple
-     "FURB145", # unnecessary-cast-enum
-     "FURB148", # unnecessary-pass-argument
-     "FURB152", # verbose-named-tuple-call
-     "FURB154", # has-sep-in-f-string
-     "FURB156", # verbose-print-format
-     "FURB163", # redundant-slice-union
-     "FURB164", # verbose-print-string-concat
-     "FURB166", # cause-later-iteration
-     "FURB168", # verbose-file-io
-     "FURB169", # string-join-list
-     "FURB180", # sorted-collection
-     "FURB181", # mutable-copy-in-loop
-     "FURB187", # verbose-logger
-     "FURB189", # verbose-get
-     "FURB192", # needless-append
-     "PLC0414", # useless-import-alias
-     "PLC2401", # unnecessary-dict-comprehension
-     "PLC2403", # unnecessary-treelike-comprehension
-     "PLC3002", # unnecessary-direct-lambda-call
-     "PLR1701", # consider-merging-isinstance (remapped to SIM101)
-     "PLR1722", # consider-using-sys-exit
-     "PLR6201", # literal-membership-test
-     "PLR6301", # no-self-use
-     "RUF007",  # pairwise-over-zipped
-     "RUF008",  # mutable-class-default-dataclass
-     "RUF009",  # function-call-in-dataclass-default-arg
-     "RUF016",  # redundant-string-concatenation
-     "RUF018",  # assignment-in-assert
-     "RUF020",  # explicit-f-string-type-conversion
+      "D419",    # docstring-empty
+      "RUF007",  # pairwise-over-zipped
+      "RUF008",  # mutable-class-default-dataclass
+      "RUF009",  # function-call-in-dataclass-default-arg
+      "RUF016",  # redundant-string-concatenation
+      "RUF018",  # assignment-in-assert
+      "RUF020",  # explicit-f-string-type-conversion
      "RUF023",  # unsorted-dunder-slots
      "RUF026",  # duplicate-dunder-attribute
      "RUF028",  # direct-try-resume

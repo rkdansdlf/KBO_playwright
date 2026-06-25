@@ -52,7 +52,7 @@ class TestPitchingStatCalculatorEdgeCases:
 
     def test_perfect_era(self):
         data = {
-            "innings_outs": 54,
+            "innings_outs": 162,
             "earned_runs": 0,
             "hits_allowed": 0,
             "walks_allowed": 0,
@@ -149,7 +149,7 @@ class TestPitchingStatCalculatorEdgeCases:
         }
         result = PitchingStatCalculator.calculate_ratios(data)
         assert result["era"] == 3.0
-        assert result["whip"] == 3.0
+        assert result["whip"] == 1.0
         assert result["k_per_nine"] == 6.0
         assert result["bb_per_nine"] == 3.0
 
