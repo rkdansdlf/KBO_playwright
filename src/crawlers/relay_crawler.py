@@ -144,7 +144,7 @@ class RelayCrawler:
         _pool: AsyncPlaywrightPool | None = None,
     ) -> None:
         """
-        pool is retained for backward compatibility with GameDetailCrawler but is unused.
+        Pool is retained for backward compatibility with GameDetailCrawler but is unused.
         """
         self.api_base_url = "https://api-gw.sports.naver.com/schedule/games/{game_id}/relay"
         self.wpa_calc = WPACalculator()

@@ -844,7 +844,7 @@ def _manifest_base_dir(manifest_path: str | Path | Iterable[str | Path]) -> Path
         return Path(token or ".").resolve().parent
     for item in manifest_path:
         return _manifest_base_dir(item)
-    return Path().resolve()
+    return Path.cwd()
 
 
 def _dedupe(values: Iterable[str]) -> list[str]:
