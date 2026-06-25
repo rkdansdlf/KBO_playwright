@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.cli.crawl_text_relay import main
+import pytest
+
+from src.cli.crawl_text_relay import (
+    build_arg_parser,
+    main,
+    run_from_args,
+    run_season,
+    run_single_game,
+)
 
 
 class TestCrawlTextRelayCLI:
@@ -64,3 +73,45 @@ class TestCrawlTextRelayCLI:
             assert call_kwargs.kwargs["season"] == 2026
             assert call_kwargs.kwargs["month"] == 4
             assert call_kwargs.kwargs["save"] is True
+
+
+class TestBuildArgParser:
+    def test_parser_creation(self):
+        parser = build_arg_parser()
+        assert parser is not None
+
+    def test_parser_season_flag(self):
+        parser = build_arg_parser()
+        args = parser.parse_args(["--season", "2026"])
+        assert args.season == 2026
+
+    def test_parser_game_id_flag(self):
+        parser = build_arg_parser()
+        args = parser.parse_args(["--game-id", "20260412SKLG0"])
+        assert args.game_id == "20260412SKLG0"
+
+
+class TestRunFromArgs:
+    async def test_run_single_game(self):
+        args = MagicMock()
+        args.game_id = "G1"
+        args.season = None
+        args.month = None
+        args.save = False
+        args.output_dir = "data"
+        with patch("src.cli.crawl_text_relay.run_single_game", new_callable=AsyncMock) as mock:
+            mock.return_value = 5
+            result = await run_from_args(args)
+            assert result["rows"] == 5
+
+    async def test_run_season(self):
+        args = MagicMock()
+        args.game_id = None
+        args.season = 2026
+        args.month = None
+        args.save = False
+        args.output_dir = "data"
+        with patch("src.cli.crawl_text_relay.run_season", new_callable=AsyncMock) as mock:
+            mock.return_value = {"total": 10}
+            result = await run_from_args(args)
+            assert result["total"] == 10
