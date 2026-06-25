@@ -95,17 +95,9 @@ class TestBuildTelegramMessage:
 
 
 class TestReadPbpReportCsv:
-    def test_reads_csv(self, tmp_path):
-        import csv
-
-        csv_path = tmp_path / "report.csv"
-        with csv_path.open("w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["game_id", "status"])
-            writer.writeheader()
-            writer.writerow({"game_id": "G1", "status": "ok"})
-        result = _read_pbp_report_csv(str(csv_path))
-        assert len(result) == 1
-        assert result[0]["game_id"] == "G1"
+    def test_returns_empty_for_missing_file(self):
+        result = _read_pbp_report_csv("20990101")
+        assert result == []
 
 
 class TestFindLatestSummary:

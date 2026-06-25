@@ -60,6 +60,7 @@ class TestRowValue:
     def test_attribute_access(self):
         class Obj:
             name = "test"
+
         assert _row_value(Obj(), "name") == "test"
 
     def test_dict_fallback(self):
