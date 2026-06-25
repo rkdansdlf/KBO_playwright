@@ -52,23 +52,20 @@ def classify_player(entry: dict[str, object]) -> PlayerCategory:
 
     team = _normalize(entry.get("team"))
     position = _normalize(entry.get("position"))
-
     position.lower()
     team_lower = team.lower()
+    return _classify_active_player(position, team, team_lower)
 
+
+def _classify_active_player(position: str, team: str, team_lower: str) -> PlayerCategory:
     if "감독" in position:
         return PlayerCategory.MANAGER
-
     if any(keyword in position for keyword in STAFF_KEYWORDS):
         return PlayerCategory.COACH
-
     if not team or team_lower in {"", "-", "없음"}:
         return PlayerCategory.RETIRED
-
     if "은퇴" in team or "retired" in team_lower:
         return PlayerCategory.RETIRED
-
     if "코치" in team or "감독" in team:
         return PlayerCategory.STAFF
-
     return PlayerCategory.ACTIVE

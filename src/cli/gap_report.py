@@ -29,7 +29,7 @@ from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
 from src.validators.standings_integrity import validate_standings_integrity
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
@@ -244,26 +244,23 @@ def _team_stats_summary_parts(gap_data: dict[str, Any]) -> list[str]:
 def _gap_summary_parts(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
     if gap_type == "FRESHNESS":
         return _freshness_summary_parts(gap_data)
-    if gap_type == "RELAY":
-        return [f"{gap_data.get('missing_count', 0)} games missing PBP"]
-    if gap_type == "STALENESS":
-        return [f"{gap_data.get('stale_count', 0)} stale sources"]
-    if gap_type == "STANDINGS":
-        return [f"{gap_data.get('mismatches', 0)} mismatches, {gap_data.get('missing_scores', 0)} missing scores"]
-    if gap_type == "PROFILE":
-        return [f"{gap_data.get('missing_count', 0)} players missing profiles"]
-    if gap_type == "ID_RESOLUTION":
-        counts = gap_data.get("counts", {})
-        return [
-            f"{gap_data.get('total', 0)} NULL player_ids (batting={counts.get('batting')}, pitching={counts.get('pitching')}, lineups={counts.get('lineups')})",
-        ]
-    if gap_type == "PA_FORMULA":
-        return [f"{gap_data.get('violation_count', 0)} PA formula violations"]
     if gap_type == "TEAM_STATS":
         return _team_stats_summary_parts(gap_data)
     if gap_data.get("error"):
         return [f"Error: {gap_data['error']}"]
-    return []
+    return _GAP_SUMMARY_FORMATTERS.get(gap_type, lambda _: [])(gap_data)
+
+
+_GAP_SUMMARY_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
+    "RELAY": lambda d: [f"{d.get('missing_count', 0)} games missing PBP"],
+    "STALENESS": lambda d: [f"{d.get('stale_count', 0)} stale sources"],
+    "STANDINGS": lambda d: [f"{d.get('mismatches', 0)} mismatches, {d.get('missing_scores', 0)} missing scores"],
+    "PROFILE": lambda d: [f"{d.get('missing_count', 0)} players missing profiles"],
+    "PA_FORMULA": lambda d: [f"{d.get('violation_count', 0)} PA formula violations"],
+    "ID_RESOLUTION": lambda d: [
+        f"{d.get('total', 0)} NULL player_ids (batting={d.get('counts', {}).get('batting')}, pitching={d.get('counts', {}).get('pitching')}, lineups={d.get('counts', {}).get('lineups')})"
+    ],
+}
 
 
 def _freshness_detail_items(gap_data: dict[str, Any]) -> list[str]:
