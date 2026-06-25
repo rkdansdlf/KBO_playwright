@@ -325,12 +325,10 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 
 ### Current Verification Baseline (2026-06-28)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (145 rules enabled, 0 warnings).
-- `ruff format --check .` = 940+ files already formatted.
-- `python3 -m pytest` = 5416 passed, 0 consistent failures.
+- `ruff check src/ tests/ scripts/` = 0 errors (169 rules enabled, 0 warnings).
+- `ruff format --check .` = clean.
+- `python3 -m pytest` = **5526 passed**, 0 failures, 2 skipped, 1 xfailed; ~30s.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
-- `ruff check --select PLR0913 src/` = 0 violations (100% eliminated).
-- `ruff check --select PLR0911 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = **72%** (fail_under=65).
 - `# noqa: BLE001` in `src/` = 0.
 - `pre-commit` hooks installed locally.
@@ -343,6 +341,14 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 | 31 | Enable zero-violation FURB rules | ✅ 26 rules (FURB103,105,113,116,118,122,129,131,136,140,142,145,148,152,154,156,163,164,166,168,169,180,181,187,189,192) |
 | 32 | Enable zero-violation PLC/PLR rules | ✅ 8 rules (PLC0414,PLC2401,PLC2403,PLC3002,PLR1701,PLR1704,PLR1722,PLR6201,PLR6301) |
 | 33 | Enable zero-violation RUF rules | ✅ 18 rules (RUF007,008,009,016,018,020,023,026,028,030,032,033,034,037,041,043,048,049) |
+
+### Priority 1-3 Complete (2026-06-27) — Test fixes, RUF002/RUF003, PYI
+
+| Priority | Work | Result |
+|----------|------|--------|
+| 1 | Fix pre-existing test failures | ✅ 5 failures → 0 (rename 4 duplicate modules + add GAME_STATUS_DELAYED import) |
+| 2 | Enable RUF002/RUF003 | ✅ 3 en-dash fixes in src/, 2 rules added to select |
+| 3 | Enable PYI category | ✅ ~40 stub rules added, per-file-ignored in tests/scripts |
 | 34 | Coverage expansion → skipped | Already at 72% (gate 65%) |
 | 35 | pyproject.toml cleanup → skipped | Per-file-ignores structure already grouped |
 
