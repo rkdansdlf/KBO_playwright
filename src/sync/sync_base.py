@@ -477,6 +477,7 @@ class OCISyncBase:
         Args:
             oci_url: PostgreSQL connection string for OCI
             sqlite_session: Active SQLite session to read from
+
         """
         self.sqlite_session = sqlite_session
 

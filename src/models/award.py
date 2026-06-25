@@ -1,5 +1,4 @@
-"""Award model for KBO awards history.
-"""
+"""Award model for KBO awards history."""
 
 from __future__ import annotations
 
@@ -10,8 +9,7 @@ from .base import Base, TimestampMixin
 
 
 class Award(Base, TimestampMixin):
-    """Represents a KBO award win (e.g. MVP, Golden Glove, Rookie of the Year).
-    """
+    """Represents a KBO award win (e.g. MVP, Golden Glove, Rookie of the Year)."""
 
     __tablename__ = "awards"
 

@@ -1,5 +1,4 @@
-"""Utility to standardize KBO player positions from raw strings (Korean/Hanja) to standard codes.
-"""
+"""Utility to standardize KBO player positions from raw strings (Korean/Hanja) to standard codes."""
 
 from __future__ import annotations
 
@@ -58,6 +57,7 @@ def normalize_position(raw_pos: str | None) -> list[PositionCode]:
         '주二' -> [PR, 2B]
         '유三' -> [SS, 3B]
         '중'   -> [CF]
+
     """
     if not raw_pos:
         return []

@@ -66,8 +66,7 @@ def _snapshot_to_record(
 
 
 class CongestionCrawler:
-    """Orchestrates congestion data collection from multiple sources.
-    """
+    """Orchestrates congestion data collection from multiple sources."""
 
     def __init__(self, stadium_code: str = STADIUM_CODE) -> None:
         self.stadium_code = stadium_code

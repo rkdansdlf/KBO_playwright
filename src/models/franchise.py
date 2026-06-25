@@ -1,5 +1,4 @@
-"""Franchise model definition.
-"""
+"""Franchise model definition."""
 
 from __future__ import annotations
 

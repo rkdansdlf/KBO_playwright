@@ -96,8 +96,7 @@ class BattingStatCalculator:
 
 
 class PitchingStatCalculator:
-    """Calculates derived pitching statistics from raw data.
-    """
+    """Calculates derived pitching statistics from raw data."""
 
     # FIP constant (league average, approximately 3.10 for recent years)
     FIP_CONSTANT = 3.10

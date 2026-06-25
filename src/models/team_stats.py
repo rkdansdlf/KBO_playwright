@@ -1,5 +1,4 @@
-"""ORM models for team-level season statistics.
-"""
+"""ORM models for team-level season statistics."""
 
 from __future__ import annotations
 
@@ -20,8 +19,7 @@ from .base import Base, TimestampMixin
 
 
 class TeamSeasonBatting(Base, TimestampMixin):
-    """Season-level batting aggregates for each team.
-    """
+    """Season-level batting aggregates for each team."""
 
     __tablename__ = "team_season_batting"
     __table_args__ = (
@@ -66,8 +64,7 @@ class TeamSeasonBatting(Base, TimestampMixin):
 
 
 class TeamSeasonPitching(Base, TimestampMixin):
-    """Season-level pitching aggregates for each team.
-    """
+    """Season-level pitching aggregates for each team."""
 
     __tablename__ = "team_season_pitching"
     __table_args__ = (

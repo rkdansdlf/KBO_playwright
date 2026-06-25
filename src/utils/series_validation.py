@@ -39,6 +39,7 @@ def get_available_series_by_year(year: int) -> list[str]:
 
     Returns:
         해당 연도에 존재하는 시리즈 키 목록
+
     """
     if year < KBO_FOUNDING_YEAR:
         return []
@@ -57,6 +58,7 @@ def is_series_available(year: int, series_key: str) -> bool:
 
     Returns:
         존재 여부
+
     """
     available_series = get_available_series_by_year(year)
     return series_key in available_series
@@ -71,6 +73,7 @@ def filter_series_for_year(year: int, requested_series: list[str]) -> list[str]:
 
     Returns:
         필터링된 시리즈 목록
+
     """
     available_series = get_available_series_by_year(year)
     filtered = [series for series in requested_series if series in available_series]
@@ -104,6 +107,7 @@ def validate_year_series_combination(year: int, series_key: str) -> tuple:
 
     Returns:
         (is_valid: bool, message: str)
+
     """
     if year < KBO_FOUNDING_YEAR:
         return False, f"KBO는 {KBO_FOUNDING_YEAR}년에 창설되었습니다."
@@ -127,6 +131,7 @@ def get_recommended_series_for_period(start_year: int, end_year: int) -> list[st
 
     Returns:
         권장 시리즈 목록 (가장 많은 연도에 공통으로 존재하는 순)
+
     """
     # 전체 기간에서 각 시리즈가 존재하는 연도 수 계산
     series_counts = {}

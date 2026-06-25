@@ -146,9 +146,29 @@ select = [
     "PLW0245",  # super-without-brackets
     "PLW1509",  # subprocess-popen-preexec-fn
      "B026",     # star-args-unpacked-after-keyword-arg
-     "D212",    # multi-line-summary-first-line
-    "D100",    # undocumented-public-module
-    "D104",    # undocumented-public-package
+      "D212",    # multi-line-summary-first-line
+     "D100",    # undocumented-public-module
+     "D104",    # undocumented-public-package
+     "D106",    # undocumented-public-nested-class
+     "D209",    # multi-line-docstring-closing-quotes
+     "D210",    # around-docstring-whitespace
+     "D300",    # double-quote-docstring
+     "D301",    # raw-string-on-docstring
+     "D402",    # docstring-should-be-empty
+     "D404",    # docstring-first-word
+     "D405",    # docstring-section-name
+     "D406",    # docstring-section-under-line
+     "D407",    # docstring-section-name-after-content
+     "D408",    # docstring-section-name-underline-after-name
+     "D409",    # return-type-mismatch
+     "D410",    # docstring-blank-line-after-section
+     "D411",    # docstring-blank-line-before-section
+     "D412",    # docstring-blank-lines-between-sections
+     "D413",    # missing-blank-line-after-last-section
+     "D414",    # docstring-empty-section
+     "D416",    # docstring-section-name-ends-with-colon
+     "D418",    # docstring-omit-name-body
+     "D419",    # docstring-empty
      "FURB103", # type-none-comparison
      "FURB105", # print-empty-string
      "FURB113", # reimplemented-starmap

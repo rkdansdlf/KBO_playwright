@@ -1,5 +1,4 @@
-"""Repository for TeamEvent operations.
-"""
+"""Repository for TeamEvent operations."""
 
 from __future__ import annotations
 

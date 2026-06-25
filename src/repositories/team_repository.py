@@ -1,5 +1,4 @@
-"""Repository for Team related data (Roster, Info, etc.).
-"""
+"""Repository for Team related data (Roster, Info, etc.)."""
 
 from __future__ import annotations
 
@@ -25,8 +24,7 @@ class TeamRepository:
         self.session = session
 
     def save_daily_rosters(self, rosters: list[dict[str, Any]]) -> int:
-        """Save daily roster records with UPSERT logic.
-        """
+        """Save daily roster records with UPSERT logic."""
         # Deduplicate input list by unique key (date, team, player)
         # to prevent IntegrityError if the list contains duplicates
         unique_rosters = {}

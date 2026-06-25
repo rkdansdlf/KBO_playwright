@@ -1,5 +1,4 @@
-"""KBO Season metadata model.
-"""
+"""KBO Season metadata model."""
 
 from __future__ import annotations
 

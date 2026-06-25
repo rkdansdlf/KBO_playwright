@@ -1,5 +1,4 @@
-"""Model representing a local cache for text embeddings to prevent duplicate API calls.
-"""
+"""Model representing a local cache for text embeddings to prevent duplicate API calls."""
 
 from __future__ import annotations
 

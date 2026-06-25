@@ -135,6 +135,7 @@ class NaverSearchClient:
             search_type: 'news', 'blog', or 'cafearticle'.
             display: Number of results (max 100).
             sort: 'date' (newest) or 'sim' (relevance).
+
         """
         if not self._is_configured():
             logger.warning("[NaverSearch] API keys not configured. Skipping.")
@@ -182,6 +183,7 @@ class NaverSearchClient:
 
         Args:
             days_back: Only return results from the last N days.
+
         """
         import asyncio
 

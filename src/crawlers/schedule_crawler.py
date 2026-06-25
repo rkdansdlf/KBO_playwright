@@ -73,6 +73,7 @@ class ScheduleCrawler:
 
         Returns:
             경기 정보 딕셔너리가 담긴 리스트.
+
         """
         logger.info("🔍 Crawling schedule for %s-%02d (Series: %s)...", year, month, series_id)
 
@@ -104,6 +105,7 @@ class ScheduleCrawler:
             year: 시즌 연도
             months: 크롤링할 월 목록 (기본값: 3월-10월)
             series_id: 시리즈 ID (옵션)
+
         """
         months = months or list(range(3, 11))
         all_games: list[dict] = []

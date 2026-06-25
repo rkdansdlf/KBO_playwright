@@ -75,6 +75,7 @@ def parse_hitter_sh_sf(html: str, game_id: str) -> dict[int | str, dict[str, int
     Returns:
         dict mapping player_id (int) or player_name (str, fallback)
         -> {"sh": int, "sf": int}
+
     """
     soup = BeautifulSoup(html, "html.parser")
     result: dict[int | str, dict[str, int]] = {}
@@ -252,6 +253,7 @@ def derive_sh_sf_hybrid(
 
     Returns:
         Number of updated rows (0 if none).
+
     """
     from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
 

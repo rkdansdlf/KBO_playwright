@@ -1,5 +1,4 @@
-"""Team-related ORM models.
-"""
+"""Team-related ORM models."""
 
 from __future__ import annotations
 
@@ -111,8 +110,7 @@ class TeamCodeMap(Base, TimestampMixin):
 
 
 class TeamSeasonFielding(Base, TimestampMixin):
-    """Team-level fielding stats aggregated from player data per season.
-    """
+    """Team-level fielding stats aggregated from player data per season."""
 
     __tablename__ = "team_season_fielding"
     __table_args__ = (UniqueConstraint("season", "team_code", name="uq_team_season_fielding"),)
@@ -138,8 +136,7 @@ class TeamSeasonFielding(Base, TimestampMixin):
 
 
 class TeamSeasonBaserunning(Base, TimestampMixin):
-    """Team-level baserunning stats aggregated from player data per season.
-    """
+    """Team-level baserunning stats aggregated from player data per season."""
 
     __tablename__ = "team_season_baserunning"
     __table_args__ = (UniqueConstraint("season", "team_code", name="uq_team_season_baserunning"),)

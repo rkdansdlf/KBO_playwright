@@ -1,5 +1,4 @@
-"""Utility helpers for mapping KBO team names to canonical short codes.
-"""
+"""Utility helpers for mapping KBO team names to canonical short codes."""
 
 from __future__ import annotations
 

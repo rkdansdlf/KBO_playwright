@@ -1,5 +1,4 @@
-"""Crawler for stadium seat section information from team websites.
-"""
+"""Crawler for stadium seat section information from team websites."""
 
 from __future__ import annotations
 

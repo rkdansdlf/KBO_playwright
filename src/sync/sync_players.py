@@ -1,5 +1,4 @@
-"""Player sync: players, identities, basic info, movements, FA contracts.
-"""
+"""Player sync: players, identities, basic info, movements, FA contracts."""
 
 from __future__ import annotations
 

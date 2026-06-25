@@ -1,5 +1,4 @@
-"""Crawler for stadium food vendor and menu information from team websites.
-"""
+"""Crawler for stadium food vendor and menu information from team websites."""
 
 from __future__ import annotations
 

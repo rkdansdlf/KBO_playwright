@@ -1,5 +1,4 @@
-"""ORM models for daily team standings and magic numbers.
-"""
+"""ORM models for daily team standings and magic numbers."""
 
 from __future__ import annotations
 

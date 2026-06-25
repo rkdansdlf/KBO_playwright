@@ -1,5 +1,4 @@
-"""Repository for StadiumCongestion CRUD operations.
-"""
+"""Repository for StadiumCongestion CRUD operations."""
 
 from __future__ import annotations
 

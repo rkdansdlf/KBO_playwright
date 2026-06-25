@@ -142,8 +142,7 @@ class RelayCrawler:
         policy: RequestPolicy | None = None,
         _pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        """Pool is retained for backward compatibility with GameDetailCrawler but is unused.
-        """
+        """Pool is retained for backward compatibility with GameDetailCrawler but is unused."""
         self.api_base_url = "https://api-gw.sports.naver.com/schedule/games/{game_id}/relay"
         self.wpa_calc = WPACalculator()
         self.headers = {
@@ -174,8 +173,7 @@ class RelayCrawler:
         return await self.crawl_game_relay(game_id)
 
     def _map_to_naver_id(self, kbo_game_id: str) -> str:
-        """Convert KBO game ID (e.g., 20260412SKLG0) to Naver ID (e.g., 20260412SKLG02026).
-        """
+        """Convert KBO game ID (e.g., 20260412SKLG0) to Naver ID (e.g., 20260412SKLG02026)."""
         year = kbo_game_id[:4]
         return f"{kbo_game_id}{year}"
 
@@ -418,8 +416,7 @@ class RelayCrawler:
         stadium: str | None = None,
         game_time: str | None = None,
     ) -> dict[str, Any] | None:
-        """Match a KBO game ID to a Naver schedule game object using a scoring system.
-        """
+        """Match a KBO game ID to a Naver schedule game object using a scoring system."""
         game_date_str, away_code, home_code, dh_no, season_year = self._expected_match_values(kbo_game_id)
 
         exact_suffix = f"{game_date_str[4:8]}{away_code}{home_code}{dh_no}{season_year}"
@@ -1152,8 +1149,7 @@ def _pbp_rows_to_legacy_innings(rows: list[dict[str, Any]]) -> list[dict[str, An
 
 
 async def fetch_and_parse_relay(game_id: str, game_date: str | None = None) -> dict[str, Any] | None:
-    """Compatibility helper for older tests and scripts that expect inning-grouped output.
-    """
+    """Compatibility helper for older tests and scripts that expect inning-grouped output."""
     crawler = RelayCrawler()
     result = await crawler.crawl_game_relay(game_id)
     if not result:

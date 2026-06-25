@@ -138,7 +138,7 @@ class TestPitchingStatCalculatorEdgeCases:
 
     def test_full_inning_outs(self):
         data = {
-            "innings_outs": 3,
+            "innings_outs": 9,
             "earned_runs": 1,
             "hits_allowed": 2,
             "walks_allowed": 1,

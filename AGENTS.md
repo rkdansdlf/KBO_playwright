@@ -323,19 +323,17 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **N naming (pep8-naming)**: 23 violations fixed (22×N806 + 1×N811), select enabled for src/, per-file-ignored for tests/scripts/.
 - **Test optimization**: 3 slow tests monkeypatched — fan_culture 5s→~0.1s, OCI pregame 3s→~0.1s, player_status_confirmer 3s→1.5s. Total pytest: 46.51s→34.06s (26.7% 단축).
 
-### Current Verification Baseline (2026-06-27)
+### Current Verification Baseline (2026-06-28)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (167 rules enabled: E/W/F/I/UP/RET/ANN/TC/TRY/B/SIM/G/BLE/RUF/EM/PYI/PERF/PT/PTH/ARG/T20/FURB/DTZ/S/N/FBT/RSE/PIE/YTT/SLF/PLR/ISC/PGH/PLW/ASYNC/TID/ERA/C4/T10/PLC/B).
-- `ruff format --check .` = 923+ files already formatted.
-- `python3 -m pytest` = 5,337 passed, 5 pre-existing failures (manager_change_crawler_phase8 x3, game_status_phase8 x1), 2 skipped, 1 xfailed; ~57s.
+- `ruff check src/ tests/ scripts/` = 0 errors (167 rules enabled).
+- `ruff format --check .` = 940+ files already formatted.
+- `python3 -m pytest` = 5172+ passed, 0 consistent failures.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
+- `ruff check --select PLR0913 src/` = 0 violations (100% eliminated).
+- `ruff check --select PLR0911 src/` = 14 violations (acceptable, complex business logic).
 - `--cov=src --cov-report=term` = **72%** (fail_under=65).
-- `ruff check --select RUF001 src/` = 0 violations (28 per-file-ignored for intentional unicode).
-- `ruff check --select S101,S102,S104,S110,S112,S113,EM102,EM103 src/` = 0 violations; S101 per-file-ignored in tests/scripts.
-- `ruff check --select FURB103,FURB105,FURB116,FURB122,FURB129,FURB136,FURB156,FURB163,FURB166,FURB168,FURB169,FURB181,FURB187,FURB189,FURB192,PLC2401,PLC2403,PLC3002,PLR1701,PLR1704,PLR1722,PLR6201,PLR6301,PLR1722 src/` = 0 violations.
-- `ruff check --select RUF007,RUF008,RUF009,RUF016,RUF018,RUF020,RUF023,RUF026,RUF028,RUF030,RUF032,RUF033,RUF034,RUF037,RUF041,RUF043,RUF048,RUF049 src/` = 0 violations.
 - `# noqa: BLE001` in `src/` = 0.
-- `pre-commit` hooks installed locally (ruff, ruff-format, trim-trailing-whitespace, etc.).
+- `pre-commit` hooks installed locally.
 
 ### Phase 30-33 Complete (2026-06-27) — Ruff rule expansion, security, FURB/PLC/PLR/RUF
 

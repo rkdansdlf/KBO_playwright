@@ -1,5 +1,4 @@
-"""선수의 시즌별 주루 기록을 크롤링하고 DB에 저장합니다.
-"""
+"""선수의 시즌별 주루 기록을 크롤링하고 DB에 저장합니다."""
 
 from __future__ import annotations
 
@@ -58,6 +57,7 @@ def crawl_baserunning_stats(
 
     Returns:
         list: 주루 기록 리스트
+
     """
     if year is None:
         year = datetime.now(KST).year

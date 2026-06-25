@@ -1,5 +1,4 @@
-"""FA Contract model representing KBO Free Agent contracts.
-"""
+"""FA Contract model representing KBO Free Agent contracts."""
 
 from __future__ import annotations
 
@@ -15,8 +14,7 @@ if TYPE_CHECKING:
 
 
 class FAContract(Base, TimestampMixin):
-    """Structured details of FA contracts including duration, amount, and old/new team mappings.
-    """
+    """Structured details of FA contracts including duration, amount, and old/new team mappings."""
 
     __tablename__ = "fa_contracts"
 

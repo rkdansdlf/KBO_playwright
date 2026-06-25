@@ -1,5 +1,4 @@
-"""Game status management: update, refresh, and derive game status.
-"""
+"""Game status management: update, refresh, and derive game status."""
 
 from __future__ import annotations
 
@@ -51,8 +50,7 @@ def update_game_status(game_id: str, status: str) -> bool:
 
 
 def refresh_game_status_for_date(target_date: str, today: date | None = None) -> dict[str, Any]:
-    """Recompute game_status only for one target date (YYYYMMDD).
-    """
+    """Recompute game_status only for one target date (YYYYMMDD)."""
     try:
         dt = datetime.strptime(target_date, "%Y%m%d").replace(tzinfo=KST).date()
     except ValueError:
