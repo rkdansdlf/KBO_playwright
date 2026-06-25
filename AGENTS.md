@@ -325,9 +325,9 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 
 ### Current Verification Baseline (2026-06-28)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (169 rules enabled, 0 warnings).
+- `ruff check src/ tests/ scripts/` = 0 errors (180 rules enabled, 0 warnings).
 - `ruff format --check .` = clean.
-- `python3 -m pytest` = **5526 passed**, 0 failures, 2 skipped, 1 xfailed; ~30s.
+- `python3 -m pytest` = **5698 passed**, 0 failures, 2 skipped, 1 xfailed; ~35s.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = **72%** (fail_under=65).
 - `# noqa: BLE001` in `src/` = 0.
