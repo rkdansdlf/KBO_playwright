@@ -104,11 +104,42 @@ class TeamStatAggregator:
             }
         return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
 
+    def _build_aggregation_query(
+        self,
+        query: TeamAggregationQuery | int | Iterable[Any],
+        *,
+        team_id: str | None = None,
+        rows: Iterable[Any] | None = None,
+        team_names: dict[str, str] | None = None,
+        team_games_map: dict[tuple[int, str], int] | None = None,
+        dry_run: bool = False,
+    ) -> TeamAggregationQuery:
+        if isinstance(query, TeamAggregationQuery):
+            return query
+        if isinstance(query, int):
+            return TeamAggregationQuery(
+                season=query,
+                team_id=team_id,
+                rows=rows,
+                team_names=team_names,
+                team_games_map=team_games_map,
+                dry_run=dry_run,
+            )
+        # Iterable rows
+        return TeamAggregationQuery(
+            season=None,
+            team_id=team_id,
+            rows=query,
+            team_names=team_names,
+            team_games_map=team_games_map,
+            dry_run=dry_run,
+        )
+
     def aggregate_batting(
         self,
         query: TeamAggregationQuery | int | Iterable[Any],
-        team_id: str | None = None,
         *,
+        team_id: str | None = None,
         rows: Iterable[Any] | None = None,
         team_names: dict[str, str] | None = None,
         team_games_map: dict[tuple[int, str], int] | None = None,
@@ -118,27 +149,14 @@ class TeamStatAggregator:
         Dispatches to database-driven aggregation if an integer season is passed,
         or pure in-memory aggregation if an iterable of rows is passed.
         """
-        if isinstance(query, TeamAggregationQuery):
-            actual_query = query
-        elif isinstance(query, int):
-            actual_query = TeamAggregationQuery(
-                season=query,
-                team_id=team_id,
-                rows=rows,
-                team_names=team_names,
-                team_games_map=team_games_map,
-                dry_run=dry_run,
-            )
-        else:
-            # Iterable rows
-            actual_query = TeamAggregationQuery(
-                season=None,
-                team_id=team_id,
-                rows=query,
-                team_names=team_names,
-                team_games_map=team_games_map,
-                dry_run=dry_run,
-            )
+        actual_query = self._build_aggregation_query(
+            query,
+            team_id=team_id,
+            rows=rows,
+            team_names=team_names,
+            team_games_map=team_games_map,
+            dry_run=dry_run,
+        )
 
         actual_rows = (
             actual_query.rows
@@ -157,8 +175,8 @@ class TeamStatAggregator:
     def aggregate_pitching(
         self,
         query: TeamAggregationQuery | int | Iterable[Any],
-        team_id: str | None = None,
         *,
+        team_id: str | None = None,
         rows: Iterable[Any] | None = None,
         team_names: dict[str, str] | None = None,
         team_games_map: dict[tuple[int, str], int] | None = None,
@@ -168,27 +186,14 @@ class TeamStatAggregator:
         Dispatches to database-driven aggregation if an integer season is passed,
         or pure in-memory aggregation if an iterable of rows is passed.
         """
-        if isinstance(query, TeamAggregationQuery):
-            actual_query = query
-        elif isinstance(query, int):
-            actual_query = TeamAggregationQuery(
-                season=query,
-                team_id=team_id,
-                rows=rows,
-                team_names=team_names,
-                team_games_map=team_games_map,
-                dry_run=dry_run,
-            )
-        else:
-            # Iterable rows
-            actual_query = TeamAggregationQuery(
-                season=None,
-                team_id=team_id,
-                rows=query,
-                team_names=team_names,
-                team_games_map=team_games_map,
-                dry_run=dry_run,
-            )
+        actual_query = self._build_aggregation_query(
+            query,
+            team_id=team_id,
+            rows=rows,
+            team_names=team_names,
+            team_games_map=team_games_map,
+            dry_run=dry_run,
+        )
 
         actual_rows = (
             actual_query.rows

@@ -248,7 +248,7 @@ branch = true
 source = ["src"]
 
 [tool.coverage.report]
-fail_under = 50
+fail_under = 65
 show_missing = true
 skip_empty = true
 exclude_also = [
