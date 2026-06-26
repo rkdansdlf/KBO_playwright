@@ -47,7 +47,7 @@ class GameMvpCrawler:
                 if data:
                     results.append(data)
             if save and results:
-                self._save_to_db(results)
+                GameMvpCrawler._save_to_db(results)
             else:
                 for d in results:
                     logger.info(d)
@@ -55,7 +55,7 @@ class GameMvpCrawler:
             data = await self._fetch_recent_mvp_news()
             logger.info("Found %s MVP entries.", len(data))
             if save:
-                self._save_to_db(data)
+                GameMvpCrawler._save_to_db(data)
             else:
                 for d in data[:10]:
                     logger.info(d)
@@ -74,12 +74,12 @@ class GameMvpCrawler:
                 text = title + " " + article.get("subContent", "")
                 if "MVP" not in text:
                     continue
-                player_name = self._parse_mvp_player(text)
+                player_name = GameMvpCrawler._parse_mvp_player(text)
                 if player_name:
                     return {
                         "game_id": game_id,
                         "player_name": player_name,
-                        "team_id": self._parse_mvp_team(text),
+                        "team_id": GameMvpCrawler._parse_mvp_team(text),
                         "mvp_type": "GAME",
                         "reason": title[:300],
                         "award_source": "NAVER",
@@ -107,7 +107,7 @@ class GameMvpCrawler:
                     title = article.get("title", "")
                     if "MVP" not in title:
                         continue
-                    player_name = self._parse_mvp_player(title)
+                    player_name = GameMvpCrawler._parse_mvp_player(title)
                     if not player_name:
                         continue
                     game_id_match = re.search(r"(\d{8})", title)
@@ -116,7 +116,7 @@ class GameMvpCrawler:
                         {
                             "game_id": game_id,
                             "player_name": player_name,
-                            "team_id": self._parse_mvp_team(title),
+                            "team_id": GameMvpCrawler._parse_mvp_team(title),
                             "mvp_type": "GAME",
                             "reason": title[:300],
                             "award_source": "NAVER",
@@ -128,7 +128,8 @@ class GameMvpCrawler:
         client.close()
         return results
 
-    def _parse_mvp_player(self, text: str) -> str | None:
+    @staticmethod
+    def _parse_mvp_player(text: str) -> str | None:
         patterns = [
             r"([가-힣]{2,4})\s*선수.*MVP",
             r"MVP[:\s]*([가-힣]{2,4})",
@@ -141,7 +142,8 @@ class GameMvpCrawler:
                 return m.group(1)
         return None
 
-    def _parse_mvp_team(self, text: str) -> str | None:
+    @staticmethod
+    def _parse_mvp_team(text: str) -> str | None:
         team_map = {
             "LG": "LG",
             "KT": "KT",
@@ -159,7 +161,8 @@ class GameMvpCrawler:
                 return code
         return None
 
-    def _save_to_db(self, data: list[dict]) -> None:
+    @staticmethod
+    def _save_to_db(data: list[dict]) -> None:
         session = SessionLocal()
         repo = GameMvpRepository(session)
         count = 0
