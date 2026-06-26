@@ -1,4 +1,5 @@
-"""KBO Daily Data Update Orchestrator.
+"""
+KBO Daily Data Update Orchestrator.
 
 This entrypoint is the postgame finalize + daily reconciliation job.
 """
@@ -322,7 +323,8 @@ def _write_daily_update_summary(
 
 
 def format_stability_alert_summary(result: object) -> str | None:
-    """Formats stability summary.
+    """
+    Formats stability summary.
 
     Args:
         result: Result.
@@ -1646,7 +1648,8 @@ async def run_update(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

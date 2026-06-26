@@ -20,7 +20,8 @@ TEAM_INFO_MODAL_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, Value
 
 
 class TeamInfoCrawler:
-    """Crawls KBO Team Info page (https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx)
+    """
+    Crawls KBO Team Info page (https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx)
     Collects: CEO, Owner, Founded Date, Homepage, Phone, Address.
     """
 
@@ -52,7 +53,8 @@ class TeamInfoCrawler:
             await self.playwright.stop()
 
     async def crawl(self, *, save: bool = False) -> list[dict]:
-        """Crawls crawl.
+        """
+        Crawls crawl.
 
         Returns:
             List of results.
@@ -171,7 +173,8 @@ class TeamInfoCrawler:
             logger.info("Saved %d raw snapshots for team info.", count)
 
     async def save(self, data: list[dict]) -> None:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.

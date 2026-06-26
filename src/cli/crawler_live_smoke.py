@@ -109,7 +109,8 @@ async def run_smoke(
     detail_crawler: GameDetailCrawler | None = None,
     relay_crawler: RelayCrawler | None = None,
 ) -> dict[str, Any]:
-    """Runs smoke.
+    """
+    Runs smoke.
 
     Returns:
         Dictionary result.
@@ -212,7 +213,8 @@ def _print_human_summary(result: Mapping[str, Any]) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

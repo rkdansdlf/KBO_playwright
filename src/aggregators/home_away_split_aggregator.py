@@ -26,7 +26,8 @@ class HomeAwaySplitAggregator:
         self.session = session
 
     def aggregate_batting(self, year: int) -> list[dict]:
-        """Aggregates batting.
+        """
+        Aggregates batting.
 
         Args:
             year: Season year.
@@ -116,7 +117,8 @@ class HomeAwaySplitAggregator:
         return results
 
     def persist_batting(self, year: int) -> None:
-        """Handles the persist batting operation.
+        """
+        Handles the persist batting operation.
 
         Args:
             year: Season year.
@@ -133,7 +135,8 @@ class HomeAwaySplitAggregator:
         logger.info("[HomeAway] %s batting split rows saved for %s.", len(results), year)
 
     def print_report(self, year: int, top_n: int = 5) -> None:
-        """Prints print report.
+        """
+        Prints print report.
 
         Args:
             year: Season year.

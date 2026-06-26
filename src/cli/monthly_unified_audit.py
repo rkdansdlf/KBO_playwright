@@ -1,4 +1,6 @@
-"""Monthly Unified Audit Job for Scheduler.
+"""
+Monthly Unified Audit Job for Scheduler.
+
 Runs both PA formula audit (with fix) and team stats consistency check.
 
 PA formula audit: applies ratio-based SH/SF fix for the target year.

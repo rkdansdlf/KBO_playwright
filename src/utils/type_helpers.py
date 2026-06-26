@@ -78,7 +78,8 @@ def parse_innings(value: str | None) -> float:
 
 
 def _parse_fraction_innings(cleaned: str) -> int | None:
-    """Parses fraction innings.
+    """
+    Parses fraction innings.
 
     Args:
         cleaned: Cleaned.
@@ -102,7 +103,8 @@ def _parse_fraction_innings(cleaned: str) -> int | None:
 
 
 def _parse_decimal_innings(cleaned: str) -> int | None:
-    """Parses decimal innings.
+    """
+    Parses decimal innings.
 
     Args:
         cleaned: Cleaned.
@@ -123,7 +125,8 @@ def _parse_decimal_innings(cleaned: str) -> int | None:
 
 
 def parse_innings_to_outs(text: str | None) -> int | None:
-    """Convert innings string to total outs.
+    """
+    Convert innings string to total outs.
 
     Supports:
       - 'X Y/3'   (e.g. '5 1/3' -> 16)
@@ -152,7 +155,8 @@ def parse_innings_to_outs(text: str | None) -> int | None:
 
 
 def _clean_innings_text(text: str | None) -> str | None:
-    """Handles the clean innings text operation.
+    """
+    Handles the clean innings text operation.
 
     Args:
         text: Input text content.
@@ -170,7 +174,8 @@ def _clean_innings_text(text: str | None) -> str | None:
 
 
 def _parse_colon_innings(cleaned: str) -> int:
-    """Parses colon innings.
+    """
+    Parses colon innings.
 
     Args:
         cleaned: Cleaned.

@@ -1,4 +1,5 @@
-"""은퇴 또는 비활동 선수의 데이터를 수집하기 위한 CLI 스크립트.
+"""
+은퇴 또는 비활동 선수의 데이터를 수집하기 위한 CLI 스크립트.
 
 이 스크립트는 다음 과정을 통해 과거 선수들의 기록을 수집합니다:
 1. 특정 기간(예: 1982-2023)의 모든 선수 ID와 현재 시즌의 현역 선수 ID를 비교하여
@@ -144,7 +145,8 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     semaphore = asyncio.Semaphore(args.concurrency)  # 동시 요청 수 제어
 
     async def runner(pid: str) -> None:
-        """Handles the runner operation.
+        """
+        Handles the runner operation.
 
         Args:
             pid: Pid.

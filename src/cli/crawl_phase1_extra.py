@@ -1,4 +1,5 @@
-"""CLI entrypoint to execute Phase 1 supplementary crawlers:
+"""
+CLI entrypoint to execute Phase 1 supplementary crawlers:
 broadcast, game MVP, injury/IL, foreign player, manager change, fan culture.
 """
 
@@ -21,7 +22,8 @@ async def run_broadcast(*, save: bool = False) -> None:
 
 
 async def run_game_mvp(game_ids: list[str] | None = None, *, save: bool = False) -> None:
-    """Runs game mvp.
+    """
+    Runs game mvp.
 
     Args:
         game_ids: Game Ids.

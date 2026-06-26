@@ -234,7 +234,8 @@ class PlayerSyncMixin:
         )
 
     def sync_crawl_runs(self) -> int:
-        """Syncs runs.
+        """
+        Syncs runs.
 
         Returns:
             Integer result.

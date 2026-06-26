@@ -1,4 +1,6 @@
-"""Crawl gate: enforce data freshness and quality before allowing pipeline to proceed.
+"""
+Crawl gate: enforce data freshness and quality before allowing pipeline to proceed.
+
 Can be used as a blocking gate or non-blocking alert.
 """
 
@@ -24,7 +26,8 @@ class CrawlGate:
         self.issues: list[str] = []
 
     def check_freshness(self, target_date: str) -> bool:
-        """Checks freshness.
+        """
+        Checks freshness.
 
         Args:
             target_date: Target Date.
@@ -45,7 +48,8 @@ class CrawlGate:
         return len(issues) == 0
 
     def check_game_completion_rate(self, target_date: str) -> bool:
-        """Checks game completion rate.
+        """
+        Checks game completion rate.
 
         Args:
             target_date: Target Date.
@@ -74,7 +78,8 @@ class CrawlGate:
         return True
 
     def check_standings_integrity(self, target_date: str) -> bool:
-        """Checks standings integrity.
+        """
+        Checks standings integrity.
 
         Args:
             target_date: Target Date.
@@ -101,7 +106,8 @@ class CrawlGate:
         return True
 
     def run_all_checks(self, target_date: str) -> bool:
-        """Runs all checks.
+        """
+        Runs all checks.
 
         Args:
             target_date: Target Date.

@@ -24,7 +24,8 @@ class DiagnosisFinding:
     suggested_commands: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
-        """Handles the to dict operation.
+        """
+        Handles the to dict operation.
 
         Returns:
             Dictionary result.
@@ -48,7 +49,8 @@ class DiagnosisReport:
 
     @property
     def source_count(self) -> int:
-        """Handles the source count operation.
+        """
+        Handles the source count operation.
 
         Returns:
             Integer result.
@@ -58,7 +60,8 @@ class DiagnosisReport:
 
     @property
     def highest_severity(self) -> str:
-        """Handles the highest severity operation.
+        """
+        Handles the highest severity operation.
 
         Returns:
             String result.
@@ -70,7 +73,8 @@ class DiagnosisReport:
 
     @property
     def exit_code(self) -> int:
-        """Handles the exit code operation.
+        """
+        Handles the exit code operation.
 
         Returns:
             Integer result.
@@ -80,7 +84,8 @@ class DiagnosisReport:
 
     @property
     def suggested_commands(self) -> tuple[str, ...]:
-        """Handles the suggested commands operation.
+        """
+        Handles the suggested commands operation.
 
         Returns:
             Tuple result.
@@ -94,7 +99,8 @@ class DiagnosisReport:
         return tuple(commands)
 
     def to_dict(self) -> dict[str, Any]:
-        """Handles the to dict operation.
+        """
+        Handles the to dict operation.
 
         Returns:
             Dictionary result.
@@ -246,7 +252,8 @@ def render_diagnosis_text(report: DiagnosisReport) -> str:
 
 
 def report_to_json(report: DiagnosisReport) -> str:
-    """Reports to json.
+    """
+    Reports to json.
 
     Args:
         report: Report.

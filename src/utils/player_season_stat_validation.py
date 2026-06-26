@@ -85,7 +85,8 @@ NUMERIC_FIELDS = {
 
 
 def _is_number_like(value: object) -> bool:
-    """Handles the is number like operation.
+    """
+    Handles the is number like operation.
 
     Args:
         value: Value.
@@ -112,7 +113,8 @@ def _is_number_like(value: object) -> bool:
 
 
 def _number_or_none(value: object) -> float | None:
-    """Handles the number or none operation.
+    """
+    Handles the number or none operation.
 
     Args:
         value: Value.
@@ -137,7 +139,8 @@ def _number_or_none(value: object) -> float | None:
 
 
 def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
-    """Handles the has core stats operation.
+    """
+    Handles the has core stats operation.
 
     Args:
         payload: Data payload to process.
@@ -157,7 +160,8 @@ def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
 
 
 def _validate_player_identity(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
-    """Validates player identity.
+    """
+    Validates player identity.
 
     Args:
         payload: Data payload to process.
@@ -177,7 +181,8 @@ def _validate_player_identity(payload: Mapping[str, Any], stat_type: str) -> tup
 
 
 def _validate_season_key(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
-    """Validates season key.
+    """
+    Validates season key.
 
     Args:
         payload: Data payload to process.
@@ -198,7 +203,8 @@ def _validate_season_key(payload: Mapping[str, Any], stat_type: str) -> tuple[bo
 
 
 def _validate_team_fields(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
-    """Validates team fields.
+    """
+    Validates team fields.
 
     Args:
         payload: Data payload to process.
@@ -219,7 +225,8 @@ def _validate_team_fields(payload: Mapping[str, Any], stat_type: str) -> tuple[b
 
 
 def _validate_numeric_fields(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
-    """Validates numeric fields.
+    """
+    Validates numeric fields.
 
     Args:
         payload: Data payload to process.
@@ -235,7 +242,8 @@ def _validate_numeric_fields(payload: Mapping[str, Any]) -> tuple[bool, str | No
 
 
 def _validate_batting_consistency(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
-    """Validates batting consistency.
+    """
+    Validates batting consistency.
 
     Args:
         payload: Data payload to process.
@@ -255,7 +263,8 @@ def _validate_batting_consistency(payload: Mapping[str, Any]) -> tuple[bool, str
 
 
 def _validate_pitching_consistency(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
-    """Validates pitching consistency.
+    """
+    Validates pitching consistency.
 
     Args:
         payload: Data payload to process.
@@ -276,7 +285,8 @@ def validate_season_stat_payload(
     *,
     stat_type: str,
 ) -> tuple[bool, str | None]:
-    """Validates season stat payload.
+    """
+    Validates season stat payload.
 
     Args:
         payload: Data payload to process.
@@ -305,7 +315,8 @@ def validate_season_stat_payload(
 
 
 def normalize_season_stat_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalizes season stat payload.
+    """
+    Normalizes season stat payload.
 
     Args:
         payload: Data payload to process.
@@ -330,7 +341,8 @@ def filter_valid_season_stat_payloads(
     *,
     stat_type: str,
 ) -> tuple[list[dict[str, Any]], Counter]:
-    """Filters valid season stat payloads.
+    """
+    Filters valid season stat payloads.
 
     Args:
         payloads: Payloads.

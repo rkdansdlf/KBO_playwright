@@ -1,4 +1,6 @@
-"""Crawler for daily roster transactions (call-up / send-down).
+"""
+Crawler for daily roster transactions (call-up / send-down).
+
 Sources:
   - KBO mobile registration page: https://m.koreabaseball.com/Kbo/PlayerAdd.aspx
   - KBO player register page: https://www.koreabaseball.com/Player/Register.aspx.
@@ -70,7 +72,8 @@ class RosterTransactionCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
-        """Runs run.
+        """
+        Runs run.
 
         Returns:
             List of results.

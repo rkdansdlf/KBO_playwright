@@ -50,7 +50,8 @@ def _get_stale_threshold_hours(source: DataSource) -> int:
 
 
 def check_freshness(*, dry_run: bool = False) -> list[str]:
-    """Checks freshness.
+    """
+    Checks freshness.
 
     Returns:
         List of results.
@@ -86,7 +87,8 @@ def check_freshness(*, dry_run: bool = False) -> list[str]:
 
 
 def check_table_completeness(*, dry_run: bool = False) -> list[str]:
-    """Checks table completeness.
+    """
+    Checks table completeness.
 
     Returns:
         List of results.
@@ -115,7 +117,8 @@ def check_table_completeness(*, dry_run: bool = False) -> list[str]:
 
 
 def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
-    """Checks p0 readiness.
+    """
+    Checks p0 readiness.
 
     Returns:
         List of results.
@@ -144,7 +147,8 @@ def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
 
 
 def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[str]]:
-    """Runs monitor.
+    """
+    Runs monitor.
 
     Returns:
         Dictionary result.
@@ -172,7 +176,8 @@ def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

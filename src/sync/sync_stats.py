@@ -146,12 +146,15 @@ class StatsSyncMixin:
             logger.exception("⚠️ OCI 데이터 조회 실패")
 
     def _get_table_signature(self, model: type, year: int | None = None, year_col: str = "season") -> dict[str, Any]:
-        """Calculate a unique signature for a table/year combination to detect changes.
+        """
+        Calculate a unique signature for a table/year combination to detect changes.
+
         Signature includes ROW COUNT and MAX(updated_at).
         """
 
         def get_sig(session: Session) -> dict[str, Any]:
-            """Gets sig.
+            """
+            Gets sig.
 
             Args:
                 session: Session.

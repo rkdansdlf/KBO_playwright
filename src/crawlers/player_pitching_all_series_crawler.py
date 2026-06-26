@@ -1,4 +1,5 @@
-"""KBO 전체 시리즈 투수 기록 크롤러.
+"""
+KBO 전체 시리즈 투수 기록 크롤러.
 
 요구사항 요약:
 1. https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx 페이지에서
@@ -166,7 +167,8 @@ PRIMARY_SORT_CONFIG = {
 
 
 def normalize_header(text: str) -> str:
-    """Normalizes header.
+    """
+    Normalizes header.
 
     Args:
         text: Text.
@@ -187,7 +189,8 @@ def normalize_header(text: str) -> str:
 
 
 def extract_player_id(href: str | None) -> int | None:
-    """Extracts player id.
+    """
+    Extracts player id.
 
     Args:
         href: Href.
@@ -203,7 +206,8 @@ def extract_player_id(href: str | None) -> int | None:
 
 
 def wait_for_table(page: Page, timeout: int = 30000) -> None:
-    """Handles the wait for table operation.
+    """
+    Handles the wait for table operation.
 
     Args:
         page: Page.
@@ -313,7 +317,8 @@ def apply_sort(
     sort_code: str | None = None,
     policy: RequestPolicy | None = None,
 ) -> bool:
-    """Handles the apply sort operation.
+    """
+    Handles the apply sort operation.
 
     Args:
         page: Page.
@@ -489,7 +494,8 @@ def _map_pitcher_basic1_stats(
     stats.team_code = team_code
 
     def get_val(key: str) -> str | None:
-        """Gets val.
+        """
+        Gets val.
 
         Args:
             key: Key.
@@ -550,7 +556,8 @@ def parse_basic1_page(
     pitchers: dict[int, PitcherStats],
     max_players: int | None = None,
 ) -> int:
-    """Parses basic1 page.
+    """
+    Parses basic1 page.
 
     Args:
         page: Page.
@@ -642,7 +649,8 @@ def _extract_basic2_row_info(
             return None
 
         def cell_text_fast(idx: int) -> str | None:
-            """Handles the cell text fast operation.
+            """
+            Handles the cell text fast operation.
 
             Args:
                 idx: Idx.
@@ -664,7 +672,8 @@ def _extract_basic2_row_info(
         return None
 
     def cell_text_slow(idx: int) -> str | None:
-        """Handles the cell text slow operation.
+        """
+        Handles the cell text slow operation.
 
         Args:
             idx: Idx.
@@ -725,7 +734,8 @@ def _update_pitcher_basic2_stats(
 
 
 def parse_basic2_page(ctx: Basic2PageContext) -> int:
-    """Parses basic2 page.
+    """
+    Parses basic2 page.
 
     Args:
         ctx: Ctx.
@@ -776,7 +786,8 @@ def parse_basic2_page(ctx: Basic2PageContext) -> int:
 
 
 def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, policy: RequestPolicy | None = None) -> bool:
-    """Set up pitcher page.
+    """
+    Set up pitcher page.
 
     Args:
         page: Page.
@@ -832,7 +843,8 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
 
 
 def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[str, object], list[PitcherStats]]:
-    """Builds pitching summary.
+    """
+    Builds pitching summary.
 
     Args:
         stats_list: Stats List.
@@ -1065,7 +1077,8 @@ def crawl_pitcher_series(
     save_to_db: bool = False,
     by_team: bool = False,
 ) -> list[PitcherStats]:
-    """Crawls pitcher series.
+    """
+    Crawls pitcher series.
 
     Args:
         year: Season year.
@@ -1168,7 +1181,8 @@ def crawl_pitcher_series(
 
 
 def parse_arguments() -> argparse.Namespace:
-    """Parses arguments.
+    """
+    Parses arguments.
 
     Returns:
         The result of the operation.

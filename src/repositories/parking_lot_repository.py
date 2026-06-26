@@ -21,7 +21,8 @@ class ParkingLotRepository:
         self.session = session
 
     def save(self, data: dict) -> ParkingLot:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -48,7 +49,8 @@ class ParkingLotRepository:
         return new_record
 
     def get_by_stadium(self, stadium_id: str) -> list[ParkingLot]:
-        """Gets by stadium.
+        """
+        Gets by stadium.
 
         Args:
             stadium_id: Stadium ID.
@@ -63,7 +65,8 @@ class ParkingLotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
-        """Saves bulk.
+        """
+        Saves bulk.
 
         Args:
             records: Records.
@@ -87,7 +90,8 @@ class ParkingFeeRuleRepository:
         self.session = session
 
     def save(self, data: dict) -> ParkingFeeRule:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -113,7 +117,8 @@ class ParkingFeeRuleRepository:
         return new_record
 
     def get_by_lot(self, parking_lot_id: int) -> list[ParkingFeeRule]:
-        """Gets by lot.
+        """
+        Gets by lot.
 
         Args:
             parking_lot_id: Parking Lot ID.

@@ -30,7 +30,8 @@ class CrawlRunRepository:
     """CrawlRunRepository class."""
 
     def create_run(self, stats: RunStats) -> CrawlRun:
-        """Creates create run.
+        """
+        Creates create run.
 
         Args:
             stats: Stats.

@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class SeasonStatAggregator:
-    """Service to aggregate transactional game stats into season-level cumulative stats.
+    """
+    Service to aggregate transactional game stats into season-level cumulative stats.
+
     Acts as a fallback when KBO's cumulative record pages are unavailable.
     """
 
@@ -42,7 +44,8 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
-        """Aggregates batting season.
+        """
+        Aggregates batting season.
 
         Args:
             session: Session.
@@ -161,7 +164,8 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
-        """Aggregates pitching season.
+        """
+        Aggregates pitching season.
 
         Args:
             session: Session.
@@ -432,7 +436,9 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """Aggregate fielding stats (primarily errors) by parsing GameEvents for a single player.
+        """
+        Aggregate fielding stats (primarily errors) by parsing GameEvents for a single player.
+
         Returns a list of dicts, one per position played.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)

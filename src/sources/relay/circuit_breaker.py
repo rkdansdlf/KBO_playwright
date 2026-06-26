@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 class SourceCircuitBreaker:
-    """Tracks consecutive failures per (source_name, bucket_id) and enforces cooldown.
+    """
+    Tracks consecutive failures per (source_name, bucket_id) and enforces cooldown.
 
     When a source exceeds the consecutive-failure threshold for a given bucket,
     it enters cooldown. During cooldown, `is_available()` returns False and the
@@ -110,7 +111,8 @@ class SourceCircuitBreaker:
     # ------------------------------------------------------------------
 
     def record_success(self, source_name: str, bucket_id: str) -> None:
-        """Handles the record success operation.
+        """
+        Handles the record success operation.
 
         Args:
             source_name: Source Name.
@@ -130,7 +132,8 @@ class SourceCircuitBreaker:
         self._save_state()
 
     def record_failure(self, source_name: str, bucket_id: str) -> None:
-        """Handles the record failure operation.
+        """
+        Handles the record failure operation.
 
         Args:
             source_name: Source Name.
@@ -152,7 +155,8 @@ class SourceCircuitBreaker:
         self._save_state()
 
     def is_available(self, source_name: str, bucket_id: str) -> bool:
-        """Returns whether the available.
+        """
+        Returns whether the available.
 
         Args:
             source_name: Source Name.
@@ -185,7 +189,8 @@ class SourceCircuitBreaker:
         return False
 
     def consecutive_failures(self, source_name: str, bucket_id: str) -> int:
-        """Handles the consecutive failures operation.
+        """
+        Handles the consecutive failures operation.
 
         Args:
             source_name: Source Name.
@@ -198,7 +203,8 @@ class SourceCircuitBreaker:
         return self._failures.get((source_name, bucket_id), 0)
 
     def is_open(self, source_name: str, bucket_id: str) -> bool:
-        """Returns whether the open.
+        """
+        Returns whether the open.
 
         Args:
             source_name: Source Name.

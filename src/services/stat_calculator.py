@@ -1,4 +1,6 @@
-"""Batting Stat Calculator Service.
+"""
+Batting Stat Calculator Service.
+
 Calculates ratios (AVG, OBP, SLG, etc.) from raw count data.
 """
 
@@ -12,7 +14,9 @@ class BattingStatCalculator:
 
     @staticmethod
     def calculate_ratios(data: dict[str, Any]) -> dict[str, float | None]:
-        """Calculates advanced/ratio stats from a dictionary of raw stats.
+        """
+        Calculates advanced/ratio stats from a dictionary of raw stats.
+
         Required keys: at_bats, hits, walks, hbp, sacrifice_flies,
                       doubles, triples, home_runs, strikeouts, plate_appearances.
         """
@@ -105,7 +109,9 @@ class PitchingStatCalculator:
 
     @staticmethod
     def calculate_ratios(data: dict[str, Any], fip_constant: float | None = None) -> dict[str, float | None]:
-        """Calculates pitching ratios from raw stats.
+        """
+        Calculates pitching ratios from raw stats.
+
         Required keys: innings_outs, earned_runs, hits_allowed, walks_allowed, strikeouts,
                        home_runs_allowed, hit_batters, batters_faced.
         """

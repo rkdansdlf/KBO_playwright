@@ -110,7 +110,8 @@ class RankingAggregator:
         min_pa: int | None = None,
         min_ip_outs: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Generates rankings.
+        """
+        Generates rankings.
 
         Args:
             season: Season year.

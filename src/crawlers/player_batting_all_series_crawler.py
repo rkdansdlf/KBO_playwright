@@ -1,4 +1,5 @@
-"""KBO 전체 시리즈 타자 기록 크롤러
+"""
+KBO 전체 시리즈 타자 기록 크롤러
 - 정규시즌, 시범경기, 와일드카드, 준플레이오프, 플레이오프, 한국시리즈.
 
 Usage:
@@ -111,7 +112,8 @@ def get_series_mapping() -> dict[str, dict[str, str]]:
 
 
 def safe_parse_number(value_str: str, data_type: type, *, _allow_zero: bool = True) -> int | float | None:
-    """안전하게 숫자를 파싱하는 함수.
+    """
+    안전하게 숫자를 파싱하는 함수.
 
     Args:
         value_str: 파싱할 문자열
@@ -156,7 +158,8 @@ def _build_batting_data(ctx: BattingRowData) -> dict[str, Any]:
     league_name = series_map.get(ctx.series_key, {}).get("league", "REGULAR")
 
     def cell(idx: int) -> str | None:
-        """Handles the cell operation.
+        """
+        Handles the cell operation.
 
         Args:
             idx: Idx.
@@ -379,7 +382,8 @@ def parse_batting_stats_table(
     *,
     use_fast: bool | None = None,
 ) -> list[dict]:
-    """Parses batting stats table.
+    """
+    Parses batting stats table.
 
     Args:
         page: Page.
@@ -399,7 +403,8 @@ def parse_batting_stats_table(
 
 
 def build_batting_crawl_summary(rows: list[dict]) -> tuple[dict[str, object], list[dict]]:
-    """Builds batting summary.
+    """
+    Builds batting summary.
 
     Args:
         rows: Rows.
@@ -673,7 +678,8 @@ def _parse_basic2_header_data_legacy(
     description: str,
     year: int | None = None,
 ) -> dict[int, dict]:
-    """Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
+    """
+    Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
     각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집.
     """
     year = year or datetime.now(KST).year
@@ -793,7 +799,8 @@ def parse_basic2_header_data(
     *,
     use_fast: bool | None = None,
 ) -> dict[int, dict]:
-    """Parses basic2 header data.
+    """
+    Parses basic2 header data.
 
     Args:
         page: Page.
@@ -1076,7 +1083,8 @@ def crawl_series_batting_stats(
     headless: bool = False,
     by_team: bool = False,
 ) -> list[dict]:
-    """특정 시리즈의 타자 기록을 크롤링.
+    """
+    특정 시리즈의 타자 기록을 크롤링.
 
     Args:
         year: 시즌 연도
@@ -1196,7 +1204,8 @@ def crawl_all_series(
     headless: bool = False,
     by_team: bool = False,
 ) -> dict[str, list[dict]]:
-    """모든 시리즈의 타자 기록을 크롤링.
+    """
+    모든 시리즈의 타자 기록을 크롤링.
 
     Returns:
         시리즈별 수집된 데이터 딕셔너리

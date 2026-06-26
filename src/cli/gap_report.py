@@ -1,4 +1,5 @@
-"""Unified data gap reporter for KBO pipeline.
+"""
+Unified data gap reporter for KBO pipeline.
 
 Aggregates gap checks from multiple existing monitors into a single
 structured report, then sends gap-type-aware alerts via Slack/Telegram.
@@ -363,7 +364,8 @@ def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, An
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

@@ -1,4 +1,5 @@
-"""Sync collected pregame preview rows for scheduled games to OCI/Postgres.
+"""
+Sync collected pregame preview rows for scheduled games to OCI/Postgres.
 
 This is intentionally scoped to games that already have local preview summaries
 or registered starting pitchers, so backfilled pregame data can be published
@@ -59,7 +60,8 @@ def _default_end_date(days_ahead: int) -> str:
 
 
 def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyncTarget]:
-    """Finds pregame targets.
+    """
+    Finds pregame targets.
 
     Args:
         start_date: Start Date.
@@ -108,7 +110,8 @@ def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyn
 
 
 def run_sync(args: argparse.Namespace) -> int:
-    """Runs run sync.
+    """
+    Runs run sync.
 
     Args:
         args: Args.
@@ -170,7 +173,8 @@ def run_sync(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

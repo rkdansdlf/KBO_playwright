@@ -25,7 +25,8 @@ def parse_game_detail_html(
     game_date: str,
     db_session: Session | None = None,
 ) -> dict[str, Any]:
-    """Parses game detail html.
+    """
+    Parses game detail html.
 
     Args:
         html: Html.
@@ -120,7 +121,8 @@ def _build_team_info(
         home_row = df.iloc[1] if len(df) > 1 else None
 
         def parse_row(row: pd.Series, info: dict[str, Any]) -> None:
-            """Parses row.
+            """
+            Parses row.
 
             Args:
                 row: Row.
@@ -365,7 +367,9 @@ def _parse_duration_minutes(duration: str | None) -> int | None:
 
 
 def _resolve_missing_player_id(db_session: Session, player_name: str, team_code: str) -> int | None:
-    """Fallback resolution of player_id via name and team search.
+    """
+    Fallback resolution of player_id via name and team search.
+
     Useful for exhibition games where IDs are missing from the HTML.
     """
     if not db_session or not player_name:

@@ -97,7 +97,8 @@ def _backfill_fielding(
 
 
 def backfill_stats(years: list[int], series: str) -> None:
-    """Backfills stats.
+    """
+    Backfills stats.
 
     Args:
         years: Years.

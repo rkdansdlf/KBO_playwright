@@ -1,4 +1,5 @@
-"""Model for stadium operational notices and announcements.
+"""
+Model for stadium operational notices and announcements.
 
 Captures game-day operational announcements from official team websites and
 KBO channels: gate changes, rain delays/cancellations, entry restrictions,

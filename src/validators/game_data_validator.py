@@ -6,7 +6,8 @@ from typing import Any
 
 
 def validate_game_data(game_data: dict[str, Any]) -> tuple[bool, list[str], list[str]]:
-    """Validate parsed game data prior to persistence.
+    """
+    Validate parsed game data prior to persistence.
 
     Returns:
         (is_valid, errors, warnings)

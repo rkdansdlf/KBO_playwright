@@ -1,4 +1,5 @@
-"""CLI for crawling stadium operation notices from LG Twins, Doosan Bears, and Naver Search.
+"""
+CLI for crawling stadium operation notices from LG Twins, Doosan Bears, and Naver Search.
 
 Usage:
     python -m src.cli.crawl_operation_notices --team LG --save
@@ -66,7 +67,8 @@ async def _run_naver_crawler(args: argparse.Namespace) -> None:
 
 
 async def run(args: argparse.Namespace) -> None:
-    """Runs run.
+    """
+    Runs run.
 
     Args:
         args: Args.
@@ -85,7 +87,8 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

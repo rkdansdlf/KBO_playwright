@@ -113,7 +113,8 @@ class KboEventCrawler:
         self._raw_pages: list[dict[str, object]] = []
 
     async def run(self, *, save: bool = False) -> list[dict[str, object]]:
-        """Runs run.
+        """
+        Runs run.
 
         Returns:
             List of results.

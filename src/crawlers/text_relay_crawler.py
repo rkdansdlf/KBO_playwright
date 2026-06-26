@@ -1,4 +1,5 @@
-"""Text Relay Crawler - KBO 문자중계(Play-by-Play) 수집 모듈.
+"""
+Text Relay Crawler - KBO 문자중계(Play-by-Play) 수집 모듈.
 
 KBO 공식 웹사이트의 LiveText.aspx 페이지에 접근하여
 경기별 타석/투구 기록을 스크래핑하고 DataFrame으로 변환 후 CSV로 저장합니다.
@@ -69,7 +70,8 @@ class RelayRow:
     description: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        """Handles the to dict operation.
+        """
+        Handles the to dict operation.
 
         Returns:
             Dictionary result.
@@ -103,7 +105,8 @@ class RelayCrawlResult:
     error_message: str | None = None
 
     def to_dataframe(self) -> pd.DataFrame:
-        """Handles the to dataframe operation.
+        """
+        Handles the to dataframe operation.
 
         Returns:
             The result of the operation.
@@ -131,7 +134,8 @@ class RelayCrawlResult:
         return pd.DataFrame(data)
 
     def save_csv(self, output_dir: str = DEFAULT_OUTPUT_DIR) -> Path:
-        """Saves csv.
+        """
+        Saves csv.
 
         Args:
             output_dir: Output directory path.
@@ -149,7 +153,8 @@ class RelayCrawlResult:
 
 
 class TextRelayCrawler:
-    """KBO 문자중계 크롤러.
+    """
+    KBO 문자중계 크롤러.
 
     Playwright 비동기 기반으로 특정 경기 ID의 문자중계 페이지에 진입하여
     전체 투구 기록 리스트를 스크래핑합니다.
@@ -455,7 +460,8 @@ class TextRelayCrawler:
         *,
         save: bool = False,
     ) -> RelayCrawlResult:
-        """특정 경기의 문자중계 데이터를 수집합니다.
+        """
+        특정 경기의 문자중계 데이터를 수집합니다.
 
         Args:
             game_id: KBO 경기 ID (예: "20260412SKLG0")
@@ -539,7 +545,8 @@ class TextRelayCrawler:
         *,
         save: bool = False,
     ) -> list[RelayCrawlResult]:
-        """여러 경기의 문자중계 데이터를 일괄 수집합니다.
+        """
+        여러 경기의 문자중계 데이터를 일괄 수집합니다.
 
         Args:
             game_ids: KBO 경기 ID 리스트
@@ -568,7 +575,8 @@ async def crawl_text_relay(
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> pd.DataFrame | None:
-    """단일 경기 문자중계 수집 편의 함수.
+    """
+    단일 경기 문자중계 수집 편의 함수.
 
     Args:
         game_id: KBO 경기 ID
@@ -593,7 +601,8 @@ async def crawl_text_relays(
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> list[str]:
-    """여러 경기 문자중계 수집 편의 함수.
+    """
+    여러 경기 문자중계 수집 편의 함수.
 
     Args:
         game_ids: KBO 경기 ID 리스트

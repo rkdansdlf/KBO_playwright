@@ -1,4 +1,6 @@
-"""Service to enrich text chunk metadata using Gemini API (via Google or OpenRouter).
+"""
+Service to enrich text chunk metadata using Gemini API (via Google or OpenRouter).
+
 Extracts keywords, summaries, and expected questions to boost RAG search match rate.
 """
 
@@ -28,7 +30,9 @@ class MetadataEnrichmentService:
             self.enabled = False
 
     def enrich_chunk(self, content: str) -> dict[str, Any]:
-        """Enriches a text chunk with summary, keywords, and expected questions.
+        """
+        Enriches a text chunk with summary, keywords, and expected questions.
+
         Returns a dict with 'summary', 'keywords', and 'questions'.
         """
         if not self.enabled or not content or len(content.strip()) < 50:

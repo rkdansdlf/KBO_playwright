@@ -1,5 +1,7 @@
-"""KBO Preview Crawler
+"""
+KBO Preview Crawler
 Fetches Pre-game information (Starting Pitchers, Lineups) for LLM context generation.
+
 Uses KBO's internal XHR APIs (GetKboGameList, GetLineUpAnalysis) for stability.
 """
 
@@ -214,7 +216,8 @@ class PreviewCrawler:
         referer: str,
         page: Page | None = None,
     ) -> dict[str, object] | list[object] | None:
-        """Try direct HTTP first (fast/fewer dependencies), then fallback to Playwright
+        """
+        Try direct HTTP first (fast/fewer dependencies), then fallback to Playwright
         request when a page is available.
         """
         headers = dict(self.BASE_HEADERS)
@@ -255,7 +258,8 @@ class PreviewCrawler:
         return None
 
     async def crawl_preview_for_date(self, game_date: str) -> list[dict[str, Any]]:
-        """주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해
+        """
+        주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해
         선발투수와 선발 라인업(발표되었을 경우) 정보를 수집합니다.
         """
         logger.info("🔍 Fetching Pre-game preview data for %s...", game_date)

@@ -1,5 +1,7 @@
-"""Player Search Crawler
+"""
+Player Search Crawler
 Collects comprehensive player information from KBO Player Search page.
+
 Now refactored into a class as expected by GameDetailCrawler.
 """
 
@@ -121,7 +123,8 @@ class PlayerSearchCrawler:
         self.failure_counts[reason] += 1
 
     def get_failure_summary(self) -> dict[str, Any]:
-        """Gets failure summary.
+        """
+        Gets failure summary.
 
         Returns:
             Dictionary result.
@@ -191,7 +194,8 @@ class PlayerSearchCrawler:
                 await active_pool.close()
 
     async def crawl_all_players(self, max_pages: int | None = None) -> list[PlayerRow]:
-        """Crawls all players.
+        """
+        Crawls all players.
 
         Args:
             max_pages: Max Pages.
@@ -468,7 +472,8 @@ class PlayerSearchCrawler:
 
     @staticmethod
     def row_to_dict(row: PlayerRow) -> dict[str, Any]:
-        """Handles the row to dict operation.
+        """
+        Handles the row to dict operation.
 
         Args:
             row: Row.
@@ -481,7 +486,8 @@ class PlayerSearchCrawler:
 
 
 def parse_birth_date(raw: str | None) -> date_type | None:
-    """Parses birth date.
+    """
+    Parses birth date.
 
     Args:
         raw: Raw.
@@ -522,7 +528,8 @@ def parse_birth_date(raw: str | None) -> date_type | None:
 
 
 def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
-    """Handles the player row to dict operation.
+    """
+    Handles the player row to dict operation.
 
     Args:
         row: Row.
@@ -565,7 +572,8 @@ async def crawl_all_players(
     request_delay: float = REQUEST_DELAY_SEC,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[PlayerRow]:
-    """Crawls all players.
+    """
+    Crawls all players.
 
     Args:
         max_pages: Max Pages.

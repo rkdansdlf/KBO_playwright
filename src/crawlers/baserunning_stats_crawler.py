@@ -48,7 +48,8 @@ def crawl_baserunning_stats(
     max_retries: int = 3,
     timeout: int = LONG_TIMEOUT,
 ) -> list[dict[str, Any]]:
-    """전체 선수의 주루 기록을 크롤링합니다.
+    """
+    전체 선수의 주루 기록을 크롤링합니다.
 
     Args:
         year: 시즌 연도 (None이면 현재 연도)
@@ -156,7 +157,8 @@ def save_baserunning_stats(
     year: int | None = None,
     db_path: str | None = None,
 ) -> None:
-    """Saves baserunning stats.
+    """
+    Saves baserunning stats.
 
     Args:
         player_list: Player List.

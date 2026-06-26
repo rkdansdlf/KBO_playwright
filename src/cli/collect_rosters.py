@@ -20,7 +20,8 @@ ROSTER_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, 
 
 
 def save_chunk(chunk: list[dict[str, Any]]) -> None:
-    """Saves chunk.
+    """
+    Saves chunk.
 
     Args:
         chunk: Chunk.
@@ -38,7 +39,8 @@ def save_chunk(chunk: list[dict[str, Any]]) -> None:
 
 
 async def collect_rosters(year: int, month: int | None = None) -> None:
-    """Handles the collect rosters operation.
+    """
+    Handles the collect rosters operation.
 
     Args:
         year: Season year.

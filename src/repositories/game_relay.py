@@ -172,7 +172,8 @@ def derive_play_by_play_rows_from_events(events: Iterable[dict[str, Any]]) -> li
 
 
 def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
-    """Regenerate game_play_by_play rows from stored game_events for one game.
+    """
+    Regenerate game_play_by_play rows from stored game_events for one game.
 
     Note: this is a legacy backfill that projects a minimal subset of fields
     (inning, inning_half, batter_name, pitcher_name, play_description,
@@ -235,7 +236,8 @@ def backfill_missing_game_stubs_for_relays(
     seasons: Iterable[int] | None = None,
     sync_to_oci: bool = False,
 ) -> int:
-    """Ensure a parent `game` row exists for any relay-bearing game_id.
+    """
+    Ensure a parent `game` row exists for any relay-bearing game_id.
 
     This repairs local integrity when historical backfills inserted `game_events`
     or `game_play_by_play` before the corresponding `game` row existed.
@@ -420,7 +422,8 @@ def repair_game_parent_from_existing_children(
     *,
     sync_to_oci: bool = False,
 ) -> bool:
-    """Rebuild/repair one parent `game` row from existing child tables.
+    """
+    Rebuild/repair one parent `game` row from existing child tables.
 
     Historical backfills sometimes inserted box-score children before the parent
     `game` row. If those children exist, they are more authoritative than a
@@ -469,7 +472,8 @@ class _RelayResolutionContext:
     home_team_code: str | None
 
     def offense_team(self, half: str | None) -> str | None:
-        """Handles the offense team operation.
+        """
+        Handles the offense team operation.
 
         Args:
             half: Half.
@@ -485,7 +489,8 @@ class _RelayResolutionContext:
         return None
 
     def defense_team(self, half: str | None) -> str | None:
-        """Handles the defense team operation.
+        """
+        Handles the defense team operation.
 
         Args:
             half: Half.
@@ -507,7 +512,8 @@ class _RelayResolutionContext:
         *,
         is_pitcher: bool | None = None,
     ) -> tuple[int | None, str | None, str | None]:
-        """Resolves participant.
+        """
+        Resolves participant.
 
         Args:
             name: Name.
@@ -985,7 +991,8 @@ def save_relay_data(
     options: RelaySaveOptions | None = None,
     **overrides: object,
 ) -> int:
-    """Persist normalized relay data.
+    """
+    Persist normalized relay data.
 
     Rules:
     - When normalized events have enough state, persist both game_events and game_play_by_play.

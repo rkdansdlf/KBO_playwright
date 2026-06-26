@@ -66,7 +66,8 @@ def parse_retired_hitter_tables(
     league: str = "REGULAR",
     level: str = "KBO1",
 ) -> list[dict[str, Any]]:
-    """Parses retired hitter tables.
+    """
+    Parses retired hitter tables.
 
     Args:
         tables: Tables.
@@ -154,7 +155,8 @@ def parse_retired_pitcher_table(
     league: str = "REGULAR",
     level: str = "KBO1",
 ) -> list[dict[str, Any]]:
-    """Parses retired pitcher table.
+    """
+    Parses retired pitcher table.
 
     Args:
         table: Table.

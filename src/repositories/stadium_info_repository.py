@@ -20,7 +20,8 @@ class StadiumInfoRepository:
         self.session = session
 
     def save_stadium_info(self, data: dict) -> StadiumInfo:
-        """Saves stadium info.
+        """
+        Saves stadium info.
 
         Args:
             data: Data.
@@ -41,7 +42,8 @@ class StadiumInfoRepository:
         return new_record
 
     def get_all(self) -> list[StadiumInfo]:
-        """Gets all.
+        """
+        Gets all.
 
         Returns:
             List of results.
@@ -51,7 +53,8 @@ class StadiumInfoRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_code(self, code: str) -> StadiumInfo | None:
-        """Gets by code.
+        """
+        Gets by code.
 
         Args:
             code: Code.
@@ -63,7 +66,8 @@ class StadiumInfoRepository:
         return self.session.get(StadiumInfo, code)
 
     def save_regulation(self, data: dict) -> StadiumRegulation:
-        """Saves regulation.
+        """
+        Saves regulation.
 
         Args:
             data: Data.
@@ -77,7 +81,8 @@ class StadiumInfoRepository:
         return new_record
 
     def get_regulations_by_stadium(self, stadium_code: str) -> list[StadiumRegulation]:
-        """Gets regulations by stadium.
+        """
+        Gets regulations by stadium.
 
         Args:
             stadium_code: Stadium Code.

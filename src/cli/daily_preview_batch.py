@@ -1,4 +1,5 @@
-"""Daily Preview Batch Script
+"""
+Daily Preview Batch Script
 Fetches pre-game context and persists both preview JSON and core pregame tables.
 """
 
@@ -122,7 +123,8 @@ def _sync_saved_pregame_games(saved_ids: list[str]) -> None:
 
 
 async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    """Runs preview batch.
+    """
+    Runs preview batch.
 
     Args:
         target_date: Target Date.

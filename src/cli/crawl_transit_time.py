@@ -1,4 +1,5 @@
-"""CLI for measuring transit times from transit hubs to Jamsil Stadium.
+"""
+CLI for measuring transit times from transit hubs to Jamsil Stadium.
 
 Usage:
     python -m src.cli.crawl_transit_time --save
@@ -23,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 async def run(args: argparse.Namespace) -> None:
-    """Runs run.
+    """
+    Runs run.
 
     Args:
         args: Args.
@@ -46,7 +48,8 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

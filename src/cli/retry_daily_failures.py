@@ -28,7 +28,8 @@ def _summary_path(target_date: str, summary_dir: str | Path | None = None) -> Pa
 
 
 def load_daily_summary(path: str | Path) -> dict[str, Any]:
-    """Loads daily summary.
+    """
+    Loads daily summary.
 
     Args:
         path: Path.
@@ -67,7 +68,8 @@ def _dedupe_game_ids(values: Iterable[object]) -> list[str]:
 
 
 def retry_candidates(summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
-    """Handles the retry candidates operation.
+    """
+    Handles the retry candidates operation.
 
     Args:
         summary: Summary.
@@ -110,7 +112,8 @@ def build_retry_commands(
     sync: bool = False,
     python_bin: str = sys.executable,
 ) -> list[Command]:
-    """Builds retry commands.
+    """
+    Builds retry commands.
 
     Args:
         summary: Summary.
@@ -181,7 +184,8 @@ def run_retry(
     runner: Runner | None = None,
     python_bin: str = sys.executable,
 ) -> int:
-    """Runs retry.
+    """
+    Runs retry.
 
     Returns:
         Integer result.
@@ -212,7 +216,8 @@ def run_retry(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

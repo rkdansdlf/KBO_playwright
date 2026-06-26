@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 async def run_fetcher(argv: Sequence[str] | None = None) -> int:
-    """Runs fetcher.
+    """
+    Runs fetcher.
 
     Args:
         argv: Argv.

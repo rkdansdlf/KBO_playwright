@@ -80,7 +80,8 @@ class GameCollectionTarget:
     game_date: str
 
     def as_crawler_input(self) -> dict[str, str]:
-        """Handles the as crawler input operation.
+        """
+        Handles the as crawler input operation.
 
         Returns:
             Dictionary result.
@@ -170,7 +171,8 @@ class GameCollectionItemResult:
 
 
 def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
-    """Builds game id range.
+    """
+    Builds game id range.
 
     Args:
         year: Season year.
@@ -190,7 +192,8 @@ def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
 
 
 def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameCollectionTarget]:
-    """Loads game targets from db.
+    """
+    Loads game targets from db.
 
     Args:
         year: Season year.
@@ -236,7 +239,8 @@ def load_game_targets_by_ids(game_ids: list[str]) -> list[GameCollectionTarget]:
 
 
 def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
-    """Normalizes game targets.
+    """
+    Normalizes game targets.
 
     Args:
         games: Games.
@@ -261,7 +265,8 @@ def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
 
 
 def inspect_existing_game_data(targets: Iterable[GameCollectionTarget]) -> dict[str, ExistingGameData]:
-    """Handles the inspect existing game data operation.
+    """
+    Handles the inspect existing game data operation.
 
     Args:
         targets: Targets.
@@ -297,7 +302,8 @@ async def crawl_and_save_game_details(
     detail_crawler: DetailCrawler,
     config: GameCollectionConfig | None = None,
 ) -> GameCollectionResult:
-    """Crawls and game details.
+    """
+    Crawls and game details.
 
     Args:
         games: Games.

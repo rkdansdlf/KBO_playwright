@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

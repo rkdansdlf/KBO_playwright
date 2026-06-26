@@ -19,7 +19,8 @@ class GameWriteSource:
     reason: str = ""
 
     def label(self) -> str:
-        """Handles the label operation.
+        """
+        Handles the label operation.
 
         Returns:
             String result.
@@ -53,7 +54,8 @@ class GameWriteContract:
         self.duplicate_datasets = 0
 
     def claim_game(self, game_id: str, source: GameWriteSource) -> None:
-        """Handles the claim game operation.
+        """
+        Handles the claim game operation.
 
         Args:
             game_id: Game ID.
@@ -74,7 +76,8 @@ class GameWriteContract:
         )
 
     def field_updated(self, game_id: str, source: GameWriteSource, field: str, old: object, new: object) -> None:
-        """Handles the field updated operation.
+        """
+        Handles the field updated operation.
 
         Args:
             game_id: Game ID.
@@ -98,7 +101,8 @@ class GameWriteContract:
         )
 
     def field_duplicate(self, game_id: str, source: GameWriteSource, field: str, value: object) -> None:
-        """Handles the field duplicate operation.
+        """
+        Handles the field duplicate operation.
 
         Args:
             game_id: Game ID.
@@ -115,7 +119,8 @@ class GameWriteContract:
             )
 
     def dataset_replaced(self, game_id: str, source: GameWriteSource, dataset: str, rows: int) -> None:
-        """Handles the dataset replaced operation.
+        """
+        Handles the dataset replaced operation.
 
         Args:
             game_id: Game ID.
@@ -131,7 +136,8 @@ class GameWriteContract:
         )
 
     def dataset_duplicate(self, game_id: str, source: GameWriteSource, dataset: str, rows: int) -> None:
-        """Handles the dataset duplicate operation.
+        """
+        Handles the dataset duplicate operation.
 
         Args:
             game_id: Game ID.
@@ -147,7 +153,8 @@ class GameWriteContract:
         )
 
     def summary(self) -> str:
-        """Handles the summary operation.
+        """
+        Handles the summary operation.
 
         Returns:
             String result.

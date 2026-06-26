@@ -1,4 +1,5 @@
-"""Database engine configuration
+"""
+Database engine configuration
 Supports both SQLite (dev) and MySQL (production).
 """
 
@@ -47,7 +48,8 @@ def _is_sqlite(url: str | None) -> bool:
 
 
 def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLAlchemyEngine:
-    """Creates engine for url.
+    """
+    Creates engine for url.
 
     Args:
         url: Url.
@@ -87,7 +89,8 @@ SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expi
 
 @contextmanager
 def get_db_session() -> Iterator[Session]:
-    """Gets db session.
+    """
+    Gets db session.
 
     Returns:
         The result of the operation.

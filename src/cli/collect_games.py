@@ -38,7 +38,8 @@ async def collect_games(
     force: bool = False,
     concurrency: int | None = None,
 ) -> None:
-    """Handles the collect games operation.
+    """
+    Handles the collect games operation.
 
     Args:
         year: Season year.

@@ -81,7 +81,8 @@ class RelayRecoveryTarget:
         *,
         state: GameStateInput,
     ) -> RelayRecoveryTarget:
-        """Handles the from game state operation.
+        """
+        Handles the from game state operation.
 
         Returns:
             RelayRecoveryTarget instance.
@@ -179,7 +180,8 @@ class RecoveryLoopContext:
 
 
 def parse_source_order(value: str | None) -> list[str] | None:
-    """Parses source order.
+    """
+    Parses source order.
 
     Args:
         value: Value.
@@ -195,7 +197,8 @@ def parse_source_order(value: str | None) -> list[str] | None:
 
 
 def load_game_ids_from_file(path: str | Path | None) -> list[str]:
-    """Loads game ids from file.
+    """
+    Loads game ids from file.
 
     Args:
         path: Path.
@@ -231,7 +234,8 @@ def load_relay_recovery_targets(
     *,
     log: Callable[[str], None] = logger.info,
 ) -> list[RelayRecoveryTarget]:
-    """Loads relay recovery targets.
+    """
+    Loads relay recovery targets.
 
     Args:
         criteria: Criteria.
@@ -303,7 +307,8 @@ async def recover_relay_data(
     config: RelayRecoveryConfig | None = None,
     orchestrator: RelayRecoveryOrchestrator | None = None,
 ) -> RelayRecoveryResult:
-    """Handles the recover relay data operation.
+    """
+    Handles the recover relay data operation.
 
     Args:
         targets: Targets.
@@ -424,7 +429,8 @@ def _relay_validator(
     config: RelayValidationConfig,
 ) -> Callable[[NormalizedRelayResult], str | None]:
     def validator(relay_result: NormalizedRelayResult) -> str | None:
-        """Handles the validator operation.
+        """
+        Handles the validator operation.
 
         Args:
             relay_result: Relay Result.
@@ -601,7 +607,8 @@ def build_relay_recovery_orchestrator(
     capability_path: str | Path = DEFAULT_CAPABILITY_PATH,
     source_timeout: float = 30.0,
 ) -> RelayRecoveryOrchestrator:
-    """Builds relay recovery orchestrator.
+    """
+    Builds relay recovery orchestrator.
 
     Returns:
         RelayRecoveryOrchestrator instance.
@@ -638,7 +645,8 @@ def write_relay_recovery_report(
     *,
     log: Callable[[str], None] = logger.info,
 ) -> None:
-    """Writes relay recovery.
+    """
+    Writes relay recovery.
 
     Args:
         report_path: Report file path.

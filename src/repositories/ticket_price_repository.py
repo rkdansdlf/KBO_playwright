@@ -20,7 +20,8 @@ class TicketPriceRepository:
         self.session = session
 
     def save(self, data: dict) -> TicketPrice:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -47,7 +48,8 @@ class TicketPriceRepository:
         return new_record
 
     def get_by_team_season(self, team_id: str, season: int) -> list[TicketPrice]:
-        """Gets by team season.
+        """
+        Gets by team season.
 
         Args:
             team_id: Team ID.
@@ -65,7 +67,8 @@ class TicketPriceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_stadium_season(self, stadium_id: str, season: int) -> list[TicketPrice]:
-        """Gets by stadium season.
+        """
+        Gets by stadium season.
 
         Args:
             stadium_id: Stadium ID.
@@ -83,7 +86,8 @@ class TicketPriceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
-        """Saves bulk.
+        """
+        Saves bulk.
 
         Args:
             records: Records.

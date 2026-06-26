@@ -1,4 +1,6 @@
-"""Crawler for ticket prices, open rules, and seat information from KBO and team pages.
+"""
+Crawler for ticket prices, open rules, and seat information from KBO and team pages.
+
 Sources:
   - KBO ticket info: https://www.koreabaseball.com/Kbo/League/Map.aspx
   - Team ticket pages (LG, etc.).
@@ -127,7 +129,8 @@ class TicketCrawler:
     }
 
     async def run(self, *, save: bool = False, season: int | None = None) -> list[dict[str, Any]]:
-        """Runs run.
+        """
+        Runs run.
 
         Returns:
             List of results.

@@ -29,7 +29,8 @@ class BroadcastCrawler:
         self.url = SCHEDULE
 
     async def run(self, year: int | None = None, month: int | None = None, *, save: bool = False) -> None:
-        """Runs run.
+        """
+        Runs run.
 
         Args:
             year: Season year.

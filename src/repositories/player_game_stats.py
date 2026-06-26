@@ -277,7 +277,8 @@ def _group_pitching_by_game_player(rows: list[GamePitchingStat]) -> dict[tuple[s
 
 
 def aggregate_game_batting_batch(session: Session, game_ids: list[str]) -> list[dict[str, Any]]:
-    """Aggregates game batting batch.
+    """
+    Aggregates game batting batch.
 
     Args:
         session: Session.
@@ -321,7 +322,8 @@ def aggregate_game_batting_batch(session: Session, game_ids: list[str]) -> list[
 
 
 def aggregate_game_pitching_batch(session: Session, game_ids: list[str]) -> list[dict[str, Any]]:
-    """Aggregates game pitching batch.
+    """
+    Aggregates game pitching batch.
 
     Args:
         session: Session.
@@ -390,7 +392,8 @@ def _upsert_bulk(
 
 
 def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
-    """Inserts or updates player game batting.
+    """
+    Inserts or updates player game batting.
 
     Args:
         session: Session.
@@ -406,7 +409,8 @@ def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) 
 
 
 def upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
-    """Inserts or updates player game pitching.
+    """
+    Inserts or updates player game pitching.
 
     Args:
         session: Session.
@@ -422,7 +426,8 @@ def upsert_player_game_pitching(session: Session, records: list[dict[str, Any]])
 
 
 def bulk_upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
-    """Inserts or updates bulk player game batting.
+    """
+    Inserts or updates bulk player game batting.
 
     Args:
         session: Session.
@@ -436,7 +441,8 @@ def bulk_upsert_player_game_batting(session: Session, records: list[dict[str, An
 
 
 def bulk_upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
-    """Inserts or updates bulk player game pitching.
+    """
+    Inserts or updates bulk player game pitching.
 
     Args:
         session: Session.

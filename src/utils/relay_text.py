@@ -99,7 +99,8 @@ _RELAY_NOISE_TOKENS = (
 
 
 def compact_relay_text(description: object) -> str:
-    """Handles the compact relay text operation.
+    """
+    Handles the compact relay text operation.
 
     Args:
         description: Description.
@@ -112,7 +113,8 @@ def compact_relay_text(description: object) -> str:
 
 
 def parse_pitch_count(description: str) -> dict[str, int | None]:
-    """Parse one pitch log into the count change caused by that pitch.
+    """
+    Parse one pitch log into the count change caused by that pitch.
 
     The leading ``n구`` value is the pitch ordinal, not the ball/strike count.
     This function therefore returns the count delta for a single pitch, with
@@ -136,7 +138,8 @@ def parse_pitch_count(description: str) -> dict[str, int | None]:
 
 
 def advance_pitch_count(description: str, balls: int = 0, strikes: int = 0) -> tuple[int, int, bool]:
-    """Advance an at-bat count from one raw pitch text.
+    """
+    Advance an at-bat count from one raw pitch text.
 
     Foul balls do not move the count past two strikes. Returns
     ``(balls, strikes, matched_pitch_text)``.
@@ -157,7 +160,8 @@ def advance_pitch_count(description: str, balls: int = 0, strikes: int = 0) -> t
 
 
 def is_relay_noise_text(description: object) -> bool:
-    """Returns whether the relay noise text.
+    """
+    Returns whether the relay noise text.
 
     Args:
         description: Description.
@@ -175,7 +179,8 @@ def is_relay_noise_text(description: object) -> bool:
 
 
 def is_relay_result_event_text(description: object) -> bool:
-    """Returns whether the relay result event text.
+    """
+    Returns whether the relay result event text.
 
     Args:
         description: Description.
@@ -194,7 +199,8 @@ def is_relay_result_event_text(description: object) -> bool:
 
 
 def detect_relay_event_type(description: object) -> str:
-    """Handles the detect relay event type operation.
+    """
+    Handles the detect relay event type operation.
 
     Args:
         description: Description.

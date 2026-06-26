@@ -27,7 +27,8 @@ class QualityRegressionResult:
     sample_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        """Handles the to dict operation.
+        """
+        Handles the to dict operation.
 
         Returns:
             Dictionary result.
@@ -51,7 +52,8 @@ class QualityRegressionReport:
 
     @property
     def ok(self) -> bool:
-        """Handles the ok operation.
+        """
+        Handles the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -61,7 +63,8 @@ class QualityRegressionReport:
 
     @property
     def check_count(self) -> int:
-        """Checks count.
+        """
+        Checks count.
 
         Returns:
             Integer result.
@@ -71,7 +74,8 @@ class QualityRegressionReport:
 
     @property
     def failure_count(self) -> int:
-        """Handles the failure count operation.
+        """
+        Handles the failure count operation.
 
         Returns:
             Integer result.
@@ -80,7 +84,8 @@ class QualityRegressionReport:
         return sum(1 for result in self.results if result.status == "fail")
 
     def to_dict(self) -> dict[str, Any]:
-        """Handles the to dict operation.
+        """
+        Handles the to dict operation.
 
         Returns:
             Dictionary result.
@@ -292,7 +297,8 @@ def run_regression_pack(conn: Connection, checks: Sequence[_SqlCheck] = _CHECKS)
 
 
 def render_regression_report(report: QualityRegressionReport) -> str:
-    """Reports render regression.
+    """
+    Reports render regression.
 
     Args:
         report: Report.
@@ -316,7 +322,8 @@ def render_regression_report(report: QualityRegressionReport) -> str:
 
 
 def report_to_json(report: QualityRegressionReport) -> str:
-    """Reports to json.
+    """
+    Reports to json.
 
     Args:
         report: Report.

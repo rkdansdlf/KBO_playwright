@@ -92,7 +92,8 @@ class TeamEventCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict]:
-        """Runs run.
+        """
+        Runs run.
 
         Returns:
             List of results.

@@ -22,7 +22,8 @@ NAVER_TEAM_MAP: dict[str, str] = {
 
 
 def parse_iso_date(pub_date: str) -> date | None:
-    """Parses iso date.
+    """
+    Parses iso date.
 
     Args:
         pub_date: Pub Date.
@@ -39,7 +40,8 @@ def parse_iso_date(pub_date: str) -> date | None:
 
 
 def parse_multi_format_date(raw: str) -> datetime | None:
-    """Parses multi date.
+    """
+    Parses multi date.
 
     Args:
         raw: Raw.
@@ -59,7 +61,8 @@ def parse_multi_format_date(raw: str) -> datetime | None:
 
 
 def build_naver_sports_url(oid: str, aid: str) -> str:
-    """Builds naver sports url.
+    """
+    Builds naver sports url.
 
     Args:
         oid: Oid.

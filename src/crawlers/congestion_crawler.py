@@ -1,4 +1,5 @@
-"""Congestion crawler for Jamsil Stadium area.
+"""
+Congestion crawler for Jamsil Stadium area.
 
 Collects real-time congestion data from:
   1. 서울시 실시간 도시데이터 API (Seoul Open Data) — primary
@@ -79,7 +80,8 @@ class CongestionCrawler:
         *,
         save: bool = False,
     ) -> list[dict]:
-        """Runs run.
+        """
+        Runs run.
 
         Args:
             game_date: Game Date.

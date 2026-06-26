@@ -1,4 +1,6 @@
-"""CLI tool to recalculate player-level season stats from game-level (transactional) data.
+"""
+CLI tool to recalculate player-level season stats from game-level (transactional) data.
+
 Aggregates GameBattingStat -> PlayerSeasonBatting
 Aggregates GamePitchingStat -> PlayerSeasonPitching.
 
@@ -377,7 +379,8 @@ def run_recalc(
     batting_only: bool = False,
     pitching_only: bool = False,
 ) -> int:
-    """Runs run recalc.
+    """
+    Runs run recalc.
 
     Args:
         season: Season year.

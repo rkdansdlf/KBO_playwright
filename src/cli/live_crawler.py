@@ -1,4 +1,5 @@
-"""Real-time KBO live crawler.
+"""
+Real-time KBO live crawler.
 
 Polls today's schedule, captures relay events plus a lightweight scoreboard snapshot,
 then explicitly syncs changed games to OCI.
@@ -109,7 +110,8 @@ def _select_live_shard(items: list[Any], *, shard_key: str, max_items: int | Non
 def _query_enriched_game_state(
     game_ids: list[str],
 ) -> dict[str, dict[str, int]]:
-    """Query DB for event count and max inning per game_id.
+    """
+    Query DB for event count and max inning per game_id.
 
     Returns {game_id: {"event_count": int, "max_inning": int}}.
     """
@@ -167,7 +169,8 @@ def _compute_enriched_interval(
     last_event_counts: dict[str, int],
     enriched_state: dict[str, dict[str, int]] | None = None,
 ) -> tuple[int, str, dict[str, int]]:
-    """Improve the base dynamic interval using at-bat/inning/event-density awareness.
+    """
+    Improve the base dynamic interval using at-bat/inning/event-density awareness.
 
     Returns (sleep_seconds, extra_note, updated_last_event_counts).
     """

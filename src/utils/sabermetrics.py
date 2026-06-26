@@ -16,7 +16,8 @@ class PitchingStats:
 
 
 def calculate_fip(stats: PitchingStats, ip: float, fip_constant: float) -> float:
-    """Calculates fip.
+    """
+    Calculates fip.
 
     Args:
         stats: Stats.
@@ -36,7 +37,8 @@ def calculate_fip(stats: PitchingStats, ip: float, fip_constant: float) -> float
 
 
 def calculate_era(earned_runs: int, ip: float) -> float:
-    """Calculates era.
+    """
+    Calculates era.
 
     Args:
         earned_runs: Earned Runs.

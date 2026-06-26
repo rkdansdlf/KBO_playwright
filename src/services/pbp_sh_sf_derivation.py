@@ -1,4 +1,5 @@
-"""Derive sacrifice_hits (SH) and sacrifice_flies (SF) from game_events PBP data.
+"""
+Derive sacrifice_hits (SH) and sacrifice_flies (SF) from game_events PBP data.
 
 The Naver/KBO box score HTML often omits the SH/SF columns, causing
 game_batting_stats.sacrifice_hits and .sacrifice_flies to remain 0.
@@ -92,7 +93,8 @@ def _resolve_derived_batter_key(row: object, name_to_id: dict[str, int]) -> int 
 
 
 def apply_sh_sf_to_batting_stats(session: Session, game_id: str) -> int:
-    """Derive SH/SF from game_events and update game_batting_stats in-place.
+    """
+    Derive SH/SF from game_events and update game_batting_stats in-place.
 
     Returns the number of updated rows.
     """

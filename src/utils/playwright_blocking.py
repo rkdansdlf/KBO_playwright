@@ -21,7 +21,8 @@ async def install_async_resource_blocking(
     target: AsyncBrowserContext | AsyncPage,
     blocked_types: Iterable[str] | None = None,
 ) -> None:
-    """Handles the install async resource blocking operation.
+    """
+    Handles the install async resource blocking operation.
 
     Args:
         target: Target.
@@ -31,7 +32,8 @@ async def install_async_resource_blocking(
     types = set(blocked_types or DEFAULT_BLOCKED_RESOURCE_TYPES)
 
     async def handler(route: AsyncRoute) -> None:
-        """Handles the handler operation.
+        """
+        Handles the handler operation.
 
         Args:
             route: Route.
@@ -49,7 +51,8 @@ def install_sync_resource_blocking(
     target: SyncBrowserContext | SyncPage,
     blocked_types: Iterable[str] | None = None,
 ) -> None:
-    """Syncs install resource blocking.
+    """
+    Syncs install resource blocking.
 
     Args:
         target: Target.
@@ -59,7 +62,8 @@ def install_sync_resource_blocking(
     types = set(blocked_types or DEFAULT_BLOCKED_RESOURCE_TYPES)
 
     def handler(route: SyncRoute) -> None:
-        """Handles the handler operation.
+        """
+        Handles the handler operation.
 
         Args:
             route: Route.

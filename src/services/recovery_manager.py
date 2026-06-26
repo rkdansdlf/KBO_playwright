@@ -71,7 +71,8 @@ class RecoveryManager:
         cooldown_minutes: int | None = None,
         now: datetime | None = None,
     ) -> list[str]:
-        """Gets due detail recovery targets.
+        """
+        Gets due detail recovery targets.
 
         Args:
             target_date: Target Date.
@@ -107,7 +108,8 @@ class RecoveryManager:
         return sorted(set(game_ids))
 
     def mark_detail_recovery_success(self, target_date: str, game_id: str) -> None:
-        """Handles the mark detail recovery success operation.
+        """
+        Handles the mark detail recovery success operation.
 
         Args:
             target_date: Target Date.
@@ -127,7 +129,8 @@ class RecoveryManager:
         *,
         failure_reason: str | None = None,
     ) -> None:
-        """Handles the mark detail recovery failure operation.
+        """
+        Handles the mark detail recovery failure operation.
 
         Args:
             target_date: Target Date.
@@ -191,7 +194,8 @@ class RecoveryManager:
 
     def initialize_run(self, run_id: str, targets: list[str]) -> None:
         # If it's a new run ID, reset everything
-        """Initializes initialize run.
+        """
+        Initializes initialize run.
 
         Args:
             run_id: Run ID.
@@ -211,7 +215,8 @@ class RecoveryManager:
             self.save()
 
     def mark_completed(self, game_id: str) -> None:
-        """Handles the mark completed operation.
+        """
+        Handles the mark completed operation.
 
         Args:
             game_id: Game ID.
@@ -224,7 +229,8 @@ class RecoveryManager:
         self.save()
 
     def mark_failed(self, game_id: str, reason: str) -> None:
-        """Handles the mark failed operation.
+        """
+        Handles the mark failed operation.
 
         Args:
             game_id: Game ID.
@@ -237,7 +243,8 @@ class RecoveryManager:
         self.save()
 
     def get_pending_targets(self) -> list[str]:
-        """Gets pending targets.
+        """
+        Gets pending targets.
 
         Returns:
             List of results.

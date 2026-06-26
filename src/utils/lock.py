@@ -30,7 +30,8 @@ class LockAcquisitionError(Exception):
 
 
 class ProcessLock:
-    """A cross-process and cross-thread lock.
+    """
+    A cross-process and cross-thread lock.
 
     Uses threading.Lock to serialize threads within the same process,
     and Unix fcntl.flock to serialize across different processes.
@@ -66,7 +67,8 @@ class ProcessLock:
         self.acquire_count = 0
 
     def acquire(self, *, blocking: bool | None = None) -> bool:
-        """Acquire the lock.
+        """
+        Acquire the lock.
 
         Args:
             blocking: Override the instance default for this acquire call.

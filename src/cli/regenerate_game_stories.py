@@ -61,7 +61,8 @@ class StoryRegenReportRow:
     message: str = ""
 
     def as_csv_row(self) -> dict[str, Any]:
-        """Handles the as csv row operation.
+        """
+        Handles the as csv row operation.
 
         Returns:
             Dictionary result.
@@ -407,7 +408,8 @@ def regenerate_game_stories(
     backup_out: Path | None = None,
     log: Callable[[str], object] = logger.info,
 ) -> list[StoryRegenReportRow]:
-    """Handles the regenerate game stories operation.
+    """
+    Handles the regenerate game stories operation.
 
     Returns:
         List of results.

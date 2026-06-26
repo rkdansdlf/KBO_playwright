@@ -22,7 +22,8 @@ class InjuryRepository:
         self.session = session
 
     def save_injury(self, data: dict) -> InjuryEntry:
-        """Saves injury.
+        """
+        Saves injury.
 
         Args:
             data: Data.
@@ -51,7 +52,8 @@ class InjuryRepository:
         return new_record
 
     def get_active_by_team(self, team_id: str) -> list[InjuryEntry]:
-        """Gets active by team.
+        """
+        Gets active by team.
 
         Args:
             team_id: Team ID.
@@ -71,7 +73,8 @@ class InjuryRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_all_active(self) -> list[InjuryEntry]:
-        """Gets all active.
+        """
+        Gets all active.
 
         Returns:
             List of results.
@@ -85,7 +88,8 @@ class InjuryRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def mark_returned(self, injury_id: int, return_date: date) -> None:
-        """Handles the mark returned operation.
+        """
+        Handles the mark returned operation.
 
         Args:
             injury_id: Injury ID.

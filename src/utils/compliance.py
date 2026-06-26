@@ -1,4 +1,6 @@
-"""Robots.txt compliance checker for KBO Data Crawler.
+"""
+Robots.txt compliance checker for KBO Data Crawler.
+
 Ensures that we follow Disallow rules from koreabaseball.com.
 """
 
@@ -33,7 +35,8 @@ class ComplianceChecker:
 
     @classmethod
     def get_instance(cls) -> ComplianceChecker:
-        """Gets instance.
+        """
+        Gets instance.
 
         Returns:
             ComplianceChecker instance.
