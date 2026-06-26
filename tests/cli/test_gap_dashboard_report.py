@@ -1,4 +1,5 @@
 """Tests for gap_report and dashboard_report pure functions."""
+
 from __future__ import annotations
 
 import pytest
