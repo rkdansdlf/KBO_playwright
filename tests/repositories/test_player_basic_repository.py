@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -173,6 +173,114 @@ class TestPlayerBasicRepository:
         assert payload["name"] == "Test"
         assert payload["bats"] == "R"
         assert payload["throws"] is None
+
+    def test_upsert_players_sqlalchemy_error(self, session):
+        from sqlalchemy.exc import SQLAlchemyError
+
+        repo = PlayerBasicRepository()
+        with patch("src.repositories.player_basic_repository.SessionLocal", return_value=session):
+            with patch.object(session, "execute", side_effect=SQLAlchemyError("fail", "fail", Exception("fail"))):
+                with patch.object(session, "rollback") as mock_rollback:
+                    with pytest.raises(SQLAlchemyError):
+                        repo.upsert_players([{"player_id": 1, "name": "A"}])
+                    mock_rollback.assert_called_once()
+
+    def test_upsert_one_valid(self, session):
+        repo = PlayerBasicRepository()
+        with patch(
+            "src.repositories.player_basic_repository.validate_player_payload",
+            return_value=(True, None),
+        ):
+            with patch.object(repo, "_build_upsert_stmt") as mock_stmt:
+                mock_stmt.return_value = "stmt"
+                with patch.object(session, "execute") as mock_exec:
+                    repo._upsert_one(session, {"player_id": 1, "name": "A"})
+                    mock_exec.assert_called_once_with("stmt")
+
+    def test_upsert_one_invalid(self, session):
+        repo = PlayerBasicRepository()
+        repo.last_filter_counts = Counter()
+        with patch(
+            "src.repositories.player_basic_repository.validate_player_payload",
+            return_value=(False, "missing_player_id"),
+        ):
+            with patch.object(session, "execute") as mock_exec:
+                repo._upsert_one(session, {"name": "NoID"})
+                mock_exec.assert_not_called()
+                assert repo.last_filter_counts["missing_player_id"] == 1
+
+    def test_upsert_one_invalid_no_reason(self, session):
+        repo = PlayerBasicRepository()
+        repo.last_filter_counts = Counter()
+        with patch(
+            "src.repositories.player_basic_repository.validate_player_payload",
+            return_value=(False, None),
+        ):
+            repo._upsert_one(session, {"name": "NoID"})
+            assert repo.last_filter_counts["invalid_player_payload"] == 1
+
+    def test_unique_payload_rows_skip_none_id(self, session):
+        repo = PlayerBasicRepository()
+        players = [
+            {"player_id": None, "name": "NoID"},
+            {"player_id": 1001, "name": "HasID"},
+        ]
+        rows = repo._unique_payload_rows(players)
+        assert len(rows) == 1
+        assert rows[0]["player_id"] == 1001
+
+    def test_build_upsert_stmt_mysql(self, session):
+        repo = PlayerBasicRepository()
+        with patch.object(Engine.dialect, "name", "mysql"):
+            repo.dialect = "mysql"
+            data = [{"player_id": 1, "name": "A", "team": "LG"}]
+            stmt = repo._build_upsert_stmt(data)
+            assert stmt is not None
+
+    def test_build_upsert_stmt_postgres(self, session):
+        repo = PlayerBasicRepository()
+        with patch.object(Engine.dialect, "name", "postgresql"):
+            repo.dialect = "postgresql"
+            data = [{"player_id": 1, "name": "A", "team": "LG"}]
+            stmt = repo._build_upsert_stmt(data)
+            assert stmt is not None
+
+    def test_update_statuses_empty(self, session):
+        repo = PlayerBasicRepository()
+        result = repo.update_statuses([])
+        assert result == 0
+
+    def test_update_statuses_sqlalchemy_error(self, session):
+        from sqlalchemy.exc import SQLAlchemyError
+
+        repo = PlayerBasicRepository()
+        repo.upsert_players([{"player_id": 1001, "name": "Kim"}])
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter_by.return_value = mock_query
+        mock_query.update.side_effect = SQLAlchemyError("fail", "fail", Exception("fail"))
+
+        with patch("src.repositories.player_basic_repository.SessionLocal", return_value=mock_session):
+            with pytest.raises(SQLAlchemyError):
+                repo.update_statuses([{"player_id": 1001, "status": "active"}])
+            mock_session.rollback.assert_called_once()
+
+    def test_get_by_team_with_limit(self, session):
+        repo = PlayerBasicRepository()
+        repo.upsert_players(
+            [
+                {"player_id": 1, "name": "A", "team": "LG"},
+                {"player_id": 2, "name": "B", "team": "LG"},
+                {"player_id": 3, "name": "C", "team": "LG"},
+            ]
+        )
+
+        limited = repo.get_by_team("LG", limit=2)
+        assert len(limited) == 2
 
 
 class TestSavePlayerBasic:

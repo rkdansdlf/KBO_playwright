@@ -418,15 +418,73 @@ class TestSendWeeklySlaReport:
 
     def test_default_end_date_uses_utc_now(self) -> None:
         session = MagicMock()
-        session.query.return_value.filter.return_value.all.return_value = []
-
         tracker = SlaTracker(session)
 
-        with patch.object(SlackWebhookClient, "send_alert"):
-            with patch("src.monitoring.sla_tracker.datetime") as mock_dt:
-                mock_now = datetime(2026, 6, 24, 15, 0, 0, tzinfo=UTC)
-                mock_dt.now.return_value = mock_now
+        day_results = [
+            {
+                "total": 1,
+                "completed": 1,
+                "completion_rate": 1.0,
+                "pbp_coverage": 1.0,
+                "detail_coverage": 1.0,
+                "date": "20260624",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260623",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260622",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260621",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260620",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260619",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260618",
+            },
+        ]
 
-                tracker.send_weekly_sla_report()
+        with patch.object(SlaTracker, "compute_weekly_sla", return_value=day_results):
+            with patch.object(SlackWebhookClient, "send_alert"):
+                with patch("src.monitoring.sla_tracker.datetime") as mock_dt:
+                    mock_now = datetime(2026, 6, 24, 15, 0, 0, tzinfo=UTC)
+                    mock_dt.now.return_value = mock_now
 
-                mock_dt.now.assert_called_once()
+                    tracker.send_weekly_sla_report()
+
+                    mock_dt.now.assert_called_once()

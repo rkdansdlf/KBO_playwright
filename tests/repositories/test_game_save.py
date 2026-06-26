@@ -9,10 +9,12 @@ from sqlalchemy.orm import sessionmaker
 
 from src.models.game import (
     Game,
+    GameBattingStat,
     GameIdAlias,
     GameInningScore,
     GameLineup,
     GameMetadata,
+    GamePitchingStat,
     GameSummary,
 )
 from src.models.player import PlayerBasic, PlayerSeasonBatting
@@ -21,9 +23,15 @@ from src.models.team import Team
 from src.repositories.game_save import (
     _clean_pregame_text,
     _extract_existing_preview_payload,
+    _get_or_create_game,
+    _parse_detail_game_date,
     _resolve_pregame_starter,
+    _apply_snapshot_status_and_winner,
+    _apply_pregame_game_fields,
     get_games_by_date,
     resolve_canonical_game_id,
+    save_game_detail,
+    save_game_snapshot,
     save_pregame_lineups,
     save_schedule_game,
 )
@@ -42,6 +50,8 @@ def session(engine):
     GameLineup.__table__.create(engine)
     GameMetadata.__table__.create(engine)
     GameSummary.__table__.create(engine)
+    GameBattingStat.__table__.create(engine)
+    GamePitchingStat.__table__.create(engine)
     PlayerBasic.__table__.create(engine)
     PlayerSeasonBatting.__table__.create(engine)
     KboSeason.__table__.create(engine)
@@ -212,3 +222,397 @@ class TestSavePregameLineups:
         game = session.query(Game).filter(Game.game_id.like("20241015%")).first()
         assert game is not None
         assert game.away_team is not None
+
+
+class TestSaveScheduleGameWithWriteContract:
+    def test_save_schedule_game_with_write_contract_claim(self, session):
+        from src.services.game_write_contract import GameWriteSource
+
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        mock_contract = MagicMock()
+        result = save_schedule_game(
+            {
+                "game_id": "20241015LGSS0",
+                "game_date": "2024-10-15",
+                "away_team_code": "SS",
+                "home_team_code": "LG",
+                "season_year": 2024,
+                "game_status": "scheduled",
+                "game_time": "18:30",
+                "stadium": "Jamsil",
+            },
+            write_contract=mock_contract,
+        )
+        assert result is True
+        mock_contract.claim_game.assert_called()
+
+    def test_save_schedule_game_with_write_contract_new_game(self, session):
+        from src.services.game_write_contract import GameWriteSource
+
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        mock_contract = MagicMock()
+        result = save_schedule_game(
+            {
+                "game_id": "20241015LGSS0",
+                "game_date": "2024-10-15",
+                "away_team_code": "SS",
+                "home_team_code": "LG",
+                "season_year": 2024,
+                "game_status": "scheduled",
+            },
+            write_contract=mock_contract,
+        )
+        assert result is True
+        mock_contract.field_updated.assert_called()
+
+    def test_save_schedule_game_metadata_with_stadium(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        result = save_schedule_game(
+            {
+                "game_id": "20241015LGSS0",
+                "game_date": "2024-10-15",
+                "away_team_code": "SS",
+                "home_team_code": "LG",
+                "season_year": 2024,
+                "game_status": "scheduled",
+                "stadium": "Jamsil",
+            }
+        )
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id.like("20241015%")).first()
+        assert game is not None
+
+    def test_save_schedule_game_no_metadata(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        result = save_schedule_game(
+            {
+                "game_id": "20241015LGSS0",
+                "game_date": "2024-10-15",
+                "away_team_code": "SS",
+                "home_team_code": "LG",
+                "season_year": 2024,
+                "game_status": "scheduled",
+            }
+        )
+        assert result is True
+
+
+class TestSaveGameDetail:
+    def _make_detail_data(self, **overrides):
+        data = {
+            "game_id": "20241015LGSS0",
+            "game_date": "2024-10-15",
+            "teams": {
+                "away": {"code": "SS", "score": 5},
+                "home": {"code": "LG", "score": 3},
+            },
+            "metadata": {"stadium": "Jamsil"},
+            "hitters": {"away": [], "home": []},
+            "pitchers": {"away": [], "home": []},
+            "game_status": "completed",
+        }
+        data.update(overrides)
+        return data
+
+    def test_save_game_detail_empty(self):
+        result = save_game_detail({})
+        assert result is False
+
+    def test_save_game_detail_none(self):
+        result = save_game_detail(None)
+        assert result is False
+
+    def test_save_game_detail_success(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        data = self._make_detail_data()
+        result = save_game_detail(data)
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id.like("20241015%")).first()
+        assert game is not None
+        assert game.home_score == 3
+        assert game.away_score == 5
+        assert game.home_team == "LG"
+        assert game.away_team == "SS"
+
+    def test_save_game_detail_with_write_contract(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        mock_contract = MagicMock()
+        data = self._make_detail_data()
+        result = save_game_detail(data, write_contract=mock_contract)
+        assert result is True
+        mock_contract.claim_game.assert_called()
+
+    def test_save_game_detail_existing_game(self, session):
+        session.add(Game(game_id="20241015SSLG0", game_date=date(2024, 10, 15)))
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        data = self._make_detail_data()
+        result = save_game_detail(data)
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id == "20241015SSLG0").first()
+        assert game.home_score == 3
+
+    def test_save_game_detail_with_pitchers(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        data = self._make_detail_data()
+        data["pitchers"] = {
+            "away": [{"player_name": "Kim", "is_starting": True}],
+            "home": [{"player_name": "Park", "is_starting": True}],
+        }
+        result = save_game_detail(data)
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id == "20241015SSLG0").first()
+        assert game is not None
+        assert game.away_pitcher == "Kim"
+        assert game.home_pitcher == "Park"
+
+    def test_save_game_detail_with_summary(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        data = self._make_detail_data()
+        data["summary"] = [
+            {"summary_type": "MVP", "detail_text": "Kim (3 hits, 2 RBI)"},
+        ]
+        result = save_game_detail(data)
+        assert result is True
+
+    def test_save_game_detail_invalid_date(self, session):
+        data = self._make_detail_data()
+        data["game_id"] = "INVALID"
+        data["game_date"] = "not-a-date"
+        result = save_game_detail(data)
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id == "INVALID").first()
+        assert game is not None
+
+    def test_save_game_detail_db_error(self, session):
+        data = self._make_detail_data()
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.commit.side_effect = OSError("DB Error")
+
+        with (
+            patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
+            patch("src.repositories.game_save._auto_sync_to_oci"),
+        ):
+            result = save_game_detail(data)
+            assert result is False
+
+
+class TestSaveGameSnapshot:
+    def _make_snapshot_data(self, **overrides):
+        data = {
+            "game_id": "20241015LGSS0",
+            "game_date": "2024-10-15",
+            "teams": {
+                "away": {"code": "SS", "score": 5},
+                "home": {"code": "LG", "score": 3},
+            },
+            "metadata": {"stadium": "Jamsil"},
+            "pitchers": {"away": [], "home": []},
+        }
+        data.update(overrides)
+        return data
+
+    def test_save_game_snapshot_empty(self):
+        result = save_game_snapshot({})
+        assert result is False
+
+    def test_save_game_snapshot_none(self):
+        result = save_game_snapshot(None)
+        assert result is False
+
+    def test_save_game_snapshot_success(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        data = self._make_snapshot_data()
+        result = save_game_snapshot(data, status="completed")
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id.like("20241015%")).first()
+        assert game is not None
+        assert game.home_score == 3
+        assert game.away_score == 5
+
+    def test_save_game_snapshot_with_pitchers(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        data = self._make_snapshot_data()
+        data["pitchers"] = {
+            "away": [{"player_name": "Kim", "is_starting": True}],
+            "home": [{"player_name": "Park", "is_starting": True}],
+        }
+        result = save_game_snapshot(data, status="completed")
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id == "20241015SSLG0").first()
+        assert game is not None
+        assert game.away_pitcher == "Kim"
+        assert game.home_pitcher == "Park"
+
+    def test_save_game_snapshot_existing_game(self, session):
+        session.add(Game(game_id="20241015SSLG0", game_date=date(2024, 10, 15)))
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        data = self._make_snapshot_data()
+        result = save_game_snapshot(data, status="completed")
+        assert result is True
+
+    def test_save_game_snapshot_invalid_date(self, session):
+        data = self._make_snapshot_data()
+        data["game_id"] = "INVALID"
+        data["game_date"] = "not-a-date"
+        result = save_game_snapshot(data)
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id == "INVALID").first()
+        assert game is not None
+
+    def test_save_game_snapshot_db_error(self, session):
+        data = self._make_snapshot_data()
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.commit.side_effect = OSError("DB Error")
+
+        with (
+            patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
+            patch("src.repositories.game_save._auto_sync_to_oci"),
+        ):
+            result = save_game_snapshot(data)
+            assert result is False
+
+
+class TestSavePregameLineupsExtended:
+    def test_save_pregame_lineups_no_game_id(self):
+        result = save_pregame_lineups({})
+        assert result is False
+
+    def test_save_pregame_lineups_no_date(self):
+        result = save_pregame_lineups({"game_id": "20241015LGSS0", "game_date": "not-a-date"})
+        assert result is False
+
+    def test_save_pregame_lineups_no_provisional_id(self):
+        result = save_pregame_lineups({"game_date": "2024-10-15"})
+        assert result is False
+
+    def test_save_pregame_lineups_with_starters(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        result = save_pregame_lineups(
+            {
+                "game_id": "20241015LGSS0",
+                "game_date": "2024-10-15",
+                "away_team_name": "SSG",
+                "home_team_name": "LG",
+                "away_starter": "Kim",
+                "home_starter": "Park",
+                "away_lineup": [{"player_name": "Kim", "batting_order": 1, "position": "CF"}],
+                "home_lineup": [{"player_name": "Park", "batting_order": 1, "position": "SS"}],
+            }
+        )
+        assert result is True
+
+        game = session.query(Game).filter(Game.game_id.like("20241015%")).first()
+        assert game is not None
+        assert game.away_pitcher == "Kim"
+        assert game.home_pitcher == "Park"
+
+    def test_save_pregame_lineups_db_error(self, session):
+        session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
+        session.commit()
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.commit.side_effect = OSError("DB Error")
+
+        with (
+            patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
+            patch("src.repositories.game_save._auto_sync_to_oci"),
+        ):
+            result = save_pregame_lineups(
+                {
+                    "game_id": "20241015LGSS0",
+                    "game_date": "2024-10-15",
+                    "away_team_name": "SSG",
+                    "home_team_name": "LG",
+                }
+            )
+            assert result is False
+
+
+class TestParseDetailGameDate:
+    def test_parse_detail_game_date_from_data(self):
+        game_date_str, game_date = _parse_detail_game_date({"game_date": "2024-10-15"}, None)
+        assert game_date_str == "20241015"
+        assert game_date == date(2024, 10, 15)
+
+    def test_parse_detail_game_date_from_game_id(self):
+        game_date_str, game_date = _parse_detail_game_date({}, "20241015LGSS0")
+        assert game_date_str == "20241015"
+        assert game_date == date(2024, 10, 15)
+
+    def test_parse_detail_game_date_invalid(self):
+        game_date_str, game_date = _parse_detail_game_date({"game_date": "invalid"}, None)
+        assert game_date_str == "invalid"
+        assert game_date is not None
+
+
+class TestGetOrCreateGame:
+    def test_get_or_create_existing(self, session):
+        from src.services.game_write_contract import GameWriteSource
+
+        existing = Game(game_id="20241015LGSS0", game_date=date(2024, 10, 15))
+        session.add(existing)
+        session.commit()
+
+        source = GameWriteSource("detail", "GameDetailCrawler", "detail_recovery")
+        game, created = _get_or_create_game(session, "20241015LGSS0", date(2024, 10, 15), source, None)
+        assert created is False
+        assert game.game_id == "20241015LGSS0"
+
+    def test_get_or_create_new(self, session):
+        from src.services.game_write_contract import GameWriteSource
+
+        source = GameWriteSource("detail", "GameDetailCrawler", "detail_recovery")
+        game, created = _get_or_create_game(session, "20241015LGSS0", date(2024, 10, 15), source, None)
+        assert created is True
+        assert game.game_id == "20241015LGSS0"
+
+    def test_get_or_create_with_write_contract(self, session):
+        from src.services.game_write_contract import GameWriteSource
+
+        source = GameWriteSource("detail", "GameDetailCrawler", "detail_recovery")
+        mock_contract = MagicMock()
+        game, created = _get_or_create_game(session, "20241015LGSS0", date(2024, 10, 15), source, mock_contract)
+        assert created is True
+        mock_contract.field_updated.assert_called_once()
