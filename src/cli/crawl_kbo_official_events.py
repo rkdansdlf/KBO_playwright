@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 async def run(args: argparse.Namespace) -> int:
-    """Runs run.
+    """
+    Runs run.
 
     Args:
         args: Args.
@@ -36,7 +37,8 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

@@ -1,4 +1,5 @@
-"""verify_sync_consistency.py.
+"""
+verify_sync_consistency.py.
 
 CLI tool to verify data consistency between the local SQLite database
 and the remote OCI PostgreSQL database.
@@ -96,7 +97,8 @@ def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[di
 
 
 def get_row_count(conn: Connection, table_name: str) -> int:
-    """Gets row count.
+    """
+    Gets row count.
 
     Args:
         conn: Conn.
@@ -133,7 +135,8 @@ def check_deep_ids(
         oci_rows = res_oci.fetchall()
 
         def stringify_row(row: Sequence[object]) -> tuple[str, ...]:
-            """Handles the stringify row operation.
+            """
+            Handles the stringify row operation.
 
             Args:
                 row: Row.
@@ -227,7 +230,8 @@ def _send_consistency_mismatch_alert(alert_lines: list[str], *, trigger_alert: b
 
 
 def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> bool:
-    """Runs consistency audit.
+    """
+    Runs consistency audit.
 
     Returns:
         True if successful, False otherwise.

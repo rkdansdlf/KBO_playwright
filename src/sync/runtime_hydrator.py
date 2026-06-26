@@ -74,7 +74,8 @@ class RuntimeHydrator:
         target_date: date | None = None,
         preserve_aliases: bool = False,
     ) -> dict[str, int]:
-        """Handles the hydrate year operation.
+        """
+        Handles the hydrate year operation.
 
         Args:
             year: Season year.

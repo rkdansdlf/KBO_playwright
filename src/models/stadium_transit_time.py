@@ -1,4 +1,5 @@
-"""Model for measured transit times to stadiums.
+"""
+Model for measured transit times to stadiums.
 
 Captures real-time travel duration from nearby transit hubs (subway/bus stops)
 to the stadium on game days, collected from map APIs (Kakao, Naver, TMAP).

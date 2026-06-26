@@ -1,4 +1,5 @@
-"""로컬 SQLite 데이터베이스의 데이터를 원격 OCI/Postgres 데이터베이스와 동기화하는 스크립트.
+"""
+로컬 SQLite 데이터베이스의 데이터를 원격 OCI/Postgres 데이터베이스와 동기화하는 스크립트.
 
 OCISync 클래스와 전용 동기화 메서드를 사용하여 테이블별로 특화된 UPSERT/COPY 로직을
 수행합니다. `--truncate` 옵션을 사용하면 대상 테이블의 데이터를 삭제한 후 새로 삽입할 수 있습니다.
@@ -46,7 +47,8 @@ def run_parallel_sync(
     logger.info("🚀 Starting parallel sync with %s workers for years: %s", workers, years)
 
     def sync_worker(year: int) -> None:
-        """Syncs worker.
+        """
+        Syncs worker.
 
         Args:
             year: Season year.

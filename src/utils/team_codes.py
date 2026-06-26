@@ -93,7 +93,8 @@ KBO_LEGACY_TECHNICAL_CODE = {
 
 
 def resolve_team_code(name: str | None, season_year: int | None = None) -> str | None:
-    """Resolves team code.
+    """
+    Resolves team code.
 
     Args:
         name: Name.
@@ -122,7 +123,8 @@ def resolve_team_code(name: str | None, season_year: int | None = None) -> str |
 
 
 def resolve_kbo_legacy_team_code(name: str | None, season_year: int | None = None) -> str | None:
-    """Resolves kbo legacy team code.
+    """
+    Resolves kbo legacy team code.
 
     Args:
         name: Name.
@@ -216,7 +218,8 @@ GAME_ID_SEGMENT_TO_CODE = {
 
 
 def team_code_from_game_id_segment(segment: str | None, season_year: int | None = None) -> str | None:
-    """Handles the team code from game id segment operation.
+    """
+    Handles the team code from game id segment operation.
 
     Args:
         segment: Segment.
@@ -245,7 +248,8 @@ def team_code_from_game_id_segment(segment: str | None, season_year: int | None 
 
 
 def normalize_kbo_game_id(game_id: str) -> str:
-    """Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
+    """
+    Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
 
     Some KBO internal APIs (like GetKboGameList) have started returning modern codes
     (SSG, KH, DB, KIA) in the G_ID field for 2026, while the public GameCenter

@@ -1,4 +1,6 @@
-"""PBP Crawler - Historical Play-by-play data collection (`LiveTextView2.aspx`).
+"""
+PBP Crawler - Historical Play-by-play data collection (`LiveTextView2.aspx`).
+
 Navigaes directly to the Live Text View page to collect events.
 Computes WPA transitions based on the events.
 """

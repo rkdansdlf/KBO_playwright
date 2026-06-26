@@ -602,7 +602,8 @@ class QualityGate:
 
 
 def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
-    """Runs quality gate.
+    """
+    Runs quality gate.
 
     Args:
         session: Session.

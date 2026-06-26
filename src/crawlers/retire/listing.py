@@ -66,7 +66,8 @@ class RetiredPlayerListingCrawler:
                 await pool.close()
 
     async def _crawl_record_page_ids(self, page: Page, base_url: str, year: int) -> dict[str, str]:
-        """Navigate to one record page and collect IDs across its pagination.
+        """
+        Navigate to one record page and collect IDs across its pagination.
 
         Kept as the stable no-team-filter path used by compatibility tests and
         smaller diagnostics. `collect_player_ids_for_year` uses the broader
@@ -219,7 +220,8 @@ class RetiredPlayerListingCrawler:
         return players
 
     async def collect_historical_player_ids(self, seasons: Iterable[int]) -> dict[str, str]:
-        """Handles the collect historical player ids operation.
+        """
+        Handles the collect historical player ids operation.
 
         Args:
             seasons: Seasons.
@@ -235,7 +237,8 @@ class RetiredPlayerListingCrawler:
         semaphore = asyncio.Semaphore(10)  # Allow 10 concurrent years
 
         async def fetch_year(season: int) -> dict[str, str]:
-            """Fetches year.
+            """
+            Fetches year.
 
             Args:
                 season: Season year.
@@ -265,7 +268,9 @@ class RetiredPlayerListingCrawler:
         end_year: int,
         active_year: int,
     ) -> set[str]:
-        """Determine inactive player IDs by diffing historical seasons with active roster.
+        """
+        Determine inactive player IDs by diffing historical seasons with active roster.
+
         Returns ONLY the set of IDs for backward compatibility.
         """
         if start_year > end_year:

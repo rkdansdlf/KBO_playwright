@@ -58,7 +58,8 @@ class RefreshResult:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.
@@ -175,7 +176,8 @@ async def _fetch_source(
 
 
 async def refresh_sources(args: argparse.Namespace) -> list[RefreshResult]:
-    """Handles the refresh sources operation.
+    """
+    Handles the refresh sources operation.
 
     Args:
         args: Args.

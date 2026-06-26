@@ -1,4 +1,5 @@
-"""Morning PBP (Play-by-Play) Report CLI.
+"""
+Morning PBP (Play-by-Play) Report CLI.
 
 Sends a daily Telegram notification summarizing PBP collection failures,
 recovery results, and validation status from the most recent daily summary
@@ -194,7 +195,8 @@ def run_morning_report(
     *,
     dry_run: bool = False,
 ) -> bool:
-    """Execute the morning PBP report.
+    """
+    Execute the morning PBP report.
 
     Returns True if a notification was sent (or would be sent in dry-run).
     """

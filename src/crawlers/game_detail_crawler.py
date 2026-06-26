@@ -184,7 +184,8 @@ class GameDetailCrawler:
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
-        """Gets last failure reason.
+        """
+        Gets last failure reason.
 
         Args:
             game_id: Game ID.
@@ -202,7 +203,8 @@ class GameDetailCrawler:
             self.pool = None
 
     def _section_url(self, game_id: str, game_date: str, section: str) -> str:
-        """Handles the section url operation.
+        """
+        Handles the section url operation.
 
         Args:
             game_id: Game ID.
@@ -217,7 +219,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _empty_metadata() -> dict[str, Any]:
-        """Handles the empty metadata operation.
+        """
+        Handles the empty metadata operation.
 
         Returns:
             Dictionary mapping.
@@ -234,7 +237,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_name_and_uniform(player_name: str, cells: dict[str, Any]) -> tuple[str, str | None]:
-        """Parses name and uniform.
+        """
+        Parses name and uniform.
 
         Args:
             player_name: Player Name.
@@ -261,7 +265,8 @@ class GameDetailCrawler:
         player_name: str,
         uniform_no: str | None,
     ) -> tuple[int | None, str | None]:
-        """Resolves from roster.
+        """
+        Resolves from roster.
 
         Args:
             roster_map: Roster Map.
@@ -291,7 +296,8 @@ class GameDetailCrawler:
         required_selector: str | None = None,
         selector_timeout: int = 15000,
     ) -> tuple[bool, str, str]:
-        """Handles the navigate section operation.
+        """
+        Handles the navigate section operation.
 
         Args:
             ctx: Ctx.
@@ -325,7 +331,8 @@ class GameDetailCrawler:
         return True, "ok", url
 
     async def crawl_game(self, game_id: str, game_date: str, *, lightweight: bool = False) -> dict[str, Any] | None:
-        """Crawls game.
+        """
+        Crawls game.
 
         Args:
             game_id: Game ID.
@@ -366,7 +373,8 @@ class GameDetailCrawler:
         *,
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
-        """Crawls games.
+        """
+        Crawls games.
 
         Args:
             games: Games.
@@ -438,7 +446,8 @@ class GameDetailCrawler:
         *,
         lightweight: bool = False,
     ) -> dict[str, Any] | None:
-        """Crawls single.
+        """
+        Crawls single.
 
         Args:
             page: Playwright page object.
@@ -507,7 +516,8 @@ class GameDetailCrawler:
         return game_data
 
     async def _click_review_tab_if_present(self, page: Page) -> None:
-        """Handles the click review tab if present operation.
+        """
+        Handles the click review tab if present operation.
 
         Args:
             page: Playwright page object.
@@ -528,7 +538,8 @@ class GameDetailCrawler:
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None,
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
-        """Extracts hitter pair.
+        """
+        Extracts hitter pair.
 
         Args:
             page: Playwright page object.
@@ -557,7 +568,8 @@ class GameDetailCrawler:
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None,
     ) -> dict[str, list[dict[str, Any]]]:
-        """Extracts pitcher pair.
+        """
+        Extracts pitcher pair.
 
         Args:
             page: Playwright page object.
@@ -582,7 +594,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _stats_complete(hitters: dict[str, list[dict[str, Any]]], pitchers: dict[str, list[dict[str, Any]]]) -> bool:
-        """Handles the stats complete operation.
+        """
+        Handles the stats complete operation.
 
         Args:
             hitters: Hitters.
@@ -601,7 +614,8 @@ class GameDetailCrawler:
         hitter_totals: dict[str, dict[str, Any]],
         pitchers: dict[str, list[dict[str, Any]]],
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
-        """Handles the retry missing boxscore sections operation.
+        """
+        Handles the retry missing boxscore sections operation.
 
         Args:
             ctx: Ctx.
@@ -635,7 +649,8 @@ class GameDetailCrawler:
         hitters: dict[str, list[dict[str, Any]]],
         hitter_totals: dict[str, dict[str, Any]],
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
-        """Handles the recover hitter section if missing operation.
+        """
+        Handles the recover hitter section if missing operation.
 
         Args:
             ctx: Ctx.
@@ -669,7 +684,8 @@ class GameDetailCrawler:
         ctx: BoxscoreCrawlContext,
         pitchers: dict[str, list[dict[str, Any]]],
     ) -> dict[str, list[dict[str, Any]]]:
-        """Handles the recover pitcher section if missing operation.
+        """
+        Handles the recover pitcher section if missing operation.
 
         Args:
             ctx: Ctx.
@@ -699,7 +715,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _has_partial_recovery_anchor(team_info: dict[str, dict[str, Any]], metadata: dict[str, Any]) -> bool:
-        """Handles the has partial recovery anchor operation.
+        """
+        Handles the has partial recovery anchor operation.
 
         Args:
             team_info: Team Info.
@@ -723,7 +740,8 @@ class GameDetailCrawler:
         hitters: dict[str, list[dict[str, Any]]],
         hitter_totals: dict[str, dict[str, Any]],
     ) -> None:
-        """Validates hitter totals.
+        """
+        Validates hitter totals.
 
         Args:
             page: Playwright page object.
@@ -755,7 +773,8 @@ class GameDetailCrawler:
         self,
         ctx: BoxscoreCrawlContext,
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]] | None:
-        """Extracts detailed stats.
+        """
+        Extracts detailed stats.
 
         Args:
             ctx: Ctx.
@@ -786,7 +805,8 @@ class GameDetailCrawler:
         return hitters, pitchers
 
     async def _is_cancelled_boxscore_page(self, page: Page) -> bool:
-        """Handles the is cancelled boxscore page operation.
+        """
+        Handles the is cancelled boxscore page operation.
 
         Args:
             page: Playwright page object.
@@ -817,7 +837,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _boxscore_timeout_debug_path(game_id: str, *, lightweight: bool) -> str:
-        """Handles the boxscore timeout debug path operation.
+        """
+        Handles the boxscore timeout debug path operation.
 
         Args:
             game_id: Game ID.
@@ -830,7 +851,8 @@ class GameDetailCrawler:
         return f"data/{prefix}_{game_id}_{datetime.now(KST).strftime('%Y%m%d_%H%M%S')}.png"
 
     async def _save_boxscore_timeout_screenshot(self, page: Page, debug_path: str) -> None:
-        """Saves boxscore timeout screenshot.
+        """
+        Saves boxscore timeout screenshot.
 
         Args:
             page: Playwright page object.
@@ -865,7 +887,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_metadata_info_text(metadata: dict[str, Any], text: str) -> None:
-        """Parses metadata info text.
+        """
+        Parses metadata info text.
 
         Args:
             metadata: Metadata.
@@ -891,7 +914,8 @@ class GameDetailCrawler:
                 metadata[key] = match.group(1).strip()
 
     async def _extract_metadata(self, page: Page) -> dict[str, Any]:
-        """Extracts metadata.
+        """
+        Extracts metadata.
 
         Args:
             page: Playwright page object.
@@ -933,7 +957,8 @@ class GameDetailCrawler:
         return metadata
 
     async def _extract_team_info(self, page: Page, game_id: str, season_year: int | None) -> dict[str, dict[str, Any]]:
-        """Extracts team info.
+        """
+        Extracts team info.
 
         Args:
             page: Playwright page object.
@@ -1095,7 +1120,8 @@ class GameDetailCrawler:
         season_year: int | None,
         uniform_no: str | None,
     ) -> int | None:
-        """Resolves hitter id.
+        """
+        Resolves hitter id.
 
         Args:
             player_name: Player Name.
@@ -1129,7 +1155,8 @@ class GameDetailCrawler:
         player_name: str,
         idx: int,
     ) -> dict[str, Any] | None:
-        """Handles the select hitter extra row operation.
+        """
+        Handles the select hitter extra row operation.
 
         Returns:
             The result of the operation.
@@ -1142,7 +1169,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _apply_hitter_inning_derivatives(stats: dict[str, Any], inning_rows: list[dict[str, Any]], idx: int) -> None:
-        """Handles the apply hitter inning derivatives operation.
+        """
+        Handles the apply hitter inning derivatives operation.
 
         Args:
             stats: Statistics data.
@@ -1159,7 +1187,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _backfill_hitter_plate_appearances(stats: dict[str, Any]) -> None:
-        """Backfills hitter plate appearances.
+        """
+        Backfills hitter plate appearances.
 
         Args:
             stats: Statistics data.
@@ -1179,7 +1208,8 @@ class GameDetailCrawler:
     def _build_hitter_payload(
         ctx: HitterPayloadContext,
     ) -> dict[str, Any]:
-        """Builds hitter payload.
+        """
+        Builds hitter payload.
 
         Args:
             ctx: Ctx.
@@ -1210,7 +1240,8 @@ class GameDetailCrawler:
         team_side: str,
         team_code: str | None,
     ) -> list[dict[str, Any]]:
-        """Extracts hitters.
+        """
+        Extracts hitters.
 
         Args:
             ctx: Ctx.
@@ -1308,7 +1339,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _resolve_hanwha_park_junyoung(row: dict[str, Any], rows: list[dict[str, Any]], idx: int) -> int:
-        """Resolves hanwha park junyoung.
+        """
+        Resolves hanwha park junyoung.
 
         Args:
             row: Row.
@@ -1340,7 +1372,8 @@ class GameDetailCrawler:
         self,
         ctx: PitcherResolutionContext,
     ) -> int | None:
-        """Resolves pitcher from resolver.
+        """
+        Resolves pitcher from resolver.
 
         Args:
             ctx: Ctx.
@@ -1362,7 +1395,8 @@ class GameDetailCrawler:
         )
 
     async def _search_and_register_pitcher(self, player_name: str, team_code: str | None) -> int | None:
-        """Searches for and register pitcher.
+        """
+        Searches for and register pitcher.
 
         Args:
             player_name: Player Name.
@@ -1402,7 +1436,8 @@ class GameDetailCrawler:
         self,
         ctx: PitcherResolutionContext,
     ) -> int | None:
-        """Resolves pitcher id.
+        """
+        Resolves pitcher id.
 
         Args:
             ctx: Ctx.
@@ -1422,7 +1457,8 @@ class GameDetailCrawler:
     def _build_pitcher_payload(
         ctx: PitcherPayloadContext,
     ) -> dict[str, Any]:
-        """Builds pitcher payload.
+        """
+        Builds pitcher payload.
 
         Args:
             ctx: Ctx.
@@ -1461,7 +1497,8 @@ class GameDetailCrawler:
         team_side: str,
         team_code: str | None,
     ) -> list[dict[str, Any]]:
-        """Extracts pitchers.
+        """
+        Extracts pitchers.
 
         Args:
             ctx: Ctx.
@@ -1537,7 +1574,8 @@ class GameDetailCrawler:
         return results
 
     async def _extract_table_rows(self, page: Page, selector: str) -> list[dict[str, Any]]:
-        """Extracts table rows.
+        """
+        Extracts table rows.
 
         Args:
             page: Playwright page object.
@@ -1655,7 +1693,8 @@ class GameDetailCrawler:
         game_date: str,
         review_url: str,
     ) -> dict[str, list[dict[str, Any]]]:
-        """Loads roster from lineup.
+        """
+        Loads roster from lineup.
 
         Args:
             page: Playwright page object.
@@ -1709,7 +1748,8 @@ class GameDetailCrawler:
         hitters: dict[str, list[dict[str, Any]]],
         pitchers: dict[str, list[dict[str, Any]]],
     ) -> None:
-        """Logs unresolved player ids.
+        """
+        Logs unresolved player ids.
 
         Args:
             game_id: Game ID.
@@ -1756,7 +1796,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _populate_hitter_stats(stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:
-        """Handles the populate hitter stats operation.
+        """
+        Handles the populate hitter stats operation.
 
         Args:
             stats: Statistics data.
@@ -1781,7 +1822,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _populate_pitcher_stats(stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:
-        """Handles the populate pitcher stats operation.
+        """
+        Handles the populate pitcher stats operation.
 
         Args:
             stats: Statistics data.
@@ -1812,7 +1854,8 @@ class GameDetailCrawler:
         row: list[str],
         season_year: int | None = None,
     ) -> dict[str, Any]:
-        """Parses scoreboard row.
+        """
+        Parses scoreboard row.
 
         Args:
             headers: Headers.
@@ -1867,7 +1910,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_batting_order(cells: dict[str, str]) -> int | None:
-        """Parses batting order.
+        """
+        Parses batting order.
 
         Args:
             cells: Cells.
@@ -1885,7 +1929,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_position(cells: dict[str, str]) -> str | None:
-        """Parses position.
+        """
+        Parses position.
 
         Args:
             cells: Cells.
@@ -1901,7 +1946,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_decision(text: str | None) -> str | None:
-        """Parses decision.
+        """
+        Parses decision.
 
         Args:
             text: Input text content.
@@ -1928,7 +1974,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_duration_minutes(duration: str | None) -> int | None:
-        """Parses duration minutes.
+        """
+        Parses duration minutes.
 
         Args:
             duration: Duration.
@@ -1951,7 +1998,8 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_season_year(game_date: str) -> int | None:
-        """Parses season year.
+        """
+        Parses season year.
 
         Args:
             game_date: Game Date.
@@ -1969,7 +2017,9 @@ class GameDetailCrawler:
         return None
 
     async def _extract_roster_from_lineup(self, page: Page) -> dict[str, list[dict[str, Any]]]:
-        """Extracts a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
+        """
+        Extracts a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
+
         Used to resolve player IDs when the Review page boxscore lacks links (legacy games).
         """
         script = r"""

@@ -248,7 +248,8 @@ class PlayerIdResolver:
         return self._return_ambiguous(cache_key, identity.player_name, identity.team_code, identity.season, candidates)
 
     def preload_season_index(self, season: int) -> None:
-        """Handles the preload season index operation.
+        """
+        Handles the preload season index operation.
 
         Args:
             season: Season year.
@@ -258,7 +259,8 @@ class PlayerIdResolver:
         season_index: dict[str, dict[str, object]] = {}
 
         def add_index_entry(name: str, team: str, pid: int, *, is_pitcher: bool | None) -> None:
-            """Adds index entry.
+            """
+            Adds index entry.
 
             Args:
                 name: Name.
@@ -694,7 +696,8 @@ class PlayerIdResolver:
         *,
         is_pitcher: bool | None = None,
     ) -> int | None:
-        """Resolves id.
+        """
+        Resolves id.
 
         Args:
             player_name: Player Name.
@@ -834,7 +837,8 @@ class PlayerIdResolver:
         return None
 
     def register_unknown_player(self, name: str, team_code: str, uniform_no: str | None) -> int | None:
-        """Handles the register unknown player operation.
+        """
+        Handles the register unknown player operation.
 
         Args:
             name: Name.

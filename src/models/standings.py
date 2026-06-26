@@ -11,7 +11,9 @@ from .base import Base, TimestampMixin
 
 
 class TeamStandingsDaily(Base, TimestampMixin):
-    """Daily snapshot of Team Standings.
+    """
+    Daily snapshot of Team Standings.
+
     Calculated from Game results.
     """
 

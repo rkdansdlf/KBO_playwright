@@ -50,7 +50,8 @@ class SelectorIssue:
     observed_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
-        """Handles the to dict operation.
+        """
+        Handles the to dict operation.
 
         Returns:
             Dictionary result.
@@ -77,7 +78,8 @@ class SelectorGateResult:
 
     @property
     def ok(self) -> bool:
-        """Handles the ok operation.
+        """
+        Handles the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -87,7 +89,8 @@ class SelectorGateResult:
 
     @property
     def issue_count(self) -> int:
-        """Handles the issue count operation.
+        """
+        Handles the issue count operation.
 
         Returns:
             Integer result.
@@ -96,7 +99,8 @@ class SelectorGateResult:
         return len(self.issues)
 
     def to_dict(self) -> dict[str, Any]:
-        """Handles the to dict operation.
+        """
+        Handles the to dict operation.
 
         Returns:
             Dictionary result.
@@ -122,7 +126,8 @@ class SelectorGateSummary:
 
     @property
     def ok(self) -> bool:
-        """Handles the ok operation.
+        """
+        Handles the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -132,7 +137,8 @@ class SelectorGateSummary:
 
     @property
     def target_count(self) -> int:
-        """Handles the target count operation.
+        """
+        Handles the target count operation.
 
         Returns:
             Integer result.
@@ -142,7 +148,8 @@ class SelectorGateSummary:
 
     @property
     def issue_count(self) -> int:
-        """Handles the issue count operation.
+        """
+        Handles the issue count operation.
 
         Returns:
             Integer result.
@@ -151,7 +158,8 @@ class SelectorGateSummary:
         return sum(target.issue_count for target in self.targets)
 
     def to_dict(self) -> dict[str, Any]:
-        """Handles the to dict operation.
+        """
+        Handles the to dict operation.
 
         Returns:
             Dictionary result.

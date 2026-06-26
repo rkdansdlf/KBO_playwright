@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 
 def parse_date_str(value: str, fmt: str = "%Y%m%d") -> date:
-    """Parses date str.
+    """
+    Parses date str.
 
     Args:
         value: Value.
@@ -26,7 +27,8 @@ def parse_date_str(value: str, fmt: str = "%Y%m%d") -> date:
 
 
 def parse_datetime_str(value: str, fmt: str = "%Y%m%d") -> datetime:
-    """Parses datetime str.
+    """
+    Parses datetime str.
 
     Args:
         value: Value.
@@ -40,7 +42,8 @@ def parse_datetime_str(value: str, fmt: str = "%Y%m%d") -> datetime:
 
 
 def normalize_to_date(value: str) -> date:
-    """Normalizes to date.
+    """
+    Normalizes to date.
 
     Args:
         value: Value.

@@ -186,7 +186,8 @@ class TeamMapper:
             return True
 
     def _load_team_history_rows(self, oci_url: str) -> list[Sequence[object]] | None:
-        """Loads team history rows.
+        """
+        Loads team history rows.
 
         Args:
             oci_url: Oci URL.
@@ -214,7 +215,8 @@ class TeamMapper:
 
     @staticmethod
     def _log_team_history_columns(session: Session) -> None:
-        """Logs team history columns.
+        """
+        Logs team history columns.
 
         Args:
             session: Database session.
@@ -234,7 +236,8 @@ class TeamMapper:
 
     @staticmethod
     def _query_team_history(session: Session) -> list[Sequence[object]] | None:
-        """Handles the query team history operation.
+        """
+        Handles the query team history operation.
 
         Args:
             session: Database session.
@@ -256,7 +259,8 @@ class TeamMapper:
         return None
 
     def _apply_oci_mapping_rows(self, rows: Iterable[Sequence[object]]) -> None:
-        """Handles the apply oci mapping rows operation.
+        """
+        Handles the apply oci mapping rows operation.
 
         Args:
             rows: Rows.
@@ -266,7 +270,8 @@ class TeamMapper:
             self._apply_oci_mapping_row(row)
 
     def _apply_oci_mapping_row(self, row: Sequence[object]) -> None:
-        """Handles the apply oci mapping row operation.
+        """
+        Handles the apply oci mapping row operation.
 
         Args:
             row: Row.
@@ -285,7 +290,8 @@ class TeamMapper:
             self._add_mapping_for_years(franchise, team_code, start_year, end_year)
 
     def _add_mapping_for_years(self, team_name: str, team_code: str, start_year: int, end_year: int) -> None:
-        """Adds mapping for years.
+        """
+        Adds mapping for years.
 
         Args:
             team_name: Team Name.
@@ -317,7 +323,8 @@ class TeamMapper:
 
     def _resolve_team_code(self, team_name: str, year: int | None = None) -> str | None:
         # 1.5 Standard Resolution via team_codes (Superior to static/fuzzy)
-        """Resolves team code.
+        """
+        Resolves team code.
 
         Args:
             team_name: Team Name.
@@ -352,7 +359,8 @@ class TeamMapper:
 
     @staticmethod
     def _partial_fuzzy_match(team_name: str) -> str | None:
-        """Handles the partial fuzzy match operation.
+        """
+        Handles the partial fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -368,7 +376,8 @@ class TeamMapper:
 
     @staticmethod
     def _year_specific_fuzzy_match(team_name: str, year: int | None = None) -> str | None:
-        """Handles the year specific fuzzy match operation.
+        """
+        Handles the year specific fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -390,7 +399,8 @@ class TeamMapper:
 
     @staticmethod
     def _early_kbo_fuzzy_match(team_name: str) -> str | None:
-        """Handles the early kbo fuzzy match operation.
+        """
+        Handles the early kbo fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -411,7 +421,8 @@ class TeamMapper:
 
     @staticmethod
     def _nineties_fuzzy_match(team_name: str) -> str | None:
-        """Handles the nineties fuzzy match operation.
+        """
+        Handles the nineties fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -428,7 +439,8 @@ class TeamMapper:
 
     @staticmethod
     def _late_nineties_fuzzy_match(team_name: str) -> str | None:
-        """Handles the late nineties fuzzy match operation.
+        """
+        Handles the late nineties fuzzy match operation.
 
         Args:
             team_name: Team Name.

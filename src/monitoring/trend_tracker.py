@@ -1,4 +1,6 @@
-"""Quality metric trend tracker.
+"""
+Quality metric trend tracker.
+
 Reads daily quality report JSONs to compute trends over time.
 Detects metric degradation (recent trend worsening).
 """
@@ -28,7 +30,8 @@ class TrendTracker:
         self.report_dir = Path(report_dir)
 
     def load_reports(self, days: int = 30) -> list[dict]:
-        """Loads reports.
+        """
+        Loads reports.
 
         Args:
             days: Days.
@@ -57,7 +60,8 @@ class TrendTracker:
         return sorted(reports_by_date.values(), key=lambda r: r["_report_date"])
 
     def get_trend(self, metric_key: str, days: int = 7) -> dict[str, Any]:
-        """Gets trend.
+        """
+        Gets trend.
 
         Args:
             metric_key: Metric Key.
@@ -85,7 +89,8 @@ class TrendTracker:
         return {"metric": metric_key, "values": values, "direction": direction}
 
     def detect_degradations(self, threshold_map: dict[str, float], days: int = 14) -> list[dict]:
-        """Handles the detect degradations operation.
+        """
+        Handles the detect degradations operation.
 
         Args:
             threshold_map: Threshold Map.
@@ -148,7 +153,8 @@ class TrendTracker:
         return ""
 
     def print_trend_summary(self, days: int = 14) -> None:
-        """Prints trend summary.
+        """
+        Prints trend summary.
 
         Args:
             days: Days.
@@ -196,7 +202,8 @@ class TrendTracker:
         logger.info("")
 
     def send_degradation_alert(self, days: int = 14) -> None:
-        """Detect metric degradations over the last `days` days and send an alert
+        """
+        Detect metric degradations over the last `days` days and send an alert
         via Telegram/Slack if any are found. Stays quiet when everything is healthy.
         """
         default_thresholds = {

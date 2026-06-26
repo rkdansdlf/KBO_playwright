@@ -1,4 +1,5 @@
-"""KBO Schedule Crawler POC
+"""
+KBO Schedule Crawler POC
 Collects game IDs from the KBO schedule page.
 """
 
@@ -35,7 +36,8 @@ SCHEDULE_CRAWLER_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, Valu
 
 
 class ScheduleCrawler:
-    """KBO 공식 사이트의 월별 경기 일정 페이지에서 경기 정보를 크롤링하는 클래스.
+    """
+    KBO 공식 사이트의 월별 경기 일정 페이지에서 경기 정보를 크롤링하는 클래스.
 
     주요 기능:
     - 특정 연도와 월에 해당하는 경기 일정 페이지에 접근합니다.
@@ -58,7 +60,8 @@ class ScheduleCrawler:
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, key: str) -> str | None:
-        """Gets last failure reason.
+        """
+        Gets last failure reason.
 
         Args:
             key: Key.
@@ -74,7 +77,8 @@ class ScheduleCrawler:
         return f"{year}-{month:02d}:{suffix}"
 
     async def crawl_schedule(self, year: int, month: int, series_id: str | None = None) -> list[dict]:
-        """지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
+        """
+        지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
         Args:
             year: 시즌 연도 (예: 2024)
@@ -112,7 +116,8 @@ class ScheduleCrawler:
         months: list[int] | None = None,
         series_id: str | None = None,
     ) -> list[dict]:
-        """주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
+        """
+        주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
         Args:
             year: 시즌 연도
@@ -201,7 +206,9 @@ class ScheduleCrawler:
         return True, "ok"
 
     async def _crawl_month(self, page: Page, year: int, month: int, series_id: str | None = None) -> list[dict]:
-        """특정 월의 경기 일정 페이지에서 정보를 추출합니다.
+        """
+        특정 월의 경기 일정 페이지에서 정보를 추출합니다.
+
         series_id가 지정되지 않은 경우 전 시리즈(시범/정규/포스트)를 순회합니다.
         """
         crawl_key = self._schedule_key(year, month, series_id)
@@ -323,7 +330,8 @@ class ScheduleCrawler:
         return labels.get(text, GAME_STATUS_SCHEDULED)
 
     async def _extract_games(self, page: Page, year: int, month: int, season_type: str = "regular") -> list[dict]:
-        """페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path).
+        """
+        페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path).
 
         `gameId`가 포함된 모든 링크를 찾아, 각 링크에서 경기 ID, 날짜, 팀 정보 등을 파싱합니다.
         """

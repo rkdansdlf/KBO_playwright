@@ -1,4 +1,5 @@
-"""YouTube Data API v3 client for KBO cheer song collection.
+"""
+YouTube Data API v3 client for KBO cheer song collection.
 
 Fetches cheer song playlists from official KBO team YouTube channels.
 This replaces the Namu Wiki crawler which is blocked.
@@ -121,7 +122,8 @@ class YouTubeVideoItem:
 
 
 def _classify_song_type(title: str) -> str:
-    """Classifies song type.
+    """
+    Classifies song type.
 
     Args:
         title: Title.
@@ -137,7 +139,8 @@ def _classify_song_type(title: str) -> str:
 
 
 def _extract_player_name(title: str) -> str | None:
-    """Extracts player name.
+    """
+    Extracts player name.
 
     Args:
         title: Title.
@@ -151,7 +154,8 @@ def _extract_player_name(title: str) -> str | None:
 
 
 class YouTubeAPIClient:
-    """Async client for YouTube Data API v3.
+    """
+    Async client for YouTube Data API v3.
 
     Usage:
         client = YouTubeAPIClient()
@@ -163,7 +167,8 @@ class YouTubeAPIClient:
         self.api_key = os.getenv("YOUTUBE_API_KEY", "")
 
     def is_configured(self) -> bool:
-        """Returns whether the configured.
+        """
+        Returns whether the configured.
 
         Returns:
             True if the condition is met, False otherwise.
@@ -172,7 +177,8 @@ class YouTubeAPIClient:
         return bool(self.api_key)
 
     async def _get(self, endpoint: str, params: dict) -> dict[str, Any]:
-        """Gets  get.
+        """
+        Gets  get.
 
         Args:
             endpoint: Endpoint.

@@ -17,7 +17,8 @@ class KboRelayAdapter(RelaySourceAdapter):
         self.crawler = crawler or PBPCrawler()
 
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
-        """Fetches game.
+        """
+        Fetches game.
 
         Args:
             game_id: Game ID.

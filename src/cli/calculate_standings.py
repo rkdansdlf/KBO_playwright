@@ -1,4 +1,5 @@
-"""KBO 순위 자동 연산 엔진 (Standings Calculator)
+"""
+KBO 순위 자동 연산 엔진 (Standings Calculator)
 경기 결과 데이터로부터 일일 순위, 5강, 최근10경기, 홈/원정, 주차별 승률추이 계산.
 """
 
@@ -30,7 +31,8 @@ STANDINGS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeErro
 
 
 def calculate_games_behind(wins: int, losses: int, leader_wins: int, leader_losses: int) -> float:
-    """Calculates games behind.
+    """
+    Calculates games behind.
 
     Args:
         wins: Wins.
@@ -46,7 +48,8 @@ def calculate_games_behind(wins: int, losses: int, leader_wins: int, leader_loss
 
 
 def iso_week_number(d: date) -> str:
-    """Handles the iso week number operation.
+    """
+    Handles the iso week number operation.
 
     Args:
         d: D.
@@ -94,7 +97,8 @@ class TeamState:
 
     @property
     def games_played(self) -> int:
-        """Handles the games played operation.
+        """
+        Handles the games played operation.
 
         Returns:
             Integer result.
@@ -104,7 +108,8 @@ class TeamState:
 
     @property
     def win_pct(self) -> float:
-        """Handles the win pct operation.
+        """
+        Handles the win pct operation.
 
         Returns:
             float instance.
@@ -115,7 +120,8 @@ class TeamState:
 
     @property
     def recent_10_wins(self) -> int:
-        """Handles the recent 10 wins operation.
+        """
+        Handles the recent 10 wins operation.
 
         Returns:
             Integer result.
@@ -125,7 +131,8 @@ class TeamState:
 
     @property
     def recent_10_losses(self) -> int:
-        """Handles the recent 10 losses operation.
+        """
+        Handles the recent 10 losses operation.
 
         Returns:
             Integer result.
@@ -135,7 +142,8 @@ class TeamState:
 
     @property
     def recent_10_draws(self) -> int:
-        """Handles the recent 10 draws operation.
+        """
+        Handles the recent 10 draws operation.
 
         Returns:
             Integer result.
@@ -144,7 +152,8 @@ class TeamState:
         return sum(1 for r in self.recent_games if r == "D")
 
     def add_game(self, result: GameResultData) -> None:
-        """Adds game.
+        """
+        Adds game.
 
         Args:
             result: Result.
@@ -375,7 +384,8 @@ class StandingsCalculator:
         self.session.commit()
 
     def calculate_year(self, year: int) -> None:
-        """Calculates year.
+        """
+        Calculates year.
 
         Args:
             year: Season year.
@@ -392,7 +402,8 @@ class StandingsCalculator:
         logger.info("[Standings] %s 시즌 순위표 계산 완료!", year)
 
     def print_report(self, year: int, target_date: date | None = None) -> None:
-        """Prints print report.
+        """
+        Prints print report.
 
         Args:
             year: Season year.
@@ -486,7 +497,8 @@ class StandingsCalculator:
         logger.info("  ★ 상위 5팀 (5강)" if top_5_rows else "")
 
     def print_trend(self, year: int, team_code: str | None = None) -> None:
-        """Prints trend.
+        """
+        Prints trend.
 
         Args:
             year: Season year.

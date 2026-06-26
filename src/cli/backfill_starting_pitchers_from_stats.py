@@ -1,4 +1,5 @@
-"""Backfill missing game starting pitchers from pitching stats.
+"""
+Backfill missing game starting pitchers from pitching stats.
 
 This command repairs ``game.away_pitcher`` and ``game.home_pitcher`` when
 completed games already have starting pitchers in ``game_pitching_stats``.
@@ -44,7 +45,8 @@ def _is_blank(value: object) -> bool:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parses args.
+    """
+    Parses args.
 
     Returns:
         The result of the operation.
@@ -82,7 +84,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
-    """Loads candidates.
+    """
+    Loads candidates.
 
     Args:
         session: Session.
@@ -164,7 +167,8 @@ def repair_candidates(
     overwrite: bool,
     dry_run: bool,
 ) -> tuple[list[str], int, int]:
-    """Repairs candidates.
+    """
+    Repairs candidates.
 
     Args:
         session: Session.
@@ -225,7 +229,8 @@ def repair_candidates(
 
 
 def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
-    """Syncs to oci.
+    """
+    Syncs to oci.
 
     Args:
         game_ids: Game Ids.
@@ -258,7 +263,8 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
 
 
 def find_target_missing_ready_games(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
-    """Finds target missing ready games.
+    """
+    Finds target missing ready games.
 
     Args:
         session: Session.
@@ -332,7 +338,8 @@ def find_target_missing_ready_games(session: Session, args: argparse.Namespace) 
 
 
 def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
-    """Updates target pitcher fields.
+    """
+    Updates target pitcher fields.
 
     Args:
         rows: Rows.

@@ -1,4 +1,5 @@
-"""데이터 무결성 및 상태 점검 스크립트.
+"""
+데이터 무결성 및 상태 점검 스크립트.
 
 데이터베이스에 저장된 경기 일정, 선수, 퓨처스리그 데이터 등의 상태를 확인하고,
 예상 수치와 비교하여 잠재적인 문제를 경고합니다.
@@ -208,7 +209,8 @@ def check_futures_data(session: Session) -> dict[str, Any]:
 
 
 def check_game_data(session: Session) -> dict[str, Any]:
-    """Checks game data.
+    """
+    Checks game data.
 
     Args:
         session: Session.

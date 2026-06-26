@@ -1,4 +1,6 @@
-"""KBO Periodic Extras Orchestrator.
+"""
+KBO Periodic Extras Orchestrator.
+
 Fetches Futures league data and retired player listings.
 """
 
@@ -30,7 +32,8 @@ async def run_periodic_extras(
     *,
     sync: bool = False,
 ) -> None:
-    """Runs periodic extras.
+    """
+    Runs periodic extras.
 
     Args:
         year: Season year.

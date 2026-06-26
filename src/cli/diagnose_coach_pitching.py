@@ -1,4 +1,5 @@
-"""Diagnose completed-game Coach pitcher data flow.
+"""
+Diagnose completed-game Coach pitcher data flow.
 
 Shows, per game, where starter and bullpen data is present or missing across:
 1. raw crawl tables (game_pitching_stats),

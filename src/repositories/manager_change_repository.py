@@ -20,7 +20,8 @@ class ManagerChangeRepository:
         self.session = session
 
     def save_change(self, data: dict) -> ManagerChange:
-        """Saves change.
+        """
+        Saves change.
 
         Args:
             data: Data.
@@ -51,7 +52,8 @@ class ManagerChangeRepository:
         return new_record
 
     def get_by_team(self, team_id: str) -> list[ManagerChange]:
-        """Gets by team.
+        """
+        Gets by team.
 
         Args:
             team_id: Team ID.
@@ -68,7 +70,8 @@ class ManagerChangeRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_season(self, season: int) -> list[ManagerChange]:
-        """Gets by season.
+        """
+        Gets by season.
 
         Args:
             season: Season year.

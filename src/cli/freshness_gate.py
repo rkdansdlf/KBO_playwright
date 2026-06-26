@@ -223,7 +223,8 @@ def collect_freshness_issues(
     days: int | None = None,
     max_hours: int | None = None,
 ) -> dict[str, list[str]]:
-    """Handles the collect freshness issues operation.
+    """
+    Handles the collect freshness issues operation.
 
     Args:
         session: Session.
@@ -281,7 +282,8 @@ def evaluate_freshness_gate(
     days: int | None = None,
     max_hours: int | None = None,
 ) -> list[str]:
-    """Handles the evaluate freshness gate operation.
+    """
+    Handles the evaluate freshness gate operation.
 
     Args:
         session: Session.

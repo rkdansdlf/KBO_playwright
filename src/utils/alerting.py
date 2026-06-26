@@ -44,7 +44,9 @@ class TelegramBotClient:
 
     @staticmethod
     def send_message(message: str, chat_id: str | None = None) -> bool:
-        """Sends an alert message to a Telegram chat.
+        """
+        Sends an alert message to a Telegram chat.
+
         Uses TELEGRAM_CHAT_ID by default, or the provided chat_id override.
         Requires TELEGRAM_BOT_TOKEN.
         """
@@ -73,7 +75,9 @@ class SlackWebhookClient:
 
     @staticmethod
     def send_alert(message: str, blocks: list | None = None) -> bool:
-        """Sends an alert message.
+        """
+        Sends an alert message.
+
         Tries Telegram first, falls back to Slack if configured.
         """
         # Try Telegram first

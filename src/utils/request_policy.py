@@ -63,7 +63,8 @@ class RequestPolicy:
 
     @classmethod
     def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> RequestPolicy:
-        """Handles the with delay operation.
+        """
+        Handles the with delay operation.
 
         Args:
             min_delay: Min Delay.
@@ -76,7 +77,8 @@ class RequestPolicy:
         return cls(RequestPolicyConfig(min_delay=min_delay, max_delay=max_delay))
 
     def _load_user_agents(self, override: Iterable[str] | None) -> list[str]:
-        """Loads user agents.
+        """
+        Loads user agents.
 
         Args:
             override: Override.
@@ -97,7 +99,8 @@ class RequestPolicy:
         return DEFAULT_USER_AGENTS
 
     def random_user_agent(self) -> str:
-        """Handles the random user agent operation.
+        """
+        Handles the random user agent operation.
 
         Returns:
             String result.
@@ -106,7 +109,8 @@ class RequestPolicy:
         return random.choice(self.user_agents)
 
     def build_context_kwargs(self, **overrides: object) -> dict[str, object]:
-        """Builds context kwargs.
+        """
+        Builds context kwargs.
 
         Returns:
             Dictionary mapping.
@@ -117,7 +121,8 @@ class RequestPolicy:
         return kwargs
 
     def _random_delay(self) -> float:
-        """Handles the random delay operation.
+        """
+        Handles the random delay operation.
 
         Returns:
             float instance.
@@ -126,7 +131,8 @@ class RequestPolicy:
         return random.uniform(self.min_delay, self.max_delay)
 
     def delay(self, host: str = "koreabaseball.com") -> None:
-        """Handles the delay operation.
+        """
+        Handles the delay operation.
 
         Args:
             host: Host.
@@ -136,7 +142,8 @@ class RequestPolicy:
         throttle.wait_sync(host)
 
     async def delay_async(self, host: str = "koreabaseball.com") -> None:
-        """Handles the delay async operation.
+        """
+        Handles the delay async operation.
 
         Args:
             host: Host.
@@ -146,7 +153,8 @@ class RequestPolicy:
         await throttle.wait(host)
 
     def run_with_retry(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
-        """Runs with retry.
+        """
+        Runs with retry.
 
         Args:
             func: Func.
@@ -171,7 +179,8 @@ class RequestPolicy:
         raise RuntimeError(msg)
 
     async def run_with_retry_async(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
-        """Runs with retry async.
+        """
+        Runs with retry async.
 
         Args:
             func: Func.
@@ -196,7 +205,8 @@ class RequestPolicy:
         raise RuntimeError(msg)
 
     def _backoff_delay(self, attempt: int) -> float:
-        """Handles the backoff delay operation.
+        """
+        Handles the backoff delay operation.
 
         Args:
             attempt: Attempt.

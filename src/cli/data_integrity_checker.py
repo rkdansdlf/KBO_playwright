@@ -1,4 +1,5 @@
-"""Data integrity checker for post-crawl validation.
+"""
+Data integrity checker for post-crawl validation.
 
 Runs after the main daily update pipeline to verify that the collected data
 meets quality standards. Checks for:
@@ -464,7 +465,8 @@ def run_integrity_checks(target_date: str) -> IntegrityReport:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

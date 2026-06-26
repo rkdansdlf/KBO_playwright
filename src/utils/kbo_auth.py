@@ -1,4 +1,5 @@
-"""KBO Authentication Utility
+"""
+KBO Authentication Utility
 Handles automated login and session persistence.
 """
 
@@ -112,7 +113,8 @@ class KboAuthenticator:
 
     @classmethod
     def get_auth_state_path(cls) -> str:
-        """Gets auth state path.
+        """
+        Gets auth state path.
 
         Returns:
             String result.

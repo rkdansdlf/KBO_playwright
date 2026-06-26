@@ -88,7 +88,8 @@ class NormalizedRelayResult:
 
     @property
     def is_empty(self) -> bool:
-        """Returns whether the empty.
+        """
+        Returns whether the empty.
 
         Returns:
             True if successful, False otherwise.
@@ -108,7 +109,8 @@ class RelaySourceAdapter(ABC):
 
     @abstractmethod
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
-        """Fetches game.
+        """
+        Fetches game.
 
         Args:
             game_id: Game ID.
@@ -131,7 +133,8 @@ def normalize_inning_half(value: object) -> str | None:
 
 
 def trailing_result_from_description(description: object) -> str | None:
-    """Handles the trailing result from description operation.
+    """
+    Handles the trailing result from description operation.
 
     Args:
         description: Description.
@@ -150,7 +153,8 @@ def trailing_result_from_description(description: object) -> str | None:
 
 
 def event_to_pbp_row(event: dict[str, Any]) -> dict[str, Any]:
-    """Handles the event to pbp row operation.
+    """
+    Handles the event to pbp row operation.
 
     Args:
         event: Event.
@@ -175,7 +179,8 @@ def event_to_pbp_row(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
-    """Normalize a raw PBP row dict to a standard set of fields.
+    """
+    Normalize a raw PBP row dict to a standard set of fields.
 
     Retains the user-facing play fields plus provider trace keys used by the
     persistence layer to make raw rows auditable.
@@ -196,7 +201,8 @@ def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def event_has_minimum_state(event: dict[str, Any]) -> bool:
-    """Handles the event has minimum state operation.
+    """
+    Handles the event has minimum state operation.
 
     Args:
         event: Event.
@@ -209,7 +215,8 @@ def event_has_minimum_state(event: dict[str, Any]) -> bool:
 
 
 def events_have_minimum_state(events: Iterable[dict[str, Any]]) -> bool:
-    """Handles the events have minimum state operation.
+    """
+    Handles the events have minimum state operation.
 
     Args:
         events: Events.
@@ -223,7 +230,8 @@ def events_have_minimum_state(events: Iterable[dict[str, Any]]) -> bool:
 
 
 def derive_bucket_id(game_id: str, league_type_name: str | None = None) -> str:
-    """Derives bucket id.
+    """
+    Derives bucket id.
 
     Args:
         game_id: Game ID.
@@ -264,7 +272,8 @@ def _derive_bucket_by_date(game_id: str, year: int, team_code: str) -> str:
 
 
 def default_source_order_for_bucket(bucket_id: str) -> list[str]:
-    """Handles the default source order for bucket operation.
+    """
+    Handles the default source order for bucket operation.
 
     Args:
         bucket_id: Bucket ID.
@@ -293,7 +302,8 @@ def _coerce_manifest_paths(manifest_path: str | Path | Iterable[str | Path]) -> 
 
 
 def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> list[ManifestEntry]:
-    """Reads manifest entries.
+    """
+    Reads manifest entries.
 
     Args:
         manifest_path: Manifest file path.
@@ -348,7 +358,8 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
 
 
 def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str], CapabilityRecord]:
-    """Loads capability records.
+    """
+    Loads capability records.
 
     Args:
         capability_path: Capability file path.
@@ -383,7 +394,8 @@ def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str]
 
 
 def upsert_capability_record(capability_path: str | Path, record: CapabilityRecord) -> None:
-    """Inserts or updates capability record.
+    """
+    Inserts or updates capability record.
 
     Args:
         capability_path: Capability file path.

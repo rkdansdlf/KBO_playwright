@@ -66,7 +66,8 @@ class GameScoreStatusSnapshot:
 
     @property
     def score_tuple(self) -> tuple[int | None, int | None]:
-        """Handles the score tuple operation.
+        """
+        Handles the score tuple operation.
 
         Returns:
             Tuple result.
@@ -92,7 +93,8 @@ class PostgameReconciliationChange:
 
     @property
     def status_changed(self) -> bool:
-        """Handles the status changed operation.
+        """
+        Handles the status changed operation.
 
         Returns:
             True if successful, False otherwise.
@@ -102,7 +104,8 @@ class PostgameReconciliationChange:
 
     @property
     def score_changed(self) -> bool:
-        """Handles the score changed operation.
+        """
+        Handles the score changed operation.
 
         Returns:
             True if successful, False otherwise.
@@ -126,7 +129,8 @@ class PostgameReconciliationResult:
 
     @property
     def changed_game_ids(self) -> list[str]:
-        """Handles the changed game ids operation.
+        """
+        Handles the changed game ids operation.
 
         Returns:
             List of results.
@@ -304,7 +308,8 @@ def write_reconciliation_csv(
     changes: Iterable[PostgameReconciliationChange],
     output_path: str | Path,
 ) -> Path:
-    """Writes reconciliation csv.
+    """
+    Writes reconciliation csv.
 
     Args:
         changes: Changes.

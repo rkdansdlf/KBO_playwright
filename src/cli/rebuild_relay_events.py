@@ -66,7 +66,8 @@ def rebuild_relay_events(
     oci_url: str | None = None,
     log: Callable[..., Any] = logger.info,
 ) -> list[RebuildReportRow]:
-    """Handles the rebuild relay events operation.
+    """
+    Handles the rebuild relay events operation.
 
     Returns:
         List of results.
@@ -431,7 +432,8 @@ def _chunked(values: Sequence[str], size: int) -> Iterable[Sequence[str]]:
 
 
 def run(argv: Sequence[str] | None = None) -> int:
-    """Runs run.
+    """
+    Runs run.
 
     Args:
         argv: Argv.

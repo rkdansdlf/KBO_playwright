@@ -1,4 +1,6 @@
-"""Repository for saving game details, box scores, and normalized relay data.
+"""
+Repository for saving game details, box scores, and normalized relay data.
+
 Thin facade re-exporting from domain-split modules.
 """
 

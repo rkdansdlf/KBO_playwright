@@ -56,7 +56,8 @@ class ReviewRegenReportRow:
     message: str = ""
 
     def as_csv_row(self) -> dict[str, Any]:
-        """Handles the as csv row operation.
+        """
+        Handles the as csv row operation.
 
         Returns:
             Dictionary result.
@@ -349,7 +350,8 @@ def regenerate_review_summaries(
     backup_out: Path | None = None,
     log: Callable[[str], object] = logger.info,
 ) -> list[ReviewRegenReportRow]:
-    """Handles the regenerate review summaries operation.
+    """
+    Handles the regenerate review summaries operation.
 
     Returns:
         List of results.

@@ -20,7 +20,9 @@ class AwardRepository:
         self.session = session
 
     def save_award(self, award_data: dict) -> Award:
-        """Insert or update an award record.
+        """
+        Insert or update an award record.
+
         Uses unique constraints to detect duplicates.
         For now, we'll strive for upsert-like behavior or just ignore if exists.
         But given the unique constraint on (year, award_type, category, player_name, team_name),
@@ -59,7 +61,8 @@ class AwardRepository:
         return new_award
 
     def get_awards_by_year(self, year: int) -> list[Award]:
-        """Gets awards by year.
+        """
+        Gets awards by year.
 
         Args:
             year: Season year.
@@ -72,7 +75,8 @@ class AwardRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def clear_awards_by_year(self, year: int) -> None:
-        """Clears awards by year.
+        """
+        Clears awards by year.
 
         Args:
             year: Season year.

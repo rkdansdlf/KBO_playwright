@@ -1,4 +1,5 @@
-"""CLI for collecting congestion data for Jamsil Stadium.
+"""
+CLI for collecting congestion data for Jamsil Stadium.
 
 Usage:
     python -m src.cli.crawl_congestion --save
@@ -19,7 +20,8 @@ if TYPE_CHECKING:
 
 
 async def run(args: argparse.Namespace) -> None:
-    """Runs run.
+    """
+    Runs run.
 
     Args:
         args: Args.
@@ -34,7 +36,8 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

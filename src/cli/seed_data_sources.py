@@ -1,4 +1,5 @@
-"""DataSource 초기 시드 데이터를 데이터베이스에 등록하는 CLI 스크립트.
+"""
+DataSource 초기 시드 데이터를 데이터베이스에 등록하는 CLI 스크립트.
 
 P0/P1/P2 대상 출처를 DataSource 테이블에 등록합니다.
 """
@@ -426,7 +427,8 @@ def run_seed(*, dry_run: bool = False) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

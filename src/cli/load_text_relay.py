@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 def _load_csv_file(csv_path: Path, session: Session) -> int:
-    """Load a single text relay CSV into game_play_by_play.
+    """
+    Load a single text relay CSV into game_play_by_play.
 
     Returns the number of rows inserted.
     """
@@ -68,7 +69,8 @@ def load_text_relays(
     *,
     dry_run: bool = False,
 ) -> dict[str, int]:
-    """Load all text relay CSVs from a directory into the database.
+    """
+    Load all text relay CSVs from a directory into the database.
 
     Returns {game_id: rows_inserted}.
     """
@@ -107,7 +109,8 @@ def load_text_relays(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

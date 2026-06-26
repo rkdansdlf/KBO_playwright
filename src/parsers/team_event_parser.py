@@ -349,7 +349,8 @@ def _parse_json_team_events(
 
 
 def parse_team_events(html: str, source_key: str, metadata: dict | None = None) -> list[dict]:
-    """Parses team events.
+    """
+    Parses team events.
 
     Args:
         html: Html.
