@@ -143,10 +143,14 @@ def _run_team_only(target_year: int, *, json_output: bool) -> None:
     bat_ok = team_result["batting"]["ok"]
     pit_ok = team_result["pitching"]["ok"]
     logger.info(
-        "Team Batting: %s (%s mismatches)", "PASS" if bat_ok else "FAIL", len(team_result["batting"]["mismatches"])
+        "Team Batting: %s (%s mismatches)",
+        "PASS" if bat_ok else "FAIL",
+        len(team_result["batting"]["mismatches"]),
     )
     logger.info(
-        "Team Pitching: %s (%s mismatches)", "PASS" if pit_ok else "FAIL", len(team_result["pitching"]["mismatches"])
+        "Team Pitching: %s (%s mismatches)",
+        "PASS" if pit_ok else "FAIL",
+        len(team_result["pitching"]["mismatches"]),
     )
     if not bat_ok or not pit_ok:
         sys.exit(1)
@@ -169,7 +173,11 @@ def _log_team_mismatches(label: str, result: dict[str, Any]) -> bool:
 
 
 def _emit_unified_cli_output(
-    pa_result: dict[str, Any], team_result: dict[str, Any] | None, *, pa_only: bool, json_output: bool
+    pa_result: dict[str, Any],
+    team_result: dict[str, Any] | None,
+    *,
+    pa_only: bool,
+    json_output: bool,
 ) -> None:
     if json_output:
         output = {"pa_formula": pa_result}

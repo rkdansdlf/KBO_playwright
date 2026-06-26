@@ -334,7 +334,10 @@ class PlayerSearchCrawler:
         return True
 
     async def _visit_next_pager_block(
-        self, page: Page, collected: list[PlayerRow], seen: set[int]
+        self,
+        page: Page,
+        collected: list[PlayerRow],
+        seen: set[int],
     ) -> tuple[bool, bool]:
         next_btn = page.locator(PAGER_CONTAINER).last.locator(PAGER_NEXT_BTNS).first
         if await next_btn.count() == 0 or (await next_btn.evaluate("el => el.tagName")).lower() != "a":

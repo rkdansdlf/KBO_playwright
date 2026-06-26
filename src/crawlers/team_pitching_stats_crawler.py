@@ -265,7 +265,14 @@ def _parse_team_pitching_row(
     team_mapping: dict[str, str],
 ) -> dict[str, Any] | None:
     return _parse_one_team_row(
-        row, indexes, season, league, team_mapping, PITCHING_FIELDS, FLOAT_FIELDS, _parse_pitching_value
+        row,
+        indexes,
+        season,
+        league,
+        team_mapping,
+        PITCHING_FIELDS,
+        FLOAT_FIELDS,
+        _parse_pitching_value,
     )
 
 

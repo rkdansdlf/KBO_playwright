@@ -69,7 +69,11 @@ def _backfill_pitching(session: Session, year: int, series: str, team_map: dict)
 
 
 def _backfill_baserunning(
-    session: Session, year: int, series: str, team_map: dict, baserun_repo: PlayerSeasonBaserunningRepository
+    session: Session,
+    year: int,
+    series: str,
+    team_map: dict,
+    baserun_repo: PlayerSeasonBaserunningRepository,
 ) -> None:
     stats = SeasonStatAggregator.aggregate_baserunning_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
     if not stats:
@@ -79,7 +83,11 @@ def _backfill_baserunning(
 
 
 def _backfill_fielding(
-    session: Session, year: int, series: str, team_map: dict, fielding_repo: PlayerSeasonFieldingRepository
+    session: Session,
+    year: int,
+    series: str,
+    team_map: dict,
+    fielding_repo: PlayerSeasonFieldingRepository,
 ) -> None:
     stats = SeasonStatAggregator.aggregate_fielding_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
     if not stats:

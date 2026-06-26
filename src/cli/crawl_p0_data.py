@@ -79,7 +79,10 @@ async def run_all(
         "ticket": await run_ticket(save=save, season=season),
     }
     logger.info(
-        "=== P0 complete: events=%s roster=%s ticket=%s ===", counts["events"], counts["roster"], counts["ticket"]
+        "=== P0 complete: events=%s roster=%s ticket=%s ===",
+        counts["events"],
+        counts["roster"],
+        counts["ticket"],
     )
     return counts
 

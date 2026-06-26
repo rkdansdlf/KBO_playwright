@@ -115,7 +115,10 @@ def _is_yyyymmdd(value: str) -> bool:
 
 
 def load_quality_records(
-    report_dir: Path, *, days: int | None = None, limit: int | None = None
+    report_dir: Path,
+    *,
+    days: int | None = None,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Loads quality records.
 
@@ -199,7 +202,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description="Summarize generated quality report JSON files")
     parser.add_argument(
-        "--report-dir", type=Path, default=DEFAULT_REPORT_DIR, help="Directory containing quality report JSON files"
+        "--report-dir",
+        type=Path,
+        default=DEFAULT_REPORT_DIR,
+        help="Directory containing quality report JSON files",
     )
     parser.add_argument("--days", type=int, help="Only include reports whose metric date is within N days")
     parser.add_argument("--limit", type=int, help="Only include the most recent N reports after filtering")

@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 _OFFENSIVE_RELAY_ROLE_RE = re.compile(r"^(?P<role>\d+번타자|[123]루주자|대타|대주자|지명타자)\s+(?P<name>.+)$")
 _DEFENSIVE_RELAY_ROLE_RE = re.compile(
-    r"^(?P<role>투수|포수|1루수|2루수|3루수|유격수|좌익수|중견수|우익수)\s+(?P<name>.+)$"
+    r"^(?P<role>투수|포수|1루수|2루수|3루수|유격수|좌익수|중견수|우익수)\s+(?P<name>.+)$",
 )
 _DEFENSIVE_RELAY_TARGET_RE = re.compile(r"^(?:투수|포수|1루수|2루수|3루수|유격수|좌익수|중견수|우익수)\b")
 _RELAY_TURN_NOISE_RE = re.compile(r"^\d+회(?:초|말)\s+\d+번타순\b")
@@ -88,7 +88,8 @@ def _relay_text_indicates_defense_side(text_value: str, play_description: object
 
 
 def _relay_player_resolution_context(
-    name: object, play_description: object = None
+    name: object,
+    play_description: object = None,
 ) -> tuple[str, str, bool | None] | None:
     text_value = " ".join(str(name or "").strip().split())
     if not text_value:

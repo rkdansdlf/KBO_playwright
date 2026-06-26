@@ -713,7 +713,7 @@ class GameDetailCrawler:
             team_info.get("away", {}).get("line_score")
             or team_info.get("home", {}).get("line_score")
             or metadata.get("stadium")
-            or metadata.get("attendance")
+            or metadata.get("attendance"),
         )
 
     async def _validate_hitter_totals(
@@ -769,7 +769,10 @@ class GameDetailCrawler:
         hitters, hitter_totals = await self._extract_hitter_pair(ctx.page, team_info, ctx.season_year, ctx.roster_map)
         pitchers = await self._extract_pitcher_pair(ctx.page, team_info, ctx.season_year, ctx.roster_map)
         hitters, hitter_totals, pitchers = await self._retry_missing_boxscore_sections(
-            ctx, hitters, hitter_totals, pitchers
+            ctx,
+            hitters,
+            hitter_totals,
+            pitchers,
         )
         if not any((hitters["away"], hitters["home"], pitchers["away"], pitchers["home"])):
             if not self._has_partial_recovery_anchor(team_info, ctx.metadata):

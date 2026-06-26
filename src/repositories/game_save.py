@@ -295,7 +295,7 @@ def save_schedule_game(
                     new_status=game_data.get("game_status"),
                     home_score=game.home_score,
                     away_score=game.away_score,
-                )
+                ),
             )
             changed |= _assign_field_if_changed(
                 game,
@@ -337,7 +337,11 @@ def _parse_detail_game_date(game_data: dict[str, Any], provisional_game_id: str 
 
 
 def _get_or_create_game(
-    session: Session, game_id: str, game_date: date, source: GameWriteSource, write_contract: GameWriteContract | None
+    session: Session,
+    game_id: str,
+    game_date: date,
+    source: GameWriteSource,
+    write_contract: GameWriteContract | None,
 ) -> tuple[Game, bool]:
     game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
     if game:
@@ -394,10 +398,15 @@ def _update_detail_status(
             home_score=game.home_score,
             away_score=game.away_score,
             has_progress_evidence=has_progress,
-        )
+        ),
     )
     changed = _assign_field_if_changed(
-        game, "game_status", new_status, game_id=ctx.game_id, source=ctx.source, write_contract=ctx.write_contract
+        game,
+        "game_status",
+        new_status,
+        game_id=ctx.game_id,
+        source=ctx.source,
+        write_contract=ctx.write_contract,
     )
     return changed, inning_rows, new_status
 
@@ -465,22 +474,36 @@ def _update_detail_children(
     changed = False
     if inning_rows:
         changed |= _replace_records(
-            session, GameInningScore, ctx.game_id, inning_rows, RecordReplaceContext(ctx.source, ctx.write_contract)
+            session,
+            GameInningScore,
+            ctx.game_id,
+            inning_rows,
+            RecordReplaceContext(ctx.source, ctx.write_contract),
         )
     lineup_rows = _prepare_player_rows(
-        ctx.game_id, "game_lineups", _build_lineups(ctx.game_id, hitters, season_year=ctx.game_date.year)
+        ctx.game_id,
+        "game_lineups",
+        _build_lineups(ctx.game_id, hitters, season_year=ctx.game_date.year),
     )
     batting_rows = _prepare_player_rows(
-        ctx.game_id, "game_batting_stats", _build_batting_stats(ctx.game_id, hitters, season_year=ctx.game_date.year)
+        ctx.game_id,
+        "game_batting_stats",
+        _build_batting_stats(ctx.game_id, hitters, season_year=ctx.game_date.year),
     )
     pitching_rows = _prepare_player_rows(
-        ctx.game_id, "game_pitching_stats", _build_pitching_stats(ctx.game_id, pitchers, season_year=ctx.game_date.year)
+        ctx.game_id,
+        "game_pitching_stats",
+        _build_pitching_stats(ctx.game_id, pitchers, season_year=ctx.game_date.year),
     )
     changed |= _ensure_player_basic_stubs(session, [*lineup_rows, *batting_rows, *pitching_rows])
     for model, rows in ((GameLineup, lineup_rows), (GameBattingStat, batting_rows), (GamePitchingStat, pitching_rows)):
         if rows:
             changed |= _replace_records(
-                session, model, ctx.game_id, rows, RecordReplaceContext(ctx.source, ctx.write_contract)
+                session,
+                model,
+                ctx.game_id,
+                rows,
+                RecordReplaceContext(ctx.source, ctx.write_contract),
             )
     return changed
 
@@ -503,7 +526,7 @@ def _summary_item_rows(
                 "player_name": None,
                 "player_id": None,
                 "detail_text": detail_text,
-            }
+            },
         ]
 
     rows = []
@@ -650,7 +673,11 @@ def save_game_detail(
             )
 
             summary_rows = _build_summary_rows(
-                session, game_id, game_date, {"hitters": hitters, "pitchers": pitchers}, game_data.get("summary") or []
+                session,
+                game_id,
+                game_date,
+                {"hitters": hitters, "pitchers": pitchers},
+                game_data.get("summary") or [],
             )
             if summary_rows:
                 changed |= _replace_records(
@@ -790,7 +817,11 @@ def _apply_snapshot_starting_pitchers(game: Game, pitchers: dict[str, Any]) -> N
 
 
 def _apply_snapshot_status_and_winner(
-    game: Game, game_date: date, status: str | None, *, has_inning_rows: bool
+    game: Game,
+    game_date: date,
+    status: str | None,
+    *,
+    has_inning_rows: bool,
 ) -> None:
     has_progress = has_inning_rows or game.home_score is not None or game.away_score is not None
     stable_status = derive_stable_game_status(
@@ -801,7 +832,7 @@ def _apply_snapshot_status_and_winner(
             home_score=game.home_score,
             away_score=game.away_score,
             has_progress_evidence=has_progress,
-        )
+        ),
     )
     game.game_status = stable_status
 

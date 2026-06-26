@@ -119,7 +119,9 @@ def _build_pitching_row(payload: dict[str, Any]) -> dict[str, Any]:
         "holds": payload.get("holds"),
         "innings_pitched": payload.get("innings_pitched"),
         "innings_outs": _prefer_payload_value(
-            payload, extra_stats if isinstance(extra_stats, dict) else {}, "innings_outs"
+            payload,
+            extra_stats if isinstance(extra_stats, dict) else {},
+            "innings_outs",
         ),
         "hits_allowed": payload.get("hits_allowed"),
         "runs_allowed": payload.get("runs_allowed"),

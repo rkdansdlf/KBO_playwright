@@ -193,7 +193,7 @@ class PlayerIdResolver:
         existing_targets = {
             int(row[0]): str(row[1])
             for row in self.session.execute(
-                select(PlayerBasic.player_id, PlayerBasic.name).where(PlayerBasic.player_id.in_(target_ids))
+                select(PlayerBasic.player_id, PlayerBasic.name).where(PlayerBasic.player_id.in_(target_ids)),
             ).fetchall()
             if row[0] is not None
         }
@@ -214,7 +214,9 @@ class PlayerIdResolver:
                 )
             if pid in surrogates and mapped_id not in existing_targets:
                 logger.debug(
-                    "Skipping surrogate player_id mapping %s -> %s because target profile is missing", pid, mapped_id
+                    "Skipping surrogate player_id mapping %s -> %s because target profile is missing",
+                    pid,
+                    mapped_id,
                 )
             filtered.add(pid)
         return filtered
@@ -229,10 +231,16 @@ class PlayerIdResolver:
         if identity.team_code and candidates and all(pid >= SURROGATE_PLAYER_ID_BOUNDARY for pid in candidates):
             if self.strict_game_resolution:
                 return self._return_ambiguous(
-                    cache_key, identity.player_name, identity.team_code, identity.season, candidates
+                    cache_key,
+                    identity.player_name,
+                    identity.team_code,
+                    identity.season,
+                    candidates,
                 )
             existing_unknown_id = self._find_existing_unknown_player(
-                identity.player_name, identity.team_code, identity.uniform_no
+                identity.player_name,
+                identity.team_code,
+                identity.uniform_no,
             )
             if existing_unknown_id:
                 self._cache[cache_key] = existing_unknown_id
@@ -706,12 +714,20 @@ class PlayerIdResolver:
         if override_id:
             return override_id
         samsung_id = self._resolve_samsung_lee_seunghyun(
-            player_name, team_code, season, uniform_no, is_pitcher=is_pitcher
+            player_name,
+            team_code,
+            season,
+            uniform_no,
+            is_pitcher=is_pitcher,
         )
         if samsung_id:
             return samsung_id
         hanwha_id = self._resolve_hanwha_park_junyoung(
-            player_name, team_code, season, uniform_no, is_pitcher=is_pitcher
+            player_name,
+            team_code,
+            season,
+            uniform_no,
+            is_pitcher=is_pitcher,
         )
         if hanwha_id:
             return hanwha_id

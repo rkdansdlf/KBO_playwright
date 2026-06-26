@@ -47,7 +47,11 @@ def _log_player_sample(valid_dicts: list[dict]) -> None:
     logger.info("Sample (first 5):")
     for player in valid_dicts[:5]:
         logger.info(
-            "  %s (ID: %s, %s/%s)", player["name"], player["player_id"], player.get("team"), player.get("position")
+            "  %s (ID: %s, %s/%s)",
+            player["name"],
+            player["player_id"],
+            player.get("team"),
+            player.get("position"),
         )
 
 

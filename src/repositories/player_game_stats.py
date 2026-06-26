@@ -130,7 +130,7 @@ def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any
                 doubles=totals["doubles"],
                 triples=totals["triples"],
                 home_runs=totals["home_runs"],
-            )
+            ),
         )
 
         results.append(
@@ -199,7 +199,7 @@ def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, An
                 er=totals["earned_runs"],
                 k=totals["strikeouts"],
                 hr=totals["home_runs_allowed"],
-            )
+            ),
         )
 
         results.append(

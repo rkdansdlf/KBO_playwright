@@ -106,7 +106,11 @@ class OperationNoticeNaverCrawler:
         else:
             for n in notices[:5]:
                 logger.info(
-                    "  [%s] %s | urgent=%s | %s", n["notice_type"], n["title"][:60], n["is_urgent"], n["published_at"]
+                    "  [%s] %s | urgent=%s | %s",
+                    n["notice_type"],
+                    n["title"][:60],
+                    n["is_urgent"],
+                    n["published_at"],
                 )
             if len(notices) > 5:
                 logger.info("  ... and %s more", len(notices) - 5)

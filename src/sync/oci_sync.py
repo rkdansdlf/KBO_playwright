@@ -24,10 +24,10 @@ def _report_no_data() -> None:
     logger.warning("⚠️ 동기화할 데이터가 없습니다.")
     logger.info("📌 먼저 크롤러를 실행하세요:")
     logger.info(
-        "   ./venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save"
+        "   ./venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save",
     )
     logger.info(
-        "   ./venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save"
+        "   ./venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save",
     )
 
 

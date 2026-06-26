@@ -44,7 +44,11 @@ def _load_completed_games(session: Session, target_date: date) -> list[Game]:
 
 
 def _process_highlight_games(
-    session: Session, games: list[Game], *, force: bool, dry_run: bool
+    session: Session,
+    games: list[Game],
+    *,
+    force: bool,
+    dry_run: bool,
 ) -> tuple[list[str], dict[str, list[GameHighlight]], dict[str, Game]]:
     processed_game_ids: list[str] = []
     game_highlights_map: dict[str, list[GameHighlight]] = {}
@@ -107,7 +111,9 @@ def _highlight_notification_message(
     all_highlights = [highlight for highlights in game_highlights_map.values() for highlight in highlights]
     lead_change_games, walkoff_games = _highlight_special_matchups(processed_game_ids, game_highlights_map, game_map)
     top_3_plays = sorted(
-        [h for h in all_highlights if h.wpa is not None], key=lambda h: abs(h.wpa or 0.0), reverse=True
+        [h for h in all_highlights if h.wpa is not None],
+        key=lambda h: abs(h.wpa or 0.0),
+        reverse=True,
     )[:3]
 
     target_date_formatted = f"{target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}"
@@ -123,7 +129,9 @@ def _highlight_notification_message(
 
 
 def _highlight_special_matchups(
-    processed_game_ids: list[str], game_highlights_map: dict[str, list[GameHighlight]], game_map: dict[str, Game]
+    processed_game_ids: list[str],
+    game_highlights_map: dict[str, list[GameHighlight]],
+    game_map: dict[str, Game],
 ) -> tuple[list[str], list[str]]:
     lead_change_games = []
     walkoff_games = []
@@ -194,7 +202,10 @@ async def run_highlight_batch(
             return []
 
         processed_game_ids, game_highlights_map, game_map = _process_highlight_games(
-            session, games, force=force, dry_run=dry_run
+            session,
+            games,
+            force=force,
+            dry_run=dry_run,
         )
 
     _sync_highlights_to_oci(processed_game_ids, dry_run=dry_run, sync_to_oci=sync_to_oci)

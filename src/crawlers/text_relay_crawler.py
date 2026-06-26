@@ -125,7 +125,7 @@ class RelayCrawlResult:
                     "아웃",
                     "주자",
                     "상세",
-                ]
+                ],
             )
         data = [row.to_dict() for row in self.rows]
         return pd.DataFrame(data)

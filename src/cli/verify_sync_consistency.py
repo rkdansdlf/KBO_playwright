@@ -115,7 +115,10 @@ def get_row_count(conn: Connection, table_name: str) -> int:
 
 
 def check_deep_ids(
-    sqlite_conn: Connection, oci_conn: Connection, table_name: str, pk_cols: list[str]
+    sqlite_conn: Connection,
+    oci_conn: Connection,
+    table_name: str,
+    pk_cols: list[str],
 ) -> tuple[int, list[object]]:
     """Performs deep ID-level matching to identify SQLite rows missing in OCI."""
     try:
@@ -190,7 +193,9 @@ def _collect_count_mismatches(count_results: list[dict[str, Any]]) -> tuple[list
 
 
 def _collect_deep_mismatches(
-    sqlite_conn: Connection, oci_conn: Connection, count_results: list[dict[str, Any]]
+    sqlite_conn: Connection,
+    oci_conn: Connection,
+    count_results: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     mismatches = []
     alert_lines = []
@@ -208,7 +213,7 @@ def _collect_deep_mismatches(
             logger.warning("    ⚠️  Missing sample IDs in OCI: %s", sample_str)
             mismatches.append(res)
             alert_lines.append(
-                f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})"
+                f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})",
             )
     return mismatches, alert_lines
 

@@ -286,7 +286,11 @@ class GameSyncMixin:
         return detect_dirty_game_ids(self.sqlite_session, self.target_session)
 
     def _game_detail_parent_scope(
-        self, days: int | None, year: int | None, *, unsynced_only: bool
+        self,
+        days: int | None,
+        year: int | None,
+        *,
+        unsynced_only: bool,
     ) -> tuple[list, list[str] | None]:
         filters = []
         target_game_ids = None
@@ -327,7 +331,8 @@ class GameSyncMixin:
         if unsynced_only and publishable_parent_game_ids is not None:
             if publishable_parent_game_ids:
                 results["games"] = self.sync_games(
-                    filters=[Game.game_id.in_(publishable_parent_game_ids)], batch_size=batch_size
+                    filters=[Game.game_id.in_(publishable_parent_game_ids)],
+                    batch_size=batch_size,
                 )
             else:
                 results["games"] = 0
@@ -381,10 +386,14 @@ class GameSyncMixin:
             self._purge_game_detail_children_for_year(year)
             return
         self._replace_target_child_rows_for_games(
-            _DETAIL_REPLACE_CHILD_MODELS, eligibility.detail_game_ids, label="detail"
+            _DETAIL_REPLACE_CHILD_MODELS,
+            eligibility.detail_game_ids,
+            label="detail",
         )
         self._replace_target_child_rows_for_games(
-            _RELAY_REPLACE_CHILD_MODELS, eligibility.relay_game_ids, label="relay"
+            _RELAY_REPLACE_CHILD_MODELS,
+            eligibility.relay_game_ids,
+            label="relay",
         )
 
     @staticmethod
@@ -550,14 +559,20 @@ class GameSyncMixin:
 
         if skip_year_purge:
             self._replace_target_child_rows_for_games(
-                _DETAIL_REPLACE_CHILD_MODELS, eligibility.detail_game_ids, label="detail"
+                _DETAIL_REPLACE_CHILD_MODELS,
+                eligibility.detail_game_ids,
+                label="detail",
             )
             self._replace_target_child_rows_for_games(
-                _RELAY_REPLACE_CHILD_MODELS, eligibility.relay_game_ids, label="relay"
+                _RELAY_REPLACE_CHILD_MODELS,
+                eligibility.relay_game_ids,
+                label="relay",
             )
         else:
             self._prepare_target_game_detail_children(
-                scope.year, unsynced_only=scope.unsynced_only, eligibility=eligibility
+                scope.year,
+                unsynced_only=scope.unsynced_only,
+                eligibility=eligibility,
             )
 
         def get_child_filters(model_cls: type) -> list | None:
