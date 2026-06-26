@@ -27,9 +27,9 @@ jobs:
       - name: Install lint dependencies
         run: pip install ruff pre-commit
       - name: Ruff lint check
-        run: ruff check --output-format=github src/ tests/ 2>&1
+        run: ruff check --output-format=github src/ tests/ scripts/ 2>&1
       - name: Ruff format check
-        run: ruff format --check src/ tests/ 2>&1
+        run: ruff format --check src/ tests/ scripts/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
 
@@ -70,6 +70,6 @@ jobs:
           root = tree.getroot()
           line_rate = float(root.attrib['line-rate']) * 100
           print(f'Coverage: {line_rate:.1f}%')
-          if line_rate < 60:
-              raise SystemExit(f'Coverage {line_rate:.1f}% is below 60% threshold')
+           if line_rate < 70:
+               raise SystemExit(f'Coverage {line_rate:.1f}% is below 70% threshold')
           "

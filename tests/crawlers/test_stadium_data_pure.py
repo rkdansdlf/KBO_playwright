@@ -3,6 +3,7 @@ from __future__ import annotations
 from src.crawlers.parking_crawler import ParkingCrawler, PARKING_FEE_PATTERN
 from src.crawlers.food_crawler import FoodCrawler, MENU_PATTERN
 from src.crawlers.seat_crawler import SeatCrawler, SECTION_PATTERNS
+from src.crawlers.ticket_crawler import TicketCrawler
 
 
 class TestParkingParsePage:
@@ -121,3 +122,76 @@ class TestSeatParsePage:
             for m in pattern.finditer(text):
                 matches.append(m.group(0))
         assert len(matches) >= 2
+
+
+class TestTicketAltToTeamCode:
+    def test_lg(self):
+        assert TicketCrawler._alt_to_team_code("lg_twins") == "LG"
+
+    def test_hh(self):
+        assert TicketCrawler._alt_to_team_code("한화이글스") == "HH"
+
+    def test_ss(self):
+        assert TicketCrawler._alt_to_team_code("삼성라이온즈") == "SS"
+
+    def test_kt(self):
+        assert TicketCrawler._alt_to_team_code("kt_wiz") == "KT"
+
+    def test_ob(self):
+        assert TicketCrawler._alt_to_team_code("두산베어스") == "OB"
+
+    def test_lt(self):
+        assert TicketCrawler._alt_to_team_code("롯데자이언츠") == "LT"
+
+    def test_ht(self):
+        assert TicketCrawler._alt_to_team_code("기아타이거즈") == "HT"
+
+    def test_nc(self):
+        assert TicketCrawler._alt_to_team_code("nc_dinos") == "NC"
+
+    def test_sk(self):
+        assert TicketCrawler._alt_to_team_code("ssg_landers") == "SK"
+
+    def test_wo(self):
+        assert TicketCrawler._alt_to_team_code("키움히어로즈") == "WO"
+
+    def test_unknown(self):
+        assert TicketCrawler._alt_to_team_code("unknown_team") is None
+
+    def test_empty(self):
+        assert TicketCrawler._alt_to_team_code("") is None
+
+
+class TestTicketBuildOpenRules:
+    def test_returns_list(self):
+        rules = TicketCrawler._build_open_rules()
+        assert isinstance(rules, list)
+        assert len(rules) > 0
+
+    def test_rule_has_required_fields(self):
+        rules = TicketCrawler._build_open_rules()
+        for rule in rules:
+            assert "team_id" in rule
+            assert "platform" in rule
+            assert "open_offset_days" in rule
+            assert "open_time" in rule
+
+
+class TestTicketTeamCodeToKr:
+    def test_lg(self):
+        assert TicketCrawler._team_code_to_kr("LG") == "LG"
+
+    def test_hh(self):
+        assert TicketCrawler._team_code_to_kr("HH") == "한화"
+
+    def test_ob(self):
+        assert TicketCrawler._team_code_to_kr("OB") == "두산"
+
+    def test_ht(self):
+        assert TicketCrawler._team_code_to_kr("HT") == "KIA"
+
+    def test_sk(self):
+        assert TicketCrawler._team_code_to_kr("SK") == "SSG"
+
+    def test_unknown(self):
+        assert TicketCrawler._team_code_to_kr("XX") is None
