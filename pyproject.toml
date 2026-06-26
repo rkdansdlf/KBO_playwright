@@ -380,7 +380,6 @@ ignore = [
     "E701",    # multiple-statements-on-one-line-colon (legacy style)
     "E702",    # multiple-statements-on-one-line-semicolon
     "E731",    # lambda assignment (permissive)
-    "UP035",   # deprecated typing (Dict→dict etc — too many existing)
     "B023",    # function-uses-loop-variable (common closure pattern)
     "SIM102",  # collapsible-if (readability preference)
     "SIM108",  # simplify-if-else (ternary, not always clearer)
