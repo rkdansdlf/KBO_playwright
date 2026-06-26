@@ -1,5 +1,7 @@
 """Tests for HomeAwaySplitAggregator — home/away batting splits."""
 
+from __future__ import annotations
+
 from datetime import date
 
 import pytest
@@ -197,3 +199,32 @@ class TestHomeAwaySplitAggregator:
         agg.persist_batting(2025)  # second time (delete + insert)
         saved = session.query(BatterHomeAwaySplit).all()
         assert len(saved) == 2  # replaced, not duplicated (HOME + AWAY)
+
+    def test_skips_missing_team_code(self, session):
+        _add_season(session)
+        _add_game(session)
+        _add_batting_stat(session, player_id=10001, team_code=None)
+        agg = HomeAwaySplitAggregator(session)
+        results = agg.aggregate_batting(2025)
+        assert results == []
+
+
+class TestPrintReport:
+    def test_returns_early_when_empty(self, session, caplog):
+        _add_season(session)
+        agg = HomeAwaySplitAggregator(session)
+        with caplog.at_level("INFO"):
+            agg.print_report(2025)
+        assert "홈/원정" not in caplog.text
+
+    def test_outputs_report_when_results(self, session, caplog):
+        _add_season(session)
+        _add_game(session, game_id="20250101", home="LG", away="SS")
+        _add_game(session, game_id="20250102", home="SS", away="LG")
+        _add_batting_stat(session, game_id="20250101", team_code="LG", player_id=10001, pa=60, ab=50)
+        _add_batting_stat(session, game_id="20250102", team_code="LG", player_id=10001, pa=55, ab=50)
+        agg = HomeAwaySplitAggregator(session)
+        with caplog.at_level("INFO"):
+            agg.print_report(2025, top_n=3)
+        assert "홈/원정" in caplog.text
+        assert "PlayerID" in caplog.text
