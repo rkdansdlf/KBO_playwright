@@ -296,7 +296,8 @@ class ScheduleCrawler:
 
         return True, "ok"
 
-    def _normalize_schedule_status(self, status: object) -> str:
+    @staticmethod
+    def _normalize_schedule_status(status: object) -> str:
         normalized = normalize_game_status(str(status or "").strip())
         if normalized:
             return normalized
@@ -543,7 +544,7 @@ class ScheduleCrawler:
                     "away_team_code": away_code,
                     "home_team_code": home_code,
                     "doubleheader_no": g["doubleheader_no"],
-                    "game_status": self._normalize_schedule_status(g.get("game_status")),
+                    "game_status": ScheduleCrawler._normalize_schedule_status(g.get("game_status")),
                     "crawl_status": g["crawl_status"],
                     "game_time": g.get("game_time"),
                     "stadium": g.get("stadium"),
@@ -597,7 +598,8 @@ class ScheduleCrawler:
 
         return games
 
-    def _extract_game_id(self, href: str) -> str:
+    @staticmethod
+    def _extract_game_id(href: str) -> str:
         """URL(href)에서 game_id를 안전하게 추출합니다."""
         try:
             if "gameId=" in href:
