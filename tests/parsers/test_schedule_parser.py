@@ -124,6 +124,69 @@ class TestParseScheduleHtml:
         assert len(games) == 3
 
 
+class TestParseScheduleHtmlFallback:
+    def test_game_id_failing_split_uses_fallback(self):
+        html = """
+        <html><body>
+        <a href="?gameId=20250325ZZYY0">Game with non-standard team codes</a>
+        </body></html>
+        """
+        games = parse_schedule_html(html, default_year=2025)
+        assert len(games) == 1
+        g = games[0]
+        assert g["game_id"] == "20250325ZZYY0"
+        assert g["away_team_code"] is not None
+        assert g["home_team_code"] is not None
+
+    def test_game_id_without_digit_suffix_gets_doubleheader_zero(self):
+        html = """
+        <html><body>
+        <a href="?gameId=20250325LGXX">Game</a>
+        </body></html>
+        """
+        games = parse_schedule_html(html, default_year=2025)
+        assert len(games) == 1
+        assert games[0]["doubleheader_no"] == 0
+
+    def test_game_id_with_digit_suffix_gets_doubleheader_from_last_char(self):
+        html = """
+        <html><body>
+        <a href="?gameId=20250325LGXX5">Game</a>
+        </body></html>
+        """
+        games = parse_schedule_html(html, default_year=2025)
+        assert len(games) == 1
+        assert games[0]["doubleheader_no"] == 5
+
+    def test_href_without_gameId_skipped(self):
+        html = """
+        <html><body>
+        <a href="https://example.com/notice">No gameId in href</a>
+        <a href="/schedule?date=20250325">Also no gameId</a>
+        </body></html>
+        """
+        games = parse_schedule_html(html, default_year=2025)
+        assert len(games) == 0
+
+    def test_gameId_param_without_value_skipped(self):
+        html = """
+        <html><body>
+        <a href="?gameId=">Empty gameId</a>
+        </body></html>
+        """
+        games = parse_schedule_html(html, default_year=2025)
+        assert len(games) == 0
+
+    def test_year_falls_back_to_game_id_prefix(self):
+        html = """
+        <html><body>
+        <a href="?gameId=20241015LGSS0">Old Game</a>
+        </body></html>
+        """
+        games = parse_schedule_html(html)
+        assert games[0]["season_year"] == 2024
+
+
 class TestLinkPattern:
     def test_extracts_game_id(self):
         m = LINK_PATTERN.search("gameId=20250325LGSS0")

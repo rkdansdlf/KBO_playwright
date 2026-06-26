@@ -97,6 +97,22 @@ class TestSelectTables:
         base, adv = _select_tables(tables)
         assert len(base) == 1
 
+    def test_adv_only_table_goes_to_adv(self):
+        tables = [
+            {"headers": ["연도", "출루율", "장타율"], "rows": [["2020", "0.350", "0.500"]]},
+        ]
+        base, adv = _select_tables(tables)
+        assert len(base) == 0
+        assert len(adv) == 1
+
+    def test_english_header_markers(self):
+        tables = [
+            {"headers": ["Year", "AB", "H"], "rows": [["2020", "350", "120"]]},
+        ]
+        base, adv = _select_tables(tables)
+        assert len(base) == 1
+        assert len(adv) == 0
+
 
 class TestApplyStat:
     def test_applies_stat(self):
@@ -216,6 +232,34 @@ class TestHitterTables:
     def test_hitter_empty_tables(self):
         assert parse_retired_hitter_tables([]) == []
 
+    def test_hitter_empty_season_label_skipped(self):
+        tables = [
+            {
+                "headers": ["연도", "팀명", "경기", "타수", "안타"],
+                "rows": [
+                    ["", "두산", "100", "350", "120"],
+                    ["2020", "두산", "100", "350", "120"],
+                ],
+            },
+        ]
+        records = parse_retired_hitter_tables(tables)
+        assert len(records) == 1
+        assert records[0]["season"] == 2020
+
+    def test_hitter_whitespace_season_label_skipped(self):
+        tables = [
+            {
+                "headers": ["연도", "팀명", "경기", "타수", "안타"],
+                "rows": [
+                    ["  ", "두산", "100", "350", "120"],
+                    ["2021", "LG", "50", "200", "60"],
+                ],
+            },
+        ]
+        records = parse_retired_hitter_tables(tables)
+        assert len(records) == 1
+        assert records[0]["season"] == 2021
+
 
 class TestPitcherTable:
     def test_basic_pitcher(self):
@@ -286,6 +330,30 @@ class TestPitcherTable:
         table = {"headers": [], "rows": []}
         assert parse_retired_pitcher_table(table) == []
 
+    def test_pitcher_empty_season_label_skipped(self):
+        table = {
+            "headers": ["연도", "팀명", "경기", "승", "패"],
+            "rows": [
+                ["", "삼성", "45", "5", "3"],
+                ["2021", "삼성", "45", "5", "3"],
+            ],
+        }
+        records = parse_retired_pitcher_table(table)
+        assert len(records) == 1
+        assert records[0]["season"] == 2021
+
+    def test_pitcher_whitespace_season_label_skipped(self):
+        table = {
+            "headers": ["연도", "팀명", "경기", "승", "패"],
+            "rows": [
+                ["  ", "삼성", "45", "5", "3"],
+                ["2022", "LG", "30", "3", "2"],
+            ],
+        }
+        records = parse_retired_pitcher_table(table)
+        assert len(records) == 1
+        assert records[0]["season"] == 2022
+
     def test_pitcher_extra_stats(self):
         table = {
             "headers": ["연도", "팀명", "경기", "승", "패", "K/BB", "BB%"],
@@ -324,3 +392,16 @@ class TestMergeCleanup:
         record = {"extra_stats": {}}
         _cleanup_consumed(record)
         assert record["extra_stats"] is None
+
+    def test_merge_extra_stats_all_consumed(self):
+        record = {"_consumed_keys": {"연도", "팀명", "경기", "타수", "안타"}}
+        row = {"연도": "2020", "팀명": "두산", "경기": "100", "타수": "350", "안타": "120"}
+        _merge_extra_stats(record, row, record["_consumed_keys"])
+        assert record["extra_stats"] == {}
+
+    def test_merge_extra_stats_empty_key_skipped(self):
+        record = {"_consumed_keys": set()}
+        row = {"": "value", "유효": "data"}
+        _merge_extra_stats(record, row, record["_consumed_keys"])
+        assert "" not in record["extra_stats"]
+        assert record["extra_stats"]["유효"] == "data"
