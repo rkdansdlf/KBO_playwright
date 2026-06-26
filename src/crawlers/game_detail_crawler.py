@@ -1710,10 +1710,10 @@ class GameDetailCrawler:
         for section in ("ENTRY", "LINEUP"):
             lineup_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
 
-            async def _navigate_lineup() -> None:
+            async def _navigate_lineup(_url: str = lineup_url) -> None:
                 """Handles the navigate lineup operation."""
                 await self.policy.delay_async()
-                await page.goto(lineup_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
+                await page.goto(_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
                 with contextlib.suppress(PlaywrightError, TimeoutError):
                     await page.wait_for_selector(
                         GAME_DETAIL.lineup_link,
