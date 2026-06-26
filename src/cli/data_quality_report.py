@@ -134,7 +134,7 @@ def _write_csv_report(report_data: dict, path: str) -> None:
                         data[category]["total"],
                         data[category].get("consistency_rate", "N/A"),
                         sources,
-                    ]
+                    ],
                 )
 
 

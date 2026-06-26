@@ -107,7 +107,10 @@ class ScheduleCrawler:
                 await pool.close()
 
     async def crawl_season(
-        self, year: int, months: list[int] | None = None, series_id: str | None = None
+        self,
+        year: int,
+        months: list[int] | None = None,
+        series_id: str | None = None,
     ) -> list[dict]:
         """주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 

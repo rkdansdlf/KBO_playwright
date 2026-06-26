@@ -513,7 +513,9 @@ def get_team_stats_trend(session: Session, gate_result: dict[str, Any] | None = 
 
 
 def get_daily_metrics(
-    session: Session, target_date_str: str, gate_result: dict[str, Any] | None = None
+    session: Session,
+    target_date_str: str,
+    gate_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
     target_dt = parse_date_str(target_date_str)

@@ -147,7 +147,9 @@ async def run_weekly_maintenance(
     await _run_weekly_step("🩺 Step 2: Running Database Healthcheck...", "Error during healthcheck", _healthcheck_step)
     await _run_weekly_step("📅 Step 3: Crawling Team Events & News...", "Error crawling team events", _team_events_step)
     await _run_weekly_step(
-        "🎵 Step 4: Crawling Fan Culture & Cheer Songs...", "Error crawling fan culture", _fan_culture_step
+        "🎵 Step 4: Crawling Fan Culture & Cheer Songs...",
+        "Error crawling fan culture",
+        _fan_culture_step,
     )
     _cleanup_oci_duplicates(oci_url)
 

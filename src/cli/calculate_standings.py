@@ -218,7 +218,7 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 runs_against=away_score,
                 is_home=True,
                 game_date=game_date,
-            )
+            ),
         )
         away_state.add_game(
             GameResultData(
@@ -229,7 +229,7 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 runs_against=home_score,
                 is_home=False,
                 game_date=game_date,
-            )
+            ),
         )
     elif away_score > home_score:
         home_state.add_game(
@@ -241,7 +241,7 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 runs_against=away_score,
                 is_home=True,
                 game_date=game_date,
-            )
+            ),
         )
         away_state.add_game(
             GameResultData(
@@ -252,7 +252,7 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 runs_against=home_score,
                 is_home=False,
                 game_date=game_date,
-            )
+            ),
         )
     else:
         home_state.add_game(
@@ -264,7 +264,7 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 runs_against=away_score,
                 is_home=True,
                 game_date=game_date,
-            )
+            ),
         )
         away_state.add_game(
             GameResultData(
@@ -275,7 +275,7 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 runs_against=home_score,
                 is_home=False,
                 game_date=game_date,
-            )
+            ),
         )
 
 

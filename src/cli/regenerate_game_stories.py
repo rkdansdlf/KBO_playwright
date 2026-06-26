@@ -135,7 +135,11 @@ def _season_filters(seasons: Iterable[int]) -> list:
 
 
 def _query_target_games(
-    session: Session, *, game_ids: Sequence[str], dates: Sequence[str], seasons: Sequence[int]
+    session: Session,
+    *,
+    game_ids: Sequence[str],
+    dates: Sequence[str],
+    seasons: Sequence[int],
 ) -> list[Game]:
     query = session.query(Game)
     filters = []
@@ -217,7 +221,11 @@ def _write_backup(session: Session, game_ids: Sequence[str], path: Path) -> None
 
 
 def _sync_story_summaries(
-    game_ids: Sequence[str], rows: Sequence[StoryRegenReportRow], *, oci_url: str, log: Callable[[str], object]
+    game_ids: Sequence[str],
+    rows: Sequence[StoryRegenReportRow],
+    *,
+    oci_url: str,
+    log: Callable[[str], object],
 ) -> None:
     if not game_ids:
         return
@@ -239,7 +247,9 @@ def _sync_story_summaries(
 
 
 def _append_missing_game_rows(
-    rows: list[StoryRegenReportRow], requested_ids: Sequence[str], games_by_id: dict[str, Game]
+    rows: list[StoryRegenReportRow],
+    requested_ids: Sequence[str],
+    games_by_id: dict[str, Game],
 ) -> None:
     rows.extend(
         StoryRegenReportRow(game_id=requested_id, game_date="", status="SKIPPED_GAME_NOT_FOUND")
@@ -248,7 +258,8 @@ def _append_missing_game_rows(
 
 
 def _load_existing_story_summaries(
-    session: Session, games: Sequence[Game]
+    session: Session,
+    games: Sequence[Game],
 ) -> tuple[dict[str, list[GameSummary]], dict[str, str | None]]:
     existing_summary_rows: dict[str, list[GameSummary]] = {}
     existing_summaries: dict[str, str | None] = {}
@@ -297,7 +308,10 @@ def _build_story_report_row(
 
 
 def _upsert_story_summary(
-    session: Session, game_id: str, new_json: str, existing_rows: dict[str, list[GameSummary]]
+    session: Session,
+    game_id: str,
+    new_json: str,
+    existing_rows: dict[str, list[GameSummary]],
 ) -> None:
     summaries = existing_rows.get(game_id) or []
     if summaries:

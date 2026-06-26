@@ -401,7 +401,11 @@ async def run_pbp_healer_async(
     logger.warning("⚠️  [PBP Healer] 검증 실패 게임 %s건 발견", found)
     for item in results:
         logger.info(
-            "   • %s (%s vs %s) - %s", item["game_id"], item["away_team"], item["home_team"], item["error_reason"]
+            "   • %s (%s vs %s) - %s",
+            item["game_id"],
+            item["away_team"],
+            item["home_team"],
+            item["error_reason"],
         )
 
     # --- Telegram: 발견 알림 ---

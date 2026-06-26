@@ -71,7 +71,10 @@ def _freshness_base_query(session: Session) -> Query:
 
 
 def _apply_freshness_date_filter(
-    query: Query, target_date: str | None, days: int | None, max_hours: int | None = None
+    query: Query,
+    target_date: str | None,
+    days: int | None,
+    max_hours: int | None = None,
 ) -> Query:
     if target_date:
         return query.filter(Game.game_date == parse_date_str(target_date))

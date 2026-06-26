@@ -329,7 +329,10 @@ def report_to_json(report: QualityRegressionReport) -> str:
 
 
 def _run_check(
-    conn: Connection, inspector: Inspector, table_names: set[str], check: _SqlCheck
+    conn: Connection,
+    inspector: Inspector,
+    table_names: set[str],
+    check: _SqlCheck,
 ) -> QualityRegressionResult:
     if check.table not in table_names:
         return QualityRegressionResult(

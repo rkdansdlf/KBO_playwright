@@ -48,7 +48,11 @@ class PlayerMovementCrawler:
         self._raw_pages: list[dict[str, object]] = []
 
     async def crawl_years(
-        self, start_year: int, end_year: int, *, save_snapshots: bool = False
+        self,
+        start_year: int,
+        end_year: int,
+        *,
+        save_snapshots: bool = False,
     ) -> list[dict[str, Any]]:
         """Crawl data for a range of years."""
         results = []

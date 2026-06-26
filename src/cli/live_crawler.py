@@ -301,11 +301,17 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 raise ValueError(msg)
             except (PlaywrightError, TimeoutError, RuntimeError, ValueError) as fallback_err:
                 logger.warning(
-                    "KBO fallback attempt %s failed for %s: %s", attempt, game_id, fallback_err, exc_info=True
+                    "KBO fallback attempt %s failed for %s: %s",
+                    attempt,
+                    game_id,
+                    fallback_err,
+                    exc_info=True,
                 )
                 if attempt == max_attempts:
                     logger.exception(
-                        "[FALLBACK ERROR] KBO fallback failed all %s attempts for %s", max_attempts, game_id
+                        "[FALLBACK ERROR] KBO fallback failed all %s attempts for %s",
+                        max_attempts,
+                        game_id,
                     )
                     break
                 backoff = 2.0**attempt

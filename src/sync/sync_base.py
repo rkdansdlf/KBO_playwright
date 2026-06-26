@@ -996,7 +996,7 @@ class OCISyncBase:
                         logger.warning("Failed to close COPY connection before fallback", exc_info=True)
 
                     connection = self._raw_oci_connection_with_retries(
-                        label=f"{config.model.__tablename__}.sync.fallback"
+                        label=f"{config.model.__tablename__}.sync.fallback",
                     )
 
                     for record in records:

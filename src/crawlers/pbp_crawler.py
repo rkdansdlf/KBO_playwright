@@ -156,7 +156,12 @@ class PBPCrawler:
         return outs_before, runners_before
 
     def _build_legacy_event(
-        self, state: dict[str, Any], text: str, sequence: int, outs_before: int, runners_before: int
+        self,
+        state: dict[str, Any],
+        text: str,
+        sequence: int,
+        outs_before: int,
+        runners_before: int,
     ) -> dict[str, Any]:
         is_bottom = state["current_half"] == "bottom"
         score_diff_before = state["home_score"] - state["away_score"]
@@ -230,7 +235,7 @@ class PBPCrawler:
             page = await pool.acquire()
             try:
                 return await self._crawl_game_events_page(
-                    GameEventsContext(pool, page, game_id, game_date, url, retry_count)
+                    GameEventsContext(pool, page, game_id, game_date, url, retry_count),
                 )
             finally:
                 await pool.release(page)
@@ -248,7 +253,7 @@ class PBPCrawler:
                 return None
             if self._is_auth_redirect(ctx.page):
                 return await self._retry_after_auth_redirect(
-                    GameEventsContext(ctx.pool, ctx.page, ctx.game_id, ctx.game_date, ctx.url, ctx.retry_count)
+                    GameEventsContext(ctx.pool, ctx.page, ctx.game_id, ctx.game_date, ctx.url, ctx.retry_count),
                 )
             if not await self._wait_for_pbp_container(ctx.page, ctx.game_id):
                 return None

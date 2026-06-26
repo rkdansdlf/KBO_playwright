@@ -215,7 +215,7 @@ class TeamStatAggregator:
         """Aggregates and updates both batting and pitching stats."""
         batting_results = self.aggregate_batting(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
         pitching_results = self.aggregate_pitching(
-            TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run)
+            TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run),
         )
         return {
             "batting": batting_results,
@@ -704,7 +704,7 @@ class TeamStatAggregator:
 
         aggregator = TeamStatAggregator()
         return aggregator.aggregate_batting(
-            TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map)
+            TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map),
         )
 
     @staticmethod
@@ -740,7 +740,7 @@ class TeamStatAggregator:
 
         aggregator = TeamStatAggregator()
         results = aggregator.aggregate_pitching(
-            TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map)
+            TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map),
         )
 
         # Supplement ties from standings

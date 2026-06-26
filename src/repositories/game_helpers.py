@@ -277,7 +277,9 @@ def _query_db_season_by_code(session: Session, season_year: int, league_type_cod
 
 
 def _resolve_schedule_season_id(
-    session: Session, game_data: dict[str, Any], existing_season_id: int | None
+    session: Session,
+    game_data: dict[str, Any],
+    existing_season_id: int | None,
 ) -> int | None:
     explicit = _coerce_int(game_data.get("season_id"))
     if explicit is not None:
@@ -916,7 +918,8 @@ def _replace_records_for_side(
     write_contract = ctx.write_contract if ctx else None
     dataset = f"{record_key.model.__tablename__}.{record_key.team_side}"
     query = session.query(record_key.model).filter(
-        record_key.model.game_id == record_key.game_id, record_key.model.team_side == record_key.team_side
+        record_key.model.game_id == record_key.game_id,
+        record_key.model.team_side == record_key.team_side,
     )
     if _records_match_existing(query.all(), record_key.model, mappings):
         if source and write_contract:

@@ -117,7 +117,7 @@ def check_all_terminal_status(session: Session, target: date) -> CheckResult:
                     "status": status,
                     "home_team": game.home_team,
                     "away_team": game.away_team,
-                }
+                },
             )
 
     if non_terminal:
@@ -347,7 +347,7 @@ def check_winning_team_consistency(session: Session, target: date) -> CheckResul
                     "expected": expected,
                     "home_score": game.home_score,
                     "away_score": game.away_score,
-                }
+                },
             )
 
     if mismatches:
@@ -446,7 +446,7 @@ def run_integrity_checks(target_date: str) -> IntegrityReport:
                         name=check_fn.__name__,
                         passed=False,
                         message=f"Exception: {e}",
-                    )
+                    ),
                 )
 
     passed_count = sum(1 for r in results if r.passed)

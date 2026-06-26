@@ -372,7 +372,10 @@ class PreviewCrawler:
         }
 
     async def _enrich_preview_lineups(
-        self, game_row: dict[str, Any], preview_data: dict[str, Any], page: Page | None
+        self,
+        game_row: dict[str, Any],
+        preview_data: dict[str, Any],
+        page: Page | None,
     ) -> None:
         await asyncio.sleep(self.request_delay)
         lineup_payload = {

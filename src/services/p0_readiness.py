@@ -369,11 +369,19 @@ def _check_schedule_completeness(
             )
         if not _meta_has_start_time(meta):
             _add_failure(
-                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_start_time"
+                failures,
+                dataset="schedule",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_start_time",
             )
         if not _meta_has_stadium(game, meta):
             _add_failure(
-                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_stadium"
+                failures,
+                dataset="schedule",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_stadium",
             )
 
 
@@ -393,19 +401,31 @@ def _check_pregame_completeness(
             starters_complete += 1
         else:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_starter"
+                failures,
+                dataset="pregame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_starter",
             )
 
         if {"away", "home"} <= lineup_sides.get(game.game_id, set()):
             lineups_complete += 1
         else:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_lineup"
+                failures,
+                dataset="pregame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_lineup",
             )
 
         if game.game_id not in preview_ids:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_preview"
+                failures,
+                dataset="pregame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_preview",
             )
 
     return {"starters_complete": starters_complete, "lineups_complete": lineups_complete, "preview_ids": preview_ids}
@@ -433,11 +453,19 @@ def _check_live_completeness(
         has_relay = event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
         if not has_relay:
             _add_failure(
-                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_relay"
+                failures,
+                dataset="live",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_live_relay",
             )
         if not _score_present(game):
             _add_failure(
-                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_score"
+                failures,
+                dataset="live",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_live_score",
             )
 
 
@@ -484,7 +512,11 @@ def _check_postgame_completeness(
             counts["innings_ok"] += 1
         else:
             _add_failure(
-                failures, dataset="postgame", game_id=game.game_id, game_date=game_date, reason="missing_inning_score"
+                failures,
+                dataset="postgame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_inning_score",
             )
 
         if game.game_id in decision_ids:
@@ -570,7 +602,11 @@ def _check_broadcast_completeness(
             skip_counts[reason] = skip_counts.get(reason, 0) + 1
             skip_game_ids.setdefault(reason, []).append(str(game.game_id))
             _add_failure(
-                failures, dataset="broadcast", game_id=game.game_id, game_date=_date_key(game.game_date), reason=reason
+                failures,
+                dataset="broadcast",
+                game_id=game.game_id,
+                game_date=_date_key(game.game_date),
+                reason=reason,
             )
     return {"broadcast_ok": broadcast_ok, "skip_counts": skip_counts, "skip_game_ids": skip_game_ids}
 

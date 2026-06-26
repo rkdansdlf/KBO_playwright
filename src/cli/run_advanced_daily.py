@@ -158,7 +158,9 @@ async def run_advanced_update(
     any_error = False
 
     any_error |= await _run_step(
-        "🛡️ Step 1: Crawling Fielding Stats...", "Error crawling fielding stats", lambda: _crawl_fielding_step(year)
+        "🛡️ Step 1: Crawling Fielding Stats...",
+        "Error crawling fielding stats",
+        lambda: _crawl_fielding_step(year),
     )
     any_error |= await _run_step(
         "🏃 Step 2: Crawling Baserunning Stats...",
@@ -181,7 +183,9 @@ async def run_advanced_update(
         lambda: _aggregate_team_defense_step(year),
     )
     any_error |= await _run_step(
-        "🏷️ Step 6: Recalculating Stat Rankings...", "Error recalculating rankings", lambda: _rebuild_rankings_step(year)
+        "🏷️ Step 6: Recalculating Stat Rankings...",
+        "Error recalculating rankings",
+        lambda: _rebuild_rankings_step(year),
     )
 
     if sync:

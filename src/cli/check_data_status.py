@@ -80,7 +80,8 @@ def _log_season_type_counts(session: Session) -> dict[str, int]:
     type_counts = {}
     logger.info("\nBy season type:")
     for season_type, count in _safe_rows(
-        session, "SELECT season_type, COUNT(*) FROM game_schedules GROUP BY season_type"
+        session,
+        "SELECT season_type, COUNT(*) FROM game_schedules GROUP BY season_type",
     ):
         type_counts[season_type] = count
         logger.info("  %s: %s", season_type, count)
@@ -610,7 +611,9 @@ def _log_full_status_summary(
 
 
 def _collect_status_warnings(
-    schedule_stats: dict[str, Any], futures_stats: dict[str, Any], pregame_pitcher_stats: dict[str, Any]
+    schedule_stats: dict[str, Any],
+    futures_stats: dict[str, Any],
+    pregame_pitcher_stats: dict[str, Any],
 ) -> list[str]:
     warnings = []
     if schedule_stats["total"] == 0:
@@ -641,7 +644,7 @@ def _run_full_status_check(*, verbose: bool) -> None:
     logger.info(" Timestamp: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("%s", "=" * 60)
     schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats = _collect_full_status(
-        verbose=verbose
+        verbose=verbose,
     )
     _log_full_status_summary(schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats)
     _log_warnings(_collect_status_warnings(schedule_stats, futures_stats, pregame_pitcher_stats))

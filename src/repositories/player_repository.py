@@ -405,7 +405,8 @@ class PlayerRepository:
 
     @staticmethod
     def _narrow_by_position(
-        candidates: list[PlayerBasic], raw_position: str | None
+        candidates: list[PlayerBasic],
+        raw_position: str | None,
     ) -> tuple[list[PlayerBasic], int | None]:
         if not raw_position:
             return candidates, None
@@ -428,7 +429,7 @@ class PlayerRepository:
         profile_matches = []
         for candidate in candidates:
             has_profile = session.execute(
-                select(Player.id).where(Player.player_basic_id == candidate.player_id)
+                select(Player.id).where(Player.player_basic_id == candidate.player_id),
             ).scalar_one_or_none()
             if has_profile:
                 profile_matches.append(candidate)
@@ -494,13 +495,20 @@ class PlayerRepository:
                 return player_id
 
         roster_player_id = self._unique_roster_movement_player_id(
-            session, player_name, canonical_team_id, season, {c.player_id for c in candidates}
+            session,
+            player_name,
+            canonical_team_id,
+            season,
+            {c.player_id for c in candidates},
         )
         if roster_player_id:
             return roster_player_id
 
         franchise_season_player_id = self._unique_franchise_season_player_id(
-            session, canonical_team_id, season, {c.player_id for c in candidates}
+            session,
+            canonical_team_id,
+            season,
+            {c.player_id for c in candidates},
         )
         if franchise_season_player_id:
             return franchise_season_player_id
