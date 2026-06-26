@@ -1277,15 +1277,19 @@ def crawl_transit_time_job():
     Jamsil Stadium every 15 minutes on game days (D-2h ~ D+1h window).
     Uses LIVE_LOCK to prevent conflicts with live crawlers.
     """
-    with LIVE_LOCK:
+    if not LIVE_LOCK.acquire(blocking=False):
+        logger.info("Skipping transit time because LIVE_LOCK is already held")
+        return
+    try:
         logger.info("[Transit] Starting transit time measurement")
-        try:
-            from src.crawlers.transit_time_crawler import TransitTimeCrawler
+        from src.crawlers.transit_time_crawler import TransitTimeCrawler
 
-            asyncio.run(TransitTimeCrawler().run(save=True))
-            logger.info("[Transit] Transit time measurement completed")
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Transit time job failed")
+        asyncio.run(TransitTimeCrawler().run(save=True))
+        logger.info("[Transit] Transit time measurement completed")
+    except SCHEDULER_JOB_EXCEPTIONS:
+        logger.exception("Transit time job failed")
+    finally:
+        LIVE_LOCK.release()
 
 
 def crawl_congestion_job():
@@ -1293,15 +1297,19 @@ def crawl_congestion_job():
     every 5 minutes on game days (D-3h ~ D+2h window).
     Uses LIVE_LOCK to stay in the same priority tier as live crawlers.
     """
-    with LIVE_LOCK:
+    if not LIVE_LOCK.acquire(blocking=False):
+        logger.info("Skipping congestion because LIVE_LOCK is already held")
+        return
+    try:
         logger.info("[Congestion] Starting congestion data collection")
-        try:
-            from src.crawlers.congestion_crawler import CongestionCrawler
+        from src.crawlers.congestion_crawler import CongestionCrawler
 
-            asyncio.run(CongestionCrawler().run(save=True))
-            logger.info("[Congestion] Congestion data collection completed")
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Congestion job failed")
+        asyncio.run(CongestionCrawler().run(save=True))
+        logger.info("[Congestion] Congestion data collection completed")
+    except SCHEDULER_JOB_EXCEPTIONS:
+        logger.exception("Congestion job failed")
+    finally:
+        LIVE_LOCK.release()
 
 
 def crawl_operation_notices_job():
