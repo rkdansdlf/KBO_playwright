@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select, text
