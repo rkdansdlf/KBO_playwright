@@ -325,9 +325,9 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 
 ### Current Verification Baseline (2026-06-28)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (181 rules enabled, 0 warnings).
+- `ruff check src/ tests/ scripts/` = 0 errors (188 rules enabled, 0 warnings).
 - `ruff format --check .` = clean.
-- `python3 -m pytest` = **5763 passed**, 0 failures, 2 skipped, 1 xfailed; ~27s.
+- `python3 -m pytest` = **5838 passed**, 0 failures, 2 skipped, 1 xfailed; ~29s.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = **72%** (fail_under=65).
 - `# noqa: BLE001` in `src/` = 0.
@@ -349,6 +349,13 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 | 39 | D400/D415 enable (missing trailing period + terminal punctuation) | ✅ src/ 0 violations; tests/scripts per-file-ignore |
 | 40 | COM812 (missing trailing comma) | ✅ select + tests/scripts per-file-ignore |
 | 41 | D212→D213 (multi-line docstring summary 2nd line) | ✅ 917 auto-fix in src/; tests/scripts per-file-ignore |
+
+### Phase 42-43 Complete (2026-06-28) — PLC0415 ignore, S safety rules
+
+| Phase | Work | Result |
+|-------|------|--------|
+| 42 | PLC0415 (import-outside-top-level) → global ignore | ✅ 202 violations deferred (intentional lazy imports for circular deps) |
+| 43 | S101/S102/S104/S108/S110/S112/S113 enable | ✅ 7 rules; S108 per-file-ignore tests/scripts |
 
 ### Priority 1-3 Complete (2026-06-27) — Test fixes, RUF002/RUF003, PYI
 
