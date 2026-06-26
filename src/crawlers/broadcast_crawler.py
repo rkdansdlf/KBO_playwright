@@ -101,9 +101,10 @@ class BroadcastCrawler:
         }
         """
         data = await page.evaluate(script, {"year": year})
-        return self._normalize_game_ids(data, year)
+        return BroadcastCrawler._normalize_game_ids(data, year)
 
-    def _normalize_game_ids(self, data: list[dict], year: int) -> list[dict]:
+    @staticmethod
+    def _normalize_game_ids(data: list[dict], year: int) -> list[dict]:
         normalized = []
         for item in data:
             game_id = build_kbo_game_id(
@@ -125,7 +126,8 @@ class BroadcastCrawler:
             )
         return normalized
 
-    def _save_to_db(self, data: list[dict]) -> None:
+    @staticmethod
+    def _save_to_db(data: list[dict]) -> None:
         session = SessionLocal()
         repo = BroadcastRepository(session)
         count = 0
