@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncThrottle:
-    """A centralized throttling service with random jitter to prevent IP blocks.
+    """
+    A centralized throttling service with random jitter to prevent IP blocks.
+
     Respects global delays configured via environment variables.
     """
 
@@ -30,7 +32,8 @@ class AsyncThrottle:
         self._locks_lock = threading.Lock()
 
     def _get_lock(self) -> asyncio.Lock:
-        """Gets lock.
+        """
+        Gets lock.
 
         Returns:
             The result of the operation.
@@ -46,7 +49,8 @@ class AsyncThrottle:
 
     @property
     def default_delay(self) -> float:
-        """Handles the default delay operation.
+        """
+        Handles the default delay operation.
 
         Returns:
             float instance.
@@ -56,7 +60,8 @@ class AsyncThrottle:
 
     @default_delay.setter
     def default_delay(self, val: float) -> None:
-        """Handles the default delay operation.
+        """
+        Handles the default delay operation.
 
         Args:
             val: Val.
@@ -65,7 +70,8 @@ class AsyncThrottle:
         self._default_delay = val
 
     def _get_target_delay(self) -> float:
-        """Gets target delay.
+        """
+        Gets target delay.
 
         Returns:
             float instance.
@@ -75,7 +81,9 @@ class AsyncThrottle:
         return max(0.0, self._default_delay + current_jitter)
 
     async def wait(self, host: str = "koreabaseball.com") -> None:
-        """Wait for the required delay plus jitter since the last request to this host.
+        """
+        Wait for the required delay plus jitter since the last request to this host.
+
         Safe for concurrent use.
         """
         lock = self._get_lock()

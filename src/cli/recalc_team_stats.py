@@ -1,4 +1,6 @@
-"""CLI tool to recalculate team-level season stats from player season statistics.
+"""
+CLI tool to recalculate team-level season stats from player season statistics.
+
 Useful for self-healing / rollup recalculations when team stats pages fail.
 """
 
@@ -116,7 +118,9 @@ def run_recalc(
     batting_only: bool = False,
     pitching_only: bool = False,
 ) -> int:
-    """Recalculates team statistics for the given season.
+    """
+    Recalculates team statistics for the given season.
+
     Returns 0 on success, non-zero on failure.
     """
     if team_id:

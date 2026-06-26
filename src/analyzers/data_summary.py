@@ -23,7 +23,8 @@ def _int(val: object) -> int:
 
 
 def analyze_events() -> list[dict[str, Any]]:
-    """Handles the analyze events operation.
+    """
+    Handles the analyze events operation.
 
     Returns:
         List of results.
@@ -51,7 +52,8 @@ def analyze_events() -> list[dict[str, Any]]:
 
 
 def analyze_roster() -> list[dict[str, Any]]:
-    """Handles the analyze roster operation.
+    """
+    Handles the analyze roster operation.
 
     Returns:
         List of results.
@@ -84,7 +86,8 @@ def analyze_roster() -> list[dict[str, Any]]:
 
 
 def analyze_tickets() -> list[dict[str, Any]]:
-    """Handles the analyze tickets operation.
+    """
+    Handles the analyze tickets operation.
 
     Returns:
         List of results.
@@ -117,7 +120,8 @@ def analyze_tickets() -> list[dict[str, Any]]:
 
 
 def analyze_seats() -> list[dict[str, Any]]:
-    """Handles the analyze seats operation.
+    """
+    Handles the analyze seats operation.
 
     Returns:
         List of results.
@@ -139,7 +143,8 @@ def analyze_seats() -> list[dict[str, Any]]:
 
 
 def analyze_parking() -> list[dict[str, Any]]:
-    """Handles the analyze parking operation.
+    """
+    Handles the analyze parking operation.
 
     Returns:
         List of results.
@@ -161,7 +166,8 @@ def analyze_parking() -> list[dict[str, Any]]:
 
 
 def analyze_food() -> list[dict[str, Any]]:
-    """Handles the analyze food operation.
+    """
+    Handles the analyze food operation.
 
     Returns:
         List of results.
@@ -192,7 +198,8 @@ def analyze_food() -> list[dict[str, Any]]:
 
 
 def generate_report() -> str:
-    """Generates generate report.
+    """
+    Generates generate report.
 
     Returns:
         String result.

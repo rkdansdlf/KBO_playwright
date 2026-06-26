@@ -1,4 +1,5 @@
-"""YouTube Data API-based KBO cheer song crawler.
+"""
+YouTube Data API-based KBO cheer song crawler.
 
 Replaces the Namu Wiki crawler (which was blocked) by fetching
 cheer song metadata from official KBO team YouTube channels.
@@ -93,7 +94,8 @@ def _video_to_song(item: YouTubeVideoItem, team_id: str, current_season: int) ->
 
 
 class FanCultureCrawler:
-    """Crawls KBO cheer song metadata from official team YouTube channels.
+    """
+    Crawls KBO cheer song metadata from official team YouTube channels.
 
     Replaces the previous Namu Wiki-based implementation.
     Requires YOUTUBE_API_KEY environment variable.
@@ -112,7 +114,8 @@ class FanCultureCrawler:
         team_filter: str | None = None,
         dry_run: bool = False,
     ) -> list[dict]:
-        """Crawl cheer songs from YouTube for all (or one) KBO team.
+        """
+        Crawl cheer songs from YouTube for all (or one) KBO team.
 
         Args:
             save: Persist results to database.

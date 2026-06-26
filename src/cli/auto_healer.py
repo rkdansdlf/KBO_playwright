@@ -1,4 +1,5 @@
-"""KBO Pipeline Auto-Healer.
+"""
+KBO Pipeline Auto-Healer.
 
 Two healing modes:
 
@@ -86,7 +87,8 @@ def _find_inconsistent_games() -> list[Game]:
 
 
 def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> str:
-    """Apply status repair based on one shared collection result item.
+    """
+    Apply status repair based on one shared collection result item.
 
     Returns one of: 'completed', 'cancelled', 'unresolved'
     """
@@ -247,7 +249,8 @@ async def run_healer_async(
     reset_checkpoint: bool = False,
     target_game_ids: list[str] | None = None,
 ) -> int:
-    """Runs healer async.
+    """
+    Runs healer async.
 
     Returns:
         Integer result.
@@ -292,7 +295,8 @@ async def run_healer_async(
 
 
 def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
-    """Scan game_metadata for finished games whose PBP is still 'unverified'.
+    """
+    Scan game_metadata for finished games whose PBP is still 'unverified'.
 
     Returns a list of dicts: {game_id, game_date, away_team, home_team, error_reason}
     """
@@ -344,8 +348,10 @@ async def run_pbp_healer_async(
     lookback_days: int = 3,
     target_game_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """PBP Auto-Healer:
+    """
+    PBP Auto-Healer:
       1. Scan DB for unverified PBP games.
+
       2. Send Telegram notification with the list.
       3. Re-crawl from KBO official website (PBPCrawler).
       4. Re-validate and re-save.
@@ -523,7 +529,8 @@ def run_pbp_healer(argv: Sequence[str] | None = None) -> int:
 
 
 def run_healer(argv: Sequence[str] | None = None) -> int:
-    """Runs healer.
+    """
+    Runs healer.
 
     Args:
         argv: Argv.

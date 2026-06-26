@@ -26,7 +26,8 @@ class DataSourceRepository:
         self.session = session
 
     def save(self, data: dict) -> DataSource:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -48,7 +49,8 @@ class DataSourceRepository:
         return new_record
 
     def get_by_key(self, source_key: str) -> DataSource | None:
-        """Gets by key.
+        """
+        Gets by key.
 
         Args:
             source_key: Source Key.
@@ -61,7 +63,8 @@ class DataSourceRepository:
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_by_domain(self, target_domain: str) -> list[DataSource]:
-        """Gets by domain.
+        """
+        Gets by domain.
 
         Args:
             target_domain: Target Domain.
@@ -74,7 +77,8 @@ class DataSourceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_active_by_domain(self, target_domain: str) -> list[DataSource]:
-        """Gets active by domain.
+        """
+        Gets active by domain.
 
         Args:
             target_domain: Target Domain.
@@ -91,7 +95,8 @@ class DataSourceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_all_active(self) -> list[DataSource]:
-        """Gets all active.
+        """
+        Gets all active.
 
         Returns:
             List of results.
@@ -101,7 +106,8 @@ class DataSourceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def mark_success(self, source_key: str, content_hash: str) -> DataSource | None:
-        """Handles the mark success operation.
+        """
+        Handles the mark success operation.
 
         Args:
             source_key: Source Key.
@@ -121,7 +127,8 @@ class DataSourceRepository:
         return self.get_by_key(source_key)
 
     def get_stale_sources(self, max_hours: int = 48) -> list[DataSource]:
-        """Gets stale sources.
+        """
+        Gets stale sources.
 
         Args:
             max_hours: Max Hours.
@@ -146,7 +153,8 @@ class RawSourceSnapshotRepository:
         self.session = session
 
     def save(self, data: dict) -> RawSourceSnapshot:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -161,7 +169,8 @@ class RawSourceSnapshotRepository:
         return new_record
 
     def get_by_source_id(self, data_source_id: int, limit: int = 50) -> list[RawSourceSnapshot]:
-        """Gets by source id.
+        """
+        Gets by source id.
 
         Args:
             data_source_id: Data Source ID.
@@ -180,7 +189,8 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_hash(self, data_source_id: int, content_hash: str) -> RawSourceSnapshot | None:
-        """Gets by hash.
+        """
+        Gets by hash.
 
         Args:
             data_source_id: Data Source ID.
@@ -197,7 +207,8 @@ class RawSourceSnapshotRepository:
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_unparsed(self, limit: int = 100) -> list[RawSourceSnapshot]:
-        """Gets unparsed.
+        """
+        Gets unparsed.
 
         Args:
             limit: Limit.
@@ -215,7 +226,8 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_failed_for_retry(self, retry_after_hours: int = 1, limit: int = 50) -> list[RawSourceSnapshot]:
-        """Gets failed for retry.
+        """
+        Gets failed for retry.
 
         Args:
             retry_after_hours: Retry After Hours.
@@ -242,7 +254,8 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_reprocess_pending(self, limit: int = 100) -> list[RawSourceSnapshot]:
-        """Gets reprocess pending.
+        """
+        Gets reprocess pending.
 
         Args:
             limit: Limit.
@@ -266,7 +279,8 @@ class RawSourceSnapshotRepository:
         parser_version: str | None = None,
         error_message: str | None = None,
     ) -> None:
-        """Updates status.
+        """
+        Updates status.
 
         Args:
             snapshot_id: Snapshot ID.

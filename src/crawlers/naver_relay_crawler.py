@@ -11,7 +11,8 @@ class NaverRelayCrawler(RelayCrawler):
     """NaverRelayCrawler class."""
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """Crawls game events.
+        """
+        Crawls game events.
 
         Args:
             game_id: Game ID.

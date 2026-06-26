@@ -27,7 +27,9 @@ class EmbeddingService:
             logger.warning("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
 
     def adjust_embedding_dimension(self, embedding: list[float], target_dim: int = 256) -> list[float]:
-        """Truncates or pads embedding list to target_dim.
+        """
+        Truncates or pads embedding list to target_dim.
+
         If truncating, L2 normalization is applied.
         """
         if not embedding:

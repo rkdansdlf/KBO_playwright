@@ -20,7 +20,8 @@ class BroadcastRepository:
         self.session = session
 
     def save_broadcast(self, data: dict) -> GameBroadcast:
-        """Saves broadcast.
+        """
+        Saves broadcast.
 
         Args:
             data: Data.
@@ -49,7 +50,8 @@ class BroadcastRepository:
         return new_record
 
     def get_by_game(self, game_id: str) -> list[GameBroadcast]:
-        """Gets by game.
+        """
+        Gets by game.
 
         Args:
             game_id: Game ID.
@@ -62,7 +64,8 @@ class BroadcastRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def delete_by_game(self, game_id: str) -> None:
-        """Deletes by game.
+        """
+        Deletes by game.
 
         Args:
             game_id: Game ID.

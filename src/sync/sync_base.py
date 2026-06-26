@@ -1,4 +1,5 @@
-"""Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
+"""
+Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
 Dual-repository pattern: SQLite (dev/validation) → OCI (production).
 """
 
@@ -83,7 +84,8 @@ class GameSyncEligibility:
     skipped_cancelled: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        """Handles the counts operation.
+        """
+        Handles the counts operation.
 
         Returns:
             Dictionary result.
@@ -124,7 +126,8 @@ def _dedupe_records_for_conflict_keys(
     records: list[dict[str, Any]],
     conflict_keys: list[str],
 ) -> list[dict[str, Any]]:
-    """Mirror Postgres unique semantics while removing duplicate upsert keys.
+    """
+    Mirror Postgres unique semantics while removing duplicate upsert keys.
 
     Postgres unique indexes allow multiple rows when any indexed column is NULL.
     Python tuple-based dedupe would otherwise collapse rows such as away/home
@@ -227,7 +230,8 @@ def load_game_sync_signatures(
     *,
     game_ids: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Loads game signatures.
+    """
+    Loads game signatures.
 
     Args:
         session_or_conn: Session Or Conn.
@@ -338,7 +342,8 @@ def detect_dirty_game_ids(
     *,
     game_ids: list[str] | None = None,
 ) -> list[str]:
-    """Handles the detect dirty game ids operation.
+    """
+    Handles the detect dirty game ids operation.
 
     Args:
         local_session_or_conn: Local Session Or Conn.
@@ -361,7 +366,8 @@ def detect_dirty_game_ids(
 
 
 def filter_game_ids_by_year(game_ids: list[str], year: int | None) -> list[str]:
-    """Filters game ids by year.
+    """
+    Filters game ids by year.
 
     Args:
         game_ids: Game Ids.
@@ -511,7 +517,8 @@ class OCISyncBase:
     """Sync data from SQLite to OCI."""
 
     def __init__(self, oci_url: str, sqlite_session: Session) -> None:
-        """Initialize OCI sync.
+        """
+        Initialize OCI sync.
 
         Args:
             oci_url: PostgreSQL connection string for OCI
@@ -576,7 +583,8 @@ class OCISyncBase:
         return f'"{identifier}"'
 
     def _reset_target_sequence_for_table(self, table_name: str, column_name: str = "id") -> bool:
-        """Align a PostgreSQL serial/identity sequence with MAX(id).
+        """
+        Align a PostgreSQL serial/identity sequence with MAX(id).
 
         Some sync paths use ORM inserts that rely on the target-side sequence
         after prior COPY/upsert or manual repair jobs have changed row ids. If

@@ -29,7 +29,8 @@ UNKNOWN_ID_NAME_RE = re.compile(r"^unknown\s+\d+$", re.IGNORECASE)
 
 
 def normalize_player_name(name: object) -> str:
-    """Normalizes player name.
+    """
+    Normalizes player name.
 
     Args:
         name: Name.
@@ -44,7 +45,8 @@ def normalize_player_name(name: object) -> str:
 
 
 def is_invalid_player_name(name: object) -> bool:
-    """Returns whether the invalid player name.
+    """
+    Returns whether the invalid player name.
 
     Args:
         name: Name.
@@ -62,7 +64,8 @@ def is_invalid_player_name(name: object) -> bool:
 
 
 def normalize_player_id(player_id: object) -> int | None:
-    """Normalizes player id.
+    """
+    Normalizes player id.
 
     Args:
         player_id: Player ID.
@@ -81,7 +84,8 @@ def normalize_player_id(player_id: object) -> int | None:
 
 
 def validate_player_payload(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
-    """Validates player payload.
+    """
+    Validates player payload.
 
     Args:
         payload: Data payload to process.
@@ -109,7 +113,8 @@ def validate_player_payload(payload: Mapping[str, Any]) -> tuple[bool, str | Non
 def filter_valid_player_payloads(
     payloads: Iterable[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], Counter]:
-    """Filters valid player payloads.
+    """
+    Filters valid player payloads.
 
     Args:
         payloads: Payloads.

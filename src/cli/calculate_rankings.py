@@ -66,7 +66,8 @@ _MIN_IP_FLOOR = 90  # 시즌 초반 최소 보호 기준 (90 이닝 아웃 = 30 
 
 
 def _compute_min_pa(session: Session, season: int) -> int:
-    """시즌 진행 경기 수 기반으로 타율 자격 min_pa를 동적으로 계산.
+    """
+    시즌 진행 경기 수 기반으로 타율 자격 min_pa를 동적으로 계산.
 
     완료된 시즌(144경기 이상)은 공식 기준 446 PA 적용.
     진행 중인 시즌은 현재까지의 경기 수 기반으로 완화된 기준 적용.
@@ -78,7 +79,8 @@ def _compute_min_pa(session: Session, season: int) -> int:
 
 
 def _compute_min_ip_outs(session: Session, season: int) -> int:
-    """시즌 진행 경기 수 기반으로 평균자책점 자격 min_ip_outs를 동적으로 계산.
+    """
+    시즌 진행 경기 수 기반으로 평균자책점 자격 min_ip_outs를 동적으로 계산.
 
     완료된 시즌(144경기 이상)은 공식 기준 432 이닝아웃 적용.
     진행 중인 시즌은 현재까지의 경기 수 기반으로 완화된 기준 적용.
@@ -90,7 +92,8 @@ def _compute_min_ip_outs(session: Session, season: int) -> int:
 
 
 def rebuild_rankings(season: int) -> int:
-    """Handles the rebuild rankings operation.
+    """
+    Handles the rebuild rankings operation.
 
     Args:
         season: Season year.

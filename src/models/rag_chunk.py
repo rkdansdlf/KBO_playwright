@@ -11,7 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class RagChunk(Base, TimestampMixin):
-    """Represents an unstructured knowledge chunk (rules, news, historical logs)
+    """
+    Represents an unstructured knowledge chunk (rules, news, historical logs)
     processed and embedded for semantic retrieval.
     """
 

@@ -21,7 +21,8 @@ class FanCultureRepository:
 
     # TeamRivalry
     def save_rivalry(self, data: dict) -> TeamRivalry:
-        """Saves rivalry.
+        """
+        Saves rivalry.
 
         Args:
             data: Data.
@@ -53,7 +54,8 @@ class FanCultureRepository:
         return new_record
 
     def get_all_rivalries(self) -> list[TeamRivalry]:
-        """Gets all rivalries.
+        """
+        Gets all rivalries.
 
         Returns:
             List of results.
@@ -64,7 +66,8 @@ class FanCultureRepository:
 
     # CheerSong
     def save_cheer_song(self, data: dict) -> CheerSong:
-        """Saves cheer song.
+        """
+        Saves cheer song.
 
         Args:
             data: Data.
@@ -93,7 +96,8 @@ class FanCultureRepository:
         return new_record
 
     def get_cheer_songs_by_team(self, team_id: str) -> list[CheerSong]:
-        """Gets cheer songs by team.
+        """
+        Gets cheer songs by team.
 
         Args:
             team_id: Team ID.
@@ -107,7 +111,8 @@ class FanCultureRepository:
 
     # CheerChant
     def save_cheer_chant(self, data: dict) -> CheerChant:
-        """Saves cheer chant.
+        """
+        Saves cheer chant.
 
         Args:
             data: Data.
@@ -134,7 +139,8 @@ class FanCultureRepository:
         return new_record
 
     def get_cheer_chants_by_team(self, team_id: str) -> list[CheerChant]:
-        """Gets cheer chants by team.
+        """
+        Gets cheer chants by team.
 
         Args:
             team_id: Team ID.

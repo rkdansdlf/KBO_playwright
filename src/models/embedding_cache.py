@@ -11,7 +11,8 @@ from .base import Base, TimestampMixin
 
 
 class EmbeddingCache(Base, TimestampMixin):
-    """Cache table mapping SHA-256 hashes of text content and model names
+    """
+    Cache table mapping SHA-256 hashes of text content and model names
     to their computed 256-dimensional float embedding vectors.
     """
 

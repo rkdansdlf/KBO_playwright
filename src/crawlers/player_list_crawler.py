@@ -1,4 +1,6 @@
-"""Compatibility wrapper around the new player search crawler.
+"""
+Compatibility wrapper around the new player search crawler.
+
 Old pipelines expect a PlayerListCrawler that returns hitters/pitchers buckets.
 """
 
@@ -55,7 +57,8 @@ class PlayerListCrawler:
         self.max_pages = max_pages
 
     async def crawl_all_players(self, _season_year: int | None = None) -> dict[str, list[dict[str, Any]]]:
-        """Crawls all players.
+        """
+        Crawls all players.
 
         Args:
             _season_year: Season Year.

@@ -1,4 +1,6 @@
-"""KBO Advanced Daily Data Update Orchestrator.
+"""
+KBO Advanced Daily Data Update Orchestrator.
+
 Fetches fielding, baserunning, and team-level cumulative stats.
 """
 
@@ -145,7 +147,8 @@ async def run_advanced_update(
     sync: bool = False,
     headless: bool = True,
 ) -> None:
-    """Runs advanced.
+    """
+    Runs advanced.
 
     Args:
         year: Season year.

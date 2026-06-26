@@ -1,4 +1,5 @@
-"""Centralized CSS selectors for KBO crawler pages.
+"""
+Centralized CSS selectors for KBO crawler pages.
 
 Keep selectors grouped by page or crawler domain so DOM drift can be reviewed in
 one place before touching extraction logic.
@@ -76,7 +77,8 @@ class GameDetailSelectors:
 
     @property
     def status_selectors(self) -> tuple[str, ...]:
-        """Handles the status selectors operation.
+        """
+        Handles the status selectors operation.
 
         Returns:
             Tuple result.
@@ -91,7 +93,8 @@ class GameDetailSelectors:
 
     @property
     def boxscore_presence_selectors(self) -> tuple[str, ...]:
-        """Handles the boxscore presence selectors operation.
+        """
+        Handles the boxscore presence selectors operation.
 
         Returns:
             Tuple result.

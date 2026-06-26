@@ -1,4 +1,5 @@
-"""Player Basic Repository
+"""
+Player Basic Repository
 UPSERT operations for player_basic table.
 """
 
@@ -32,7 +33,8 @@ class PlayerBasicRepository:
         self.last_filter_counts: Counter = Counter()
 
     def upsert_players(self, players: list[dict[str, Any]]) -> int:
-        """UPSERT player_basic records (idempotent).
+        """
+        UPSERT player_basic records (idempotent).
 
         Args:
             players: List of player dictionaries with keys:

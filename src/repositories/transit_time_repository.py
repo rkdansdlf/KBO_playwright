@@ -29,7 +29,9 @@ class TransitTimeRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumTransitTime, bool]:
-        """Insert or update a transit time measurement.
+        """
+        Insert or update a transit time measurement.
+
         Dedup key: (stadium_code, origin_label, transport_mode, measured_at).
 
         Returns (record, created: bool).
@@ -86,7 +88,8 @@ class TransitTimeRepository:
         origin_label: str | None = None,
         transport_mode: str | None = None,
     ) -> list[StadiumTransitTime]:
-        """Gets by game date.
+        """
+        Gets by game date.
 
         Args:
             stadium_code: Stadium Code.
@@ -115,7 +118,8 @@ class TransitTimeRepository:
         origin_label: str,
         transport_mode: str,
     ) -> StadiumTransitTime | None:
-        """Gets latest.
+        """
+        Gets latest.
 
         Args:
             stadium_code: Stadium Code.

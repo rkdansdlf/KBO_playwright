@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 
 async def run_reconciliation(args: argparse.Namespace) -> int:
-    """Runs reconciliation.
+    """
+    Runs reconciliation.
 
     Args:
         args: Args.
@@ -76,7 +77,8 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

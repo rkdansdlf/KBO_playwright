@@ -1,4 +1,5 @@
-"""P0 game-data readiness checks.
+"""
+P0 game-data readiness checks.
 
 This module keeps the operational readiness rules in one place so the CLI,
 daily finalize summary, and freshness monitor report the same gaps.
@@ -55,7 +56,8 @@ def _env_enabled(name: str, default: str = "1") -> bool:
 
 
 def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
-    """Normalizes yyyymmdd.
+    """
+    Normalizes yyyymmdd.
 
     Args:
         value: Value.
@@ -743,7 +745,8 @@ def build_p0_readiness(
 
 
 def format_p0_readiness_summary(readiness: dict[str, Any] | None) -> str:
-    """Formats p0 readiness summary.
+    """
+    Formats p0 readiness summary.
 
     Args:
         readiness: Readiness.

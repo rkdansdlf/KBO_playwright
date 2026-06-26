@@ -1,4 +1,5 @@
-"""문자중계(Text Relay) 수집 CLI 모듈.
+"""
+문자중계(Text Relay) 수집 CLI 모듈.
 
 단일 또는 여러 경기의 문자중계 데이터를 수집하여 CSV로 저장합니다.
 
@@ -37,7 +38,8 @@ async def run_single_game(
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> int:
-    """Runs single game.
+    """
+    Runs single game.
 
     Returns:
         Integer result.
@@ -58,7 +60,8 @@ async def run_season(
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> dict[str, int]:
-    """Runs season.
+    """
+    Runs season.
 
     Returns:
         Dictionary result.
@@ -82,7 +85,8 @@ async def run_season(
 
 
 async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
-    """Runs from args.
+    """
+    Runs from args.
 
     Args:
         args: Args.
@@ -109,7 +113,8 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

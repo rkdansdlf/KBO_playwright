@@ -1,4 +1,5 @@
-"""Daily Highlight Batch Script
+"""
+Daily Highlight Batch Script
 Generates game highlights from PBP/WPA data, persists them, syncs to OCI, and sends Telegram reports.
 """
 
@@ -178,7 +179,8 @@ async def run_highlight_batch(
     sync_to_oci: bool | None = None,
     notify: bool = True,
 ) -> list[str]:
-    """Runs highlight batch.
+    """
+    Runs highlight batch.
 
     Args:
         target_date_str: Target Date Str.

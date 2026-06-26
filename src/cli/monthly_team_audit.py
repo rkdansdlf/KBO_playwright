@@ -1,4 +1,5 @@
-"""Monthly Team Stats Consistency Audit for Scheduler.
+"""
+Monthly Team Stats Consistency Audit for Scheduler.
 
 Compares TeamSeasonBatting/Pitching with PlayerSeasonBatting/Pitching
 aggregated by team. Reports mismatches without modifying data.

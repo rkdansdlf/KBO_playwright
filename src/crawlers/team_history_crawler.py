@@ -25,7 +25,8 @@ TEAM_HISTORY_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeErr
 
 
 class TeamHistoryCrawler:
-    """Crawls KBO Team History page (https://www.koreabaseball.com/Kbo/League/TeamHistory.aspx)
+    """
+    Crawls KBO Team History page (https://www.koreabaseball.com/Kbo/League/TeamHistory.aspx)
     Collects: Annual Team Names, Logos, Rankings, Season Info.
     """
 
@@ -57,7 +58,8 @@ class TeamHistoryCrawler:
             await self.playwright.stop()
 
     async def crawl(self) -> list[dict]:
-        """Crawls crawl.
+        """
+        Crawls crawl.
 
         Returns:
             List of results.
@@ -151,7 +153,8 @@ class TeamHistoryCrawler:
         return None, None
 
     async def save(self, data: list[dict]) -> None:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.

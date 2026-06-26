@@ -1,4 +1,5 @@
-"""KBO Player Profile Parser
+"""
+KBO Player Profile Parser
 Parses raw KBO profile texts and original string fields into structured attributes.
 """
 
@@ -46,7 +47,8 @@ class PlayerProfileParsed(BaseModel):
 
     @property
     def education_path(self) -> list[str]:
-        """Handles the education path operation.
+        """
+        Handles the education path operation.
 
         Returns:
             List of results.
@@ -63,7 +65,8 @@ class PlayerProfileParsed(BaseModel):
         raise KeyError(item)
 
     def get(self, item: str, default: object = None) -> object:
-        """Gets get.
+        """
+        Gets get.
 
         Args:
             item: Item.
@@ -119,7 +122,8 @@ POS_MAP = {
 
 
 def _clean(s: str | None) -> str:
-    """Handles the clean operation.
+    """
+    Handles the clean operation.
 
     Args:
         s: S.
@@ -212,7 +216,8 @@ def parse_path(s: str) -> list[str]:
 
 
 def parse_money(s: str) -> dict[str, Any | None]:
-    """Parse currency amounts:
+    """
+    Parse currency amounts:
     - '200000달러' -> amount=200000, currency='USD'
     - '160000만원' -> amount=1600000000, currency='KRW'.
     """
@@ -324,7 +329,8 @@ def parse_profile(
     is_active: bool | None = None,
     is_foreign: bool | None = None,
 ) -> dict[str, Any]:
-    """Main entry point. Tokenizes raw profile text and returns a structured dictionary
+    """
+    Main entry point. Tokenizes raw profile text and returns a structured dictionary
     of all parsed values.
     """
     tokens = tokenize_profile(raw_text)

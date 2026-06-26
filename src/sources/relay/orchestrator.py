@@ -58,7 +58,8 @@ class RelayRecoveryOrchestrator:
         return self._capability_cache
 
     def get_capability(self, bucket_id: str, source_name: str) -> CapabilityRecord | None:
-        """Gets capability.
+        """
+        Gets capability.
 
         Args:
             bucket_id: Bucket ID.
@@ -114,7 +115,8 @@ class RelayRecoveryOrchestrator:
             return result, status
 
     def source_order_for_bucket(self, bucket_id: str, override: Iterable[str] | None = None) -> list[str]:
-        """Handles the source order for bucket operation.
+        """
+        Handles the source order for bucket operation.
 
         Args:
             bucket_id: Bucket ID.
@@ -134,7 +136,8 @@ class RelayRecoveryOrchestrator:
         game_ids: Iterable[str],
         source_order: Iterable[str],
     ) -> dict[str, CapabilityRecord]:
-        """Handles the probe bucket operation.
+        """
+        Handles the probe bucket operation.
 
         Args:
             bucket_id: Bucket ID.
@@ -199,7 +202,8 @@ class RelayRecoveryOrchestrator:
         *,
         validator: Callable[[NormalizedRelayResult], str | None] | None = None,
     ) -> tuple[NormalizedRelayResult, list[dict[str, Any]]]:
-        """Fetches game.
+        """
+        Fetches game.
 
         Args:
             game_id: Game ID.

@@ -15,7 +15,9 @@ logger = logging.getLogger("fallback_monitor")
 
 
 class FallbackMonitor:
-    """모니터링 및 알림 시스템을 담당하는 클래스.
+    """
+    모니터링 및 알림 시스템을 담당하는 클래스.
+
     폴백 이벤트 발생 시 로그 기록 및 알림(Slack 등)을 수행합니다.
     """
 
@@ -53,7 +55,9 @@ class FallbackMonitor:
         calculated_data: dict | None = None,
         player_name: str | None = None,
     ) -> str:
-        """수정 전 데이터 스냅샷을 logs/audit_fixes/ 폴더에 {date}_{player_id}_{type}.json 형태로 저장합니다.
+        """
+        수정 전 데이터 스냅샷을 logs/audit_fixes/ 폴더에 {date}_{player_id}_{type}.json 형태로 저장합니다.
+
         기존 백업 파일이 있으면 list에 append하여 덮어쓰기를 방지합니다.
         """
         from pathlib import Path
@@ -62,7 +66,8 @@ class FallbackMonitor:
             """DateTimeEncoder class."""
 
             def default(self, o: object) -> object:
-                """Handles the default operation.
+                """
+                Handles the default operation.
 
                 Args:
                     o: O.

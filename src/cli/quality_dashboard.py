@@ -120,7 +120,8 @@ def load_quality_records(
     days: int | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Loads quality records.
+    """
+    Loads quality records.
 
     Args:
         report_dir: Report directory path.
@@ -144,7 +145,8 @@ def load_quality_records(
 
 
 def build_quality_dashboard(report_dir: Path, *, days: int | None = None, limit: int | None = None) -> dict[str, Any]:
-    """Builds quality dashboard.
+    """
+    Builds quality dashboard.
 
     Args:
         report_dir: Report directory path.

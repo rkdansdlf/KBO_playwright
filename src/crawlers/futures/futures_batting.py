@@ -139,7 +139,8 @@ def _parse_batting_row(headers: list[str], cells: list[str]) -> dict[str, Any]:
 
 
 def _pick_futures_table(soup: BeautifulSoup) -> Tag | None:
-    """Find the Futures stats table safely:
+    """
+    Find the Futures stats table safely:
     1. Look for table near '퓨처스' label
     2. Fallback: find table with season, AVG, OBP, SLG headers.
     """
@@ -168,7 +169,8 @@ async def fetch_and_parse_futures_batting(
     profile_url: str,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[dict]:
-    """Fetch Futures batting stats from player profile page.
+    """
+    Fetch Futures batting stats from player profile page.
 
     Args:
         player_id: KBO player ID (string)

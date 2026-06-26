@@ -319,7 +319,9 @@ async def run_realtime_pipeline() -> None:
 
 
 def run_consistency_check(*, deep: bool = False) -> None:
-    """Runs a post-sync consistency audit between local SQLite and OCI.
+    """
+    Runs a post-sync consistency audit between local SQLite and OCI.
+
     Sends an alert if mismatches are found. Skips silently if OCI is not configured.
     """
     oci_url = get_oci_url()
@@ -341,7 +343,9 @@ def run_consistency_check(*, deep: bool = False) -> None:
 
 
 def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
-    """Helper to run async pipeline synchronously and catch errors for Telegram alerts.
+    """
+    Helper to run async pipeline synchronously and catch errors for Telegram alerts.
+
     After OCI sync completes, automatically runs a count-level consistency audit.
     """
     run_sync = os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1"

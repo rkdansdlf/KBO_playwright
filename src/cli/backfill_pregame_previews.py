@@ -1,4 +1,5 @@
-"""Backfill missing pregame preview data for scheduled games.
+"""
+Backfill missing pregame preview data for scheduled games.
 
 This CLI finds scheduled game dates whose preview summaries or starting
 pitcher fields are incomplete, then runs daily_preview_batch for those dates.
@@ -77,7 +78,8 @@ def find_missing_pregame_dates(
     include_complete: bool = False,
     limit_dates: int | None = None,
 ) -> list[PregameBackfillDate]:
-    """Finds missing pregame dates.
+    """
+    Finds missing pregame dates.
 
     Returns:
         List of results.
@@ -154,7 +156,8 @@ def find_missing_pregame_dates(
 
 
 def get_pregame_date_status(target_date: str) -> PregameBackfillDate | None:
-    """Gets pregame date status.
+    """
+    Gets pregame date status.
 
     Args:
         target_date: Target Date.
@@ -224,7 +227,8 @@ def _log_backfill_result(saved_total: int, failed: list[str], incomplete: list[s
 
 
 async def run_backfill(args: argparse.Namespace) -> int:
-    """Runs run backfill.
+    """
+    Runs run backfill.
 
     Args:
         args: Args.
@@ -273,7 +277,8 @@ async def run_backfill(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.

@@ -21,7 +21,8 @@ class StadiumFoodVendorRepository:
         self.session = session
 
     def save(self, data: dict) -> StadiumFoodVendor:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -48,7 +49,8 @@ class StadiumFoodVendorRepository:
         return new_record
 
     def get_by_stadium(self, stadium_id: str) -> list[StadiumFoodVendor]:
-        """Gets by stadium.
+        """
+        Gets by stadium.
 
         Args:
             stadium_id: Stadium ID.
@@ -65,7 +67,8 @@ class StadiumFoodVendorRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
-        """Saves bulk.
+        """
+        Saves bulk.
 
         Args:
             records: Records.
@@ -89,7 +92,8 @@ class StadiumFoodMenuItemRepository:
         self.session = session
 
     def save(self, data: dict) -> StadiumFoodMenuItem:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -115,7 +119,8 @@ class StadiumFoodMenuItemRepository:
         return new_record
 
     def get_by_vendor(self, vendor_id: int) -> list[StadiumFoodMenuItem]:
-        """Gets by vendor.
+        """
+        Gets by vendor.
 
         Args:
             vendor_id: Vendor ID.
@@ -132,7 +137,8 @@ class StadiumFoodMenuItemRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_stadium(self, stadium_id: str) -> list[dict]:
-        """Gets by stadium.
+        """
+        Gets by stadium.
 
         Args:
             stadium_id: Stadium ID.
@@ -157,7 +163,8 @@ class StadiumFoodMenuItemRepository:
         return [dict(row._mapping) for row in rows]
 
     def bulk_save(self, records: list[dict]) -> int:
-        """Saves bulk.
+        """
+        Saves bulk.
 
         Args:
             records: Records.

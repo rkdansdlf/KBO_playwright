@@ -139,7 +139,8 @@ def _write_csv_report(report_data: dict, path: str) -> None:
 
 
 def generate_report(years: list[int], output_format: str, output_dir: str, db_url: str | None = None) -> None:
-    """Generates generate report.
+    """
+    Generates generate report.
 
     Args:
         years: Years.

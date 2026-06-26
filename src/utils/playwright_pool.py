@@ -130,7 +130,8 @@ class AsyncPlaywrightPool:
 
     @staticmethod
     def _stealth_script() -> str:
-        """Handles the stealth script operation.
+        """
+        Handles the stealth script operation.
 
         Returns:
             String result.
@@ -174,7 +175,8 @@ class AsyncPlaywrightPool:
             await self._queue.put(page)
 
     async def acquire(self) -> Page:
-        """Handles the acquire operation.
+        """
+        Handles the acquire operation.
 
         Returns:
             Page instance.
@@ -188,7 +190,8 @@ class AsyncPlaywrightPool:
         return await self._queue.get()
 
     async def release(self, page: Page) -> None:
-        """Handles the release operation.
+        """
+        Handles the release operation.
 
         Args:
             page: Playwright page object.
@@ -205,7 +208,8 @@ class AsyncPlaywrightPool:
 
     @asynccontextmanager
     async def page(self) -> Page:
-        """Handles the page operation.
+        """
+        Handles the page operation.
 
         Returns:
             Page instance.

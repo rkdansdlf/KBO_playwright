@@ -1,4 +1,5 @@
-"""Context Aggregator Service
+"""
+Context Aggregator Service
 Calculates derived metrics (Head-to-head, Streaks, Trends, WPA moments)
 to provide rich context for LLM analysis.
 """
@@ -164,7 +165,8 @@ class ContextAggregator:
         game_id: str,
         season_year: int | None = None,
     ) -> dict[str, Any]:
-        """Return starter and bullpen lines for a completed game's Coach payload.
+        """
+        Return starter and bullpen lines for a completed game's Coach payload.
 
         The game box-score table is authoritative for who appeared in the game.
         Season pitching rows are joined only as optional enrichment, so Coach

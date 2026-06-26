@@ -24,7 +24,8 @@ class RosterTransactionRepository:
         self.session = session
 
     def save(self, data: dict) -> RosterTransaction:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -66,7 +67,8 @@ class RosterTransactionRepository:
         )
 
     def get_by_team_date(self, team_id: str, transaction_date: date) -> list[RosterTransaction]:
-        """Gets by team date.
+        """
+        Gets by team date.
 
         Args:
             team_id: Team ID.
@@ -87,7 +89,8 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_date(self, transaction_date: date) -> list[RosterTransaction]:
-        """Gets by date.
+        """
+        Gets by date.
 
         Args:
             transaction_date: Transaction Date.
@@ -104,7 +107,8 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_player(self, player_id: int, limit: int = 50) -> list[RosterTransaction]:
-        """Gets by player.
+        """
+        Gets by player.
 
         Args:
             player_id: Player ID.
@@ -123,7 +127,8 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_recent_by_team(self, team_id: str, days: int = 7) -> list[RosterTransaction]:
-        """Gets recent by team.
+        """
+        Gets recent by team.
 
         Args:
             team_id: Team ID.
@@ -145,7 +150,8 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def exists(self, dedupe_key: str) -> bool:
-        """Handles the exists operation.
+        """
+        Handles the exists operation.
 
         Args:
             dedupe_key: Dedupe Key.
@@ -158,7 +164,8 @@ class RosterTransactionRepository:
         return self.session.execute(stmt).scalar_one_or_none() is not None
 
     def bulk_save(self, records: list[dict]) -> int:
-        """Saves bulk.
+        """
+        Saves bulk.
 
         Args:
             records: Records.

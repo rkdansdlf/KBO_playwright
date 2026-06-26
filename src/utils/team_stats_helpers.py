@@ -11,7 +11,8 @@ if TYPE_CHECKING:
 
 
 def get_cell_value(cells: list[Any], index: int) -> str | None:
-    """Gets cell value.
+    """
+    Gets cell value.
 
     Args:
         cells: Cells.
@@ -27,7 +28,8 @@ def get_cell_value(cells: list[Any], index: int) -> str | None:
 
 
 def resolve_team_id(team_name: str, team_mapping: dict[str, str]) -> str | None:
-    """Resolves team id.
+    """
+    Resolves team id.
 
     Args:
         team_name: Team Name.
@@ -47,7 +49,8 @@ def resolve_team_id(team_name: str, team_mapping: dict[str, str]) -> str | None:
 
 
 def parse_numeric(value: str, *, as_float: bool) -> float | int | None:
-    """Parses numeric.
+    """
+    Parses numeric.
 
     Args:
         value: Value.
@@ -69,7 +72,8 @@ def parse_numeric(value: str, *, as_float: bool) -> float | int | None:
 
 
 def extract_team_stat_rows(table: Tag) -> list[Tag]:
-    """Extracts team stat rows.
+    """
+    Extracts team stat rows.
 
     Args:
         table: Table.
@@ -85,7 +89,8 @@ def extract_team_stat_rows(table: Tag) -> list[Tag]:
 
 
 def build_team_column_map(headers: list[str], header_map: dict[str, str]) -> dict[str, int]:
-    """Builds team column.
+    """
+    Builds team column.
 
     Args:
         headers: Headers.
@@ -117,7 +122,8 @@ def parse_team_stats_html(
     *,
     value_parser: Any = None,
 ) -> list[dict[str, Any]]:
-    """Parses team stats html.
+    """
+    Parses team stats html.
 
     Args:
         html: Raw HTML content.
@@ -171,7 +177,8 @@ def _parse_one_team_row(
     float_fields: set[str],
     value_parser: Any,
 ) -> dict[str, Any] | None:
-    """Parses one team row.
+    """
+    Parses one team row.
 
     Args:
         row: Row.

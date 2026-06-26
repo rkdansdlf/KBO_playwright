@@ -1,4 +1,5 @@
-"""Player Profile Enrichment CLI
+"""
+Player Profile Enrichment CLI
 Identifies players with missing basic info (e.g. birth_date, debut_year) and crawls them.
 """
 
@@ -32,7 +33,8 @@ PROFILE_COLLECTION_EXCEPTIONS = (
 
 
 async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None) -> None:
-    """Handles the collect profiles operation.
+    """
+    Handles the collect profiles operation.
 
     Args:
         limit: Limit.

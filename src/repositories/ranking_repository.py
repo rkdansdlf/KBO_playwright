@@ -16,7 +16,8 @@ class RankingRepository(BaseStatsUpsertRepository):
         super().__init__(StatRanking, ["season", "metric", "entity_id", "entity_type"])
 
     def save_rankings(self, rankings: list[dict[str, Any]]) -> int:
-        """Saves rankings.
+        """
+        Saves rankings.
 
         Args:
             rankings: Rankings.

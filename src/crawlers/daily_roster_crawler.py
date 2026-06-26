@@ -1,4 +1,6 @@
-"""Crawler for Daily 1st Team Registration Status.
+"""
+Crawler for Daily 1st Team Registration Status.
+
 Source: https://www.koreabaseball.com/Player/Register.aspx.
 """
 

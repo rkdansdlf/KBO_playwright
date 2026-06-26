@@ -20,7 +20,8 @@ class GameMvpRepository:
         self.session = session
 
     def save_mvp(self, data: dict) -> GameMvp:
-        """Saves mvp.
+        """
+        Saves mvp.
 
         Args:
             data: Data.
@@ -51,7 +52,8 @@ class GameMvpRepository:
         return new_record
 
     def get_by_game(self, game_id: str) -> list[GameMvp]:
-        """Gets by game.
+        """
+        Gets by game.
 
         Args:
             game_id: Game ID.
@@ -64,7 +66,8 @@ class GameMvpRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def delete_by_game(self, game_id: str) -> None:
-        """Deletes by game.
+        """
+        Deletes by game.
 
         Args:
             game_id: Game ID.

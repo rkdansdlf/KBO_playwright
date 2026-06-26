@@ -147,7 +147,8 @@ class GameSyncMixin:
 
         def transform(data: dict[str, Any]) -> dict[str, Any]:
             # If season_id looks like a year (e.g. > 1900), map it
-            """Transforms transform.
+            """
+            Transforms transform.
 
             Args:
                 data: Data.
@@ -215,7 +216,9 @@ class GameSyncMixin:
         }
 
     def _purge_game_detail_children_for_year(self, year: int) -> None:
-        """Delete year-scoped child detail rows on OCI before re-sync.
+        """
+        Delete year-scoped child detail rows on OCI before re-sync.
+
         This prevents stale duplicates when mutable fields (e.g. player_id) change.
         """
         pattern = f"{year}%"
@@ -430,7 +433,8 @@ class GameSyncMixin:
         unsynced_only: bool = False,
         batch_size: int = 5000,
     ) -> dict[str, int]:
-        """Syncs game details.
+        """
+        Syncs game details.
 
         Args:
             days: Days.
@@ -576,7 +580,8 @@ class GameSyncMixin:
             )
 
         def get_child_filters(model_cls: type) -> list | None:
-            """Gets child filters.
+            """
+            Gets child filters.
 
             Args:
                 model_cls: Model Cls.

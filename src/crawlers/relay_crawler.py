@@ -1,4 +1,5 @@
-"""KBO PBP (Relay) Crawler - Powered by Naver Sports API
+"""
+KBO PBP (Relay) Crawler - Powered by Naver Sports API
 Fetches play-by-play data from Naver Sports API instead of KBO website due to access restrictions.
 """
 
@@ -172,7 +173,8 @@ class RelayCrawler:
         self._last_fetch_failure_reason: str | None = None
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
-        """Gets last failure reason.
+        """
+        Gets last failure reason.
 
         Args:
             game_id: Game ID.
@@ -363,7 +365,8 @@ class RelayCrawler:
         dh_no: str,
     ) -> int:
         def is_dh_truthy(v: object) -> bool:
-            """Returns whether the dh truthy.
+            """
+            Returns whether the dh truthy.
 
             Args:
                 v: V.
@@ -626,7 +629,8 @@ class RelayCrawler:
         stadium: str | None = None,
         game_time: str | None = None,
     ) -> dict[str, Any] | None:
-        """Crawls game relay.
+        """
+        Crawls game relay.
 
         Args:
             kbo_game_id: Kbo Game ID.

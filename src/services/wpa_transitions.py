@@ -9,7 +9,8 @@ from src.services.wpa_calculator import WPACalculator
 
 
 def get_event_value(event: object, key: str) -> object | None:
-    """Gets event value.
+    """
+    Gets event value.
 
     Args:
         event: Event.
@@ -25,7 +26,8 @@ def get_event_value(event: object, key: str) -> object | None:
 
 
 def format_base_string(runners: int | None) -> str:
-    """Formats base string.
+    """
+    Formats base string.
 
     Args:
         runners: Runners.
@@ -39,7 +41,8 @@ def format_base_string(runners: int | None) -> str:
 
 
 def parse_base_string(value: object) -> int | None:
-    """Parses base string.
+    """
+    Parses base string.
 
     Args:
         value: Value.
@@ -64,7 +67,8 @@ def parse_base_string(value: object) -> int | None:
 
 
 def coerce_int(value: object) -> int | None:
-    """Handles the coerce int operation.
+    """
+    Handles the coerce int operation.
 
     Args:
         value: Value.
@@ -82,7 +86,8 @@ def coerce_int(value: object) -> int | None:
 
 
 def event_runner_state(event: object) -> int | None:
-    """Handles the event runner state operation.
+    """
+    Handles the event runner state operation.
 
     Args:
         event: Event.
@@ -102,7 +107,8 @@ def event_runner_state(event: object) -> int | None:
 
 
 def event_has_transition_state(event: object) -> bool:
-    """Handles the event has transition state operation.
+    """
+    Handles the event has transition state operation.
 
     Args:
         event: Event.
@@ -126,7 +132,8 @@ def event_has_transition_state(event: object) -> bool:
 
 
 def event_has_wpa_state(event: object) -> bool:
-    """Handles the event has wpa state operation.
+    """
+    Handles the event has wpa state operation.
 
     Args:
         event: Event.
@@ -151,7 +158,8 @@ def apply_wpa_transitions(
     calculator: WPACalculator | None = None,
     only_missing: bool = False,
 ) -> None:
-    """Handles the apply wpa transitions operation.
+    """
+    Handles the apply wpa transitions operation.
 
     Args:
         events: Events.

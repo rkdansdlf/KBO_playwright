@@ -1,4 +1,5 @@
-"""Seed canonical relay validation metrics for completed games.
+"""
+Seed canonical relay validation metrics for completed games.
 
 This command is intentionally conservative: it records a validation state for
 every completed/DRAW game so relay gaps are explainable, but it does not invent
@@ -37,7 +38,8 @@ def seed_relay_validation_metrics(
     season: int | None = None,
     mark_legacy_unavailable: bool = True,
 ) -> dict[str, int]:
-    """Seeds relay validation metrics.
+    """
+    Seeds relay validation metrics.
 
     Returns:
         Dictionary result.

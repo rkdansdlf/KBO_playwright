@@ -1,4 +1,6 @@
-"""Miscellaneous sync: franchises, teams, awards, stadium info, food, ticket, rag, matchup splits, home/away, park factor.
+"""
+Miscellaneous sync: franchises, teams, awards, stadium info, food, ticket, rag, matchup splits, home/away, park factor.
+
 Stadium real-time data: transit times, congestion, operation notices.
 """
 
@@ -174,7 +176,8 @@ class MiscSyncMixin:
             logger.exception("metadata create_all error (might already exist)")
 
         def transform_rag_chunk(data: dict[str, Any]) -> dict[str, Any]:
-            """Transforms rag chunk.
+            """
+            Transforms rag chunk.
 
             Args:
                 data: Data.
@@ -360,7 +363,8 @@ class MiscSyncMixin:
         game_date: str | None = None,
         batch_size: int = 1000,
     ) -> int:
-        """Sync stadium_transit_times from SQLite to OCI.
+        """
+        Sync stadium_transit_times from SQLite to OCI.
 
         Args:
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
@@ -386,7 +390,8 @@ class MiscSyncMixin:
         game_date: str | None = None,
         batch_size: int = 1000,
     ) -> int:
-        """Sync stadium_congestion from SQLite to OCI.
+        """
+        Sync stadium_congestion from SQLite to OCI.
 
         Args:
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
@@ -412,7 +417,8 @@ class MiscSyncMixin:
         game_date: str | None = None,
         batch_size: int = 500,
     ) -> int:
-        """Sync stadium_operation_notices from SQLite to OCI.
+        """
+        Sync stadium_operation_notices from SQLite to OCI.
 
         Args:
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
@@ -544,7 +550,8 @@ class MiscSyncMixin:
         franchise_mapping = self._get_franchise_id_mapping()
 
         def transform(data: dict) -> dict[str, Any]:
-            """Transforms transform.
+            """
+            Transforms transform.
 
             Args:
                 data: Data.

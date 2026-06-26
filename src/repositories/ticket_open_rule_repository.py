@@ -20,7 +20,8 @@ class TicketOpenRuleRepository:
         self.session = session
 
     def save(self, data: dict) -> TicketOpenRule:
-        """Saves save.
+        """
+        Saves save.
 
         Args:
             data: Data.
@@ -46,7 +47,8 @@ class TicketOpenRuleRepository:
         return new_record
 
     def get_by_team(self, team_id: str) -> list[TicketOpenRule]:
-        """Gets by team.
+        """
+        Gets by team.
 
         Args:
             team_id: Team ID.
@@ -63,7 +65,8 @@ class TicketOpenRuleRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_all_active(self) -> list[TicketOpenRule]:
-        """Gets all active.
+        """
+        Gets all active.
 
         Returns:
             List of results.
@@ -73,7 +76,8 @@ class TicketOpenRuleRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
-        """Saves bulk.
+        """
+        Saves bulk.
 
         Args:
             records: Records.

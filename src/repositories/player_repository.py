@@ -38,7 +38,9 @@ class PlayerRepository:
     # Profile / identity handling
     # ------------------------------------------------------------------
     def upsert_player_profile(self, kbo_player_id: str, profile: PlayerProfileParsed) -> Player | None:
-        """Upsert player and primary identity based on parsed profile info.
+        """
+        Upsert player and primary identity based on parsed profile info.
+
         Also synchronizes status and key fields to PlayerBasic.
         """
         if not kbo_player_id:
@@ -214,7 +216,8 @@ class PlayerRepository:
     # Season aggregates (batting/pitching)
     # ------------------------------------------------------------------
     def upsert_season_batting(self, player_id: int, season_data: dict[str, Any]) -> None:
-        """Inserts or updates season batting.
+        """
+        Inserts or updates season batting.
 
         Args:
             player_id: Player ID.
@@ -224,7 +227,8 @@ class PlayerRepository:
         self._upsert_season_stats(PlayerSeasonBatting, player_id, season_data)
 
     def upsert_season_pitching(self, player_id: int, season_data: dict[str, Any]) -> None:
-        """Inserts or updates season pitching.
+        """
+        Inserts or updates season pitching.
 
         Args:
             player_id: Player ID.
@@ -273,7 +277,8 @@ class PlayerRepository:
     # Player Movements
     # ------------------------------------------------------------------
     def save_player_movements(self, movements: list[dict[str, Any]]) -> int:
-        """Saves player movements.
+        """
+        Saves player movements.
 
         Args:
             movements: Movements.

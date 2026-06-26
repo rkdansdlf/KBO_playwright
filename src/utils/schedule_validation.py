@@ -27,7 +27,8 @@ _GAME_ID_RE = re.compile(r"^(\d{8})([A-Z]+)(\d)$")
 
 
 def parse_schedule_date(value: object) -> date | None:
-    """Parses schedule date.
+    """
+    Parses schedule date.
 
     Args:
         value: Value.
@@ -46,7 +47,8 @@ def parse_schedule_date(value: object) -> date | None:
 
 
 def split_schedule_game_id(game_id: object) -> tuple[str, str, str, str] | None:
-    """Splits schedule game id.
+    """
+    Splits schedule game id.
 
     Args:
         game_id: Game ID.
@@ -80,7 +82,8 @@ def validate_schedule_game_payload(
     expected_year: int | None = None,
     expected_month: int | None = None,
 ) -> tuple[bool, str | None]:
-    """Validates schedule game payload.
+    """
+    Validates schedule game payload.
 
     Args:
         game: Game.
@@ -106,7 +109,8 @@ def validate_schedule_game_payload(
 
 
 def _validate_schedule_fields(game: Mapping[str, Any]) -> tuple[bool, str | None]:
-    """Validates schedule fields.
+    """
+    Validates schedule fields.
 
     Args:
         game: Game.
@@ -126,7 +130,8 @@ def _validate_schedule_fields(game: Mapping[str, Any]) -> tuple[bool, str | None
 
 
 def _validate_schedule_game_id(game: Mapping[str, Any]) -> tuple[str | None, str | None]:
-    """Validates schedule game id.
+    """
+    Validates schedule game id.
 
     Args:
         game: Game.
@@ -147,7 +152,8 @@ def _validate_schedule_date(
     expected_year: int | None,
     expected_month: int | None,
 ) -> tuple[date | None, str | None]:
-    """Validates schedule date.
+    """
+    Validates schedule date.
 
     Args:
         game: Game.
@@ -167,7 +173,8 @@ def _validate_schedule_date(
 
 
 def _validate_schedule_id_date(game_id: str, game_date: date) -> str | None:
-    """Validates schedule id date.
+    """
+    Validates schedule id date.
 
     Args:
         game_id: Game ID.
@@ -187,7 +194,8 @@ def _validate_schedule_id_date(game_id: str, game_date: date) -> str | None:
 
 
 def is_detail_candidate_game(game: Mapping[str, Any], *, today: date | None = None) -> bool:
-    """Returns whether the detail candidate game.
+    """
+    Returns whether the detail candidate game.
 
     Args:
         game: Game.

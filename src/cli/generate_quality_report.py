@@ -1,4 +1,6 @@
-"""KBO Daily Data Quality Report Generator.
+"""
+KBO Daily Data Quality Report Generator.
+
 Analyzes daily data integrity and statistical consistency.
 """
 
@@ -269,7 +271,9 @@ def _auto_remediation_status(*, has_abort: bool, has_warning: bool, has_fixed: b
 
 
 def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = None) -> dict[str, Any]:
-    """Scans logs/audit_fixes/ for files starting with target_date_str.
+    """
+    Scans logs/audit_fixes/ for files starting with target_date_str.
+
     Parses warning, abort, and fixed player details to return a status summary.
     """
     audit_dir = audit_dir or _default_audit_fix_dir()
@@ -456,7 +460,8 @@ def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
 
 
 def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
-    """Gets team stats integrity.
+    """
+    Gets team stats integrity.
 
     Args:
         gate_result: Gate Result.
@@ -484,7 +489,8 @@ def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_team_stats_trend(session: Session, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
-    """현재 시즌 team stats 정합성 스냅샷.
+    """
+    현재 시즌 team stats 정합성 스냅샷.
 
     TeamSeason*은 시즌 단위 aggregate라 월별 추세 산출 불가.
     run_quality_gate()를 호출하여 현재 상태만 반환.

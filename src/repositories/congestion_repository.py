@@ -29,7 +29,9 @@ class CongestionRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumCongestion, bool]:
-        """Insert or update a congestion measurement.
+        """
+        Insert or update a congestion measurement.
+
         Dedup key: (stadium_code, location_label, measured_at).
 
         Returns (record, created: bool).
@@ -85,7 +87,8 @@ class CongestionRepository:
         location_type: str | None = None,
         location_label: str | None = None,
     ) -> list[StadiumCongestion]:
-        """Gets by game date.
+        """
+        Gets by game date.
 
         Args:
             stadium_code: Stadium Code.
@@ -113,7 +116,8 @@ class CongestionRepository:
         stadium_code: str,
         location_label: str,
     ) -> StadiumCongestion | None:
-        """Gets latest.
+        """
+        Gets latest.
 
         Args:
             stadium_code: Stadium Code.

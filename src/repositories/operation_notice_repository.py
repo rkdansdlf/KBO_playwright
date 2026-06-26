@@ -1,4 +1,5 @@
-"""Repository for StadiumOperationNotice CRUD operations.
+"""
+Repository for StadiumOperationNotice CRUD operations.
 
 Handles upsert logic based on (stadium_code, source_name, external_id)
 or (stadium_code, source_name, title, published_at) as fallback.
@@ -34,7 +35,8 @@ class OperationNoticeRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumOperationNotice, bool]:
-        """Insert or update a notice.
+        """
+        Insert or update a notice.
 
         Returns (record, created: bool).
         """
@@ -83,7 +85,8 @@ class OperationNoticeRepository:
         return record, True
 
     def bulk_upsert(self, notices: list[dict]) -> tuple[int, int]:
-        """Upsert multiple notices.
+        """
+        Upsert multiple notices.
 
         Returns (created, updated) counts.
         """
@@ -121,7 +124,8 @@ class OperationNoticeRepository:
         *,
         urgent_only: bool = False,
     ) -> list[StadiumOperationNotice]:
-        """Gets by game date.
+        """
+        Gets by game date.
 
         Args:
             stadium_code: Stadium Code.
@@ -150,7 +154,8 @@ class OperationNoticeRepository:
         notice_type: str | None = None,
         source_name: str | None = None,
     ) -> list[StadiumOperationNotice]:
-        """Gets recent.
+        """
+        Gets recent.
 
         Args:
             stadium_code: Stadium Code.
@@ -168,7 +173,8 @@ class OperationNoticeRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_urgent_today(self, stadium_code: str) -> list[StadiumOperationNotice]:
-        """Gets urgent today.
+        """
+        Gets urgent today.
 
         Args:
             stadium_code: Stadium Code.

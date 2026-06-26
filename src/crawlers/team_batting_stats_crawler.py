@@ -108,7 +108,8 @@ class TeamBattingStatsCrawler:
         self.policy = policy or RequestPolicy()
 
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
-        """Crawls crawl.
+        """
+        Crawls crawl.
 
         Args:
             season: Season year.
@@ -214,7 +215,8 @@ def parse_team_batting_html(
     league: str,
     team_mapping: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """Parses team batting html.
+    """
+    Parses team batting html.
 
     Args:
         html: Html.

@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 async def run_events(*, save: bool = False, days: int = 30, team: str | None = None) -> int:
-    """Runs events.
+    """
+    Runs events.
 
     Returns:
         Integer result.
@@ -31,7 +32,8 @@ async def run_events(*, save: bool = False, days: int = 30, team: str | None = N
 
 
 async def run_roster(*, save: bool = False, target_date: str | None = None) -> int:
-    """Runs roster.
+    """
+    Runs roster.
 
     Returns:
         Integer result.
@@ -45,7 +47,8 @@ async def run_roster(*, save: bool = False, target_date: str | None = None) -> i
 
 
 async def run_ticket(*, save: bool = False, season: int | None = None) -> int:
-    """Runs ticket.
+    """
+    Runs ticket.
 
     Returns:
         Integer result.
@@ -66,7 +69,8 @@ async def run_all(
     season: int | None = None,
     target_date: str | None = None,
 ) -> dict[str, int]:
-    """Runs all.
+    """
+    Runs all.
 
     Returns:
         Dictionary result.
@@ -103,7 +107,8 @@ def _normalize_target_date(value: str | None) -> str | None:
 
 
 async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
-    """Runs from args.
+    """
+    Runs from args.
 
     Args:
         args: Args.
@@ -133,7 +138,8 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Builds arg parser.
+    """
+    Builds arg parser.
 
     Returns:
         The result of the operation.
