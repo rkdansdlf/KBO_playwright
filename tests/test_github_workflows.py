@@ -346,8 +346,8 @@ def test_security_audit_uses_pip_audit():
 def test_test_suite_runs_lint_and_test_matrix():
     workflow = _read(WORKFLOW_DIR / "test_suite.yml")
 
-    assert "ruff check --output-format=github src/ tests/ 2>&1" in workflow
-    assert "ruff format --check src/ tests/ 2>&1" in workflow
+    assert "ruff check --output-format=github src/ tests/ scripts/ 2>&1" in workflow
+    assert "ruff format --check src/ tests/ scripts/ 2>&1" in workflow
     assert "scripts/lint_bare_except.py" in workflow
     assert "pytest --tb=short -v --durations=10" in workflow
     assert "matrix:" in workflow

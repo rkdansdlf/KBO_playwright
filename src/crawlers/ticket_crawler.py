@@ -140,7 +140,7 @@ class TicketCrawler:
             self.current_season = season
 
         prices = await self._crawl_kbo_ticket_map()
-        open_rules = self._build_open_rules()
+        open_rules = TicketCrawler._build_open_rules()
 
         if not prices:
             prices = await self._crawl_lg_ticket_page()
@@ -181,7 +181,7 @@ class TicketCrawler:
                 href = link.get("href", "")
                 img = link.find("img")
                 alt = img.get("alt", "").strip() if img else ""
-                team_code = self._alt_to_team_code(alt)
+                team_code = TicketCrawler._alt_to_team_code(alt)
                 if team_code and href:
                     current_url = TEAM_TICKET_INFO[team_code].get("ticket_url")
                     if not current_url and href.startswith("//"):
@@ -195,7 +195,8 @@ class TicketCrawler:
 
         return prices
 
-    def _alt_to_team_code(self, alt: str) -> str | None:
+    @staticmethod
+    def _alt_to_team_code(alt: str) -> str | None:
         alt_lower = alt.lower()
         for code, kr in [
             ("LG", "lg"),
@@ -275,7 +276,8 @@ class TicketCrawler:
 
         return parse_ticket_page(html, "lg_twins_ticket", {"season": self.current_season})
 
-    def _build_open_rules(self) -> list[dict[str, Any]]:
+    @staticmethod
+    def _build_open_rules() -> list[dict[str, Any]]:
         """Build initial ticket open rules from known data."""
         rules = []
         for team_code, info in TEAM_TICKET_INFO.items():
@@ -291,7 +293,8 @@ class TicketCrawler:
             )
         return rules
 
-    def _team_code_to_kr(self, code: str) -> str | None:
+    @staticmethod
+    def _team_code_to_kr(code: str) -> str | None:
         mapping = {
             "LG": "LG",
             "HH": "한화",
