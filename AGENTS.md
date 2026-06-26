@@ -443,3 +443,28 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **`full_audit.py` OCI 병목 해소**: `table_columns()`에 `_COLUMNS_CACHE` 전역 딕셔너리 캐시를 추가하여 `information_schema.columns` 반복 조회를 1회로 줄임. PostgreSQL `AND table_schema = CURRENT_SCHEMA()` 필터로 공유 환경 크로스-스키마 오탐 방지.
 - **`test_scheduler.py` fixture 격리 복구**: `_inject_mock_module` (autouse)가 `sys.modules["scripts.scheduler"]`를 stub으로 교체 후 미복구하여 이후 테스트(`test_scheduler_alerting.py`)가 `compute_standings_job NameError` 발생. `yield` 이후 원본 모듈을 복구하는 teardown 로직 추가.
 - **테스트 결과**: 3 failed → **0 failed**, 4835 → **5265 passed** (전체 스위트 정상화).
+
+### Phase 37 Complete (2026-06-28) — D102/D103/D105 docstring campaign
+
+- **D102/D103/D105 enabled**: Added to ruff select alongside existing D100/D104/D105
+- **Script**: `scripts/generate_docstrings.py` — AST-based docstring generator with:
+  - Function name → verb/noun extraction for English summaries
+  - Parameter descriptions from type hints and naming patterns
+  - Return type descriptions
+  - Magic method templates (`__repr__`, `__str__`, etc.)
+  - Multi-line signature detection via regex
+  - `...` body skip (Protocol abstract methods)
+  - Per-insertion syntax validation (skips invalid insertions)
+- **Coverage**: ~1100 public functions/methods across models, utils, parsers,
+  crawlers, repositories, services, sync, aggregators, monitoring, analyzers,
+  sources, validators, db
+- **Protocol methods**: 6 abstract methods with `...` body excluded (3 files
+  per-file-ignored: game_detail_crawler.py, game_collection_service.py,
+  postgame_reconciliation_service.py)
+- **D401 (imperative mood)**: Evaluated and skipped — codebase uses Google/NumPy
+  3rd person style ("Calculates"), which is industry standard. D401 would require
+  changing 75 existing docstrings + all generated docstrings without quality gain.
+- **D417 (argument descriptions)**: 75 violations remain — requires manual review
+  of existing docstrings to add Args sections. Deferred.
+- **ruff**: 0 errors, 0 warnings (180 rules enabled)
+- **pytest**: 5698 passed, 0 failures
