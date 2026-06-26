@@ -491,3 +491,14 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **D205 fixed**: 149 → 51 (98 auto-fixed, 51 multi-line summary edge cases moved to global ignore)
 - **199 rules enabled** (180 → 199)
 - **pytest**: 5763 passed, 0 failures
+
+### Phase 44 Complete (2026-06-28) — 139 new zero-violation rules enabled
+
+- **139 new zero-violation rules enabled** (199 → 326 unique rules)
+- Categories added: A (builtins), B (bugbear 30 rules), C4 (comprehensions 19 rules),
+  LOG (logging 4 rules), N (naming 7 rules), PERF (perflint 4 rules),
+  PT (pytest 25 rules), S (security 37 rules), TID (tidy-imports 2 rules)
+- Removed preview-only/invalid: LOG004, PT029, S401-S413, TID254, PT004, PT005, S320, S410
+- Added to per-file-ignore: B007 (tests), S607 (tests/scripts), PERF102 (tests/scripts)
+- **pytest**: 5940 passed, 0 failures
+- **ruff check src/ tests/ scripts/**: 0 errors

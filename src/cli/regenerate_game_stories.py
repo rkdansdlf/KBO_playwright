@@ -10,7 +10,10 @@ import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
