@@ -378,7 +378,6 @@ ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
     "E501",    # line-too-long (handled by formatter)
     "E731",    # lambda assignment (permissive)
-    "B023",    # function-uses-loop-variable (common closure pattern)
     "COM812",  # handled by formatter (conflicts with ruff format)
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
      "D205",    # missing-blank-line-after-summary (no auto-fix for multi-line summaries)
