@@ -301,7 +301,8 @@ class RelayCrawler:
             logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
             return None, "relay_api_error"
 
-    def _score_suffix_match(self, game_id: str, suffixes: dict) -> int:
+    @staticmethod
+    def _score_suffix_match(game_id: str, suffixes: dict) -> int:
         if game_id.endswith(suffixes["exact"]):
             return 100
         if game_id.endswith(suffixes["legacy"]):
@@ -312,7 +313,8 @@ class RelayCrawler:
             return 20
         return 0
 
-    def _score_team_match(self, g_away: str, g_home: str, away_code: str, home_code: str) -> tuple[int, bool]:
+    @staticmethod
+    def _score_team_match(g_away: str, g_home: str, away_code: str, home_code: str) -> tuple[int, bool]:
         teams_match = g_away == away_code and g_home == home_code
         if teams_match:
             return 50, True
@@ -388,7 +390,8 @@ class RelayCrawler:
             return 30
         return -50
 
-    def _score_date_match(self, game: dict, game_id: str, game_date_str: str) -> int:
+    @staticmethod
+    def _score_date_match(game: dict, game_id: str, game_date_str: str) -> int:
         g_date = str(game.get("gameDate") or "").replace("-", "").strip()
         if not g_date and len(game_id) >= DATE_STR_LEN:
             date_match = re.search(r"(\d{8})", game_id)
@@ -400,7 +403,8 @@ class RelayCrawler:
             return 10
         return 0
 
-    def _score_time_match(self, game: dict, game_time: str | None) -> int:
+    @staticmethod
+    def _score_time_match(game: dict, game_time: str | None) -> int:
         if not game_time:
             return 0
         g_start_time = str(game.get("gameStartTime") or game.get("startTime") or "").strip()
@@ -481,9 +485,9 @@ class RelayCrawler:
                     "id_has_teams": self._is_team_in_id(away_code, game_id) and self._is_team_in_id(home_code, game_id),
                     "dh_no": dh_no,
                 }
-                score += self._score_suffix_match(game_id, suffixes)
+                score += RelayCrawler._score_suffix_match(game_id, suffixes)
 
-                team_score, teams_match = self._score_team_match(g_away, g_home, away_code, home_code)
+                team_score, teams_match = RelayCrawler._score_team_match(g_away, g_home, away_code, home_code)
                 score += team_score
                 any_full_team_match = any_full_team_match or teams_match
 
@@ -510,8 +514,8 @@ class RelayCrawler:
                 game_date_str=game_date_str,
             )
             score += self._score_doubleheader(match_ctx, dh_no)
-            score += self._score_date_match(game, game_id, game_date_str)
-            score += self._score_time_match(game, game_time)
+            score += RelayCrawler._score_date_match(game, game_id, game_date_str)
+            score += RelayCrawler._score_time_match(game, game_time)
             score += self._score_stadium_match(game, stadium)
 
             candidates.append((game, score))
@@ -819,7 +823,7 @@ class RelayCrawler:
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         processed_segments: list[dict[str, Any]] = []
         for index, segment in enumerate(text_relays):
-            inn, half = self._parse_segment_inning_half(segment)
+            inn, half = RelayCrawler._parse_segment_inning_half(segment)
             if not inn or not half:
                 self._handle_unparseable_segment(segment, index, payload_hash, raw_pbp_rows)
                 continue
@@ -901,7 +905,7 @@ class RelayCrawler:
             if not description.strip():
                 continue
 
-            state = self._parse_game_state(log)
+            state = RelayCrawler._parse_game_state(log)
             batter_name, pitcher_name = self._resolve_batter_pitcher(log)
 
             batter_key = (inning, half, batter_name or segment_title or segment_index)
@@ -999,7 +1003,8 @@ class RelayCrawler:
             "source_name": "naver",
         }
 
-    def _parse_game_state(self, log: dict[str, Any]) -> dict[str, int]:
+    @staticmethod
+    def _parse_game_state(log: dict[str, Any]) -> dict[str, int]:
         state = log.get("currentGameState") or {}
         home_score = to_int(state.get("homeScore"))
         away_score = to_int(state.get("awayScore"))
@@ -1096,7 +1101,8 @@ class RelayCrawler:
         group_events_into_at_bats(parsed_events)
         compute_at_bat_pitch_count(parsed_events)
 
-    def _parse_segment_inning_half(self, segment: dict[str, Any]) -> tuple[int, str | None]:
+    @staticmethod
+    def _parse_segment_inning_half(segment: dict[str, Any]) -> tuple[int, str | None]:
         title = str(segment.get("title") or "")
         match = re.search(r"(\d+)회\s*(초|말)", title)
         if match:
