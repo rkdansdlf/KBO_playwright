@@ -155,68 +155,85 @@ select = [
     "FURB177", # implicit-cwd
     "A002",    # builtin-argument-shadowing
     "A004",    # builtin-import-shadowing
-    "S324",    # hashlib-insecure-hash-function
+     "S324",    # hashlib-insecure-hash-function
+     "S101",    # assert
+     "S102",    # exec
+     "S104",    # hardcoded-bind-all-interfaces
+     "S108",    # hardcoded-temp-file
+     "S110",    # try-except-pass
+     "S112",    # bare-except
+     "S113",    # request-without-timeout
     "TC004",   # runtime-import-in-type-checking-block
     "D202",    # blank-line-after-function
     "TID252",  # relative-imports
-     "RUF001",  # ambiguous-unicode-character
-     "RUF002",  # ambiguous-unicode-character-docstring
-     "RUF003",  # ambiguous-unicode-character-comment
-     "RUF021",   # parenthesize-chained-operators
-    "ERA001",  # commented-out-code
-    "RUF019",   # unnecessary-key-check
-     "C4",       # flake8-comprehensions
-     "COM812",   # missing-trailing-comma
-     "T10",      # debugger
-    "PLC0208",  # unnecessary-else-after-return
-    "PLW0245",  # super-without-brackets
-    "PLW1509",  # subprocess-popen-preexec-fn
-     "B026",     # star-args-unpacked-after-keyword-arg
-      "D213",    # multi-line-summary-second-line
-     "D100",    # undocumented-public-module
-     "D102",    # undocumented-public-method
-     "D103",    # undocumented-public-function
-     "D104",    # undocumented-public-package
-     "D106",    # undocumented-public-nested-class
-     "D209",    # multi-line-docstring-closing-quotes
-     "D210",    # around-docstring-whitespace
-     "D300",    # double-quote-docstring
-     "D301",    # raw-string-on-docstring
-     "D402",    # docstring-should-be-empty
-     "D404",    # docstring-first-word
-     "D405",    # docstring-section-name
-     "D406",    # docstring-section-under-line
-     "D407",    # docstring-section-name-after-content
-     "D408",    # docstring-section-name-underline-after-name
-     "D409",    # return-type-mismatch
-     "D410",    # docstring-blank-line-after-section
-     "D411",    # docstring-blank-line-before-section
-     "D412",    # docstring-blank-lines-between-sections
-     "D413",    # missing-blank-line-after-last-section
-     "D414",    # docstring-empty-section
-     "D416",    # docstring-section-name-ends-with-colon
-     "D418",    # docstring-omit-name-body
-     "D419",    # docstring-empty
-      "D400",    # missing-trailing-period
-      "D415",    # missing-terminal-punctuation
-       "RUF007",  # pairwise-over-zipped
-      "RUF008",  # mutable-class-default-dataclass
-      "RUF009",  # function-call-in-dataclass-default-arg
-      "RUF016",  # redundant-string-concatenation
-      "RUF018",  # assignment-in-assert
-      "RUF020",  # explicit-f-string-type-conversion
-     "RUF023",  # unsorted-dunder-slots
-     "RUF026",  # duplicate-dunder-attribute
-     "RUF028",  # direct-try-resume
-     "RUF030",  # unnecessary-getattr
-     "RUF032",  # datetime-min-max
-     "RUF033",  # pathlib-symlink-iteration
-     "RUF034",  # try-except-in-loop
-     "RUF037",  # unnecessary-sorted-iteration
-     "RUF041",  # useless-cast
-     "RUF043",  # unnecessary-regex-literal
-     "RUF048",  # lru-cache-on-mutable
-     "RUF049",  # safe-exit-call
+      "RUF001",  # ambiguous-unicode-character
+      "RUF002",  # ambiguous-unicode-character-docstring
+      "RUF003",  # ambiguous-unicode-character-comment
+      "RUF021",   # parenthesize-chained-operators
+     "ERA001",  # commented-out-code
+     "RUF019",   # unnecessary-key-check
+      "C4",       # flake8-comprehensions
+      "COM812",   # missing-trailing-comma
+      "T10",      # debugger
+     "PLC0208",  # unnecessary-else-after-return
+     "PLW0245",  # super-without-brackets
+     "PLW1509",  # subprocess-popen-preexec-fn
+      "B026",     # star-args-unpacked-after-keyword-arg
+       "D213",    # multi-line-summary-second-line
+      "D100",    # undocumented-public-module
+      "D102",    # undocumented-public-method
+      "D103",    # undocumented-public-function
+      "D104",    # undocumented-public-package
+      "D106",    # undocumented-public-nested-class
+      "D209",    # multi-line-docstring-closing-quotes
+      "D210",    # around-docstring-whitespace
+      "D300",    # double-quote-docstring
+      "D301",    # raw-string-on-docstring
+      "D402",    # docstring-should-be-empty
+      "D404",    # docstring-first-word
+      "D405",    # docstring-section-name
+      "D406",    # docstring-section-under-line
+      "D407",    # docstring-section-name-after-content
+      "D408",    # docstring-section-name-underline-after-name
+      "D409",    # return-type-mismatch
+      "D410",    # docstring-blank-line-after-section
+      "D411",    # docstring-blank-line-before-section
+      "D412",    # docstring-blank-lines-between-sections
+      "D413",    # missing-blank-line-after-last-section
+      "D414",    # docstring-empty-section
+      "D416",    # docstring-section-name-ends-with-colon
+      "D418",    # docstring-omit-name-body
+      "D419",    # docstring-empty
+       "D400",    # missing-trailing-period
+       "D415",    # missing-terminal-punctuation
+        "RUF007",  # pairwise-over-zipped
+       "RUF008",  # mutable-class-default-dataclass
+       "RUF009",  # function-call-in-dataclass-default-arg
+       "RUF016",  # redundant-string-concatenation
+       "RUF018",  # assignment-in-assert
+       "RUF020",  # explicit-f-string-type-conversion
+      "RUF023",  # unsorted-dunder-slots
+      "RUF026",  # duplicate-dunder-attribute
+      "RUF028",  # direct-try-resume
+      "RUF030",  # unnecessary-getattr
+      "RUF032",  # datetime-min-max
+      "RUF033",  # pathlib-symlink-iteration
+      "RUF034",  # try-except-in-loop
+      "RUF037",  # unnecessary-sorted-iteration
+      "RUF041",  # useless-cast
+      "RUF043",  # unnecessary-regex-literal
+      "RUF048",  # lru-cache-on-mutable
+      "RUF049",  # safe-exit-call
+     "FA",      # flake8-future-annotations (from __future__ import annotations)
+     "EXE",     # flake8-executable
+     "FIX",     # flake8-fixme
+     "INP",     # flake8-no-pep420
+     "INT",     # flake8-gettext
+     "LOG",     # logging-format
+     "PD",      # pandas-vet
+     "NPY",     # numpy-specific
+     "PLE",     # pylint-error
+     "TD",      # flake8-todos
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
@@ -233,8 +250,9 @@ ignore = [
     "G010",    # logging-warn vs logging-warning (redundant alias)
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
     "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
-    "D205",    # missing-blank-line-after-summary (no auto-fix for multi-line summaries)
-]
+     "D205",    # missing-blank-line-after-summary (no auto-fix for multi-line summaries)
+     "PLC0415",  # import-outside-top-level (intentional lazy imports for circular deps)
+ ]
 
 [tool.ruff.lint.per-file-ignores]
 "src/models/**" = ["TC001", "TC002", "TC003", "PLR0913"]
@@ -329,7 +347,7 @@ ignore = [
 "src/sync/sync_misc.py" = ["RUF001"]
 "src/utils/player_season_stat_validation.py" = ["RUF001"]
 "src/utils/type_helpers.py" = ["RUF001"]
-"tests/**" = ["FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "ARG", "T201", "T20", "ERA001", "RUF001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF401", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1722", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "F821", "A002", "D100", "D104", "RUF034", "D101", "D102", "D103", "D105", "D107", "D400", "D415", "COM812", "D213"]
+"tests/**" = ["FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "ARG", "T201", "T20", "ERA001", "RUF001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF401", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1722", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "F821", "A002", "D100", "D104", "RUF034", "D101", "D102", "D103", "D105", "D107", "D400", "D415", "COM812", "D213", "S108", "INP001"]
 "scripts/**" = ["FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "ERA001", "RUF001", "I001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1704", "PLR1722", "D100", "D104", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "A002", "D101", "D102", "D103", "D105", "D107", "D400", "D415", "COM812", "D213"]
 "migrations/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "T201", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001"]
 
