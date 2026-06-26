@@ -254,7 +254,9 @@ async def _save_futures_player_stats(
             if saved_pitching == 0:
                 filter_counts = get_last_filter_counts()
                 save_failures.append(
-                    _format_filter_counts("pitching_filtered", filter_counts) if filter_counts else "pitching_save_zero"
+                    _format_filter_counts("pitching_filtered", filter_counts)
+                    if filter_counts
+                    else "pitching_save_zero",
                 )
         except FUTURES_SAVE_EXCEPTIONS:
             logger.exception("Exception saving pitching stats for player %s", player_id)

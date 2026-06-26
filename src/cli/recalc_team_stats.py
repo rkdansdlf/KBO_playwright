@@ -75,7 +75,8 @@ def _run_batting_recalc(
         else:
             logger.info("  Aggregated %s batting records.", len(results))
             _log_dry_run_batting(results) if dry_run else logger.info(
-                "  💾 Upserted %s team batting rows to DB.", len(results)
+                "  💾 Upserted %s team batting rows to DB.",
+                len(results),
             )
         return 0
 
@@ -101,7 +102,8 @@ def _run_pitching_recalc(
         else:
             logger.info("  Aggregated %s pitching records.", len(results))
             _log_dry_run_pitching(results) if dry_run else logger.info(
-                "  💾 Upserted %s team pitching rows to DB.", len(results)
+                "  💾 Upserted %s team pitching rows to DB.",
+                len(results),
             )
         return 0
 

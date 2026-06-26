@@ -136,7 +136,8 @@ _RULES: tuple[_DiagnosisRule, ...] = (
         category="auth",
         severity="high",
         pattern=re.compile(
-            r"authentication failed|login failed|invalid .*credential|KBO_USER_ID|KBO_USER_PWD", re.IGNORECASE
+            r"authentication failed|login failed|invalid .*credential|KBO_USER_ID|KBO_USER_PWD",
+            re.IGNORECASE,
         ),
         message="KBO authentication or credential configuration failed.",
         suggested_commands=("venv/bin/python -m src.cli.health_check --json",),
@@ -145,7 +146,8 @@ _RULES: tuple[_DiagnosisRule, ...] = (
         category="database",
         severity="high",
         pattern=re.compile(
-            r"IntegrityError|FOREIGN KEY|UNIQUE constraint|database is locked|OperationalError", re.IGNORECASE
+            r"IntegrityError|FOREIGN KEY|UNIQUE constraint|database is locked|OperationalError",
+            re.IGNORECASE,
         ),
         message="Database write, constraint, or lock failure detected.",
         suggested_commands=("venv/bin/python -m src.cli.db_healthcheck",),
@@ -154,7 +156,8 @@ _RULES: tuple[_DiagnosisRule, ...] = (
         category="quality_gate",
         severity="high",
         pattern=re.compile(
-            r"quality gate|freshness gate|exceeds baseline|null_player_id|completeness audit", re.IGNORECASE
+            r"quality gate|freshness gate|exceeds baseline|null_player_id|completeness audit",
+            re.IGNORECASE,
         ),
         message="Data quality gate or freshness invariant failed.",
         suggested_commands=(
@@ -173,7 +176,8 @@ _RULES: tuple[_DiagnosisRule, ...] = (
         category="network",
         severity="high",
         pattern=re.compile(
-            r"ConnectTimeout|ReadTimeout|HTTPStatusError|ERR_NAME_NOT_RESOLVED|net::|ConnectionError", re.IGNORECASE
+            r"ConnectTimeout|ReadTimeout|HTTPStatusError|ERR_NAME_NOT_RESOLVED|net::|ConnectionError",
+            re.IGNORECASE,
         ),
         message="Network, HTTP, or upstream availability failure detected.",
         suggested_commands=("venv/bin/python -m src.cli.freshness_gate --days 1 --json",),

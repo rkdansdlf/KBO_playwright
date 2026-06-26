@@ -192,7 +192,11 @@ class StatsSyncMixin:
         return {"local": local_sig, "remote": remote_sig, "match": match}
 
     def sync_player_season_batting(
-        self, year: int | None = None, batch_size: int = 5000, *, force: bool = False
+        self,
+        year: int | None = None,
+        batch_size: int = 5000,
+        *,
+        force: bool = False,
     ) -> int:
         """Sync player_season_batting data from SQLite to OCI using fast bulk COPY."""
         from src.models.player import PlayerSeasonBatting
@@ -217,7 +221,11 @@ class StatsSyncMixin:
         )
 
     def sync_player_season_pitching(
-        self, year: int | None = None, batch_size: int = 5000, *, force: bool = False
+        self,
+        year: int | None = None,
+        batch_size: int = 5000,
+        *,
+        force: bool = False,
     ) -> int:
         """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY."""
         from src.models.player import PlayerSeasonPitching
@@ -386,7 +394,11 @@ class StatsSyncMixin:
         )
 
     def sync_team_season_baserunning(
-        self, year: int | None = None, batch_size: int = 5000, *, force: bool = False
+        self,
+        year: int | None = None,
+        batch_size: int = 5000,
+        *,
+        force: bool = False,
     ) -> int:
         """Sync team_season_baserunning aggregates from SQLite to OCI."""
         from src.models.team import TeamSeasonBaserunning

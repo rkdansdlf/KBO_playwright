@@ -130,7 +130,11 @@ def _season_filters(seasons: Iterable[int]) -> list:
 
 
 def _query_target_games(
-    session: Session, *, game_ids: Sequence[str], dates: Sequence[str], seasons: Sequence[int]
+    session: Session,
+    *,
+    game_ids: Sequence[str],
+    dates: Sequence[str],
+    seasons: Sequence[int],
 ) -> list[Game]:
     query = session.query(Game)
     filters = []
@@ -204,7 +208,11 @@ def _write_backup(session: Session, game_ids: Sequence[str], path: Path) -> None
 
 
 def _sync_review_summaries(
-    game_ids: Sequence[str], rows: Sequence[ReviewRegenReportRow], *, oci_url: str, log: Callable[[str], object]
+    game_ids: Sequence[str],
+    rows: Sequence[ReviewRegenReportRow],
+    *,
+    oci_url: str,
+    log: Callable[[str], object],
 ) -> None:
     if not game_ids:
         return
@@ -223,7 +231,9 @@ def _sync_review_summaries(
 
 
 def _append_missing_review_rows(
-    rows: list[ReviewRegenReportRow], requested_ids: Sequence[str], games_by_id: dict[str, Game]
+    rows: list[ReviewRegenReportRow],
+    requested_ids: Sequence[str],
+    games_by_id: dict[str, Game],
 ) -> None:
     rows.extend(
         ReviewRegenReportRow(game_id=requested_id, game_date="", status="SKIPPED_GAME_NOT_FOUND")
@@ -251,7 +261,11 @@ def _existing_review_json(session: Session, game_id: str) -> str | None:
 
 
 def _build_review_report_row(
-    game: Game, old_json: str | None, new_json: str, review_data: dict[str, Any], noise_moments: int
+    game: Game,
+    old_json: str | None,
+    new_json: str,
+    review_data: dict[str, Any],
+    noise_moments: int,
 ) -> ReviewRegenReportRow:
     return ReviewRegenReportRow(
         game_id=game.game_id,
@@ -266,7 +280,11 @@ def _build_review_report_row(
 
 
 def _process_review_game(
-    session: Session, agg: ContextAggregator, game: Game, *, apply: bool
+    session: Session,
+    agg: ContextAggregator,
+    game: Game,
+    *,
+    apply: bool,
 ) -> tuple[ReviewRegenReportRow, bool]:
     if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
         return _skipped_review_row(game), False
@@ -293,7 +311,11 @@ def _process_review_game(
 
 
 def _process_review_games(
-    session: Session, games: Sequence[Game], agg: ContextAggregator, *, apply: bool
+    session: Session,
+    games: Sequence[Game],
+    agg: ContextAggregator,
+    *,
+    apply: bool,
 ) -> tuple[list[ReviewRegenReportRow], list[str]]:
     rows = []
     sync_game_ids = []

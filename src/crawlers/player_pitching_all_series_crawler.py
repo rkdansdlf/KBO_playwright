@@ -1113,7 +1113,7 @@ def crawl_pitcher_series(
                 limit=limit,
                 policy=policy,
                 pitchers=pitchers,
-            )
+            ),
         )
 
         logger.info("✅ Basic1 수집 완료: 총 %s명", len(pitchers))
@@ -1128,7 +1128,7 @@ def crawl_pitcher_series(
                     limit=limit,
                     policy=policy,
                     pitchers=pitchers,
-                )
+                ),
             )
         elif by_team:
             logger.info("ℹ️ 팀별 순회 모드에서는 Basic2(상세 지표) 수집을 건너뜁니다.")

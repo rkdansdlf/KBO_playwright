@@ -147,7 +147,14 @@ def parse_team_stats_html(
     results: list[dict[str, Any]] = []
     for row in stat_rows:
         payload = _parse_one_team_row(
-            row, indexes, season, league, team_mapping, stat_fields, float_fields, value_parser
+            row,
+            indexes,
+            season,
+            league,
+            team_mapping,
+            stat_fields,
+            float_fields,
+            value_parser,
         )
         if payload is not None:
             results.append(payload)

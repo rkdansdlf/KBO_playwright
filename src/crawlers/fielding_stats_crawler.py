@@ -354,7 +354,7 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
         # 1. 기본 수집: 팀별 전체 선수 (13개 기본 컬럼)
         for team_val, team_name in teams:
             _crawl_team_fielding_basic(
-                FieldingCrawlContext(page, team_val, team_name, year, position_mapping, fielding_data_map, policy)
+                FieldingCrawlContext(page, team_val, team_name, year, position_mapping, fielding_data_map, policy),
             )
 
         # 2. 포수 상세 수집 (전체 팀, 17개 컬럼)

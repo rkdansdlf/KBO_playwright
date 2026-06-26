@@ -546,7 +546,7 @@ async def _collect_relay_phase(
     ctx.result.relay_skipped_existing = len(targets) - len(relay_targets)
     if ctx.result.relay_skipped_existing:
         ctx.cfg.log(
-            f"[SKIP] Relay already exists for {ctx.result.relay_skipped_existing} game(s). Use --force to recrawl."
+            f"[SKIP] Relay already exists for {ctx.result.relay_skipped_existing} game(s). Use --force to recrawl.",
         )
         for target in targets:
             item = ctx.result.items[target.game_id]

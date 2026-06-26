@@ -863,7 +863,7 @@ class RelayCrawler:
                     ),
                     "source_row_index": len(raw_pbp_rows),
                     "source_name": "naver",
-                }
+                },
             )
         else:
             logger.debug("Skipping segment with unparseable inning/half and no title at index=%d", index)
@@ -892,7 +892,7 @@ class RelayCrawler:
                     segment_title=segment_title,
                     row_index=pbp_raw_index,
                 ),
-            )
+            ),
         )
         pbp_raw_index += 1
 

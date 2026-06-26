@@ -529,7 +529,9 @@ async def _run_detail_recovery_passes(config: RecoveryConfig) -> None:
             config.ctx.detail_recovery_attempts[game_id] = config.ctx.detail_recovery_attempts.get(game_id, 0) + 1
 
         logger.info(
-            "   🔁 Detail recovery pass #%s (%s game(s))", config.ctx.detail_recovery_passes, len(retry_targets)
+            "   🔁 Detail recovery pass #%s (%s game(s))",
+            config.ctx.detail_recovery_passes,
+            len(retry_targets),
         )
         retry_result = await crawl_and_save_game_details(
             retry_targets,
@@ -558,7 +560,9 @@ async def _run_detail_recovery_passes(config: RecoveryConfig) -> None:
 
 
 def _process_detail_results(
-    ctx: _RunContext, detail_results_by_game: dict[str, Any], processed_game_ids_set: set[str]
+    ctx: _RunContext,
+    detail_results_by_game: dict[str, Any],
+    processed_game_ids_set: set[str],
 ) -> None:
     for game_id, item in detail_results_by_game.items():
         reason = item.failure_reason if item else None
@@ -639,7 +643,7 @@ async def _collect_detail_results(ctx: _RunContext, g_crawler: GameDetailCrawler
             unrecovered_game_ids=unrecovered_game_ids,
             recoverable_failure_ids=recoverable_failure_ids,
             max_recovery_rounds=max(1, int(DETAIL_RECOVERY_MAX_ROUNDS)),
-        )
+        ),
     )
     return detail_results_by_game
 
@@ -1042,7 +1046,9 @@ async def _step_7_rosters(ctx: _RunContext) -> None:
         roster_transactions = await rt_crawler.run(save=True, target_date=ctx.r_target_date)
         ctx.p0_non_game_counts["roster_transactions"] = len(roster_transactions)
         logger.info(
-            "   \u2705 Roster transactions checked for %s: %s rows", ctx.r_target_date, len(roster_transactions)
+            "   \u2705 Roster transactions checked for %s: %s rows",
+            ctx.r_target_date,
+            len(roster_transactions),
         )
     except CRAWLER_STEP_EXCEPTIONS:
         logger.exception("   \u274c Error updating player movements/rosters")
@@ -1123,7 +1129,9 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
         if violations:
             inconsistent_ids = sorted({v["game_id"] for v in violations})
             logger.warning(
-                "   \u26a0\ufe0f  Audit found %s inconsistencies in %s games.", len(violations), len(inconsistent_ids)
+                "   \u26a0\ufe0f  Audit found %s inconsistencies in %s games.",
+                len(violations),
+                len(inconsistent_ids),
             )
             logger.info("   🚀 Triggering targeted self-healing for: %s...", ", ".join(inconsistent_ids[:5]))
 
@@ -1218,7 +1226,7 @@ def _resolve_null_player_ids_before_quality_gate(ctx: _RunContext) -> None:
                 "--apply",
                 "--no-backup",
                 "--delete-duplicates",
-            ]
+            ],
         )
         logger.info("   ✅ NULL player_id resolver complete")
     except subprocess.CalledProcessError:

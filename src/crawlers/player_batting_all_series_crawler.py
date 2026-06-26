@@ -304,7 +304,7 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | Non
                     series_key=series_key,
                     is_basic2=is_basic2,
                     year=year,
-                )
+                ),
             )
             players_data.append(batting_data)
 
@@ -361,7 +361,7 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | N
                     series_key=series_key,
                     is_basic2=is_basic2,
                     year=year,
-                )
+                ),
             )
             players_data.append(batting_data)
 
@@ -702,7 +702,7 @@ def _parse_basic2_header_data_legacy(
                     description=description,
                     year=year,
                     team_mapping=team_mapping,
-                )
+                ),
             )
             if res:
                 player_id, batting_data = res
@@ -1146,7 +1146,7 @@ def crawl_series_batting_stats(
                     policy=policy,
                     unique_players=unique_players,
                     all_players_data=all_players_data,
-                )
+                ),
             )
 
             # 정규시즌인 경우 Basic2 페이지에서 추가 데이터 수집

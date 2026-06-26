@@ -257,7 +257,7 @@ _GAP_SUMMARY_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "PROFILE": lambda d: [f"{d.get('missing_count', 0)} players missing profiles"],
     "PA_FORMULA": lambda d: [f"{d.get('violation_count', 0)} PA formula violations"],
     "ID_RESOLUTION": lambda d: [
-        f"{d.get('total', 0)} NULL player_ids (batting={d.get('counts', {}).get('batting')}, pitching={d.get('counts', {}).get('pitching')}, lineups={d.get('counts', {}).get('lineups')})"
+        f"{d.get('total', 0)} NULL player_ids (batting={d.get('counts', {}).get('batting')}, pitching={d.get('counts', {}).get('pitching')}, lineups={d.get('counts', {}).get('lineups')})",
     ],
 }
 

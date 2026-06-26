@@ -311,7 +311,10 @@ class ContextAggregator:
             warnings.append("season_pitching_join_incomplete")
 
         drop_stage = self._coach_pitching_drop_stage(
-            raw, repository_starter_rows, repository_bullpen_rows, final_payload
+            raw,
+            repository_starter_rows,
+            repository_bullpen_rows,
+            final_payload,
         )
 
         return {
@@ -705,7 +708,10 @@ class ContextAggregator:
         }
 
     def get_recent_player_movements(
-        self, team_code: str, target_date: str | date | datetime, days: int = 7
+        self,
+        team_code: str,
+        target_date: str | date | datetime,
+        days: int = 7,
     ) -> list[dict[str, Any]]:
         """최근 N일간 해당 팀의 선수 이동 현황(부상, 트레이드 등) 조회."""
         if isinstance(target_date, str):

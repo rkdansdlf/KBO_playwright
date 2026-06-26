@@ -105,7 +105,8 @@ def _build_team_info(
     home_info = {
         "name": None,
         "code": team_code_from_game_id_segment(
-            game_id[10:12] if len(game_id) >= GAME_ID_FULL_LEN else None, season_year
+            game_id[10:12] if len(game_id) >= GAME_ID_FULL_LEN else None,
+            season_year,
         ),
         "score": None,
         "hits": None,

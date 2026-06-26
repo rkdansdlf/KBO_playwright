@@ -47,7 +47,10 @@ class HighlightAggregator:
         )
 
     def _detect_tags_and_type(
-        self, event: GameEvent, score_diff_before: int, score_diff_after: int
+        self,
+        event: GameEvent,
+        score_diff_before: int,
+        score_diff_after: int,
     ) -> tuple[list[str], str]:
         tags = []
         highlight_type = "OTHER"
