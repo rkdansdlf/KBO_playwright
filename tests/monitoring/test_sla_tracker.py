@@ -293,10 +293,10 @@ class TestSendWeeklySlaReport:
 
         tracker = SlaTracker(session)
 
-        with patch.object(SlackWebhookClient, "send_alert"):
+        with patch.object(SlackWebhookClient, "send_alert") as mock_send:
             tracker.send_weekly_sla_report("20260624")
 
-            mock_send.assert_not_called()
+        mock_send.assert_not_called()
 
     def test_send_report_no_low_days(self) -> None:
         session = MagicMock()
@@ -328,7 +328,7 @@ class TestSendWeeklySlaReport:
 
         tracker = SlaTracker(session)
 
-        with patch.object(SlackWebhookClient, "send_alert"):
+        with patch.object(SlackWebhookClient, "send_alert") as mock_send:
             tracker.send_weekly_sla_report("20260624")
 
             assert mock_send.called
@@ -347,49 +347,74 @@ class TestSendWeeklySlaReport:
         scheduled_game.game_status = "SCHEDULED"
         scheduled_game.game_id = "GAME2"
 
-        first_day_games = [completed_game]
-        second_day_games = [scheduled_game]
-
-        day_call_count = [0]
-
-        def games_filter(*args, **kwargs):
-            q = MagicMock()
-            day_call_count[0] += 1
-            if day_call_count[0] == 1:
-                q.filter.return_value.all.return_value = first_day_games
-            else:
-                q.filter.return_value.all.return_value = second_day_games
-            return q
-
-        games_query = MagicMock()
-        games_query.filter.side_effect = games_filter
-
-        pbp_query = MagicMock()
-        pbp_query.filter.return_value.distinct.return_value.count.return_value = 1
-
-        detail_query = MagicMock()
-        detail_query.filter.return_value.count.return_value = 1
-
-        call_count = [0]
-
-        def query_side_effect(model):
-            call_count[0] += 1
-            if call_count[0] <= 7:
-                return games_query
-            if call_count[0] == 8:
-                return pbp_query
-            return detail_query
-
-        session.query.side_effect = query_side_effect
+        day_results = [
+            {
+                "total": 1,
+                "completed": 1,
+                "completion_rate": 1.0,
+                "pbp_coverage": 1.0,
+                "detail_coverage": 1.0,
+                "date": "20260624",
+            },
+            {
+                "total": 1,
+                "completed": 0,
+                "completion_rate": 0.0,
+                "pbp_coverage": 0.0,
+                "detail_coverage": 0.0,
+                "date": "20260623",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260622",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260621",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260620",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260619",
+            },
+            {
+                "total": 0,
+                "completed": 0,
+                "completion_rate": 0,
+                "pbp_coverage": 0,
+                "detail_coverage": 0,
+                "date": "20260618",
+            },
+        ]
 
         tracker = SlaTracker(session)
 
-        with patch.object(SlackWebhookClient, "send_alert"):
-            tracker.send_weekly_sla_report("20260624")
+        with patch.object(SlaTracker, "compute_weekly_sla", return_value=day_results):
+            with patch.object(SlackWebhookClient, "send_alert") as mock_send:
+                tracker.send_weekly_sla_report("20260624")
 
-            assert mock_send.called
-            msg = mock_send.call_args[0][0]
-            assert "낮은 완료율" in msg
+        assert mock_send.called
+        msg = mock_send.call_args[0][0]
+        assert "낮은 완료율" in msg
 
     def test_default_end_date_uses_utc_now(self) -> None:
         session = MagicMock()
@@ -401,7 +426,6 @@ class TestSendWeeklySlaReport:
             with patch("src.monitoring.sla_tracker.datetime") as mock_dt:
                 mock_now = datetime(2026, 6, 24, 15, 0, 0, tzinfo=UTC)
                 mock_dt.now.return_value = mock_now
-                mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
                 tracker.send_weekly_sla_report()
 
