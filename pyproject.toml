@@ -252,8 +252,8 @@ ignore = [
     "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
      "D205",    # missing-blank-line-after-summary (no auto-fix for multi-line summaries)
      "PLC0415",  # import-outside-top-level (intentional lazy imports for circular deps)
-
-    "PLR2004",  # magic-value-comparison (domain-specific thresholds)]
+    "PLR2004",  # magic-value-comparison (domain-specific thresholds)
+]
 
 [tool.ruff.lint.per-file-ignores]
 "src/models/**" = ["TC001", "TC002", "TC003", "PLR0913"]
