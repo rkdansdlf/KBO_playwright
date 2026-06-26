@@ -325,9 +325,9 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 
 ### Current Verification Baseline (2026-06-28)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (180 rules enabled, 0 warnings).
+- `ruff check src/ tests/ scripts/` = 0 errors (181 rules enabled, 0 warnings).
 - `ruff format --check .` = clean.
-- `python3 -m pytest` = **5698 passed**, 0 failures, 2 skipped, 1 xfailed; ~35s.
+- `python3 -m pytest` = **5763 passed**, 0 failures, 2 skipped, 1 xfailed; ~27s.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = **72%** (fail_under=65).
 - `# noqa: BLE001` in `src/` = 0.
@@ -341,6 +341,14 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 | 31 | Enable zero-violation FURB rules | ✅ 26 rules (FURB103,105,113,116,118,122,129,131,136,140,142,145,148,152,154,156,163,164,166,168,169,180,181,187,189,192) |
 | 32 | Enable zero-violation PLC/PLR rules | ✅ 8 rules (PLC0414,PLC2401,PLC2403,PLC3002,PLR1701,PLR1704,PLR1722,PLR6201,PLR6301) |
 | 33 | Enable zero-violation RUF rules | ✅ 18 rules (RUF007,008,009,016,018,020,023,026,028,030,032,033,034,037,041,043,048,049) |
+
+### Phase 39-41 Complete (2026-06-28) — COM, D400/D415, D213 docstring style
+
+| Phase | Work | Result |
+|-------|------|--------|
+| 39 | D400/D415 enable (missing trailing period + terminal punctuation) | ✅ src/ 0 violations; tests/scripts per-file-ignore |
+| 40 | COM812 (missing trailing comma) | ✅ select + tests/scripts per-file-ignore |
+| 41 | D212→D213 (multi-line docstring summary 2nd line) | ✅ 917 auto-fix in src/; tests/scripts per-file-ignore |
 
 ### Priority 1-3 Complete (2026-06-27) — Test fixes, RUF002/RUF003, PYI
 
@@ -468,3 +476,11 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
   of existing docstrings to add Args sections. Deferred.
 - **ruff**: 0 errors, 0 warnings (180 rules enabled)
 - **pytest**: 5698 passed, 0 failures
+
+### Phase 38 Complete (2026-06-28) — Zero-violation rules + COM812 + D205
+
+- **17 new zero-violation rules enabled**: B904, COM818, N802-N803, N807, N815-N816, N818, RSE102, RUF012, SIM101, PLC0206, RUF028, RUF033-RUF034, RUF037, RUF041, RUF043, RUF048-RUF049
+- **COM812 fixed**: 146 trailing comma violations → 0
+- **D205 fixed**: 149 → 51 (98 auto-fixed, 51 multi-line summary edge cases moved to global ignore)
+- **199 rules enabled** (180 → 199)
+- **pytest**: 5763 passed, 0 failures
