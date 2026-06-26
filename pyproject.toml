@@ -377,17 +377,10 @@ select = [
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
     "E501",    # line-too-long (handled by formatter)
-    "E701",    # multiple-statements-on-one-line-colon (legacy style)
-    "E702",    # multiple-statements-on-one-line-semicolon
     "E731",    # lambda assignment (permissive)
     "B023",    # function-uses-loop-variable (common closure pattern)
-    "SIM102",  # collapsible-if (readability preference)
-    "SIM108",  # simplify-if-else (ternary, not always clearer)
-    "SIM113",  # enumerate-for-loop (manual counter ok)
     "COM812",  # handled by formatter (conflicts with ruff format)
-    "G010",    # logging-warn vs logging-warning (redundant alias)
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
-    "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
      "D205",    # missing-blank-line-after-summary (no auto-fix for multi-line summaries)
      "PLC0415",  # import-outside-top-level (intentional lazy imports for circular deps)
     "PLR2004",  # magic-value-comparison (domain-specific thresholds)
