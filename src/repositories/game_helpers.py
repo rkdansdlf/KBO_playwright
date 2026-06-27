@@ -355,7 +355,7 @@ def _ensure_season_exists(
                 (season_id, season_year, league_type_code, league_type_name,
                  created_at, updated_at)
             VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            """
+            """,
         ),
         {"sid": sid, "year": season_year, "code": league_type_code, "name": name},
     )

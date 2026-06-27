@@ -9,6 +9,7 @@ import src.repositories.game_relay as game_relay_module
 import src.repositories.game_repository as game_repository
 import src.repositories.game_save as game_save_module
 from src.models.game import Game, GameIdAlias
+from src.models.season import KboSeason
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 from src.utils.team_history import canonical_code_for_team_code, franchise_id_for_team_code
 
@@ -17,6 +18,7 @@ def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
     Game.__table__.create(bind=engine)
     GameIdAlias.__table__.create(bind=engine)
+    KboSeason.__table__.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 

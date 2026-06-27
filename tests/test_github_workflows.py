@@ -428,7 +428,7 @@ def test_full_recalculation_full_pipeline():
     assert "--save" in workflow
     assert "python3 -m src.cli.recalc_player_game_stats" in workflow
     assert "--season ${{ github.event.inputs.year }}" in workflow
-    assert "python3 -m src.cli.sync_oci --season-stats --player-game-stats" in workflow
+    assert "python3 -m src.cli.sync_oci --kbo-season --season-stats --player-game-stats" in workflow
     assert "${{ github.event.inputs.sync == 'true' }}" in workflow
     assert "python3 -m scripts.verification.verify_player_game_stats --exit-code" in workflow
     assert "if: always()" in workflow

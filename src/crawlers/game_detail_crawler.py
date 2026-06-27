@@ -502,16 +502,25 @@ class GameDetailCrawler:
                 return None
 
         roster_map = await self._load_roster_map_from_lineup(
-            page, game_id, game_date, review_url, lightweight=lightweight
+            page,
+            game_id,
+            game_date,
+            review_url,
+            lightweight=lightweight,
         )
         season_year = self._parse_season_year(game_date)
         team_info = await self._extract_team_info(page, game_id, season_year)
         metadata = await self._extract_metadata(page)
-
-        # New: Extract Game Summary
         game_summary = await self._extract_game_summary(page)
 
+        lifecycle_state = None
         if lightweight:
+            live_scores = await self._extract_live_scores(page)
+            if live_scores and (
+                live_scores.get("away", {}).get("score") is not None
+                or live_scores.get("home", {}).get("score") is not None
+            ):
+                lifecycle_state = "running"
             hitters = {"away": [], "home": []}
             pitchers = {"away": [], "home": []}
         else:
@@ -533,12 +542,13 @@ class GameDetailCrawler:
             "game_id": game_id,
             "game_date": game_date,
             "metadata": metadata,
-            "summary": game_summary,  # Add to payload
+            "summary": game_summary,
             "teams": team_info,
             "home_team_code": team_info["home"]["code"],
             "away_team_code": team_info["away"]["code"],
             "hitters": hitters,
             "pitchers": pitchers,
+            "lifecycle_state": lifecycle_state,
         }
 
         self._last_failure_reason.pop(game_id, None)
@@ -910,7 +920,7 @@ class GameDetailCrawler:
                     "#tblScoreboard1",
                     "#tblScordboard2",
                     "#tblScoreboard2",
-                ]
+                ],
             )
 
         try:
@@ -1061,7 +1071,8 @@ class GameDetailCrawler:
         home_code: str,
     ) -> dict[str, dict[str, Any]] | None:
         scoreboard_url = f"{GAME_CENTER}?gameDate={game_id[:8]}".replace(
-            "/Schedule/GameCenter/Main.aspx", "/Schedule/ScoreBoard.aspx"
+            "/Schedule/GameCenter/Main.aspx",
+            "/Schedule/ScoreBoard.aspx",
         )
         review_url = f"{GAME_CENTER}?gameDate={game_id[:8]}&gameId={game_id}&section=REVIEW"
 
@@ -1104,34 +1115,26 @@ class GameDetailCrawler:
             await page.goto(review_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
 
     @staticmethod
-    async def _parse_scoreboard_row_cells(
-        row: Page, side: str, away_code: str, home_code: str
-    ) -> dict[str, Any] | None:
-        cells = await row.query_selector_all("th, td")
-        cell_values = []
-        for c in cells:
-            val = (await c.text_content() or "").strip()
-            cell_values.append(val)
-
-        if len(cell_values) < 4:
-            return None
-
+    def _build_line_score(cell_values: list[str]) -> list[int | None]:
         line_score = []
         for v in cell_values[1:13]:
-            if v == "-" or v == "":
+            if v in {"-", ""}:
                 line_score.append(None)
             else:
                 try:
                     line_score.append(int(v))
                 except (ValueError, TypeError):
                     line_score.append(None)
+        return line_score
 
+    @staticmethod
+    def _extract_rhe(cell_values: list[str]) -> tuple[int | None, int | None, int | None]:
         r_val = None
         h_val = None
         e_val = None
         for i in range(len(cell_values) - 1, 0, -1):
             val = cell_values[i]
-            if val == "-" or val == "":
+            if val in {"-", ""}:
                 continue
             try:
                 int(val)
@@ -1144,6 +1147,26 @@ class GameDetailCrawler:
             elif r_val is None:
                 r_val = int(val)
                 break
+        return r_val, h_val, e_val
+
+    @staticmethod
+    async def _parse_scoreboard_row_cells(
+        row: Page,
+        side: str,
+        away_code: str,
+        home_code: str,
+    ) -> dict[str, Any] | None:
+        cells = await row.query_selector_all("th, td")
+        cell_values = []
+        for c in cells:
+            val = (await c.text_content() or "").strip()
+            cell_values.append(val)
+
+        if len(cell_values) < 4:
+            return None
+
+        line_score = GameDetailCrawler._build_line_score(cell_values)
+        r_val, h_val, e_val = GameDetailCrawler._extract_rhe(cell_values)
 
         return {
             "code": away_code if side == "away" else home_code,

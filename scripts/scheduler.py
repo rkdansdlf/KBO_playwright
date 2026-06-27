@@ -118,6 +118,7 @@ REALTIME_OCI_SYNC_LOCK = ProcessLock("realtime_oci_sync")
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
 LAST_LIVE_RUN_TIME: datetime | None = None
 LAST_LIVE_POLL_INTERVAL: int | None = None
+LAST_PREGAME_RUN_TIME: datetime | None = None
 
 
 def _live_refresh_max_games_per_cycle() -> int | None:
@@ -206,44 +207,20 @@ def _pregame_target_dates(now: datetime | None = None) -> list[str]:
     return [(current + timedelta(days=offset)).strftime("%Y%m%d") for offset in range(lookahead_days + 1)]
 
 
-def _minutes_until_next_pregame_tick(now: datetime | None = None) -> float | None:
-    current = now or datetime.now(KST)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=KST)
-    else:
-        current = current.astimezone(KST)
-
-    if current.hour < 10 or current.hour > 23:
-        return None
-
-    base = current.replace(second=0, microsecond=0)
-    minute = base.minute
-    if minute % 15 == 0:
-        next_tick = base
-    else:
-        next_minute = ((minute // 15) + 1) * 15
-        if next_minute >= 60:
-            next_tick = base.replace(minute=0) + timedelta(hours=1)
-        else:
-            next_tick = base.replace(minute=next_minute)
-
-    if next_tick.hour > 23:
-        return None
-    return (next_tick - current).total_seconds() / 60.0
-
-
 def _should_skip_live_for_pregame(now: datetime | None = None) -> bool:
+    global LAST_PREGAME_RUN_TIME
     try:
-        threshold_minutes = int(os.getenv("LIVE_SKIP_BEFORE_PREGAME_MINUTES", "3"))
+        cooldown_seconds = int(os.getenv("LIVE_PREGAME_COOLDOWN_SECONDS", "30"))
     except ValueError:
-        threshold_minutes = 3
-    if threshold_minutes <= 0:
+        cooldown_seconds = 30
+    if cooldown_seconds <= 0:
         return False
 
-    minutes_until_pregame = _minutes_until_next_pregame_tick(now)
-    if minutes_until_pregame is None:
+    current = now or datetime.now(KST)
+    if LAST_PREGAME_RUN_TIME is None:
         return False
-    return 0 < minutes_until_pregame <= threshold_minutes
+    elapsed = (current - LAST_PREGAME_RUN_TIME).total_seconds()
+    return 0 <= elapsed < cooldown_seconds
 
 
 def _pregame_refresh_summary(target_date: str) -> tuple[int, int, int]:
@@ -810,6 +787,8 @@ def crawl_pregame_refresh():
                 )
 
         alert_success("crawl_pregame_refresh")
+        global LAST_PREGAME_RUN_TIME
+        LAST_PREGAME_RUN_TIME = datetime.now(KST)
     finally:
         LIVE_LOCK.release()
 
@@ -842,7 +821,7 @@ def _get_live_poll_interval_seconds() -> int:
         with SessionLocal() as session:
             # Query today's games and metadata from SQLite
             query = text("""
-                SELECT g.game_status, g.game_id, m.start_time, g.updated_at
+                SELECT g.game_status, g.game_lifecycle_state, m.start_time, g.updated_at
                 FROM game g
                 LEFT JOIN game_metadata m ON g.game_id = m.game_id
                 WHERE g.game_date = :today
@@ -858,7 +837,9 @@ def _get_live_poll_interval_seconds() -> int:
 
     # Categorize game states
     terminal_statuses = {"COMPLETED", "CANCELLED", "POSTPONED", "DRAW"}
+    terminal_lifecycles = {"cancelled", "final", "result_pending_stabilization"}
     active_statuses = {"LIVE", "DELAYED", "SUSPENDED", "RUNNING"}
+    active_lifecycles = {"running", "delayed", "suspended"}
 
     has_active = False
     has_suspended = False
@@ -867,17 +848,18 @@ def _get_live_poll_interval_seconds() -> int:
     latest_update_time = None
 
     for row in rows:
-        # row: (game_status, game_id, start_time, updated_at)
+        # row: (game_status, game_lifecycle_state, start_time, updated_at)
         status = str(row[0] or "").upper()
-        start_time_raw = row[2]  # datetime.time object
-        updated_at_raw = row[3]  # datetime.datetime object
+        lifecycle = str(row[1] or "").lower()
+        start_time_raw = row[2]
+        updated_at_raw = row[3]
 
-        if status not in terminal_statuses:
+        if status not in terminal_statuses and lifecycle not in terminal_lifecycles:
             all_terminal = False
 
-        if status in active_statuses:
+        if status in active_statuses or lifecycle in active_lifecycles:
             has_active = True
-            if status in {"DELAYED", "SUSPENDED"}:
+            if status in {"DELAYED", "SUSPENDED"} or lifecycle == "suspended":
                 has_suspended = True
 
         # Track earliest start time for non-started games

@@ -760,6 +760,10 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
 
             _apply_snapshot_status_and_winner(game, game_date, status, has_inning_rows=bool(inning_rows))
 
+            lifecycle_state = game_data.get("lifecycle_state")
+            if lifecycle_state:
+                _assign_field_if_changed(game, "game_lifecycle_state", lifecycle_state)
+
             session.commit()
         except GAME_SAVE_EXCEPTIONS:
             session.rollback()

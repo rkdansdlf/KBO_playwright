@@ -377,8 +377,9 @@ select = [
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
     "E501",    # line-too-long (handled by formatter)
-    "E731",    # lambda assignment (permissive)
-    "COM812",  # handled by formatter (conflicts with ruff format)
+     "E731",    # lambda assignment (permissive)
+     "COM812",  # handled by formatter (conflicts with ruff format)
+
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
      "D205",    # missing-blank-line-after-summary (no auto-fix for multi-line summaries)
      "PLC0415",  # import-outside-top-level (intentional lazy imports for circular deps)
