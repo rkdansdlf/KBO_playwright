@@ -1,19 +1,18 @@
 """Shared request policy for throttling, UA rotation, and retries."""
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import os
 import random
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from src.utils.throttle import throttle
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    pass
 
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
@@ -42,7 +41,7 @@ class RequestPolicyConfig:
 class RequestPolicy:
     """Centralized throttling and retry policy."""
 
-    def __init__(self, config: RequestPolicyConfig | None = None, **overrides: object) -> None:
+    def __init__(self, config: RequestPolicyConfig | None = None, **overrides: Any) -> None:
         """Initializes a new instance."""
         if config is None:
             config = RequestPolicyConfig(**overrides)
@@ -62,7 +61,7 @@ class RequestPolicy:
         self.retry_exceptions = config.retry_exceptions
 
     @classmethod
-    def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> RequestPolicy:
+    def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> "RequestPolicy":
         """
         Handles the with delay operation.
 
@@ -108,7 +107,7 @@ class RequestPolicy:
         """
         return random.choice(self.user_agents)
 
-    def build_context_kwargs(self, **overrides: object) -> dict[str, object]:
+    def build_context_kwargs(self, **overrides: object) -> dict[str, Any]:
         """
         Builds context kwargs.
 
@@ -117,7 +116,7 @@ class RequestPolicy:
 
         """
         kwargs = {"user_agent": self.random_user_agent()}
-        kwargs.update(overrides)
+        kwargs.update(overrides)  # type: ignore[arg-type]
         return kwargs
 
     def _random_delay(self) -> float:
@@ -192,7 +191,7 @@ class RequestPolicy:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
-                return await func(*args, **kwargs)
+                return await func(*args, **kwargs)  # type: ignore[misc]
             except self.retry_exceptions as exc:
                 last_exc = exc
                 if attempt >= self.max_retries:

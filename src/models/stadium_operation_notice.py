@@ -9,6 +9,7 @@ special event announcements, and urgent notices.
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -94,7 +95,7 @@ class StadiumOperationNotice(Base, TimestampMixin):
     )
 
     # Raw data
-    raw_snapshot: Mapped[dict | None] = mapped_column(
+    raw_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
         nullable=True,
         comment="Raw crawled/API response snapshot",

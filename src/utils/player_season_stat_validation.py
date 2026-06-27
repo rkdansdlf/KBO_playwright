@@ -1,14 +1,13 @@
 """Validation helpers for player season stat payloads."""
 
-from __future__ import annotations
-
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from src.utils.player_validation import normalize_player_id, normalize_player_name, validate_player_payload
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    pass
 
 BATTING_CORE_STATS = ("games", "plate_appearances", "at_bats", "hits")
 PITCHING_CORE_STATS = ("games", "innings_pitched", "innings_outs")
@@ -150,6 +149,7 @@ def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
         True if the condition is met, False otherwise.
 
     """
+    fields: tuple[str, ...]
     if stat_type == "pitching":
         fields = PITCHING_CORE_STATS
     elif stat_type == "fielding":

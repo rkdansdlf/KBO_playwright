@@ -1,7 +1,5 @@
 """Utility helpers to classify player rows into active/retired/staff buckets."""
 
-from __future__ import annotations
-
 from enum import StrEnum
 
 
@@ -61,8 +59,8 @@ def classify_player(entry: dict[str, object]) -> PlayerCategory:
             return PlayerCategory.COACH
         return PlayerCategory.STAFF
 
-    team = _normalize(entry.get("team"))
-    position = _normalize(entry.get("position"))
+    team = _normalize(str(entry.get("team")) if entry.get("team") else None)
+    position = _normalize(str(entry.get("position")) if entry.get("position") else None)
     position.lower()
     team_lower = team.lower()
     return _classify_active_player(position, team, team_lower)

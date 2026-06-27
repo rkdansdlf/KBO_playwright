@@ -35,7 +35,7 @@ class ComplianceChecker:
         """Initializes a new instance."""
         self.robots_url = robots_url
         self.parser = urllib.robotparser.RobotFileParser()
-        self.last_fetch_time = 0
+        self.last_fetch_time = 0.0
         self.fetch_interval = 86400  # 24 hours
         self._lock = asyncio.Lock()
 

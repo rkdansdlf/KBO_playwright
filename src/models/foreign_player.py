@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from sqlalchemy import JSON, Date, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -38,7 +39,11 @@ class ForeignPlayerChange(Base, TimestampMixin):
     )
     announcement_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="Announcement date")
     contract_amount: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Contract amount text")
-    stats_before_change: Mapped[dict | None] = mapped_column(JSON, nullable=True, comment="Stats before replacement")
+    stats_before_change: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Stats before replacement",
+    )
     note: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Additional notes")
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Source URL")
 
