@@ -13,7 +13,18 @@ from src.cli.dashboard_report import (
     _append_quality_notify_lines,
     _append_quality_violation_lines,
     _date_or_today,
+    _format_freshness_terminal,
     _format_json,
+    _format_pa_trend_terminal,
+    _format_park_factor_terminal,
+    _format_quality_gate_terminal,
+    _format_quality_terminal,
+    _format_rankings_terminal,
+    _format_standings_terminal,
+    _format_sync_terminal,
+    _format_team_defense_terminal,
+    _format_team_gate_terminal,
+    _format_unified_audit_terminal,
     _normalize_sections,
     _row_value,
     _r2dict,
@@ -177,3 +188,142 @@ class TestAppendQualityNotifyLines:
         }
         _append_quality_notify_lines(msg_lines, quality)
         assert "❌" in msg_lines[1]
+
+
+class TestFormatStandingsTerminal:
+    def test_with_rows(self, caplog):
+        standings = {
+            "date": "2026-06-24",
+            "rows": [
+                {
+                    "rank": 1,
+                    "team_code": "LG",
+                    "wins": 50,
+                    "losses": 30,
+                    "draws": 0,
+                    "win_pct": 0.625,
+                    "games_behind": "-",
+                    "recent_10_wins": 7,
+                    "recent_10_losses": 3,
+                    "current_streak": 3,
+                    "home_wins": 30,
+                    "home_losses": 10,
+                    "away_wins": 20,
+                    "away_losses": 20,
+                    "top_5": True,
+                },
+            ],
+        }
+        with caplog.at_level(logging.INFO):
+            _format_standings_terminal(standings, 2026)
+        assert "KBO 2026년 순위표" in caplog.text
+        assert "LG" in caplog.text
+
+    def test_empty_rows(self, caplog):
+        standings = {"rows": []}
+        with caplog.at_level(logging.INFO):
+            _format_standings_terminal(standings, 2026)
+        assert "KBO 2026년 순위표" in caplog.text
+
+
+class TestFormatParkFactorTerminal:
+    def test_with_results(self, caplog):
+        park_factor = {
+            "year": 2026,
+            "results": [
+                {
+                    "stadium": "잠실",
+                    "games": 20,
+                    "runs_per_game": 4.5,
+                    "park_factor": 1.05,
+                    "park_factor_label": "높음",
+                },
+            ],
+        }
+        with caplog.at_level(logging.INFO):
+            _format_park_factor_terminal(park_factor)
+        assert "구장별 파크팩터" in caplog.text
+
+    def test_empty_results(self, caplog):
+        park_factor = {"year": 2026, "results": []}
+        with caplog.at_level(logging.INFO):
+            _format_park_factor_terminal(park_factor)
+
+
+class TestFormatRankingsTerminal:
+    def test_with_data(self, caplog):
+        rankings = {
+            "year": 2026,
+            "top5": {
+                "batting": [{"player_name": "Kim", "value": 0.350}],
+                "ops": [{"player_name": "Lee", "value": 1.100}],
+            },
+        }
+        with caplog.at_level(logging.INFO):
+            _format_rankings_terminal(rankings)
+        assert "세이버메트릭" in caplog.text
+
+
+class TestFormatTeamDefenseTerminal:
+    def test_with_data(self, caplog):
+        defense = {
+            "year": 2026,
+            "teams": [{"team_code": "LG", "drS": 100, "drP": 50, "drC": 30}],
+        }
+        with caplog.at_level(logging.INFO):
+            _format_team_defense_terminal(defense)
+        assert "수비" in caplog.text or "defense" in caplog.text
+
+
+class TestFormatTeamGateTerminal:
+    def test_with_ok_result(self, caplog):
+        result = {"ok": True, "mismatches": []}
+        with caplog.at_level(logging.INFO):
+            _format_team_gate_terminal("팀타격", result)
+
+    def test_with_mismatches(self, caplog):
+        result = {"ok": False, "mismatches": [{"team_id": "LG", "issue": "HR mismatch"}]}
+        with caplog.at_level(logging.INFO):
+            _format_team_gate_terminal("팀타격", result)
+
+
+class TestFormatQualityGateTerminal:
+    def test_all_ok(self, caplog):
+        quality = {"team_batting": {"ok": True}, "team_pitching": {"ok": True}}
+        with caplog.at_level(logging.INFO):
+            _format_quality_gate_terminal(quality)
+
+
+class TestFormatPaTrendTerminal:
+    def test_with_data(self, caplog):
+        quality = {"pa_formula_integrity": {"ok": True, "checked_players": 50}}
+        with caplog.at_level(logging.INFO):
+            _format_pa_trend_terminal(quality)
+
+
+class TestFormatUnifiedAuditTerminal:
+    def test_with_data(self, caplog):
+        quality = {"team_batting": {"ok": True, "mismatches": []}, "team_pitching": {"ok": True, "mismatches": []}}
+        with caplog.at_level(logging.INFO):
+            _format_unified_audit_terminal(quality)
+
+
+class TestFormatQualityTerminal:
+    def test_with_data(self, caplog):
+        quality = {"quality_gate": {"team_batting": {"ok": True}, "team_pitching": {"ok": True}}}
+        with caplog.at_level(logging.INFO):
+            _format_quality_terminal(quality)
+
+
+class TestFormatFreshnessTerminal:
+    def test_with_data(self, caplog):
+        freshness = {"games_total": 10, "games_with_stats": 8, "freshness_pct": 80.0}
+        with caplog.at_level(logging.INFO):
+            _format_freshness_terminal(freshness)
+
+
+class TestFormatSyncTerminal:
+    def test_with_data(self, caplog):
+        sync = {"synced": 100, "failed": 0, "tables": ["games", "batting"]}
+        with caplog.at_level(logging.INFO):
+            _format_sync_terminal(sync)

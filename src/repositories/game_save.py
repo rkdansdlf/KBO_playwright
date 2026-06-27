@@ -52,6 +52,7 @@ from src.repositories.game_helpers import (
     _resolve_winner,
     _upsert_game_summary_entry,
     _upsert_metadata,
+    _validate_inning_score_consistency,
 )
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.utils.date_helpers import parse_date_str
@@ -389,6 +390,10 @@ def _update_detail_status(
     explicit_status: str | None,
 ) -> tuple[bool, list[dict[str, Any]], str | None]:
     inning_rows = _build_inning_scores(ctx.game_id, teams, season_year=ctx.game_date.year)
+    if inning_rows:
+        consistency_warnings = _validate_inning_score_consistency(teams, inning_rows, ctx.game_id)
+        for warning in consistency_warnings:
+            logger.warning("[InningScore] %s", warning)
     has_progress = bool(inning_rows) or game.home_score is not None or game.away_score is not None
     new_status = derive_stable_game_status(
         GameStatusEvidence(
@@ -756,13 +761,24 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
 
             inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
             if inning_rows:
+                consistency_warnings = _validate_inning_score_consistency(teams, inning_rows, game_id)
+                for warning in consistency_warnings:
+                    logger.warning("[InningScore] %s", warning)
                 _replace_records(session, GameInningScore, game_id, inning_rows)
 
             _apply_snapshot_status_and_winner(game, game_date, status, has_inning_rows=bool(inning_rows))
 
             lifecycle_state = game_data.get("lifecycle_state")
             if lifecycle_state:
-                _assign_field_if_changed(game, "game_lifecycle_state", lifecycle_state)
+                snapshot_source = GameWriteSource("snapshot", "live_crawler", "lifecycle_override")
+                _assign_field_if_changed(
+                    game,
+                    "game_lifecycle_state",
+                    lifecycle_state,
+                    game_id=game_id,
+                    source=snapshot_source,
+                    write_contract=None,
+                )
 
             session.commit()
         except GAME_SAVE_EXCEPTIONS:
