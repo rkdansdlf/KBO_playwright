@@ -1,13 +1,12 @@
 """Shared KBO game status constants and helpers."""
 
-from __future__ import annotations
-
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import date
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-    from datetime import date
+    pass
 
 GAME_STATUS_SCHEDULED = "SCHEDULED"
 GAME_STATUS_LIVE = "LIVE"
@@ -189,7 +188,7 @@ def _resolve_past_status(current_status: str | None, new_status: str | None) -> 
     return GAME_STATUS_UNRESOLVED
 
 
-def derive_stable_game_status(evidence: GameStatusEvidence | None = None, **kwargs: object) -> str:
+def derive_stable_game_status(evidence: GameStatusEvidence | None = None, **kwargs: Any) -> str:
     """
     Central logic to resolve game status based on date and evidence.
 

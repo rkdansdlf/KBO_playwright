@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from sqlalchemy import JSON, Date, Float, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -45,7 +46,7 @@ class TeamStandingsDaily(Base, TimestampMixin):
     recent_10_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="최근 10경기 패")
     recent_10_draws: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="최근 10경기 무")
 
-    weekly_win_pcts: Mapped[dict | None] = mapped_column(JSON, nullable=True, comment="주차별 승률 추이 JSON")
+    weekly_win_pcts: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, comment="주차별 승률 추이 JSON")
 
     home_wins: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="홈 승")
     home_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="홈 패")

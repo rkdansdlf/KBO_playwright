@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import JSON, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,7 +34,7 @@ class Franchise(Base, TimestampMixin):
     )
 
     # New Fields for Phase 7
-    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=True, comment="Owner, CEO, Found Date, etc.")
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=True, comment="Owner, CEO, Found Date, etc.")
     web_url: Mapped[str] = mapped_column(String(255), nullable=True, comment="KBO Team Info URL")
 
     def __repr__(self) -> str:

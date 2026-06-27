@@ -43,7 +43,7 @@ class RagChunk(Base, TimestampMixin):
 
     # Store embedding as JSON serialized list of floats
     embedding: Mapped[Any | None] = mapped_column(JSON, nullable=True, comment="Float embedding vector")
-    meta: Mapped[dict] = mapped_column(
+    meta: Mapped[dict[str, Any]] = mapped_column(
         JSON,
         nullable=True,
         default=dict,

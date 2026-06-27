@@ -14,8 +14,6 @@ Reference:
     https://developers.google.com/youtube/v3/docs/search/list
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import re
@@ -255,7 +253,7 @@ class YouTubeAPIClient:
 
     async def get_playlist_items(self, playlist_id: str, max_results: int = 50) -> list[YouTubeVideoItem]:
         """List videos in a specific playlist."""
-        items = []
+        items: list[YouTubeVideoItem] = []
         page_token: str | None = None
 
         while True:

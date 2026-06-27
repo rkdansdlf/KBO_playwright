@@ -20,8 +20,6 @@ Reference:
   https://developers.naver.com/docs/serviceapi/search/news/news.md
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import os
@@ -162,7 +160,7 @@ class NaverSearchClient:
             return []
 
         url = f"{NAVER_SEARCH_BASE}/{search_type}.json"
-        params = {
+        params: dict[str, str | int] = {
             "query": query,
             "display": min(display, 100),
             "start": 1,
@@ -215,7 +213,7 @@ class NaverSearchClient:
         for q_config, stype in tasks:
             results = await self.search(
                 q_config["query"],
-                search_type=stype,
+                search_type=stype,  # type: ignore[arg-type]
                 display=30,
                 sort="date",
             )

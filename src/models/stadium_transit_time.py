@@ -8,6 +8,7 @@ to the stadium on game days, collected from map APIs (Kakao, Naver, TMAP).
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -81,7 +82,7 @@ class StadiumTransitTime(Base, TimestampMixin):
         nullable=False,
         comment="API source: kakao / naver / tmap / google",
     )
-    raw_response: Mapped[dict | None] = mapped_column(
+    raw_response: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
         nullable=True,
         comment="Raw API response for audit trail",

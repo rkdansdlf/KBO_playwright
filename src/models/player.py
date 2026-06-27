@@ -106,7 +106,7 @@ class PlayerBasic(Base, TimestampMixin):
         nullable=True,
         comment="Draft type (e.g. 1차, 2차, 자유선발)",
     )
-    education_path: Mapped[list | None] = mapped_column(
+    education_path: Mapped[list[Any] | None] = mapped_column(
         JSON,
         nullable=True,
         comment="Structured education/career history path",
@@ -182,7 +182,7 @@ class Player(Base, TimestampMixin):
         nullable=True,
         comment="Draft type (e.g. 1차, 2차, 자유선발)",
     )
-    education_path: Mapped[list | None] = mapped_column(
+    education_path: Mapped[list[Any] | None] = mapped_column(
         JSON,
         nullable=True,
         comment="Structured education/career history path",

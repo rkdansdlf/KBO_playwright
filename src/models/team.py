@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,7 +38,7 @@ class Team(Base, TimestampMixin):
     # Use ARRAY for Postgres compatibility, JSON for others (like SQLite)
     from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 
-    aliases: Mapped[list] = mapped_column(
+    aliases: Mapped[list[Any]] = mapped_column(
         JSON().with_variant(PG_ARRAY(String), "postgresql"),
         nullable=True,
         comment="List of team name aliases",

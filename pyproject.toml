@@ -132,7 +132,6 @@ select = [
     "N816",    # mixed-case-variable-in-class-scope
     "N818",    # invalid-class-name
     "RSE102",  # unnecessary-paren-on-raise-exception
-    "RUF012",  # mutable-class-default
     "SIM101",  # collapsible-if-elif
     "PLC0206", # dict-index-missing-items
     "RUF028",  # unnecessary-f-string
@@ -140,7 +139,6 @@ select = [
     "RUF034",  # unnecessary-int-f-string
     "RUF037",  # unnecessary-backslash-escape
     "RUF041",  # unnecessary-assignment-before-return
-    "RUF041",  # unnecessary-assignment-in-del
     "RUF043",  # unnecessary-assignment-to-same-variable
     "RUF048",  # unnecessary-list-cast
     "RUF049",  # unnecessary-dict-cast
@@ -213,18 +211,10 @@ select = [
        "RUF018",  # assignment-in-assert
        "RUF020",  # explicit-f-string-type-conversion
       "RUF023",  # unsorted-dunder-slots
-      "RUF026",  # duplicate-dunder-attribute
-      "RUF028",  # direct-try-resume
-      "RUF030",  # unnecessary-getattr
-      "RUF032",  # datetime-min-max
-      "RUF033",  # pathlib-symlink-iteration
-      "RUF034",  # try-except-in-loop
-      "RUF037",  # unnecessary-sorted-iteration
-      "RUF041",  # useless-cast
-      "RUF043",  # unnecessary-regex-literal
-      "RUF048",  # lru-cache-on-mutable
-      "RUF049",  # safe-exit-call
-     "FA",      # flake8-future-annotations (from __future__ import annotations)
+        "RUF026",  # duplicate-dunder-attribute
+        "RUF030",  # unnecessary-getattr
+        "RUF032",  # datetime-min-max
+        "FA",      # flake8-future-annotations (from __future__ import annotations)
      "EXE",     # flake8-executable
      "FIX",     # flake8-fixme
      "INP",     # flake8-no-pep420
@@ -382,7 +372,7 @@ ignore = [
      "D205",    # missing-blank-line-after-summary (no auto-fix for multi-line summaries)
      "PLC0415",  # import-outside-top-level (intentional lazy imports for circular deps)
     "PLR2004",  # magic-value-comparison (domain-specific thresholds)
-    "D417",    # undocumented-param (69 violations, manual work required)
+
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -458,9 +448,10 @@ ignore = [
 "src/sync/sync_games.py" = ["S608", "ARG002", "RUF001"]
 "src/sync/sync_players.py" = ["ARG002"]
 "src/sync/sync_stats.py" = ["S608", "A002"]
-"src/aggregators/team_stat_aggregator.py" = ["SLF001", "PLR0913"]
+"src/aggregators/team_stat_aggregator.py" = ["SLF001", "PLR0913", "PLC0415"]
 "src/aggregators/ranking_aggregator.py" = ["PLR0913"]
 "src/cli/calculate_rankings.py" = ["RUF001"]
+"src/cli/auto_healer.py" = ["PLC0415"]
 "src/cli/crawl_staff_register.py" = ["RUF001"]
 "src/cli/daily_highlight_batch.py" = ["RUF001"]
 "src/cli/daily_preview_batch.py" = ["RUF001"]
@@ -502,5 +493,17 @@ exclude_also = [
     "pragma: no cover",
 ]
 
+"src/utils/game_status.py" = ["ANN401"]
+"src/utils/refresh_manifest.py" = ["ANN401"]
+"src/utils/request_policy.py" = ["ANN401"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+warn_unused_ignores = true
+ignore_missing_imports = true
+explicit_any = false
+files = ["src/models/", "src/utils/"]

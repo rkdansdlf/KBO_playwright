@@ -9,6 +9,7 @@ Kakao/Naver map services, and S-DoT sensor data.
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -80,7 +81,7 @@ class StadiumCongestion(Base, TimestampMixin):
         nullable=False,
         comment="Data source: seoul_open_api / sdot / kakao / naver / manual",
     )
-    raw_data: Mapped[dict | None] = mapped_column(
+    raw_data: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
         nullable=True,
         comment="Raw API/scrape response for audit",

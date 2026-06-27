@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import JSON, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,7 +28,7 @@ class GameBroadcast(Base, TimestampMixin):
         nullable=True,
         comment="Streaming platform (e.g. Tving, Naver, Wavve)",
     )
-    casters: Mapped[dict | None] = mapped_column(
+    casters: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
         nullable=True,
         comment="Caster/commentator info {caster, commentator}",
