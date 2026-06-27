@@ -177,9 +177,11 @@ def _build_sync() -> dict[str, Any]:
 
 
 def _row_value(row: object, key: str, default: object = None) -> object:
+    if hasattr(row, "get"):
+        return row.get(key, default)
     if hasattr(row, key):
         return getattr(row, key)
-    return row.get(key, default)
+    return default
 
 
 def _format_standings_terminal(standings: dict[str, Any], year: int) -> None:

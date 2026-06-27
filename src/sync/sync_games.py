@@ -149,16 +149,19 @@ class GameSyncMixin:
             nonlocal unmapped_count
             raw_sid = data.get("season_id")
             if raw_sid and raw_sid > 1900:
-                key = (raw_sid, 0)
+                year = raw_sid if raw_sid < 10000 else raw_sid // 100
+                code = 0 if raw_sid < 10000 else raw_sid % 100
+                key = (year, code)
                 if key in season_map:
                     data["season_id"] = season_map[key]
                 else:
                     unmapped_count += 1
                     logger.warning(
-                        "Game %s has season_id=%s but no OCI season match for year=%s. Skipping.",
+                        "Game %s has season_id=%s but no OCI season match for year=%s code=%s. Skipping.",
                         data.get("game_id"),
                         raw_sid,
-                        raw_sid,
+                        year,
+                        code,
                     )
                     return None
             return data
