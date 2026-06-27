@@ -4,7 +4,6 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.sync.sync_base import (
@@ -21,15 +20,6 @@ from src.sync.sync_base import (
 )
 
 pytestmark = pytest.mark.usefixtures("_db_engine")
-
-
-@pytest.fixture
-def _db_engine():
-    engine = create_engine("sqlite:///:memory:", echo=False)
-    Base = pytest.importorskip("src.models.base").Base
-    Base.metadata.create_all(bind=engine)
-    yield engine
-    engine.dispose()
 
 
 class TestGameSyncEligibility:

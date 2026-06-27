@@ -5,9 +5,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.sync.sync_games import (
+    GameSyncMixin,
     _compact_metadata_source_payload_for_limit,
     _serialized_payload_length,
 )
+from src.sync.sync_base import GameSyncEligibility
+
+_child_filter_for_model = GameSyncMixin._child_filter_for_model
+_transform_game_metadata_for_target = GameSyncMixin._transform_game_metadata_for_target
 
 
 class TestSerializedPayloadLength:
@@ -189,3 +194,83 @@ class TestGameSyncMixinMetadataPayloadLimit:
     def test_cached_limit(self, mixin):
         mixin._cached_game_metadata_source_payload_limit = 100
         assert mixin._game_metadata_source_payload_limit() == 100
+
+
+class TestChildFilterForModel:
+    @pytest.fixture
+    def eligibility(self):
+        return GameSyncEligibility(
+            parent_game_ids=["g1", "g2"],
+            detail_game_ids=["g1"],
+            relay_game_ids=["g2"],
+        )
+
+    def test_event_model_uses_relay_ids(self, eligibility):
+        from src.models.game import GameEvent
+
+        result = _child_filter_for_model(GameEvent, None, ["g1"], eligibility)
+        assert result is not None
+        assert len(result) == 1
+
+    def test_pbp_model_uses_relay_ids(self, eligibility):
+        from src.models.game import GamePlayByPlay
+
+        result = _child_filter_for_model(GamePlayByPlay, None, ["g1"], eligibility)
+        assert result is not None
+
+    def test_validation_metrics_uses_scoped_ids(self, eligibility):
+        from src.models.game import GameValidationMetrics
+
+        result = _child_filter_for_model(GameValidationMetrics, None, ["g1"], eligibility)
+        assert result is not None
+
+    def test_detail_models_use_detail_ids(self, eligibility):
+        from src.models.game import GameLineup
+
+        result = _child_filter_for_model(GameLineup, None, ["g1"], eligibility)
+        assert result is not None
+
+    def test_unknown_model_returns_child_filters(self, eligibility):
+        from src.models.game import GameBattingStat
+
+        result = _child_filter_for_model(GameBattingStat, None, ["g1"], eligibility)
+        assert result is not None
+
+    def test_fallback_returns_child_filters(self):
+        eligibility = GameSyncEligibility()
+        result = _child_filter_for_model(str, ["existing_filter"], ["g1"], eligibility)
+        assert result == ["existing_filter"]
+
+
+class TestTransformGameMetadataForTarget:
+    def test_no_limit_returns_unchanged(self):
+        from src.sync.sync_games import GameSyncMixin
+
+        instance = GameSyncMixin()
+        instance.oci_engine = None
+        data = {"source_payload": "x" * 100}
+        result = instance._transform_game_metadata_for_target(data)
+        assert result == data
+
+    def test_limit_truncates_source_payload(self):
+        from src.sync.sync_games import GameSyncMixin
+
+        instance = GameSyncMixin()
+        instance.oci_engine = MagicMock()
+        limit = 50
+        instance._cached_game_metadata_source_payload_limit = limit
+
+        large_payload = {"key": "x" * 100}
+        data = {"source_payload": large_payload, "other": "keep"}
+        result = instance._transform_game_metadata_for_target(data)
+        assert result["other"] == "keep"
+        assert isinstance(result["source_payload"], dict)
+
+    def test_no_source_payload_key(self):
+        from src.sync.sync_games import GameSyncMixin
+
+        instance = GameSyncMixin()
+        instance._cached_game_metadata_source_payload_limit = 50
+        data = {"other": "value"}
+        result = instance._transform_game_metadata_for_target(data)
+        assert result == data

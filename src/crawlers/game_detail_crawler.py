@@ -469,8 +469,16 @@ class GameDetailCrawler:
 
         is_ready, failure_reason = await self._wait_for_boxscore(page, game_id=game_id, lightweight=lightweight)
         if not is_ready:
-            self._last_failure_reason[game_id] = failure_reason
-            return None
+            if lightweight:
+                logger.warning(
+                    "⚠️ Boxscore presence check failed in lightweight mode for %s: %s. "
+                    "Proceeding with partial extraction...",
+                    game_id,
+                    failure_reason,
+                )
+            else:
+                self._last_failure_reason[game_id] = failure_reason
+                return None
 
         roster_map = await self._load_roster_map_from_lineup(page, game_id, game_date, review_url)
         season_year = self._parse_season_year(game_date)
@@ -871,8 +879,19 @@ class GameDetailCrawler:
         if await self._is_cancelled_boxscore_page(page):
             return False, "cancelled"
 
+        selectors = list(GAME_DETAIL.boxscore_presence_selectors)
+        if lightweight:
+            selectors.extend(
+                [
+                    "#tblScordboard1",
+                    "#tblScoreboard1",
+                    "#tblScordboard2",
+                    "#tblScoreboard2",
+                ]
+            )
+
         try:
-            await page.wait_for_selector(", ".join(GAME_DETAIL.boxscore_presence_selectors), timeout=SEL_TIMEOUT)
+            await page.wait_for_selector(", ".join(selectors), timeout=SEL_TIMEOUT)
         except PlaywrightError:
             logger.warning("⚠️ Timeout waiting for boxscore selectors. Page URL: %s", page.url)
 

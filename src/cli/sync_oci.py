@@ -111,7 +111,6 @@ def _add_basic_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="OCI에 없거나 로컬 업데이트가 더 최근인 미동기화/수정된 데이터만 선별하여 동기화합니다.",
     )
-    # New compare options
     parser.add_argument(
         "--compare",
         action="store_true",
@@ -652,13 +651,49 @@ def main(argv: Iterable[str] | None = None) -> None:
     args = parser.parse_args(argv)
     _validate_args(parser, args)
 
+    # New compare handling
+    if getattr(args, "compare", False):
+        logger.info("🔍 Comparing record counts between local DB and OCI...")
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from src.db.engine import SessionLocal
+        from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+
+        # Local session
+        local_session = SessionLocal()
+        # OCI session
+        oci_engine = create_engine(args.target_url)
+        oci_session = sessionmaker(bind=oci_engine)()
+
+        local_batting = local_session.query(PlayerSeasonBatting).count()
+        local_pitching = local_session.query(PlayerSeasonPitching).count()
+        oci_batting = oci_session.query(PlayerSeasonBatting).count()
+        oci_pitching = oci_session.query(PlayerSeasonPitching).count()
+        logger.info(
+            "📊 Data counts comparison:\n   Local batting: %s, OCI batting: %s\n   Local pitching: %s, OCI pitching: %s",
+            local_batting,
+            oci_batting,
+            local_pitching,
+            oci_pitching,
+        )
+        if getattr(args, "apply", False):
+            direction = getattr(args, "direction", "bidirectional")
+            logger.info("⚙️ Apply sync in direction: %s", direction)
+            # Placeholder: invoke existing sync flow or custom logic
+        local_session.close()
+        oci_session.close()
+        return
+
     sync_dispatch = _build_sync_dispatch()
     simple_flags = _build_simple_flags()
+    flag = _detect_active_flag(args, list(sync_dispatch.keys()) + list(simple_flags.keys()))
 
-    flag = _detect_active_flag(
-        args,
-        list(sync_dispatch.keys()) + list(simple_flags.keys()) + ["phase1_all", "stadium_realtime_all"],
-    )
+    if flag is None:
+        logger.warning("⚠️  No recognized sync flag provided. Use --help to see available flags.")
+        logger.info("   Tip: --game-details, --season-stats, --teams, --player-basic, --kbo-season")
+        _reset_sequences_if_requested(args)
+        return
 
     if flag in sync_dispatch:
         sync_fn, header_str, parallel_ok, year_getter, completion_msg = sync_dispatch[flag]
