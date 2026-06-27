@@ -229,9 +229,16 @@ jobs:
           python3 -m src.cli.recalc_player_game_stats \
             --date ${{ needs.finalize.outputs.date }} \
             --save
+          python3 -m src.cli.sync_oci --kbo-season
           python3 -m src.cli.sync_oci \
             --player-game-stats \
             --year ${{ needs.finalize.outputs.year }}
+
+      - name: Verify Season Sync Consistency
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m scripts.verification.verify_season_sync --json
 
       - name: Verify PlayerGame Data Quality
         run: |
