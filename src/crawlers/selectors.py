@@ -65,6 +65,9 @@ class GameDetailSelectors:
     sms_score: str = ".sms-score"
     score_board: str = ".score-board"
 
+    scoreboard_primary: str = "#tblScordboard1"
+    scoreboard_fallback: str = "#tblScoreboard1"
+
     stadium: str = "#txtStadium"
     crowd: str = "#txtCrowd"
 
@@ -115,6 +118,8 @@ class GameDetailSelectors:
             self.home_pitcher_alt2,
             self.sms_score,
             self.score_board,
+            self.scoreboard_primary,
+            self.scoreboard_fallback,
         )
 
 

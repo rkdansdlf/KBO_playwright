@@ -1,3 +1,10 @@
+from __future__ import annotations
+
+import os
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from src.parsers.text_transformer import ChunkingContext, TextTransformer
 
 
@@ -65,6 +72,27 @@ class TestChunkDocument:
         assert len(chunks) >= 1
         assert "keyword1" in str(chunks)
 
+    def test_semantic_strategy(self):
+        doc = {"title": "Test", "content": "First sentence. Second sentence.", "meta": {"category": "news"}}
+        with patch.dict(os.environ, {"CHUNK_STRATEGY": "semantic"}):
+            mock_instance = MagicMock()
+            mock_instance.get_embeddings_batch.return_value = [[0.1] * 5, [0.1] * 5]
+            with patch("src.services.embedding_service.EmbeddingService", return_value=mock_instance):
+                chunks = self.t.chunk_document(doc)
+                assert len(chunks) >= 1
+
+    def test_parent_child_strategy(self):
+        doc = {"title": "Test", "content": "A " * 500, "meta": {"category": "news"}}
+        with patch.dict(os.environ, {"CHUNK_STRATEGY": "parent_child"}):
+            chunks = self.t.chunk_document(doc)
+            assert len(chunks) >= 1
+            assert "parent_content" in chunks[0]["meta"]
+
+    def test_namuwiki_category_uses_headings(self):
+        doc = {"title": "Wiki", "content": "## Section\nContent", "meta": {"category": "namuwiki"}}
+        chunks = self.t.chunk_document(doc)
+        assert len(chunks) >= 1
+
 
 class TestChunkByHeadings:
     def setup_method(self):
@@ -87,6 +115,19 @@ class TestChunkByHeadings:
         assert len(chunks) >= 1
         assert "kw1" in chunks[0]["meta"]["keywords"]
 
+    def test_keyword_comma_split(self):
+        text = "## 키워드\nkw1,kw2,kw3\n## 조항 1\nContent"
+        chunks = self.t.chunk_by_headings("Doc", text, {"source": "test"})
+        assert len(chunks) >= 1
+        assert "kw1" in chunks[0]["meta"]["keywords"]
+        assert "kw2" in chunks[0]["meta"]["keywords"]
+
+    def test_keyword_skip_empty_lines(self):
+        text = "## 키워드\n\nkw1\n\n\nkw2\n\n## 조항 1\nContent"
+        chunks = self.t.chunk_by_headings("Doc", text, {"source": "test"})
+        assert len(chunks) >= 1
+        assert "kw1" in chunks[0]["meta"]["keywords"]
+
     def test_stub_chunks_merged(self):
         text = "## 조항 1\nLong content here that is definitely longer than 30 characters\n## 조항 2\nShort"
         chunks = self.t.chunk_by_headings("Doc", text, {"source": "test"})
@@ -104,6 +145,22 @@ class TestChunkByHeadings:
 
     def test_empty_text(self):
         assert self.t.chunk_by_headings("Doc", "", {}) == []
+
+    def test_heading_with_colon_stripped(self):
+        text = "제 1조:\nContent here"
+        chunks = self.t.chunk_by_headings("Doc", text, {"source": "test"})
+        assert len(chunks) >= 1
+        assert ":" not in chunks[0]["meta"]["heading"]
+
+    def test_heading_only_section_fallback(self):
+        text = "## 조항 1\n## 조항 2\nContent here"
+        chunks = self.t.chunk_by_headings("Doc", text, {"source": "test"})
+        assert len(chunks) >= 1
+
+    def test_numbered_section_pattern(self):
+        text = "1. Introduction\nThis is the introduction with enough content.\n2. Body section\nThis is the body with enough content."
+        chunks = self.t.chunk_by_headings("Doc", text, {"source": "test"})
+        assert len(chunks) >= 2
 
 
 class TestChunkWithOverlap:
@@ -139,6 +196,27 @@ class TestChunkWithOverlap:
     def test_empty_text_returns_empty(self):
         assert self.t.chunk_with_overlap("Doc", "", {}) == []
 
+    def test_long_paragraph_splits_by_sentences(self):
+        text = "First sentence. " * 100
+        chunks = self.t.chunk_with_overlap("Doc", text, {"source": "test"}, chunk_char_limit=100, overlap_char_limit=20)
+        assert len(chunks) >= 2
+
+    def test_sentence_accumulates_within_limit(self):
+        text = "Short. " * 10
+        chunks = self.t.chunk_with_overlap("Doc", text, {"source": "test"}, chunk_char_limit=500, overlap_char_limit=50)
+        assert len(chunks) == 1
+        assert "Short." in chunks[0]["content"]
+
+    def test_paragraph_exceeds_limit_starts_new_chunk(self):
+        text = "A" * 100 + "\n\n" + "B" * 100 + "\n\n" + "C" * 100
+        chunks = self.t.chunk_with_overlap("Doc", text, {"source": "test"}, chunk_char_limit=150, overlap_char_limit=50)
+        assert len(chunks) >= 2
+
+    def test_single_paragraph_exceeds_limit_splits_sentences(self):
+        text = "Sentence one. " * 50
+        chunks = self.t.chunk_with_overlap("Doc", text, {"source": "test"}, chunk_char_limit=80, overlap_char_limit=10)
+        assert len(chunks) >= 3
+
 
 class TestChunkSemantically:
     def setup_method(self):
@@ -149,10 +227,21 @@ class TestChunkSemantically:
         assert len(chunks) == 1
         assert "Hello" in chunks[0]["content"]
 
-    def test_multiple_sentences(self):
+    def test_multiple_sentences_similar(self):
+        text = "First sentence about cats. Second sentence about cats. Third sentence about cats."
+        mock_instance = MagicMock()
+        mock_instance.get_embeddings_batch.return_value = [[0.9] * 5] * 3
+        with patch("src.services.embedding_service.EmbeddingService", return_value=mock_instance):
+            chunks = self.t.chunk_semantically("Doc", text, {"source": "test"})
+            assert len(chunks) >= 1
+
+    def test_multiple_sentences_dissimilar(self):
         text = "First sentence. Second sentence. Third sentence."
-        chunks = self.t.chunk_semantically("Doc", text, {"source": "test"})
-        assert len(chunks) >= 1
+        mock_instance = MagicMock()
+        mock_instance.get_embeddings_batch.return_value = [[0.9] * 5, [0.1] * 5, [0.9] * 5]
+        with patch("src.services.embedding_service.EmbeddingService", return_value=mock_instance):
+            chunks = self.t.chunk_semantically("Doc", text, {"source": "test"}, similarity_threshold=0.5)
+            assert len(chunks) >= 2
 
     def test_empty_text(self):
         result = self.t.chunk_semantically("Doc", "", {})
@@ -210,6 +299,61 @@ class TestChunkParentChild:
             == []
         )
 
+    def test_raises_when_ctx_none(self):
+        with pytest.raises(ValueError):
+            self.t.chunk_parent_child("text", ctx=None)
+
+    def test_fallback_to_single_line_split(self):
+        text = "Line1\nLine2\nLine3"
+        chunks = self.t.chunk_parent_child(
+            text,
+            parent_size=1000,
+            child_size=200,
+            child_overlap=50,
+            ctx=ChunkingContext(
+                doc_title="Doc",
+                meta={"source": "test"},
+                chunks=[],
+                chunk_char_limit=1000,
+                overlap_char_limit=100,
+            ),
+        )
+        assert len(chunks) >= 1
+
+    def test_child_accumulation_within_size(self):
+        text = "A" * 100 + "\n\n" + "B" * 100 + "\n\n" + "C" * 100
+        chunks = self.t.chunk_parent_child(
+            text,
+            parent_size=1000,
+            child_size=300,
+            child_overlap=50,
+            ctx=ChunkingContext(
+                doc_title="Doc",
+                meta={"source": "test"},
+                chunks=[],
+                chunk_char_limit=1000,
+                overlap_char_limit=100,
+            ),
+        )
+        assert len(chunks) >= 1
+
+    def test_child_overflow_creates_new_chunk(self):
+        text = "A" * 300 + "\n\n" + "B" * 300 + "\n\n" + "C" * 300
+        chunks = self.t.chunk_parent_child(
+            text,
+            parent_size=1000,
+            child_size=200,
+            child_overlap=50,
+            ctx=ChunkingContext(
+                doc_title="Doc",
+                meta={"source": "test"},
+                chunks=[],
+                chunk_char_limit=1000,
+                overlap_char_limit=100,
+            ),
+        )
+        assert len(chunks) >= 2
+
 
 class TestCreateNewsChunk:
     def setup_method(self):
@@ -225,3 +369,11 @@ class TestCreateNewsChunk:
     def test_index_passthrough(self):
         chunk = self.t._create_news_chunk("Doc", "Text", {"source": "s"}, 5)
         assert chunk["meta"]["chunk_index"] == 5
+
+    def test_content_stripped(self):
+        chunk = self.t._create_news_chunk("Doc", "  Text  ", {}, 1)
+        assert chunk["content"] == "Text"
+
+    def test_source_row_id_is_hash(self):
+        chunk = self.t._create_news_chunk("Doc", "Content", {"source": "test"}, 1)
+        assert len(chunk["meta"]["source_row_id"]) == 64

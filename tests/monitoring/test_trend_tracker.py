@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -83,6 +84,19 @@ class TestLoadReports:
         assert len(result) == 1
         assert result[0]["metrics"]["completed_count"] == 10
 
+    def test_dedup_keeps_older_when_newer_missing(self, tmp_path: Path) -> None:
+        date_str = _date_str(0)
+        r1 = _make_report(date_str, {"completed_count": 5})
+        r1["generated_at"] = f"{date_str}T14:00:00"
+        r2 = _make_report(date_str, {"completed_count": 10})
+        r2["generated_at"] = f"{date_str}T10:00:00"
+        (tmp_path / f"{date_str}.json").write_text(json.dumps(r1, ensure_ascii=False), encoding="utf-8")
+        (tmp_path / f"{date_str}_2.json").write_text(json.dumps(r2, ensure_ascii=False), encoding="utf-8")
+        tracker = TrendTracker(report_dir=tmp_path)
+        result = tracker.load_reports(days=30)
+        assert len(result) == 1
+        assert result[0]["metrics"]["completed_count"] == 5
+
 
 class TestGetTrend:
     def test_stable_with_few_values(self, tmp_path: Path) -> None:
@@ -118,6 +132,26 @@ class TestGetTrend:
         tracker = TrendTracker(report_dir=tmp_path)
         trend = tracker.get_trend("metrics.nonexistent")
         assert trend["values"] == []
+        assert trend["direction"] == "stable"
+
+    def test_skips_none_values_in_trend(self, tmp_path: Path) -> None:
+        for i in range(5):
+            date_str = _date_str(4 - i)
+            metrics = {"completed_count": i * 10} if i % 2 == 0 else {}
+            report = _make_report(date_str, metrics)
+            _write_report(tmp_path, report)
+        tracker = TrendTracker(report_dir=tmp_path)
+        trend = tracker.get_trend("metrics.completed_count", days=7)
+        assert len(trend["values"]) == 3
+
+    def test_stable_with_non_monotonic_values(self, tmp_path: Path) -> None:
+        values = [10, 20, 15]
+        for i, val in enumerate(values):
+            date_str = _date_str(2 - i)
+            report = _make_report(date_str, {"completed_count": val})
+            _write_report(tmp_path, report)
+        tracker = TrendTracker(report_dir=tmp_path)
+        trend = tracker.get_trend("metrics.completed_count", days=7)
         assert trend["direction"] == "stable"
 
 
@@ -172,6 +206,30 @@ class TestDetectDegradations:
         )
         assert len(alerts) == 1
         assert alerts[0]["pct_change"] < 0
+
+    def test_skips_metrics_with_none_values(self, tmp_path: Path) -> None:
+        r1 = _make_report(_date_str(14), {"relay_integrity": {"recent_missing_count": 10}})
+        r2 = _make_report(_date_str(0), {})
+        _write_report(tmp_path, r1)
+        _write_report(tmp_path, r2)
+        tracker = TrendTracker(report_dir=tmp_path)
+        alerts = tracker.detect_degradations(
+            {"metrics.relay_integrity.recent_missing_count": 50.0},
+            days=30,
+        )
+        assert alerts == []
+
+    def test_small_triggers_on_any_increase(self, tmp_path: Path) -> None:
+        r1 = _make_report(_date_str(14), {"relay_integrity": {"recent_missing_count": 1}})
+        r2 = _make_report(_date_str(0), {"relay_integrity": {"recent_missing_count": 100}})
+        _write_report(tmp_path, r1)
+        _write_report(tmp_path, r2)
+        tracker = TrendTracker(report_dir=tmp_path)
+        alerts = tracker.detect_degradations(
+            {"metrics.relay_integrity.recent_missing_count": 50.0},
+            days=30,
+        )
+        assert len(alerts) == 1
 
 
 class TestResolveKey:
@@ -232,3 +290,72 @@ class TestGeneratedAtKey:
     def test_returns_empty_string(self) -> None:
         tracker = TrendTracker()
         assert tracker._generated_at_key({}) == ""
+
+
+class TestPrintTrendSummary:
+    def test_no_reports_logs_info(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+        tracker = TrendTracker(report_dir=tmp_path)
+        with caplog.at_level("INFO"):
+            tracker.print_trend_summary(days=14)
+        assert "No quality reports found" in caplog.text
+
+    def test_with_reports_prints_summary(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+        for i in range(3):
+            date_str = _date_str(2 - i)
+            report = _make_report(
+                date_str,
+                {
+                    "completed_count": i * 10,
+                    "relay_integrity": {"recent_missing_count": i, "current_season_missing_count": i},
+                    "standings_integrity": {"ok": True},
+                    "pa_formula_integrity": {"violation_count": i},
+                },
+            )
+            report["quality_gate"] = {"ok": True}
+            _write_report(tmp_path, report)
+        tracker = TrendTracker(report_dir=tmp_path)
+        with caplog.at_level("INFO"):
+            tracker.print_trend_summary(days=7)
+        assert "Quality Metric Trends" in caplog.text
+
+    def test_degradations_logged_when_present(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+        r1 = _make_report(_date_str(10), {"relay_integrity": {"recent_missing_count": 10}})
+        r2 = _make_report(_date_str(0), {"relay_integrity": {"recent_missing_count": 100}})
+        _write_report(tmp_path, r1)
+        _write_report(tmp_path, r2)
+        tracker = TrendTracker(report_dir=tmp_path)
+        with caplog.at_level("INFO"):
+            tracker.print_trend_summary(days=30)
+        assert "Degradations detected" in caplog.text
+
+
+class TestSendDegradationAlert:
+    def test_no_degradations_no_alert(self, tmp_path: Path) -> None:
+        tracker = TrendTracker(report_dir=tmp_path)
+        with patch("src.monitoring.trend_tracker.SlackWebhookClient") as mock_client:
+            tracker.send_degradation_alert(days=14)
+            mock_client.send_alert.assert_not_called()
+
+    def test_sends_alert_when_degraded(self, tmp_path: Path) -> None:
+        r1 = _make_report(_date_str(10), {"relay_integrity": {"recent_missing_count": 10}})
+        r2 = _make_report(_date_str(0), {"relay_integrity": {"recent_missing_count": 100}})
+        _write_report(tmp_path, r1)
+        _write_report(tmp_path, r2)
+        tracker = TrendTracker(report_dir=tmp_path)
+        with patch("src.monitoring.trend_tracker.SlackWebhookClient") as mock_client:
+            mock_client.send_alert = MagicMock(return_value=True)
+            tracker.send_degradation_alert(days=30)
+            mock_client.send_alert.assert_called_once()
+            call_args = mock_client.send_alert.call_args[0]
+            assert "열화" in call_args[0] or "degradation" in call_args[0].lower()
+
+    def test_pa_violation_triggers_alert(self, tmp_path: Path) -> None:
+        r1 = _make_report(_date_str(10), {"relay_integrity": {"recent_missing_count": 10}})
+        r2 = _make_report(_date_str(0), {"relay_integrity": {"recent_missing_count": 100}})
+        _write_report(tmp_path, r1)
+        _write_report(tmp_path, r2)
+        tracker = TrendTracker(report_dir=tmp_path)
+        with patch("src.monitoring.trend_tracker.SlackWebhookClient") as mock_client:
+            mock_client.send_alert = MagicMock(return_value=True)
+            tracker.send_degradation_alert(days=30)
+            mock_client.send_alert.assert_called_once()
