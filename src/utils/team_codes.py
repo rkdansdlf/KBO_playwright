@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from src.constants import DATE_STR_LEN
+from src.utils.team_history import resolve_team_code_for_season
 
 # Canonical KBO short codes (aligned with modern franchise IDs)
 TEAM_NAME_TO_CODE = {
@@ -149,8 +150,6 @@ def kbo_game_id_team_code(team_code: str | None, season_year: int | None = None)
 
     normalized_code = team_code_from_game_id_segment(raw_code, season_year) or raw_code
     if season_year:
-        from src.utils.team_history import resolve_team_code_for_season
-
         normalized_code = resolve_team_code_for_season(normalized_code, season_year) or normalized_code
 
     return KBO_LEGACY_TECHNICAL_CODE.get(normalized_code, normalized_code)
@@ -238,8 +237,6 @@ def team_code_from_game_id_segment(segment: str | None, season_year: int | None 
 
     # 2. If year is provided, use history to find the EXACT brand code for that year
     if season_year:
-        from src.utils.team_history import resolve_team_code_for_season
-
         resolved = resolve_team_code_for_season(mapped, season_year)
         if resolved:
             return resolved

@@ -22,11 +22,13 @@ Reference:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from typing import Any, Literal
 
 import httpx
@@ -84,8 +86,6 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
         return None
     try:
         # Naver returns: "Tue, 03 Jun 2026 14:32:00 +0900"
-        from email.utils import parsedate_to_datetime
-
         return parsedate_to_datetime(pub_date_str).replace(tzinfo=None)
     except (ValueError, TypeError):
         logger.debug("Failed to parse Naver date: %s", pub_date_str)
@@ -206,8 +206,6 @@ class NaverSearchClient:
             days_back: Only return results from the last N days.
 
         """
-        import asyncio
-
         cutoff = datetime.now(KST) - timedelta(days=days_back)
         all_results: list[NaverSearchResult] = []
         seen_links: set[str] = set()

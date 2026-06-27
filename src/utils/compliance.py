@@ -10,8 +10,14 @@ import asyncio
 import logging
 import time
 import urllib.robotparser
+from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
+
+try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore[assignment]
 
 import httpx
 
@@ -64,9 +70,7 @@ class ComplianceChecker:
 
                                 # Save snapshot
                                 try:
-                                    from datetime import datetime
-
-                                    snapshot_dir = Path("Docs/robots")
+                                    snapshot_dir = Path("docs/robots")
                                     snapshot_dir.mkdir(parents=True, exist_ok=True)
                                     timestamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
                                     snapshot_path = snapshot_dir / f"robots_{timestamp}.txt"
@@ -108,7 +112,10 @@ class ComplianceChecker:
         if now - self.last_fetch_time > self.fetch_interval:
             logger.info("[COMPLIANCE] Sync fetching robots.txt from %s", self.robots_url)
             try:
-                import httpx
+                if httpx is None:
+                    logger.warning("[COMPLIANCE] httpx not installed, skipping robots.txt fetch")
+                    time.sleep(self.fetch_interval)
+                    return False
 
                 response = httpx.get(self.robots_url, timeout=10.0)
                 if response.status_code == HTTPStatus.OK:
