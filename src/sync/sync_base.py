@@ -974,6 +974,7 @@ class OCISyncBase:
         for offset in range(0, config.total_count, config.batch_size):
             rows = config.query.offset(offset).limit(config.batch_size).all()
             records = [_row_to_record(row, config.columns, config.transform_fn) for row in rows]
+            records = [r for r in records if r is not None]
             records = _dedupe_records_for_conflict_keys(records, config.dedupe_keys or config.conflict_keys)
 
             connection = None

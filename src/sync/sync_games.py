@@ -142,32 +142,27 @@ class GameSyncMixin:
 
     def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY."""
-        # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
         season_map = self._get_season_map()
+        unmapped_count = 0
 
-        def transform(data: dict[str, Any]) -> dict[str, Any]:
-            # If season_id looks like a year (e.g. > 1900), map it
-            """
-            Transforms transform.
-
-            Args:
-                data: Data.
-
-            Returns:
-                Dictionary result.
-
-            """
+        def transform(data: dict[str, Any]) -> dict[str, Any] | None:
+            nonlocal unmapped_count
             raw_sid = data.get("season_id")
             if raw_sid and raw_sid > 1900:
-                # Default to Regular season (type 0) for these legacy years
                 key = (raw_sid, 0)
                 if key in season_map:
                     data["season_id"] = season_map[key]
+                else:
+                    unmapped_count += 1
+                    logger.warning(
+                        "Game %s has season_id=%s but no OCI season match for year=%s. Skipping.",
+                        data.get("game_id"),
+                        raw_sid,
+                        raw_sid,
+                    )
+                    return None
             return data
 
-        # Exclude columns that don't exist on OCI side
-        # We must exclude 'id' to avoid PK conflicts, as SQLite and OCI use different surrogate ID sequences.
-        # Business key for deduplication/upsert is 'game_id'.
         exclude_cols = [
             "id",
             "created_at",
@@ -176,8 +171,7 @@ class GameSyncMixin:
             "away_franchise_id",
             "winning_franchise_id",
         ]
-
-        return self.sync_simple_table(
+        result = self.sync_simple_table(
             Game,
             ["game_id"],
             exclude_cols=exclude_cols,
@@ -185,6 +179,12 @@ class GameSyncMixin:
             transform_fn=transform,
             batch_size=batch_size,
         )
+        if unmapped_count:
+            logger.warning(
+                "sync_games: %d games skipped due to unmapped season_id (OCI kbo_seasons out of sync)",
+                unmapped_count,
+            )
+        return result
 
     def sync_player_game_batting(self, year: int | None = None, batch_size: int = 5000) -> int:
         """Sync player game batting stats from SQLite to OCI."""

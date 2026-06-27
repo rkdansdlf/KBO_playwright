@@ -22,6 +22,7 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
+from src.models.season import KboSeason
 from src.services.game_write_contract import GameWriteContract
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_COMPLETED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
 
@@ -50,6 +51,7 @@ def _build_session_factory():
         GamePitchingStat.__table__,
         GameEvent.__table__,
         GameSummary.__table__,
+        KboSeason.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
@@ -73,6 +75,7 @@ def _build_fk_session_factory():
         GamePitchingStat.__table__,
         GameEvent.__table__,
         GameSummary.__table__,
+        KboSeason.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
@@ -433,7 +436,7 @@ def test_save_game_snapshot_marks_cancelled_alias_and_sets_season(monkeypatch):
         metadata = session.query(GameMetadata).filter(GameMetadata.game_id == "20250402LGSS0").one()
 
         assert game.game_status == GAME_STATUS_CANCELLED
-        assert game.season_id == 2025
+        assert game.season_id == 202500
         assert game.away_team == "LG"
         assert game.home_team == "SS"
         assert metadata.source_payload == {"is_cancelled": True}
@@ -577,7 +580,7 @@ def test_save_game_detail_honors_explicit_cancelled_status(monkeypatch):
         game = session.query(Game).filter(Game.game_id == "20250403LGSS0").one()
 
         assert game.game_status == GAME_STATUS_CANCELLED
-        assert game.season_id == 2025
+        assert game.season_id == 202500
 
 
 def test_save_game_detail_creates_player_basic_stubs_for_new_payload_ids(monkeypatch):
@@ -768,6 +771,6 @@ def test_repair_game_parent_from_existing_children_uses_child_scores(monkeypatch
         assert game.home_score == 3
         assert game.game_status == "COMPLETED"
         assert game.winning_team == "SS"
-        assert game.season_id == 2025
+        assert game.season_id == 202500
         assert inning.franchise_id == 3
         assert inning.canonical_team_code == "LG"

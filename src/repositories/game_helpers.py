@@ -303,6 +303,8 @@ def _resolve_season_id_fallback(
     game_data: dict[str, Any],
     existing_season_id: int | None,
     season_year: int | None,
+    *,
+    create_missing: bool = True,
 ) -> int | None:
     if season_year is None:
         return existing_season_id
@@ -312,7 +314,53 @@ def _resolve_season_id_fallback(
         return mapped
     if existing_season_id is not None:
         return existing_season_id
-    return season_year
+    if create_missing:
+        return _ensure_season_exists(session, season_year, league_type_code)
+    logger.warning(
+        "No kbo_seasons match for year=%s type=%s; falling back to year*100",
+        season_year,
+        league_type_code,
+    )
+    return season_year * 100 + league_type_code
+
+
+def _ensure_season_exists(
+    session: Session,
+    season_year: int,
+    league_type_code: int,
+) -> int:
+    """Auto-create a kbo_seasons row if missing; return its season_id."""
+    result = _query_db_season_by_code(session, season_year, league_type_code)
+    if result is not None:
+        return result
+    sid = season_year * 100 + league_type_code
+    name = {
+        0: "정규시즌",
+        1: "시범경기",
+        2: "와일드카드",
+        3: "준플레이오프",
+        4: "플레이오프",
+        5: "한국시리즈",
+    }.get(league_type_code, f"Type {league_type_code}")
+    logger.warning(
+        "Auto-creating kbo_seasons row: year=%s, code=%s (%s)",
+        season_year,
+        league_type_code,
+        name,
+    )
+    session.execute(
+        text(
+            """
+            INSERT OR IGNORE INTO kbo_seasons
+                (season_id, season_year, league_type_code, league_type_name,
+                 created_at, updated_at)
+            VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """
+        ),
+        {"sid": sid, "year": season_year, "code": league_type_code, "name": name},
+    )
+    session.flush()
+    return sid
 
 
 def _resolve_game_season_id(
@@ -688,6 +736,14 @@ def _upsert_metadata(
             write_contract.field_updated(game_id, source, "metadata.created", None, True)
 
     _write_source = source or GameWriteSource("metadata", "unknown")
+
+    stadium_name = metadata.get("stadium")
+    if stadium_name and not metadata.get("stadium_code"):
+        from src.utils.stadium_codes import resolve_stadium_code
+
+        resolved_code = resolve_stadium_code(stadium_name)
+        if resolved_code:
+            metadata["stadium_code"] = resolved_code
 
     field_map: list[tuple[str, str, str, bool]] = [
         ("stadium_code", "stadium_code", "metadata.stadium_code", False),

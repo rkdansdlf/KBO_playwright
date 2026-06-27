@@ -147,7 +147,7 @@ jobs:
             python3 -m src.cli.recalc_player_game_stats --season "$year" --save
           done
           echo "=== Syncing all to OCI ==="
-          python3 -m src.cli.sync_oci --player-game-stats
+          python3 -m src.cli.sync_oci --kbo-season --player-game-stats
 
       - name: Verify PlayerGame Data Quality
         if: ${{ matrix.id == 'player_game_stats' }}
@@ -190,6 +190,7 @@ jobs:
             --years "$YEAR" \
             --series regular
           python3 -m src.cli.sync_oci \
+            --kbo-season \
             --season-stats \
             --year "$YEAR"
 
@@ -200,7 +201,7 @@ jobs:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 scripts/backfill_player_profiles.py --limit 0 --delay 1.5
-          python3 -m src.cli.sync_oci --player-basic
+          python3 -m src.cli.sync_oci --kbo-season --player-basic
 
       # ── player_ids ──────────────────────────────────────────────────
       - name: Run Player ID Backfill
