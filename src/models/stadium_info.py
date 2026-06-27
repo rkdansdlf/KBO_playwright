@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import JSON, Boolean, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,12 +28,12 @@ class StadiumInfo(Base, TimestampMixin):
     location: Mapped[str | None] = mapped_column(String(200), nullable=True, comment="City/district location")
     address: Mapped[str | None] = mapped_column(String(300), nullable=True, comment="Full address")
     parking_info: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Parking details")
-    public_transport: Mapped[dict | None] = mapped_column(
+    public_transport: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
         nullable=True,
         comment="Public transit info {subway, bus}",
     )
-    facilities: Mapped[dict | None] = mapped_column(
+    facilities: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
         nullable=True,
         comment="Facilities list {restaurant, shop, etc}",

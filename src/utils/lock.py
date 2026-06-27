@@ -1,14 +1,13 @@
 """유틸리티: lock."""
 
-from __future__ import annotations
-
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from types import TracebackType
+from typing import IO, TYPE_CHECKING, Self
 
 if TYPE_CHECKING:
-    from types import TracebackType
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +61,7 @@ class ProcessLock:
                 _thread_locks[name] = threading.Lock()
             self.thread_lock = _thread_locks[name]
 
-        self.file_fd = None
+        self.file_fd: IO[str] | None = None
         self.thread_lock_acquired = False
         self.acquire_count = 0
 

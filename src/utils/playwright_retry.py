@@ -1,10 +1,9 @@
 """Playwright navigation and selector retry utilities."""
 
-from __future__ import annotations
-
 import contextlib
 import logging
 import os
+from typing import Literal
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
@@ -35,7 +34,7 @@ def retry_navigation(
     url: str,
     max_retries: int = _MAX_RETRIES,
     timeout: int = _NAVIGATION_TIMEOUT,
-    wait_until: str = "load",
+    wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
 ) -> bool:
     """Retry page.goto with simple incremental backoff."""
     for attempt in range(1, max_retries + 1):
@@ -87,7 +86,7 @@ def retry_wait_for_selector(
     selector: str,
     max_retries: int = _MAX_RETRIES,
     timeout: int = _SELECTOR_TIMEOUT,
-    state: str = "visible",
+    state: Literal["attached", "detached", "hidden", "visible"] = "visible",
 ) -> bool:
     """Retry wait_for_selector, reloading between timeout attempts."""
     for attempt in range(1, max_retries + 1):

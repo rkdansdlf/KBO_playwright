@@ -5,11 +5,11 @@ Validates structural integrity (e.g. missing innings) and score correctness.
 Supports two-phase validation: live (structural) and post-game (cross-check).
 """
 
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from sqlalchemy.orm import Session
 
 from src.constants import MAX_OUTS
 from src.models.game import Game
@@ -19,7 +19,7 @@ from src.repositories.game_helpers import (
 )
 
 if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def validate_live_events(events: list[dict[str, Any]]) -> list[str]:
         away_scores.append(away_score)
         prev_inning = inning
         prev_half = half
-        prev_outs = outs
+        prev_outs = outs  # type: ignore[assignment]
         prev_home_score = home_score
         prev_away_score = away_score
 
@@ -142,7 +142,7 @@ def _inning_regression_warnings(
     """
     if prev_inning is None:
         return []
-    if inning < prev_inning:
+    if inning < prev_inning:  # type: ignore[operator]
         return [f"event_{index}: inning regressed {prev_inning}->{inning}"]
     if inning == prev_inning and half is not None and prev_half is not None:
         half_order = {"top": 0, "bottom": 1}
@@ -273,7 +273,7 @@ def cross_validate_with_box_score(
         side = row.team_side  # "away" or "home"
         inn = row.inning
         db_runs = row.runs or 0
-        pbp_runs = pbp_innings.get(side, {}).get(inn, 0)
+        pbp_runs = pbp_innings.get(side, {}).get(inn, 0)  # type: ignore[call-overload]
         if db_runs != pbp_runs:
             return False, (f"inning_score_mismatch_{side}_inning_{inn}: box_score={db_runs}_pbp={pbp_runs}")
 
@@ -320,9 +320,9 @@ def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[
         The result of the operation.
 
     """
-    innings_in_pbp = sorted({row.get("inning") for row in raw_pbp_rows if row.get("inning") is not None})
+    innings_in_pbp = sorted({row.get("inning") for row in raw_pbp_rows if row.get("inning") is not None})  # type: ignore[type-var]
     if not innings_in_pbp:
-        innings_in_pbp = sorted({event.get("inning") for event in events if event.get("inning") is not None})
+        innings_in_pbp = sorted({event.get("inning") for event in events if event.get("inning") is not None})  # type: ignore[type-var]
 
     if not innings_in_pbp:
         return "no_innings_found"
@@ -332,7 +332,7 @@ def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[
     if min_inn != 1:
         return f"starts_at_inning_{min_inn}_instead_of_1"
 
-    missing_innings = set(range(1, max_inn + 1)) - set(innings_in_pbp)
+    missing_innings = set(range(1, int(max_inn) + 1)) - set(innings_in_pbp)  # type: ignore[arg-type]
     if missing_innings:
         return f"missing_innings_{sorted(missing_innings)}"
     return None

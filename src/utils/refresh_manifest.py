@@ -1,8 +1,7 @@
 """Refresh manifest writer for downstream cache invalidation contracts."""
 
-from __future__ import annotations
-
 import json
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from src.constants import KST
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    pass
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = PROJECT_ROOT / "data" / "refresh_manifests"
@@ -65,7 +64,7 @@ class RefreshManifestSpec:
     stability: Mapping[str, Any] | None = None
 
 
-def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: object) -> Path:
+def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: Any) -> Path:
     """
     Writes refresh manifest.
 
@@ -85,7 +84,7 @@ def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: ob
     output_path = spec.output_dir or DEFAULT_MANIFEST_DIR
     output_path.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
-    payload = {
+    payload: dict[str, Any] = {
         "phase": spec.phase,
         "target_date": spec.target_date,
         "game_ids": sorted({gid for gid in spec.game_ids if gid}),

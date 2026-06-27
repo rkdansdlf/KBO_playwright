@@ -1,7 +1,5 @@
 """유틸리티: series validation."""
 
-from __future__ import annotations
-
 import logging
 
 from src.constants import (
@@ -139,7 +137,7 @@ def get_recommended_series_for_period(start_year: int, end_year: int) -> list[st
 
     """
     # 전체 기간에서 각 시리즈가 존재하는 연도 수 계산
-    series_counts = {}
+    series_counts: dict[str, int] = {}
     total_years = end_year - start_year + 1
 
     for year in range(start_year, end_year + 1):

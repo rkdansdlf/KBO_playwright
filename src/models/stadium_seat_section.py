@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.sqlite import TEXT as SQLITE_TEXT_TYPE
 from sqlalchemy.orm import Mapped, mapped_column
@@ -67,7 +69,7 @@ class StadiumSeatSection(Base, TimestampMixin):
         comment="Key to match with TicketPrice.seat_grade",
     )
     seat_map_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Seat map image URL")
-    geometry_json: Mapped[dict | None] = mapped_column(
+    geometry_json: Mapped[dict[str, Any] | None] = mapped_column(
         JSON().with_variant(SQLITE_TEXT_TYPE, "sqlite"),
         nullable=True,
         comment="Section geometry coordinates",
