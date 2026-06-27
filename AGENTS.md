@@ -502,3 +502,23 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - Added to per-file-ignore: B007 (tests), S607 (tests/scripts), PERF102 (tests/scripts)
 - **pytest**: 5940 passed, 0 failures
 - **ruff check src/ tests/ scripts/**: 0 errors
+
+### Phase 45 Complete (2026-06-28) — Coverage expansion + test stabilization
+
+- **Coverage 74.55% → 76%** (fail_under=70, exceeded target 75%)
+- **sync_stats.py 75% → 78%**: Added 16 tests in `tests/test_sync_stats_ext.py`
+  - `_add_existing_player_basic_filter` warning path
+  - `sync_pitcher_data` / `sync_batting_data` success paths
+  - `verify_pitcher_sync` / `verify_batting_sync` (meets/below expected)
+  - `show_oci_data_sample` (empty + with data)
+  - `_get_table_signature` match detection
+  - `sync_player_season_*` skip when signature matched
+  - `purge_season_stats` (all/pitching/batting)
+  - `sync_all_player_data` returns dict
+  - verify success log
+- **Pre-existing failures** (not introduced by this session):
+  - `test_game_id_normalization.py` (3 tests) — test isolation issue, passes alone
+  - `test_context_aggregator_ext.py` (1 collection error)
+  - `test_fallback_monitor.py` (3 tests)
+  - `test_validators.py` (1 test)
+- **pytest**: 7374 passed (full suite), 7391+ with --ignore flags

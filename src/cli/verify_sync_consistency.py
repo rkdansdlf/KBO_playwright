@@ -241,8 +241,8 @@ def check_game_season_fk(sqlite_conn: Connection, oci_conn: Connection) -> list[
                     FROM game g
                     LEFT JOIN kbo_seasons s ON g.season_id = s.season_id
                     WHERE s.season_id IS NULL
-                    """
-                )
+                    """,
+                ),
             ).scalar()
             results.append({"db": label, "orphan_game_count": orphan or 0})
         except SYNC_VERIFY_DB_EXCEPTIONS:

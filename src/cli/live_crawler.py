@@ -544,9 +544,20 @@ async def _save_live_relay_and_snapshot(
         _submit_live_detail_snapshot_background(input_.game_id, input_.today_str)
     elif save_options.detail_crawler is not None:
         detail = await save_options.detail_crawler.crawl_game(input_.game_id, input_.today_str, lightweight=True)
-        if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
-            touched = True
-            logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", input_.game_id)
+        if detail:
+            lifecycle_override = detail.get("lifecycle_state")
+            if lifecycle_override and input_.resolved_lifecycle in ("before", None):
+                input_ = RelaySaveInput(
+                    game_id=input_.game_id,
+                    today_str=input_.today_str,
+                    flat_events=input_.flat_events,
+                    raw_pbp_rows=input_.raw_pbp_rows,
+                    relay_data=input_.relay_data,
+                    resolved_lifecycle=lifecycle_override,
+                )
+            if save_game_snapshot(detail, status=GAME_STATUS_LIVE):
+                touched = True
+                logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", input_.game_id)
 
     if input_.resolved_lifecycle == "result_pending_stabilization":
         _trigger_fallback_healing_if_unverified(input_.game_id)
