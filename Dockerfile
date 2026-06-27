@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
@@ -31,8 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    python -m playwright install chromium && \
     groupadd -r appuser && useradd -r -g appuser appuser
+
+RUN mkdir -p /ms-playwright && chmod 777 /ms-playwright && \
+    su appuser -c "python -m playwright install chromium"
 
 COPY . .
 
