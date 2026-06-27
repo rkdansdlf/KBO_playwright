@@ -1175,6 +1175,26 @@ def _resolve_team_identity(team_code: object, season_year: int | None) -> tuple[
     return entry.franchise_id, canonical_code, entry.team_code.upper()
 
 
+def _validate_inning_score_consistency(
+    teams: dict[str, Any],
+    records: list[dict[str, Any]],
+    game_id: str,
+) -> list[str]:
+    warnings = []
+    for side in ("away", "home"):
+        team_info = teams.get(side, {}) or {}
+        total_score = team_info.get("score")
+        if total_score is None:
+            continue
+        inning_runs = [r["runs"] for r in records if r["team_side"] == side and r["runs"] is not None]
+        inning_total = sum(inning_runs)
+        if inning_total != total_score:
+            warnings.append(
+                f"Inning score mismatch for {game_id} {side}: sum={inning_total} vs score={total_score}",
+            )
+    return warnings
+
+
 def _build_inning_scores(
     game_id: str,
     teams: dict[str, Any],
