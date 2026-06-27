@@ -111,6 +111,23 @@ def _add_basic_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="OCI에 없거나 로컬 업데이트가 더 최근인 미동기화/수정된 데이터만 선별하여 동기화합니다.",
     )
+    # New compare options
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Compare OCI and local DB record counts and optionally apply sync.",
+    )
+    parser.add_argument(
+        "--direction",
+        choices=["oci-to-local", "local-to-oci", "bidirectional"],
+        default="bidirectional",
+        help="Direction for sync when using --compare.",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply the synchronization after comparison (use with --compare).",
+    )
 
 
 def _add_game_args(parser: argparse.ArgumentParser) -> None:
@@ -257,6 +274,11 @@ def _add_phase1_args(parser: argparse.ArgumentParser) -> None:
         help="Phase1: 구장 정보(stadium_info, stadium_regulations)를 동기화합니다.",
     )
     parser.add_argument(
+        "--team-events",
+        action="store_true",
+        help="구단 이벤트/뉴스 정보(team_events)를 동기화합니다.",
+    )
+    parser.add_argument(
         "--injuries",
         action="store_true",
         help="Phase1: 부상자 정보(injury_entries)를 동기화합니다.",
@@ -270,11 +292,6 @@ def _add_phase1_args(parser: argparse.ArgumentParser) -> None:
         "--managers",
         action="store_true",
         help="Phase1: 감독 변동(manager_changes)을 동기화합니다.",
-    )
-    parser.add_argument(
-        "--team-events",
-        action="store_true",
-        help="구단 이벤트/뉴스 정보(team_events)를 동기화합니다.",
     )
     parser.add_argument(
         "--fan-culture",
