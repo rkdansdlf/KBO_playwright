@@ -234,14 +234,16 @@ def _minutes_until_next_pregame_tick(now: datetime | None = None) -> float | Non
 
 def _should_skip_live_for_pregame(now: datetime | None = None) -> bool:
     try:
-        threshold_minutes = int(os.getenv("LIVE_SKIP_BEFORE_PREGAME_MINUTES", "10"))
+        threshold_minutes = int(os.getenv("LIVE_SKIP_BEFORE_PREGAME_MINUTES", "3"))
     except ValueError:
-        threshold_minutes = 10
+        threshold_minutes = 3
     if threshold_minutes <= 0:
         return False
 
     minutes_until_pregame = _minutes_until_next_pregame_tick(now)
-    return minutes_until_pregame is not None and minutes_until_pregame <= threshold_minutes
+    if minutes_until_pregame is None:
+        return False
+    return 0 < minutes_until_pregame <= threshold_minutes
 
 
 def _pregame_refresh_summary(target_date: str) -> tuple[int, int, int]:

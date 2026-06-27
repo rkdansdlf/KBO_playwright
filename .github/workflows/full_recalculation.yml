@@ -59,7 +59,7 @@ jobs:
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 -m src.cli.sync_oci --season-stats --player-game-stats
+          python3 -m src.cli.sync_oci --kbo-season --season-stats --player-game-stats
 
       - name: Verify PlayerGame Data Quality
         if: always()

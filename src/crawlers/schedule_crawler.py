@@ -341,11 +341,7 @@ class ScheduleCrawler:
             const results = [];
             const rows = document.querySelectorAll('.tbl tbody tr');
             let currentDateString = ""; // To handle rowspan or implicit date
-            const stadiumNames = new Set([
-                "잠실", "문학", "인천", "수원", "대전", "대구", "광주",
-                "사직", "창원", "고척", "목동", "포항", "울산", "청주",
-                "군산", "마산", "제주", "춘천"
-            ]);
+            const stadiumNames = new Set(Object.keys(STADIUM_SHORT_NAME_MAP));
 
             function inferStatus(text) {
                 if (/우천|취소|콜드취소|경기취소/.test(text)) return "CANCELLED";

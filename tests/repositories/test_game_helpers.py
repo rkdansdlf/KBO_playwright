@@ -20,6 +20,7 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
+from src.models.season import KboSeason
 from src.repositories.game_helpers import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
@@ -583,6 +584,7 @@ def session():
     GameSummary.__table__.create(engine)
     GameIdAlias.__table__.create(engine)
     PlayerBasic.__table__.create(engine)
+    KboSeason.__table__.create(engine)
     Session = sessionmaker(bind=engine)
     return Session()
 
@@ -809,7 +811,28 @@ class TestResolveGameSeasonId:
 
     def test_resolve_game_season_id_without_existing(self, session):
         result = _resolve_game_season_id(session, {}, date(2024, 10, 15), None)
-        assert result is None or result == 2024
+        assert result == 202400
+        season = session.query(KboSeason).filter_by(season_id=202400).one()
+        assert season.season_year == 2024
+        assert season.league_type_code == 0
+
+    def test_resolve_fallback_creates_missing_season(self, session):
+        result = _resolve_schedule_season_id(session, {"season_year": 2025, "season_type": "regular"}, None)
+        assert result == 202500
+        season = session.query(KboSeason).filter_by(season_id=202500).one()
+        assert season.league_type_name == "정규시즌"
+
+    def test_resolve_fallback_no_create_returns_year_code(self, session):
+        from src.repositories.game_helpers import _resolve_season_id_fallback
+
+        result = _resolve_season_id_fallback(
+            session,
+            {"season_type": "regular"},
+            None,
+            2025,
+            create_missing=False,
+        )
+        assert result == 202500
 
 
 class TestConstants:

@@ -108,6 +108,8 @@ def _sync_weekly_to_oci(oci_url: str | None) -> None:
     with SessionLocal() as session:
         syncer = OCISync(oci_url, session)
         try:
+            logger.info("   - Syncing KBO seasons...")
+            syncer.sync_kbo_seasons()
             logger.info("   - Syncing player basics...")
             syncer.sync_player_basic()
             logger.info("   - Syncing players...")

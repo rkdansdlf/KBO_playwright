@@ -123,7 +123,7 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
     async def fake_wait(page, **kwargs):
         return True, "ok"
 
-    async def fake_roster(page, game_id, game_date, review_url):
+    async def fake_roster(page, game_id, game_date, review_url, lightweight=False):
         return {"away hitter": [{"id": "1001", "uniform": None}]}
 
     async def fake_team_info(*_args):
@@ -181,7 +181,7 @@ def test_crawl_single_marks_incomplete_detail_when_fallback_is_empty(monkeypatch
     async def fake_wait(page, **kwargs):
         return True, "ok"
 
-    async def fake_roster(*_args):
+    async def fake_roster(*_args, **_kwargs):
         return {}
 
     async def fake_team_info(*_args):

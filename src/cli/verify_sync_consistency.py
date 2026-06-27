@@ -229,6 +229,42 @@ def _send_consistency_mismatch_alert(alert_lines: list[str], *, trigger_alert: b
     SlackWebhookClient.send_alert(alert_msg)
 
 
+def check_game_season_fk(sqlite_conn: Connection, oci_conn: Connection) -> list[dict[str, Any]]:
+    """Check that game.season_id values reference existing kbo_seasons rows."""
+    results = []
+    for label, conn in [("SQLite", sqlite_conn), ("OCI", oci_conn)]:
+        try:
+            orphan = conn.execute(
+                text(
+                    """
+                    SELECT COUNT(*) AS cnt
+                    FROM game g
+                    LEFT JOIN kbo_seasons s ON g.season_id = s.season_id
+                    WHERE s.season_id IS NULL
+                    """
+                )
+            ).scalar()
+            results.append({"db": label, "orphan_game_count": orphan or 0})
+        except SYNC_VERIFY_DB_EXCEPTIONS:
+            results.append({"db": label, "orphan_game_count": -1})
+    return results
+
+
+def _log_game_season_fk_results(fk_results: list[dict[str, Any]]) -> list[str]:
+    """Log FK check results and return alert messages for mismatches."""
+    alerts = []
+    for res in fk_results:
+        cnt = res["orphan_game_count"]
+        if cnt == -1:
+            logger.info("  - %s: game/kbo_seasons check skipped (table unavailable)", res["db"])
+        elif cnt == 0:
+            logger.info("  - %s: game → kbo_seasons FK integrity OK", res["db"])
+        else:
+            logger.warning("  - %s: %d orphan game rows (season_id not in kbo_seasons)", res["db"], cnt)
+            alerts.append(f"• {res['db']}: {cnt} game rows with invalid season_id (not in kbo_seasons)")
+    return alerts
+
+
 def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> bool:
     """
     Runs consistency audit.
@@ -253,11 +289,14 @@ def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> 
             logger.info("📊 Comparing row counts...")
             count_results = check_table_counts(sqlite_conn, oci_conn)
             _log_count_results(count_results)
+            fk_results = check_game_season_fk(sqlite_conn, oci_conn)
+            fk_alerts = _log_game_season_fk_results(fk_results)
             mismatches, alert_lines = (
                 _collect_deep_mismatches(sqlite_conn, oci_conn, count_results)
                 if deep
                 else _collect_count_mismatches(count_results)
             )
+            alert_lines.extend(fk_alerts)
 
     except SYNC_VERIFY_DB_EXCEPTIONS as e:
         logger.exception("❌ Error during consistency check")

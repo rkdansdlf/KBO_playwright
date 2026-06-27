@@ -579,9 +579,9 @@ class TestQueryDbSeasonByDateRange:
 
 
 class TestResolveSeasonIdFallback:
-    def test_returns_fallback_to_season_year(self, session):
+    def test_returns_fallback_creates_and_returns_season_id(self, session):
         result = _resolve_season_id_fallback(session, {}, None, 2024)
-        assert result == 2024
+        assert result == 202400
 
     def test_returns_existing(self, session):
         result = _resolve_season_id_fallback(session, {}, 42, None)
@@ -590,6 +590,10 @@ class TestResolveSeasonIdFallback:
     def test_returns_none_when_both_none(self, session):
         result = _resolve_season_id_fallback(session, {}, None, None)
         assert result is None
+
+    def test_returns_year_code_when_create_missing_false(self, session):
+        result = _resolve_season_id_fallback(session, {"season_type": "wildcard"}, None, 2024, create_missing=False)
+        assert result == 202402
 
 
 class TestUpsertMetadata:

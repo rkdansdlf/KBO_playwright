@@ -96,6 +96,27 @@ DETAIL_CRAWLER_EXCEPTIONS = (
     OSError,
 )
 
+TEAM_CODE_TO_NAME: dict[str, str] = {
+    "KIA": "KIA",
+    "HT": "KIA",
+    "OB": "두산",
+    "DB": "두산",
+    "SS": "삼성",
+    "LT": "롯데",
+    "LG": "LG",
+    "KT": "KT",
+    "NC": "NC",
+    "KH": "키움",
+    "WO": "키움",
+    "HH": "한화",
+    "SSG": "SSG",
+    "SK": "SSG",
+}
+
+
+def _team_code_to_name(code: str) -> str:
+    return TEAM_CODE_TO_NAME.get(code.upper(), code)
+
 
 class PlayerIdResolver(Protocol):
     """PlayerIdResolver class."""
@@ -480,7 +501,9 @@ class GameDetailCrawler:
                 self._last_failure_reason[game_id] = failure_reason
                 return None
 
-        roster_map = await self._load_roster_map_from_lineup(page, game_id, game_date, review_url)
+        roster_map = await self._load_roster_map_from_lineup(
+            page, game_id, game_date, review_url, lightweight=lightweight
+        )
         season_year = self._parse_season_year(game_date)
         team_info = await self._extract_team_info(page, game_id, season_year)
         metadata = await self._extract_metadata(page)
@@ -975,6 +998,162 @@ class GameDetailCrawler:
 
         return metadata
 
+    async def _extract_live_scores(self, page: Page) -> dict[str, dict[str, Any]] | None:
+        try:
+            data = await page.evaluate("""
+            (function() {
+                var selected = document.querySelector('li.game-cont.on');
+                if (!selected) return null;
+                var info = selected.querySelector('.info');
+                if (!info) return null;
+                var teams = info.querySelectorAll('[class*="team"]');
+                if (teams.length < 2) return null;
+                var away = teams[0];
+                var home = teams[1];
+                var awayScore = away.querySelector('.score');
+                var homeScore = home.querySelector('.score');
+                var awayName = away.querySelector('img');
+                var homeName = home.querySelector('img');
+                return {
+                    away: {
+                        code: awayName ? (awayName.alt || '').toUpperCase() : '',
+                        name: awayName ? (awayName.alt || '') : '',
+                        score: awayScore ? parseInt(awayScore.innerText.trim(), 10) : null,
+                    },
+                    home: {
+                        code: homeName ? (homeName.alt || '').toUpperCase() : '',
+                        name: homeName ? (homeName.alt || '') : '',
+                        score: homeScore ? parseInt(homeScore.innerText.trim(), 10) : null,
+                    }
+                };
+            })()
+            """)
+            if not data or not data.get("away") or not data.get("home"):
+                return None
+            if data["away"]["score"] is None and data["home"]["score"] is None:
+                return None
+            return {
+                "away": {
+                    "code": data["away"]["code"],
+                    "name": data["away"]["name"],
+                    "score": data["away"]["score"],
+                    "hits": None,
+                    "errors": None,
+                    "line_score": [],
+                },
+                "home": {
+                    "code": data["home"]["code"],
+                    "name": data["home"]["name"],
+                    "score": data["home"]["score"],
+                    "hits": None,
+                    "errors": None,
+                    "line_score": [],
+                },
+            }
+        except (PlaywrightError, ValueError, TypeError):
+            return None
+
+    async def _fetch_scoreboard_inning_scores(
+        self,
+        page: Page,
+        game_id: str,
+        away_code: str,
+        home_code: str,
+    ) -> dict[str, dict[str, Any]] | None:
+        scoreboard_url = f"{GAME_CENTER}?gameDate={game_id[:8]}".replace(
+            "/Schedule/GameCenter/Main.aspx", "/Schedule/ScoreBoard.aspx"
+        )
+        review_url = f"{GAME_CENTER}?gameDate={game_id[:8]}&gameId={game_id}&section=REVIEW"
+
+        try:
+            await page.goto(scoreboard_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
+            await asyncio.sleep(1.0)
+
+            tables = await page.query_selector_all("table.tScore")
+            if not tables:
+                return None
+
+            away_name = _team_code_to_name(away_code)
+            home_name = _team_code_to_name(home_code)
+
+            for table in tables:
+                rows = await table.query_selector_all("tbody tr")
+                if len(rows) < 2:
+                    continue
+
+                first_row_cells = await rows[0].query_selector_all("th, td")
+                first_cell_text = ""
+                if first_row_cells:
+                    first_cell_text = (await first_row_cells[0].text_content() or "").strip()
+
+                if first_cell_text not in (away_name, home_name):
+                    continue
+
+                team_data = {}
+                for side, row in zip(("away", "home"), rows, strict=True):
+                    parsed = await self._parse_scoreboard_row_cells(row, side, away_code, home_code)
+                    if parsed:
+                        team_data[side] = parsed
+
+                if "away" in team_data and "home" in team_data:
+                    return team_data
+
+            return None
+
+        finally:
+            await page.goto(review_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
+
+    @staticmethod
+    async def _parse_scoreboard_row_cells(
+        row: Page, side: str, away_code: str, home_code: str
+    ) -> dict[str, Any] | None:
+        cells = await row.query_selector_all("th, td")
+        cell_values = []
+        for c in cells:
+            val = (await c.text_content() or "").strip()
+            cell_values.append(val)
+
+        if len(cell_values) < 4:
+            return None
+
+        line_score = []
+        for v in cell_values[1:13]:
+            if v == "-" or v == "":
+                line_score.append(None)
+            else:
+                try:
+                    line_score.append(int(v))
+                except (ValueError, TypeError):
+                    line_score.append(None)
+
+        r_val = None
+        h_val = None
+        e_val = None
+        for i in range(len(cell_values) - 1, 0, -1):
+            val = cell_values[i]
+            if val == "-" or val == "":
+                continue
+            try:
+                int(val)
+            except (ValueError, TypeError):
+                continue
+            if e_val is None:
+                e_val = int(val)
+            elif h_val is None:
+                h_val = int(val)
+            elif r_val is None:
+                r_val = int(val)
+                break
+
+        return {
+            "code": away_code if side == "away" else home_code,
+            "name": cell_values[0],
+            "score": r_val,
+            "hits": h_val,
+            "errors": e_val,
+            "line_score": line_score,
+        }
+
     async def _extract_team_info(self, page: Page, game_id: str, season_year: int | None) -> dict[str, dict[str, Any]]:
         """
         Extracts team info.
@@ -1106,6 +1285,19 @@ class GameDetailCrawler:
             home_info = self._parse_scoreboard_row(headers, rows[1], season_year)
         else:
             away_info = home_info = None
+
+        if not away_info and not home_info:
+            live_scores = await self._extract_live_scores(page)
+            if live_scores:
+                away_code = live_scores["away"]["code"] or game_id[8:10]
+                home_code = live_scores["home"]["code"] or game_id[10:12]
+                sb_scores = await self._fetch_scoreboard_inning_scores(page, game_id, away_code, home_code)
+                if sb_scores:
+                    away_info = sb_scores["away"]
+                    home_info = sb_scores["home"]
+                else:
+                    away_info = live_scores["away"]
+                    home_info = live_scores["home"]
 
         # Fallback to gameId decoding for missing/generic team info (common in All-Star)
         away_segment = game_id[8:10] if len(game_id) >= 10 else None
@@ -1711,6 +1903,8 @@ class GameDetailCrawler:
         game_id: str,
         game_date: str,
         review_url: str,
+        *,
+        lightweight: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
         """
         Loads roster from lineup.
@@ -1720,6 +1914,7 @@ class GameDetailCrawler:
             game_id: Game ID.
             game_date: Game Date.
             review_url: Review URL.
+            lightweight: Lightweight mode.
 
         Returns:
             Dictionary mapping.
@@ -1746,6 +1941,9 @@ class GameDetailCrawler:
                     break
             except DETAIL_CRAWLER_EXCEPTIONS:
                 logger.exception("⚠️  Failed lineup roster crawl for %s (%s)", game_id, section)
+
+        if lightweight:
+            return roster_map
 
         # Always return to REVIEW page for box score extraction.
         try:
