@@ -6,14 +6,17 @@ Computes per-player, per-season clutch metrics from GameEvent WPA data.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.models.game import Game, GameEvent
+from src.models.player import PlayerSeasonBatting
 from src.models.season import KboSeason
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
@@ -119,8 +122,6 @@ class ClutchAggregator:
         if not results:
             return
 
-        from src.models.player import PlayerSeasonBatting
-
         for r in results:
             pid = r["batter_id"]
             if not pid:
@@ -151,9 +152,6 @@ class ClutchAggregator:
             self.session.rollback()
             if "foreign key" in err_str.lower() or "Foreign key" in err_str:
                 logger.exception("[Clutch] FK constraint (%s...), trying raw SQL fallback...", err_str[:80])
-                import json
-
-                from sqlalchemy import text
 
                 for r in results:
                     pid = r["batter_id"]

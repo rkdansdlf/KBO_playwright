@@ -21,6 +21,9 @@ from src.models.team import Team
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from sqlalchemy.orm import Session
