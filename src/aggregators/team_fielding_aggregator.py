@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
-from src.models.team import TeamSeasonBaserunning, TeamSeasonFielding
+from src.models.team import Team, TeamSeasonBaserunning, TeamSeasonFielding
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -136,9 +136,6 @@ class TeamFieldingAggregator:
             team_codes: Team Codes.
 
         """
-        from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
-        from src.models.team import Team
-
         # Filter to teams that have actual player data for this season
         fielding_teams = {
             r[0]
