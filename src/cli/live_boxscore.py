@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import sys
+from datetime import date as date_cls
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -62,16 +63,31 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=20,
         help="Maximum number of games to display (default: 20)",
     )
+    parser.add_argument(
+        "--status",
+        type=str,
+        default=None,
+        help="Comma-separated game statuses to include (default: live,in_progress,delayed,suspended)",
+    )
     return parser.parse_args(argv)
 
 
-def _resolve_target_date(date_str: str | None) -> str:
+def _resolve_target_date(date_str: str | None) -> date_cls:
     if date_str:
         if len(date_str) != 8 or not date_str.isdigit():
             msg = f"Invalid date format: {date_str!r}, expected YYYYMMDD"
             raise ValueError(msg)
-        return date_str
-    return datetime.now(KST).strftime("%Y%m%d")
+        return date_cls(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+    return datetime.now(KST).date()
+
+
+DEFAULT_LIVE_STATUSES = ("live", "in_progress", "delayed", "suspended")
+
+
+def _resolve_statuses(status_arg: str | None) -> tuple[str, ...]:
+    if status_arg:
+        return tuple(s.strip() for s in status_arg.split(",") if s.strip())
+    return DEFAULT_LIVE_STATUSES
 
 
 def _fetch_live_games(
@@ -79,10 +95,11 @@ def _fetch_live_games(
     target_date: str,
     game_id: str | None,
     limit: int,
+    statuses: tuple[str, ...],
 ) -> list[Game]:
     query = select(Game).where(
         Game.game_date == target_date,
-        Game.game_status.in_(("live", "in_progress", "delayed", "suspended")),
+        Game.game_status.in_(statuses),
     )
     if game_id:
         query = query.where(Game.game_id == game_id)
@@ -100,7 +117,7 @@ def _fetch_inning_scores(
         session.execute(
             select(GameInningScore)
             .where(GameInningScore.game_id.in_(game_ids))
-            .order_by(GameInningScore.team_side, GameInningScore.inning)
+            .order_by(GameInningScore.team_side, GameInningScore.inning),
         )
         .scalars()
         .all()
@@ -127,31 +144,26 @@ def _build_game_payload(
     away_code = None
     home_code = None
     if innings:
-        away_code = next((i.team_code for i in away_innings), None)
-        home_code = next((i.team_code for i in home_innings), None)
+        away_code = next((i.team_code for i in away_innings if i.team_code), None)
+        home_code = next((i.team_code for i in home_innings if i.team_code), None)
 
     return {
         "game_id": game.game_id,
-        "game_date": game.game_date,
+        "game_date": str(game.game_date),
         "game_status": game.game_status,
         "away": {
-            "code": away_code or game.away_team_code,
+            "code": away_code or game.away_team,
             "score": game.away_score,
-            "hits": game.away_hits,
-            "errors": game.away_errors,
             "line_score": _line_score(away_innings),
             "runs": _total_runs(away_innings),
         },
         "home": {
-            "code": home_code or game.home_team_code,
+            "code": home_code or game.home_team,
             "score": game.home_score,
-            "hits": game.home_hits,
-            "errors": game.home_errors,
             "line_score": _line_score(home_innings),
             "runs": _total_runs(home_innings),
         },
         "stadium": game.stadium,
-        "attendance": game.attendance,
     }
 
 
@@ -161,20 +173,20 @@ def _format_text(payload: dict[str, Any]) -> str:
     home = payload["home"]
     lines.append(
         f"{payload['game_id']} [{payload['game_status']}] "
-        f"{away['code']} {away['runs']} vs {home['code']} {home['runs']}"
+        f"{away['code']} {away['runs']} vs {home['code']} {home['runs']}",
     )
     away_ls = away["line_score"]
     home_ls = home["line_score"]
     max_innings = max(len(away_ls), len(home_ls), 9)
     if max_innings > 0:
-        header = "      " + " ".join(f"{i + 1:>3}" for i in range(max_innings)) + "  R   H   E"
+        header = "      " + " ".join(f"{i + 1:>3}" for i in range(max_innings)) + "  R"
         lines.append(header)
-        for side, ls, score, hits, errs in (
-            ("AWAY", away_ls, away["runs"], away["hits"], away["errors"]),
-            ("HOME", home_ls, home["runs"], home["hits"], home["errors"]),
+        for side, ls, score in (
+            ("AWAY", away_ls, away["runs"]),
+            ("HOME", home_ls, home["runs"]),
         ):
             cells = " ".join(f"{(v if v is not None else '-'):>3}" for v in ls[:max_innings])
-            lines.append(f"  {side} {cells}  {score or 0:>2} {hits or 0:>2} {errs or 0:>2}")
+            lines.append(f"  {side} {cells}  {score or 0:>2}")
     return "\n".join(lines)
 
 
@@ -190,10 +202,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     with SessionLocal() as session:
-        games = _fetch_live_games(session, target_date, args.game_id, args.limit)
+        statuses = _resolve_statuses(args.status)
+        games = _fetch_live_games(session, target_date, args.game_id, args.limit, statuses)
 
         if not games:
-            date_label = target_date if not args.date else args.date
+            date_label = str(target_date)
             if args.json:
                 sys.stdout.write(json.dumps({"date": date_label, "games": []}, ensure_ascii=False) + "\n")
             else:
@@ -208,11 +221,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.json:
         sys.stdout.write(
             json.dumps(
-                {"date": target_date, "game_count": len(payloads), "games": payloads},
+                {"date": str(target_date), "game_count": len(payloads), "games": payloads},
                 ensure_ascii=False,
                 indent=2 if sys.stdout.isatty() else None,
             )
-            + "\n"
+            + "\n",
         )
     else:
         for payload in payloads:
