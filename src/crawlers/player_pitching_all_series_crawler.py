@@ -240,9 +240,12 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
             selector = f'a[href*="btnNo{relative}"]'
             desc = f"{next_page}페이지로 이동 (btnNo{relative})"
 
-        # 버튼 존재 여부 및 상태 확인 (reload+retry 포함)
-        if not retry_wait_for_selector(page, selector, timeout=SEL_TIMEOUT, state="visible"):
+        # 빠른 종료: pagination 컨테이너 자체가 없으면 마지막 페이지
+        paging = page.query_selector('td[id*="paging"]')
+        if not paging:
             return False
+
+        # 1회만 확인 (리로드 없음)
         btn = page.query_selector(selector)
         if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
             return False
@@ -250,7 +253,6 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
         if policy:
             policy.delay()
 
-        # 직접 클릭 시도
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 

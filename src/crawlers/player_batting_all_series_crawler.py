@@ -435,9 +435,12 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
             selector = f'a[href*="btnNo{relative_page_num}"]'
             desc = f"{next_page_num}페이지로 이동 (btnNo{relative_page_num})"
 
-        # 버튼 존재 여부 및 상태 확인 (reload+retry 포함)
-        if not retry_wait_for_selector(page, selector, timeout=SEL_TIMEOUT, state="visible"):
+        # 빠른 종료: pagination 컨테이너 자체가 없으면 마지막 페이지
+        paging = page.query_selector('td[id*="paging"]')
+        if not paging:
             return False
+
+        # 1회만 확인 (리로드 없음)
         btn = page.query_selector(selector)
         if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
             return False
@@ -445,7 +448,6 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
         if policy:
             policy.delay()
 
-        # 직접 클릭 시도 (Attached 여부 확인하며)
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
     except CRAWLER_EXCEPTIONS:
@@ -454,8 +456,6 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
     else:
         logger.info("➡️ %s", desc)
         return True
-        logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page_num)
-        return False
 
 
 def _select_year_option(page: Page, year: int, policy: RequestPolicy | None) -> None:
