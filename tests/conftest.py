@@ -7,6 +7,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -33,3 +35,17 @@ logging.basicConfig(level=logging.DEBUG, format="%(message)s", force=True)
 root = logging.getLogger()
 if root.handlers:
     root.handlers = [_CurrentStdoutHandler()]
+
+LOCK_DIR = ROOT / "data" / "locks"
+
+
+@pytest.fixture(autouse=True)
+def _clean_locks():
+    """Remove stale ProcessLock files before each test to prevent flaky lock contention."""
+    if LOCK_DIR.exists():
+        for f in LOCK_DIR.glob("*.lock"):
+            f.unlink(missing_ok=True)
+    yield
+    if LOCK_DIR.exists():
+        for f in LOCK_DIR.glob("*.lock"):
+            f.unlink(missing_ok=True)

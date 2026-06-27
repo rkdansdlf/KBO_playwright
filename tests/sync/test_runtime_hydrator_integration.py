@@ -13,15 +13,6 @@ pytestmark = pytest.mark.usefixtures("_db_engine")
 
 
 @pytest.fixture
-def _db_engine():
-    engine = create_engine("sqlite:///:memory:", echo=False)
-    Base = pytest.importorskip("src.models.base").Base
-    Base.metadata.create_all(bind=engine)
-    yield engine
-    engine.dispose()
-
-
-@pytest.fixture
 def _hydrator_engine_pair():
     engine1 = create_engine("sqlite:///:memory:", echo=False)
     engine2 = create_engine("sqlite:///:memory:", echo=False)
