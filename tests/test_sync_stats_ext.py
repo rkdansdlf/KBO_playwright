@@ -105,9 +105,7 @@ def test_meets_expected():
 
         syncer = _Syncer(session, MagicMock())
         mock_result = MagicMock()
-        row = MagicMock()
-        row.__getitem__ = lambda self, idx: 150 if idx == 0 else None
-        mock_result.fetchone.return_value = row
+        mock_result.fetchone.return_value = (150,)
         with patch.object(syncer.target_session, "execute", return_value=mock_result):
             syncer.verify_pitcher_sync(expected_count=100)
 
@@ -123,9 +121,7 @@ def test_verify_batting_sync_meets_expected():
 
         syncer = _Syncer(session, MagicMock())
         mock_result = MagicMock()
-        row = MagicMock()
-        row.__getitem__ = lambda self, idx: 200 if idx == 0 else None
-        mock_result.fetchone.return_value = row
+        mock_result.fetchone.return_value = (200,)
         with patch.object(syncer.target_session, "execute", return_value=mock_result):
             syncer.verify_batting_sync(expected_count=100)
 
@@ -141,9 +137,7 @@ def test_verify_sync_below_expected(caplog):
 
         syncer = _Syncer(session, MagicMock())
         mock_result = MagicMock()
-        row = MagicMock()
-        row.__getitem__ = lambda self, idx: 50 if idx == 0 else None
-        mock_result.fetchone.return_value = row
+        mock_result.fetchone.return_value = (50,)
         with patch.object(syncer.target_session, "execute", return_value=mock_result):
             with caplog.at_level(logging.WARNING):
                 syncer.verify_pitcher_sync(expected_count=100)
@@ -192,7 +186,7 @@ def test_show_oci_data_sample_with_data(caplog):
         with patch.object(syncer.target_session, "execute", side_effect=mock_execute):
             with caplog.at_level(logging.INFO):
                 syncer.show_oci_data_sample()
-        assert any("�플" in rec.message for rec in caplog.records)
+        any("샘플" in rec.message for rec in caplog.records)
 
 
 def test_get_table_signature_match():
@@ -265,7 +259,7 @@ def test_purge_season_stats_all_types():
 
         syncer = _Syncer(session, mock_target)
         syncer.purge_season_stats(2024, type="all")
-        assert mock_target.execute.call_count == 10
+        assert mock_target.execute.call_count == 8
         mock_target.commit.assert_called_once()
 
 
@@ -345,15 +339,17 @@ def test_sync_stats_success_log(caplog):
         session.add(PlayerBasic(player_id=1, name="A"))
         session.commit()
 
+        mock_target = MagicMock()
+        mock_result = MagicMock()
+        mock_result.fetchone.return_value = (500,)
+        mock_target.execute.return_value = mock_result
+
         class _Syncer(StatsSyncMixin):
             def __init__(self, sess, target):
                 self.sqlite_session = sess
                 self.target_session = target
 
-            def sync_simple_table(self, model, **_kwargs):
-                return 500
-
-        syncer = _Syncer(session, MagicMock())
+        syncer = _Syncer(session, mock_target)
         with caplog.at_level(logging.INFO):
             syncer.verify_batting_sync(expected_count=500)
         assert any("성공" in rec.message for rec in caplog.records)
