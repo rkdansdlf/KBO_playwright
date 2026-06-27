@@ -28,6 +28,7 @@ from src.repositories.game_save import (
     _resolve_pregame_starter,
     _apply_snapshot_status_and_winner,
     _apply_pregame_game_fields,
+    _validate_inning_score_consistency,
     get_games_by_date,
     resolve_canonical_game_id,
     save_game_detail,
@@ -616,3 +617,53 @@ class TestGetOrCreateGame:
         game, created = _get_or_create_game(session, "20241015LGSS0", date(2024, 10, 15), source, mock_contract)
         assert created is True
         mock_contract.field_updated.assert_called_once()
+
+
+class TestValidateInningScoreConsistency:
+    def test_matching_scores_no_warnings(self) -> None:
+        teams = {
+            "away": {"code": "LG", "score": 5, "line_score": [1, 0, 2, 0, 1, 0, 0, 1, 0]},
+            "home": {"code": "SS", "score": 3, "line_score": [0, 1, 0, 0, 2, 0, 0, 0, 0]},
+        }
+        records = [
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 2},
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "home", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "home", "runs": 2},
+        ]
+        warnings = _validate_inning_score_consistency(teams, records, "20241015LGSS0")
+        assert warnings == []
+
+    def test_mismatched_away_score(self) -> None:
+        teams = {
+            "away": {"code": "LG", "score": 10, "line_score": [1, 0, 2, 0, 1, 0, 0, 1, 0]},
+            "home": {"code": "SS", "score": 3, "line_score": [0, 1, 0, 0, 2, 0, 0, 0, 0]},
+        }
+        records = [
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 2},
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "home", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "home", "runs": 2},
+        ]
+        warnings = _validate_inning_score_consistency(teams, records, "20241015LGSS0")
+        assert len(warnings) == 1
+        assert "away" in warnings[0]
+        assert "sum=5 vs score=10" in warnings[0]
+
+    def test_none_score_skipped(self) -> None:
+        teams = {
+            "away": {"code": "LG", "score": None, "line_score": [1, 0, 2]},
+            "home": {"code": "SS", "score": 3, "line_score": [0, 1, 0, 0, 2]},
+        }
+        records = [
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "away", "runs": 2},
+            {"game_id": "20241015LGSS0", "team_side": "home", "runs": 1},
+            {"game_id": "20241015LGSS0", "team_side": "home", "runs": 2},
+        ]
+        warnings = _validate_inning_score_consistency(teams, records, "20241015LGSS0")
+        assert warnings == []

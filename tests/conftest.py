@@ -41,7 +41,14 @@ LOCK_DIR = ROOT / "data" / "locks"
 
 @pytest.fixture(autouse=True)
 def _clean_locks():
-    """Remove stale ProcessLock files before each test to prevent flaky lock contention."""
+    """Remove stale ProcessLock files between scheduler tests to prevent flaky lock contention."""
+    import fnmatch
+    import os
+
+    test_path = os.environ.get("PYTEST_CURRENT_TEST", "")
+    if not fnmatch.fnmatch(test_path, "*scheduler*"):
+        yield
+        return
     if LOCK_DIR.exists():
         for f in LOCK_DIR.glob("*.lock"):
             f.unlink(missing_ok=True)
