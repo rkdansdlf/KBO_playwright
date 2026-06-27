@@ -17,4 +17,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - playwright-browsers:/ms-playwright
     command: ["python", "-m", "scripts.scheduler"]
+
+volumes:
+  playwright-browsers:
