@@ -5,7 +5,7 @@ import logging
 import os
 import random
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, ParamSpec, TypeVar
 
@@ -207,7 +207,7 @@ class RequestPolicy:
         msg = "Unreachable: all retries exhausted without exception"
         raise RuntimeError(msg)
 
-    async def run_with_retry_async(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
+    async def run_with_retry_async(self, func: Callable[P, Awaitable[R]], *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Run with retry async.
 
