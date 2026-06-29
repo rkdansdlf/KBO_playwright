@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from src.utils.team_codes import normalize_kbo_game_id
 
@@ -296,7 +296,7 @@ class RecoveryManager:
             List of results.
 
         """
-        return self.state.get("pending", [])
+        return cast("list[str]", self.state.get("pending", []))
 
     def clear(self) -> None:
         """Clear clear."""

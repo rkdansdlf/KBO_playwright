@@ -208,7 +208,7 @@ def _add_batting(
             hbp=hbp,
             sacrifice_flies=sf,
             runs=runs,
-        )
+        ),
     )
     session.commit()
 
@@ -238,7 +238,7 @@ def _add_pitching(
             strikeouts=so,
             runs_allowed=r_allowed,
             hits_allowed=hits_allowed,
-        )
+        ),
     )
     session.commit()
 

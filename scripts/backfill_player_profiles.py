@@ -107,7 +107,7 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                     logger.warning("  ⚠️ No profile found for %s. Marking as NOT_FOUND.", p.player_id)
                     # Mark as NOT_FOUND to avoid re-crawling
                     repo.upsert_players(
-                        [{"player_id": p.player_id, "name": p.name, "photo_url": "NOT_FOUND", "status": "NOT_FOUND"}]
+                        [{"player_id": p.player_id, "name": p.name, "photo_url": "NOT_FOUND", "status": "NOT_FOUND"}],
                     )
                     fail_count += 1
             except Exception:

@@ -121,7 +121,7 @@ def main():
                         text(f"SELECT COUNT(*) FROM {table_name} WHERE player_id IS NULL AND game_id LIKE :p"),
                         {"p": f"{year}%"},
                     ).scalar()
-                    or 0
+                    or 0,
                 )
                 for table_name, _pk_col, _is_pitcher in TABLES
             )

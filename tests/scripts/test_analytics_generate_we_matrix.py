@@ -44,7 +44,7 @@ class TestBuildMatrix:
                 "outs": [0, 1],
                 "bases_before": ["---", "1--"],
                 "home_won": [1, 0],
-            }
+            },
         )
         mock_read_sql.return_value = mock_df
 

@@ -25,13 +25,19 @@ def test_derive_stable_today_live_requires_evidence():
 
     # Case 1: New status is LIVE but no evidence -> SCHEDULED
     status = derive_stable_game_status(
-        game_date=game_date, new_status=GAME_STATUS_LIVE, has_progress_evidence=False, today=today
+        game_date=game_date,
+        new_status=GAME_STATUS_LIVE,
+        has_progress_evidence=False,
+        today=today,
     )
     assert status == GAME_STATUS_SCHEDULED
 
     # Case 2: New status is LIVE and has evidence -> LIVE
     status = derive_stable_game_status(
-        game_date=game_date, new_status=GAME_STATUS_LIVE, has_progress_evidence=True, today=today
+        game_date=game_date,
+        new_status=GAME_STATUS_LIVE,
+        has_progress_evidence=True,
+        today=today,
     )
     assert status == GAME_STATUS_LIVE
 

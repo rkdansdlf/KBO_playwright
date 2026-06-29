@@ -17,7 +17,7 @@ from src.constants import SURROGATE_PLAYER_ID_BOUNDARY
 from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from sqlalchemy.orm import Session
 
@@ -79,7 +79,7 @@ class PlayerIdResolver:
         )
         self.allow_auto_register = self.allow_unknown_registration
         self.strict_game_resolution = strict_game_resolution
-        self._cache = {}
+        self._cache: dict[str, int | None] = {}
 
         # Load name aliases from CSV
         self.NAME_ALIASES: dict[str, str] = self._load_aliases_from_csv()
@@ -244,13 +244,15 @@ class PlayerIdResolver:
         candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
         if identity.team_code and candidates and all(pid >= SURROGATE_PLAYER_ID_BOUNDARY for pid in candidates):
             if self.strict_game_resolution:
-                return self._return_ambiguous(
-                    cache_key,
-                    identity.player_name,
-                    identity.team_code,
-                    identity.season,
-                    candidates,
-                )
+                if identity.team_code is not None and identity.season is not None:
+                    return self._return_ambiguous(
+                        cache_key,
+                        identity.player_name,
+                        identity.team_code,
+                        identity.season,
+                        candidates,
+                    )
+                return None
             existing_unknown_id = self._find_existing_unknown_player(
                 identity.player_name,
                 identity.team_code,
@@ -259,7 +261,15 @@ class PlayerIdResolver:
             if existing_unknown_id:
                 self._cache[cache_key] = existing_unknown_id
                 return existing_unknown_id
-        return self._return_ambiguous(cache_key, identity.player_name, identity.team_code, identity.season, candidates)
+        if identity.team_code is not None and identity.season is not None:
+            return self._return_ambiguous(
+                cache_key,
+                identity.player_name,
+                identity.team_code,
+                identity.season,
+                candidates,
+            )
+        return None
 
     def preload_season_index(self, season: int) -> None:
         """
@@ -354,6 +364,8 @@ class PlayerIdResolver:
         return f"{player_name}_{team_code}_{season}_{uniform_no or ''}_{role}"
 
     def _canonical_team_code(self, team_code: str | None) -> str | None:
+        if team_code is None:
+            return None
         return CANONICAL_TEAM_CODES.get(team_code, team_code)
 
     def _resolve_static_override(
@@ -557,7 +569,7 @@ class PlayerIdResolver:
         cache_key: str,
     ) -> int | None:
         is_allstar = identity.team_code in self.ALL_STAR_TEAMS
-        candidate_ids = set()
+        candidate_ids: set[int] = set()
         for model in self._candidate_models(is_pitcher=identity.is_pitcher):
             stmt = (
                 select(PlayerBasic.player_id)
@@ -617,6 +629,8 @@ class PlayerIdResolver:
         *,
         cache_key: str,
     ) -> int | None:
+        if identity.team_code is None or identity.season is None:
+            return None
         fact_id = self._resolve_from_same_season_game_facts(
             identity.player_name,
             identity.team_code,
@@ -716,7 +730,7 @@ class PlayerIdResolver:
     def resolve_id(
         self,
         player_name: str,
-        team_code: str,
+        team_code: str | None,
         season: int,
         uniform_no: str | None = None,
         *,
@@ -749,6 +763,8 @@ class PlayerIdResolver:
             return None
 
         team_code = self._canonical_team_code(team_code)
+        if team_code is None:
+            return None
         override_id = self._resolve_static_override(player_name, team_code, season, is_pitcher=is_pitcher)
         if override_id:
             return override_id
@@ -784,14 +800,15 @@ class PlayerIdResolver:
         if player_name in self.NAME_ALIASES:
             player_name = self.NAME_ALIASES[player_name]
         cache_key = self._cache_key(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
+        cached = self._cache.get(cache_key)
         if cache_key in self._cache:
-            return self._cache[cache_key]
+            return cached
         identity = PlayerIdentity(player_name, team_code, season, uniform_no, is_pitcher)
-        resolver_steps = (
+        resolver_steps: list[Callable[[], int | None]] = [
             lambda: self._resolve_from_season_stats(identity, cache_key=cache_key),
             lambda: self._resolve_from_player_basic_context(player_name, team_code, season, uniform_no, cache_key),
             lambda: self._resolve_by_uniform_no(player_name, team_code, season, uniform_no, cache_key),
-        )
+        ]
         for resolve_step in resolver_steps:
             resolved_id = resolve_step()
             if resolved_id is not None:
@@ -852,20 +869,21 @@ class PlayerIdResolver:
 
         from src.models.game import GameBattingStat, GameLineup, GamePitchingStat
 
+        game_models: list[Any]
         if is_pitcher is True:
-            models = [GamePitchingStat]
+            game_models = [GamePitchingStat]
         elif is_pitcher is False:
-            models = [GameBattingStat, GameLineup]
+            game_models = [GameBattingStat, GameLineup]
         else:
-            models = [GameBattingStat, GameLineup, GamePitchingStat]
+            game_models = [GameBattingStat, GameLineup, GamePitchingStat]
 
         connection = self.session.connection()
         if connection is not None:
             inspector = inspect(connection)
-            models = [model for model in models if inspector.has_table(model.__tablename__)]
+            game_models = [model for model in game_models if inspector.has_table(model.__tablename__)]
 
         candidate_ids: set[int] = set()
-        for model in models:
+        for model in game_models:
             stmt = select(model.player_id).where(
                 model.game_id.like(f"{season}%"),
                 model.team_code == team_code,
@@ -960,20 +978,18 @@ class PlayerIdResolver:
             stmt = (
                 select(PlayerBasic.player_id)
                 .select_from(model)
-                .join(PlayerBasic, model.player_id == PlayerBasic.player_id)
-                .where(PlayerBasic.name == player_name, model.season == season)
+                .join(PlayerBasic, model.player_id == PlayerBasic.player_id)  # type: ignore[attr-defined]
+                .where(PlayerBasic.name == player_name, model.season == season)  # type: ignore[attr-defined]
             )
             if team_code and team_code not in self.ALL_STAR_TEAMS:
-                # Still try to filter by team if possible, but don't fail if team_code is weird
                 pass
 
             for row in self.session.execute(stmt).fetchall():
                 candidates.add(row[0])
 
         if len(candidates) == 1:
-            return next(iter(candidates))
+            return int(next(iter(candidates)))
 
-        # Try PlayerBasic with team/career again but even more relaxed
         kor_team_name = self.TEAM_NAME_MAP.get(team_code, "")
         if kor_team_name:
             stmt = select(PlayerBasic.player_id).where(
@@ -982,6 +998,6 @@ class PlayerIdResolver:
             )
             results = self.session.execute(stmt).fetchall()
             if len(results) == 1:
-                return results[0][0]
+                return int(results[0][0])
 
         return None

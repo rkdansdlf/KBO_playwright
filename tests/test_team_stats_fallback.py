@@ -65,7 +65,7 @@ def test_team_batting_stats_crawler_fallback(test_db, monkeypatch):
             sacrifice_hits=0,
             sacrifice_flies=0,
             gdp=1,
-        )
+        ),
     )
     session.commit()
 
@@ -100,7 +100,8 @@ def test_team_batting_stats_crawler_fallback(test_db, monkeypatch):
 
 def test_team_pitching_stats_crawler_fallback(test_db, monkeypatch):
     monkeypatch.setattr(
-        "src.crawlers.team_pitching_stats_crawler.get_team_mapping_for_year", lambda _year: {"OB": "OB"}
+        "src.crawlers.team_pitching_stats_crawler.get_team_mapping_for_year",
+        lambda _year: {"OB": "OB"},
     )
     session = test_db
     # Seed player pitching data
@@ -133,7 +134,7 @@ def test_team_pitching_stats_crawler_fallback(test_db, monkeypatch):
             balks=0,
             sacrifices_allowed=0,
             sacrifice_flies_allowed=0,
-        )
+        ),
     )
     session.commit()
 

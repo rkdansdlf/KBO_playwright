@@ -419,7 +419,12 @@ class TestAssignFieldIfChanged:
         target = MagicMock()
         target.existing = "old"
         changed = _assign_field_if_changed(
-            target, "existing", "new", game_id="g1", source=MagicMock(), write_contract=None
+            target,
+            "existing",
+            "new",
+            game_id="g1",
+            source=MagicMock(),
+            write_contract=None,
         )
         assert changed is True
         assert target.existing == "new"
@@ -428,7 +433,12 @@ class TestAssignFieldIfChanged:
         target = MagicMock()
         target.existing = "same"
         changed = _assign_field_if_changed(
-            target, "existing", "same", game_id="g1", source=MagicMock(), write_contract=None
+            target,
+            "existing",
+            "same",
+            game_id="g1",
+            source=MagicMock(),
+            write_contract=None,
         )
         assert changed is False
 
@@ -441,7 +451,13 @@ class TestAssignFieldIfChanged:
         target = MagicMock()
         target.attr = "old"
         changed = _assign_field_if_changed(
-            target, "attr", None, game_id="g1", source=MagicMock(), write_contract=None, allow_empty=True
+            target,
+            "attr",
+            None,
+            game_id="g1",
+            source=MagicMock(),
+            write_contract=None,
+            allow_empty=True,
         )
         assert changed is True
 
@@ -507,7 +523,7 @@ class TestBuildLineups:
                     "batting_order": 1,
                     "position": "CF",
                     "is_starter": True,
-                }
+                },
             ],
             "away": [
                 {
@@ -517,7 +533,7 @@ class TestBuildLineups:
                     "batting_order": 2,
                     "position": "SS",
                     "is_starter": True,
-                }
+                },
             ],
         }
         result = _build_lineups("g1", hitters)
@@ -537,7 +553,7 @@ class TestBuildBattingStats:
                     "is_starter": True,
                     "position": "CF",
                     "stats": {"plate_appearances": 4, "at_bats": 4, "hits": 2, "avg": 0.500},
-                }
+                },
             ],
         }
         result = _build_batting_stats("g1", hitters)
@@ -556,7 +572,7 @@ class TestBuildPitchingStats:
                     "team_code": "SS",
                     "is_starting": True,
                     "stats": {"innings_outs": 9, "strikeouts": 5, "era": 1.0},
-                }
+                },
             ],
         }
         result = _build_pitching_stats("g1", pitchers)
@@ -721,8 +737,13 @@ class TestReplaceRecordsForSide:
     def test_replace_records_for_side(self, session):
         session.add(
             GameLineup(
-                game_id="g1", team_side="home", team_code="LG", player_name="Kim", appearance_seq=1, is_starter=True
-            )
+                game_id="g1",
+                team_side="home",
+                team_code="LG",
+                player_name="Kim",
+                appearance_seq=1,
+                is_starter=True,
+            ),
         )
         session.flush()
 

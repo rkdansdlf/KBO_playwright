@@ -247,11 +247,15 @@ class TestParseJsonTeamEvents:
             [
                 {"TITLE": "2025 시즌 이벤트", "PUB_DATE": "2025-03-15"},
                 {"TITLE": "팬 사인회", "PUB_DATE": "2025-04-01"},
-            ]
+            ],
         )
         metadata = {"url": "https://example.com/feed/events", "fetched_at": "2025-06-01T00:00:00"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            metadata,
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 2
         assert events[0]["title"] == "2025 시즌 이벤트"
@@ -260,7 +264,11 @@ class TestParseJsonTeamEvents:
     def test_title_too_short(self):
         payload = json.dumps([{"TITLE": "AB", "PUB_DATE": "2025-03-15"}])
         events = _parse_json_team_events(
-            payload, "lg_twins_events", {}, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            {},
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 0
 
@@ -269,23 +277,35 @@ class TestParseJsonTeamEvents:
             [
                 {"TITLE": "이벤트 안내", "PUB_DATE": "2025-03-15"},
                 {"TITLE": "이벤트 안내", "PUB_DATE": "2025-03-16"},
-            ]
+            ],
         )
         events = _parse_json_team_events(
-            payload, "lg_twins_events", {}, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            {},
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 1
 
     def test_unparsable_json(self):
         events = _parse_json_team_events(
-            "not json", "lg_twins_events", {}, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            "not json",
+            "lg_twins_events",
+            {},
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert events == []
 
     def test_unknown_team_returns_empty(self):
         payload = json.dumps([{"TITLE": "Event", "PUB_DATE": "2025-03-15"}])
         events = _parse_json_team_events(
-            payload, "unknown_key", {}, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "unknown_key",
+            {},
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert events == []
 
@@ -328,10 +348,12 @@ class TestParseTeamEvents:
         payload = json.dumps(
             [
                 {"TITLE": "2025 시즌 이벤트", "PUB_DATE": "2025-03-15"},
-            ]
+            ],
         )
         events = parse_team_events(
-            payload, "lg_twins_events", {"url": "/feed/events", "cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00"}
+            payload,
+            "lg_twins_events",
+            {"url": "/feed/events", "cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00"},
         )
         assert len(events) == 1
 

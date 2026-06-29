@@ -116,7 +116,11 @@ class TestUpdateDetailCoreFields:
         from src.services.game_write_contract import GameWriteSource
 
         game = Game(
-            game_id="20241015LGSS0", game_date=date(2024, 10, 15), stadium="Existing", home_team="LG", away_team="SS"
+            game_id="20241015LGSS0",
+            game_date=date(2024, 10, 15),
+            stadium="Existing",
+            home_team="LG",
+            away_team="SS",
         )
         session.add(game)
         session.commit()
@@ -562,7 +566,7 @@ class TestSaveGameDetailExtended:
 
     def test_save_game_detail_with_alias(self, session):
         session.add(
-            GameIdAlias(alias_game_id="OLD_ID", canonical_game_id="20241015LGSS0", source="test", reason="test")
+            GameIdAlias(alias_game_id="OLD_ID", canonical_game_id="20241015LGSS0", source="test", reason="test"),
         )
         session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
         session.commit()
@@ -620,7 +624,7 @@ class TestSavePregameLineupsExtended:
                 "away_team_name": "SSG",
                 "home_team_name": "LG",
                 "start_pitcher_announced": True,
-            }
+            },
         )
         assert result is True
 
@@ -641,7 +645,7 @@ class TestSavePregameLineupsExtended:
                 "home_team_name": "LG",
                 "away_lineup": [{"player_name": "Kim", "player_id": 1, "batting_order": 1, "position": "CF"}],
                 "home_lineup": [{"player_name": "Park", "player_id": 2, "batting_order": 1, "position": "SS"}],
-            }
+            },
         )
         assert result is True
 
@@ -663,7 +667,7 @@ class TestSaveScheduleGameExtended:
                 "season_year": 2024,
                 "game_status": "scheduled",
                 "doubleheader_no": 1,
-            }
+            },
         )
         assert result is True
 
@@ -681,7 +685,7 @@ class TestSaveScheduleGameExtended:
                 "season_year": 2024,
                 "game_status": "scheduled",
                 "game_time": "14:00",
-            }
+            },
         )
         assert result is True
 
@@ -701,7 +705,7 @@ class TestSaveScheduleGameExtended:
                 "home_team_code": "LG",
                 "season_year": 2024,
                 "game_status": "scheduled",
-            }
+            },
         )
         assert result is True
 

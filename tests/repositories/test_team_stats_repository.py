@@ -34,7 +34,7 @@ class TestTeamSeasonBattingRepository:
                     "games": 144,
                     "avg": 0.285,
                 },
-            ]
+            ],
         )
         assert result == 1
         row = session.query(TeamSeasonBatting).one()
@@ -59,7 +59,7 @@ class TestTeamSeasonBattingRepository:
         repo.upsert_many(
             [
                 {"team_id": "LG", "team_name": "LG Twins", "season": 2024, "league": "REGULAR", "games": 144},
-            ]
+            ],
         )
         repo.upsert_many(
             [
@@ -71,7 +71,7 @@ class TestTeamSeasonBattingRepository:
                     "games": 145,
                     "avg": 0.290,
                 },
-            ]
+            ],
         )
         rows = session.query(TeamSeasonBatting).all()
         assert len(rows) == 1
@@ -91,7 +91,7 @@ class TestTeamSeasonBattingRepository:
             [
                 {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144},
                 {"team_id": "SSG", "team_name": "SSG", "season": 2024, "league": "REGULAR", "games": 144},
-            ]
+            ],
         )
         assert session.query(TeamSeasonBatting).count() == 2
 
@@ -124,7 +124,7 @@ class TestTeamSeasonPitchingRepository:
                     "era": 3.75,
                     "wins": 80,
                 },
-            ]
+            ],
         )
         assert result == 1
         row = session.query(TeamSeasonPitching).one()
@@ -148,12 +148,12 @@ class TestTeamSeasonPitchingRepository:
         repo.upsert_many(
             [
                 {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "era": 3.75},
-            ]
+            ],
         )
         repo.upsert_many(
             [
                 {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "era": 3.50, "wins": 82},
-            ]
+            ],
         )
         rows = session.query(TeamSeasonPitching).all()
         assert len(rows) == 1

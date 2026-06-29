@@ -208,7 +208,7 @@ class TestMiscSyncMixinExtended:
     def test_sync_rag_chunks_metadata_error(self, mixin):
         mixin.oci_engine = MagicMock()
         mixin.oci_engine.connect.return_value.__enter__ = MagicMock(
-            side_effect=__import__("sqlalchemy.exc", fromlist=["SQLAlchemyError"]).SQLAlchemyError("fail")
+            side_effect=__import__("sqlalchemy.exc", fromlist=["SQLAlchemyError"]).SQLAlchemyError("fail"),
         )
         mixin.oci_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
         mixin.sync_simple_table.return_value = 0

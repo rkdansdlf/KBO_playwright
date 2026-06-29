@@ -25,12 +25,16 @@ def fast_sync_stats():
 
         logger.info("🚀 Fast Syncing PlayerSeasonBatting...")
         syncer.sync_simple_table(
-            PlayerSeasonBatting, ["player_id", "season", "league", "level"], exclude_cols=["created_at", "updated_at"]
+            PlayerSeasonBatting,
+            ["player_id", "season", "league", "level"],
+            exclude_cols=["created_at", "updated_at"],
         )
 
         logger.info("🚀 Fast Syncing PlayerSeasonPitching...")
         syncer.sync_simple_table(
-            PlayerSeasonPitching, ["player_id", "season", "league", "level"], exclude_cols=["created_at", "updated_at"]
+            PlayerSeasonPitching,
+            ["player_id", "season", "league", "level"],
+            exclude_cols=["created_at", "updated_at"],
         )
         logger.info("✅ Finished fast sync of stats")
 

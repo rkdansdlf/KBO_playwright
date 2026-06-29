@@ -247,7 +247,7 @@ class TestLogDryRun:
                 "obp": 0.350,
                 "slg": 0.450,
                 "ops": 0.800,
-            }
+            },
         ]
         with caplog.at_level(logging.INFO):
             _log_dry_run_batting(results)
@@ -265,7 +265,7 @@ class TestLogDryRun:
                 "obp": 0.350,
                 "slg": 0.450,
                 "ops": 0.800,
-            }
+            },
         ]
         with caplog.at_level(logging.INFO):
             _log_dry_run_batting(results)
@@ -284,7 +284,7 @@ class TestLogDryRun:
                 "earned_runs": 20,
                 "era": 3.60,
                 "whip": 1.20,
-            }
+            },
         ]
         with caplog.at_level(logging.INFO):
             _log_dry_run_pitching(results)
@@ -303,7 +303,7 @@ class TestLogDryRun:
                 "earned_runs": 20,
                 "era": 3.60,
                 "whip": 1.20,
-            }
+            },
         ]
         with caplog.at_level(logging.INFO):
             _log_dry_run_pitching(results)

@@ -69,7 +69,7 @@ class TestDiagnoseCrawlerFailureCLI:
                 {
                     str(log_file1): "failure log line 1\n",
                     str(log_file2): "failure log line 2\n",
-                }
+                },
             )
             mock_render.assert_called_once_with(mock_report)
 

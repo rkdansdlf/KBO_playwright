@@ -188,7 +188,7 @@ class TestQualityGatePureFunctions:
                     "canonical_team_code": column("ctc"),
                     "team_code": column("tc"),
                 },
-            )
+            ),
         )
         assert isinstance(result, tuple)
         assert len(result) == 3

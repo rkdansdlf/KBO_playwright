@@ -31,7 +31,7 @@ def test_player_season_batting_sync_filters_missing_player_basic_refs():
             [
                 PlayerSeasonBatting(player_id=1001, season=2026, league="REGULAR", level="KBO1", source="CRAWLER"),
                 PlayerSeasonBatting(player_id=2002, season=2026, league="REGULAR", level="KBO1", source="CRAWLER"),
-            ]
+            ],
         )
         session.commit()
 

@@ -34,7 +34,7 @@ class TestRosterTransactionRepository:
                 "action": "registered",
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
-            }
+            },
         )
         session.commit()
         assert trx.id is not None
@@ -55,7 +55,7 @@ class TestRosterTransactionRepository:
                 "action": "registered",
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
-            }
+            },
         )
         session.commit()
 
@@ -68,7 +68,7 @@ class TestRosterTransactionRepository:
                 "action": "registered",
                 "roster_level": "second_team",
                 "source_type": "snapshot_diff",
-            }
+            },
         )
         session.commit()
 
@@ -90,7 +90,7 @@ class TestRosterTransactionRepository:
                 "action": "registered",
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
-            }
+            },
         )
         repo.save(
             {
@@ -101,7 +101,7 @@ class TestRosterTransactionRepository:
                 "action": "deregistered",
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
-            }
+            },
         )
         repo.save(
             {
@@ -112,7 +112,7 @@ class TestRosterTransactionRepository:
                 "action": "registered",
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
-            }
+            },
         )
         session.commit()
 
@@ -134,7 +134,7 @@ class TestRosterTransactionRepository:
                 "action": "registered",
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
-            }
+            },
         )
         repo.save(
             {
@@ -145,7 +145,7 @@ class TestRosterTransactionRepository:
                 "action": "registered",
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
-            }
+            },
         )
         session.commit()
 
@@ -168,7 +168,7 @@ class TestRosterTransactionRepository:
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
                 "player_id": 1,
-            }
+            },
         )
         session.commit()
         repo.save(
@@ -181,7 +181,7 @@ class TestRosterTransactionRepository:
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
                 "player_id": 1,
-            }
+            },
         )
         session.commit()
         repo.save(
@@ -194,7 +194,7 @@ class TestRosterTransactionRepository:
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
                 "player_id": 2,
-            }
+            },
         )
         session.commit()
 
@@ -216,7 +216,7 @@ class TestRosterTransactionRepository:
                 "action": "registered",
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
-            }
+            },
         )
         session.commit()
 
@@ -249,7 +249,7 @@ class TestRosterTransactionRepository:
                     "roster_level": "first_team",
                     "source_type": "kbo_today_page",
                 },
-            ]
+            ],
         )
         session.commit()
         assert count == 2
@@ -270,7 +270,7 @@ class TestRosterTransactionRepository:
                 "roster_level": "first_team",
                 "source_type": "kbo_today_page",
                 "player_id": 999,
-            }
+            },
         )
         session.commit()
 

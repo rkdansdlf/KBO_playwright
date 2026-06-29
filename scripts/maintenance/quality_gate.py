@@ -116,13 +116,13 @@ def collect_metrics(session_or_conn) -> dict[str, int]:
     if has_game_status:
         metrics["unresolved_missing"] = int(
             session_or_conn.execute(text("SELECT COUNT(*) FROM game WHERE game_status = 'UNRESOLVED_MISSING'")).scalar()
-            or 0
+            or 0,
         )
         metrics["past_scheduled"] = int(
             session_or_conn.execute(
-                text("SELECT COUNT(*) FROM game WHERE game_status = 'SCHEDULED' AND game_date < CURRENT_DATE")
+                text("SELECT COUNT(*) FROM game WHERE game_status = 'SCHEDULED' AND game_date < CURRENT_DATE"),
             ).scalar()
-            or 0
+            or 0,
         )
         metrics["live_no_evidence"] = int(
             session_or_conn.execute(
@@ -134,10 +134,10 @@ def collect_metrics(session_or_conn) -> dict[str, int]:
                       AND NOT EXISTS (SELECT 1 FROM game_inning_scores gis WHERE gis.game_id = g.game_id)
                       AND NOT EXISTS (SELECT 1 FROM game_events ge WHERE ge.game_id = g.game_id)
                       AND NOT EXISTS (SELECT 1 FROM game_play_by_play pbp WHERE pbp.game_id = g.game_id)
-                    """
-                )
+                    """,
+                ),
             ).scalar()
-            or 0
+            or 0,
         )
     else:
         metrics["unresolved_missing"] = 0
@@ -154,8 +154,8 @@ def fetch_past_missing_game_ids(session_or_conn) -> set[str]:
             WHERE (home_score IS NULL OR away_score IS NULL)
               AND game_date < CURRENT_DATE
               AND COALESCE(game_status, '') NOT IN ('CANCELLED', 'POSTPONED')
-            """
-        )
+            """,
+        ),
     ).fetchall()
     return {str(row[0]) for row in rows}
 
@@ -248,7 +248,7 @@ def evaluate_quality_gate(
     if local_missing_ids != oci_missing_ids:
         failures.append(
             f"past missing game-id set mismatch: local_only={len(local_missing_ids - oci_missing_ids)} "
-            f"oci_only={len(oci_missing_ids - local_missing_ids)}"
+            f"oci_only={len(oci_missing_ids - local_missing_ids)}",
         )
 
     if strict_zero:

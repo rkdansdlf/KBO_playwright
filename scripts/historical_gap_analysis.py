@@ -19,7 +19,7 @@ def analyze_gaps():
             SELECT season_year, league_type_name FROM kbo_seasons
             WHERE season_year BETWEEN 1982 AND 2000
             ORDER BY season_year
-        """)
+        """),
         ).all()
 
         # player_season_batting coverage
@@ -28,7 +28,7 @@ def analyze_gaps():
             SELECT season, COUNT(*) as cnt FROM player_season_batting
             WHERE season BETWEEN 1982 AND 2000
             GROUP BY season ORDER BY season
-        """)
+        """),
         ).all()
         batting = {row.season: row.cnt for row in batting_q}
 
@@ -38,7 +38,7 @@ def analyze_gaps():
             SELECT season, COUNT(*) as cnt FROM player_season_pitching
             WHERE season BETWEEN 1982 AND 2000
             GROUP BY season ORDER BY season
-        """)
+        """),
         ).all()
         pitching = {row.season: row.cnt for row in pitching_q}
 
@@ -47,7 +47,7 @@ def analyze_gaps():
             text("""
             SELECT CAST(strftime('%Y', game_date) AS INTEGER) as yr, COUNT(*) as cnt
             FROM game GROUP BY yr ORDER BY yr
-        """)
+        """),
         ).all()
         games_by_year = {row.yr: row.cnt for row in game_q}
 

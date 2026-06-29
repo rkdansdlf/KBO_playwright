@@ -100,7 +100,7 @@ def test_navigate_section_uses_compliance_delay_retry_and_selector(monkeypatch):
             "HITTER",
             required_selector="#tblAwayHitter",
             selector_timeout=6789,
-        )
+        ),
     )
 
     assert ok is True

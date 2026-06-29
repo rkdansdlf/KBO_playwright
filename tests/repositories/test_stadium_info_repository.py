@@ -33,7 +33,7 @@ class TestStadiumInfoRepository:
                 "name_en": "Jamsil Baseball Stadium",
                 "home_team_id": "LG",
                 "capacity": 25000,
-            }
+            },
         )
         session.commit()
 
@@ -52,7 +52,7 @@ class TestStadiumInfoRepository:
                 "name_kr": "Jamsil",
                 "home_team_id": "LG",
                 "capacity": 20000,
-            }
+            },
         )
         session.commit()
 
@@ -62,7 +62,7 @@ class TestStadiumInfoRepository:
                 "name_kr": "Jamsil Updated",
                 "home_team_id": "LG",
                 "capacity": 25000,
-            }
+            },
         )
         session.commit()
 
@@ -127,7 +127,7 @@ class TestStadiumInfoRepository:
                 "regulation_type": "GROUND_RULE",
                 "title": "Foul Pole",
                 "description": "Ball hitting foul pole is a home run.",
-            }
+            },
         )
         session.commit()
 
@@ -147,7 +147,7 @@ class TestStadiumInfoRepository:
                 "regulation_type": "GROUND_RULE",
                 "title": "Foul Pole",
                 "description": "v1",
-            }
+            },
         )
         session.commit()
 
@@ -157,7 +157,7 @@ class TestStadiumInfoRepository:
                 "regulation_type": "GROUND_RULE",
                 "title": "Foul Pole",
                 "description": "v2",
-            }
+            },
         )
         session.commit()
 

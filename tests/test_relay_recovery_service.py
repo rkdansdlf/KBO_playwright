@@ -47,7 +47,7 @@ def _seed_games(SessionLocal):
                 season_year=2025,
                 league_type_code=0,
                 league_type_name="regular",
-            )
+            ),
         )
         session.add_all(
             [
@@ -81,7 +81,7 @@ def _seed_games(SessionLocal):
                     season_id=20250,
                     game_status="COMPLETED",
                 ),
-            ]
+            ],
         )
         session.add_all(
             [
@@ -103,7 +103,7 @@ def _seed_games(SessionLocal):
                     win_expectancy_after=0.51,
                 ),
                 GamePlayByPlay(game_id="20250403LGSS0", inning=1, inning_half="top"),
-            ]
+            ],
         )
         session.commit()
 
@@ -192,7 +192,7 @@ def test_load_relay_recovery_targets_includes_existing_events_with_missing_wpa(m
                 home_score=0,
                 season_id=20250,
                 game_status="COMPLETED",
-            )
+            ),
         )
         session.add(
             GameEvent(
@@ -207,7 +207,7 @@ def test_load_relay_recovery_targets_includes_existing_events_with_missing_wpa(m
                 base_state=1,
                 home_score=0,
                 away_score=1,
-            )
+            ),
         )
         session.add(GamePlayByPlay(game_id="20250404LGSS0", inning=1, inning_half="top"))
         session.commit()
@@ -241,7 +241,7 @@ def test_load_relay_recovery_targets_excludes_non_completed_requested_games(monk
                 away_team="LG",
                 season_id=20250,
                 game_status="CANCELLED",
-            )
+            ),
         )
         session.commit()
 
@@ -282,7 +282,7 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
                             "inning": 1,
                             "inning_half": "top",
                             "play_description": "test hit",
-                        }
+                        },
                     ],
                     has_raw_pbp=True,
                 ),
@@ -292,7 +292,7 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
                         "bucket_id": bucket_id,
                         "source_name": source_order[0],
                         "status": "success",
-                    }
+                    },
                 ],
             )
 
@@ -302,7 +302,7 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
                 service.RelayRecoveryTarget(
                     game_id="20250401LGSS0",
                     bucket_id="2025_regular_kbo",
-                )
+                ),
             ],
             service.RelayRecoveryConfig(
                 source_order_override=["fake"],
@@ -310,7 +310,7 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
                 log=lambda _msg: None,
             ),
             orchestrator=_FakeOrchestrator(),
-        )
+        ),
     )
 
     assert result.total_targets == 1
@@ -332,10 +332,10 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
                     "provider_log_id": None,
                     "source_row_index": None,
                     "source_name": None,
-                }
+                },
             ],
             "fake",
-        )
+        ),
     ]
     assert result.report_rows[-1]["status"] == "saved"
 
@@ -383,7 +383,7 @@ def test_recover_relay_data_filters_malformed_rows_before_save(monkeypatch):
                 log=lambda _msg: None,
             ),
             orchestrator=_FakeOrchestrator(),
-        )
+        ),
     )
 
     assert len(saved_calls) == 1
@@ -422,7 +422,7 @@ def test_recover_relay_data_backfills_missing_wpa_before_save(monkeypatch):
                             wpa=None,
                             win_expectancy_before=None,
                             win_expectancy_after=None,
-                        )
+                        ),
                     ],
                     has_event_state=False,
                 ),
@@ -437,7 +437,7 @@ def test_recover_relay_data_backfills_missing_wpa_before_save(monkeypatch):
                 log=lambda _msg: None,
             ),
             orchestrator=_FakeOrchestrator(),
-        )
+        ),
     )
 
     assert result.saved_games == 1
@@ -481,7 +481,7 @@ def test_recover_relay_data_skips_when_all_rows_filtered(monkeypatch):
                 log=lambda _msg: None,
             ),
             orchestrator=_FakeOrchestrator(),
-        )
+        ),
     )
 
     assert saved_calls == []
@@ -519,7 +519,7 @@ def test_recover_relay_data_derives_missing_pbp_from_existing_events(monkeypatch
                     has_pbp=False,
                     needs_event_recovery=False,
                     needs_pbp_recovery=True,
-                )
+                ),
             ],
             service.RelayRecoveryConfig(
                 allow_derived_pbp=True,
@@ -527,7 +527,7 @@ def test_recover_relay_data_derives_missing_pbp_from_existing_events(monkeypatch
                 log=lambda _msg: None,
             ),
             orchestrator=_UnusedOrchestrator(),
-        )
+        ),
     )
 
     assert derived_calls == ["20250402LGSS0"]
@@ -568,7 +568,7 @@ def test_recover_relay_data_skips_result_with_too_few_events(monkeypatch):
                             "source_name": source_order[0],
                             "status": "skipped_validation",
                             "notes": validation_error,
-                        }
+                        },
                     ],
                 )
             return (result, [])
@@ -582,7 +582,7 @@ def test_recover_relay_data_skips_result_with_too_few_events(monkeypatch):
                 log=lambda _msg: None,
             ),
             orchestrator=_FakeOrchestrator(),
-        )
+        ),
     )
 
     assert saved_calls == []
@@ -630,7 +630,7 @@ def test_recover_relay_data_skips_score_mismatch_when_validation_enabled(monkeyp
                             "source_name": source_order[0],
                             "status": "skipped_validation",
                             "notes": validation_error,
-                        }
+                        },
                     ],
                 )
             return (result, [])
@@ -644,7 +644,7 @@ def test_recover_relay_data_skips_score_mismatch_when_validation_enabled(monkeyp
                 log=lambda _msg: None,
             ),
             orchestrator=_FakeOrchestrator(),
-        )
+        ),
     )
 
     assert saved_calls == []

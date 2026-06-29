@@ -484,7 +484,7 @@ class TestBackfillGamePlayByPlayFromExistingEvents:
                 description="Strikeout",
                 event_type="strikeout",
                 result_code="K",
-            )
+            ),
         )
         session.commit()
 
@@ -502,7 +502,7 @@ class TestBackfillGamePlayByPlayFromExistingEvents:
                     "play_description": "Strikeout",
                     "event_type": "strikeout",
                     "result": "K",
-                }
+                },
             ]
             result = src.repositories.game_relay.backfill_game_play_by_play_from_existing_events("20241015LGSS0")
             assert result == 1
@@ -540,7 +540,7 @@ class TestBackfillMissingGameStubsForRelays:
                 pitcher_name="Park",
                 description="Single",
                 event_type="single",
-            )
+            ),
         )
         session.commit()
 
@@ -562,7 +562,7 @@ class TestBackfillMissingGameStubsForRelays:
                 pitcher_name="Park",
                 description="Single",
                 event_type="single",
-            )
+            ),
         )
         session.add(
             GameEvent(
@@ -574,7 +574,7 @@ class TestBackfillMissingGameStubsForRelays:
                 pitcher_name="Choi",
                 description="Single",
                 event_type="single",
-            )
+            ),
         )
         session.commit()
 
@@ -597,7 +597,7 @@ class TestBackfillMissingGameStubsForRelays:
                 pitcher_name="Park",
                 description="Single",
                 event_type="single",
-            )
+            ),
         )
         session.commit()
 
@@ -619,7 +619,7 @@ class TestBackfillMissingGameStubsForRelays:
                 pitcher_name="Park",
                 description="Single",
                 event_type="single",
-            )
+            ),
         )
         session.commit()
 
@@ -653,7 +653,7 @@ class TestRepairGameParentFromExistingChildren:
                 team_side="away",
                 appearance_seq=1,
                 at_bats=4,
-            )
+            ),
         )
         session.commit()
 
@@ -673,7 +673,7 @@ class TestRepairGameParentFromExistingChildren:
                 team_side="home",
                 appearance_seq=1,
                 innings_pitched=Decimal("7.0"),
-            )
+            ),
         )
         session.commit()
 
@@ -692,7 +692,7 @@ class TestRepairGameParentFromExistingChildren:
                 team_side="top",
                 inning=1,
                 runs=2,
-            )
+            ),
         )
         session.commit()
 
@@ -713,7 +713,7 @@ class TestRepairGameParentFromExistingChildren:
                 batting_order=1,
                 position="CF",
                 appearance_seq=1,
-            )
+            ),
         )
         session.commit()
 
@@ -734,7 +734,7 @@ class TestRepairGameParentFromExistingChildren:
                 team_side="away",
                 appearance_seq=1,
                 at_bats=4,
-            )
+            ),
         )
         session.commit()
 
@@ -744,7 +744,8 @@ class TestRepairGameParentFromExistingChildren:
             patch("src.repositories.game_relay._auto_sync_to_oci") as mock_sync,
         ):
             result = src.repositories.game_relay.repair_game_parent_from_existing_children(
-                "20241015LGSS0", sync_to_oci=True
+                "20241015LGSS0",
+                sync_to_oci=True,
             )
             assert result is True
             mock_sync.assert_called_once_with("20241015LGSS0")
@@ -872,7 +873,7 @@ class TestPrepareRelayPayloads:
                 "win_expectancy_after": 0.4,
                 "bases_before": 0,
                 "bases_after": 0,
-            }
+            },
         ]
         result_events, result_pbp, result_valid = _prepare_relay_payloads(events, None)
         assert len(result_events) == 1

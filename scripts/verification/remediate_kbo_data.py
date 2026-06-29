@@ -131,7 +131,7 @@ async def remediate_year(year: int, limit: int | None = None, request_delay: flo
 
 async def main():
     parser = argparse.ArgumentParser(
-        description="Scrapes and repairs logically inconsistent or empty KBO game details from 2025 backward."
+        description="Scrapes and repairs logically inconsistent or empty KBO game details from 2025 backward.",
     )
     parser.add_argument("--start-year", type=int, default=2025, help="Year to start backward remediation from")
     parser.add_argument("--end-year", type=int, default=1982, help="Year to stop remediation at")
@@ -147,7 +147,8 @@ async def main():
         with SessionLocal() as session:
             game = (
                 session.execute(
-                    text("SELECT game_id, game_date FROM game WHERE game_id = :game_id"), {"game_id": args.game_id}
+                    text("SELECT game_id, game_date FROM game WHERE game_id = :game_id"),
+                    {"game_id": args.game_id},
                 )
                 .mappings()
                 .first()

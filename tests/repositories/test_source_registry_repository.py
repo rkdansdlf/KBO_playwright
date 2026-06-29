@@ -36,7 +36,7 @@ class TestDataSourceRepository:
                 "source_type": "official_kbo",
                 "target_domain": "schedule",
                 "reliability": "high",
-            }
+            },
         )
         assert ds.source_key == "kbo_schedule"
         assert ds.source_type == "official_kbo"
@@ -50,7 +50,7 @@ class TestDataSourceRepository:
                 "target_domain": "schedule",
                 "reliability": "high",
                 "base_url": "http://old",
-            }
+            },
         )
         session.flush()
 
@@ -80,7 +80,13 @@ class TestDataSourceRepository:
     def test_get_active_by_domain(self, session):
         repo = DataSourceRepository(session)
         repo.save(
-            {"source_key": "a", "source_type": "t", "target_domain": "ticket", "reliability": "high", "is_active": True}
+            {
+                "source_key": "a",
+                "source_type": "t",
+                "target_domain": "ticket",
+                "reliability": "high",
+                "is_active": True,
+            },
         )
         repo.save(
             {
@@ -89,7 +95,7 @@ class TestDataSourceRepository:
                 "target_domain": "ticket",
                 "reliability": "high",
                 "is_active": False,
-            }
+            },
         )
         session.flush()
 
@@ -119,7 +125,7 @@ class TestDataSourceRepository:
     def test_get_stale_sources(self, session):
         repo = DataSourceRepository(session)
         repo.save(
-            {"source_key": "stale", "source_type": "t", "target_domain": "d", "reliability": "h", "is_active": True}
+            {"source_key": "stale", "source_type": "t", "target_domain": "d", "reliability": "h", "is_active": True},
         )
         session.flush()
         ds = repo.get_by_key("stale")
@@ -147,7 +153,7 @@ class TestRawSourceSnapshotRepository:
                 "source_type": "official_kbo",
                 "target_domain": "schedule",
                 "reliability": "high",
-            }
+            },
         )
         session.flush()
 
@@ -159,7 +165,7 @@ class TestRawSourceSnapshotRepository:
                 "content_hash": "abc123",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                 "status_code": 200,
-            }
+            },
         )
         assert snap.id is not None
 
@@ -178,7 +184,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "u",
                 "content_hash": "abc",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         session.flush()
 
@@ -199,7 +205,7 @@ class TestRawSourceSnapshotRepository:
                 "content_hash": "a",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                 "parse_status": "pending",
-            }
+            },
         )
         snap_repo.save(
             {
@@ -208,7 +214,7 @@ class TestRawSourceSnapshotRepository:
                 "content_hash": "b",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                 "parse_status": "done",
-            }
+            },
         )
         session.flush()
 
@@ -228,7 +234,7 @@ class TestRawSourceSnapshotRepository:
                 "content_hash": "a",
                 "fetched_at": datetime(2020, 1, 1),
                 "parse_status": "failed",
-            }
+            },
         )
         session.flush()
 
@@ -248,7 +254,7 @@ class TestRawSourceSnapshotRepository:
                 "content_hash": "a",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                 "reprocess_status": "pending",
-            }
+            },
         )
         session.flush()
 
@@ -267,7 +273,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "u",
                 "content_hash": "a",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         session.flush()
 
@@ -290,7 +296,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "u",
                 "content_hash": "a",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         session.flush()
 
@@ -314,7 +320,7 @@ class TestSaveRawSnapshots:
                 "source_type": "official_kbo",
                 "target_domain": "schedule",
                 "reliability": "high",
-            }
+            },
         )
         session.commit()
 

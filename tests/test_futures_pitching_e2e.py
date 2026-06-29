@@ -83,7 +83,7 @@ async def main():
                 "strikeouts": r.get("strikeouts"),
                 "era": r.get("era"),
                 "tbf": r.get("tbf"),
-            }
+            },
         )
 
     saved = save_pitching_stats_to_db(payloads)

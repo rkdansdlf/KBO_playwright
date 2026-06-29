@@ -318,7 +318,7 @@ def test_sync_game_play_by_play_resets_target_sequence_before_replace(monkeypatc
                 result="1B",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.commit()
 
@@ -374,7 +374,7 @@ def test_sync_referenced_player_basic_for_games_skips_missing_local_player_basic
                 game_status="SCHEDULED",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.add(
             GameLineup(
@@ -387,7 +387,7 @@ def test_sync_referenced_player_basic_for_games_skips_missing_local_player_basic
                 appearance_seq=9,
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.commit()
 
@@ -416,7 +416,7 @@ def test_sync_referenced_player_basic_for_games_syncs_local_stubs(monkeypatch):
                 game_status="SCHEDULED",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.add(
             GameLineup(
@@ -429,7 +429,7 @@ def test_sync_referenced_player_basic_for_games_syncs_local_stubs(monkeypatch):
                 appearance_seq=9,
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.commit()
 
@@ -707,7 +707,7 @@ def _seed_game(
                 home_pitcher="원태인",
                 created_at=game_updated_at,
                 updated_at=game_updated_at,
-            )
+            ),
         )
         session.add(
             GameMetadata(
@@ -715,7 +715,7 @@ def _seed_game(
                 start_time=start_time,
                 created_at=metadata_updated_at or game_updated_at,
                 updated_at=metadata_updated_at or game_updated_at,
-            )
+            ),
         )
         for idx in range(1, lineup_count + 1):
             session.add(
@@ -730,7 +730,7 @@ def _seed_game(
                     standard_position="CF",
                     created_at=lineup_updated_at or game_updated_at,
                     updated_at=lineup_updated_at or game_updated_at,
-                )
+                ),
             )
         session.commit()
 
@@ -804,7 +804,7 @@ def test_filter_publishable_game_ids_excludes_schedule_only_parent_rows():
                 game_status="SCHEDULED",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.add(
             Game(
@@ -815,7 +815,7 @@ def test_filter_publishable_game_ids_excludes_schedule_only_parent_rows():
                 game_status="CANCELLED",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.add(
             Game(
@@ -826,7 +826,7 @@ def test_filter_publishable_game_ids_excludes_schedule_only_parent_rows():
                 game_status="SCHEDULED",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.add(
             GameLineup(
@@ -839,7 +839,7 @@ def test_filter_publishable_game_ids_excludes_schedule_only_parent_rows():
                 standard_position="CF",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.commit()
 
@@ -899,7 +899,7 @@ def test_build_game_sync_eligibility_splits_detail_and_relay_targets():
                     created_at=stamp,
                     updated_at=stamp,
                 ),
-            ]
+            ],
         )
         for side, player_id in (("away", 1001), ("home", 1002)):
             session.add(
@@ -911,7 +911,7 @@ def test_build_game_sync_eligibility_splits_detail_and_relay_targets():
                     appearance_seq=1,
                     created_at=stamp,
                     updated_at=stamp,
-                )
+                ),
             )
             session.add(
                 GamePitchingStat(
@@ -922,7 +922,7 @@ def test_build_game_sync_eligibility_splits_detail_and_relay_targets():
                     appearance_seq=1,
                     created_at=stamp,
                     updated_at=stamp,
-                )
+                ),
             )
         session.add(
             GameBattingStat(
@@ -932,7 +932,7 @@ def test_build_game_sync_eligibility_splits_detail_and_relay_targets():
                 appearance_seq=1,
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.add(
             GamePlayByPlay(
@@ -942,7 +942,7 @@ def test_build_game_sync_eligibility_splits_detail_and_relay_targets():
                 play_description="타자A : 안타",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.commit()
 
@@ -995,7 +995,7 @@ def test_sync_game_details_filters_child_datasets_by_eligibility(monkeypatch):
                     created_at=stamp,
                     updated_at=stamp,
                 ),
-            ]
+            ],
         )
         for side, player_id in (("away", 1101), ("home", 1102)):
             session.add(
@@ -1007,7 +1007,7 @@ def test_sync_game_details_filters_child_datasets_by_eligibility(monkeypatch):
                     appearance_seq=1,
                     created_at=stamp,
                     updated_at=stamp,
-                )
+                ),
             )
             session.add(
                 GamePitchingStat(
@@ -1018,7 +1018,7 @@ def test_sync_game_details_filters_child_datasets_by_eligibility(monkeypatch):
                     appearance_seq=1,
                     created_at=stamp,
                     updated_at=stamp,
-                )
+                ),
             )
         session.add(
             GameBattingStat(
@@ -1028,7 +1028,7 @@ def test_sync_game_details_filters_child_datasets_by_eligibility(monkeypatch):
                 appearance_seq=1,
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.add(
             GamePlayByPlay(
@@ -1038,7 +1038,7 @@ def test_sync_game_details_filters_child_datasets_by_eligibility(monkeypatch):
                 play_description="타자A : 안타",
                 created_at=stamp,
                 updated_at=stamp,
-            )
+            ),
         )
         session.commit()
 

@@ -72,7 +72,7 @@ class TestGetPlayerTeams:
         row1.canonical_team_code = "LG"
         row1.cnt = 10
         mock_session.query.return_value.join.return_value.filter.return_value.group_by.return_value.order_by.return_value.all.return_value = [
-            row1
+            row1,
         ]
         result = _get_player_teams(mock_session, [1], GameBattingStat)
         assert result[1] == "LG"
@@ -86,7 +86,7 @@ class TestGetPlayerTeams:
         row1.canonical_team_code = "LG"
         row1.cnt = 5
         mock_session.query.return_value.join.return_value.filter.return_value.group_by.return_value.order_by.return_value.all.return_value = [
-            row1
+            row1,
         ]
         result = _get_player_teams(mock_session, [1], GameBattingStat)
         assert result[1] == "LG"

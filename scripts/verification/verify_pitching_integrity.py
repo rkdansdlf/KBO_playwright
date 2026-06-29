@@ -62,7 +62,7 @@ def verify_pitching_integrity():
 
         # Stats
         total_p = conn.execute(
-            f"SELECT COUNT(*) FROM player_season_pitching WHERE season={year} AND league='REGULAR'"
+            f"SELECT COUNT(*) FROM player_season_pitching WHERE season={year} AND league='REGULAR'",
         ).fetchone()[0]
 
         # Mismatch count

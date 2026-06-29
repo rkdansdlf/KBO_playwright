@@ -49,7 +49,7 @@ class TestRankingRepository:
                 "value": 0.350,
                 "rank": 1,
                 "source": "CRAWLER",
-            }
+            },
         ]
         count = repo.save_rankings(rankings)
         assert count == 1

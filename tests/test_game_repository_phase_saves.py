@@ -91,8 +91,8 @@ def _build_real_resolver_session_factory():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     kbo_person_id TEXT UNIQUE
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -102,8 +102,8 @@ def _build_real_resolver_session_factory():
                     season INTEGER NOT NULL,
                     team_code TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -113,8 +113,8 @@ def _build_real_resolver_session_factory():
                     season INTEGER NOT NULL,
                     team_code TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
     return SessionLocal
 
@@ -128,14 +128,14 @@ def _seed_existing_detail(SessionLocal, game_id: str):
                 away_team="LG",
                 home_team="SS",
                 game_status=GAME_STATUS_SCHEDULED,
-            )
+            ),
         )
         session.add(
             GameMetadata(
                 game_id=game_id,
                 start_time=time(17, 0),
                 stadium_name="잠실",
-            )
+            ),
         )
         session.add(
             GameBattingStat(
@@ -147,7 +147,7 @@ def _seed_existing_detail(SessionLocal, game_id: str):
                 appearance_seq=1,
                 batting_order=1,
                 standard_position="CF",
-            )
+            ),
         )
         session.add(
             GamePitchingStat(
@@ -159,7 +159,7 @@ def _seed_existing_detail(SessionLocal, game_id: str):
                 appearance_seq=1,
                 is_starting=True,
                 standard_position="P",
-            )
+            ),
         )
         session.add(
             GameEvent(
@@ -182,7 +182,7 @@ def _seed_existing_detail(SessionLocal, game_id: str):
                 base_state=0,
                 home_score=0,
                 away_score=0,
-            )
+            ),
         )
         session.add(
             GameInningScore(
@@ -191,7 +191,7 @@ def _seed_existing_detail(SessionLocal, game_id: str):
                 team_code="LG",
                 inning=1,
                 runs=0,
-            )
+            ),
         )
         session.commit()
 
@@ -216,7 +216,7 @@ def test_save_pregame_lineups_updates_start_time_and_preserves_existing_detail(m
             "home_starter": "원태인",
             "away_lineup": [{"player_name": "홍길동", "batting_order": 1, "position": "중견수"}],
             "home_lineup": [{"player_name": "이승엽", "batting_order": 4, "position": "1루수"}],
-        }
+        },
     )
 
     assert saved is True
@@ -267,7 +267,7 @@ def test_save_pregame_lineups_preserves_existing_starters_when_preview_blank(mon
                 away_pitcher="배제성",
                 home_pitcher="타케다",
                 game_status=GAME_STATUS_SCHEDULED,
-            )
+            ),
         )
         session.commit()
 
@@ -285,7 +285,7 @@ def test_save_pregame_lineups_preserves_existing_starters_when_preview_blank(mon
             "lineup_announced": True,
             "away_lineup": [],
             "home_lineup": [],
-        }
+        },
     )
 
     assert saved is True
@@ -320,7 +320,7 @@ def test_save_pregame_lineups_resolves_june_5_curated_players_with_real_resolver
             [
                 PlayerBasic(player_id=52765, name="유민", team="한화"),
                 PlayerBasic(player_id=56305, name="히우라", team="키움"),
-            ]
+            ],
         )
         session.commit()
 
@@ -330,7 +330,7 @@ def test_save_pregame_lineups_resolves_june_5_curated_players_with_real_resolver
                 "game_id": "20260605HHLT0",
                 "game_date": "20260605",
                 "away_lineup": [{"player_name": "유민", "batting_order": 5, "position": "지명타자"}],
-            }
+            },
         )
         is True
     )
@@ -340,7 +340,7 @@ def test_save_pregame_lineups_resolves_june_5_curated_players_with_real_resolver
                 "game_id": "20260605WOOB0",
                 "game_date": "20260605",
                 "away_lineup": [{"player_name": "히우라", "batting_order": 3, "position": "지명타자"}],
-            }
+            },
         )
         is True
     )
@@ -505,7 +505,7 @@ def test_save_game_detail_skips_identical_child_rewrites(monkeypatch):
                     "appearance_seq": 1,
                     "position": "중견수",
                     "stats": {"plate_appearances": 4, "at_bats": 4, "runs": 1, "hits": 2},
-                }
+                },
             ],
             "home": [
                 {
@@ -517,7 +517,7 @@ def test_save_game_detail_skips_identical_child_rewrites(monkeypatch):
                     "appearance_seq": 1,
                     "position": "1루수",
                     "stats": {"plate_appearances": 4, "at_bats": 4, "runs": 1, "hits": 1},
-                }
+                },
             ],
         },
         "pitchers": {
@@ -529,7 +529,7 @@ def test_save_game_detail_skips_identical_child_rewrites(monkeypatch):
                     "is_starting": True,
                     "appearance_seq": 1,
                     "stats": {"innings_outs": 18, "runs_allowed": 1},
-                }
+                },
             ],
             "home": [
                 {
@@ -539,7 +539,7 @@ def test_save_game_detail_skips_identical_child_rewrites(monkeypatch):
                     "is_starting": True,
                     "appearance_seq": 1,
                     "stats": {"innings_outs": 18, "runs_allowed": 2},
-                }
+                },
             ],
         },
     }
@@ -571,7 +571,7 @@ def test_save_game_detail_honors_explicit_cancelled_status(monkeypatch):
                 "away": {"code": "LG", "score": None, "line_score": []},
                 "home": {"code": "SS", "score": None, "line_score": []},
             },
-        }
+        },
     )
 
     assert saved is True
@@ -611,7 +611,7 @@ def test_save_game_detail_creates_player_basic_stubs_for_new_payload_ids(monkeyp
                         "is_starter": True,
                         "appearance_seq": 1,
                         "stats": {"plate_appearances": 4, "at_bats": 4, "runs": 1, "hits": 2},
-                    }
+                    },
                 ],
                 "home": [
                     {
@@ -624,7 +624,7 @@ def test_save_game_detail_creates_player_basic_stubs_for_new_payload_ids(monkeyp
                         "is_starter": True,
                         "appearance_seq": 1,
                         "stats": {"plate_appearances": 4, "at_bats": 4, "runs": 0, "hits": 1},
-                    }
+                    },
                 ],
             },
             "pitchers": {
@@ -636,7 +636,7 @@ def test_save_game_detail_creates_player_basic_stubs_for_new_payload_ids(monkeyp
                         "is_starting": True,
                         "appearance_seq": 1,
                         "stats": {"innings_outs": 18, "runs_allowed": 3},
-                    }
+                    },
                 ],
                 "home": [
                     {
@@ -646,10 +646,10 @@ def test_save_game_detail_creates_player_basic_stubs_for_new_payload_ids(monkeyp
                         "is_starting": True,
                         "appearance_seq": 1,
                         "stats": {"innings_outs": 18, "runs_allowed": 5},
-                    }
+                    },
                 ],
             },
-        }
+        },
     )
 
     assert saved is True
@@ -691,7 +691,7 @@ def test_save_game_detail_rejects_same_player_id_on_both_teams(monkeypatch):
                         "team_code": "SS",
                         "appearance_seq": 1,
                         "stats": {"plate_appearances": 1, "at_bats": 1, "hits": 1},
-                    }
+                    },
                 ],
                 "home": [
                     {
@@ -700,11 +700,11 @@ def test_save_game_detail_rejects_same_player_id_on_both_teams(monkeypatch):
                         "team_code": "HH",
                         "appearance_seq": 1,
                         "stats": {"plate_appearances": 1, "at_bats": 1, "hits": 1},
-                    }
+                    },
                 ],
             },
             "pitchers": {"away": [], "home": []},
-        }
+        },
     )
 
     assert saved is False
@@ -746,7 +746,7 @@ def test_repair_game_parent_from_existing_children_uses_child_scores(monkeypatch
                     appearance_seq=1,
                     runs=1,
                 ),
-            ]
+            ],
         )
         session.commit()
 

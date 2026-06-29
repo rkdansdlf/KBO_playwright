@@ -65,7 +65,7 @@ def _add_batter(
             avg=avg,
             obp=obp,
             slg=slg,
-        )
+        ),
     )
     session.commit()
 
@@ -97,7 +97,7 @@ def _add_pitcher(
             runs_allowed=runs_allowed,
             hits_allowed=hits_allowed,
             era=era,
-        )
+        ),
     )
     session.commit()
 
@@ -159,7 +159,7 @@ class TestSabermetricsCalculatorLeagueConstants:
                 plate_appearances=5,
                 home_runs=0,
                 walks=0,
-            )
+            ),
         )
         session.commit()
         _add_batter(session, player_id=10001)

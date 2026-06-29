@@ -134,7 +134,7 @@ def test_get_crucial_moments_filters_relay_noise_rows():
                     away_score=3,
                     home_score=2,
                 ),
-            ]
+            ],
         )
         session.commit()
 

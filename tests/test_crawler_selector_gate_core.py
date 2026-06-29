@@ -80,10 +80,10 @@ def test_run_selector_gate_loads_file_config_and_writes_json_report(tmp_path: Pa
                                 "selector": "tbody tr",
                                 "min_count": 1,
                                 "required_text": "LG",
-                            }
+                            },
                         ],
-                    }
-                ]
+                    },
+                ],
             },
         ),
         encoding="utf-8",
@@ -114,8 +114,8 @@ def test_crawler_selector_gate_cli_emits_json(tmp_path: Path) -> None:
                         "source": str(html_path),
                         "source_type": "file",
                         "checks": [{"name": "score", "selector": ".score", "min_count": 1}],
-                    }
-                ]
+                    },
+                ],
             },
         ),
         encoding="utf-8",

@@ -143,7 +143,8 @@ def crawl_stats_for_year(page, year, mode="batting"):
         # Get Teams
         team_selector = 'select[name*="ddlTeam"]'
         options = page.eval_on_selector_all(
-            f"{team_selector} option", "options => options.map(o => ({text: o.innerText, value: o.value}))"
+            f"{team_selector} option",
+            "options => options.map(o => ({text: o.innerText, value: o.value}))",
         )
         teams = [opt for opt in options if opt["value"]]
 
@@ -216,7 +217,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                 btn = page.query_selector(page_btn_selector)
                 if btn:
                     first_player_before = page.evaluate(
-                        "() => document.querySelector('table.tData01 tbody tr td:nth-child(2)')?.innerText.trim()"
+                        "() => document.querySelector('table.tData01 tbody tr td:nth-child(2)')?.innerText.trim()",
                     )
                     btn.click()
                     try:
@@ -244,7 +245,7 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         )
         page = context.new_page()
 

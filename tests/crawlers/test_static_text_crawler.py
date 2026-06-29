@@ -76,7 +76,7 @@ class TestCrawlNamuwiki:
                 <script>bad</script>
             </body>
             </html>
-        """
+        """,
         )
 
         result = await crawler.crawl_namuwiki("https://namu.wiki/w/KBO")
@@ -98,7 +98,7 @@ class TestCrawlNamuwiki:
         mock_page.content = AsyncMock(
             return_value="""
             <html><body>Plain body text</body></html>
-        """
+        """,
         )
 
         result = await crawler.crawl_namuwiki("https://namu.wiki/w/Test")

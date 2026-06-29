@@ -55,7 +55,7 @@ class TeamFieldingAggregator:
             "double_plays": 0,
             "putouts": 0,
             "assists": 0,
-            "innings": 0,
+            "innings": 0.0,
             "total_chances": 0,
         }
 

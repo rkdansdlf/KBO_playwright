@@ -451,11 +451,12 @@ class TestRunBackfill:
                 with patch("src.cli.backfill_pregame_previews.run_preview_batch", new_callable=AsyncMock) as mock_batch:
                     mock_batch.return_value = ["game1"]
                     with patch(
-                        "src.cli.backfill_pregame_previews._is_incomplete_after_backfill", return_value="incomplete"
+                        "src.cli.backfill_pregame_previews._is_incomplete_after_backfill",
+                        return_value="incomplete",
                     ):
                         parser = build_arg_parser()
                         args = parser.parse_args(
-                            ["--start-date", "20250101", "--end-date", "20250101", "--fail-on-incomplete"]
+                            ["--start-date", "20250101", "--end-date", "20250101", "--fail-on-incomplete"],
                         )
                         result = await run_backfill(args)
                         assert result == 1

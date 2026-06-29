@@ -51,7 +51,7 @@ def test_module_crawl_all_players_delegates_to_class(monkeypatch):
             height_cm=None,
             weight_kg=None,
             career=None,
-        )
+        ),
     ]
 
     class FakeCrawler:
@@ -75,7 +75,7 @@ def test_module_crawl_all_players_delegates_to_class(monkeypatch):
             slow_mo=50,
             request_delay=1.5,
             pool="pool",
-        )
+        ),
     )
 
     assert rows == expected_rows

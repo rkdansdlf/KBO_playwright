@@ -217,7 +217,7 @@ class TestAggregateFunctions:
                 sacrifice_hits=0,
                 sacrifice_flies=0,
                 gdp=0,
-            )
+            ),
         )
         session.commit()
 
@@ -252,7 +252,7 @@ class TestAggregateFunctions:
                 saves=0,
                 holds=0,
                 batters_faced=22,
-            )
+            ),
         )
         session.commit()
 
@@ -291,7 +291,7 @@ class TestAggregateFunctions:
                 sacrifice_hits=0,
                 sacrifice_flies=0,
                 gdp=0,
-            )
+            ),
         )
         session.commit()
 
@@ -328,7 +328,7 @@ class TestAggregateFunctions:
                 saves=0,
                 holds=0,
                 batters_faced=22,
-            )
+            ),
         )
         session.commit()
 
@@ -351,7 +351,7 @@ class TestUpsertBulk:
                 "plate_appearances": 4,
                 "at_bats": 4,
                 "hits": 2,
-            }
+            },
         ]
         count = upsert_player_game_batting(session, records)
         assert count == 1
@@ -370,7 +370,7 @@ class TestUpsertBulk:
                 "team_code": "SS",
                 "innings_outs": 9,
                 "strikeouts": 5,
-            }
+            },
         ]
         count = upsert_player_game_pitching(session, records)
         assert count == 1
@@ -386,7 +386,7 @@ class TestUpsertBulk:
                 "plate_appearances": 4,
                 "at_bats": 4,
                 "hits": 2,
-            }
+            },
         ]
         count = bulk_upsert_player_game_batting(session, records)
         assert count == 1
@@ -401,7 +401,7 @@ class TestUpsertBulk:
                 "team_code": "SS",
                 "innings_outs": 9,
                 "strikeouts": 5,
-            }
+            },
         ]
         count = bulk_upsert_player_game_pitching(session, records)
         assert count == 1

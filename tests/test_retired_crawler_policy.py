@@ -123,7 +123,7 @@ def test_retired_listing_blocks_navigation_when_compliance_disallows(monkeypatch
             page,
             "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx",
             2024,
-        )
+        ),
     )
 
     assert ids == {}
@@ -146,7 +146,7 @@ def test_retired_listing_uses_flexible_selectors_and_paginates(monkeypatch):
             page,
             "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx",
             2024,
-        )
+        ),
     )
 
     assert ids == {"10001": "Hitter1", "10002": "Hitter2", "20001": "Hitter3"}
@@ -155,7 +155,7 @@ def test_retired_listing_uses_flexible_selectors_and_paginates(monkeypatch):
             "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx",
             "load",
             30000,
-        )
+        ),
     ]
     assert page.selector_waits == [('select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]', 15000)]
     assert page.select_options == [
@@ -191,7 +191,7 @@ def test_retired_listing_uses_next_button_when_numeric_page_is_absent(monkeypatc
             page,
             "https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx",
             2024,
-        )
+        ),
     )
 
     assert ids == {"10001": "Hitter1", "10002": "Hitter2", "20001": "Hitter3"}
@@ -216,7 +216,7 @@ def test_retired_detail_blocks_navigation_when_compliance_disallows(monkeypatch)
             page,
             "https://www.koreabaseball.com/Record/Retire/Hitter.aspx",
             "12345",
-        )
+        ),
     )
 
     assert payload is None
@@ -287,7 +287,7 @@ def test_determine_inactive_player_ids_diffs_historical_and_active(monkeypatch):
             start_year=2020,
             end_year=2021,
             active_year=2024,
-        )
+        ),
     )
 
     assert inactive == {"1", "3"}

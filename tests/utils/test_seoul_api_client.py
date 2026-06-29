@@ -93,10 +93,10 @@ class TestGetAreaCongestion:
                                     "AREA_CONGEST_LVL": "보통",
                                     "AREA_PPLTN_MAX": "5000",
                                     "AREA_PPLTN_MIN": "3000",
-                                }
-                            ]
-                        }
-                    }
+                                },
+                            ],
+                        },
+                    },
                 )
 
         monkeypatch.setattr("httpx.AsyncClient", lambda **kwargs: _OkClient())
@@ -131,10 +131,10 @@ class TestGetJamsilCongestionBatch:
                                     "AREA_CONGEST_LVL": "여유",
                                     "AREA_PPLTN_MAX": "100",
                                     "AREA_PPLTN_MIN": "50",
-                                }
-                            ]
-                        }
-                    }
+                                },
+                            ],
+                        },
+                    },
                 )
 
         monkeypatch.setattr("httpx.AsyncClient", lambda **kwargs: _OkClient())

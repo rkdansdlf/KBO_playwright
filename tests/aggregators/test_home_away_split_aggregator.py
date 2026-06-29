@@ -41,7 +41,7 @@ def _add_game(session, game_id="20250101", home="LG", away="SS", status="COMPLET
             game_status=status,
             season_id=season_id,
             game_date=date(2025, 1, 1),
-        )
+        ),
     )
     session.commit()
 
@@ -89,7 +89,7 @@ def _add_batting_stat(
             caught_stealing=caught_stealing,
             hbp=hbp,
             sacrifice_flies=sacrifice_flies,
-        )
+        ),
     )
     session.commit()
 
@@ -136,7 +136,15 @@ class TestHomeAwaySplitAggregator:
         _add_season(session)
         _add_game(session, home="LG", away="SS")
         _add_batting_stat(
-            session, team_code="LG", ab=4, hits=2, doubles=1, home_runs=1, walks=1, hbp=0, sacrifice_flies=0
+            session,
+            team_code="LG",
+            ab=4,
+            hits=2,
+            doubles=1,
+            home_runs=1,
+            walks=1,
+            hbp=0,
+            sacrifice_flies=0,
         )
         agg = HomeAwaySplitAggregator(session)
         results = agg.aggregate_batting(2025)

@@ -27,8 +27,8 @@ def _make_session():
                     name TEXT NOT NULL,
                     uniform_no TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -39,8 +39,8 @@ def _make_session():
                     season INTEGER NOT NULL,
                     team_code TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -51,8 +51,8 @@ def _make_session():
                     season INTEGER NOT NULL,
                     team_code TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         for table in ("game_batting_stats", "game_pitching_stats"):
             conn.execute(
@@ -67,8 +67,8 @@ def _make_session():
                         appearance_seq INTEGER,
                         player_id INTEGER
                     )
-                    """
-                )
+                    """,
+                ),
             )
             conn.execute(
                 text(
@@ -78,8 +78,8 @@ def _make_session():
                         ('20240201KIAHH0', 'KIA', '테스트선수', '10', 1, NULL),
                         ('20240202KIAHH0', 'KIA', '테스트선수', '10', 1, NULL),
                         ('20240202KIAHH0', 'KIA', '다른선수', '99', 2, NULL)
-                    """
-                )
+                    """,
+                ),
             )
         conn.execute(
             text(
@@ -93,8 +93,8 @@ def _make_session():
                     uniform_no TEXT,
                     player_id INTEGER
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -104,8 +104,8 @@ def _make_session():
                     ('20240201KIAHH0', 'KIA', '테스트선수', 1, '10', NULL),
                     ('20240202KIAHH0', 'KIA', '테스트선수', 2, '10', NULL),
                     ('20240202KIAHH0', 'KIA', '다른선수', 3, '99', NULL)
-                """
-            )
+                """,
+            ),
         )
     return sessionmaker(bind=engine)()
 
@@ -122,8 +122,8 @@ def _make_file_db(tmp_path: Path) -> str:
                     name TEXT NOT NULL,
                     uniform_no TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -134,8 +134,8 @@ def _make_file_db(tmp_path: Path) -> str:
                     season INTEGER NOT NULL,
                     team_code TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -148,23 +148,23 @@ def _make_file_db(tmp_path: Path) -> str:
                     uniform_no TEXT,
                     player_id INTEGER
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
-                "CREATE TABLE player_season_batting (id INTEGER PRIMARY KEY, player_id INTEGER, season INTEGER, team_code TEXT)"
-            )
+                "CREATE TABLE player_season_batting (id INTEGER PRIMARY KEY, player_id INTEGER, season INTEGER, team_code TEXT)",
+            ),
         )
         conn.execute(
             text(
-                "CREATE TABLE game_batting_stats (id INTEGER PRIMARY KEY, game_id TEXT, team_code TEXT, player_name TEXT, player_id INTEGER)"
-            )
+                "CREATE TABLE game_batting_stats (id INTEGER PRIMARY KEY, game_id TEXT, team_code TEXT, player_name TEXT, player_id INTEGER)",
+            ),
         )
         conn.execute(
             text(
-                "CREATE TABLE game_lineups (id INTEGER PRIMARY KEY, game_id TEXT, team_code TEXT, player_name TEXT, player_id INTEGER)"
-            )
+                "CREATE TABLE game_lineups (id INTEGER PRIMARY KEY, game_id TEXT, team_code TEXT, player_name TEXT, player_id INTEGER)",
+            ),
         )
         conn.execute(text("INSERT INTO player_basic(player_id, name, uniform_no) VALUES (7001, '원격투수', '45')"))
         conn.execute(text("INSERT INTO player_season_pitching(player_id, season, team_code) VALUES (7001, 2025, 'LG')"))
@@ -173,8 +173,8 @@ def _make_file_db(tmp_path: Path) -> str:
                 """
                 INSERT INTO game_pitching_stats(game_id, team_code, player_name, uniform_no, player_id)
                 VALUES ('20250401LGSS0', 'LG', '원격투수', '45', NULL)
-                """
-            )
+                """,
+            ),
         )
     return f"sqlite:///{db_path}"
 
@@ -225,8 +225,8 @@ def test_same_update_rule_applies_to_all_three_tables():
                     FROM {table}
                     WHERE player_name = '테스트선수'
                       AND player_id = 12345
-                    """
-                )
+                    """,
+                ),
             ).scalar()
             assert cnt == 2
     finally:
@@ -242,8 +242,8 @@ def test_duplicate_null_rows_are_counted_and_deleted_separately():
                 INSERT INTO game_pitching_stats
                     (game_id, team_code, player_name, uniform_no, appearance_seq, player_id)
                 VALUES ('20240201KIAHH0', 'KIA', '테스트선수', '10', 1, 12345)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -287,7 +287,7 @@ def test_override_applies_before_automatic_matching():
                 resolved_player_id=777,
                 reason="manual",
                 evidence_source="unit-test",
-            )
+            ),
         }
         result = choose_candidate_ids(
             session,
@@ -317,7 +317,7 @@ def test_override_is_rejected_when_player_basic_missing():
                 resolved_player_id=999999,
                 reason="manual",
                 evidence_source="unit-test",
-            )
+            ),
         }
         result = choose_candidate_ids(
             session,
@@ -345,8 +345,8 @@ def test_role_and_uniform_filter_narrows_to_single_candidate():
                 VALUES
                     (1001, '동명이인', '11'),
                     (1002, '동명이인', '22')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -355,8 +355,8 @@ def test_role_and_uniform_filter_narrows_to_single_candidate():
                 VALUES
                     (1001, 2024, 'KIA'),
                     (1002, 2024, 'KIA')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -386,8 +386,8 @@ def test_lineup_order_values_are_not_used_as_uniform_filter():
                 VALUES
                     ('20240203KIAHH0', 'KIA', '타순오염', 7, '7', NULL),
                     ('20240204KIAHH0', 'KIA', '타순오염', 8, '8', NULL)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -414,8 +414,8 @@ def test_group_override_is_rejected_when_existing_group_has_multiple_player_ids(
                 VALUES
                     (52731, '박준영', NULL),
                     (56709, '박준영', NULL)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -426,8 +426,8 @@ def test_group_override_is_rejected_when_existing_group_has_multiple_player_ids(
                     ('20260607HHLT0', 'HH', '박준영', NULL, 2, 52731),
                     ('20260607HHLT0', 'HH', '박준영', NULL, 8, 56709),
                     ('20260609HTHH0', 'HH', '박준영', NULL, 3, NULL)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -440,7 +440,7 @@ def test_group_override_is_rejected_when_existing_group_has_multiple_player_ids(
                 resolved_player_id=52731,
                 reason="manual",
                 evidence_source="unit-test",
-            )
+            ),
         }
         result = choose_candidate_ids(
             session,
@@ -469,8 +469,8 @@ def test_row_override_updates_exact_homonym_row():
                 INSERT INTO game_pitching_stats
                     (game_id, team_code, player_name, uniform_no, appearance_seq, player_id)
                 VALUES ('20260607HHLT0', 'HH', '박준영', NULL, 8, NULL)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -499,8 +499,8 @@ def test_row_override_updates_exact_homonym_row():
                     FROM game_pitching_stats
                     WHERE game_id = '20260607HHLT0'
                       AND appearance_seq = 8
-                    """
-                )
+                    """,
+                ),
             ).scalar()
             == 56709
         )
@@ -517,8 +517,8 @@ def test_duplicate_guard_uses_game_player_for_lineups_with_different_appearance_
                 INSERT INTO game_lineups
                     (game_id, team_code, player_name, batting_order, uniform_no, player_id)
                 VALUES ('20260607HHLT0', 'HH', '박준영', 9, NULL, 56709)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -526,8 +526,8 @@ def test_duplicate_guard_uses_game_player_for_lineups_with_different_appearance_
                 INSERT INTO game_lineups
                     (game_id, team_code, player_name, batting_order, uniform_no, player_id)
                 VALUES ('20260607HHLT0', 'HH', '박준영', 8, NULL, NULL)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -565,8 +565,8 @@ def test_legacy_team_code_is_canonicalized_for_candidate_lookup():
                 """
                 INSERT INTO player_season_batting(player_id, season, team_code)
                 VALUES (53554, 2026, 'DB')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 

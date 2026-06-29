@@ -83,7 +83,7 @@ class TestRepairCandidates:
                 "current_home_pitcher": None,
                 "away_start": "홍길동",
                 "home_start": "김철수",
-            }
+            },
         ]
 
         ids, away, home = repair_candidates(mock_session, candidates, overwrite=False, dry_run=True)
@@ -100,7 +100,7 @@ class TestRepairCandidates:
                 "current_home_pitcher": "기존값",
                 "away_start": "홍길동",
                 "home_start": "김철수",
-            }
+            },
         ]
 
         ids, away, home = repair_candidates(mock_session, candidates, overwrite=False, dry_run=True)
@@ -117,7 +117,7 @@ class TestRepairCandidates:
                 "current_home_pitcher": "기존값",
                 "away_start": "홍길동",
                 "home_start": "김철수",
-            }
+            },
         ]
 
         ids, away, home = repair_candidates(mock_session, candidates, overwrite=True, dry_run=True)
@@ -134,7 +134,7 @@ class TestRepairCandidates:
                 "current_home_pitcher": None,
                 "away_start": None,
                 "home_start": None,
-            }
+            },
         ]
 
         ids, away, home = repair_candidates(mock_session, candidates, overwrite=False, dry_run=True)
@@ -151,7 +151,7 @@ class TestRepairCandidates:
                 "current_home_pitcher": None,
                 "away_start": "홍길동",
                 "home_start": "김철수",
-            }
+            },
         ]
 
         repair_candidates(mock_session, candidates, overwrite=False, dry_run=True)
@@ -166,7 +166,7 @@ class TestRepairCandidates:
                 "current_home_pitcher": None,
                 "away_start": "홍길동",
                 "home_start": "김철수",
-            }
+            },
         ]
 
         repair_candidates(mock_session, candidates, overwrite=False, dry_run=False)

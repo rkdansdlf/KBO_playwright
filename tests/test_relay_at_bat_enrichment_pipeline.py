@@ -48,7 +48,7 @@ def _seed_game(
                 game_date=target_date,
                 home_team=home_team,
                 away_team=away_team,
-            )
+            ),
         )
         session.commit()
 
@@ -69,7 +69,7 @@ def _seed_player_season_batting(SessionLocal, player_id: int, season: int, team_
                 level="KBO1",
                 source="ROLLUP",
                 team_code=team_code,
-            )
+            ),
         )
         session.commit()
 

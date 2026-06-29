@@ -27,7 +27,7 @@ def test_resolve_movement_player_uses_position_for_ambiguous_names():
             [
                 PlayerBasic(player_id=1001, name="김지성", position="내야수", team=""),
                 PlayerBasic(player_id=1002, name="김지성", position="투수", team=""),
-            ]
+            ],
         )
         session.commit()
 
@@ -57,7 +57,7 @@ def test_resolve_movement_player_uses_unique_profile_mirror():
                 PlayerBasic(player_id=1001, name="배재준", position="투수", team="LG"),
                 PlayerBasic(player_id=63145, name="배재준", position="투수", team="LG"),
                 Player(kbo_person_id="63145", player_basic_id=63145),
-            ]
+            ],
         )
         session.commit()
 
@@ -94,7 +94,7 @@ def test_resolve_movement_player_uses_same_year_roster_link():
                     player_name="이승현",
                     position="투수",
                 ),
-            ]
+            ],
         )
         session.commit()
 
@@ -121,7 +121,7 @@ def test_resolve_movement_player_uses_franchise_season_history():
             [
                 Team(team_id="HT", team_name="해태 타이거즈", team_short_name="해태", city="광주", franchise_id=5),
                 Team(team_id="KIA", team_name="KIA 타이거즈", team_short_name="KIA", city="광주", franchise_id=5),
-            ]
+            ],
         )
         session.add_all(
             [
@@ -134,7 +134,7 @@ def test_resolve_movement_player_uses_franchise_season_history():
                     level="KBO1",
                     team_code="KIA",
                 ),
-            ]
+            ],
         )
         session.commit()
 

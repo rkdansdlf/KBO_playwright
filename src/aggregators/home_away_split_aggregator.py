@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
 from src.models.game import Game, GameBattingStat
@@ -31,7 +31,7 @@ class HomeAwaySplitAggregator:
         """
         self.session = session
 
-    def aggregate_batting(self, year: int) -> list[dict]:
+    def aggregate_batting(self, year: int) -> list[dict[str, Any]]:
         """
         Aggregate batting.
 
@@ -55,7 +55,9 @@ class HomeAwaySplitAggregator:
             .all()
         )
 
-        splits: dict = defaultdict(lambda: {"HOME": defaultdict(int), "AWAY": defaultdict(int)})
+        splits: dict[tuple[int, int], dict[str, dict[str, int]]] = defaultdict(
+            lambda: {"HOME": defaultdict(int), "AWAY": defaultdict(int)},
+        )
 
         for stat, _away_team, home_team in rows:
             if not stat.player_id or not stat.team_code:
@@ -159,7 +161,7 @@ class HomeAwaySplitAggregator:
         if not results:
             return
 
-        players: dict = {}
+        players: dict[int, dict[str, Any]] = {}
         for r in results:
             pid = r["player_id"]
             if pid not in players:

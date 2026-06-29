@@ -25,7 +25,7 @@ class TestNeedsNewAtBat:
                 current_batter="김하성",
                 has_seen_result_this_at_bat=False,
                 event_type="batting",
-            )
+            ),
         )
         assert result is False
 
@@ -39,7 +39,7 @@ class TestNeedsNewAtBat:
                 current_batter="김하성",
                 has_seen_result_this_at_bat=False,
                 event_type="batting",
-            )
+            ),
         )
         assert result is True
 
@@ -53,7 +53,7 @@ class TestNeedsNewAtBat:
                 current_batter="김하성",
                 has_seen_result_this_at_bat=False,
                 event_type="batting",
-            )
+            ),
         )
         assert result is True
 
@@ -67,7 +67,7 @@ class TestNeedsNewAtBat:
                 current_batter="김하성",
                 has_seen_result_this_at_bat=True,
                 event_type="batting",
-            )
+            ),
         )
         assert result is True
 
@@ -81,7 +81,7 @@ class TestNeedsNewAtBat:
                 current_batter=None,
                 has_seen_result_this_at_bat=False,
                 event_type="batting",
-            )
+            ),
         )
         assert result is True
 
@@ -95,7 +95,7 @@ class TestNeedsNewAtBat:
                 current_batter="김하성",
                 has_seen_result_this_at_bat=False,
                 event_type="runner_advance",
-            )
+            ),
         )
         assert result is False
 

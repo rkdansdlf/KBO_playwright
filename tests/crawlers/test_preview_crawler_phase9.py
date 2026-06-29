@@ -256,7 +256,7 @@ class TestParseLineupGrid:
             "rows": [
                 {"row": [{"Text": "1"}, {"Text": "SS"}, {"Text": "김철수"}]},
                 {"row": [{"Text": "2"}, {"Text": "P"}, {"Text": "이영호"}]},
-            ]
+            ],
         }
         result = PreviewCrawler._parse_lineup_grid([json.dumps(grid_data)])
         assert len(result) == 2

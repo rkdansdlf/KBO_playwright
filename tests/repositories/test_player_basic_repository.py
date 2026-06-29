@@ -140,7 +140,7 @@ class TestPlayerBasicRepository:
                 {"player_id": 1, "name": "A", "team": "LG"},
                 {"player_id": 2, "name": "B", "team": "LG"},
                 {"player_id": 3, "name": "C", "team": "KT"},
-            ]
+            ],
         )
 
         lg_players = repo.get_by_team("LG")
@@ -153,7 +153,7 @@ class TestPlayerBasicRepository:
         repo.update_statuses(
             [
                 {"player_id": 1001, "status": "active", "staff_role": None, "status_source": "profile"},
-            ]
+            ],
         )
 
         updated = session.query(PlayerBasic).filter_by(player_id=1001).first()
@@ -276,7 +276,7 @@ class TestPlayerBasicRepository:
                 {"player_id": 1, "name": "A", "team": "LG"},
                 {"player_id": 2, "name": "B", "team": "LG"},
                 {"player_id": 3, "name": "C", "team": "LG"},
-            ]
+            ],
         )
 
         limited = repo.get_by_team("LG", limit=2)

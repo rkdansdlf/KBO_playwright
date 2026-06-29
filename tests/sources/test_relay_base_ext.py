@@ -273,7 +273,7 @@ class TestReadManifestEntries:
                     "format": "naver_json",
                     "priority": "10",
                     "notes": "",
-                }
+                },
             ],
         )
         entries = read_manifest_entries(str(path))
@@ -297,7 +297,7 @@ class TestReadManifestEntries:
                     "format": "naver_json",
                     "priority": "10",
                     "notes": "",
-                }
+                },
             ],
         )
         entries = read_manifest_entries(str(path))
@@ -315,7 +315,7 @@ class TestReadManifestEntries:
                     "format": "naver_json",
                     "priority": "10",
                     "notes": "",
-                }
+                },
             ],
         )
         with pytest.raises(ValueError, match="Unsupported manifest source_type"):
@@ -333,7 +333,7 @@ class TestReadManifestEntries:
                     "format": "invalid_format",
                     "priority": "10",
                     "notes": "",
-                }
+                },
             ],
         )
         with pytest.raises(ValueError, match="Unsupported manifest format"):
@@ -428,7 +428,7 @@ class TestCapabilityRecords:
                     "supported": "true",
                     "last_checked_at": "2026-01-01T00:00:00Z",
                     "notes": "ok",
-                }
+                },
             ],
         )
         result = load_capability_records(str(path))

@@ -19,8 +19,8 @@ def _make_session():
                         uniform_no TEXT,
                         player_id INTEGER
                     )
-                    """
-                )
+                    """,
+                ),
             )
     return sessionmaker(bind=engine)()
 
@@ -46,24 +46,24 @@ def test_backfill_year_processes_pitching_and_lineups_when_batting_has_no_nulls(
                 """
                 INSERT INTO game_batting_stats(id, game_id, player_name, team_code, uniform_no, player_id)
                 VALUES (1, '20260401LGSS0', '이미해결', 'LG', '10', 1001)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO game_pitching_stats(id, game_id, player_name, team_code, uniform_no, player_id)
                 VALUES (1, '20260401LGSS0', '투수', 'LG', '45', NULL)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO game_lineups(id, game_id, player_name, team_code, uniform_no, player_id)
                 VALUES (1, '20260401LGSS0', '타자', 'LG', '9', NULL)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 

@@ -260,7 +260,7 @@ async def reconcile_postgame_range(
     before = _load_score_status_snapshots(game_ids)
     result.detail_result = await crawl_and_save_game_details(
         targets,
-        detail_crawler=req.detail_crawler,
+        detail_crawler=req.detail_crawler,  # type: ignore[arg-type]
         config=GameCollectionConfig(
             force=True,
             concurrency=req.concurrency,

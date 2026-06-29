@@ -175,7 +175,11 @@ class TestChunkWithOverlap:
     def test_chunk_character_limit_respected(self):
         long_text = "A" * 500 + "\n\n" + "B" * 500
         chunks = self.t.chunk_with_overlap(
-            "Doc", long_text, {"source": "test"}, chunk_char_limit=400, overlap_char_limit=50
+            "Doc",
+            long_text,
+            {"source": "test"},
+            chunk_char_limit=400,
+            overlap_char_limit=50,
         )
         assert len(chunks) >= 2
 
@@ -188,7 +192,11 @@ class TestChunkWithOverlap:
     def test_overlap_present(self):
         text = "A" * 500 + "\n\n" + "B" * 500 + "\n\n" + "C" * 500
         chunks = self.t.chunk_with_overlap(
-            "Doc", text, {"source": "test"}, chunk_char_limit=400, overlap_char_limit=100
+            "Doc",
+            text,
+            {"source": "test"},
+            chunk_char_limit=400,
+            overlap_char_limit=100,
         )
         if len(chunks) > 1:
             assert len(chunks[0]["content"]) > 0

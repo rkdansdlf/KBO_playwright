@@ -73,7 +73,7 @@ class TestTeamState:
                     runs_against=0,
                     is_home=True,
                     game_date=date(2026, 6, 24),
-                )
+                ),
             )
         assert state.recent_10_wins == 10
         assert state.recent_10_losses == 0
@@ -91,7 +91,7 @@ class TestTeamState:
                     runs_against=0,
                     is_home=True,
                     game_date=date(2026, 6, 24),
-                )
+                ),
             )
         for _ in range(5):
             state.add_game(
@@ -103,7 +103,7 @@ class TestTeamState:
                     runs_against=1,
                     is_home=True,
                     game_date=date(2026, 6, 24),
-                )
+                ),
             )
         assert state.recent_10_wins == 5
         assert state.recent_10_losses == 5
@@ -119,7 +119,7 @@ class TestTeamState:
                 runs_against=3,
                 is_home=True,
                 game_date=date(2026, 6, 24),
-            )
+            ),
         )
         assert state.wins == 1
         assert state.home_wins == 1
@@ -136,7 +136,7 @@ class TestTeamState:
                 runs_against=3,
                 is_home=False,
                 game_date=date(2026, 6, 24),
-            )
+            ),
         )
         assert state.wins == 1
         assert state.away_wins == 1
@@ -152,7 +152,7 @@ class TestTeamState:
                 runs_against=5,
                 is_home=True,
                 game_date=date(2026, 6, 24),
-            )
+            ),
         )
         assert state.losses == 1
         assert state.current_streak == -1
@@ -169,7 +169,7 @@ class TestTeamState:
                     runs_against=0,
                     is_home=True,
                     game_date=date(2026, 6, 24),
-                )
+                ),
             )
         assert state.current_streak == 5
 
@@ -184,7 +184,7 @@ class TestTeamState:
                 runs_against=3,
                 is_home=True,
                 game_date=date(2026, 6, 24),
-            )
+            ),
         )
         assert state.draws == 1
         assert state.recent_games[-1] == "D"

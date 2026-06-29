@@ -26,7 +26,7 @@ class _FakeDetailCrawler:
                 "games": list(games),
                 "concurrency": concurrency,
                 "lightweight": lightweight,
-            }
+            },
         )
         return [_valid_detail_payload(game["game_id"], game["game_date"]) for game in games]
 
@@ -114,7 +114,7 @@ def _seed_existing_game(SessionLocal, game_id: str):
                 player_id=1001,
                 player_name="Existing Batter",
                 appearance_seq=1,
-            )
+            ),
         )
         session.add(
             GamePitchingStat(
@@ -124,7 +124,7 @@ def _seed_existing_game(SessionLocal, game_id: str):
                 player_id=2001,
                 player_name="Existing Pitcher",
                 appearance_seq=1,
-            )
+            ),
         )
         session.add(
             GameEvent(
@@ -133,7 +133,7 @@ def _seed_existing_game(SessionLocal, game_id: str):
                 inning=1,
                 inning_half="top",
                 description="existing",
-            )
+            ),
         )
         session.commit()
 
@@ -171,7 +171,7 @@ def test_crawl_and_save_game_details_skips_existing_detail_and_relay(monkeypatch
                 concurrency=2,
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     assert detail_crawler.calls == [
@@ -179,7 +179,7 @@ def test_crawl_and_save_game_details_skips_existing_detail_and_relay(monkeypatch
             "games": [{"game_id": "20250402LGSS0", "game_date": "20250402"}],
             "concurrency": 2,
             "lightweight": False,
-        }
+        },
     ]
     assert relay_crawler.calls == ["20250402LGSS0"]
     assert saved_details == ["20250402LGSS0"]
@@ -219,7 +219,7 @@ def test_crawl_and_save_game_details_force_recrawls_existing(monkeypatch):
                 force=True,
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     assert detail_crawler.calls[0]["games"] == [{"game_id": "20250401LGSS0", "game_date": "20250401"}]
@@ -252,7 +252,7 @@ def test_crawl_and_save_game_details_processes_every_detail_target_in_batch(monk
                 force=True,
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     assert saved_details == ["20250401LGSS0", "20250402KTHH0"]
@@ -292,7 +292,7 @@ def test_crawl_and_save_game_details_records_mixed_batch_failure_and_success(mon
                 force=True,
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     assert saved_details == ["20250402KTHH0"]
@@ -324,7 +324,7 @@ def test_crawl_and_save_game_details_saves_raw_pbp_without_events(monkeypatch):
                 relay_crawler=_RawRelayCrawler(),
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     assert saved_relays == [
@@ -332,7 +332,7 @@ def test_crawl_and_save_game_details_saves_raw_pbp_without_events(monkeypatch):
             "20250405LGSS0",
             [],
             [{"inning": 1, "inning_half": "top", "play_description": "20250405LGSS0 raw"}],
-        )
+        ),
     ]
     assert result.relay_saved_games == 1
     assert result.relay_rows_saved == 1
@@ -358,7 +358,7 @@ def test_crawl_and_save_game_details_does_not_fetch_relay_when_detail_fails(monk
                 relay_crawler=relay_crawler,
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     item = result.items["20250403LGSS0"]
@@ -389,7 +389,7 @@ def test_crawl_and_save_game_details_can_filter_payloads_before_save(monkeypatch
                 should_save_detail=lambda payload: False,
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     item = result.items["20250404LGSS0"]
@@ -413,7 +413,7 @@ def test_crawl_and_save_game_details_marks_save_failed_reason_when_save_returns_
                 force=True,
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     item = result.items["20250408LGSS0"]
@@ -449,7 +449,7 @@ def test_crawl_and_save_game_details_filters_incomplete_payload_by_default(monke
                 force=True,
                 log=lambda _message: None,
             ),
-        )
+        ),
     )
 
     item = result.items["20250407LGSS0"]
@@ -483,7 +483,7 @@ class TestNormalizeGameTargets:
             [
                 {"game_id": "20250401LGSS0", "game_date": "20250401"},
                 {"game_id": "20250402LGSS0", "game_date": "20250402"},
-            ]
+            ],
         )
         assert len(targets) == 2
         assert targets[0].game_id == "20250401LGSS0"
@@ -494,7 +494,7 @@ class TestNormalizeGameTargets:
             [
                 {"game_id": "20250401LGSS0", "game_date": "20250401"},
                 {"game_id": "20250401LGSS0", "game_date": "20250401"},
-            ]
+            ],
         )
         assert len(targets) == 1
 
@@ -503,7 +503,7 @@ class TestNormalizeGameTargets:
             [
                 {"game_id": "", "game_date": "20250401"},
                 {"game_id": None, "game_date": "20250401"},
-            ]
+            ],
         )
         assert len(targets) == 0
 

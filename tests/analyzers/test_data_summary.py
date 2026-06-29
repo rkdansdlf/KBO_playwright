@@ -143,7 +143,13 @@ class TestGenerateReport:
     @patch("src.analyzers.data_summary.analyze_parking")
     @patch("src.analyzers.data_summary.analyze_food")
     def test_generate_report_contains_sections(
-        self, mock_food, mock_parking, mock_seats, mock_tickets, mock_roster, mock_events
+        self,
+        mock_food,
+        mock_parking,
+        mock_seats,
+        mock_tickets,
+        mock_roster,
+        mock_events,
     ):
         mock_events.return_value = [{"section": "Events", "total": 5}]
         mock_roster.return_value = [{"section": "Roster", "total": 3}]

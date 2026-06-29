@@ -94,7 +94,7 @@ def fix_missing_seasons(sqlite_url: str, oci_url: str) -> int:
     try:
         with sqlite_engine.connect() as sq_conn, oci_engine.connect() as oci_conn:
             sqlite_rows = sq_conn.execute(
-                text("SELECT season_id, season_year, league_type_code, league_type_name FROM kbo_seasons")
+                text("SELECT season_id, season_year, league_type_code, league_type_name FROM kbo_seasons"),
             ).fetchall()
             oci_set = {
                 (r[0], r[1])
@@ -116,7 +116,7 @@ def fix_missing_seasons(sqlite_url: str, oci_url: str) -> int:
                              created_at, updated_at)
                         VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         ON CONFLICT DO NOTHING
-                        """
+                        """,
                     ),
                     {"sid": sid, "year": year, "code": code, "name": name},
                 )

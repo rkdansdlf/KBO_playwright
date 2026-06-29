@@ -125,7 +125,7 @@ def _add_game(session, game_id="20250315LGSS0", season_id=1, status="COMPLETED")
             home_team="LG",
             away_team="SS",
             stadium="잠실",
-        )
+        ),
     )
     session.commit()
 
@@ -165,7 +165,7 @@ def _add_batting_stat(session, game_id, player_id, player_name="Test", team_code
             team_code=team_code,
             appearance_seq=1,
             **defaults,
-        )
+        ),
     )
     session.commit()
 
@@ -197,7 +197,7 @@ def _add_pitching_stat(session, game_id, player_id, player_name="Test", team_cod
             team_code=team_code,
             appearance_seq=1,
             **defaults,
-        )
+        ),
     )
     session.commit()
 
@@ -211,7 +211,7 @@ def _add_lineup(session, game_id, player_id, standard_position, player_name="Tes
             player_name=player_name,
             standard_position=standard_position,
             appearance_seq=appearance_seq,
-        )
+        ),
     )
     session.commit()
 
@@ -245,7 +245,10 @@ class TestAggregateBattingSeason:
             _add_season(session)
             _add_game(session)
             result = SeasonStatAggregator.aggregate_batting_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is None
 
@@ -256,10 +259,18 @@ class TestAggregateBattingSeason:
             _add_game(session)
             _add_player(session, player_id=10001, name="김테스트")
             _add_batting_stat(
-                session, game_id="20250315LGSS0", player_id=10001, player_name="김테스트", hits=2, doubles=1
+                session,
+                game_id="20250315LGSS0",
+                player_id=10001,
+                player_name="김테스트",
+                hits=2,
+                doubles=1,
             )
             result = SeasonStatAggregator.aggregate_batting_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["games"] == 1
@@ -280,7 +291,10 @@ class TestAggregateBattingSeason:
             _add_batting_stat(session, game_id="20250315LGSS0", player_id=10001, player_name="김테스트", hits=2, runs=1)
             _add_batting_stat(session, game_id="20250316LGSS0", player_id=10001, player_name="김테스트", hits=1, runs=2)
             result = SeasonStatAggregator.aggregate_batting_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["games"] == 2
@@ -304,7 +318,10 @@ class TestAggregateBattingSeason:
                 home_runs=None,
             )
             result = SeasonStatAggregator.aggregate_batting_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["doubles"] == 0
@@ -319,7 +336,10 @@ class TestAggregateBattingSeason:
             _add_player(session, player_id=10001, name="김테스트")
             _add_batting_stat(session, game_id="20250315LGSS0", player_id=10001, player_name="김테스트")
             result = SeasonStatAggregator.aggregate_batting_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is None
 
@@ -331,7 +351,10 @@ class TestAggregateBattingSeason:
             _add_player(session, player_id=10001, name="김테스트")
             _add_batting_stat(session, game_id="20250315LGSS0", player_id=10001, player_name="김테스트")
             result = SeasonStatAggregator.aggregate_batting_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is None
 
@@ -357,7 +380,10 @@ class TestAggregateBattingSeason:
                 strikeouts=0,
             )
             result = SeasonStatAggregator.aggregate_batting_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["avg"] == pytest.approx(0.667, abs=0.001)
@@ -462,7 +488,10 @@ class TestAggregatePitchingSeasonNullAndFilters:
                 home_runs_allowed=1,
             )
             result = SeasonStatAggregator.aggregate_pitching_season(
-                session, player_id=20001, year=2025, series="regular"
+                session,
+                player_id=20001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["games"] == 1
@@ -488,7 +517,10 @@ class TestAggregatePitchingSeasonNullAndFilters:
                 balks=None,
             )
             result = SeasonStatAggregator.aggregate_pitching_season(
-                session, player_id=20001, year=2025, series="regular"
+                session,
+                player_id=20001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["home_runs_allowed"] == 0
@@ -504,7 +536,10 @@ class TestAggregatePitchingSeasonNullAndFilters:
             _add_player(session, player_id=20001, name="투수A")
             _add_pitching_stat(session, game_id="20250315LGSS0", player_id=20001, player_name="투수A")
             result = SeasonStatAggregator.aggregate_pitching_season(
-                session, player_id=20001, year=2025, series="regular"
+                session,
+                player_id=20001,
+                year=2025,
+                series="regular",
             )
             assert result is None
 
@@ -516,7 +551,10 @@ class TestAggregatePitchingSeasonNullAndFilters:
             _add_player(session, player_id=20001, name="투수A")
             _add_pitching_stat(session, game_id="20250315LGSS0", player_id=20001, player_name="투수A")
             result = SeasonStatAggregator.aggregate_pitching_season(
-                session, player_id=20001, year=2025, series="regular"
+                session,
+                player_id=20001,
+                year=2025,
+                series="regular",
             )
             assert result is None
 
@@ -530,10 +568,20 @@ class TestAggregatePitchingSeasonBulkExtended:
             _add_game(session, game_id="20250316LGSS0")
             _add_player(session, player_id=20001, name="투수A")
             _add_pitching_stat(
-                session, game_id="20250315LGSS0", player_id=20001, player_name="투수A", earned_runs=2, innings_outs=18
+                session,
+                game_id="20250315LGSS0",
+                player_id=20001,
+                player_name="투수A",
+                earned_runs=2,
+                innings_outs=18,
             )
             _add_pitching_stat(
-                session, game_id="20250316LGSS0", player_id=20001, player_name="투수A", earned_runs=4, innings_outs=18
+                session,
+                game_id="20250316LGSS0",
+                player_id=20001,
+                player_name="투수A",
+                earned_runs=4,
+                innings_outs=18,
             )
             results = SeasonStatAggregator.aggregate_pitching_season_bulk(session, year=2025, series="regular")
             assert len(results) == 1
@@ -583,7 +631,10 @@ class TestAggregateBaserunningSeason:
             _add_season(session)
             _add_game(session)
             result = SeasonStatAggregator.aggregate_baserunning_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is None
 
@@ -611,7 +662,10 @@ class TestAggregateBaserunningSeason:
                 caught_stealing=0,
             )
             result = SeasonStatAggregator.aggregate_baserunning_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["stolen_bases"] == 4
@@ -634,7 +688,10 @@ class TestAggregateBaserunningSeason:
                 caught_stealing=0,
             )
             result = SeasonStatAggregator.aggregate_baserunning_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["stolen_base_attempts"] == 0
@@ -655,7 +712,10 @@ class TestAggregateBaserunningSeason:
                 caught_stealing=None,
             )
             result = SeasonStatAggregator.aggregate_baserunning_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is not None
             assert result["stolen_bases"] == 0
@@ -671,7 +731,10 @@ class TestAggregateBaserunningSeason:
             _add_player(session, player_id=10001, name="김테스트")
             _add_batting_stat(session, game_id="20250315LGSS0", player_id=10001, player_name="김테스트", stolen_bases=5)
             result = SeasonStatAggregator.aggregate_baserunning_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert result is None
 
@@ -771,7 +834,10 @@ class TestAggregateFieldingSeason:
             _add_season(session)
             _add_game(session)
             result = SeasonStatAggregator.aggregate_fielding_season(
-                session, player_id=99999, year=2025, series="regular"
+                session,
+                player_id=99999,
+                year=2025,
+                series="regular",
             )
             assert result == []
 
@@ -783,7 +849,10 @@ class TestAggregateFieldingSeason:
             _add_player(session, player_id=10001, name="김테스트")
             _add_lineup(session, game_id="20250315LGSS0", player_id=10001, standard_position="SS")
             result = SeasonStatAggregator.aggregate_fielding_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert len(result) == 1
             assert result[0]["position_id"] == "SS"
@@ -799,7 +868,10 @@ class TestAggregateFieldingSeason:
             _add_lineup(session, game_id="20250315LGSS0", player_id=10001, standard_position="SS", appearance_seq=1)
             _add_lineup(session, game_id="20250315LGSS0", player_id=10001, standard_position="2B", appearance_seq=2)
             result = SeasonStatAggregator.aggregate_fielding_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert len(result) == 2
             by_pos = {r["position_id"]: r for r in result}
@@ -815,7 +887,10 @@ class TestAggregateFieldingSeason:
             _add_lineup(session, game_id="20250315LGSS0", player_id=10001, standard_position="SS")
             _add_event(session, game_id="20250315LGSS0", description="김테스트 실책", batter_id=10001)
             result = SeasonStatAggregator.aggregate_fielding_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert len(result) == 1
             assert result[0]["errors"] == 1
@@ -829,7 +904,10 @@ class TestAggregateFieldingSeason:
             _add_lineup(session, game_id="20250315LGSS0", player_id=10001, standard_position="SS")
             _add_event(session, game_id="20250315LGSS0", description="SS 실책", batter_id=10001)
             result = SeasonStatAggregator.aggregate_fielding_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert len(result) == 1
             assert result[0]["errors"] == 1
@@ -843,7 +921,10 @@ class TestAggregateFieldingSeason:
             _add_lineup(session, game_id="20250315LGSS0", player_id=10001, standard_position="SS")
             _add_event(session, game_id="20250315LGSS0", description="박다른 실책", batter_id=10002, event_seq=2)
             result = SeasonStatAggregator.aggregate_fielding_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert len(result) == 1
             assert result[0]["errors"] == 0
@@ -857,7 +938,10 @@ class TestAggregateFieldingSeason:
             _add_lineup(session, game_id="20250315LGSS0", player_id=10001, standard_position="SS")
             _add_lineup(session, game_id="20250315LGSS0", player_id=10001, standard_position=None, appearance_seq=2)
             result = SeasonStatAggregator.aggregate_fielding_season(
-                session, player_id=10001, year=2025, series="regular"
+                session,
+                player_id=10001,
+                year=2025,
+                series="regular",
             )
             assert len(result) == 1
             assert result[0]["position_id"] == "SS"

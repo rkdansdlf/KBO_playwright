@@ -81,7 +81,7 @@ class TestHasRepairableGameChildren:
                 team_side="away",
                 appearance_seq=1,
                 at_bats=4,
-            )
+            ),
         )
         session.commit()
         assert _has_repairable_game_children(session, "20241015LGSS0") is True
@@ -271,7 +271,7 @@ class TestBuildRelayPbpRows:
                 "inning": 1,
                 "event_type": "strikeout",
                 "result": "K",
-            }
+            },
         ]
         rows = _build_relay_pbp_rows("20241015LGSS0", raw_pbp_rows, "kbo", resolution)
         assert len(rows) == 1
@@ -312,7 +312,7 @@ class TestBuildRelayEventRows:
                 "description": "Strikeout",
                 "event_type": "strikeout",
                 "result_code": "K",
-            }
+            },
         ]
         rows = _build_relay_event_rows("20241015LGSS0", valid_events, "kbo", None, resolution)
         assert len(rows) == 1

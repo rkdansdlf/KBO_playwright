@@ -68,8 +68,8 @@ def _build_legacy_game_session_factory():
                     home_pitcher VARCHAR,
                     game_status VARCHAR
                 )
-                """
-            )
+                """,
+            ),
         )
     for table in (
         Team.__table__,
@@ -97,7 +97,7 @@ def _add_metadata(session, game_id: str, stadium: str = "잠실"):
             game_id=game_id,
             stadium_name=stadium,
             start_time=time(18, 30),
-        )
+        ),
     )
 
 
@@ -113,7 +113,7 @@ def _add_roster(session, roster_date: date):
             player_id=1,
             player_name="홍길동",
             position="투수",
-        )
+        ),
     )
 
 
@@ -144,7 +144,7 @@ def _add_completed_detail(session, game_id: str):
             ),
             GameEvent(game_id=game_id, event_seq=1, inning=1, inning_half="top", description="안타"),
             GamePlayByPlay(game_id=game_id, inning=1, inning_half="top", play_description="안타"),
-        ]
+        ],
     )
 
 
@@ -184,7 +184,7 @@ def test_build_p0_readiness_reports_clean_operational_window():
                     home_pitcher="선발B",
                     game_status="SCHEDULED",
                 ),
-            ]
+            ],
         )
         for game_id in (completed_id, live_id, scheduled_id):
             _add_metadata(session, game_id)
@@ -215,7 +215,7 @@ def test_build_p0_readiness_reports_clean_operational_window():
                     appearance_seq=1,
                 ),
                 GameSummary(game_id=scheduled_id, summary_type="프리뷰", detail_text="{}"),
-            ]
+            ],
         )
         _add_roster(session, date(2025, 1, 1))
         _add_roster(session, date(2025, 1, 2))
@@ -245,7 +245,7 @@ def test_build_p0_readiness_reports_dataset_failures():
                 away_team="LG",
                 home_team="SS",
                 game_status="COMPLETED",
-            )
+            ),
         )
         session.commit()
 
@@ -275,7 +275,7 @@ def test_build_p0_readiness_marks_future_broadcast_as_not_announced():
                 away_pitcher="선발A",
                 home_pitcher="선발B",
                 game_status="SCHEDULED",
-            )
+            ),
         )
         _add_metadata(session, game_id)
         session.commit()
@@ -301,8 +301,8 @@ def test_build_p0_readiness_handles_legacy_game_schema_without_lifecycle_column(
                     '20250103NCLT0', '2025-01-03', '사직', 'NC', 'LT',
                     '선발A', '선발B', 'SCHEDULED'
                 )
-                """
-            )
+                """,
+            ),
         )
         _add_metadata(session, "20250103NCLT0", stadium="사직")
         _add_broadcast(session, "20250103NCLT0")
@@ -326,7 +326,7 @@ def test_check_data_status_p0_json_output(monkeypatch, capsys):
                 away_team="NC",
                 home_team="LT",
                 game_status="SCHEDULED",
-            )
+            ),
         )
         session.commit()
 

@@ -56,7 +56,7 @@ class TestRosterTransactionRepository:
                 "player_name": "A",
                 "action": "registered",
                 "dedupe_key": "k1",
-            }
+            },
         )
         repo.save(
             {
@@ -65,7 +65,7 @@ class TestRosterTransactionRepository:
                 "player_name": "B",
                 "action": "deregistered",
                 "dedupe_key": "k2",
-            }
+            },
         )
         repo.save(
             {
@@ -74,7 +74,7 @@ class TestRosterTransactionRepository:
                 "player_name": "C",
                 "action": "registered",
                 "dedupe_key": "k3",
-            }
+            },
         )
         session.commit()
 
@@ -90,7 +90,7 @@ class TestRosterTransactionRepository:
                 "player_name": "A",
                 "action": "registered",
                 "dedupe_key": "k1",
-            }
+            },
         )
         repo.save(
             {
@@ -99,7 +99,7 @@ class TestRosterTransactionRepository:
                 "player_name": "B",
                 "action": "registered",
                 "dedupe_key": "k2",
-            }
+            },
         )
         session.commit()
 
@@ -116,7 +116,7 @@ class TestRosterTransactionRepository:
                 "player_name": "A",
                 "action": "registered",
                 "dedupe_key": "k1",
-            }
+            },
         )
         repo.save(
             {
@@ -126,7 +126,7 @@ class TestRosterTransactionRepository:
                 "player_name": "A",
                 "action": "deregistered",
                 "dedupe_key": "k2",
-            }
+            },
         )
         session.commit()
 
@@ -149,7 +149,7 @@ class TestRosterTransactionRepository:
                 "player_name": "A",
                 "action": "registered",
                 "dedupe_key": "k1",
-            }
+            },
         )
         repo.save(
             {
@@ -158,7 +158,7 @@ class TestRosterTransactionRepository:
                 "player_name": "B",
                 "action": "deregistered",
                 "dedupe_key": "k2",
-            }
+            },
         )
         session.commit()
 
@@ -186,7 +186,7 @@ class TestRosterTransactionRepository:
                     "player_name": "히우라",
                     "action": "registered",
                     "dedupe_key": "2026-05-30_WO_히우라_registered",
-                }
+                },
             )
 
             assert txn.player_id is None

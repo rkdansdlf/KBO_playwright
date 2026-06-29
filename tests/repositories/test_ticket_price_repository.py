@@ -32,7 +32,7 @@ class TestTicketPriceRepository:
                 "day_type": "weekday",
                 "audience_type": None,
                 "price": 12000,
-            }
+            },
         )
         session.commit()
 
@@ -54,7 +54,7 @@ class TestTicketPriceRepository:
                 "day_type": "weekday",
                 "audience_type": None,
                 "price": 12000,
-            }
+            },
         )
         session.commit()
 
@@ -68,7 +68,7 @@ class TestTicketPriceRepository:
                 "audience_type": None,
                 "price": 13000,
                 "currency": "KRW",
-            }
+            },
         )
         session.commit()
 
@@ -90,7 +90,7 @@ class TestTicketPriceRepository:
                 "day_type": "weekday",
                 "audience_type": None,
                 "price": 12000,
-            }
+            },
         )
         repo.save(
             {
@@ -101,7 +101,7 @@ class TestTicketPriceRepository:
                 "day_type": "weekend",
                 "audience_type": None,
                 "price": 18000,
-            }
+            },
         )
         repo.save(
             {
@@ -112,7 +112,7 @@ class TestTicketPriceRepository:
                 "day_type": "weekday",
                 "audience_type": None,
                 "price": 11000,
-            }
+            },
         )
         session.commit()
 
@@ -134,7 +134,7 @@ class TestTicketPriceRepository:
                 "day_type": "weekday",
                 "audience_type": None,
                 "price": 12000,
-            }
+            },
         )
         repo.save(
             {
@@ -145,7 +145,7 @@ class TestTicketPriceRepository:
                 "day_type": "weekday",
                 "audience_type": None,
                 "price": 11000,
-            }
+            },
         )
         session.commit()
 
@@ -178,7 +178,7 @@ class TestTicketPriceRepository:
                     "audience_type": None,
                     "price": 18000,
                 },
-            ]
+            ],
         )
         session.commit()
         assert count == 2

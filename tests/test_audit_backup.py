@@ -50,7 +50,10 @@ def test_save_audit_backup_creates_file_and_serializes_dates(clean_audit_dir):
 
     # 1. Trigger backup
     file_path_str = FallbackMonitor.save_audit_backup(
-        player_id=player_id, type_name=type_name, original_data=original_data, calculated_data=calculated_data
+        player_id=player_id,
+        type_name=type_name,
+        original_data=original_data,
+        calculated_data=calculated_data,
     )
 
     file_path = Path(file_path_str)
@@ -92,12 +95,18 @@ def test_save_audit_backup_appends_to_existing_file(clean_audit_dir):
 
     # Save first snapshot
     file_path_str_1 = FallbackMonitor.save_audit_backup(
-        player_id=player_id, type_name=type_name, original_data=original_1, calculated_data=calc_1
+        player_id=player_id,
+        type_name=type_name,
+        original_data=original_1,
+        calculated_data=calc_1,
     )
 
     # Save second snapshot for the same player, type, and day
     file_path_str_2 = FallbackMonitor.save_audit_backup(
-        player_id=player_id, type_name=type_name, original_data=original_2, calculated_data=calc_2
+        player_id=player_id,
+        type_name=type_name,
+        original_data=original_2,
+        calculated_data=calc_2,
     )
 
     assert file_path_str_1 == file_path_str_2

@@ -33,7 +33,7 @@ class TestManagerChangeRepository:
                 "new_manager": "Park",
                 "change_date": date(2025, 5, 1),
                 "change_reason": "FIRED",
-            }
+            },
         )
         session.commit()
 
@@ -53,7 +53,7 @@ class TestManagerChangeRepository:
                 "season": 2025,
                 "new_manager": "Park",
                 "note": "v1",
-            }
+            },
         )
         session.commit()
 
@@ -63,7 +63,7 @@ class TestManagerChangeRepository:
                 "season": 2025,
                 "new_manager": "Park",
                 "note": "v2",
-            }
+            },
         )
         session.commit()
 

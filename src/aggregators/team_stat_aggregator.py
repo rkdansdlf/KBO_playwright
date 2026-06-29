@@ -8,7 +8,6 @@ Acts as a fallback when KBO's team cumulative record pages are unavailable.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date as date_type
 from typing import TYPE_CHECKING, Any, cast
@@ -23,6 +22,8 @@ from src.models.team import Team
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -200,13 +201,13 @@ class TeamStatAggregator:
             else (actual_query.season if actual_query.season is not None else None)
         )
         actual_names_raw = actual_query.team_names if actual_query.team_names is not None else actual_query.team_id
-        actual_names = cast(dict[str, str] | None, actual_names_raw)
+        actual_names = cast("dict[str, str] | None", actual_names_raw)
 
         if actual_query.season is not None:
             return self._aggregate_batting_db(actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run)
         if actual_rows is not None:
             return self._aggregate_batting_mem(
-                cast(Iterable[PlayerSeasonBatting], actual_rows),
+                cast("Iterable[PlayerSeasonBatting]", actual_rows),
                 actual_names,
                 actual_query.team_games_map,
             )
@@ -251,13 +252,13 @@ class TeamStatAggregator:
             else (actual_query.season if actual_query.season is not None else None)
         )
         actual_names_raw = actual_query.team_names if actual_query.team_names is not None else actual_query.team_id
-        actual_names = cast(dict[str, str] | None, actual_names_raw)
+        actual_names = cast("dict[str, str] | None", actual_names_raw)
 
         if actual_query.season is not None:
             return self._aggregate_pitching_db(actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run)
         if actual_rows is not None:
             return self._aggregate_pitching_mem(
-                cast(Iterable[PlayerSeasonPitching], actual_rows),
+                cast("Iterable[PlayerSeasonPitching]", actual_rows),
                 actual_names,
                 actual_query.team_games_map,
             )
@@ -528,7 +529,7 @@ class TeamStatAggregator:
                 session.execute(text("PRAGMA foreign_keys = OFF"))
             for payload in cleaned:
                 stmt = repo._build_insert_stmt(payload)
-                session.execute(cast(Executable, stmt))
+                session.execute(cast("Executable", stmt))
 
             session.commit()
         except Exception:
@@ -550,7 +551,7 @@ class TeamStatAggregator:
                 session.execute(text("PRAGMA foreign_keys = OFF"))
             for payload in cleaned:
                 stmt = repo._build_insert_stmt(payload)
-                session.execute(cast(Executable, stmt))
+                session.execute(cast("Executable", stmt))
             session.commit()
         except SQLAlchemyError:
             session.rollback()

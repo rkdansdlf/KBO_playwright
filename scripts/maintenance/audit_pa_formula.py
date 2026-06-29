@@ -64,7 +64,7 @@ def _populate_audit_cache():
                 + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)
             )
             ORDER BY gs.game_id, gs.player_name
-            """)
+            """),
         ).fetchall()
 
         # Group violations by year
@@ -289,7 +289,8 @@ def auto_fix_year(year: int) -> int:
     for game_id in game_ids:
         with SessionLocal() as session:
             has_pbp = session.execute(
-                text("SELECT 1 FROM game_events WHERE game_id = :game_id LIMIT 1"), {"game_id": game_id}
+                text("SELECT 1 FROM game_events WHERE game_id = :game_id LIMIT 1"),
+                {"game_id": game_id},
             ).scalar()
 
             if has_pbp:

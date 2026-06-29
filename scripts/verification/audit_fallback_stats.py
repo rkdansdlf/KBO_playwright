@@ -61,7 +61,11 @@ class StatAudit:
 
     @staticmethod
     def send_remediation_success_alert(
-        year: int, series: str, category: str, mismatches_count: int, fixed_players: list[dict]
+        year: int,
+        series: str,
+        category: str,
+        mismatches_count: int,
+        fixed_players: list[dict],
     ):
         """Send Telegram/Slack alert when auto-remediation successfully fixes mismatches."""
         top_players = fixed_players[:5]
@@ -140,7 +144,9 @@ class StatAudit:
                 for m in mismatches
             ]
             FallbackMonitor.save_audit_event(
-                category, "warning", {"year": year, "series": series, "mismatches": mismatch_data}
+                category,
+                "warning",
+                {"year": year, "series": series, "mismatches": mismatch_data},
             )
         except AUDIT_EXCEPTIONS:
             logger.exception("Failed to save audit warning event")
@@ -148,7 +154,7 @@ class StatAudit:
     @staticmethod
     def audit_batting(year: int, series: str, fix: bool = False, max_mismatches: int = 10, max_game_diff: int = 15):
         logger.info(
-            f"🕵️  Auditing BATTING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_game_diff={max_game_diff})..."
+            f"🕵️  Auditing BATTING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_game_diff={max_game_diff})...",
         )
         with SessionLocal() as session:
             official_stats = (
@@ -165,7 +171,10 @@ class StatAudit:
 
             # Use BULK aggregation for performance
             calc_stats_list = SeasonStatAggregator.aggregate_batting_season_bulk(
-                session, year, series, source="AUDIT_FIX"
+                session,
+                year,
+                series,
+                source="AUDIT_FIX",
             )
             calc_map = {c["player_id"]: c for c in calc_stats_list}
 
@@ -196,7 +205,7 @@ class StatAudit:
                             "calc_data": calc,
                             "off_games": off.games or 0,
                             "calc_games": calc.get("games", 0),
-                        }
+                        },
                     )
 
             mismatches_count = len(mismatches)
@@ -227,7 +236,7 @@ class StatAudit:
                     abort_remediation = True
                     abort_reasons.append(
                         f"Player {m['name']} (ID:{m['player_id']}) has game difference of {diff_games} "
-                        f"(Official: {m['off_games']}, Calculated: {m['calc_games']}), which exceeds threshold of {max_game_diff}"
+                        f"(Official: {m['off_games']}, Calculated: {m['calc_games']}), which exceeds threshold of {max_game_diff}",
                     )
 
             if abort_remediation:
@@ -290,7 +299,7 @@ class StatAudit:
         max_innings_outs_diff: int = 45,
     ):
         logger.info(
-            f"🕵️  Auditing PITCHING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_game_diff={max_game_diff}, max_innings_outs_diff={max_innings_outs_diff})..."
+            f"🕵️  Auditing PITCHING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_game_diff={max_game_diff}, max_innings_outs_diff={max_innings_outs_diff})...",
         )
         with SessionLocal() as session:
             official_stats = (
@@ -307,7 +316,10 @@ class StatAudit:
 
             # Use BULK aggregation for performance
             calc_stats_list = SeasonStatAggregator.aggregate_pitching_season_bulk(
-                session, year, series, source="AUDIT_FIX"
+                session,
+                year,
+                series,
+                source="AUDIT_FIX",
             )
             calc_map = {c["player_id"]: c for c in calc_stats_list}
 
@@ -340,7 +352,7 @@ class StatAudit:
                             "calc_games": calc.get("games", 0),
                             "off_outs": off.innings_outs or 0,
                             "calc_outs": calc.get("innings_outs", 0),
-                        }
+                        },
                     )
 
             mismatches_count = len(mismatches)
@@ -371,14 +383,14 @@ class StatAudit:
                     abort_remediation = True
                     abort_reasons.append(
                         f"Player {m['name']} (ID:{m['player_id']}) has game difference of {diff_games} "
-                        f"(Official: {m['off_games']}, Calculated: {m['calc_games']}), which exceeds threshold of {max_game_diff}"
+                        f"(Official: {m['off_games']}, Calculated: {m['calc_games']}), which exceeds threshold of {max_game_diff}",
                     )
                 diff_outs = abs(m["off_outs"] - m["calc_outs"])
                 if diff_outs > max_innings_outs_diff:
                     abort_remediation = True
                     abort_reasons.append(
                         f"Player {m['name']} (ID:{m['player_id']}) has innings outs difference of {diff_outs} "
-                        f"(Official: {m['off_outs']}, Calculated: {m['calc_outs']}), which exceeds threshold of {max_innings_outs_diff}"
+                        f"(Official: {m['off_outs']}, Calculated: {m['calc_outs']}), which exceeds threshold of {max_innings_outs_diff}",
                     )
 
             if abort_remediation:
@@ -434,7 +446,7 @@ class StatAudit:
     @staticmethod
     def audit_fielding(year: int, series: str, fix: bool = False, max_mismatches: int = 15, max_error_diff: int = 5):
         logger.info(
-            f"🕵️  Auditing FIELDING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_error_diff={max_error_diff})..."
+            f"🕵️  Auditing FIELDING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_error_diff={max_error_diff})...",
         )
         with SessionLocal() as session:
             official_stats = (
@@ -456,7 +468,11 @@ class StatAudit:
 
             for pid in players:
                 calc_list = SeasonStatAggregator.aggregate_fielding_season(
-                    session, pid, year, series, source="AUDIT_FIX"
+                    session,
+                    pid,
+                    year,
+                    series,
+                    source="AUDIT_FIX",
                 )
                 if not calc_list:
                     continue
@@ -482,7 +498,7 @@ class StatAudit:
                                 "off_errors": off_errors,
                                 "calc_errors": calc_errors,
                                 "diffs": [f"errors {off_errors} vs {calc_errors}"],
-                            }
+                            },
                         )
 
             mismatches_count = len(mismatches)
@@ -513,7 +529,7 @@ class StatAudit:
                     abort_remediation = True
                     abort_reasons.append(
                         f"Player {m['name']} (ID:{m['player_id']}) has error difference of {diff_errors} for position {m['position_id']} "
-                        f"(Official: {m['off_errors']}, Calculated: {m['calc_errors']}), which exceeds threshold of {max_error_diff}"
+                        f"(Official: {m['off_errors']}, Calculated: {m['calc_errors']}), which exceeds threshold of {max_error_diff}",
                     )
 
             if abort_remediation:
@@ -563,17 +579,21 @@ class StatAudit:
 
     @staticmethod
     def audit_baserunning(
-        year: int, series: str, fix: bool = False, max_mismatches: int = 15, max_sb_cs_diff: int = 10
+        year: int,
+        series: str,
+        fix: bool = False,
+        max_mismatches: int = 15,
+        max_sb_cs_diff: int = 10,
     ):
         logger.info(
-            f"🕵️  Auditing BASERUNNING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_sb_cs_diff={max_sb_cs_diff})..."
+            f"🕵️  Auditing BASERUNNING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_sb_cs_diff={max_sb_cs_diff})...",
         )
         with SessionLocal() as session:
             official_stats = (
                 session.query(PlayerSeasonBaserunning)
                 .filter(PlayerSeasonBaserunning.year == year)
                 .filter(
-                    PlayerSeasonBaserunning.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"])
+                    PlayerSeasonBaserunning.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]),
                 )
                 .all()
             )
@@ -587,7 +607,11 @@ class StatAudit:
 
             for off in official_stats:
                 calc = SeasonStatAggregator.aggregate_baserunning_season(
-                    session, off.player_id, year, series, source="AUDIT_FIX"
+                    session,
+                    off.player_id,
+                    year,
+                    series,
+                    source="AUDIT_FIX",
                 )
                 if not calc:
                     continue
@@ -614,7 +638,7 @@ class StatAudit:
                             "calc_sb": calc.get("stolen_bases", 0),
                             "off_cs": off.caught_stealing or 0,
                             "calc_cs": calc.get("caught_stealing", 0),
-                        }
+                        },
                     )
 
             mismatches_count = len(mismatches)
@@ -646,13 +670,13 @@ class StatAudit:
                     abort_remediation = True
                     abort_reasons.append(
                         f"Player {m['name']} (ID:{m['player_id']}) has stolen bases difference of {diff_sb} "
-                        f"(Official: {m['off_sb']}, Calculated: {m['calc_sb']}), which exceeds threshold of {max_sb_cs_diff}"
+                        f"(Official: {m['off_sb']}, Calculated: {m['calc_sb']}), which exceeds threshold of {max_sb_cs_diff}",
                     )
                 if diff_cs > max_sb_cs_diff:
                     abort_remediation = True
                     abort_reasons.append(
                         f"Player {m['name']} (ID:{m['player_id']}) has caught stealing difference of {diff_cs} "
-                        f"(Official: {m['off_cs']}, Calculated: {m['calc_cs']}), which exceeds threshold of {max_sb_cs_diff}"
+                        f"(Official: {m['off_cs']}, Calculated: {m['calc_cs']}), which exceeds threshold of {max_sb_cs_diff}",
                     )
 
             if abort_remediation:
@@ -703,11 +727,17 @@ def main():
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--series", type=str, default="regular")
     parser.add_argument(
-        "--type", type=str, default="all", choices=["batting", "pitching", "fielding", "baserunning", "all"]
+        "--type",
+        type=str,
+        default="all",
+        choices=["batting", "pitching", "fielding", "baserunning", "all"],
     )
     parser.add_argument("--fix", action="store_true", help="Automatically fix mismatches in DB")
     parser.add_argument(
-        "--max-mismatches", type=int, default=10, help="Max mismatches allowed before aborting auto-fix"
+        "--max-mismatches",
+        type=int,
+        default=10,
+        help="Max mismatches allowed before aborting auto-fix",
     )
     parser.add_argument(
         "--max-game-diff",

@@ -68,7 +68,7 @@ def test_find_postgame_reconciliation_targets_live_and_completed_missing_scores(
                     game_date=date(2026, 4, 25),
                     game_status=GAME_STATUS_SCHEDULED,
                 ),
-            ]
+            ],
         )
         session.commit()
 
@@ -89,7 +89,7 @@ def test_find_postgame_reconciliation_targets_can_force_include_game_id(monkeypa
                 game_status=GAME_STATUS_COMPLETED,
                 away_score=3,
                 home_score=2,
-            )
+            ),
         )
         session.commit()
 
@@ -117,7 +117,7 @@ def test_reconcile_postgame_range_reports_status_and_score_changes(monkeypatch):
                 game_status=GAME_STATUS_LIVE,
                 away_score=None,
                 home_score=None,
-            )
+            ),
         )
         session.commit()
 
@@ -139,7 +139,7 @@ def test_reconcile_postgame_range_reports_status_and_score_changes(monkeypatch):
                     detail_saved=True,
                     detail_status="saved",
                     failure_reason=None,
-                )
+                ),
             },
             processed_game_ids=[target.game_id for target in game_list],
         )
@@ -149,9 +149,12 @@ def test_reconcile_postgame_range_reports_status_and_score_changes(monkeypatch):
     result = asyncio.run(
         service.reconcile_postgame_range(
             ReconciliationRequest(
-                "20260424", "20260424", detail_crawler=_FakeDetailCrawler(), log=lambda _message: None
-            )
-        )
+                "20260424",
+                "20260424",
+                detail_crawler=_FakeDetailCrawler(),
+                log=lambda _message: None,
+            ),
+        ),
     )
 
     assert result.candidates == 1
@@ -174,7 +177,7 @@ def test_reconcile_postgame_range_marks_cancelled_miss(monkeypatch):
                 game_id="20260424LGOB0",
                 game_date=date(2026, 4, 24),
                 game_status=GAME_STATUS_LIVE,
-            )
+            ),
         )
         session.commit()
 
@@ -185,8 +188,8 @@ def test_reconcile_postgame_range_marks_cancelled_miss(monkeypatch):
                     detail_saved=False,
                     detail_status="crawl_failed",
                     failure_reason="cancelled",
-                )
-            }
+                ),
+            },
         )
 
     def _fake_update_status(game_id: str, status: str):
@@ -202,9 +205,12 @@ def test_reconcile_postgame_range_marks_cancelled_miss(monkeypatch):
     result = asyncio.run(
         service.reconcile_postgame_range(
             ReconciliationRequest(
-                "20260424", "20260424", detail_crawler=_FakeDetailCrawler(), log=lambda _message: None
-            )
-        )
+                "20260424",
+                "20260424",
+                detail_crawler=_FakeDetailCrawler(),
+                log=lambda _message: None,
+            ),
+        ),
     )
 
     assert result.changed_game_ids == ["20260424LGOB0"]
@@ -226,7 +232,7 @@ def test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss(monke
                 game_status=GAME_STATUS_CANCELLED,
                 away_score=3,
                 home_score=5,
-            )
+            ),
         )
         session.add(
             GameBattingStat(
@@ -236,7 +242,7 @@ def test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss(monke
                 player_id=1001,
                 player_name="Stale Batter",
                 appearance_seq=1,
-            )
+            ),
         )
         session.commit()
 
@@ -248,8 +254,8 @@ def test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss(monke
                     detail_saved=False,
                     detail_status="crawl_failed",
                     failure_reason="no_detail_payload",
-                )
-            }
+                ),
+            },
         )
 
     monkeypatch.setattr(service, "crawl_and_save_game_details", _fake_collect)
@@ -268,8 +274,8 @@ def test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss(monke
                 detail_crawler=_FakeDetailCrawler(),
                 extra_game_ids=["20260527SSLG0"],
                 log=lambda _message: None,
-            )
-        )
+            ),
+        ),
     )
 
     assert result.candidates == 1

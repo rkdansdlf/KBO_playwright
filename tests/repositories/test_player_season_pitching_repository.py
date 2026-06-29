@@ -121,7 +121,7 @@ class TestSavePitchingStats:
                     "league": "REGULAR",
                     "games": 5,
                     "extra_stats": {"metrics": {"complete_games": 2, "shutouts": 1}},
-                }
+                },
             ],
             Counter(),
         )
@@ -265,7 +265,7 @@ class TestBuildPitchingRow:
 
     def test_prefer_payload_value_payload_takes_precedence(self):
         result = _build_pitching_row(
-            {"player_id": 1, "season": 2024, "complete_games": 5, "extra_stats": {"metrics": {"complete_games": 3}}}
+            {"player_id": 1, "season": 2024, "complete_games": 5, "extra_stats": {"metrics": {"complete_games": 3}}},
         )
         assert result["complete_games"] == 5
 
@@ -325,7 +325,9 @@ class TestQueryAndCleanup:
     def test_cleanup_invalid_data_sqlalchemy_error(self):
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.delete.side_effect = SQLAlchemyError(
-            "fail", "fail", Exception("fail")
+            "fail",
+            "fail",
+            Exception("fail"),
         )
         deleted = cleanup_invalid_pitching_data(mock_session)
         assert deleted == 0
@@ -360,7 +362,9 @@ class TestQueryAndCleanup:
     def test_cleanup_invalid_data_sqlalchemy_error_no_session(self):
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.delete.side_effect = SQLAlchemyError(
-            "fail", "fail", Exception("fail")
+            "fail",
+            "fail",
+            Exception("fail"),
         )
         with patch("src.repositories.player_season_pitching_repository.SessionLocal", return_value=mock_session):
             deleted = cleanup_invalid_pitching_data()

@@ -60,7 +60,7 @@ class TestTicketPriceRepository:
                 "seat_grade": "블루석",
                 "day_type": "weekday",
                 "price": 12000,
-            }
+            },
         )
         repo.save(
             {
@@ -70,7 +70,7 @@ class TestTicketPriceRepository:
                 "seat_grade": "레드석",
                 "day_type": "weekday",
                 "price": 18000,
-            }
+            },
         )
         repo.save(
             {
@@ -80,7 +80,7 @@ class TestTicketPriceRepository:
                 "seat_grade": "블루석",
                 "day_type": "weekday",
                 "price": 10000,
-            }
+            },
         )
         session.commit()
 
@@ -97,7 +97,7 @@ class TestTicketPriceRepository:
                 "seat_grade": "블루석",
                 "day_type": "weekday",
                 "price": 12000,
-            }
+            },
         )
         repo.save(
             {
@@ -107,7 +107,7 @@ class TestTicketPriceRepository:
                 "seat_grade": "레드석",
                 "day_type": "weekday",
                 "price": 15000,
-            }
+            },
         )
         session.commit()
 
@@ -147,7 +147,7 @@ class TestTicketPriceRepository:
                 "seat_grade": "블루석",
                 "day_type": "weekend",
                 "price": 15000,
-            }
+            },
         )
         weekend = repo.get_by_team_season("LG", 2025)
         assert len(weekend) == 1
