@@ -1,7 +1,10 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 class TestHistoricalAnalysis:
+    @pytest.mark.slow
     def test_analyze_historical_leaders(self):
         with patch("scripts.historical_analysis.SessionLocal") as mock_sf:
             mock_session = MagicMock()

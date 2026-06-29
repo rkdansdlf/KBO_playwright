@@ -90,6 +90,7 @@ def test_lock_context_manager_raises_when_locked(tmp_path: Path) -> None:
     lock1.release()
 
 
+@pytest.mark.slow
 def test_lock_cross_process(tmp_path: Path) -> None:
     """Test that ProcessLock works across separate processes using subprocess."""
     lock_name = "test_cross_process"

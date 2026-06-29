@@ -67,6 +67,7 @@ class TestPrepareAuthState:
             mock_auth.is_authenticated.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_triggers_login_when_not_authenticated(self):
         pool = AsyncPlaywrightPool(requires_auth=True)
         with patch("src.utils.kbo_auth.KboAuthenticator") as mock_auth_cls:

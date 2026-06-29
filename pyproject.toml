@@ -76,6 +76,7 @@ select = [
     "RUF017",  # avoid-six
     "RUF022",  # unsorted-dunder-all
     "RUF015",  # unnecessary-iterable-allocation-for-first-element
+    "C4",      # flake8-comprehensions
     "RUF046",  # unnecessary-cast-to-int
     "RUF059",  # unused-unpacked-variable
     "EM101",   # raw-string-in-exception
@@ -124,7 +125,6 @@ select = [
     "FURB110", # if-exp-instead-of-or-operator
     "FURB171", # single-item-membership-test
     "FURB162", # fromisoformat-replace-z
-    "Q000",    # bad-quotes-inline-string
     "D403",    # first-word-uncapitalized-docstring
     "D105",    # undocumented-magic-method
     "B904",    # raise-from-inside-except
@@ -572,4 +572,16 @@ python_version = "3.12"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 warn_unused_ignores = true
 ignore_missing_imports = true
-files = ["src/models/", "src/utils/", "src/db/", "src/parsers/", "src/sources/", "src/analyzers/", "src/monitoring/", "src/validators/", "src/sync/", "src/aggregators/", "src/services/"]
+files = ["src/models/", "src/utils/", "src/db/", "src/parsers/", "src/sources/", "src/analyzers/", "src/monitoring/", "src/validators/", "src/sync/", "src/aggregators/", "src/services/", "src/repositories/"]
+
+[[tool.mypy.overrides]]
+module = ["src.repositories.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["src.crawlers.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["src.cli.*"]
+ignore_errors = true

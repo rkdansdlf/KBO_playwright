@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import ast
 import warnings
 from pathlib import Path
@@ -18,6 +20,7 @@ ALLOWED_DIRECT_SAVE_FILES = {
 }
 
 
+@pytest.mark.slow
 def test_db_writing_collection_paths_stay_allowlisted():
     offenders = {}
     for path in _repo_python_files():

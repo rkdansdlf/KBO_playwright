@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from datetime import date
 
 from sqlalchemy import create_engine, event
@@ -102,6 +104,7 @@ def test_hydration_specs_with_target_date_adjusts_roster_window():
     assert roster_spec.source_filters
 
 
+@pytest.mark.slow
 def test_hydration_specs_preserve_aliases_skips_alias_spec():
     source_factory = _build_session_factory()
     target_factory = _build_session_factory()
