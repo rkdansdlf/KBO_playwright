@@ -59,6 +59,7 @@ class TestRunConsistencyAudit:
             patch("src.cli.verify_sync_consistency._collect_count_mismatches") as mock_mismatches,
             patch("src.cli.verify_sync_consistency._collect_deep_mismatches") as mock_deep,
             patch("src.cli.verify_sync_consistency._send_consistency_mismatch_alert"),
+            patch("src.cli.verify_sync_consistency.get_oci_url", return_value="sqlite:///fake.db"),
         ):
             mock_counts.return_value = []
             mock_mismatches.return_value = ([], [])

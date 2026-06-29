@@ -231,3 +231,53 @@ class TestHasReportIssues:
             "team_pitching": {"ok": False},
         }
         assert _has_report_issues(metrics, gate_result) is True
+
+
+class TestFixedSnapshotDiffs:
+    def test_same_values(self) -> None:
+        from src.cli.generate_quality_report import _fixed_snapshot_diffs
+
+        snapshot = {"original": {"games": 100}, "calculated": {"games": 100}}
+        assert _fixed_snapshot_diffs(snapshot) == []
+
+    def test_different_values(self) -> None:
+        from src.cli.generate_quality_report import _fixed_snapshot_diffs
+
+        snapshot = {"original": {"games": 100}, "calculated": {"games": 120}}
+        result = _fixed_snapshot_diffs(snapshot)
+        assert len(result) == 1
+        assert "games" in result[0]
+
+    def test_multiple_diffs(self) -> None:
+        from src.cli.generate_quality_report import _fixed_snapshot_diffs
+
+        snapshot = {"original": {"games": 100, "hits": 50}, "calculated": {"games": 120, "hits": 55}}
+        result = _fixed_snapshot_diffs(snapshot)
+        assert len(result) == 2
+
+
+class TestAppendSections:
+    def test_collection_section(self) -> None:
+        from src.cli.generate_quality_report import _append_collection_section
+
+        lines: list[str] = []
+        metrics = {"collection": {"total": 500, "complete": 480, "failed": 10}}
+        _append_collection_section(lines, metrics)
+        assert len(lines) > 0
+        assert any("500" in line for line in lines)
+
+    def test_parity_section_ok(self) -> None:
+        from src.cli.generate_quality_report import _append_parity_section
+
+        lines: list[str] = []
+        parity = {"all_parity_ok": True, "details": []}
+        _append_parity_section(lines, parity)
+        assert len(lines) > 0
+
+    def test_parity_section_not_ok(self) -> None:
+        from src.cli.generate_quality_report import _append_parity_section
+
+        lines: list[str] = []
+        parity = {"all_parity_ok": False, "details": [{"field": "hr"}]}
+        _append_parity_section(lines, parity)
+        assert len(lines) > 0

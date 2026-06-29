@@ -572,4 +572,4 @@ python_version = "3.12"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 warn_unused_ignores = true
 ignore_missing_imports = true
-files = ["src/models/", "src/utils/", "src/db/", "src/parsers/", "src/sources/", "src/analyzers/", "src/monitoring/", "src/validators/", "src/sync/", "src/aggregators/"]
+files = ["src/models/", "src/utils/", "src/db/", "src/parsers/", "src/sources/", "src/analyzers/", "src/monitoring/", "src/validators/", "src/sync/", "src/aggregators/", "src/services/"]
