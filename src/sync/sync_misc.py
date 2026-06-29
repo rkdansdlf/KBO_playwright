@@ -2,6 +2,7 @@
 Miscellaneous sync: franchises, teams, awards, stadium info, food, ticket, rag, matchup splits, home/away, park factor.
 
 Stadium real-time data: transit times, congestion, operation notices.
+
 """
 
 from __future__ import annotations
@@ -106,7 +107,7 @@ class MiscSyncMixin:
 
             aliases = team.aliases
             if aliases is None:
-                aliases_list: list = []
+                aliases_list: list[str] = []
             elif isinstance(aliases, str):
                 try:
                     aliases_list = json.loads(aliases)
@@ -168,8 +169,16 @@ class MiscSyncMixin:
         )
 
     def sync_rag_chunks(self, batch_size: int = 1000) -> int:
-        """Sync RAG chunks from SQLite to OCI Postgres."""
+        """
+        Sync RAG chunks from SQLite to OCI Postgres.
+
+        Args:
+            batch_size: Batch Size.
+            batch_size: Batch Size.
+
+        """
         logger.info("📁 Ensure RAG chunks table exists on OCI...")
+
         try:
             Base.metadata.create_all(self.oci_engine)
         except SQLAlchemyError:
@@ -177,9 +186,11 @@ class MiscSyncMixin:
 
         def transform_rag_chunk(data: dict[str, Any]) -> dict[str, Any]:
             """
-            Transforms rag chunk.
+            Transform rag chunk.
 
             Args:
+                data: Data.
+                data: Data.
                 data: Data.
 
             Returns:
@@ -187,6 +198,7 @@ class MiscSyncMixin:
 
             """
             embedding = data.get("embedding")
+
             if embedding is not None:
                 if isinstance(embedding, str):
                     try:
@@ -219,8 +231,16 @@ class MiscSyncMixin:
         )
 
     def sync_ticket_schedules(self, batch_size: int = 1000) -> int:
-        """Sync ticket schedules from SQLite to OCI Postgres."""
+        """
+        Sync ticket schedules from SQLite to OCI Postgres.
+
+        Args:
+            batch_size: Batch Size.
+            batch_size: Batch Size.
+
+        """
         logger.info("📁 Ensure Ticket schedules table exists on OCI...")
+
         try:
             Base.metadata.create_all(self.oci_engine)
         except SQLAlchemyError:
@@ -234,8 +254,16 @@ class MiscSyncMixin:
         )
 
     def sync_stadium_foods(self, batch_size: int = 1000) -> int:
-        """Sync stadium foods from SQLite to OCI Postgres."""
+        """
+        Sync stadium foods from SQLite to OCI Postgres.
+
+        Args:
+            batch_size: Batch Size.
+            batch_size: Batch Size.
+
+        """
         logger.info("📁 Ensure Stadium foods table exists on OCI...")
+
         try:
             Base.metadata.create_all(self.oci_engine)
         except SQLAlchemyError:
@@ -367,11 +395,16 @@ class MiscSyncMixin:
         Sync stadium_transit_times from SQLite to OCI.
 
         Args:
+            game_date: Game Date.
+            batch_size: Batch Size.
+            game_date: Game Date.
+            batch_size: Batch Size.
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
             batch_size: Records per UPSERT batch.
 
         """
         self._ensure_table(StadiumTransitTime)
+
         filters = None
         if game_date:
             filters = [StadiumTransitTime.game_date == game_date]
@@ -394,11 +427,16 @@ class MiscSyncMixin:
         Sync stadium_congestion from SQLite to OCI.
 
         Args:
+            game_date: Game Date.
+            batch_size: Batch Size.
+            game_date: Game Date.
+            batch_size: Batch Size.
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
             batch_size: Records per UPSERT batch.
 
         """
         self._ensure_table(StadiumCongestion)
+
         filters = None
         if game_date:
             filters = [StadiumCongestion.game_date == game_date]
@@ -421,11 +459,16 @@ class MiscSyncMixin:
         Sync stadium_operation_notices from SQLite to OCI.
 
         Args:
+            game_date: Game Date.
+            batch_size: Batch Size.
+            game_date: Game Date.
+            batch_size: Batch Size.
             game_date: Filter by YYYYMMDD string. If None, syncs all rows.
             batch_size: Records per UPSERT batch.
 
         """
         self._ensure_table(StadiumOperationNotice)
+
         filters = None
         if game_date:
             filters = [StadiumOperationNotice.game_date == game_date]
@@ -443,7 +486,14 @@ class MiscSyncMixin:
         self,
         game_date: str | None = None,
     ) -> dict[str, int]:
-        """Sync all 3 stadium real-time tables to OCI in one call."""
+        """
+        Sync all 3 stadium real-time tables to OCI in one call.
+
+        Args:
+            game_date: Game Date.
+            game_date: Game Date.
+
+        """
         results = {
             "transit_times": self.sync_transit_times(game_date=game_date),
             "congestion": self.sync_congestion(game_date=game_date),
@@ -457,8 +507,18 @@ class MiscSyncMixin:
         start_date: date | datetime | str | None = None,
         end_date: date | datetime | str | None = None,
     ) -> int:
-        """Sync team_daily_roster from SQLite to OCI."""
+        """
+        Sync team_daily_roster from SQLite to OCI.
+
+        Args:
+            start_date: Start Date.
+            end_date: End Date.
+            start_date: Start Date.
+            end_date: End Date.
+
+        """
         start = _normalize_daily_roster_date(start_date)
+
         end = _normalize_daily_roster_date(end_date)
         if start and end and start > end:
             msg = "daily roster start_date must be earlier than or equal to end_date"
@@ -549,11 +609,13 @@ class MiscSyncMixin:
         """Sync team_code_map table using bulk COPY upsert."""
         franchise_mapping = self._get_franchise_id_mapping()
 
-        def transform(data: dict) -> dict[str, Any]:
+        def transform(data: dict[str, Any]) -> dict[str, Any]:
             """
-            Transforms transform.
+            Transform transform.
 
             Args:
+                data: Data.
+                data: Data.
                 data: Data.
 
             Returns:
@@ -561,6 +623,7 @@ class MiscSyncMixin:
 
             """
             fid = data.get("franchise_id")
+
             if fid:
                 data["franchise_id"] = franchise_mapping.get(fid, fid)
             return data
@@ -572,8 +635,18 @@ class MiscSyncMixin:
         )
 
     def sync_matchups(self, year: int | None = None, batch_size: int = 10000) -> dict[str, int]:
-        """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI."""
+        """
+        Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            year: Season year.
+            batch_size: Batch Size.
+
+        """
         logger.info("📁 Ensuring matchup tables exist on OCI...")
+
         Base.metadata.create_all(self.oci_engine)
 
         results = {}
