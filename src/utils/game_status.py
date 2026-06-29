@@ -3,10 +3,6 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 GAME_STATUS_SCHEDULED = "SCHEDULED"
 GAME_STATUS_LIVE = "LIVE"
