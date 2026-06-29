@@ -114,16 +114,16 @@ class ProcessLock:
         try:
             engine = self._get_pg_engine(pg_url)
 
-            if not isinstance(engine, Connection):
-                self.db_connection = engine.connect()  # type: ignore[attr-defined]
+            conn = engine.connect() if not isinstance(engine, Connection) else engine  # type: ignore[attr-defined]
 
+            self.db_connection = conn
             lock_id = self._get_lock_id()
 
             if effective_blocking:
-                self.db_connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_id})
+                conn.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_id})
                 success = True
             else:
-                res = self.db_connection.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": lock_id}).scalar()
+                res = conn.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": lock_id}).scalar()
                 if res:
                     logger.debug("Successfully acquired PostgreSQL advisory lock for: %s", self.name)
                     success = True
@@ -132,7 +132,7 @@ class ProcessLock:
                         "PostgreSQL advisory lock held by another process for %s, falling back to file lock",
                         self.name,
                     )
-                    self.db_connection.close()
+                    conn.close()
                     self.db_connection = None
                     return True
         except (SQLAlchemyError, OSError, RuntimeError) as e:

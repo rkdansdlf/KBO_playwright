@@ -56,3 +56,75 @@ class TestShouldSkipLiveForPregame:
         last_run = datetime(2025, 4, 1, 14, 59, 50, tzinfo=KST)
         assert self._call(now, last_run=last_run, cooldown="15") is True
         assert self._call(now, last_run=last_run, cooldown="5") is False
+
+
+class TestGetLivePollIntervalSeconds:
+    """Test the _get_live_poll_interval_seconds function with mocked DB."""
+
+    def _call_with_rows(self, rows: list[tuple]) -> int:
+        from scripts import scheduler
+
+        mock_session = MagicMock()
+        mock_session.execute.return_value.all.return_value = rows
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+
+        with patch("scripts.scheduler.SessionLocal", return_value=mock_session):
+            return scheduler._get_live_poll_interval_seconds()
+
+    def test_no_games_returns_1800(self) -> None:
+        assert self._call_with_rows([]) == 1800
+
+    def test_live_game_returns_10(self) -> None:
+        rows = [("LIVE", "running", "14:00", None)]
+        assert self._call_with_rows(rows) == 10
+
+    def test_delayed_game_returns_60(self) -> None:
+        rows = [("DELAYED", None, "14:00", None)]
+        assert self._call_with_rows(rows) == 60
+
+    def test_suspended_game_returns_60(self) -> None:
+        rows = [("SUSPENDED", "suspended", "14:00", None)]
+        assert self._call_with_rows(rows) == 60
+
+    def test_all_terminal_recent_update_returns_60(self) -> None:
+        recent = (datetime.now(KST) - timedelta(minutes=5)).isoformat()
+        rows = [("COMPLETED", "final", "14:00", recent)]
+        assert self._call_with_rows(rows) == 60
+
+    def test_all_terminal_old_update_returns_1800(self) -> None:
+        old = (datetime.now(KST) - timedelta(minutes=30)).isoformat()
+        rows = [("COMPLETED", "final", "14:00", old)]
+        assert self._call_with_rows(rows) == 1800
+
+    def test_scheduled_soon_returns_30(self) -> None:
+        now = datetime.now(KST)
+        future_start = (now + timedelta(minutes=10)).strftime("%H:%M")
+        rows = [("SCHEDULED", None, future_start, None)]
+        assert self._call_with_rows(rows) == 30
+
+    def test_scheduled_far_returns_120(self) -> None:
+        now = datetime.now(KST)
+        future_start = (now + timedelta(hours=2)).strftime("%H:%M")
+        rows = [("SCHEDULED", None, future_start, None)]
+        assert self._call_with_rows(rows) == 120
+
+    def test_mixed_live_and_terminal_returns_10(self) -> None:
+        rows = [
+            ("COMPLETED", "final", "13:00", None),
+            ("LIVE", "running", "14:00", None),
+        ]
+        assert self._call_with_rows(rows) == 10
+
+    def test_db_error_returns_120(self) -> None:
+        from sqlalchemy.exc import SQLAlchemyError
+
+        mock_session = MagicMock()
+        mock_session.execute.side_effect = SQLAlchemyError("connection lost")
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+
+        with patch("scripts.scheduler.SessionLocal", return_value=mock_session):
+            from scripts import scheduler
+
+            assert scheduler._get_live_poll_interval_seconds() == 120
