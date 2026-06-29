@@ -1,10 +1,18 @@
-"""유틸리티: lock."""
+"""Lock utilities for cross-process synchronization."""
 
+from __future__ import annotations
+
+import contextlib
+import hashlib
 import logging
+import os
+import struct
 import threading
 from pathlib import Path
-from types import TracebackType
-from typing import IO, Self
+from typing import IO, TYPE_CHECKING, ClassVar, Self
+
+if TYPE_CHECKING:
+    from types import TracebackType
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +34,10 @@ class LockAcquisitionError(Exception):
 
 
 class ProcessLock:
-    """
-    A cross-process and cross-thread lock.
+    """A cross-process and cross-thread lock supporting local fcntl and PG advisory locks."""
 
-    Uses threading.Lock to serialize threads within the same process,
-    and Unix fcntl.flock to serialize across different processes.
-    """
+    _pg_engines: ClassVar[dict[str, object]] = {}
+    _pg_engines_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(
         self,
@@ -40,7 +46,7 @@ class ProcessLock:
         *,
         blocking: bool = True,
     ) -> None:
-        """Initializes a new instance."""
+        """Initialize a new ProcessLock instance."""
         self.name = name
         self.blocking = blocking
 
@@ -61,18 +67,82 @@ class ProcessLock:
         self.file_fd: IO[str] | None = None
         self.thread_lock_acquired = False
         self.acquire_count = 0
+        self.db_connection = None
+
+    def _get_lock_id(self) -> int:
+        """Hash the lock name to a 64-bit signed integer for pg_advisory_lock."""
+        h = hashlib.sha256(self.name.encode("utf-8")).digest()
+        return struct.unpack("q", h[:8])[0]
+
+    def _get_postgres_url(self) -> str | None:
+        """Dynamically detect PostgreSQL database URL from the environment."""
+        oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL") or ""
+        db_url = os.getenv("DATABASE_URL") or ""
+
+        if "postgresql" in oci_url:
+            return oci_url
+        if "postgresql" in db_url:
+            return db_url
+        return None
+
+    @classmethod
+    def _get_pg_engine(cls, url: str) -> object:
+        """Get or create a cached SQLAlchemy engine for PostgreSQL advisory locks."""
+        with cls._pg_engines_lock:
+            if url not in cls._pg_engines:
+                from sqlalchemy import create_engine
+
+                cls._pg_engines[url] = create_engine(url, pool_pre_ping=True)
+            return cls._pg_engines[url]
+
+    def _acquire_pg_lock(self, *, effective_blocking: bool) -> bool:
+        """Acquire PostgreSQL advisory lock if configured."""
+        pg_url = self._get_postgres_url()
+        if not pg_url:
+            return True
+
+        from sqlalchemy import text
+        from sqlalchemy.exc import SQLAlchemyError
+
+        success = False
+        try:
+            engine = self._get_pg_engine(pg_url)
+            # Create a new connection from the engine
+            from sqlalchemy.engine import Connection
+
+            if not isinstance(engine, Connection):
+                # Ensure connection is created
+                self.db_connection = engine.connect()  # type: ignore[attr-defined]
+
+            lock_id = self._get_lock_id()
+
+            if effective_blocking:
+                self.db_connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_id})
+                success = True
+            else:
+                res = self.db_connection.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": lock_id}).scalar()
+                if res:
+                    logger.debug("Successfully acquired PostgreSQL advisory lock for: %s", self.name)
+                    success = True
+                else:
+                    self.db_connection.close()
+                    self.db_connection = None
+        except (SQLAlchemyError, OSError, RuntimeError) as e:
+            logger.warning(
+                "Failed to acquire PostgreSQL advisory lock for %s, falling back to local lock: %s",
+                self.name,
+                e,
+            )
+            if self.db_connection is not None:
+                with contextlib.suppress(Exception):
+                    self.db_connection.close()
+                self.db_connection = None
+            success = True
+
+        return success
 
     def acquire(self, *, blocking: bool | None = None) -> bool:
-        """
-        Acquire the lock.
-
-        Args:
-            blocking: Override the instance default for this acquire call.
-
-        Returns:
-            True if the lock was successfully acquired, False otherwise.
-
-        """
+        """Acquire the lock."""
         if self.thread_lock_acquired:
             logger.debug("ProcessLock is already held by this instance: %s", self.name)
             return False
@@ -88,11 +158,23 @@ class ProcessLock:
         self.thread_lock_acquired = True
         self.acquire_count = 1
 
-        # 2. Acquire process-level file lock
+        # 2. Try acquiring PostgreSQL advisory lock
+        if not self._acquire_pg_lock(effective_blocking=effective_blocking):
+            self.thread_lock.release()
+            self.thread_lock_acquired = False
+            self.acquire_count = 0
+            logger.debug("Failed to acquire PostgreSQL advisory lock (held by other process) for: %s", self.name)
+            return False
+
+        if self.db_connection is not None:
+            return True
+
+        # 3. Fallback to process-level file lock
         if not HAS_FCNTL:
             # Fallback when fcntl is not available (e.g. Windows)
             return True
 
+        success = False
         try:
             self.lock_dir.mkdir(parents=True, exist_ok=True)
             self.file_fd = self.lock_file_path.open("w")
@@ -102,6 +184,8 @@ class ProcessLock:
                 flags |= fcntl.LOCK_NB
 
             fcntl.flock(self.file_fd, flags)
+            success = True
+            logger.debug("Successfully acquired ProcessLock: %s", self.name)
         except OSError as e:
             logger.debug("Failed to acquire ProcessLock: %s. Error: %s", self.name, e)
             if self.file_fd:
@@ -110,17 +194,30 @@ class ProcessLock:
             self.thread_lock.release()
             self.thread_lock_acquired = False
             self.acquire_count = 0
-            return False
-        else:
-            logger.debug("Successfully acquired ProcessLock: %s", self.name)
-            return True
+
+        return success
 
     def release(self) -> None:
         """Release the lock."""
         if not self.thread_lock_acquired:
             return
 
-        # Release process-level file lock
+        # 1. Release PostgreSQL advisory lock
+        if self.db_connection is not None:
+            try:
+                from sqlalchemy import text
+
+                lock_id = self._get_lock_id()
+                self.db_connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_id})
+                logger.debug("Released PostgreSQL advisory lock for: %s", self.name)
+            except (OSError, RuntimeError) as e:
+                logger.warning("Error releasing PostgreSQL advisory lock for %s: %s", self.name, e)
+            finally:
+                with contextlib.suppress(Exception):
+                    self.db_connection.close()
+                self.db_connection = None
+
+        # 2. Release process-level file lock
         if HAS_FCNTL and self.file_fd:
             try:
                 fcntl.flock(self.file_fd, fcntl.LOCK_UN)
@@ -130,7 +227,7 @@ class ProcessLock:
             finally:
                 self.file_fd = None
 
-        # Release thread-level lock
+        # 3. Release thread-level lock
         if self.thread_lock_acquired:
             try:
                 self.thread_lock.release()
@@ -155,5 +252,5 @@ class ProcessLock:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        """Exits the runtime context."""
+        """Exit the runtime context."""
         self.release()

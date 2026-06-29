@@ -10,9 +10,13 @@ from src.services.wpa_calculator import WPACalculator
 
 def get_event_value(event: object, key: str) -> object | None:
     """
-    Gets event value.
+    Get event value.
 
     Args:
+        event: Event.
+        key: Key.
+        event: Event.
+        key: Key.
         event: Event.
         key: Key.
 
@@ -27,9 +31,11 @@ def get_event_value(event: object, key: str) -> object | None:
 
 def format_base_string(runners: int | None) -> str:
     """
-    Formats base string.
+    Format base string.
 
     Args:
+        runners: Runners.
+        runners: Runners.
         runners: Runners.
 
     Returns:
@@ -37,14 +43,17 @@ def format_base_string(runners: int | None) -> str:
 
     """
     value = int(runners or 0)
+
     return f"{'1' if (value & 1) else '-'}{'2' if (value & 2) else '-'}{'3' if (value & 4) else '-'}"
 
 
 def parse_base_string(value: object) -> int | None:
     """
-    Parses base string.
+    Parse base string.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -68,9 +77,11 @@ def parse_base_string(value: object) -> int | None:
 
 def coerce_int(value: object) -> int | None:
     """
-    Handles the coerce int operation.
+    Handle the coerce int operation.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -87,9 +98,11 @@ def coerce_int(value: object) -> int | None:
 
 def event_runner_state(event: object) -> int | None:
     """
-    Handles the event runner state operation.
+    Handle the event runner state operation.
 
     Args:
+        event: Event.
+        event: Event.
         event: Event.
 
     Returns:
@@ -97,6 +110,7 @@ def event_runner_state(event: object) -> int | None:
 
     """
     base_state = coerce_int(get_event_value(event, "base_state"))
+
     if base_state is not None:
         return base_state
     for key in ("bases_after", "bases_before"):
@@ -108,9 +122,11 @@ def event_runner_state(event: object) -> int | None:
 
 def event_has_transition_state(event: object) -> bool:
     """
-    Handles the event has transition state operation.
+    Handle the event has transition state operation.
 
     Args:
+        event: Event.
+        event: Event.
         event: Event.
 
     Returns:
@@ -118,6 +134,7 @@ def event_has_transition_state(event: object) -> bool:
 
     """
     inning_half = get_event_value(event, "inning_half")
+
     return all(
         (
             coerce_int(get_event_value(event, "inning")) is not None,
@@ -133,9 +150,11 @@ def event_has_transition_state(event: object) -> bool:
 
 def event_has_wpa_state(event: object) -> bool:
     """
-    Handles the event has wpa state operation.
+    Handle the event has wpa state operation.
 
     Args:
+        event: Event.
+        event: Event.
         event: Event.
 
     Returns:
@@ -159,13 +178,20 @@ def apply_wpa_transitions(
     only_missing: bool = False,
 ) -> None:
     """
-    Handles the apply wpa transitions operation.
+    Handle the apply wpa transitions operation.
 
     Args:
+        events: Events.
+        calculator: Calculator instance.
+        only_missing: If True, only process missing entries.
+        events: Events.
+        calculator: Calculator instance.
+        only_missing: If True, only process missing entries.
         events: Events.
 
     """
     calculator = calculator or WPACalculator()
+
     previous: dict[str, Any] | None = None
 
     for event in events:

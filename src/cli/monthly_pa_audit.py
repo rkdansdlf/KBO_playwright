@@ -3,6 +3,7 @@ Monthly PA Formula Audit Job for Scheduler.
 
 Imported by scripts/scheduler.py as the crawl_monthly_pa_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
+
 """
 
 from __future__ import annotations
@@ -27,8 +28,15 @@ PA_AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSE
 
 
 def run_monthly_pa_audit(target_year: int) -> int:
-    """Apply the monthly PA formula fix for a target season."""
+    """
+    Apply the monthly PA formula fix for a target season.
+
+    Args:
+        target_year: Target Year.
+
+    """
     logger.info("Starting PA formula audit for year %s", target_year)
+
     try:
         fixed_rows = fix_year_formula(target_year, dry_run=False)
     except PA_AUDIT_EXCEPTIONS as exc:
@@ -54,8 +62,15 @@ def crawl_monthly_pa_audit_job() -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entry point for direct invocation (e.g., from GitHub Actions)."""
+    """
+    CLI entry point for direct invocation (e.g., from GitHub Actions).
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Monthly PA Formula Audit")
+
     parser.add_argument("--year", type=int, help="Target year (defaults to previous year)")
     args = parser.parse_args(argv)
 

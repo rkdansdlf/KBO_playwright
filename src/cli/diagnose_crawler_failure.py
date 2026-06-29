@@ -14,8 +14,15 @@ if TYPE_CHECKING:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Diagnose crawler failure logs")
+
     parser.add_argument("logs", nargs="*", help="Log files to inspect. Reads stdin when omitted.")
     parser.add_argument("--json", action="store_true", help="Print JSON report")
     args = parser.parse_args(argv)

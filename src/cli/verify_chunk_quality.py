@@ -16,6 +16,7 @@ Usage:
     python -m src.cli.verify_chunk_quality
     python -m src.cli.verify_chunk_quality --source rulebook
     python -m src.cli.verify_chunk_quality --fix-duplicates
+
 """
 
 from __future__ import annotations
@@ -58,9 +59,14 @@ KEYWORD_COVERAGE_TARGET = 0.80  # 80%
 
 def load_chunks(session: Session, source_filter: str | None = None) -> list[dict[str, Any]]:
     """
-    Loads rag_chunks rows from the local SQLite database.
+    Load rag_chunks rows from the local SQLite database.
 
-    Returns a list of dicts with keys: id, source_table, source_row_id, content, metadata.
+    Return a list of dicts with keys: id, source_table, source_row_id, content, metadata.
+
+    Args:
+        session: Session.
+        source_filter: Source Filter.
+
     """
     from sqlalchemy import text
 
@@ -105,9 +111,10 @@ def _percentile(sorted_vals: list[int], pct: float) -> int:
 
 def compute_length_stats(chunks: list[dict]) -> dict[str, Any]:
     """
-    Computes length stats.
+    Compute length stats.
 
     Args:
+        chunks: Chunks.
         chunks: Chunks.
 
     Returns:
@@ -115,6 +122,7 @@ def compute_length_stats(chunks: list[dict]) -> dict[str, Any]:
 
     """
     lengths = sorted(len(c["content"]) for c in chunks)
+
     if not lengths:
         return {"count": 0, "avg": 0, "min": 0, "max": 0, "p50": 0, "p95": 0}
     total = sum(lengths)
@@ -130,9 +138,10 @@ def compute_length_stats(chunks: list[dict]) -> dict[str, Any]:
 
 def count_empty_chunks(chunks: list[dict]) -> int:
     """
-    Handles the count empty chunks operation.
+    Handle the count empty chunks operation.
 
     Args:
+        chunks: Chunks.
         chunks: Chunks.
 
     Returns:
@@ -144,9 +153,10 @@ def count_empty_chunks(chunks: list[dict]) -> int:
 
 def count_stub_chunks(chunks: list[dict]) -> int:
     """
-    Handles the count stub chunks operation.
+    Handle the count stub chunks operation.
 
     Args:
+        chunks: Chunks.
         chunks: Chunks.
 
     Returns:
@@ -157,8 +167,15 @@ def count_stub_chunks(chunks: list[dict]) -> int:
 
 
 def find_duplicates(chunks: list[dict]) -> tuple[int, list[str]]:
-    """Returns (duplicate_count, list of duplicate source_row_ids)."""
+    """
+    Return (duplicate_count, list of duplicate source_row_ids).
+
+    Args:
+        chunks: Chunks.
+
+    """
     seen: dict[str, int] = {}
+
     dupes = []
     for c in chunks:
         rid = c["source_row_id"]
@@ -176,9 +193,10 @@ def find_duplicates(chunks: list[dict]) -> tuple[int, list[str]]:
 
 def keyword_coverage(chunks: list[dict]) -> float:
     """
-    Handles the keyword coverage operation.
+    Handle the keyword coverage operation.
 
     Args:
+        chunks: Chunks.
         chunks: Chunks.
 
     Returns:
@@ -193,9 +211,10 @@ def keyword_coverage(chunks: list[dict]) -> float:
 
 def category_distribution(chunks: list[dict]) -> Counter:
     """
-    Handles the category distribution operation.
+    Handle the category distribution operation.
 
     Args:
+        chunks: Chunks.
         chunks: Chunks.
 
     Returns:
@@ -207,9 +226,10 @@ def category_distribution(chunks: list[dict]) -> Counter:
 
 def chunks_per_source(chunks: list[dict]) -> dict[str, int]:
     """
-    Handles the chunks per source operation.
+    Handle the chunks per source operation.
 
     Args:
+        chunks: Chunks.
         chunks: Chunks.
 
     Returns:
@@ -217,6 +237,7 @@ def chunks_per_source(chunks: list[dict]) -> dict[str, int]:
 
     """
     dist: dict[str, int] = defaultdict(int)
+
     for c in chunks:
         src = c["meta"].get("source", c["source_table"] or "unknown")
         dist[src] += 1
@@ -233,8 +254,18 @@ def _status(*, ok: bool) -> str:
 
 
 def print_report(chunks: list[dict], source_filter: str | None) -> bool:
-    """Prints the quality report. Returns True if all checks pass."""
+    """
+    Print the quality report.
+
+        Returns True if all checks pass.
+
+    Args:
+        chunks: Chunks.
+        source_filter: Source Filter.
+
+    """
     total = len(chunks)
+
     if total == 0:
         logger.warning("\n⚠️  No chunks found%s.", " for source=" + source_filter if source_filter else "")
         return False
@@ -323,9 +354,13 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
 
 def remove_duplicate_chunks(session: Session) -> int:
     """
-    Removes duplicate rag_chunks rows keeping the one with the lowest id.
+    Remove duplicate rag_chunks rows keeping the one with the lowest id.
 
-    Returns the number of rows deleted.
+    Return the number of rows deleted.
+
+    Args:
+        session: Session.
+
     """
     from sqlalchemy import text
 
@@ -349,7 +384,7 @@ def remove_duplicate_chunks(session: Session) -> int:
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO RAG chunk quality verifier")
     parser.add_argument(
         "--source",

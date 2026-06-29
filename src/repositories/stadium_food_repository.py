@@ -17,14 +17,23 @@ class StadiumFoodVendorRepository:
     """StadiumFoodVendorRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> StadiumFoodVendor:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -32,6 +41,7 @@ class StadiumFoodVendorRepository:
 
         """
         stadium_id = data["stadium_id"]
+
         vendor_name = data["vendor_name"]
         stmt = select(StadiumFoodVendor).where(
             StadiumFoodVendor.stadium_id == stadium_id,
@@ -50,9 +60,11 @@ class StadiumFoodVendorRepository:
 
     def get_by_stadium(self, stadium_id: str) -> list[StadiumFoodVendor]:
         """
-        Gets by stadium.
+        Get by stadium.
 
         Args:
+            stadium_id: Stadium ID.
+            stadium_id: Stadium ID.
             stadium_id: Stadium ID.
 
         Returns:
@@ -68,9 +80,11 @@ class StadiumFoodVendorRepository:
 
     def bulk_save(self, records: list[dict]) -> int:
         """
-        Saves bulk.
+        Save bulk.
 
         Args:
+            records: Records.
+            records: Records.
             records: Records.
 
         Returns:
@@ -78,6 +92,7 @@ class StadiumFoodVendorRepository:
 
         """
         count = 0
+
         for data in records:
             self.save(data)
             count += 1
@@ -88,14 +103,23 @@ class StadiumFoodMenuItemRepository:
     """StadiumFoodMenuItemRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> StadiumFoodMenuItem:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -103,6 +127,7 @@ class StadiumFoodMenuItemRepository:
 
         """
         vendor_id = data["vendor_id"]
+
         menu_name = data["menu_name"]
         stmt = select(StadiumFoodMenuItem).where(
             StadiumFoodMenuItem.vendor_id == vendor_id,
@@ -120,9 +145,11 @@ class StadiumFoodMenuItemRepository:
 
     def get_by_vendor(self, vendor_id: int) -> list[StadiumFoodMenuItem]:
         """
-        Gets by vendor.
+        Get by vendor.
 
         Args:
+            vendor_id: Vendor ID.
+            vendor_id: Vendor ID.
             vendor_id: Vendor ID.
 
         Returns:
@@ -138,9 +165,11 @@ class StadiumFoodMenuItemRepository:
 
     def get_by_stadium(self, stadium_id: str) -> list[dict]:
         """
-        Gets by stadium.
+        Get by stadium.
 
         Args:
+            stadium_id: Stadium ID.
+            stadium_id: Stadium ID.
             stadium_id: Stadium ID.
 
         Returns:
@@ -164,9 +193,11 @@ class StadiumFoodMenuItemRepository:
 
     def bulk_save(self, records: list[dict]) -> int:
         """
-        Saves bulk.
+        Save bulk.
 
         Args:
+            records: Records.
+            records: Records.
             records: Records.
 
         Returns:
@@ -174,6 +205,7 @@ class StadiumFoodMenuItemRepository:
 
         """
         count = 0
+
         for data in records:
             self.save(data)
             count += 1

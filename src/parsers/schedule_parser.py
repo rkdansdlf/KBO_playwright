@@ -23,11 +23,18 @@ def parse_schedule_html(
     Extract schedule entries from a saved schedule page.
 
     Args:
+        html: Html.
+        default_year: Default Year.
+        season_type: Season Type.
+        html: Html.
+        default_year: Default Year.
+        season_type: Season Type.
         html: Raw HTML string.
         default_year: Optional year to fallback if it can't be inferred.
 
     """
     soup = BeautifulSoup(html, "html.parser")
+
     games: dict[str, dict[str, Any]] = {}
 
     for anchor in soup.select("a[href*='gameId=']"):

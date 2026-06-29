@@ -30,5 +30,5 @@ class TicketSchedule(Base, TimestampMixin):
     url: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="Ticketing link URL")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<TicketSchedule(date={self.game_date}, home={self.home_team}, open_time={self.open_time})>"

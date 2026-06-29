@@ -1,7 +1,7 @@
 """
 Data integrity checker for post-crawl validation.
 
-Runs after the main daily update pipeline to verify that the collected data
+Run after the main daily update pipeline to verify that the collected data
 meets quality standards. Checks for:
 - Game rows exist for the target date
 - All games have terminal status (COMPLETED, DRAW, CANCELLED, POSTPONED)
@@ -9,6 +9,7 @@ meets quality standards. Checks for:
 - No unresolved player_id gaps in critical tables
 
 Exits with code 0 on success, code 1 on failure (to fail CI pipeline).
+
 """
 
 from __future__ import annotations
@@ -70,7 +71,13 @@ class IntegrityReport:
 
 
 def _parse_target_date(date_str: str) -> date:
-    """Parse YYYYMMDD string to date."""
+    """
+    Parse YYYYMMDD string to date.
+
+    Args:
+        date_str: Date Str.
+
+    """
     try:
         return parse_date_str(date_str)
     except ValueError:
@@ -79,7 +86,14 @@ def _parse_target_date(date_str: str) -> date:
 
 
 def check_games_exist(session: Session, target: date) -> CheckResult:
-    """Verify that game rows exist for the target date."""
+    """
+    Verify that game rows exist for the target date.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
     from src.models.game import Game
 
     count = session.query(Game).filter(Game.game_date == target).count()
@@ -99,7 +113,14 @@ def check_games_exist(session: Session, target: date) -> CheckResult:
 
 
 def check_all_terminal_status(session: Session, target: date) -> CheckResult:
-    """Verify all games for target date have terminal status."""
+    """
+    Verify all games for target date have terminal status.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
     from src.models.game import Game
 
     games = session.query(Game).filter(Game.game_date == target).all()
@@ -141,7 +162,14 @@ def check_all_terminal_status(session: Session, target: date) -> CheckResult:
 
 
 def check_child_stats_exist(session: Session, target: date) -> CheckResult:
-    """Verify that completed games have batting and pitching stats."""
+    """
+    Verify that completed games have batting and pitching stats.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
     from src.models.game import Game, GameBattingStat, GamePitchingStat
 
     completed_games = (
@@ -204,7 +232,14 @@ def check_child_stats_exist(session: Session, target: date) -> CheckResult:
 
 
 def check_no_null_player_ids(session: Session, target: date) -> CheckResult:
-    """Check for NULL player_ids in critical tables for target date games."""
+    """
+    Check for NULL player_ids in critical tables for target date games.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
     from src.models.game import Game
 
     games = session.query(Game).filter(Game.game_date == target).all()
@@ -258,7 +293,14 @@ def check_no_null_player_ids(session: Session, target: date) -> CheckResult:
 
 
 def check_game_status_populated(session: Session, target: date) -> CheckResult:
-    """Verify all game rows have a non-NULL game_status."""
+    """
+    Verify all game rows have a non-NULL game_status.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
     from src.models.game import Game
 
     total = session.query(Game).filter(Game.game_date == target).count()
@@ -281,7 +323,14 @@ def check_game_status_populated(session: Session, target: date) -> CheckResult:
 
 
 def check_scores_populated(session: Session, target: date) -> CheckResult:
-    """Verify completed games have scores populated."""
+    """
+    Verify completed games have scores populated.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
     from src.models.game import Game
 
     completed = (
@@ -320,7 +369,14 @@ def check_scores_populated(session: Session, target: date) -> CheckResult:
 
 
 def check_winning_team_consistency(session: Session, target: date) -> CheckResult:
-    """Verify winning_team matches home_score vs away_score."""
+    """
+    Verify winning_team matches home_score vs away_score.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
     from src.models.game import Game
 
     games = (
@@ -371,7 +427,14 @@ def check_winning_team_consistency(session: Session, target: date) -> CheckResul
 
 
 def check_duplicate_games(session: Session, target: date) -> CheckResult:
-    """Detect duplicate games (same date + home_team + away_team)."""
+    """
+    Detect duplicate games (same date + home_team + away_team).
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
     from sqlalchemy import func as sqlfunc
 
     from src.models.game import Game
@@ -426,9 +489,39 @@ CHECKS = [
 ]
 
 
+def check_season_stat_team_code(session: Session) -> CheckResult:
+    """Verify team_code is populated in player_season_batting/pitching."""
+    from sqlalchemy import text
+
+    batting_null = session.execute(
+        text("SELECT COUNT(*) FROM player_season_batting WHERE team_code IS NULL"),
+    ).scalar()
+    pitching_null = session.execute(
+        text("SELECT COUNT(*) FROM player_season_pitching WHERE team_code IS NULL OR team_code = ''"),
+    ).scalar()
+    total_null = batting_null + pitching_null
+    passed = total_null == 0
+    return CheckResult(
+        name="season_stat_team_code",
+        passed=passed,
+        message="All season stats have team_code" if passed else f"{total_null} NULL team_code rows",
+        details={
+            "batting_null": batting_null,
+            "pitching_null": pitching_null,
+        },
+    )
+
+
 def run_integrity_checks(target_date: str) -> IntegrityReport:
-    """Run all integrity checks for the given target date."""
+    """
+    Run all integrity checks for the given target date.
+
+    Args:
+        target_date: Target date for the operation.
+
+    """
     target = _parse_target_date(target_date)
+
     results: list[CheckResult] = []
 
     with SessionLocal() as session:
@@ -456,6 +549,29 @@ def run_integrity_checks(target_date: str) -> IntegrityReport:
     passed_count = sum(1 for r in results if r.passed)
     failed_count = sum(1 for r in results if not r.passed)
 
+    try:
+        season_result = check_season_stat_team_code(session)
+        results.append(season_result)
+        status_icon = "✅" if season_result.passed else "❌"
+        logger.info(
+            "%s [%s] %s",
+            status_icon,
+            season_result.name,
+            season_result.message,
+        )
+    except Exception as e:
+        logger.exception("[ERROR] Check %s failed with exception", "season_stat_team_code")
+        results.append(
+            CheckResult(
+                name="season_stat_team_code",
+                passed=False,
+                message=f"Exception: {e}",
+            ),
+        )
+
+    passed_count = sum(1 for r in results if r.passed)
+    failed_count = sum(1 for r in results if not r.passed)
+
     return IntegrityReport(
         target_date=target_date,
         timestamp_kst=datetime.now(KST).isoformat(),
@@ -469,7 +585,7 @@ def run_integrity_checks(target_date: str) -> IntegrityReport:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
@@ -493,8 +609,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
 
     target_date = args.date

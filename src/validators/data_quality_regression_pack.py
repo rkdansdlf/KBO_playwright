@@ -28,7 +28,7 @@ class QualityRegressionResult:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Handles the to dict operation.
+        Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -53,7 +53,7 @@ class QualityRegressionReport:
     @property
     def ok(self) -> bool:
         """
-        Handles the ok operation.
+        Handle the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -64,7 +64,7 @@ class QualityRegressionReport:
     @property
     def check_count(self) -> int:
         """
-        Checks count.
+        Check count.
 
         Returns:
             Integer result.
@@ -75,7 +75,7 @@ class QualityRegressionReport:
     @property
     def failure_count(self) -> int:
         """
-        Handles the failure count operation.
+        Handle the failure count operation.
 
         Returns:
             Integer result.
@@ -85,7 +85,7 @@ class QualityRegressionReport:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Handles the to dict operation.
+        Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -289,8 +289,18 @@ _CHECKS: tuple[_SqlCheck, ...] = (
 
 
 def run_regression_pack(conn: Connection, checks: Sequence[_SqlCheck] = _CHECKS) -> QualityRegressionReport:
-    """Run data quality invariants against a SQLAlchemy connection."""
+    """
+    Run data quality invariants against a SQLAlchemy connection.
+
+    Args:
+        conn: Conn.
+        checks: Checks.
+        conn: Conn.
+        checks: Checks.
+
+    """
     inspector = inspect(conn)
+
     table_names = set(inspector.get_table_names())
     results = tuple(_run_check(conn, inspector, table_names, check) for check in checks)
     return QualityRegressionReport(results=results)
@@ -298,9 +308,11 @@ def run_regression_pack(conn: Connection, checks: Sequence[_SqlCheck] = _CHECKS)
 
 def render_regression_report(report: QualityRegressionReport) -> str:
     """
-    Reports render regression.
+    Report render regression.
 
     Args:
+        report: Report.
+        report: Report.
         report: Report.
 
     Returns:
@@ -323,9 +335,11 @@ def render_regression_report(report: QualityRegressionReport) -> str:
 
 def report_to_json(report: QualityRegressionReport) -> str:
     """
-    Reports to json.
+    Report to json.
 
     Args:
+        report: Report.
+        report: Report.
         report: Report.
 
     Returns:

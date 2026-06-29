@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from unittest.mock import MagicMock
 
 from src.utils.relay_validation import (
     ALL_VALIDATION_STATES,
@@ -185,6 +186,22 @@ class TestOutCountWarnings:
         result = _out_count_warnings(OutCountContext(1, MAX_OUTS, 1, "top", 0, 1, "top"))
         assert result == []
 
+    def test_outs_jumped_by_large_amount(self) -> None:
+        from src.constants import MAX_OUTS
+
+        result = _out_count_warnings(OutCountContext(1, MAX_OUTS, 1, "top", 0, 1, "top"))
+        assert result == []
+
+    def test_outs_jumped_more_than_max_outs_in_one_event(self) -> None:
+        from src.constants import MAX_OUTS
+
+        # With MAX_OUTS=3, outs in [0,3] and prev_outs=0, max diff=3 (not > 3).
+        # To trigger the "jumped" branch, prev_outs must be negative (not range-checked).
+        ctx = OutCountContext(1, MAX_OUTS, 1, "top", -2, 1, "top")
+        result = _out_count_warnings(ctx)
+        assert len(result) == 1
+        assert "outs jumped" in result[0]
+
 
 class TestEventSequenceWarnings:
     def test_first_event_no_warnings(self) -> None:
@@ -249,3 +266,51 @@ class TestLastPbpScore:
 
     def test_returns_none_for_empty(self) -> None:
         assert _last_pbp_score([]) is None
+
+    def test_skips_non_numeric_scores(self) -> None:
+        events = [
+            {"home_score": "invalid", "away_score": "data"},
+            {"home_score": 3, "away_score": 2},
+        ]
+        assert _last_pbp_score(events) == (3, 2)
+
+    def test_all_non_numeric_returns_none(self) -> None:
+        events = [
+            {"home_score": "bad", "away_score": "data"},
+            {"home_score": None, "away_score": None},
+        ]
+        assert _last_pbp_score(events) is None
+
+
+class TestValidatePbpFinalScore:
+    def test_none_home_score_skips(self) -> None:
+        game = MagicMock()
+        game.home_score = None
+        game.away_score = 5
+        assert _validate_pbp_final_score(game, [{"home_score": 3, "away_score": 5}]) is None
+
+    def test_none_away_score_skips(self) -> None:
+        game = MagicMock()
+        game.home_score = 3
+        game.away_score = None
+        assert _validate_pbp_final_score(game, [{"home_score": 3, "away_score": 5}]) is None
+
+    def test_matching_scores_returns_none(self) -> None:
+        game = MagicMock()
+        game.home_score = 5
+        game.away_score = 3
+        assert _validate_pbp_final_score(game, [{"home_score": 5, "away_score": 3}]) is None
+
+    def test_mismatched_scores_returns_error(self) -> None:
+        game = MagicMock()
+        game.home_score = 5
+        game.away_score = 3
+        result = _validate_pbp_final_score(game, [{"home_score": 4, "away_score": 3}])
+        assert result is not None
+        assert "score_mismatch" in result
+
+    def test_no_valid_pbp_scores_returns_none(self) -> None:
+        game = MagicMock()
+        game.home_score = 5
+        game.away_score = 3
+        assert _validate_pbp_final_score(game, [{"home_score": None, "away_score": None}]) is None

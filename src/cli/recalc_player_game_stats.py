@@ -1,7 +1,7 @@
 """
 CLI tool to recalculate player-game-level stats from game-level (transactional) data.
 
-Aggregates GameBattingStat -> PlayerGameBatting
+Aggregate GameBattingStat -> PlayerGameBatting
 Aggregates GamePitchingStat -> PlayerGamePitching.
 
 Usage:
@@ -9,6 +9,7 @@ Usage:
   python -m src.cli.recalc_player_game_stats --date 20250401 --save
   python -m src.cli.recalc_player_game_stats --season 2025 --save
   python -m src.cli.recalc_player_game_stats --season 2025 --dry-run
+
 """
 
 from __future__ import annotations
@@ -85,9 +86,12 @@ def _print_pitching_records(records: list[dict[str, object]]) -> None:
 
 def recalc_for_game(session: Session, game_id: str, *, dry_run: bool = False) -> dict[str, int]:
     """
-    Recalculates for game.
+    Recalculate for game.
 
     Args:
+        session: Session.
+        game_id: Game ID.
+        dry_run: If True, performs a dry run without persisting changes.
         session: Session.
         game_id: Game ID.
 
@@ -96,6 +100,7 @@ def recalc_for_game(session: Session, game_id: str, *, dry_run: bool = False) ->
 
     """
     batting = aggregate_game_batting(session, game_id)
+
     pitching = aggregate_game_pitching(session, game_id)
 
     if dry_run:
@@ -113,8 +118,17 @@ def recalc_for_game(session: Session, game_id: str, *, dry_run: bool = False) ->
 
 
 def recalc_for_games_batch(session: Session, game_ids: list[str], *, dry_run: bool = False) -> dict[str, int]:
-    """Batch recalc: single query per side, single commit for all games."""
+    """
+    Batch recalc: single query per side, single commit for all games.
+
+    Args:
+        session: Session.
+        game_ids: Game Ids.
+        dry_run: If True, performs a dry run without persisting changes.
+
+    """
     batting = aggregate_game_batting_batch(session, game_ids)
+
     pitching = aggregate_game_pitching_batch(session, game_ids)
 
     if dry_run:
@@ -137,9 +151,14 @@ def run_recalc(
     include_futures: bool = False,
 ) -> int:
     """
-    Runs run recalc.
+    Run run recalc.
 
     Args:
+        game_id: Game ID.
+        date: Date.
+        season: Season year.
+        dry_run: If True, performs a dry run without persisting changes.
+        include_futures: Include Futures.
         game_id: Game ID.
         date: Target date in YYYYMMDD format.
         season: Season year.
@@ -215,8 +234,15 @@ def run_recalc(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Recalculate player-game-level stats from game-level data.")
+
     parser.add_argument("--game-id", help="Single game ID to recalc")
     parser.add_argument("--date", help="Game date (YYYYMMDD) to recalc all completed games")
     parser.add_argument("--season", type=int, help="Season year to recalc all completed games")

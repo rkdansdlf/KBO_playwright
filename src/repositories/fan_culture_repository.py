@@ -16,15 +16,24 @@ class FanCultureRepository:
     """FanCultureRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     # TeamRivalry
     def save_rivalry(self, data: dict) -> TeamRivalry:
         """
-        Saves rivalry.
+        Save rivalry.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -32,6 +41,7 @@ class FanCultureRepository:
 
         """
         team_id_a = data["team_id_a"]
+
         team_id_b = data["team_id_b"]
         # Normalize ordering
         if team_id_a > team_id_b:
@@ -55,21 +65,24 @@ class FanCultureRepository:
 
     def get_all_rivalries(self) -> list[TeamRivalry]:
         """
-        Gets all rivalries.
+        Get all rivalries.
 
         Returns:
             List of results.
 
         """
         stmt = select(TeamRivalry).order_by(TeamRivalry.team_id_a)
+
         return list(self.session.execute(stmt).scalars().all())
 
     # CheerSong
     def save_cheer_song(self, data: dict) -> CheerSong:
         """
-        Saves cheer song.
+        Save cheer song.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -77,6 +90,7 @@ class FanCultureRepository:
 
         """
         team_id = data["team_id"]
+
         song_name = data["song_name"]
         song_type = data["song_type"]
 
@@ -97,9 +111,11 @@ class FanCultureRepository:
 
     def get_cheer_songs_by_team(self, team_id: str) -> list[CheerSong]:
         """
-        Gets cheer songs by team.
+        Get cheer songs by team.
 
         Args:
+            team_id: Team ID.
+            team_id: Team ID.
             team_id: Team ID.
 
         Returns:
@@ -107,14 +123,17 @@ class FanCultureRepository:
 
         """
         stmt = select(CheerSong).where(CheerSong.team_id == team_id).order_by(CheerSong.song_type)
+
         return list(self.session.execute(stmt).scalars().all())
 
     # CheerChant
     def save_cheer_chant(self, data: dict) -> CheerChant:
         """
-        Saves cheer chant.
+        Save cheer chant.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -122,6 +141,7 @@ class FanCultureRepository:
 
         """
         team_id = data["team_id"]
+
         chant_text = data["chant_text"]
 
         stmt = select(CheerChant).where(
@@ -140,9 +160,11 @@ class FanCultureRepository:
 
     def get_cheer_chants_by_team(self, team_id: str) -> list[CheerChant]:
         """
-        Gets cheer chants by team.
+        Get cheer chants by team.
 
         Args:
+            team_id: Team ID.
+            team_id: Team ID.
             team_id: Team ID.
 
         Returns:
@@ -150,4 +172,5 @@ class FanCultureRepository:
 
         """
         stmt = select(CheerChant).where(CheerChant.team_id == team_id)
+
         return list(self.session.execute(stmt).scalars().all())

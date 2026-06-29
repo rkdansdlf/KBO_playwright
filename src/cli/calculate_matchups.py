@@ -20,7 +20,14 @@ MATCHUP_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError,
 
 
 def batch_calculate_matchups(years: list[int], *, sync_oci: bool = False) -> None:
-    """Runs the MatchupEngine for a range of years to compute BvP and Splits."""
+    """
+    Run the MatchupEngine for a range of years to compute BvP and Splits.
+
+    Args:
+        years: Years.
+        sync_oci: Sync Oci.
+
+    """
     engine = MatchupEngine()
 
     for year in years:
@@ -46,8 +53,15 @@ def batch_calculate_matchups(years: list[int], *, sync_oci: bool = False) -> Non
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Calculate Matchup and Split matrices.")
+
     parser.add_argument("--years", type=str, default="2020-2026")
     parser.add_argument("--sync", action="store_true", help="Sync results to OCI")
     args = parser.parse_args(argv)

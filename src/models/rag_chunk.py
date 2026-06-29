@@ -14,6 +14,7 @@ class RagChunk(Base, TimestampMixin):
     """
     Represents an unstructured knowledge chunk (rules, news, historical logs)
     processed and embedded for semantic retrieval.
+
     """
 
     __tablename__ = "rag_chunks"
@@ -52,5 +53,5 @@ class RagChunk(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<RagChunk(id={self.id}, source='{self.source_table}', title='{self.title}')>"

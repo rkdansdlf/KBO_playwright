@@ -56,8 +56,22 @@ class PlayerIdResolver:
         strict_game_resolution: bool = False,
         allow_auto_register: bool | None = None,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            allow_unknown_registration: Allow Unknown Registration.
+            strict_game_resolution: Strict Game Resolution.
+            allow_auto_register: Allow Auto Register.
+            session: Session.
+            allow_unknown_registration: Allow Unknown Registration.
+            strict_game_resolution: Strict Game Resolution.
+            allow_auto_register: Allow Auto Register.
+
+        """
         self.session = session
+
         if allow_auto_register is not None:
             allow_unknown_registration = allow_auto_register
         self.allow_unknown_registration = (
@@ -249,26 +263,38 @@ class PlayerIdResolver:
 
     def preload_season_index(self, season: int) -> None:
         """
-        Handles the preload season index operation.
+        Handle the preload season index operation.
 
         Args:
+            season: Season year.
+            season: Season year.
             season: Season year.
 
         """
         logger.info("🔄 Preloading player index for season %s...", season)
+
         season_index: dict[str, dict[str, object]] = {}
 
         def add_index_entry(name: str, team: str, pid: int, *, is_pitcher: bool | None) -> None:
             """
-            Adds index entry.
+            Add index entry.
 
             Args:
+                name: Name.
+                team: Team.
+                pid: Pid.
+                is_pitcher: Is Pitcher.
+                name: Name.
+                team: Team.
+                pid: Pid.
+                is_pitcher: Is Pitcher.
                 name: Name.
                 team: Team.
                 pid: Pid.
 
             """
             cache_key = self._cache_key(name, team, season, None, is_pitcher=is_pitcher)
+
             entry = season_index.setdefault(cache_key, {"name": name, "ids": set()})
             entry_ids = entry["ids"]
             if isinstance(entry_ids, set):
@@ -697,9 +723,19 @@ class PlayerIdResolver:
         is_pitcher: bool | None = None,
     ) -> int | None:
         """
-        Resolves id.
+        Resolve id.
 
         Args:
+            player_name: Player Name.
+            team_code: Team Code.
+            season: Season year.
+            uniform_no: Uniform No.
+            is_pitcher: Is Pitcher.
+            player_name: Player Name.
+            team_code: Team Code.
+            season: Season year.
+            uniform_no: Uniform No.
+            is_pitcher: Is Pitcher.
             player_name: Player Name.
             team_code: Team Code.
             season: Season year.
@@ -795,7 +831,22 @@ class PlayerIdResolver:
         uniform_no: str | None,
         is_pitcher: bool | None,
     ) -> int | None:
-        """Use already-linked same-season game rows as strict pregame evidence."""
+        """
+        Use already-linked same-season game rows as strict pregame evidence.
+
+        Args:
+            player_name: Player Name.
+            team_code: Team Code.
+            season: Season year.
+            uniform_no: Uniform No.
+            is_pitcher: Is Pitcher.
+            player_name: Player Name.
+            team_code: Team Code.
+            season: Season year.
+            uniform_no: Uniform No.
+            is_pitcher: Is Pitcher.
+
+        """
         if not player_name or not team_code or not season:
             return None
 
@@ -838,9 +889,15 @@ class PlayerIdResolver:
 
     def register_unknown_player(self, name: str, team_code: str, uniform_no: str | None) -> int | None:
         """
-        Handles the register unknown player operation.
+        Handle the register unknown player operation.
 
         Args:
+            name: Name.
+            team_code: Team Code.
+            uniform_no: Uniform No.
+            name: Name.
+            team_code: Team Code.
+            uniform_no: Uniform No.
             name: Name.
             team_code: Team Code.
             uniform_no: Uniform No.
@@ -850,6 +907,7 @@ class PlayerIdResolver:
 
         """
         existing_id = self._find_existing_unknown_player(name, team_code, uniform_no)
+
         if existing_id:
             logger.info("   [UNKNOWN PLAYER REUSED] %s (%s) -> %s", name, team_code, existing_id)
             return existing_id
@@ -884,8 +942,20 @@ class PlayerIdResolver:
             return new_id
 
     def _resolve_relaxed(self, player_name: str, team_code: str, season: int) -> int | None:
-        """Relaxed matching: Name + Season match, ensuring exactly one candidate."""
+        """
+        Relaxed matching: Name + Season match, ensuring exactly one candidate.
+
+        Args:
+            player_name: Player Name.
+            team_code: Team Code.
+            season: Season year.
+            player_name: Player Name.
+            team_code: Team Code.
+            season: Season year.
+
+        """
         candidates = set()
+
         for model in [PlayerSeasonBatting, PlayerSeasonPitching]:
             stmt = (
                 select(PlayerBasic.player_id)

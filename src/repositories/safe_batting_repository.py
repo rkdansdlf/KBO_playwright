@@ -1,6 +1,7 @@
 """
 Safe batting data repository with foreign key constraint bypass
 타자 데이터를 외래키 제약조건 우회하여 안전하게 저장.
+
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ BATTING_CONFLICT_KEYS = ["player_id", "season", "league", "level"]
 
 def get_last_filter_counts() -> dict[str, int]:
     """
-    Gets last counts.
+    Get last counts.
 
     Returns:
         Dictionary result.
@@ -216,6 +217,8 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
     외래키 제약조건을 임시로 비활성화하여 데이터 저장.
 
     Args:
+        payloads: Payloads.
+        payloads: Payloads.
         payloads: 타자 데이터 딕셔너리 리스트
 
     Returns:
@@ -223,6 +226,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
 
     """
     global LAST_FILTER_COUNTS
+
     LAST_FILTER_COUNTS = Counter()
     if not payloads:
         return 0
@@ -264,7 +268,14 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
 
 
 def get_batting_stats_count(session: Session | None = None) -> int:
-    """타자 테이블의 레코드 수 조회."""
+    """
+    타자 테이블의 레코드 수 조회.
+
+    Args:
+        session: Session.
+        session: Session.
+
+    """
     if session:
         return session.query(PlayerSeasonBatting).count()
     with SessionLocal() as new_session:
@@ -272,7 +283,16 @@ def get_batting_stats_count(session: Session | None = None) -> int:
 
 
 def get_batting_stats_by_season(season: int, session: Session | None = None) -> list[PlayerSeasonBatting]:
-    """시즌별 타자 데이터 조회."""
+    """
+    시즌별 타자 데이터 조회.
+
+    Args:
+        season: Season year.
+        session: Session.
+        season: Season year.
+        session: Session.
+
+    """
     if session:
         return session.query(PlayerSeasonBatting).filter_by(season=season).all()
     with SessionLocal() as new_session:
@@ -280,7 +300,14 @@ def get_batting_stats_by_season(season: int, session: Session | None = None) -> 
 
 
 def cleanup_invalid_batting_data(session: Session | None = None) -> int:
-    """잘못된 타자 데이터 정리 (예: 필수 필드 누락)."""
+    """
+    잘못된 타자 데이터 정리 (예: 필수 필드 누락).
+
+    Args:
+        session: Session.
+        session: Session.
+
+    """
     cleanup_session = session or SessionLocal()
 
     try:
@@ -308,9 +335,17 @@ def cleanup_invalid_batting_data(session: Session | None = None) -> int:
 
 def save_futures_batting(player_id_db: int, rows: list[dict], league: str = "FUTURES", level: str = "KBO2") -> int:
     """
-    Saves futures batting.
+    Save futures batting.
 
     Args:
+        player_id_db: Player Id Db.
+        rows: Rows.
+        league: League.
+        level: Level.
+        player_id_db: Player Id Db.
+        rows: Rows.
+        league: League.
+        level: Level.
         player_id_db: Player Id Db.
         rows: Rows.
         league: League.

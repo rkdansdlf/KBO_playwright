@@ -12,9 +12,10 @@ class NaverRelayCrawler(RelayCrawler):
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
         """
-        Crawls game events.
+        Crawl game events.
 
         Args:
+            game_id: Game ID.
             game_id: Game ID.
 
         Returns:

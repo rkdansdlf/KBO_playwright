@@ -26,6 +26,7 @@ def classify_notice(title: str) -> str:
 
     Args:
         title: Title.
+        title: Title.
 
     Returns:
         String result.
@@ -39,9 +40,10 @@ def classify_notice(title: str) -> str:
 
 def is_urgent(title: str) -> bool:
     """
-    Returns whether the urgent.
+    Return whether the urgent.
 
     Args:
+        title: Title.
         title: Title.
 
     Returns:

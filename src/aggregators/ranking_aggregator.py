@@ -92,10 +92,17 @@ PITCHING_METRICS: list[MetricConfig] = [
 
 
 class RankingAggregator:
-    """Aggregates per-metric rankings across stat categories."""
+    """Aggregate per-metric rankings across stat categories."""
 
     def __init__(self, repository: RankingRepository | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            repository: Repository.
+            repository: Repository.
+
+        """
         self.repository = repository or RankingRepository()
 
     def generate_rankings(
@@ -111,9 +118,25 @@ class RankingAggregator:
         min_ip_outs: int | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Generates rankings.
+        Generate rankings.
 
         Args:
+            season: Season year.
+            fielding_stats: Fielding Stats.
+            baserunning_stats: Baserunning Stats.
+            batting_stats: Batting Stats.
+            pitching_stats: Pitching Stats.
+            persist: Persist.
+            min_pa: Min Pa.
+            min_ip_outs: Min Ip Outs.
+            season: Season year.
+            fielding_stats: Fielding Stats.
+            baserunning_stats: Baserunning Stats.
+            batting_stats: Batting Stats.
+            pitching_stats: Pitching Stats.
+            persist: Persist.
+            min_pa: Min Pa.
+            min_ip_outs: Min Ip Outs.
             season: Season year.
 
         Returns:

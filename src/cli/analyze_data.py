@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
@@ -26,8 +26,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     parser.parse_args(argv)
     report = generate_report()
     logger.info(report)

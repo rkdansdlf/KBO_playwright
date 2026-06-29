@@ -67,9 +67,15 @@ def parse_retired_hitter_tables(
     level: str = "KBO1",
 ) -> list[dict[str, Any]]:
     """
-    Parses retired hitter tables.
+    Parse retired hitter tables.
 
     Args:
+        tables: Tables.
+        league: League.
+        level: Level.
+        tables: Tables.
+        league: League.
+        level: Level.
         tables: Tables.
 
     Returns:
@@ -77,6 +83,7 @@ def parse_retired_hitter_tables(
 
     """
     base_rows, adv_rows = _select_tables(tables)
+
     advanced_map = {row.get("연도") or row.get("년도"): row for row in adv_rows}
     records: list[dict[str, Any]] = []
 
@@ -156,9 +163,15 @@ def parse_retired_pitcher_table(
     level: str = "KBO1",
 ) -> list[dict[str, Any]]:
     """
-    Parses retired pitcher table.
+    Parse retired pitcher table.
 
     Args:
+        table: Table.
+        league: League.
+        level: Level.
+        table: Table.
+        league: League.
+        level: Level.
         table: Table.
 
     Returns:
@@ -166,6 +179,7 @@ def parse_retired_pitcher_table(
 
     """
     _, rows = _table_to_dicts(table)
+
     records: list[dict[str, Any]] = []
 
     for row in rows:

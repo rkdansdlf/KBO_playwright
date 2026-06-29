@@ -85,10 +85,82 @@ class TestPlayerSyncMixin:
         mixin._player_id_mapping_cache = {1: 100}
         assert mixin._get_player_id_mapping() == {1: 100}
 
+    def test_get_player_id_mapping_full_query(self, mixin):
+        sqlite_player = MagicMock()
+        sqlite_player.id = 1
+        sqlite_player.kbo_person_id = 100
+        mixin.sqlite_session.query.return_value.all.return_value = [sqlite_player]
+
+        oci_player = MagicMock()
+        oci_player.kbo_person_id = 100
+        oci_player.id = 500
+        mixin.target_session.query.return_value.filter.return_value.all.return_value = [oci_player]
+
+        result = mixin._get_player_id_mapping()
+        assert result == {1: 500}
+
     def test_sync_referenced_player_basic_for_games_no_game_ids(self, mixin):
         assert mixin._sync_referenced_player_basic_for_games([]) == 0
 
     def test_sync_referenced_player_basic_for_games_no_refs(self, mixin):
         mixin.sqlite_session.query.return_value.filter.return_value.distinct.return_value.all.return_value = []
+        result = mixin._sync_referenced_player_basic_for_games(["g1"])
+        assert result == 0
+
+    def test_sync_referenced_player_basic_for_games_with_refs(self, mixin):
+        from src.models.player import PlayerBasic
+
+        call_count = [0]
+
+        def query_side_effect(*args, **kwargs):
+            mock_result = MagicMock()
+            call_count[0] += 1
+            if call_count[0] <= 4:
+                mock_result.filter.return_value = mock_result
+                mock_result.distinct.return_value = mock_result
+                mock_result.all.return_value = [(999,)]
+            elif call_count[0] <= 6:
+                mock_result.filter.return_value = mock_result
+                mock_result.distinct.return_value = mock_result
+                mock_result.all.return_value = []
+            else:
+                mock_result.filter.return_value = mock_result
+                mock_result.all.return_value = [(999,)]
+            return mock_result
+
+        mixin.sqlite_session.query.side_effect = query_side_effect
+
+        p = MagicMock(spec=PlayerBasic)
+        p.player_id = 999
+        p.name = "Kim"
+        p.team = "SSG"
+        p.position = "OF"
+        p.status = "Active"
+        mixin.sync_player_basic_by_ids = MagicMock(return_value=1)
+
+        result = mixin._sync_referenced_player_basic_for_games(["g1"])
+        assert result == 1
+        mixin.sync_player_basic_by_ids.assert_called_once_with([999])
+
+    def test_sync_referenced_player_basic_missing_warning(self, mixin):
+        call_count = [0]
+
+        def query_side_effect(*args, **kwargs):
+            mock_result = MagicMock()
+            call_count[0] += 1
+            if call_count[0] <= 4:
+                mock_result.filter.return_value = mock_result
+                mock_result.distinct.return_value = mock_result
+                mock_result.all.return_value = [(999,)]
+            elif call_count[0] <= 6:
+                mock_result.filter.return_value = mock_result
+                mock_result.distinct.return_value = mock_result
+                mock_result.all.return_value = []
+            else:
+                mock_result.filter.return_value = mock_result
+                mock_result.all.return_value = []
+            return mock_result
+
+        mixin.sqlite_session.query.side_effect = query_side_effect
         result = mixin._sync_referenced_player_basic_for_games(["g1"])
         assert result == 0

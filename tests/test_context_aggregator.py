@@ -4,9 +4,18 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.db.engine import SessionLocal
+from src.db.engine import Engine, SessionLocal
+from src.models.base import Base
 from src.models.game import GameEvent
 from src.services.context_aggregator import ContextAggregator
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def _test_db_tables():
+    Base.metadata.create_all(bind=Engine)
+    yield
 
 
 def test_get_recent_player_movements_team_mapping():

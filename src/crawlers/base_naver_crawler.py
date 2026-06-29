@@ -34,8 +34,15 @@ class NaverNewsCrawlerBase(ABC):
     LABEL: str = "news"
 
     async def run(self, *, save: bool = False) -> None:
-        """Runs run."""
+        """
+        Run run.
+
+        Args:
+            save: Whether to persist the results.
+
+        """
         data = await self._fetch_news()
+
         logger.info("Found %d %s entries.", len(data), self.LABEL)
         if save:
             self._save_to_db(data)

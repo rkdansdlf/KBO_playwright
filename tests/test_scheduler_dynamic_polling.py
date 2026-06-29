@@ -3,8 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+pytestmark = pytest.mark.integration
 
 import scripts.scheduler as scheduler
 from src.models.game import Game, GameMetadata

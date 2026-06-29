@@ -60,7 +60,7 @@ class TeamSeasonBatting(Base, TimestampMixin):
     extra_stats: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<TeamSeasonBatting(team_id='{self.team_id}', season={self.season}, league='{self.league}')>"
 
 
@@ -112,5 +112,5 @@ class TeamSeasonPitching(Base, TimestampMixin):
     extra_stats: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<TeamSeasonPitching(team_id='{self.team_id}', season={self.season}, league='{self.league}')>"

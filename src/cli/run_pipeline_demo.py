@@ -7,6 +7,7 @@
 2. 경기 상세(game detail) HTML을 읽어와 데이터베이스에 저장합니다.
 3. (선택 사항) 실제 퓨처스리그 크롤러를 실행합니다.
 4. 처리된 데이터의 요약 정보를 출력합니다.
+
 """
 
 from __future__ import annotations
@@ -34,8 +35,17 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year: int | None) -> int:
-    """경기 일정 fixture 파일들을 데이터베이스로 가져옵니다."""
+    """
+    경기 일정 fixture 파일들을 데이터베이스로 가져옵니다.
+
+    Args:
+        fixtures_dir: Fixtures Dir.
+        season_type: Season Type.
+        default_year: Default Year.
+
+    """
     total = 0
+
     for html_file in sorted(fixtures_dir.glob("*.html")):
         html = html_file.read_text(encoding="utf-8")
         rows = parse_schedule_html(html, default_year=default_year, season_type=season_type)
@@ -48,8 +58,15 @@ def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year:
 
 
 def ingest_game_fixtures(fixtures_dir: Path) -> int:
-    """경기 상세 정보 fixture 파일들을 데이터베이스로 가져옵니다."""
+    """
+    경기 상세 정보 fixture 파일들을 데이터베이스로 가져옵니다.
+
+    Args:
+        fixtures_dir: Fixtures Dir.
+
+    """
     count = 0
+
     for html_file in sorted(fixtures_dir.glob("*.html")):
         game_id = html_file.stem
         html = html_file.read_text(encoding="utf-8")
@@ -61,7 +78,16 @@ def ingest_game_fixtures(fixtures_dir: Path) -> int:
 
 
 async def run_futures(limit: int | None, season: int, delay: float, concurrency: int) -> None:
-    """퓨처스리그 크롤러를 실행하는 래퍼(wrapper) 함수."""
+    """
+    퓨처스리그 크롤러를 실행하는 래퍼(wrapper) 함수.
+
+    Args:
+        limit: Limit.
+        season: Season year.
+        delay: Delay.
+        concurrency: Maximum number of concurrent requests.
+
+    """
     from src.cli.crawl_futures import crawl_futures
 
     args = argparse.Namespace(
@@ -94,7 +120,13 @@ def show_schedule_totals() -> None:
 
 
 def show_summary(game_ids: list[str]) -> None:
-    """처리된 게임 데이터의 요약 정보를 출력합니다."""
+    """
+    처리된 게임 데이터의 요약 정보를 출력합니다.
+
+    Args:
+        game_ids: Game Ids.
+
+    """
     show_schedule_totals()
 
     with SessionLocal() as session:
@@ -137,8 +169,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """스크립트의 메인 실행 함수."""
+    """
+    스크립트의 메인 실행 함수.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
 
     if args.schedule_fixtures:

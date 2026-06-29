@@ -25,16 +25,38 @@ class PlayerStatusConfirmer:
         headless: bool = True,
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            max_confirmations: Max Confirmations.
+            headless: Whether to run the browser in headless mode.
+            pool: Connection pool for async operations.
+            request_delay: Request Delay.
+            max_confirmations: Max Confirmations.
+            headless: Whether to run the browser in headless mode.
+            pool: Connection pool for async operations.
+
+        """
         self.base_url = HITTER_DETAIL
+
         self.request_delay = request_delay
         self.max_confirmations = max_confirmations
         self.headless = headless
         self.pool = pool
 
     async def confirm_entries(self, entries: list[dict[str, object]]) -> dict[str, int]:
-        """Mutates entries in-place when profile confirmation succeeds."""
+        """
+        Mutates entries in-place when profile confirmation succeeds.
+
+        Args:
+            entries: Entries.
+            entries: Entries.
+
+        """
         suspects = [entry for entry in entries if entry.get("status") in {"retired", "staff"}]
+
         attempts = 0
         confirmed = 0
         if not suspects:

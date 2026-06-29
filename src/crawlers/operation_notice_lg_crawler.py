@@ -1,12 +1,13 @@
 """
 Crawler for LG Twins official operation notices (lgtwins.com).
 
-Scrapes game-day notices including gate changes, entry restrictions,
+Scrape game-day notices including gate changes, entry restrictions,
 rain delays, and general announcements. Supports incremental crawling
 by tracking the last seen external_id (article ID).
 
 Target URL pattern:
   https://www.lgtwins.com/service/announcement?pageNo={page}
+
 """
 
 from __future__ import annotations
@@ -62,8 +63,15 @@ def _parse_date(raw: str) -> datetime | None:
 
 
 def _extract_article_id(href: str) -> str | None:
-    """Extract article ID from URL query params or path."""
+    """
+    Extract article ID from URL query params or path.
+
+    Args:
+        href: Href.
+
+    """
     m = re.search(r"(?:idx|id|seq|no|articleIdx|snSeq)=(\d+)", href, re.IGNORECASE)
+
     if m:
         return m.group(1)
     m = re.search(r"/(\d+)(?:\?|$)", href)
@@ -74,19 +82,34 @@ def _extract_article_id(href: str) -> str | None:
 
 class OperationNoticeLGCrawler:
     """
-    Crawls LG Twins official announcements and maps them to
+    LG Twins official announcements and maps them to
     StadiumOperationNotice records for JAMSIL stadium.
+
     """
 
     def __init__(self, max_pages: int = 5) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            max_pages: Max Pages.
+
+        """
         self.max_pages = max_pages
+
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
         """
-        Crawl notices. If stop_at_external_id is provided, stops when
+        Crawl notices.
+
+            If stop_at_external_id is provided, stops when
         a previously seen article is encountered (incremental mode).
+
+        Args:
+            save: Whether to persist the results.
+            stop_at_external_id: Stop At External ID.
+
         """
         all_notices: list[dict] = []
 
@@ -127,8 +150,18 @@ class OperationNoticeLGCrawler:
         return all_notices
 
     def _parse_page(self, html: str, stop_at_id: str | None) -> tuple[list[dict], bool]:
-        """Parse one listing page. Returns (notices, hit_stop_id)."""
+        """
+        Parse one listing page.
+
+            Returns (notices, hit_stop_id).
+
+        Args:
+            html: Html.
+            stop_at_id: Stop At ID.
+
+        """
         soup = BeautifulSoup(html, "html.parser")
+
         notices: list[dict] = []
         hit_stop = False
 

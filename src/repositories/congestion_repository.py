@@ -21,7 +21,14 @@ class CongestionRepository:
     """CongestionRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     # ─────────────────────────────────────────────
@@ -35,6 +42,11 @@ class CongestionRepository:
         Dedup key: (stadium_code, location_label, measured_at).
 
         Returns (record, created: bool).
+
+        Args:
+            data: Data.
+            data: Data.
+
         """
         stmt = select(StadiumCongestion).where(
             and_(
@@ -58,8 +70,18 @@ class CongestionRepository:
         return record, True
 
     def bulk_upsert(self, records: list[dict]) -> tuple[int, int]:
-        """Upsert multiple records. Returns (created, updated)."""
+        """
+        Upsert multiple records.
+
+            Returns (created, updated).
+
+        Args:
+            records: Records.
+            records: Records.
+
+        """
         created = updated = 0
+
         for rec in records:
             try:
                 _, is_new = self.upsert(rec)
@@ -88,9 +110,17 @@ class CongestionRepository:
         location_label: str | None = None,
     ) -> list[StadiumCongestion]:
         """
-        Gets by game date.
+        Get by game date.
 
         Args:
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+            location_type: Location Type.
+            location_label: Location Label.
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+            location_type: Location Type.
+            location_label: Location Label.
             stadium_code: Stadium Code.
             game_date: Game Date.
 
@@ -117,9 +147,13 @@ class CongestionRepository:
         location_label: str,
     ) -> StadiumCongestion | None:
         """
-        Gets latest.
+        Get latest.
 
         Args:
+            stadium_code: Stadium Code.
+            location_label: Location Label.
+            stadium_code: Stadium Code.
+            location_label: Location Label.
             stadium_code: Stadium Code.
             location_label: Location Label.
 
@@ -145,7 +179,16 @@ class CongestionRepository:
         stadium_code: str,
         game_date: date,
     ) -> StadiumCongestion | None:
-        """Returns the highest congestion record for a given game date."""
+        """
+        Return the highest congestion record for a given game date.
+
+        Args:
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+
+        """
         from sqlalchemy import desc
 
         stmt = (

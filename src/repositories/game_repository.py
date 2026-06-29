@@ -2,6 +2,7 @@
 Repository for saving game details, box scores, and normalized relay data.
 
 Thin facade re-exporting from domain-split modules.
+
 """
 
 from __future__ import annotations

@@ -4,6 +4,7 @@ Ensures the repository root is importable so `import src` works consistently.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# Use a separate test database to avoid corrupting the production DB
+TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
+os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
 
 import logging
 
@@ -37,6 +42,27 @@ if root.handlers:
     root.handlers = [_CurrentStdoutHandler()]
 
 LOCK_DIR = ROOT / "data" / "locks"
+
+
+@pytest.fixture(autouse=True)
+def _clean_test_db():
+    """Remove test database before each test to ensure clean state."""
+    test_db = ROOT / "data" / "test_runtime.db"
+    if test_db.exists():
+        test_db.unlink()
+    # Also clean up WAL/SHM files
+    for suffix in ("-wal", "-shm"):
+        wal_file = ROOT / "data" / f"test_runtime.db{suffix}"
+        if wal_file.exists():
+            wal_file.unlink()
+    yield
+    # Cleanup after test
+    if test_db.exists():
+        test_db.unlink()
+    for suffix in ("-wal", "-shm"):
+        wal_file = ROOT / "data" / f"test_runtime.db{suffix}"
+        if wal_file.exists():
+            wal_file.unlink()
 
 
 @pytest.fixture(autouse=True)

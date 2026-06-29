@@ -36,8 +36,18 @@ class RetiredPlayerListingCrawler:
     """Fetch player ID sets for historical seasons and compute inactive (retired) candidates."""
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+
+        """
         self.request_delay = request_delay
+
         self.pool = pool
         self.hitter_url = HITTER_BASIC1
         self.pitcher_url = PITCHER_BASIC1
@@ -48,8 +58,16 @@ class RetiredPlayerListingCrawler:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
     async def collect_player_ids_for_year(self, season_year: int) -> dict[str, str]:
-        """Collect all player IDs and names (hitters + pitchers) for a given season."""
+        """
+        Collect all player IDs and names (hitters + pitchers) for a given season.
+
+        Args:
+            season_year: Season Year.
+            season_year: Season Year.
+
+        """
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
+
         owns_pool = self.pool is None
         await pool.start()
         try:
@@ -72,6 +90,15 @@ class RetiredPlayerListingCrawler:
         Kept as the stable no-team-filter path used by compatibility tests and
         smaller diagnostics. `collect_player_ids_for_year` uses the broader
         team-aware path for production collection.
+
+        Args:
+            page: Page.
+            base_url: Base URL.
+            year: Season year.
+            page: Page.
+            base_url: Base URL.
+            year: Season year.
+
         """
         if not await compliance.is_allowed(base_url):
             logger.info("[COMPLIANCE] Blocked record listing: %s", base_url)
@@ -102,6 +129,7 @@ class RetiredPlayerListingCrawler:
         await page.evaluate(
             """
             selector => {
+
                 const el = document.querySelector(selector);
                 if (!el) return false;
                 if (el.onchange) {
@@ -116,7 +144,18 @@ class RetiredPlayerListingCrawler:
         )
 
     async def _crawl_record_page_ids_with_teams(self, page: Page, base_url: str, year: int) -> dict[str, str]:
-        """Navigate to record page, select year, and iterate through all teams to collect IDs and names."""
+        """
+        Navigate to record page, select year, and iterate through all teams to collect IDs and names.
+
+        Args:
+            page: Page.
+            base_url: Base URL.
+            year: Season year.
+            page: Page.
+            base_url: Base URL.
+            year: Season year.
+
+        """
         if not await compliance.is_allowed(base_url):
             logger.info("[COMPLIANCE] Blocked record listing: %s", base_url)
             return {}
@@ -221,9 +260,11 @@ class RetiredPlayerListingCrawler:
 
     async def collect_historical_player_ids(self, seasons: Iterable[int]) -> dict[str, str]:
         """
-        Handles the collect historical player ids operation.
+        Handle the collect historical player ids operation.
 
         Args:
+            seasons: Seasons.
+            seasons: Seasons.
             seasons: Seasons.
 
         Returns:
@@ -231,6 +272,7 @@ class RetiredPlayerListingCrawler:
 
         """
         historical_players: dict[str, str] = {}
+
         seasons_list = list(seasons)
         logger.info("🔍 Collecting historical player IDs for %s seasons in parallel...", len(seasons_list))
 
@@ -238,9 +280,11 @@ class RetiredPlayerListingCrawler:
 
         async def fetch_year(season: int) -> dict[str, str]:
             """
-            Fetches year.
+            Fetch year.
 
             Args:
+                season: Season year.
+                season: Season year.
                 season: Season year.
 
             Returns:
@@ -271,7 +315,16 @@ class RetiredPlayerListingCrawler:
         """
         Determine inactive player IDs by diffing historical seasons with active roster.
 
-        Returns ONLY the set of IDs for backward compatibility.
+        Return ONLY the set of IDs for backward compatibility.
+
+        Args:
+            start_year: Start Year.
+            end_year: End Year.
+            active_year: Active Year.
+            start_year: Start Year.
+            end_year: End Year.
+            active_year: Active Year.
+
         """
         if start_year > end_year:
             msg = "start_year must be <= end_year"
@@ -300,7 +353,7 @@ class RetiredPlayerListingCrawler:
 
 
 async def main() -> None:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
     inactive_ids = await crawler.determine_inactive_player_ids(start_year=1982, end_year=2023, active_year=2024)
     logger.info("Inactive player IDs discovered: %s", len(inactive_ids))

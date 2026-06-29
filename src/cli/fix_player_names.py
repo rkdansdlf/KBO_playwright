@@ -5,6 +5,7 @@ Usage:
     python3 -m src.cli.fix_player_names --crawl --save
     python3 -m src.cli.fix_player_names --crawl --save --sync-oci
     python3 -m src.cli.fix_player_names --crawl --save --max-pages 1
+
 """
 
 from __future__ import annotations
@@ -97,13 +98,17 @@ async def fix_player_names(
     sync_oci: bool = False,
 ) -> None:
     """
-    Fixes player names.
+    Fix player names.
 
     Args:
+        max_pages: Max Pages.
+        save: Whether to persist the results.
+        sync_oci: Sync Oci.
         max_pages: Max Pages.
 
     """
     logger.info("=" * 60)
+
     logger.info("Fix Player Names - Re-crawl from KBO Website")
     logger.info("=" * 60)
 
@@ -130,7 +135,7 @@ async def fix_player_names(
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     _configure_cli_logging()
     parser = argparse.ArgumentParser(description="Fix player names by re-crawling from KBO website")
     parser.add_argument("--crawl", action="store_true", help="Crawl players from website")

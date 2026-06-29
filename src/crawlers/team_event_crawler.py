@@ -86,20 +86,35 @@ class TeamEventCrawler:
     """TeamEventCrawler class."""
 
     def __init__(self, days_back: int = 30) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            days_back: Days Back.
+            days_back: Days Back.
+
+        """
         self.days_back = days_back
+
         self.cutoff_date = datetime.now(KST) - timedelta(days=days_back)
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict]:
         """
-        Runs run.
+        Run run.
+
+        Args:
+            save: Whether to persist the results.
+            team_filter: Team Filter.
+            save: Whether to persist the results.
+            team_filter: Team Filter.
 
         Returns:
             List of results.
 
         """
         all_events = []
+
         for team_code, config in TEAM_NEWS_SOURCES.items():
             if team_filter and team_code != team_filter:
                 continue

@@ -29,8 +29,16 @@ logger = logging.getLogger(__name__)
 
 
 def _dictify_rows(rows: Sequence[object], label_lookup: dict[int, str]) -> list[dict]:
-    """Convert ORM rows to dicts and inject player names."""
+    """
+    Convert ORM rows to dicts and inject player names.
+
+    Args:
+        rows: Rows.
+        label_lookup: Label Lookup.
+
+    """
     result = []
+
     for row in rows:
         d = row.__dict__.copy()
         # Ensure we don't accidentally pass SQLAlchemy internal state
@@ -45,7 +53,14 @@ def _dictify_rows(rows: Sequence[object], label_lookup: dict[int, str]) -> list[
 
 
 def _games_played_in_season(session: Session, season: int) -> int:
-    """Return number of completed game-dates in the given season."""
+    """
+    Return number of completed game-dates in the given season.
+
+    Args:
+        session: Session.
+        season: Season year.
+
+    """
     row = session.execute(
         text("""
         SELECT COUNT(DISTINCT game_date) AS played
@@ -71,8 +86,14 @@ def _compute_min_pa(session: Session, season: int) -> int:
 
     완료된 시즌(144경기 이상)은 공식 기준 446 PA 적용.
     진행 중인 시즌은 현재까지의 경기 수 기반으로 완화된 기준 적용.
+
+    Args:
+        session: Session.
+        season: Season year.
+
     """
     games_played = _games_played_in_season(session, season)
+
     if games_played >= _KBO_FULL_SEASON_GAMES:
         return int(_KBO_FULL_SEASON_GAMES * _MIN_PA_PER_GAME)
     return max(int(games_played * _MIN_PA_PER_GAME), _MIN_PA_FLOOR)
@@ -84,8 +105,14 @@ def _compute_min_ip_outs(session: Session, season: int) -> int:
 
     완료된 시즌(144경기 이상)은 공식 기준 432 이닝아웃 적용.
     진행 중인 시즌은 현재까지의 경기 수 기반으로 완화된 기준 적용.
+
+    Args:
+        session: Session.
+        season: Season year.
+
     """
     games_played = _games_played_in_season(session, season)
+
     if games_played >= _KBO_FULL_SEASON_GAMES:
         return int(_KBO_FULL_SEASON_GAMES * _MIN_IP_PER_GAME)
     return max(int(games_played * _MIN_IP_PER_GAME), _MIN_IP_FLOOR)
@@ -93,9 +120,10 @@ def _compute_min_ip_outs(session: Session, season: int) -> int:
 
 def rebuild_rankings(season: int) -> int:
     """
-    Handles the rebuild rankings operation.
+    Handle the rebuild rankings operation.
 
     Args:
+        season: Season year.
         season: Season year.
 
     Returns:
@@ -185,8 +213,15 @@ def rebuild_rankings(season: int) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Rebuild supported stat_rankings")
+
     parser.add_argument("--year", type=int, required=True, help="Season year to rebuild")
     args = parser.parse_args(argv)
 

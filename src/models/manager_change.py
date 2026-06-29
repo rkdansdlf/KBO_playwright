@@ -35,5 +35,5 @@ class ManagerChange(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<ManagerChange(team='{self.team_id}', new='{self.new_manager}', season={self.season})>"

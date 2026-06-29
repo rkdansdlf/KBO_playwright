@@ -167,7 +167,14 @@ def _duplicate_provider_count(events: list[dict[str, Any]], raw_pbp_rows: list[d
 
 
 def derive_play_by_play_rows_from_events(events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Deterministically project normalized game_events into lightweight play_by_play rows."""
+    """
+    Deterministically project normalized game_events into lightweight play_by_play rows.
+
+    Args:
+        events: Events.
+        events: Events.
+
+    """
     return [event_to_pbp_row(event) for event in events]
 
 
@@ -179,8 +186,14 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
     (inning, inning_half, batter_name, pitcher_name, play_description,
     event_type, result). Newer fields like at_bat_seq, balls, strikes,
     player_id, resolver_*, and provider_log_id are NOT populated.
+
+    Args:
+        game_id: Game ID.
+        game_id: Game ID.
+
     """
     game_id, _ = _canonicalize_game_id(game_id)
+
     if not game_id:
         return 0
     with SessionLocal() as session:
@@ -241,6 +254,13 @@ def backfill_missing_game_stubs_for_relays(
 
     This repairs local integrity when historical backfills inserted `game_events`
     or `game_play_by_play` before the corresponding `game` row existed.
+
+    Args:
+        seasons: Seasons.
+        sync_to_oci: Sync To Oci.
+        seasons: Seasons.
+        sync_to_oci: Sync To Oci.
+
     """
     season_prefixes = {str(season) for season in (seasons or []) if season}
 
@@ -286,8 +306,24 @@ def mark_relay_source_unavailable(
     evidence: dict[str, Any] | None = None,
     sync_to_oci: bool = False,
 ) -> bool:
-    """Mark a completed game as explainably unrecoverable from public relay sources."""
+    """
+    Mark a completed game as explainably unrecoverable from public relay sources.
+
+    Args:
+        game_id: Game ID.
+        reason: Reason.
+        source_name: Source Name.
+        evidence: Evidence.
+        sync_to_oci: Sync To Oci.
+        game_id: Game ID.
+        reason: Reason.
+        source_name: Source Name.
+        evidence: Evidence.
+        sync_to_oci: Sync To Oci.
+
+    """
     game_id, original_game_id = _canonicalize_game_id(game_id)
+
     if not game_id:
         return False
     with SessionLocal() as session:
@@ -428,8 +464,16 @@ def repair_game_parent_from_existing_children(
     Historical backfills sometimes inserted box-score children before the parent
     `game` row. If those children exist, they are more authoritative than a
     later lightweight crawler miss/cancel signal.
+
+    Args:
+        game_id: Game ID.
+        sync_to_oci: Sync To Oci.
+        game_id: Game ID.
+        sync_to_oci: Sync To Oci.
+
     """
     game_id, original_game_id = _canonicalize_game_id(game_id)
+
     if not game_id:
         return False
 
@@ -473,9 +517,11 @@ class _RelayResolutionContext:
 
     def offense_team(self, half: str | None) -> str | None:
         """
-        Handles the offense team operation.
+        Handle the offense team operation.
 
         Args:
+            half: Half.
+            half: Half.
             half: Half.
 
         Returns:
@@ -490,9 +536,11 @@ class _RelayResolutionContext:
 
     def defense_team(self, half: str | None) -> str | None:
         """
-        Handles the defense team operation.
+        Handle the defense team operation.
 
         Args:
+            half: Half.
+            half: Half.
             half: Half.
 
         Returns:
@@ -513,9 +561,15 @@ class _RelayResolutionContext:
         is_pitcher: bool | None = None,
     ) -> tuple[int | None, str | None, str | None]:
         """
-        Resolves participant.
+        Resolve participant.
 
         Args:
+            name: Name.
+            team_code: Team Code.
+            is_pitcher: Is Pitcher.
+            name: Name.
+            team_code: Team Code.
+            is_pitcher: Is Pitcher.
             name: Name.
             team_code: Team Code.
 
@@ -998,8 +1052,22 @@ def save_relay_data(
     - When normalized events have enough state, persist both game_events and game_play_by_play.
     - When only lightweight play-by-play rows exist, persist game_play_by_play only.
     - Never synthesize game_events if WPA/state coverage is insufficient.
+
+    Args:
+        game_id: Game ID.
+        events: Events.
+        raw_pbp_rows: Raw Pbp Rows.
+        options: Options.
+        overrides: Overrides.
+        game_id: Game ID.
+        events: Events.
+        raw_pbp_rows: Raw Pbp Rows.
+        options: Options.
+        overrides: Overrides.
+
     """
     opts: RelaySaveOptions = options if options is not None else RelaySaveOptions(**overrides)
+
     game_id, original_game_id = _canonicalize_game_id(game_id)
     if not game_id:
         return 0

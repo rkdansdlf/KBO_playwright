@@ -13,14 +13,21 @@ def parse_status_from_text(text: str) -> tuple[str, str | None] | None:
     Inspect raw profile text and return (status, staff_role) if a profile label is found.
 
     status: 'staff' or 'retired'; staff_role is lower-case string (manager/coach/staff/None).
+
+    Args:
+        text: Text.
+        text: Text.
+
     """
     lowered = text.lower()
 
     def contains(keywords: tuple[str, ...]) -> bool:
         """
-        Handles the contains operation.
+        Handle the contains operation.
 
         Args:
+            keywords: Keywords.
+            keywords: Keywords.
             keywords: Keywords.
 
         Returns:

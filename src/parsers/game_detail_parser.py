@@ -26,9 +26,17 @@ def parse_game_detail_html(
     db_session: Session | None = None,
 ) -> dict[str, Any]:
     """
-    Parses game detail html.
+    Parse game detail html.
 
     Args:
+        html: Html.
+        game_id: Game ID.
+        game_date: Game Date.
+        db_session: Db Session.
+        html: Html.
+        game_id: Game ID.
+        game_date: Game Date.
+        db_session: Db Session.
         html: Html.
         game_id: Game ID.
         game_date: Game Date.
@@ -39,6 +47,7 @@ def parse_game_detail_html(
 
     """
     soup = BeautifulSoup(html, "html.parser")
+
     dataframes = pd.read_html(StringIO(html))
 
     scoreboard_df = _extract_scoreboard(dataframes)
@@ -122,14 +131,19 @@ def _build_team_info(
 
         def parse_row(row: pd.Series, info: dict[str, Any]) -> None:
             """
-            Parses row.
+            Parse row.
 
             Args:
+                row: Row.
+                info: Info.
+                row: Row.
+                info: Info.
                 row: Row.
                 info: Info.
 
             """
             name = str(row.get("팀", "")).strip()
+
             if name:
                 info["name"] = name
                 resolved = resolve_team_code(name)
@@ -371,6 +385,15 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
     Fallback resolution of player_id via name and team search.
 
     Useful for exhibition games where IDs are missing from the HTML.
+
+    Args:
+        db_session: Db Session.
+        player_name: Player Name.
+        team_code: Team Code.
+        db_session: Db Session.
+        player_name: Player Name.
+        team_code: Team Code.
+
     """
     if not db_session or not player_name:
         return None
@@ -404,7 +427,7 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
         if not rows:
             return None
         if len(rows) == 1:
-            return rows[0][0]  # type: ignore[no-any-return]
+            return rows[0][0]
 
         # If multiple, try to find a team match
         # This is a heuristic - KBO team names in player_basic vary (e.g. '한화 이글스')
@@ -416,10 +439,10 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
             if not r_team:
                 continue
             if k_name and k_name in r_team:
-                return r_id  # type: ignore[no-any-return]
+                return r_id
 
         # Last resort: just return first if we have to, but better to be safe
-        return rows[0][0]  # type: ignore[no-any-return]
+        return rows[0][0]
     except SQLAlchemyError:
         return None
 

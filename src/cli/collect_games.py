@@ -39,15 +39,21 @@ async def collect_games(
     concurrency: int | None = None,
 ) -> None:
     """
-    Handles the collect games operation.
+    Handle the collect games operation.
 
     Args:
+        year: Season year.
+        month: Month.
+        game_ids: Game Ids.
+        force: If True, forces the operation even if data already exists.
+        concurrency: Maximum number of concurrent requests.
         year: Season year.
         month: Month number (1-12).
         game_ids: Game Ids.
 
     """
     targets = load_game_targets_by_ids(game_ids) if game_ids else load_game_targets_from_db(year, month)
+
     logger.info(
         "Target: %s games%s",
         len(targets),
@@ -94,7 +100,13 @@ async def collect_games(
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Collect game details and direct Naver relay fallback rows. "

@@ -17,8 +17,16 @@ class RecoveryManager:
     """RecoveryManager class."""
 
     def __init__(self, checkpoint_path: str = "data/recovery/healer_checkpoint.json") -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            checkpoint_path: Checkpoint file path.
+            checkpoint_path: Checkpoint file path.
+
+        """
         self.path = Path(checkpoint_path)
+
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.state: dict[str, Any] = {
             "run_id": None,
@@ -72,9 +80,15 @@ class RecoveryManager:
         now: datetime | None = None,
     ) -> list[str]:
         """
-        Gets due detail recovery targets.
+        Get due detail recovery targets.
 
         Args:
+            target_date: Target date for the operation.
+            cooldown_minutes: Cooldown Minutes.
+            now: Now.
+            target_date: Target date for the operation.
+            cooldown_minutes: Cooldown Minutes.
+            now: Now.
             target_date: Target Date.
 
         Returns:
@@ -82,6 +96,7 @@ class RecoveryManager:
 
         """
         queue = self._get_detail_recovery_queue()
+
         if not queue:
             return []
 
@@ -109,14 +124,19 @@ class RecoveryManager:
 
     def mark_detail_recovery_success(self, target_date: str, game_id: str) -> None:
         """
-        Handles the mark detail recovery success operation.
+        Handle the mark detail recovery success operation.
 
         Args:
+            target_date: Target date for the operation.
+            game_id: Game ID.
+            target_date: Target date for the operation.
+            game_id: Game ID.
             target_date: Target Date.
             game_id: Game ID.
 
         """
         queue = self._get_detail_recovery_queue()
+
         key = self._detail_queue_key(target_date, game_id)
         if key in queue:
             queue.pop(key, None)
@@ -130,14 +150,21 @@ class RecoveryManager:
         failure_reason: str | None = None,
     ) -> None:
         """
-        Handles the mark detail recovery failure operation.
+        Handle the mark detail recovery failure operation.
 
         Args:
+            target_date: Target date for the operation.
+            game_id: Game ID.
+            failure_reason: Failure Reason.
+            target_date: Target date for the operation.
+            game_id: Game ID.
+            failure_reason: Failure Reason.
             target_date: Target Date.
             game_id: Game ID.
 
         """
         queue = self._get_detail_recovery_queue()
+
         key = self._detail_queue_key(target_date, game_id)
         existing = queue.get(key)
         if not isinstance(existing, dict):
@@ -154,8 +181,16 @@ class RecoveryManager:
         self.save()
 
     def purge_detail_recovery_queue(self, *, max_age_days: int = 7) -> None:
-        """Purges detail recovery queue."""
+        """
+        Purge detail recovery queue.
+
+        Args:
+            max_age_days: Max Age Days.
+            max_age_days: Max Age Days.
+
+        """
         queue = self._get_detail_recovery_queue()
+
         if not queue:
             return
 
@@ -179,7 +214,7 @@ class RecoveryManager:
             self.save()
 
     def load(self) -> None:
-        """Loads load."""
+        """Load load."""
         if self.path.exists():
             try:
                 with self.path.open(encoding="utf-8") as f:
@@ -188,16 +223,20 @@ class RecoveryManager:
                 logger.debug("No existing recovery state at %s", self.path)
 
     def save(self) -> None:
-        """Saves save."""
+        """Save save."""
         with self.path.open("w", encoding="utf-8") as f:
             json.dump(self.state, f, indent=2, ensure_ascii=False)
 
     def initialize_run(self, run_id: str, targets: list[str]) -> None:
         # If it's a new run ID, reset everything
         """
-        Initializes initialize run.
+        Initialize initialize run.
 
         Args:
+            run_id: Run ID.
+            targets: Targets.
+            run_id: Run ID.
+            targets: Targets.
             run_id: Run ID.
             targets: Targets.
 
@@ -216,9 +255,11 @@ class RecoveryManager:
 
     def mark_completed(self, game_id: str) -> None:
         """
-        Handles the mark completed operation.
+        Handle the mark completed operation.
 
         Args:
+            game_id: Game ID.
+            game_id: Game ID.
             game_id: Game ID.
 
         """
@@ -230,21 +271,26 @@ class RecoveryManager:
 
     def mark_failed(self, game_id: str, reason: str) -> None:
         """
-        Handles the mark failed operation.
+        Handle the mark failed operation.
 
         Args:
+            game_id: Game ID.
+            reason: Reason.
+            game_id: Game ID.
+            reason: Reason.
             game_id: Game ID.
             reason: Reason.
 
         """
         self.state["failed"][game_id] = reason
+
         if game_id in self.state["pending"]:
             self.state["pending"].remove(game_id)
         self.save()
 
     def get_pending_targets(self) -> list[str]:
         """
-        Gets pending targets.
+        Get pending targets.
 
         Returns:
             List of results.
@@ -253,7 +299,7 @@ class RecoveryManager:
         return self.state.get("pending", [])
 
     def clear(self) -> None:
-        """Clears clear."""
+        """Clear clear."""
         if self.path.exists():
             self.path.unlink()
         self.state = {

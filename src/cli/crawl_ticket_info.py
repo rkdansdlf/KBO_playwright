@@ -14,33 +14,43 @@ if TYPE_CHECKING:
 
 async def run(args: argparse.Namespace) -> None:
     """
-    Runs run.
+    Run run.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     """
     crawler = TicketCrawler()
+
     await crawler.run(save=args.save, season=args.season)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="KBO ticket info crawler")
+
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument("--season", type=int, default=None, help="Season year (default: current)")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     asyncio.run(run(args))
 

@@ -1,6 +1,7 @@
 """
 KBO PBP (Relay) Crawler - Powered by Naver Sports API
-Fetches play-by-play data from Naver Sports API instead of KBO website due to access restrictions.
+Fetch play-by-play data from Naver Sports API instead of KBO website due to access restrictions.
+
 """
 
 from __future__ import annotations
@@ -44,8 +45,16 @@ class _PermanentStatusError(Exception):
     """Raised when the HTTP response indicates a permanent (non-retryable) error."""
 
     def __init__(self, status_code: int) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            status_code: Status Code.
+            status_code: Status Code.
+
+        """
         self.status_code = status_code
+
         super().__init__(f"permanent_http_{status_code}")
 
 
@@ -157,8 +166,20 @@ class RelayCrawler:
         policy: RequestPolicy | None = None,
         _pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        """Pool is retained for backward compatibility with GameDetailCrawler but is unused."""
+        """
+        Pool is retained for backward compatibility with GameDetailCrawler but is unused.
+
+        Args:
+            request_delay: Request Delay.
+            policy: Policy.
+            _pool: Connection pool for async operations.
+            request_delay: Request Delay.
+            policy: Policy.
+            _pool: Connection pool for async operations.
+
+        """
         self.api_base_url = "https://api-gw.sports.naver.com/schedule/games/{game_id}/relay"
+
         self.wpa_calc = WPACalculator()
         self.headers = {
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1",
@@ -174,9 +195,11 @@ class RelayCrawler:
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
         """
-        Gets last failure reason.
+        Get last failure reason.
 
         Args:
+            game_id: Game ID.
+            game_id: Game ID.
             game_id: Game ID.
 
         Returns:
@@ -194,12 +217,27 @@ class RelayCrawler:
         """API-based crawler doesn't need explicit resource release for now."""
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """Backward-compatible alias used by older CLI entrypoints."""
+        """
+        Backward-compatible alias used by older CLI entrypoints.
+
+        Args:
+            game_id: Game ID.
+            game_id: Game ID.
+
+        """
         return await self.crawl_game_relay(game_id)
 
     def _map_to_naver_id(self, kbo_game_id: str) -> str:
-        """Convert KBO game ID (e.g., 20260412SKLG0) to Naver ID (e.g., 20260412SKLG02026)."""
+        """
+        Convert KBO game ID (e.g., 20260412SKLG0) to Naver ID (e.g., 20260412SKLG02026).
+
+        Args:
+            kbo_game_id: Kbo Game ID.
+            kbo_game_id: Kbo Game ID.
+
+        """
         year = kbo_game_id[:4]
+
         return f"{kbo_game_id}{year}"
 
     def _schedule_query_context(
@@ -366,9 +404,11 @@ class RelayCrawler:
     ) -> int:
         def is_dh_truthy(v: object) -> bool:
             """
-            Returns whether the dh truthy.
+            Return whether the dh truthy.
 
             Args:
+                v: V.
+                v: V.
                 v: V.
 
             Returns:
@@ -455,7 +495,22 @@ class RelayCrawler:
         stadium: str | None = None,
         game_time: str | None = None,
     ) -> dict[str, Any] | None:
-        """Match a KBO game ID to a Naver schedule game object using a scoring system."""
+        """
+        Match a KBO game ID to a Naver schedule game object using a scoring system.
+
+        Args:
+            kbo_game_id: Kbo Game ID.
+            games: Games.
+            allow_team_fallback: Allow Team Fallback.
+            stadium: Stadium.
+            game_time: Game Time.
+            kbo_game_id: Kbo Game ID.
+            games: Games.
+            allow_team_fallback: Allow Team Fallback.
+            stadium: Stadium.
+            game_time: Game Time.
+
+        """
         game_date_str, away_code, home_code, dh_no, season_year = self._expected_match_values(kbo_game_id)
 
         exact_suffix = f"{game_date_str[4:8]}{away_code}{home_code}{dh_no}{season_year}"
@@ -542,7 +597,16 @@ class RelayCrawler:
         return best_game
 
     def _is_team_in_id(self, team_code: str, game_id: str) -> bool:
-        """Check if a team code (modern or legacy) is present in the game ID string."""
+        """
+        Check if a team code (modern or legacy) is present in the game ID string.
+
+        Args:
+            team_code: Team Code.
+            game_id: Game ID.
+            team_code: Team Code.
+            game_id: Game ID.
+
+        """
         if team_code in game_id:
             return True
         # Check for legacy equivalents commonly found in Naver IDs
@@ -630,9 +694,15 @@ class RelayCrawler:
         game_time: str | None = None,
     ) -> dict[str, Any] | None:
         """
-        Crawls game relay.
+        Crawl game relay.
 
         Args:
+            kbo_game_id: Kbo Game ID.
+            stadium: Stadium.
+            game_time: Game Time.
+            kbo_game_id: Kbo Game ID.
+            stadium: Stadium.
+            game_time: Game Time.
             kbo_game_id: Kbo Game ID.
             stadium: Stadium.
             game_time: Game Time.
@@ -642,6 +712,7 @@ class RelayCrawler:
 
         """
         kbo_game_id = normalize_kbo_game_id(kbo_game_id)
+
         self._last_failure_reason.pop(kbo_game_id, None)
         self.last_failure_reason = None
         self.last_resolved_naver_game_id = None
@@ -1202,8 +1273,18 @@ def _pbp_rows_to_legacy_innings(rows: list[dict[str, Any]]) -> list[dict[str, An
 
 
 async def fetch_and_parse_relay(game_id: str, game_date: str | None = None) -> dict[str, Any] | None:
-    """Compatibility helper for older tests and scripts that expect inning-grouped output."""
+    """
+    Compatibility helper for older tests and scripts that expect inning-grouped output.
+
+    Args:
+        game_id: Game ID.
+        game_date: Game Date.
+        game_id: Game ID.
+        game_date: Game Date.
+
+    """
     crawler = RelayCrawler()
+
     result = await crawler.crawl_game_relay(game_id)
     if not result:
         return None

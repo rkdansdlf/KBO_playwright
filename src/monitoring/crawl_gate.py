@@ -2,6 +2,7 @@
 Crawl gate: enforce data freshness and quality before allowing pipeline to proceed.
 
 Can be used as a blocking gate or non-blocking alert.
+
 """
 
 from __future__ import annotations
@@ -20,16 +21,28 @@ class CrawlGate:
     """CrawlGate class."""
 
     def __init__(self, session: Session, *, enforce: bool = False) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            enforce: Enforce.
+            session: Session.
+            enforce: Enforce.
+
+        """
         self.session = session
+
         self.enforce = enforce
         self.issues: list[str] = []
 
     def check_freshness(self, target_date: str) -> bool:
         """
-        Checks freshness.
+        Check freshness.
 
         Args:
+            target_date: Target date for the operation.
+            target_date: Target date for the operation.
             target_date: Target Date.
 
         Returns:
@@ -38,7 +51,7 @@ class CrawlGate:
         """
         from src.cli.freshness_gate import collect_freshness_issues
 
-        issues = collect_freshness_issues(self.session, target_date)
+        issues = collect_freshness_issues(self.session, target_date=target_date)
         if issues:
             for game_id, issue_list in issues.items():
                 for issue in issue_list:
@@ -49,9 +62,11 @@ class CrawlGate:
 
     def check_game_completion_rate(self, target_date: str) -> bool:
         """
-        Checks game completion rate.
+        Check game completion rate.
 
         Args:
+            target_date: Target date for the operation.
+            target_date: Target date for the operation.
             target_date: Target Date.
 
         Returns:
@@ -79,18 +94,22 @@ class CrawlGate:
 
     def check_standings_integrity(self, target_date: str) -> bool:
         """
-        Checks standings integrity.
+        Check standings integrity.
 
         Args:
+            target_date: Target date for the operation.
+            target_date: Target date for the operation.
             target_date: Target Date.
 
         Returns:
             True if successful, False otherwise.
 
         """
+        from src.utils.date_helpers import parse_date_str
         from src.validators.standings_integrity import validate_standings_integrity
 
-        result = validate_standings_integrity(self.session, target_date)
+        parsed_date = parse_date_str(target_date) if isinstance(target_date, str) else target_date
+        result = validate_standings_integrity(self.session, parsed_date)
         if not result.get("ok", False):
             mismatches = result.get("mismatches", [])
             missing_games = result.get("missing_score_games", [])
@@ -107,9 +126,11 @@ class CrawlGate:
 
     def run_all_checks(self, target_date: str) -> bool:
         """
-        Runs all checks.
+        Run all checks.
 
         Args:
+            target_date: Target date for the operation.
+            target_date: Target date for the operation.
             target_date: Target Date.
 
         Returns:
@@ -117,6 +138,7 @@ class CrawlGate:
 
         """
         logger.info("\n%s", "=" * 50)
+
         logger.info("  CrawlGate: Checking %s", target_date)
         logger.info("%s", "=" * 50)
 

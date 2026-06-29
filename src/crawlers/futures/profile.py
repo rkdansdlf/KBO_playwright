@@ -28,8 +28,16 @@ class FuturesProfileCrawler:
     pitcher_profile_url = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+
+        """
         self.request_delay = request_delay
+
         self.pool = pool
 
     async def _wait(self) -> None:
@@ -38,8 +46,15 @@ class FuturesProfileCrawler:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
     async def fetch_player_futures(self, player_id: str) -> dict[str, Any]:
-        """Fetch futures profile data (tables + profile text) for a player."""
+        """
+        Fetch futures profile data (tables + profile text) for a player.
+
+        Args:
+            player_id: Player ID.
+
+        """
         pool = self.pool or AsyncPlaywrightPool(max_pages=1, context_kwargs={"locale": "ko-KR"})
+
         owns_pool = self.pool is None
         await pool.start()
         try:
@@ -178,7 +193,13 @@ class FuturesProfileCrawler:
         return tables
 
     def _parse_table_with_bs4(self, table_elem: Tag) -> dict[str, Any] | None:
-        """Parse a table element using BeautifulSoup for proper Korean encoding."""
+        """
+        Parse a table element using BeautifulSoup for proper Korean encoding.
+
+        Args:
+            table_elem: Table Elem.
+
+        """
         try:
             # Extract caption
             caption_elem = table_elem.find("caption")
@@ -219,7 +240,7 @@ class FuturesProfileCrawler:
 
 
 async def main() -> None:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     crawler = FuturesProfileCrawler()
     sample_id = "78137"
     payload = await crawler.fetch_player_futures(sample_id)

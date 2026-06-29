@@ -79,8 +79,18 @@ def _compute_pitching_rates(stats: PitchingStats) -> dict[str, float]:
 
 
 def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any]]:
-    """Aggregate GameBattingStat rows into a single PlayerGameBatting row per player for a game."""
+    """
+    Aggregate GameBattingStat rows into a single PlayerGameBatting row per player for a game.
+
+    Args:
+        session: Session.
+        game_id: Game ID.
+        session: Session.
+        game_id: Game ID.
+
+    """
     game = session.query(Game).filter(Game.game_id == game_id).first()
+
     if not game or game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
         return []
 
@@ -152,8 +162,18 @@ def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any
 
 
 def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, Any]]:
-    """Aggregate GamePitchingStat rows into a single PlayerGamePitching row per player for a game."""
+    """
+    Aggregate GamePitchingStat rows into a single PlayerGamePitching row per player for a game.
+
+    Args:
+        session: Session.
+        game_id: Game ID.
+        session: Session.
+        game_id: Game ID.
+
+    """
     game = session.query(Game).filter(Game.game_id == game_id).first()
+
     if not game or game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
         return []
 
@@ -278,9 +298,13 @@ def _group_pitching_by_game_player(rows: list[GamePitchingStat]) -> dict[tuple[s
 
 def aggregate_game_batting_batch(session: Session, game_ids: list[str]) -> list[dict[str, Any]]:
     """
-    Aggregates game batting batch.
+    Aggregate game batting batch.
 
     Args:
+        session: Session.
+        game_ids: Game Ids.
+        session: Session.
+        game_ids: Game Ids.
         session: Session.
         game_ids: Game Ids.
 
@@ -323,9 +347,13 @@ def aggregate_game_batting_batch(session: Session, game_ids: list[str]) -> list[
 
 def aggregate_game_pitching_batch(session: Session, game_ids: list[str]) -> list[dict[str, Any]]:
     """
-    Aggregates game pitching batch.
+    Aggregate game pitching batch.
 
     Args:
+        session: Session.
+        game_ids: Game Ids.
+        session: Session.
+        game_ids: Game Ids.
         session: Session.
         game_ids: Game Ids.
 
@@ -393,9 +421,13 @@ def _upsert_bulk(
 
 def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
     """
-    Inserts or updates player game batting.
+    Insert or updates player game batting.
 
     Args:
+        session: Session.
+        records: Records.
+        session: Session.
+        records: Records.
         session: Session.
         records: Records.
 
@@ -404,15 +436,20 @@ def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) 
 
     """
     count = _upsert_bulk(session, PlayerGameBatting, records)
+
     session.commit()
     return count
 
 
 def upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
     """
-    Inserts or updates player game pitching.
+    Insert or updates player game pitching.
 
     Args:
+        session: Session.
+        records: Records.
+        session: Session.
+        records: Records.
         session: Session.
         records: Records.
 
@@ -421,15 +458,20 @@ def upsert_player_game_pitching(session: Session, records: list[dict[str, Any]])
 
     """
     count = _upsert_bulk(session, PlayerGamePitching, records)
+
     session.commit()
     return count
 
 
 def bulk_upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
     """
-    Inserts or updates bulk player game batting.
+    Insert or updates bulk player game batting.
 
     Args:
+        session: Session.
+        records: Records.
+        session: Session.
+        records: Records.
         session: Session.
         records: Records.
 
@@ -442,9 +484,13 @@ def bulk_upsert_player_game_batting(session: Session, records: list[dict[str, An
 
 def bulk_upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
     """
-    Inserts or updates bulk player game pitching.
+    Insert or updates bulk player game pitching.
 
     Args:
+        session: Session.
+        records: Records.
+        session: Session.
+        records: Records.
         session: Session.
         records: Records.
 

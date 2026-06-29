@@ -1,8 +1,9 @@
 """
 Park Factor calculator for KBO stadiums.
 
-Calculates run factor (PF) and home run factor (HRF) per stadium per season.
+Calculate run factor (PF) and home run factor (HRF) per stadium per season.
 Formula: (RS + RA)_home / (RS + RA)_away  (standardized to 1.00 = neutral).
+
 """
 
 from __future__ import annotations
@@ -26,14 +27,21 @@ class ParkFactorCalculator:
     """ParkFactorCalculator class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+
+        """
         self.session = session
 
     def calculate(self, year: int) -> list[dict]:
         """
-        Calculates calculate.
+        Calculate calculate.
 
         Args:
+            year: Season year.
             year: Season year.
 
         Returns:
@@ -121,13 +129,15 @@ class ParkFactorCalculator:
 
     def print_report(self, year: int) -> None:
         """
-        Prints print report.
+        Print print report.
 
         Args:
+            year: Season year.
             year: Season year.
 
         """
         results = self.calculate(year)
+
         if not results:
             return
 

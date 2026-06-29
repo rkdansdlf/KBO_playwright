@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 """
 Futures League Batting Stats Crawler
+
 Fetches year-by-year Futures batting statistics from player profile pages.
+
 """
 
 import asyncio
@@ -69,14 +71,28 @@ HEADER_MAP = {
 
 
 def _norm_header(txt: str) -> str:
-    """Normalize header text to standard key."""
+    """
+    Normalize header text to standard key.
+
+    Args:
+        txt: Txt.
+
+    """
     t = re.sub(r"\s+", "", txt).lower()
+
     return HEADER_MAP.get(t, txt.strip())
 
 
 def _compute_missing(row: dict) -> dict[str, Any]:
-    """Compute missing derived stats (SLG, OBP) if possible."""
+    """
+    Compute missing derived stats (SLG, OBP) if possible.
+
+    Args:
+        row: Row.
+
+    """
     H = row.get("H")
+
     _2B = row.get("2B")
     _3B = row.get("3B")
     HR = row.get("HR")
@@ -143,8 +159,13 @@ def _pick_futures_table(soup: BeautifulSoup) -> Tag | None:
     Find the Futures stats table safely:
     1. Look for table near '퓨처스' label
     2. Fallback: find table with season, AVG, OBP, SLG headers.
+
+    Args:
+        soup: Soup.
+
     """
     # Method 1: Find '퓨처스' label and get next table
+
     label = soup.find(
         lambda tag: tag.name in ["h2", "h3", "h4", "button", "a", "li", "span"] and "퓨처스" in tag.get_text(),
     )
@@ -173,6 +194,9 @@ async def fetch_and_parse_futures_batting(
     Fetch Futures batting stats from player profile page.
 
     Args:
+        _player_id: Player ID.
+        profile_url: Profile URL.
+        pool: Connection pool for async operations.
         player_id: KBO player ID (string)
         profile_url: Full URL to player profile page
 
@@ -181,6 +205,7 @@ async def fetch_and_parse_futures_batting(
 
     """
     active_pool = pool or AsyncPlaywrightPool(max_pages=1, context_kwargs={"locale": "ko-KR"})
+
     owns_pool = pool is None
     await active_pool.start()
     try:

@@ -13,6 +13,7 @@ Primary data sources:
 
 Environment variables:
     SEOUL_OPEN_DATA_API_KEY  — 서울 열린데이터광장 API 인증키
+
 """
 
 from __future__ import annotations
@@ -62,8 +63,14 @@ async def get_area_congestion(area_name: str) -> CongestionSnapshot | None:
     Fetch real-time congestion for a specific Seoul area from the Seoul Open Data API.
 
     The API returns congestion_lvl (여유/보통/약간 붐빔/붐빔) and area_ppltn_max/min.
+
+    Args:
+        area_name: Area Name.
+        area_name: Area Name.
+
     """
     api_key = os.getenv("SEOUL_OPEN_DATA_API_KEY", "")
+
     if not api_key:
         logger.warning("[SeoulAPI] SEOUL_OPEN_DATA_API_KEY not set")
         return None

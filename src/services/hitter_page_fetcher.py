@@ -13,6 +13,7 @@ to render all tables — Playwright is required to extract them.
 This module provides both:
 1. HTTP-based fetch + parse (for modern games)
 2. Pure parse function that accepts rendered HTML (for Playwright-based usage)
+
 """
 
 from __future__ import annotations
@@ -53,14 +54,30 @@ def build_hitter_url(game_id: str, game_date: str) -> str:
     Build the HITTER section URL for a KBO game.
 
     game_date should be in YYYY-MM-DD or YYYYMMDD format.
+
+    Args:
+        game_id: Game ID.
+        game_date: Game Date.
+        game_id: Game ID.
+        game_date: Game Date.
+
     """
     date_compact = game_date.replace("-", "")
+
     return f"{KBO_GAME_CENTER_URL}?gameDate={date_compact}&gameId={game_id}&section=HITTER"
 
 
 def _get_column_index_map(table_tag: BeautifulSoup) -> dict[str, int]:
-    """Map column header text to cell index for a stats table."""
+    """
+    Map column header text to cell index for a stats table.
+
+    Args:
+        table_tag: Table Tag.
+        table_tag: Table Tag.
+
+    """
     header_row = table_tag.select_one("thead tr")
+
     if not header_row:
         return {}
     headers = header_row.find_all("th")
@@ -71,9 +88,15 @@ def parse_hitter_sh_sf(html: str, game_id: str) -> dict[int | str, dict[str, int
     """
     Parse SH/SF values from HITTER section HTML.
 
-    Reads lineup tables (tblAwayHitter1 / tblHomeHitter1) for player IDs
+    Read lineup tables (tblAwayHitter1 / tblHomeHitter1) for player IDs
     and stat tables (tblAwayHitter3 / tblHomeHitter3) for 희타/희비 columns.
     Matches by row index.
+
+    Args:
+        html: Html.
+        game_id: Game ID.
+        html: Html.
+        game_id: Game ID.
 
     Returns:
         dict mapping player_id (int) or player_name (str, fallback)
@@ -81,6 +104,7 @@ def parse_hitter_sh_sf(html: str, game_id: str) -> dict[int | str, dict[str, int
 
     """
     soup = BeautifulSoup(html, "html.parser")
+
     result: dict[int | str, dict[str, int]] = {}
 
     for side_prefix in ("Away", "Home"):
@@ -149,9 +173,19 @@ def fetch_hitter_page_sync(
     """
     Fetch HITTER section HTML synchronously.
 
-    Returns the raw HTML string, or None on failure.
+    Return the raw HTML string, or None on failure.
+
+    Args:
+        game_id: Game ID.
+        game_date: Game Date.
+        client: Client.
+        game_id: Game ID.
+        game_date: Game Date.
+        client: Client.
+
     """
     url = build_hitter_url(game_id, game_date)
+
     try:
         if client is not None:
             response = client.get(url)
@@ -177,8 +211,20 @@ def fetch_and_parse_hitter_sh_sf(
     game_date: str,
     client: httpx.Client | None = None,
 ) -> dict[int | str, dict[str, int]]:
-    """Convenience: fetch HITTER page and parse SH/SF in one call."""
+    """
+    Fetch HITTER page and parse SH/SF in one call.
+
+    Args:
+        game_id: Game ID.
+        game_date: Game Date.
+        client: Client.
+        game_id: Game ID.
+        game_date: Game Date.
+        client: Client.
+
+    """
     html = fetch_hitter_page_sync(game_id, game_date, client=client)
+
     if not html:
         return {}
     return parse_hitter_sh_sf(html, game_id)
@@ -193,9 +239,21 @@ def derive_sh_sf_from_hitter_page(
     """
     Derive SH/SF from HITTER page and update game_batting_stats in-place.
 
-    Returns number of updated rows.
+    Return number of updated rows.
+
+    Args:
+        session: Session.
+        game_id: Game ID.
+        game_date: Game Date.
+        client: Client.
+        session: Session.
+        game_id: Game ID.
+        game_date: Game Date.
+        client: Client.
+
     """
     hitter_sh_sf = fetch_and_parse_hitter_sh_sf(game_id, game_date, client=client)
+
     if not hitter_sh_sf:
         return 0
 
@@ -251,6 +309,16 @@ def derive_sh_sf_hybrid(
     Hybrid derivation: try PBP first, fall back to HITTER page.
 
     Args:
+        session: Session.
+        game_id: Game ID.
+        game_date: Game Date.
+        client: Client.
+        pbp_delay: Pbp Delay.
+        session: Session.
+        game_id: Game ID.
+        game_date: Game Date.
+        client: Client.
+        pbp_delay: Pbp Delay.
         session: SQLAlchemy session
         game_id: KBO game ID
         game_date: Game date in YYYY-MM-DD or YYYYMMDD format

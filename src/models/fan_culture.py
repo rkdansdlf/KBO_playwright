@@ -27,7 +27,7 @@ class TeamRivalry(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("team_id_a", "team_id_b", name="uq_team_rivalry"),)
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<TeamRivalry(a='{self.team_id_a}', b='{self.team_id_b}', name='{self.rivalry_name}')>"
 
 
@@ -57,7 +57,7 @@ class CheerSong(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<CheerSong(team='{self.team_id}', name='{self.song_name}', type='{self.song_type}')>"
 
 
@@ -82,5 +82,5 @@ class CheerChant(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<CheerChant(team='{self.team_id}', chant='{self.chant_text[:30]}...')>"

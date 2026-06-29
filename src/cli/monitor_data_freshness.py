@@ -51,13 +51,17 @@ def _get_stale_threshold_hours(source: DataSource) -> int:
 
 def check_freshness(*, dry_run: bool = False) -> list[str]:
     """
-    Checks freshness.
+    Check freshness.
+
+    Args:
+        dry_run: If True, performs a dry run without persisting changes.
 
     Returns:
         List of results.
 
     """
     alerts = []
+
     with SessionLocal() as session:
         ds_repo = DataSourceRepository(session)
         all_active = ds_repo.get_all_active()
@@ -88,13 +92,17 @@ def check_freshness(*, dry_run: bool = False) -> list[str]:
 
 def check_table_completeness(*, dry_run: bool = False) -> list[str]:
     """
-    Checks table completeness.
+    Check table completeness.
+
+    Args:
+        dry_run: If True, performs a dry run without persisting changes.
 
     Returns:
         List of results.
 
     """
     alerts = []
+
     with SessionLocal() as session:
         for domain, (table, date_col) in DOMAIN_TABLE_CHECKS.items():
             try:
@@ -118,13 +126,17 @@ def check_table_completeness(*, dry_run: bool = False) -> list[str]:
 
 def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
     """
-    Checks p0 readiness.
+    Check p0 readiness.
+
+    Args:
+        dry_run: If True, performs a dry run without persisting changes.
 
     Returns:
         List of results.
 
     """
     alerts = []
+
     target_date = (datetime.now(KST).date() - timedelta(days=1)).strftime("%Y%m%d")
     with SessionLocal() as session:
         readiness = build_p0_readiness(session, target_date=target_date, lookback_days=0, lookahead_days=1)
@@ -148,13 +160,18 @@ def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
 
 def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[str]]:
     """
-    Runs monitor.
+    Run monitor.
+
+    Args:
+        alert: Alert.
+        dry_run: If True, performs a dry run without persisting changes.
 
     Returns:
         Dictionary result.
 
     """
     stale = check_freshness(dry_run=dry_run)
+
     empty = check_table_completeness(dry_run=dry_run)
     p0_issues = check_p0_readiness(dry_run=dry_run)
     all_issues = stale + empty + p0_issues
@@ -177,21 +194,29 @@ def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Monitor KBO data freshness and completeness")
+
     parser.add_argument("--no-alert", action="store_true", help="Suppress Slack/Telegram alerts")
     parser.add_argument("--dry-run", action="store_true", help="Scan only, do not alert")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     run_monitor(alert=not args.no_alert, dry_run=args.dry_run)
 

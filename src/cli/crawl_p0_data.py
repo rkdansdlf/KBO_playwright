@@ -18,7 +18,12 @@ logger = logging.getLogger(__name__)
 
 async def run_events(*, save: bool = False, days: int = 30, team: str | None = None) -> int:
     """
-    Runs events.
+    Run events.
+
+    Args:
+        save: Whether to persist the results.
+        days: Days.
+        team: Team.
 
     Returns:
         Integer result.
@@ -33,7 +38,11 @@ async def run_events(*, save: bool = False, days: int = 30, team: str | None = N
 
 async def run_roster(*, save: bool = False, target_date: str | None = None) -> int:
     """
-    Runs roster.
+    Run roster.
+
+    Args:
+        save: Whether to persist the results.
+        target_date: Target date for the operation.
 
     Returns:
         Integer result.
@@ -48,7 +57,11 @@ async def run_roster(*, save: bool = False, target_date: str | None = None) -> i
 
 async def run_ticket(*, save: bool = False, season: int | None = None) -> int:
     """
-    Runs ticket.
+    Run ticket.
+
+    Args:
+        save: Whether to persist the results.
+        season: Season year.
 
     Returns:
         Integer result.
@@ -70,13 +83,21 @@ async def run_all(
     target_date: str | None = None,
 ) -> dict[str, int]:
     """
-    Runs all.
+    Run all.
+
+    Args:
+        save: Whether to persist the results.
+        days: Days.
+        team: Team.
+        season: Season year.
+        target_date: Target date for the operation.
 
     Returns:
         Dictionary result.
 
     """
     logger.info("=== P0 data collection ===")
+
     counts = {
         "events": await run_events(save=save, days=days, team=team),
         "roster": await run_roster(save=save, target_date=target_date),
@@ -108,9 +129,10 @@ def _normalize_target_date(value: str | None) -> str | None:
 
 async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
     """
-    Runs from args.
+    Run from args.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     Returns:
@@ -118,6 +140,7 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
 
     """
     target_date = _normalize_target_date(args.target_date)
+
     runner_map = {
         "events": lambda: run_events(save=args.save, days=args.days, team=args.team),
         "roster": lambda: run_roster(save=args.save, target_date=target_date),
@@ -139,13 +162,14 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="P0 Data Collection (events + roster + ticket)")
+
     parser.add_argument(
         "--type",
         choices=["events", "roster", "ticket", "all"],
@@ -161,8 +185,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, int]:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     return asyncio.run(run_from_args(args))
 

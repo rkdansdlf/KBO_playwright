@@ -2,6 +2,7 @@
 Team History model definition.
 
 Tracks changes in team name, logo, city, etc. over time.
+
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ class TeamHistory(Base, TimestampMixin):
     Represents historical snapshots of a team's identity for a specific season.
 
     e.g. 1990 LG Twins, 1982 MBC Blue Dragons.
+
     """
 
     __tablename__ = "team_history"
@@ -40,5 +42,5 @@ class TeamHistory(Base, TimestampMixin):
     color: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<TeamHistory(season={self.season}, name='{self.team_name}')>"

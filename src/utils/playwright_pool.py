@@ -36,7 +36,16 @@ class AsyncPlaywrightPool:
     """AsyncPlaywrightPool class."""
 
     def __init__(self, options: AsyncPlaywrightPoolOptions | None = None, **overrides: object) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            options: Options.
+            overrides: Overrides.
+            options: Options.
+            overrides: Overrides.
+
+        """
         if options is None:
             options = AsyncPlaywrightPoolOptions(**overrides)  # type: ignore[arg-type]
         elif overrides:
@@ -69,11 +78,22 @@ class AsyncPlaywrightPool:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        """Exits the async runtime context."""
+        """
+        Exit the async runtime context.
+
+        Args:
+            exc_type: Exc Type.
+            exc: Exc.
+            tb: Tb.
+            exc_type: Exc Type.
+            exc: Exc.
+            tb: Tb.
+
+        """
         await self.close()
 
     async def start(self) -> None:
-        """Handles the start operation."""
+        """Handle the start operation."""
         if self._started:
             return
 
@@ -90,7 +110,7 @@ class AsyncPlaywrightPool:
             raise
 
     async def _prepare_auth_state(self) -> None:
-        """Prepares auth state."""
+        """Prepare auth state."""
         from src.utils.kbo_auth import KboAuthenticator
 
         # Automated Authentication if required
@@ -108,7 +128,7 @@ class AsyncPlaywrightPool:
             self.context_kwargs["storage_state"] = KboAuthenticator.get_auth_state_path()
 
     async def _start_browser_context(self) -> None:
-        """Handles the start browser context operation."""
+        """Handle the start browser context operation."""
         self._playwright = await async_playwright().start()  # type: ignore[assignment]
         browser_factory = getattr(self._playwright, self.browser_type)
 
@@ -131,13 +151,14 @@ class AsyncPlaywrightPool:
     @staticmethod
     def _stealth_script() -> str:
         """
-        Handles the stealth script operation.
+        Handle the stealth script operation.
 
         Returns:
             String result.
 
         """
         return """
+
             () => {
                 // 1. Mask navigator.webdriver
                 Object.defineProperty(navigator, 'webdriver', { get: () => false });
@@ -162,7 +183,7 @@ class AsyncPlaywrightPool:
             """
 
     async def _create_pages(self) -> None:
-        """Creates pages."""
+        """Create pages."""
         if not self._context:
             msg = "Playwright context not initialized"
             raise RuntimeError(msg)
@@ -176,7 +197,7 @@ class AsyncPlaywrightPool:
 
     async def acquire(self) -> Page:
         """
-        Handles the acquire operation.
+        Handle the acquire operation.
 
         Returns:
             Page instance.
@@ -191,9 +212,11 @@ class AsyncPlaywrightPool:
 
     async def release(self, page: Page) -> None:
         """
-        Handles the release operation.
+        Handle the release operation.
 
         Args:
+            page: Page.
+            page: Page.
             page: Playwright page object.
 
         """
@@ -209,20 +232,21 @@ class AsyncPlaywrightPool:
     @asynccontextmanager  # type: ignore[arg-type]
     async def page(self) -> Page:  # type: ignore[misc]
         """
-        Handles the page operation.
+        Handle the page operation.
 
         Returns:
             Page instance.
 
         """
         page = await self.acquire()
+
         try:
             yield page
         finally:
             await self.release(page)
 
     async def close(self) -> None:
-        """Handles the close operation."""
+        """Handle the close operation."""
         for page in self._pages:
             with suppress(PlaywrightError, RuntimeError, OSError):
                 await page.close()

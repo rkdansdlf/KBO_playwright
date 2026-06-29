@@ -22,6 +22,7 @@ class SourceCircuitBreaker:
     If *persist_path* is provided, the breaker state (failure counts and active
     cooldowns) is persisted to a CSV file and reloaded on construction. This
     allows cooldown state to survive process restarts.
+
     """
 
     PERSIST_HEADER = ["source_name", "bucket_id", "failures", "cooldown_until_epoch"]
@@ -32,8 +33,20 @@ class SourceCircuitBreaker:
         cooldown_seconds: float = 60.0,
         persist_path: str | Path | None = None,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            threshold: Threshold.
+            cooldown_seconds: Cooldown Seconds.
+            persist_path: Persist file path.
+            threshold: Threshold.
+            cooldown_seconds: Cooldown Seconds.
+            persist_path: Persist file path.
+
+        """
         self._threshold = threshold
+
         self._cooldown = cooldown_seconds
         self._failures: dict[tuple[str, str], int] = {}
         self._cooldowns: dict[tuple[str, str], float] = {}
@@ -112,14 +125,19 @@ class SourceCircuitBreaker:
 
     def record_success(self, source_name: str, bucket_id: str) -> None:
         """
-        Handles the record success operation.
+        Handle the record success operation.
 
         Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+            source_name: Source Name.
+            bucket_id: Bucket ID.
             source_name: Source Name.
             bucket_id: Bucket ID.
 
         """
         key = (source_name, bucket_id)
+
         cleared = key in self._failures or key in self._cooldowns
         self._failures.pop(key, None)
         self._cooldowns.pop(key, None)
@@ -133,14 +151,19 @@ class SourceCircuitBreaker:
 
     def record_failure(self, source_name: str, bucket_id: str) -> None:
         """
-        Handles the record failure operation.
+        Handle the record failure operation.
 
         Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+            source_name: Source Name.
+            bucket_id: Bucket ID.
             source_name: Source Name.
             bucket_id: Bucket ID.
 
         """
         key = (source_name, bucket_id)
+
         count = self._failures.get(key, 0) + 1
         self._failures[key] = count
         if count >= self._threshold and key not in self._cooldowns:
@@ -156,9 +179,13 @@ class SourceCircuitBreaker:
 
     def is_available(self, source_name: str, bucket_id: str) -> bool:
         """
-        Returns whether the available.
+        Return whether the available.
 
         Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+            source_name: Source Name.
+            bucket_id: Bucket ID.
             source_name: Source Name.
             bucket_id: Bucket ID.
 
@@ -167,6 +194,7 @@ class SourceCircuitBreaker:
 
         """
         key = (source_name, bucket_id)
+
         expiry = self._cooldowns.get(key)
         if expiry is None:
             return True
@@ -190,9 +218,13 @@ class SourceCircuitBreaker:
 
     def consecutive_failures(self, source_name: str, bucket_id: str) -> int:
         """
-        Handles the consecutive failures operation.
+        Handle the consecutive failures operation.
 
         Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+            source_name: Source Name.
+            bucket_id: Bucket ID.
             source_name: Source Name.
             bucket_id: Bucket ID.
 
@@ -204,9 +236,13 @@ class SourceCircuitBreaker:
 
     def is_open(self, source_name: str, bucket_id: str) -> bool:
         """
-        Returns whether the open.
+        Return whether the open.
 
         Args:
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+            source_name: Source Name.
+            bucket_id: Bucket ID.
             source_name: Source Name.
             bucket_id: Bucket ID.
 
@@ -217,7 +253,7 @@ class SourceCircuitBreaker:
         return not self.is_available(source_name, bucket_id)
 
     def reset_all(self) -> None:
-        """Resets all."""
+        """Reset all."""
         self._failures.clear()
         self._cooldowns.clear()
         self._save_state()

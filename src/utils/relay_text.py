@@ -100,9 +100,11 @@ _RELAY_NOISE_TOKENS = (
 
 def compact_relay_text(description: object) -> str:
     """
-    Handles the compact relay text operation.
+    Handle the compact relay text operation.
 
     Args:
+        description: Description.
+        description: Description.
         description: Description.
 
     Returns:
@@ -119,8 +121,14 @@ def parse_pitch_count(description: str) -> dict[str, int | None]:
     The leading ``n구`` value is the pitch ordinal, not the ball/strike count.
     This function therefore returns the count delta for a single pitch, with
     callers responsible for accumulating state across an at-bat.
+
+    Args:
+        description: Description.
+        description: Description.
+
     """
     desc = compact_relay_text(description)
+
     if not desc:
         return {"balls": None, "strikes": None}
 
@@ -143,8 +151,18 @@ def advance_pitch_count(description: str, balls: int = 0, strikes: int = 0) -> t
 
     Foul balls do not move the count past two strikes. Returns
     ``(balls, strikes, matched_pitch_text)``.
+
+    Args:
+        description: Description.
+        balls: Balls.
+        strikes: Strikes.
+        description: Description.
+        balls: Balls.
+        strikes: Strikes.
+
     """
     desc = compact_relay_text(description)
+
     match = re.match(r"^(\d+)구\s+(볼|스트라이크|파울|헛스윙|폭투|포일)", desc)
     if not match:
         return balls, strikes, False
@@ -161,9 +179,11 @@ def advance_pitch_count(description: str, balls: int = 0, strikes: int = 0) -> t
 
 def is_relay_noise_text(description: object) -> bool:
     """
-    Returns whether the relay noise text.
+    Return whether the relay noise text.
 
     Args:
+        description: Description.
+        description: Description.
         description: Description.
 
     Returns:
@@ -171,6 +191,7 @@ def is_relay_noise_text(description: object) -> bool:
 
     """
     text = compact_relay_text(description)
+
     if not text:
         return True
     if any(pattern.search(text) for pattern in _RELAY_NOISE_PATTERNS):
@@ -180,9 +201,11 @@ def is_relay_noise_text(description: object) -> bool:
 
 def is_relay_result_event_text(description: object) -> bool:
     """
-    Returns whether the relay result event text.
+    Return whether the relay result event text.
 
     Args:
+        description: Description.
+        description: Description.
         description: Description.
 
     Returns:
@@ -190,6 +213,7 @@ def is_relay_result_event_text(description: object) -> bool:
 
     """
     text = compact_relay_text(description)
+
     if is_relay_noise_text(text) or ":" not in text:
         return False
     result_text = text.split(":", 1)[-1].strip()
@@ -200,9 +224,11 @@ def is_relay_result_event_text(description: object) -> bool:
 
 def detect_relay_event_type(description: object) -> str:
     """
-    Handles the detect relay event type operation.
+    Handle the detect relay event type operation.
 
     Args:
+        description: Description.
+        description: Description.
         description: Description.
 
     Returns:
@@ -210,6 +236,7 @@ def detect_relay_event_type(description: object) -> str:
 
     """
     text = compact_relay_text(description)
+
     if not is_relay_result_event_text(text):
         return "unknown"
     result_text = text.split(":", 1)[-1].strip()

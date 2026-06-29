@@ -5,6 +5,7 @@ This command repairs ``game.away_pitcher`` and ``game.home_pitcher`` when
 completed games already have starting pitchers in ``game_pitching_stats``.
 It does not infer names from unrelated fields and does not overwrite existing
 values unless explicitly requested.
+
 """
 
 from __future__ import annotations
@@ -46,13 +47,14 @@ def _is_blank(value: object) -> bool:
 
 def parse_args() -> argparse.Namespace:
     """
-    Parses args.
+    Parse args.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Fill missing game starting pitchers from game_pitching_stats.")
+
     parser.add_argument("--start-date", help="Start date, YYYYMMDD or YYYY-MM-DD")
     parser.add_argument("--end-date", help="End date, YYYYMMDD or YYYY-MM-DD")
     parser.add_argument(
@@ -85,9 +87,11 @@ def parse_args() -> argparse.Namespace:
 
 def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
     """
-    Loads candidates.
+    Load candidates.
 
     Args:
+        session: Session.
+        args: Positional arguments to pass through.
         session: Session.
         args: Args.
 
@@ -96,6 +100,7 @@ def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str
 
     """
     start_date = _normalize_date(args.start_date)
+
     end_date = _normalize_date(args.end_date)
     overwrite_filter = (
         "1 = 1"
@@ -106,8 +111,10 @@ def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str
             OR
             (coalesce(trim(g.home_pitcher), '') = '' AND coalesce(trim(s.home_start), '') <> '')
         )
+
     """
     )
+
     limit_clause = "LIMIT :limit" if args.limit else ""
 
     query = text(
@@ -168,9 +175,13 @@ def repair_candidates(
     dry_run: bool,
 ) -> tuple[list[str], int, int]:
     """
-    Repairs candidates.
+    Repair candidates.
 
     Args:
+        session: Session.
+        candidates: Candidates.
+        overwrite: Overwrite.
+        dry_run: If True, performs a dry run without persisting changes.
         session: Session.
         candidates: Candidates.
 
@@ -179,12 +190,14 @@ def repair_candidates(
 
     """
     updated_game_ids: list[str] = []
+
     away_updates = 0
     home_updates = 0
 
     update_query = text(
         """
         UPDATE game
+
         SET
             away_pitcher = :away_pitcher,
             home_pitcher = :home_pitcher
@@ -230,9 +243,10 @@ def repair_candidates(
 
 def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
     """
-    Syncs to oci.
+    Sync to oci.
 
     Args:
+        game_ids: Game Ids.
         game_ids: Game Ids.
 
     Returns:
@@ -264,9 +278,11 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
 
 def find_target_missing_ready_games(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
     """
-    Finds target missing ready games.
+    Find target missing ready games.
 
     Args:
+        session: Session.
+        args: Positional arguments to pass through.
         session: Session.
         args: Args.
 
@@ -275,6 +291,7 @@ def find_target_missing_ready_games(session: Session, args: argparse.Namespace) 
 
     """
     target_url = get_oci_url()
+
     if not target_url:
         msg = "OCI_DB_URL or TARGET_DATABASE_URL is required for --sync-target-missing"
         raise RuntimeError(msg)
@@ -286,6 +303,7 @@ def find_target_missing_ready_games(session: Session, args: argparse.Namespace) 
     target_query = text(
         """
         SELECT game_id
+
         FROM game
         WHERE (:start_date IS NULL OR game_date >= CAST(:start_date AS date))
           AND (:end_date IS NULL OR game_date <= CAST(:end_date AS date))
@@ -309,6 +327,7 @@ def find_target_missing_ready_games(session: Session, args: argparse.Namespace) 
     local_query = text(
         """
         SELECT
+
             g.game_id,
             g.away_pitcher,
             g.home_pitcher
@@ -339,9 +358,10 @@ def find_target_missing_ready_games(session: Session, args: argparse.Namespace) 
 
 def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
     """
-    Updates target pitcher fields.
+    Update target pitcher fields.
 
     Args:
+        rows: Rows.
         rows: Rows.
 
     Returns:
@@ -360,6 +380,7 @@ def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
     update_query = text(
         """
         UPDATE game
+
         SET
             away_pitcher = CASE
                 WHEN coalesce(trim(away_pitcher), '') = '' THEN :away_pitcher
@@ -380,7 +401,7 @@ def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     load_dotenv(PROJECT_ROOT / ".env")
     args = parse_args()
 

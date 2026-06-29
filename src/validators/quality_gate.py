@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, or_, select, text
 
 from src.constants import IP_FRAC_THIRD, IP_FRAC_TWO_THIRDS, MAX_OUTS
+from src.models.base import Base
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
@@ -20,16 +21,59 @@ AGGREGATE_TEAM_CODES = ("", "합계", "TOTAL", "ALL", "-")
 INVALID_TEAM_CODES = (*AGGREGATE_TEAM_CODES, "EA", "WE")
 
 
+def _batting_pa_mismatch(diff: int, cumulative_pa: int) -> bool:
+    """Return True when transactional PA exceeds cumulative PA beyond tolerance."""
+    return diff > 2 and diff / (cumulative_pa or 1) > 0.005
+
+
+def _team_stat_mismatch(diff: int, threshold: int = 5) -> bool:
+    """Return True when absolute team/player stat difference exceeds threshold."""
+    return abs(diff) > threshold
+
+
+def _pa_formula_expected(
+    ab: int | None,
+    bb: int | None,
+    hbp: int | None,
+    sh: int | None,
+    sf: int | None,
+) -> int:
+    """Return expected PA formula: AB + BB + HBP + SH + SF."""
+    return (ab or 0) + (bb or 0) + (hbp or 0) + (sh or 0) + (sf or 0)
+
+
+def _ip_to_outs_float(team_ip: float | None) -> int:
+    """Convert team innings_pitched (float) to outs (int), round-half-up."""
+    if not team_ip:
+        return 0
+    return int(team_ip * 3 + 0.5)
+
+
 class QualityGate:
     """Validate consistency between cumulative and game-by-game records."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def _get_regular_season_ids(self, year: int) -> list[int]:
-        """Fetch season_ids that correspond to Regular Season (league_type_code=0)."""
+        """
+        Fetch season_ids that correspond to Regular Season (league_type_code=0).
+
+        Args:
+            year: Season year.
+            year: Season year.
+
+        """
         stmt = text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0")
+
         result = self.session.execute(stmt, {"year": year}).scalars().all()
         return [int(r) for r in result]
 
@@ -53,16 +97,31 @@ class QualityGate:
         }
 
     @staticmethod
-    def _valid_team_code_filters(model: type) -> tuple[object, ...]:
-        team_expr = func.coalesce(model.canonical_team_code, model.team_code)
+    def _valid_team_code_filters(model: type[Base]) -> tuple[Any, ...]:
+        team_expr = func.coalesce(
+            model.canonical_team_code,  # type: ignore[attr-defined]
+            model.team_code,  # type: ignore[attr-defined]
+        )
         return (
             team_expr.isnot(None),
             team_expr.not_in(INVALID_TEAM_CODES),
-            or_(model.team_code.is_(None), model.team_code.not_in(AGGREGATE_TEAM_CODES)),
+            or_(
+                model.team_code.is_(None),  # type: ignore[attr-defined]
+                model.team_code.not_in(AGGREGATE_TEAM_CODES),  # type: ignore[attr-defined]
+            ),
         )
 
     def validate_season_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
-        """Compare PlayerSeasonBatting (cumulative) with GameBattingStat sum (transactional)."""
+        """
+        Compare PlayerSeasonBatting (cumulative) with GameBattingStat sum (transactional).
+
+        Args:
+            season: Season year.
+            league: League.
+            season: Season year.
+            league: League.
+
+        """
         if league != "REGULAR":
             return self._result(season=season, league=league)
 
@@ -146,10 +205,10 @@ class QualityGate:
         )
 
     @staticmethod
-    def _resolve_pitching_cumulative_outs(cumulative_row: object) -> int | None:
+    def _resolve_pitching_cumulative_outs(cumulative_row: Any) -> int | None:
         cum_outs = cumulative_row.innings_outs
         if cum_outs is not None:
-            return cum_outs
+            return int(cum_outs)
         if cumulative_row.extra_stats and "innings_outs" in cumulative_row.extra_stats:
             return int(cumulative_row.extra_stats["innings_outs"])
         if cumulative_row.innings_pitched is None:
@@ -165,26 +224,35 @@ class QualityGate:
 
     @staticmethod
     def _pitching_outs_mismatch(row: object, cumulative_outs: int | None) -> dict[str, Any] | None:
-        diff = (row.outs or 0) - (cumulative_outs or 0)
+        diff = (row.outs or 0) - (cumulative_outs or 0)  # type: ignore[attr-defined]
         if diff <= MAX_OUTS or (cumulative_outs is not None and diff / (cumulative_outs or 1) <= 0.01):
             return None
         return {
-            "player_id": row.player_id,
+            "player_id": row.player_id,  # type: ignore[attr-defined]
             "issue": "Transactional Outs > Cumulative Outs",
             "cumulative": cumulative_outs,
-            "transactional": row.outs,
+            "transactional": row.outs,  # type: ignore[attr-defined]
         }
 
     @staticmethod
     def _missing_pitching_cumulative_record(row: object) -> dict[str, Any]:
         return {
-            "player_id": row.player_id,
+            "player_id": row.player_id,  # type: ignore[attr-defined]
             "issue": "Missing cumulative record",
-            "transactional": {"outs": row.outs, "wins": row.wins},
+            "transactional": {"outs": row.outs, "wins": row.wins},  # type: ignore[attr-defined]
         }
 
     def validate_season_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
-        """Compare PlayerSeasonPitching (cumulative) with GamePitchingStat sum (transactional)."""
+        """
+        Compare PlayerSeasonPitching (cumulative) with GamePitchingStat sum (transactional).
+
+        Args:
+            season: Season year.
+            league: League.
+            season: Season year.
+            league: League.
+
+        """
         if league != "REGULAR":
             return self._result(season=season, league=league)
 
@@ -252,7 +320,16 @@ class QualityGate:
         )
 
     def validate_season_pa_formula(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
-        """Validate PA = AB + BB + HBP + SH + SF consistency for game batting stats."""
+        """
+        Validate PA = AB + BB + HBP + SH + SF consistency for game batting stats.
+
+        Args:
+            season: Season year.
+            league: League.
+            season: Season year.
+            league: League.
+
+        """
         if league != "REGULAR":
             return self._result(season=season, league=league)
 
@@ -316,7 +393,16 @@ class QualityGate:
         )
 
     def validate_season_team_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
-        """Compare TeamSeasonBatting with PlayerSeasonBatting sum grouped by team."""
+        """
+        Compare TeamSeasonBatting with PlayerSeasonBatting sum grouped by team.
+
+        Args:
+            season: Season year.
+            league: League.
+            season: Season year.
+            league: League.
+
+        """
         if league != "REGULAR":
             return self._result(season=season, league=league)
 
@@ -450,7 +536,16 @@ class QualityGate:
         )
 
     def validate_season_team_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
-        """Compare TeamSeasonPitching with PlayerSeasonPitching sum grouped by team."""
+        """
+        Compare TeamSeasonPitching with PlayerSeasonPitching sum grouped by team.
+
+        Args:
+            season: Season year.
+            league: League.
+            season: Season year.
+            league: League.
+
+        """
         if league != "REGULAR":
             return self._result(season=season, league=league)
 
@@ -603,9 +698,13 @@ class QualityGate:
 
 def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
     """
-    Runs quality gate.
+    Run quality gate.
 
     Args:
+        session: Session.
+        season: Season year.
+        session: Session.
+        season: Season year.
         session: Session.
         season: Season year.
 
@@ -614,6 +713,7 @@ def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
 
     """
     gate = QualityGate(session)
+
     batting_result = gate.validate_season_batting(season)
     pitching_result = gate.validate_season_pitching(season)
     pa_formula_result = gate.validate_season_pa_formula(season)

@@ -1,4 +1,4 @@
-from tests.factories.db import build_session, create_tables, init_tables
+from tests.factories.db import build_engine, build_session, create_tables, init_tables, resetting_factory, session_scope
 from tests.factories.model_factories import (
     make_game,
     make_game_batting_stat,
@@ -32,6 +32,7 @@ from tests.factories.model_factories import (
 )
 
 __all__ = [
+    "build_engine",
     "build_session",
     "create_tables",
     "init_tables",
@@ -64,4 +65,6 @@ __all__ = [
     "make_team_season_batting",
     "make_team_season_fielding",
     "make_team_season_pitching",
+    "resetting_factory",
+    "session_scope",
 ]

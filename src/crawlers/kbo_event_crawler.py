@@ -37,8 +37,16 @@ GENERIC_LINK_TITLES = {"신청하기", "신청 확인", "신청확인", "행사 
 
 
 def extract_kbo_event_links(html: str, base_url: str = KBO_EVENT_BASE_URL) -> list[dict[str, object]]:
-    """Extract likely KBO official event/promotion links from a page."""
+    """
+    Extract likely KBO official event/promotion links from a page.
+
+    Args:
+        html: Html.
+        base_url: Base URL.
+
+    """
     soup = BeautifulSoup(html, "html.parser")
+
     events: list[dict[str, object]] = []
     seen_urls: set[str] = set()
     for link in soup.select("a[href]"):
@@ -71,8 +79,16 @@ def extract_kbo_event_links(html: str, base_url: str = KBO_EVENT_BASE_URL) -> li
 
 
 def extract_kbo_event_page(html: str, source_url: str) -> dict[str, object] | None:
-    """Build one event payload for an official KBO business/event page."""
+    """
+    Build one event payload for an official KBO business/event page.
+
+    Args:
+        html: Html.
+        source_url: Source URL.
+
+    """
     soup = BeautifulSoup(html, "html.parser")
+
     title = _extract_page_title(soup)
     if not title:
         return None
@@ -108,19 +124,30 @@ class KboEventCrawler:
     """Fetch KBO official page and extract event/promotion link candidates."""
 
     def __init__(self, base_url: str | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            base_url: Base URL.
+
+        """
         self.urls = (base_url,) if base_url else KBO_EVENT_DEFAULT_URLS
+
         self._raw_pages: list[dict[str, object]] = []
 
     async def run(self, *, save: bool = False) -> list[dict[str, object]]:
         """
-        Runs run.
+        Run run.
+
+        Args:
+            save: Whether to persist the results.
 
         Returns:
             List of results.
 
         """
         events: list[dict[str, object]] = []
+
         seen_urls: set[str] = set()
         for url in self.urls:
             html, final_url = await self._fetch_html(url)

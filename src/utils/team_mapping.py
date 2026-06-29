@@ -5,9 +5,12 @@ from __future__ import annotations
 import logging
 
 logger = logging.getLogger(__name__)
+
 """
 KBO 팀명 매핑 유틸리티
+
 OCI team_history 테이블과 연동하여 동적 매핑 제공
+
 """
 
 
@@ -26,6 +29,7 @@ TEAM_HISTORY_QUERIES = (
     # 컬럼명 패턴 0 (KBO_playwright 표준)
     """
     SELECT
+
         team_name,
         team_code,
         season,
@@ -39,6 +43,7 @@ TEAM_HISTORY_QUERIES = (
     # 컬럼명 패턴 1
     """
     SELECT
+
         team_name_kor,
         team_code,
         start_year,
@@ -52,6 +57,7 @@ TEAM_HISTORY_QUERIES = (
     # 컬럼명 패턴 2
     """
     SELECT
+
         name_kor,
         code,
         start_year,
@@ -65,6 +71,7 @@ TEAM_HISTORY_QUERIES = (
     # 컬럼명 패턴 3 (레거시 PostgreSQL 일부 구조)
     """
     SELECT
+
         team_name,
         team_code,
         start_season,
@@ -78,6 +85,7 @@ TEAM_HISTORY_QUERIES = (
     # 기본 모든 컬럼 조회
     """
     SELECT * FROM team_history LIMIT 5
+
     """,
 )
 
@@ -131,7 +139,7 @@ class TeamMapper:
     """팀명 매핑 관리 클래스."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         self.static_mapping = self._get_static_mapping()
         self.oci_mapping: dict[str, str] = {}
         self.year_specific_mapping: dict[int, dict[str, str]] = {}
@@ -187,9 +195,11 @@ class TeamMapper:
 
     def _load_team_history_rows(self, oci_url: str) -> list[Sequence[object]] | None:
         """
-        Loads team history rows.
+        Load team history rows.
 
         Args:
+            oci_url: Oci URL.
+            oci_url: Oci URL.
             oci_url: Oci URL.
 
         Returns:
@@ -197,6 +207,7 @@ class TeamMapper:
 
         """
         engine = create_engine(oci_url)
+
         session_maker = sessionmaker(bind=engine)
         session = session_maker()
         try:
@@ -216,9 +227,11 @@ class TeamMapper:
     @staticmethod
     def _log_team_history_columns(session: Session) -> None:
         """
-        Logs team history columns.
+        Log team history columns.
 
         Args:
+            session: Session.
+            session: Session.
             session: Database session.
 
         """
@@ -237,9 +250,11 @@ class TeamMapper:
     @staticmethod
     def _query_team_history(session: Session) -> list[Sequence[object]] | None:
         """
-        Handles the query team history operation.
+        Handle the query team history operation.
 
         Args:
+            session: Session.
+            session: Session.
             session: Database session.
 
         Returns:
@@ -260,9 +275,11 @@ class TeamMapper:
 
     def _apply_oci_mapping_rows(self, rows: Iterable[Sequence[object]]) -> None:
         """
-        Handles the apply oci mapping rows operation.
+        Handle the apply oci mapping rows operation.
 
         Args:
+            rows: Rows.
+            rows: Rows.
             rows: Rows.
 
         """
@@ -271,13 +288,16 @@ class TeamMapper:
 
     def _apply_oci_mapping_row(self, row: Sequence[object]) -> None:
         """
-        Handles the apply oci mapping row operation.
+        Handle the apply oci mapping row operation.
 
         Args:
+            row: Row.
+            row: Row.
             row: Row.
 
         """
         team_name = row[0]
+
         team_code = row[1]
         try:
             start_year = int(row[2])  # type: ignore[call-overload]
@@ -291,9 +311,17 @@ class TeamMapper:
 
     def _add_mapping_for_years(self, team_name: str, team_code: str, start_year: int, end_year: int) -> None:
         """
-        Adds mapping for years.
+        Add mapping for years.
 
         Args:
+            team_name: Team Name.
+            team_code: Team Code.
+            start_year: Start Year.
+            end_year: End Year.
+            team_name: Team Name.
+            team_code: Team Code.
+            start_year: Start Year.
+            end_year: End Year.
             team_name: Team Name.
             team_code: Team code identifier.
             start_year: Start Year.
@@ -301,11 +329,21 @@ class TeamMapper:
 
         """
         self.oci_mapping[team_name] = team_code
+
         for year in range(start_year, end_year + 1):
             self.year_specific_mapping.setdefault(year, {})[team_name] = team_code
 
     def get_team_code(self, team_name: str, year: int | None = None) -> str | None:
-        """팀명으로 팀 코드 조회 (년도 고려)."""
+        """
+        팀명으로 팀 코드 조회 (년도 고려).
+
+        Args:
+            team_name: Team Name.
+            year: Season year.
+            team_name: Team Name.
+            year: Season year.
+
+        """
         if not team_name:
             return None
 
@@ -324,9 +362,13 @@ class TeamMapper:
     def _resolve_team_code(self, team_name: str, year: int | None = None) -> str | None:
         # 1.5 Standard Resolution via team_codes (Superior to static/fuzzy)
         """
-        Resolves team code.
+        Resolve team code.
 
         Args:
+            team_name: Team Name.
+            year: Season year.
+            team_name: Team Name.
+            year: Season year.
             team_name: Team Name.
             year: Season year.
 
@@ -335,6 +377,7 @@ class TeamMapper:
 
         """
         resolved = resolve_team_code(team_name, year)
+
         if resolved:
             return resolved
         # 2. OCI 매핑 확인
@@ -347,7 +390,16 @@ class TeamMapper:
         return self._fuzzy_match(team_name, year)
 
     def _fuzzy_match(self, team_name: str, year: int | None = None) -> str | None:
-        """퍼지 매칭으로 팀 코드 찾기."""
+        """
+        퍼지 매칭으로 팀 코드 찾기.
+
+        Args:
+            team_name: Team Name.
+            year: Season year.
+            team_name: Team Name.
+            year: Season year.
+
+        """
         if team_name in HISTORICAL_PATTERNS:
             return HISTORICAL_PATTERNS[team_name]
 
@@ -360,9 +412,11 @@ class TeamMapper:
     @staticmethod
     def _partial_fuzzy_match(team_name: str) -> str | None:
         """
-        Handles the partial fuzzy match operation.
+        Handle the partial fuzzy match operation.
 
         Args:
+            team_name: Team Name.
+            team_name: Team Name.
             team_name: Team Name.
 
         Returns:
@@ -377,9 +431,13 @@ class TeamMapper:
     @staticmethod
     def _year_specific_fuzzy_match(team_name: str, year: int | None = None) -> str | None:
         """
-        Handles the year specific fuzzy match operation.
+        Handle the year specific fuzzy match operation.
 
         Args:
+            team_name: Team Name.
+            year: Season year.
+            team_name: Team Name.
+            year: Season year.
             team_name: Team Name.
             year: Season year.
 
@@ -400,9 +458,11 @@ class TeamMapper:
     @staticmethod
     def _early_kbo_fuzzy_match(team_name: str) -> str | None:
         """
-        Handles the early kbo fuzzy match operation.
+        Handle the early kbo fuzzy match operation.
 
         Args:
+            team_name: Team Name.
+            team_name: Team Name.
             team_name: Team Name.
 
         Returns:
@@ -422,9 +482,11 @@ class TeamMapper:
     @staticmethod
     def _nineties_fuzzy_match(team_name: str) -> str | None:
         """
-        Handles the nineties fuzzy match operation.
+        Handle the nineties fuzzy match operation.
 
         Args:
+            team_name: Team Name.
+            team_name: Team Name.
             team_name: Team Name.
 
         Returns:
@@ -440,9 +502,11 @@ class TeamMapper:
     @staticmethod
     def _late_nineties_fuzzy_match(team_name: str) -> str | None:
         """
-        Handles the late nineties fuzzy match operation.
+        Handle the late nineties fuzzy match operation.
 
         Args:
+            team_name: Team Name.
+            team_name: Team Name.
             team_name: Team Name.
 
         Returns:
@@ -456,8 +520,16 @@ class TeamMapper:
         return None
 
     def get_all_teams_for_year(self, year: int) -> dict[str, str]:
-        """특정 년도의 모든 팀 매핑 반환 (정적 매핑과 통합)."""
+        """
+        특정 년도의 모든 팀 매핑 반환 (정적 매핑과 통합).
+
+        Args:
+            year: Season year.
+            year: Season year.
+
+        """
         # 기본적으로 정적 매핑에서 시작
+
         mapping = self.static_mapping.copy()
 
         # OCI에서 로드된 년도별 특수 매핑이 있으면 덮어씀
@@ -467,7 +539,16 @@ class TeamMapper:
         return mapping
 
     def validate_team_code(self, team_code: str, _year: int | None = None) -> bool:
-        """팀 코드 유효성 검증."""
+        """
+        팀 코드 유효성 검증.
+
+        Args:
+            team_code: Team Code.
+            _year: Season year.
+            team_code: Team Code.
+            _year: Season year.
+
+        """
         if not team_code:
             return False
 
@@ -495,14 +576,32 @@ def get_team_mapper() -> TeamMapper:
 
 
 def get_team_code(team_name: str, year: int | None = None) -> str | None:
-    """간편 함수: 팀명으로 팀 코드 조회."""
+    """
+    간편 함수: 팀명으로 팀 코드 조회.
+
+    Args:
+        team_name: Team Name.
+        year: Season year.
+        team_name: Team Name.
+        year: Season year.
+
+    """
     mapper = get_team_mapper()
+
     return mapper.get_team_code(team_name, year)
 
 
 def get_team_mapping_for_year(year: int) -> dict[str, str]:
-    """간편 함수: 특정 년도의 팀 매핑 반환."""
+    """
+    간편 함수: 특정 년도의 팀 매핑 반환.
+
+    Args:
+        year: Season year.
+        year: Season year.
+
+    """
     mapper = get_team_mapper()
+
     return mapper.get_all_teams_for_year(year)
 
 

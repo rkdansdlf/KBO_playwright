@@ -16,7 +16,14 @@ class AwardRepository:
     """AwardRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save_award(self, award_data: dict) -> Award:
@@ -30,8 +37,14 @@ class AwardRepository:
 
         Since awards are static historical data, if it exists, we usually don't need to update it unless corrected.
         We will use a 'get or create' approach.
+
+        Args:
+            award_data: Award Data.
+            award_data: Award Data.
+
         """
         year = award_data["year"]
+
         award_type = award_data["award_type"]
         category = award_data.get("category")
         player_name = award_data["player_name"]
@@ -62,9 +75,11 @@ class AwardRepository:
 
     def get_awards_by_year(self, year: int) -> list[Award]:
         """
-        Gets awards by year.
+        Get awards by year.
 
         Args:
+            year: Season year.
+            year: Season year.
             year: Season year.
 
         Returns:
@@ -72,15 +87,19 @@ class AwardRepository:
 
         """
         stmt = select(Award).where(Award.year == year)
+
         return list(self.session.execute(stmt).scalars().all())
 
     def clear_awards_by_year(self, year: int) -> None:
         """
-        Clears awards by year.
+        Clear awards by year.
 
         Args:
+            year: Season year.
+            year: Season year.
             year: Season year.
 
         """
         stmt = delete(Award).where(Award.year == year)
+
         self.session.execute(stmt)

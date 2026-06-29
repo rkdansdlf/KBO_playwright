@@ -17,14 +17,23 @@ class TeamEventRepository:
     """TeamEventRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> TeamEvent:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -32,6 +41,7 @@ class TeamEventRepository:
 
         """
         source_url = data.get("source_url")
+
         title = data.get("title", "")
         if source_url:
             stmt = select(TeamEvent).where(TeamEvent.source_url == source_url).limit(1)
@@ -61,9 +71,13 @@ class TeamEventRepository:
 
     def get_by_team(self, team_id: str, limit: int = 50) -> list[TeamEvent]:
         """
-        Gets by team.
+        Get by team.
 
         Args:
+            team_id: Team ID.
+            limit: Limit.
+            team_id: Team ID.
+            limit: Limit.
             team_id: Team ID.
             limit: Limit.
 
@@ -81,9 +95,11 @@ class TeamEventRepository:
 
     def get_upcoming(self, limit: int = 50) -> list[TeamEvent]:
         """
-        Gets upcoming.
+        Get upcoming.
 
         Args:
+            limit: Limit.
+            limit: Limit.
             limit: Limit.
 
         Returns:
@@ -91,6 +107,7 @@ class TeamEventRepository:
 
         """
         now = datetime.now(UTC).replace(tzinfo=None)
+
         stmt = (
             select(TeamEvent)
             .where(
@@ -104,9 +121,11 @@ class TeamEventRepository:
 
     def get_by_game(self, game_id: str) -> list[TeamEvent]:
         """
-        Gets by game.
+        Get by game.
 
         Args:
+            game_id: Game ID.
+            game_id: Game ID.
             game_id: Game ID.
 
         Returns:
@@ -114,13 +133,18 @@ class TeamEventRepository:
 
         """
         stmt = select(TeamEvent).where(TeamEvent.game_id == game_id).order_by(TeamEvent.published_at.desc())
+
         return list(self.session.execute(stmt).scalars().all())
 
     def update_status(self, event_id: int, status: str) -> None:
         """
-        Updates status.
+        Update status.
 
         Args:
+            event_id: Event ID.
+            status: Status.
+            event_id: Event ID.
+            status: Status.
             event_id: Event ID.
             status: Status.
 

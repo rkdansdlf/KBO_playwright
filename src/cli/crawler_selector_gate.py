@@ -14,8 +14,15 @@ if TYPE_CHECKING:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Run crawler selector stability checks")
+
     parser.add_argument("--config", required=True, help="Path to selector gate JSON config")
     parser.add_argument(
         "--output-dir",

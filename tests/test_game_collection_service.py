@@ -11,6 +11,11 @@ from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, 
 from src.models.player import PlayerBasic
 
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
 class _FakeDetailCrawler:
     def __init__(self):
         self.calls = []

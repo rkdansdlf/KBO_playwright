@@ -67,7 +67,7 @@ FRANCHISE_CANONICAL_CODE = {
 
 def iter_team_history() -> Iterable[TeamHistoryEntry]:
     """
-    Handles the iter team history operation.
+    Handle the iter team history operation.
 
     Returns:
         The result of the operation.
@@ -78,9 +78,13 @@ def iter_team_history() -> Iterable[TeamHistoryEntry]:
 
 def _entry_is_active_in_season(entry: TeamHistoryEntry, season_year: int) -> bool:
     """
-    Handles the entry is active in season operation.
+    Handle the entry is active in season operation.
 
     Args:
+        entry: Entry.
+        season_year: Season Year.
+        entry: Entry.
+        season_year: Season Year.
         entry: Entry.
         season_year: Season Year.
 
@@ -89,13 +93,24 @@ def _entry_is_active_in_season(entry: TeamHistoryEntry, season_year: int) -> boo
 
     """
     end_season = entry.end_season if entry.end_season is not None else season_year
+
     return entry.start_season <= season_year <= end_season
 
 
 @cache
 def find_team_history_entry(raw_code: str, season_year: int | None = None) -> TeamHistoryEntry | None:
-    """Return the season-correct history entry for a raw or legacy team code."""
+    """
+    Return the season-correct history entry for a raw or legacy team code.
+
+    Args:
+        raw_code: Raw Code.
+        season_year: Season Year.
+        raw_code: Raw Code.
+        season_year: Season Year.
+
+    """
     raw = raw_code.upper()
+
     if raw == "HD":
         raw = "HU"
     if raw == "SSG" and season_year is not None and 1991 <= season_year <= 1999:
@@ -126,9 +141,13 @@ def find_team_history_entry(raw_code: str, season_year: int | None = None) -> Te
 
 def franchise_id_for_team_code(raw_code: str, season_year: int | None = None) -> int | None:
     """
-    Handles the franchise id for team code operation.
+    Handle the franchise id for team code operation.
 
     Args:
+        raw_code: Raw Code.
+        season_year: Season Year.
+        raw_code: Raw Code.
+        season_year: Season Year.
         raw_code: Raw Code.
         season_year: Season Year.
 
@@ -137,14 +156,19 @@ def franchise_id_for_team_code(raw_code: str, season_year: int | None = None) ->
 
     """
     entry = find_team_history_entry(raw_code, season_year)
+
     return entry.franchise_id if entry else None
 
 
 def canonical_code_for_team_code(raw_code: str, season_year: int | None = None) -> str | None:
     """
-    Handles the canonical code for team code operation.
+    Handle the canonical code for team code operation.
 
     Args:
+        raw_code: Raw Code.
+        season_year: Season Year.
+        raw_code: Raw Code.
+        season_year: Season Year.
         raw_code: Raw Code.
         season_year: Season Year.
 
@@ -153,6 +177,7 @@ def canonical_code_for_team_code(raw_code: str, season_year: int | None = None) 
 
     """
     entry = find_team_history_entry(raw_code, season_year)
+
     if not entry:
         return None
     return FRANCHISE_CANONICAL_CODE.get(entry.franchise_id)
@@ -161,9 +186,13 @@ def canonical_code_for_team_code(raw_code: str, season_year: int | None = None) 
 @cache
 def resolve_team_code_for_season(raw_code: str, season_year: int) -> str | None:
     """
-    Resolves team code for season.
+    Resolve team code for season.
 
     Args:
+        raw_code: Raw Code.
+        season_year: Season Year.
+        raw_code: Raw Code.
+        season_year: Season Year.
         raw_code: Raw Code.
         season_year: Season Year.
 
@@ -172,4 +201,5 @@ def resolve_team_code_for_season(raw_code: str, season_year: int) -> str | None:
 
     """
     entry = find_team_history_entry(raw_code, season_year)
+
     return entry.team_code.upper() if entry else None

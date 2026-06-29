@@ -27,6 +27,7 @@ _ERA_SERIES: list[tuple[int, tuple[str, ...]]] = [
 ]
 """
 KBO 연도별 시리즈 존재 여부 검증 유틸리티
+
 """
 
 MINIMUM_SERIES_RATIO = 0.5
@@ -37,6 +38,8 @@ def get_available_series_by_year(year: int) -> list[str]:
     연도별 존재하는 시리즈 목록 반환.
 
     Args:
+        year: Season year.
+        year: Season year.
         year: 조회할 연도
 
     Returns:
@@ -56,6 +59,10 @@ def is_series_available(year: int, series_key: str) -> bool:
     특정 연도에 특정 시리즈가 존재하는지 확인.
 
     Args:
+        year: Season year.
+        series_key: Series Key.
+        year: Season year.
+        series_key: Series Key.
         year: 연도
         series_key: 시리즈 키
 
@@ -64,6 +71,7 @@ def is_series_available(year: int, series_key: str) -> bool:
 
     """
     available_series = get_available_series_by_year(year)
+
     return series_key in available_series
 
 
@@ -72,6 +80,10 @@ def filter_series_for_year(year: int, requested_series: list[str]) -> list[str]:
     요청된 시리즈 목록에서 해당 연도에 존재하지 않는 시리즈 제거.
 
     Args:
+        year: Season year.
+        requested_series: Requested Series.
+        year: Season year.
+        requested_series: Requested Series.
         year: 연도
         requested_series: 요청된 시리즈 목록
 
@@ -80,6 +92,7 @@ def filter_series_for_year(year: int, requested_series: list[str]) -> list[str]:
 
     """
     available_series = get_available_series_by_year(year)
+
     filtered = [series for series in requested_series if series in available_series]
 
     # 제거된 시리즈가 있으면 알림
@@ -107,6 +120,10 @@ def validate_year_series_combination(year: int, series_key: str) -> tuple[bool, 
     연도-시리즈 조합 유효성 검증.
 
     Args:
+        year: Season year.
+        series_key: Series Key.
+        year: Season year.
+        series_key: Series Key.
         year: 연도
         series_key: 시리즈 키
 
@@ -132,6 +149,10 @@ def get_recommended_series_for_period(start_year: int, end_year: int) -> list[st
     특정 기간에 대한 권장 시리즈 목록.
 
     Args:
+        start_year: Start Year.
+        end_year: End Year.
+        start_year: Start Year.
+        end_year: End Year.
         start_year: 시작 연도
         end_year: 끝 연도
 
@@ -140,6 +161,7 @@ def get_recommended_series_for_period(start_year: int, end_year: int) -> list[st
 
     """
     # 전체 기간에서 각 시리즈가 존재하는 연도 수 계산
+
     series_counts: dict[str, int] = {}
     total_years = end_year - start_year + 1
 

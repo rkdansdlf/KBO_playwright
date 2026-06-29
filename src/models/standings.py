@@ -16,9 +16,11 @@ class TeamStandingsDaily(Base, TimestampMixin):
     Daily snapshot of Team Standings.
 
     Calculated from Game results.
+
     """
 
     __tablename__ = "team_standings_daily"
+
     __table_args__ = (UniqueConstraint("standings_date", "team_code", name="uq_team_standings_daily"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -54,5 +56,5 @@ class TeamStandingsDaily(Base, TimestampMixin):
     away_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="원정 패")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<TeamStandingsDaily(date={self.standings_date}, team={self.team_code}, rank={self.rank}, {self.wins}W-{self.losses}L, GB={self.games_behind})>"

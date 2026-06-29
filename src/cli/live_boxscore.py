@@ -6,6 +6,7 @@ Usage:
     python3 -m src.cli.live_boxscore --date 20260627
     python3 -m src.cli.live_boxscore --json
     python3 -m src.cli.live_boxscore --game-id 20260627HTOB0
+
 """
 
 from __future__ import annotations
@@ -191,8 +192,15 @@ def _format_text(payload: dict[str, Any]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run live boxscore CLI."""
+    """
+    Run live boxscore CLI.
+
+    Args:
+        argv: Argv.
+
+    """
     _configure_cli_logging()
+
     args = _parse_args(argv)
 
     try:

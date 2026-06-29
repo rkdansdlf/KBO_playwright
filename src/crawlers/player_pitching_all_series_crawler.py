@@ -14,6 +14,7 @@ KBO 전체 시리즈 투수 기록 크롤러.
 Usage:
     python -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save
     python -m src.cli.sync_oci --season-stats --year 2025
+
 """
 
 from __future__ import annotations
@@ -168,9 +169,10 @@ PRIMARY_SORT_CONFIG = {
 
 def normalize_header(text: str) -> str:
     """
-    Normalizes header.
+    Normalize header.
 
     Args:
+        text: Text.
         text: Text.
 
     Returns:
@@ -190,9 +192,10 @@ def normalize_header(text: str) -> str:
 
 def extract_player_id(href: str | None) -> int | None:
     """
-    Extracts player id.
+    Extract player id.
 
     Args:
+        href: Href.
         href: Href.
 
     Returns:
@@ -207,9 +210,11 @@ def extract_player_id(href: str | None) -> int | None:
 
 def wait_for_table(page: Page, timeout: int = 30000) -> None:
     """
-    Handles the wait for table operation.
+    Handle the wait for table operation.
 
     Args:
+        page: Page.
+        timeout: Timeout.
         page: Page.
         timeout: Timeout in seconds.
 
@@ -227,7 +232,15 @@ def wait_for_table(page: Page, timeout: int = 30000) -> None:
 
 
 def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None = None) -> bool:
-    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)."""
+    """
+    다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복).
+
+    Args:
+        page: Page.
+        current_page: Current Page.
+        policy: Policy.
+
+    """
     try:
         # 1→2,3,4,5→다음→6,7,8,9,10→다음 패턴
         if current_page % 5 == 0:  # 5페이지마다 "다음" 버튼 클릭
@@ -320,9 +333,13 @@ def apply_sort(
     policy: RequestPolicy | None = None,
 ) -> bool:
     """
-    Handles the apply sort operation.
+    Handle the apply sort operation.
 
     Args:
+        page: Page.
+        header_label: Header Label.
+        sort_code: Sort Code.
+        policy: Policy.
         page: Page.
         header_label: Header Label.
         sort_code: Sort Code.
@@ -497,9 +514,10 @@ def _map_pitcher_basic1_stats(
 
     def get_val(key: str) -> str | None:
         """
-        Gets val.
+        Get val.
 
         Args:
+            key: Key.
             key: Key.
 
         Returns:
@@ -559,9 +577,14 @@ def parse_basic1_page(
     max_players: int | None = None,
 ) -> int:
     """
-    Parses basic1 page.
+    Parse basic1 page.
 
     Args:
+        page: Page.
+        season: Season year.
+        league: League.
+        pitchers: Pitchers.
+        max_players: Max Players.
         page: Page.
         season: Season year.
         league: League.
@@ -573,6 +596,7 @@ def parse_basic1_page(
 
     """
     header_index = _get_and_validate_basic1_headers(page)
+
     if not header_index:
         return 0
 
@@ -652,9 +676,10 @@ def _extract_basic2_row_info(
 
         def cell_text_fast(idx: int) -> str | None:
             """
-            Handles the cell text fast operation.
+            Handle the cell text fast operation.
 
             Args:
+                idx: Idx.
                 idx: Idx.
 
             Returns:
@@ -675,9 +700,10 @@ def _extract_basic2_row_info(
 
     def cell_text_slow(idx: int) -> str | None:
         """
-        Handles the cell text slow operation.
+        Handle the cell text slow operation.
 
         Args:
+            idx: Idx.
             idx: Idx.
 
         Returns:
@@ -737,9 +763,10 @@ def _update_pitcher_basic2_stats(
 
 def parse_basic2_page(ctx: Basic2PageContext) -> int:
     """
-    Parses basic2 page.
+    Parse basic2 page.
 
     Args:
+        ctx: Ctx.
         ctx: Ctx.
 
     Returns:
@@ -797,6 +824,11 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
         year: Season year.
         series_value: Series Value.
         policy: Policy.
+        page: Page.
+        url: Url.
+        year: Season year.
+        series_value: Series Value.
+        policy: Policy.
 
     Returns:
         True if successful, False otherwise.
@@ -846,9 +878,10 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
 
 def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[str, object], list[PitcherStats]]:
     """
-    Builds pitching summary.
+    Build pitching summary.
 
     Args:
+        stats_list: Stats List.
         stats_list: Stats List.
 
     Returns:
@@ -856,6 +889,7 @@ def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[s
 
     """
     payloads = [stat.to_repository_payload() for stat in stats_list]
+
     valid_payloads, failure_counts = filter_valid_season_stat_payloads(payloads, stat_type="pitching")
     valid_ids = {payload["player_id"] for payload in valid_payloads}
     valid_stats = [stat for stat in stats_list if stat.player_id in valid_ids]
@@ -874,8 +908,17 @@ def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[s
 
 
 def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> list[PitcherStats]:
-    """KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 투수 시즌 기록을 생성합니다."""
+    """
+    KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 투수 시즌 기록을 생성합니다.
+
+    Args:
+        year: Season year.
+        series_key: Series Key.
+        reason: Reason.
+
+    """
     FallbackMonitor.log_fallback(year, series_key, "PITCHING", reason)
+
     logger.info("🔄 로컬 DB 기반 투수 기록 집계 시작 (연도: %s, 시리즈: %s)...", year, series_key)
     pitchers: dict[int, PitcherStats] = {}
 
@@ -1080,9 +1123,15 @@ def crawl_pitcher_series(
     by_team: bool = False,
 ) -> list[PitcherStats]:
     """
-    Crawls pitcher series.
+    Crawl pitcher series.
 
     Args:
+        year: Season year.
+        series_key: Series Key.
+        limit: Limit.
+        headless: Whether to run the browser in headless mode.
+        save_to_db: Save To Db.
+        by_team: By Team.
         year: Season year.
         series_key: Series Key.
         limit: Limit.
@@ -1184,13 +1233,14 @@ def crawl_pitcher_series(
 
 def parse_arguments() -> argparse.Namespace:
     """
-    Parses arguments.
+    Parse arguments.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="KBO 투수 기록 크롤러 (Basic1/Basic2)")
+
     parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="시즌 연도 (기본: 당해 연도)")
     parser.add_argument(
         "--series",
@@ -1210,7 +1260,7 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     args = parse_arguments()
     policy = RequestPolicy()
 

@@ -15,6 +15,7 @@ Usage:
     python -m src.crawlers.fan_culture_crawler --save
     python -m src.crawlers.fan_culture_crawler --team LG --dry-run
     python -m src.crawlers.fan_culture_crawler --save --season 2026
+
 """
 
 from __future__ import annotations
@@ -65,7 +66,15 @@ def _extract_season(title: str, fallback: int | None = None) -> int | None:
 
 
 def _video_to_song(item: YouTubeVideoItem, team_id: str, current_season: int) -> dict[str, Any] | None:
-    """Convert a YouTube video item to a cheer_song dict."""
+    """
+    Convert a YouTube video item to a cheer_song dict.
+
+    Args:
+        item: Item.
+        team_id: Team ID.
+        current_season: Current Season.
+
+    """
     title = item.title.strip()
 
     # 필터링: 응원가 키워드가 없으면 제외
@@ -95,15 +104,24 @@ def _video_to_song(item: YouTubeVideoItem, team_id: str, current_season: int) ->
 
 class FanCultureCrawler:
     """
-    Crawls KBO cheer song metadata from official team YouTube channels.
+    crawl KBO cheer song metadata from official team YouTube channels.
 
     Replaces the previous Namu Wiki-based implementation.
     Requires YOUTUBE_API_KEY environment variable.
+
     """
 
     def __init__(self, season: int | None = None, max_results_per_team: int = 50) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            season: Season year.
+            max_results_per_team: Max Results Per Team.
+
+        """
         self.season = season or datetime.now(KST).year
+
         self.max_results = max_results_per_team
         self.client = YouTubeAPIClient()
 
@@ -118,6 +136,9 @@ class FanCultureCrawler:
         Crawl cheer songs from YouTube for all (or one) KBO team.
 
         Args:
+            save: Whether to persist the results.
+            team_filter: Team Filter.
+            dry_run: If True, performs a dry run without persisting changes.
             save: Persist results to database.
             team_filter: Only crawl this team code (e.g. 'LG').
             dry_run: Print results without saving.
@@ -172,8 +193,17 @@ class FanCultureCrawler:
         channel_id: str,
         search_queries: list[str],
     ) -> list[dict]:
-        """Crawl cheer songs for a single team via YouTube search."""
+        """
+        Crawl cheer songs for a single team via YouTube search.
+
+        Args:
+            team_id: Team ID.
+            channel_id: Channel ID.
+            search_queries: Search Queries.
+
+        """
         seen_video_ids: set[str] = set()
+
         songs: list[dict] = []
 
         for query in search_queries:

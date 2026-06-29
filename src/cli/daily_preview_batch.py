@@ -1,6 +1,7 @@
 """
 Daily Preview Batch Script
-Fetches pre-game context and persists both preview JSON and core pregame tables.
+Fetch pre-game context and persists both preview JSON and core pregame tables.
+
 """
 
 from __future__ import annotations
@@ -124,9 +125,11 @@ def _sync_saved_pregame_games(saved_ids: list[str]) -> None:
 
 async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
     """
-    Runs preview batch.
+    Run preview batch.
 
     Args:
+        target_date: Target date for the operation.
+        sync_to_oci: Sync To Oci.
         target_date: Target Date.
 
     Returns:
@@ -153,8 +156,15 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="KBO Daily Preview Crawler")
+
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)

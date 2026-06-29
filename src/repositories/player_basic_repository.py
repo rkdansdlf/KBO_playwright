@@ -1,6 +1,7 @@
 """
 Player Basic Repository
 UPSERT operations for player_basic table.
+
 """
 
 from __future__ import annotations
@@ -28,15 +29,17 @@ class PlayerBasicRepository:
     """Repository for player_basic table operations."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         self.dialect = Engine.dialect.name
         self.last_filter_counts: Counter = Counter()
 
     def upsert_players(self, players: list[dict[str, Any]]) -> int:
         """
-        UPSERT player_basic records (idempotent).
+        Upsert player_basic records (idempotent).
 
         Args:
+            players: Players.
+            players: Players.
             players: List of player dictionaries with keys:
                 - player_id (required)
                 - name (required)
@@ -51,6 +54,7 @@ class PlayerBasicRepository:
 
         """
         self.last_filter_counts = Counter()
+
         if not players:
             return 0
 
@@ -71,8 +75,18 @@ class PlayerBasicRepository:
                 raise
 
     def _upsert_one(self, session: Session, player_data: dict[str, Any]) -> None:
-        """UPSERT single player (SQLite/PostgreSQL compatible)."""
+        """
+        Upsert single player (SQLite/PostgreSQL compatible).
+
+        Args:
+            session: Session.
+            player_data: Player Data.
+            session: Session.
+            player_data: Player Data.
+
+        """
         ok, reason = validate_player_payload(player_data)
+
         if not ok:
             self.last_filter_counts[reason or "invalid_player_payload"] += 1
             return
@@ -161,7 +175,14 @@ class PlayerBasicRepository:
         }
 
     def get_all(self, limit: int | None = None) -> list[PlayerBasic]:
-        """Get all players (optionally limited)."""
+        """
+        Get all players (optionally limited).
+
+        Args:
+            limit: Limit.
+            limit: Limit.
+
+        """
         with SessionLocal() as session:
             query = session.query(PlayerBasic)
             if limit:
@@ -169,7 +190,14 @@ class PlayerBasicRepository:
             return list(query.all())
 
     def update_statuses(self, updates: list[dict[str, Any]]) -> int:
-        """Update status/staff_role/status_source for existing players."""
+        """
+        Update status/staff_role/status_source for existing players.
+
+        Args:
+            updates: Updates.
+            updates: Updates.
+
+        """
         if not updates:
             return 0
         with SessionLocal() as session:
@@ -192,12 +220,28 @@ class PlayerBasicRepository:
                 raise
 
     def get_by_id(self, player_id: int) -> PlayerBasic | None:
-        """Get player by ID."""
+        """
+        Get player by ID.
+
+        Args:
+            player_id: Player ID.
+            player_id: Player ID.
+
+        """
         with SessionLocal() as session:
             return session.query(PlayerBasic).filter_by(player_id=player_id).first()
 
     def get_by_team(self, team: str, limit: int | None = None) -> list[PlayerBasic]:
-        """Get players by team."""
+        """
+        Get players by team.
+
+        Args:
+            team: Team.
+            limit: Limit.
+            team: Team.
+            limit: Limit.
+
+        """
         with SessionLocal() as session:
             query = session.query(PlayerBasic).filter_by(team=team)
             if limit:
@@ -206,6 +250,14 @@ class PlayerBasicRepository:
 
 
 def save_player_basic(player_data: dict[str, Any]) -> int:
-    """Helper function to save a single player's basic profile."""
+    """
+    Save a single player a single player's basic profile.
+
+    Args:
+        player_data: Player Data.
+        player_data: Player Data.
+
+    """
     repo = PlayerBasicRepository()
+
     return repo.upsert_players([player_data])

@@ -4,6 +4,7 @@ Aligns with Docs/schema/playerProfileSchemaGuide.md design.
 
 PlayerBasic: Simple table from player search crawler (Docs/PLAYERID_CRAWLING.md)
 Player: Complex relational model for detailed player data
+
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ class PlayerBasic(Base, TimestampMixin):
 
     Design rationale: Keep original string values for verification,
     add parsed columns for querying.
+
     """
 
     __tablename__ = "player_basic"
@@ -120,7 +122,7 @@ class PlayerBasic(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<PlayerBasic(player_id={self.player_id}, name='{self.name}', team='{self.team}')>"
 
 
@@ -189,7 +191,7 @@ class Player(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<Player(id={self.id}, status={self.status})>"
 
 
@@ -198,6 +200,7 @@ class PlayerIdentity(Base, TimestampMixin):
     Player naming/identity history.
 
     Tracks name changes or variations (e.g. Korean name, English name).
+
     """
 
     __tablename__ = "player_identities"
@@ -282,9 +285,11 @@ class PlayerSeasonPitching(Base, TimestampMixin):
     Season-level pitching aggregates by league/split.
 
     Compatible with pitcher crawler data structure.
+
     """
 
     __tablename__ = "player_season_pitching"
+
     __table_args__ = (
         UniqueConstraint(
             "player_id",
@@ -369,6 +374,7 @@ class PlayerMovement(Base, TimestampMixin):
     Records player status changes (Trade, FA, Waiver, etc.).
 
     Source: https://www.koreabaseball.com/Player/Trade.aspx.
+
     """
 
     __tablename__ = "player_movements"
@@ -408,7 +414,7 @@ class PlayerMovement(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<PlayerMovement(date={self.movement_date}, section='{self.section}', player='{self.player_name}')>"
 
 
@@ -417,9 +423,11 @@ class PlayerSeasonFielding(Base, TimestampMixin):
     Season-level fielding stats.
 
     Source: https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx.
+
     """
 
     __tablename__ = "player_season_fielding"
+
     __table_args__ = (
         UniqueConstraint("player_id", "team_id", "year", "position_id", name="uq_player_season_fielding"),
         Index("idx_psf_player_year", "player_id", "year"),
@@ -450,7 +458,7 @@ class PlayerSeasonFielding(Base, TimestampMixin):
     source: Mapped[str | None] = mapped_column(String(20), nullable=True, default="CRAWLER")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<PlayerSeasonFielding(player_id={self.player_id}, year={self.year}, pos='{self.position_id}')>"
 
 
@@ -459,9 +467,11 @@ class PlayerSeasonBaserunning(Base, TimestampMixin):
     Season-level baserunning stats.
 
     Source: https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx.
+
     """
 
     __tablename__ = "player_season_baserunning"
+
     __table_args__ = (
         UniqueConstraint("player_id", "team_id", "year", name="uq_player_season_baserunning"),
         Index("idx_psb_run_player_year", "player_id", "year"),
@@ -483,5 +493,5 @@ class PlayerSeasonBaserunning(Base, TimestampMixin):
     source: Mapped[str | None] = mapped_column(String(20), nullable=True, default="CRAWLER")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<PlayerSeasonBaserunning(player_id={self.player_id}, year={self.year})>"

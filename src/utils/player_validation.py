@@ -30,9 +30,11 @@ UNKNOWN_ID_NAME_RE = re.compile(r"^unknown\s+\d+$", re.IGNORECASE)
 
 def normalize_player_name(name: object) -> str:
     """
-    Normalizes player name.
+    Normalize player name.
 
     Args:
+        name: Name.
+        name: Name.
         name: Name.
 
     Returns:
@@ -46,9 +48,11 @@ def normalize_player_name(name: object) -> str:
 
 def is_invalid_player_name(name: object) -> bool:
     """
-    Returns whether the invalid player name.
+    Return whether the invalid player name.
 
     Args:
+        name: Name.
+        name: Name.
         name: Name.
 
     Returns:
@@ -56,6 +60,7 @@ def is_invalid_player_name(name: object) -> bool:
 
     """
     normalized = normalize_player_name(name)
+
     return (
         not normalized
         or normalized.upper() in {value.upper() for value in INVALID_PLAYER_NAMES}
@@ -65,9 +70,11 @@ def is_invalid_player_name(name: object) -> bool:
 
 def normalize_player_id(player_id: object) -> int | None:
     """
-    Normalizes player id.
+    Normalize player id.
 
     Args:
+        player_id: Player ID.
+        player_id: Player ID.
         player_id: Player ID.
 
     Returns:
@@ -85,9 +92,11 @@ def normalize_player_id(player_id: object) -> int | None:
 
 def validate_player_payload(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
     """
-    Validates player payload.
+    Validate player payload.
 
     Args:
+        payload: Payload.
+        payload: Payload.
         payload: Data payload to process.
 
     Returns:
@@ -95,6 +104,7 @@ def validate_player_payload(payload: Mapping[str, Any]) -> tuple[bool, str | Non
 
     """
     player_id = normalize_player_id(payload.get("player_id"))
+
     if player_id is None:
         return False, "invalid_player_id"
 
@@ -114,9 +124,11 @@ def filter_valid_player_payloads(
     payloads: Iterable[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], Counter[str]]:
     """
-    Filters valid player payloads.
+    Filter valid player payloads.
 
     Args:
+        payloads: Payloads.
+        payloads: Payloads.
         payloads: Payloads.
 
     Returns:
@@ -124,6 +136,7 @@ def filter_valid_player_payloads(
 
     """
     filtered: list[dict[str, Any]] = []
+
     reasons: Counter[str] = Counter[str]()
 
     for payload in payloads:

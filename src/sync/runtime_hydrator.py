@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.models.base import Base
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -38,9 +39,9 @@ class HydrationSpec:
     """HydrationSpec class."""
 
     label: str
-    model: type
-    source_filters: Sequence
-    target_filters: Sequence
+    model: Any
+    source_filters: Sequence[Any]
+    target_filters: Sequence[Any]
     replace_scope: bool = True
     exclude_columns: Sequence[str] = ()
 
@@ -63,8 +64,18 @@ class RuntimeHydrator:
     }
 
     def __init__(self, source_session: Session, target_session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            source_session: Source Session.
+            target_session: Target Session.
+            source_session: Source Session.
+            target_session: Target Session.
+
+        """
         self.source_session = source_session
+
         self.target_session = target_session
 
     def hydrate_year(
@@ -75,9 +86,15 @@ class RuntimeHydrator:
         preserve_aliases: bool = False,
     ) -> dict[str, int]:
         """
-        Handles the hydrate year operation.
+        Handle the hydrate year operation.
 
         Args:
+            year: Season year.
+            target_date: Target date for the operation.
+            preserve_aliases: Preserve Aliases.
+            year: Season year.
+            target_date: Target date for the operation.
+            preserve_aliases: Preserve Aliases.
             year: Season year.
 
         Returns:
@@ -85,6 +102,7 @@ class RuntimeHydrator:
 
         """
         specs = self._hydration_specs(year, target_date=target_date, preserve_aliases=preserve_aliases)
+
         try:
             return self._run_hydration_specs(year, specs, preserve_aliases=preserve_aliases)
         except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
@@ -306,7 +324,7 @@ class RuntimeHydrator:
         if not mappings:
             return 0
         keys = list(mappings[0].keys())
-        stmt = sqlite_insert(GameIdAlias.__table__)
+        stmt = sqlite_insert(GameIdAlias.__table__)  # type: ignore[arg-type]
         update_columns = [c for c in keys if c not in ("alias_game_id",)]
         if update_columns:
             stmt = stmt.on_conflict_do_update(
@@ -367,7 +385,7 @@ class RuntimeHydrator:
         table = spec.model.__table__
         if spec.model is Game or "game_id" not in table.columns:
             return
-        game_ids = sorted({str(row.game_id) for row in rows if getattr(row, "game_id", None)})
+        game_ids = sorted({str(row.game_id) for row in rows if getattr(row, "game_id", None)})  # type: ignore[attr-defined]
         if not game_ids:
             return
         self.target_session.execute(table.delete().where(table.c.game_id.in_(game_ids)))

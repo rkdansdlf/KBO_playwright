@@ -31,7 +31,7 @@ class PlayerRepository:
     """Persist player-related entities with SQLite/MySQL compatible UPSERT logic."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         self.dialect = Engine.dialect.name
 
     # ------------------------------------------------------------------
@@ -42,6 +42,13 @@ class PlayerRepository:
         Upsert player and primary identity based on parsed profile info.
 
         Also synchronizes status and key fields to PlayerBasic.
+
+        Args:
+            kbo_player_id: Kbo Player ID.
+            profile: Profile.
+            kbo_player_id: Kbo Player ID.
+            profile: Profile.
+
         """
         if not kbo_player_id:
             msg = "kbo_player_id is required to upsert a player profile"
@@ -217,9 +224,13 @@ class PlayerRepository:
     # ------------------------------------------------------------------
     def upsert_season_batting(self, player_id: int, season_data: dict[str, Any]) -> None:
         """
-        Inserts or updates season batting.
+        Insert or updates season batting.
 
         Args:
+            player_id: Player ID.
+            season_data: Season Data.
+            player_id: Player ID.
+            season_data: Season Data.
             player_id: Player ID.
             season_data: Season Data.
 
@@ -228,9 +239,13 @@ class PlayerRepository:
 
     def upsert_season_pitching(self, player_id: int, season_data: dict[str, Any]) -> None:
         """
-        Inserts or updates season pitching.
+        Insert or updates season pitching.
 
         Args:
+            player_id: Player ID.
+            season_data: Season Data.
+            player_id: Player ID.
+            season_data: Season Data.
             player_id: Player ID.
             season_data: Season Data.
 
@@ -278,9 +293,11 @@ class PlayerRepository:
     # ------------------------------------------------------------------
     def save_player_movements(self, movements: list[dict[str, Any]]) -> int:
         """
-        Saves player movements.
+        Save player movements.
 
         Args:
+            movements: Movements.
+            movements: Movements.
             movements: Movements.
 
         Returns:
@@ -288,6 +305,7 @@ class PlayerRepository:
 
         """
         saved_count = 0
+
         with SessionLocal() as session:
             for item in movements:
                 # Convert date string to object if needed

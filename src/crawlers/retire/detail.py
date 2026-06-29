@@ -24,8 +24,18 @@ class RetiredPlayerDetailCrawler:
     pitcher_url = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+
+        """
         self.request_delay = request_delay
+
         self.pool = pool
         self._internal_pool = None
         self._lock = asyncio.Lock()
@@ -40,7 +50,7 @@ class RetiredPlayerDetailCrawler:
         return self._internal_pool
 
     async def close(self) -> None:
-        """Handles the close operation."""
+        """Handle the close operation."""
         if self._internal_pool:
             await self._internal_pool.close()
             self._internal_pool = None
@@ -51,8 +61,18 @@ class RetiredPlayerDetailCrawler:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
     async def fetch_player(self, player_id: str, retries: int = 2) -> dict[str, Any]:
-        """Fetch hitter & pitcher pages for the given player ID."""
+        """
+        Fetch hitter & pitcher pages for the given player ID.
+
+        Args:
+            player_id: Player ID.
+            retries: Retries.
+            player_id: Player ID.
+            retries: Retries.
+
+        """
         pool = await self._get_pool()
+
         hitter_payload = None
         pitcher_payload = None
 
@@ -160,7 +180,7 @@ class RetiredPlayerDetailCrawler:
 
 
 async def main() -> None:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     crawler = RetiredPlayerDetailCrawler()
     sample_id = "78137"
     try:

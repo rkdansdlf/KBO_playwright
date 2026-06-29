@@ -3,6 +3,7 @@ Real-time KBO live crawler.
 
 Polls today's schedule, captures relay events plus a lightweight scoreboard snapshot,
 then explicitly syncs changed games to OCI.
+
 """
 
 from __future__ import annotations
@@ -81,7 +82,13 @@ if TYPE_CHECKING:
 
 
 def _has_ending_header(raw_pbp_rows: list[dict[str, Any]]) -> bool:
-    """Check if the last inning_header contains game-ending keywords."""
+    """
+    Check if the last inning_header contains game-ending keywords.
+
+    Args:
+        raw_pbp_rows: Raw Pbp Rows.
+
+    """
     for row in reversed(raw_pbp_rows):
         if row.get("event_type") == "inning_header":
             return False
@@ -113,7 +120,11 @@ def _query_enriched_game_state(
     """
     Query DB for event count and max inning per game_id.
 
-    Returns {game_id: {"event_count": int, "max_inning": int}}.
+    Return {game_id: {"event_count": int, "max_inning": int}}.
+
+    Args:
+        game_ids: Game Ids.
+
     """
     if not game_ids:
         return {}
@@ -172,9 +183,17 @@ def _compute_enriched_interval(
     """
     Improve the base dynamic interval using at-bat/inning/event-density awareness.
 
-    Returns (sleep_seconds, extra_note, updated_last_event_counts).
+    Return (sleep_seconds, extra_note, updated_last_event_counts).
+
+    Args:
+        base_interval: Base Interval.
+        game_ids_playing: Game Ids Playing.
+        last_event_counts: Last Event Counts.
+        enriched_state: Enriched State.
+
     """
     min_polling_interval = 5
+
     if not game_ids_playing or not enriched_state:
         return max(min_polling_interval, base_interval), "", dict(last_event_counts)
 
@@ -221,7 +240,14 @@ _ACTIVE_HEALING_GAMES: set[str] = set()
 
 
 def _submit_live_detail_snapshot_background(game_id: str, today_str: str) -> bool:
-    """Queue a non-cadence-critical live detail snapshot crawl for one game."""
+    """
+    Queue a non-cadence-critical live detail snapshot crawl for one game.
+
+    Args:
+        game_id: Game ID.
+        today_str: Today Str.
+
+    """
     with _ACTIVE_DETAIL_SNAPSHOT_LOCK:
         if game_id in _ACTIVE_DETAIL_SNAPSHOT_GAMES:
             logger.info("[LIVE] Skipping background live detail snapshot for %s because it is already running", game_id)
@@ -282,7 +308,13 @@ def _submit_live_detail_snapshot_background(game_id: str, today_str: str) -> boo
 
 
 async def _run_kbo_fallback_healing(game_id: str) -> None:
-    """Run KBO official website re-crawl as a background fallback task when validation fails."""
+    """
+    Run KBO official website re-crawl as a background fallback task when validation fails.
+
+    Args:
+        game_id: Game ID.
+
+    """
     try:
         from src.crawlers.pbp_crawler import PBPCrawler
         from src.utils.alerting import SlackWebhookClient
@@ -631,8 +663,19 @@ async def run_live_crawler_cycle(
     max_active_games: int | None = None,
     detail_snapshot_background: bool = False,
 ) -> dict[str, Any]:
-    """Run one live polling cycle. Returns status dictionary."""
+    """
+    Run one live polling cycle.
+
+        Returns status dictionary.
+
+    Args:
+        sync_to_oci: Sync To Oci.
+        max_active_games: Max Active Games.
+        detail_snapshot_background: Detail Snapshot Background.
+
+    """
     seoul_tz = ZoneInfo("Asia/Seoul")
+
     now = datetime.now(seoul_tz)
     today_str = now.strftime("%Y%m%d")
 
@@ -742,8 +785,17 @@ async def run_live_crawler_cycle(
 
 
 async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = None, dynamic: bool = False) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        base_interval_minutes: Base Interval Minutes.
+        sync_to_oci: Sync To Oci.
+        dynamic: Dynamic.
+
+    """
     last_active_time = None
+
     last_event_counts: dict[str, int] = {}
     while True:
         try:
@@ -808,7 +860,14 @@ def _compute_base_dynamic_interval(
     state: GameActivityState,
     base_interval_minutes: int,
 ) -> tuple[int, str]:
-    """Return (base_sleep_seconds, mode_label) for the existing dynamic logic."""
+    """
+    Return (base_sleep_seconds, mode_label) for the existing dynamic logic.
+
+    Args:
+        state: State.
+        base_interval_minutes: Base Interval Minutes.
+
+    """
     if state.active:
         if state.active_playing:
             return 10, "ACTIVE (Inning playing)"
@@ -828,8 +887,15 @@ def _compute_base_dynamic_interval(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="KBO Live Score & PBP Daemon")
+
     parser.add_argument(
         "--interval",
         type=int,
