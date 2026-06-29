@@ -8,7 +8,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
@@ -752,7 +752,7 @@ def _load_target_rows(
     elif criteria.season:
         prefix = f"{criteria.season}{criteria.month:02d}" if criteria.month else str(criteria.season)
         query = query.filter(Game.game_id.like(f"{prefix}%"))
-    return query.order_by(Game.game_id.asc()).all()
+    return cast("list[tuple[str, str | None]]", query.order_by(Game.game_id.asc()).all())
 
 
 def _load_final_scores(game_ids: Sequence[str]) -> dict[str, tuple[int | None, int | None]]:

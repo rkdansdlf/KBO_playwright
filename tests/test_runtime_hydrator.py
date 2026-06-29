@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
+
+pytestmark = pytest.mark.integration
 
 from src.models.game import (
     Game,
@@ -21,6 +24,7 @@ from src.models.game import (
     PlayerGamePitching,
 )
 from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.season import KboSeason
 from src.models.team import Team, TeamDailyRoster
 from src.sync.runtime_hydrator import RuntimeHydrator
 
@@ -54,6 +58,7 @@ def _build_session_factory():
         GameValidationMetrics.__table__,
         PlayerGameBatting.__table__,
         PlayerGamePitching.__table__,
+        KboSeason.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

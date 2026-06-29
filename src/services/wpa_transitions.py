@@ -89,6 +89,8 @@ def coerce_int(value: object) -> int | None:
     if value is None or value == "":
         return None
     try:
+        if isinstance(value, float):
+            return int(value)
         return int(str(value))
     except (TypeError, ValueError):
         return None

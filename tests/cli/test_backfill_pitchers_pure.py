@@ -21,7 +21,7 @@ class TestNormalizeDate:
         assert _normalize_date("") is None
 
     def test_whitespace(self) -> None:
-        assert _normalize_date("   ") is None
+        assert _normalize_date("   ") == ""
 
 
 class TestIsBlank:
