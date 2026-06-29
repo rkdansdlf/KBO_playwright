@@ -1,7 +1,7 @@
 """
 Monthly Unified Audit Job for Scheduler.
 
-Runs both PA formula audit (with fix) and team stats consistency check.
+Run both PA formula audit (with fix) and team stats consistency check.
 
 PA formula audit: applies ratio-based SH/SF fix for the target year.
 Team stats audit: compares TeamSeasonBatting/Pitching with
@@ -9,6 +9,7 @@ PlayerSeasonBatting/Pitching aggregates (read-only).
 
 Imported by scripts/scheduler.py as the crawl_monthly_unified_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
+
 """
 
 from __future__ import annotations
@@ -33,7 +34,14 @@ PA_AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSE
 
 
 def run_pa_fix(year: int, *, dry_run: bool = False) -> dict[str, Any]:
-    """Apply PA formula fix for a given year, returning result dict."""
+    """
+    Apply PA formula fix for a given year, returning result dict.
+
+    Args:
+        year: Season year.
+        dry_run: If True, performs a dry run without persisting changes.
+
+    """
     try:
         fixed_rows = fix_year_formula(year, dry_run=dry_run)
     except PA_AUDIT_EXCEPTIONS as exc:
@@ -49,7 +57,13 @@ def run_pa_fix(year: int, *, dry_run: bool = False) -> dict[str, Any]:
 
 
 def run_pa_audit(year: int) -> dict[str, Any]:
-    """Run PA formula audit (read-only) and return JSON result."""
+    """
+    Run PA formula audit (read-only) and return JSON result.
+
+    Args:
+        year: Season year.
+
+    """
     try:
         data = audit_year(year)
     except PA_AUDIT_EXCEPTIONS as exc:

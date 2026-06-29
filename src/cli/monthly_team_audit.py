@@ -1,11 +1,12 @@
 """
 Monthly Team Stats Consistency Audit for Scheduler.
 
-Compares TeamSeasonBatting/Pitching with PlayerSeasonBatting/Pitching
+Compare TeamSeasonBatting/Pitching with PlayerSeasonBatting/Pitching
 aggregated by team. Reports mismatches without modifying data.
 
 Imported by scripts/scheduler.py as the crawl_monthly_team_audit_job target.
 Runs on the 1st of every month at 04:00 KST via APScheduler.
+
 """
 
 from __future__ import annotations
@@ -26,7 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 def run_monthly_team_audit(year: int) -> dict[str, Any]:
-    """Run team stats consistency check and return results."""
+    """
+    Run team stats consistency check and return results.
+
+    Args:
+        year: Season year.
+
+    """
     with SessionLocal() as session:
         gate = run_quality_gate(session, year)
         team_batting = gate.get("team_batting", {})

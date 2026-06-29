@@ -26,9 +26,10 @@ logger = logging.getLogger(__name__)
 
 async def run_reconciliation(args: argparse.Namespace) -> int:
     """
-    Runs reconciliation.
+    Run reconciliation.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     Returns:
@@ -36,6 +37,7 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
 
     """
     start_date, end_date = _resolve_date_range(args)
+
     year = int(end_date[:4])
 
     session = SessionLocal()
@@ -78,7 +80,7 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
@@ -112,8 +114,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     try:
         return asyncio.run(run_reconciliation(args))

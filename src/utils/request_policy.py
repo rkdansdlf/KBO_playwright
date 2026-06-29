@@ -39,7 +39,16 @@ class RequestPolicy:
     """Centralized throttling and retry policy."""
 
     def __init__(self, config: RequestPolicyConfig | None = None, **overrides: object) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            config: Configuration object.
+            overrides: Overrides.
+            config: Configuration object.
+            overrides: Overrides.
+
+        """
         if config is None:
             config = RequestPolicyConfig(**overrides)  # type: ignore[arg-type]
         elif overrides:
@@ -60,9 +69,13 @@ class RequestPolicy:
     @classmethod
     def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> "RequestPolicy":
         """
-        Handles the with delay operation.
+        Handle the with delay operation.
 
         Args:
+            min_delay: Min Delay.
+            max_delay: Max Delay.
+            min_delay: Min Delay.
+            max_delay: Max Delay.
             min_delay: Min Delay.
             max_delay: Max Delay.
 
@@ -74,9 +87,11 @@ class RequestPolicy:
 
     def _load_user_agents(self, override: Iterable[str] | None) -> list[str]:
         """
-        Loads user agents.
+        Load user agents.
 
         Args:
+            override: Override.
+            override: Override.
             override: Override.
 
         Returns:
@@ -96,7 +111,7 @@ class RequestPolicy:
 
     def random_user_agent(self) -> str:
         """
-        Handles the random user agent operation.
+        Handle the random user agent operation.
 
         Returns:
             String result.
@@ -106,19 +121,24 @@ class RequestPolicy:
 
     def build_context_kwargs(self, **overrides: object) -> dict[str, Any]:
         """
-        Builds context kwargs.
+        Build context kwargs.
+
+        Args:
+            overrides: Overrides.
+            overrides: Overrides.
 
         Returns:
             Dictionary mapping.
 
         """
         kwargs = {"user_agent": self.random_user_agent()}
+
         kwargs.update(overrides)  # type: ignore[arg-type]
         return kwargs
 
     def _random_delay(self) -> float:
         """
-        Handles the random delay operation.
+        Handle the random delay operation.
 
         Returns:
             float instance.
@@ -128,31 +148,43 @@ class RequestPolicy:
 
     def delay(self, host: str = "koreabaseball.com") -> None:
         """
-        Handles the delay operation.
+        Handle the delay operation.
 
         Args:
+            host: Host.
+            host: Host.
             host: Host.
 
         """
         throttle.default_delay = self.min_delay  # Dynamic adjustment based on policy
+
         throttle.wait_sync(host)
 
     async def delay_async(self, host: str = "koreabaseball.com") -> None:
         """
-        Handles the delay async operation.
+        Handle the delay async operation.
 
         Args:
+            host: Host.
+            host: Host.
             host: Host.
 
         """
         throttle.default_delay = self.min_delay
+
         await throttle.wait(host)
 
     def run_with_retry(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
         """
-        Runs with retry.
+        Run with retry.
 
         Args:
+            func: Func.
+            args: Positional arguments to pass through.
+            kwargs: Keyword arguments to pass through.
+            func: Func.
+            args: Positional arguments to pass through.
+            kwargs: Keyword arguments to pass through.
             func: Func.
 
         Returns:
@@ -160,6 +192,7 @@ class RequestPolicy:
 
         """
         last_exc = None
+
         for attempt in range(1, self.max_retries + 1):
             try:
                 return func(*args, **kwargs)
@@ -176,9 +209,15 @@ class RequestPolicy:
 
     async def run_with_retry_async(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
         """
-        Runs with retry async.
+        Run with retry async.
 
         Args:
+            func: Func.
+            args: Positional arguments to pass through.
+            kwargs: Keyword arguments to pass through.
+            func: Func.
+            args: Positional arguments to pass through.
+            kwargs: Keyword arguments to pass through.
             func: Func.
 
         Returns:
@@ -186,9 +225,10 @@ class RequestPolicy:
 
         """
         last_exc = None
+
         for attempt in range(1, self.max_retries + 1):
             try:
-                return await func(*args, **kwargs)  # type: ignore[misc, no-any-return]
+                return await func(*args, **kwargs)
             except self.retry_exceptions as exc:
                 last_exc = exc
                 if attempt >= self.max_retries:
@@ -202,9 +242,11 @@ class RequestPolicy:
 
     def _backoff_delay(self, attempt: int) -> float:
         """
-        Handles the backoff delay operation.
+        Handle the backoff delay operation.
 
         Args:
+            attempt: Attempt.
+            attempt: Attempt.
             attempt: Attempt.
 
         Returns:

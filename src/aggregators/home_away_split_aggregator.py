@@ -22,14 +22,21 @@ class HomeAwaySplitAggregator:
     """HomeAwaySplitAggregator class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+
+        """
         self.session = session
 
     def aggregate_batting(self, year: int) -> list[dict]:
         """
-        Aggregates batting.
+        Aggregate batting.
 
         Args:
+            year: Season year.
             year: Season year.
 
         Returns:
@@ -118,13 +125,15 @@ class HomeAwaySplitAggregator:
 
     def persist_batting(self, year: int) -> None:
         """
-        Handles the persist batting operation.
+        Handle the persist batting operation.
 
         Args:
+            year: Season year.
             year: Season year.
 
         """
         results = self.aggregate_batting(year)
+
         self.session.query(BatterHomeAwaySplit).filter(BatterHomeAwaySplit.season_year == year).delete(
             synchronize_session=False,
         )
@@ -136,14 +145,17 @@ class HomeAwaySplitAggregator:
 
     def print_report(self, year: int, top_n: int = 5) -> None:
         """
-        Prints print report.
+        Print print report.
 
         Args:
+            year: Season year.
+            top_n: Top N.
             year: Season year.
             top_n: Top N.
 
         """
         results = self.aggregate_batting(year)
+
         if not results:
             return
 

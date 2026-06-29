@@ -16,14 +16,23 @@ class StadiumSeatSectionRepository:
     """StadiumSeatSectionRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> StadiumSeatSection:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -31,6 +40,7 @@ class StadiumSeatSectionRepository:
 
         """
         stadium_id = data["stadium_id"]
+
         name = data.get("section_name", "")
         code = data.get("section_code")
         if code:
@@ -56,9 +66,11 @@ class StadiumSeatSectionRepository:
 
     def get_by_stadium(self, stadium_id: str) -> list[StadiumSeatSection]:
         """
-        Gets by stadium.
+        Get by stadium.
 
         Args:
+            stadium_id: Stadium ID.
+            stadium_id: Stadium ID.
             stadium_id: Stadium ID.
 
         Returns:
@@ -74,9 +86,11 @@ class StadiumSeatSectionRepository:
 
     def get_cheering_sections(self, stadium_id: str) -> list[StadiumSeatSection]:
         """
-        Gets cheering sections.
+        Get cheering sections.
 
         Args:
+            stadium_id: Stadium ID.
+            stadium_id: Stadium ID.
             stadium_id: Stadium ID.
 
         Returns:
@@ -95,9 +109,11 @@ class StadiumSeatSectionRepository:
 
     def bulk_save(self, records: list[dict]) -> int:
         """
-        Saves bulk.
+        Save bulk.
 
         Args:
+            records: Records.
+            records: Records.
             records: Records.
 
         Returns:
@@ -105,6 +121,7 @@ class StadiumSeatSectionRepository:
 
         """
         count = 0
+
         for data in records:
             self.save(data)
             count += 1

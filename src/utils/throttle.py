@@ -17,12 +17,23 @@ class AsyncThrottle:
     A centralized throttling service with random jitter to prevent IP blocks.
 
     Respects global delays configured via environment variables.
+
     """
 
     def __init__(self, delay: float = 1.0, jitter: float = 0.3) -> None:
         # Override with env vars if present
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            delay: Delay.
+            jitter: Jitter.
+            delay: Delay.
+            jitter: Jitter.
+
+        """
         env_delay = os.getenv("KBO_REQUEST_DELAY")
+
         env_jitter = os.getenv("KBO_REQUEST_JITTER")
 
         self._default_delay = float(env_delay) if env_delay is not None else delay
@@ -33,13 +44,14 @@ class AsyncThrottle:
 
     def _get_lock(self) -> asyncio.Lock:
         """
-        Gets lock.
+        Get lock.
 
         Returns:
             The result of the operation.
 
         """
         loop = asyncio.get_running_loop()
+
         loop_id = id(loop)
         if loop_id not in self._locks:
             with self._locks_lock:
@@ -50,7 +62,7 @@ class AsyncThrottle:
     @property
     def default_delay(self) -> float:
         """
-        Handles the default delay operation.
+        Handle the default delay operation.
 
         Returns:
             float instance.
@@ -61,9 +73,11 @@ class AsyncThrottle:
     @default_delay.setter
     def default_delay(self, val: float) -> None:
         """
-        Handles the default delay operation.
+        Handle the default delay operation.
 
         Args:
+            val: Val.
+            val: Val.
             val: Val.
 
         """
@@ -71,13 +85,14 @@ class AsyncThrottle:
 
     def _get_target_delay(self) -> float:
         """
-        Gets target delay.
+        Get target delay.
 
         Returns:
             float instance.
 
         """
         current_jitter = random.uniform(-self.jitter / 2, self.jitter)
+
         return max(0.0, self._default_delay + current_jitter)
 
     async def wait(self, host: str = "koreabaseball.com") -> None:
@@ -85,8 +100,14 @@ class AsyncThrottle:
         Wait for the required delay plus jitter since the last request to this host.
 
         Safe for concurrent use.
+
+        Args:
+            host: Host.
+            host: Host.
+
         """
         lock = self._get_lock()
+
         async with lock:
             now = time.monotonic()
             last_time = self._last_request_times.get(host, 0.0)
@@ -103,8 +124,16 @@ class AsyncThrottle:
             self._last_request_times[host] = time.monotonic()
 
     def wait_sync(self, host: str = "koreabaseball.com") -> None:
-        """Synchronous version of wait."""
+        """
+        Provide synchronous version of wait.
+
+        Args:
+            host: Host.
+            host: Host.
+
+        """
         now = time.monotonic()
+
         last_time = self._last_request_times.get(host, 0.0)
         elapsed = now - last_time
 

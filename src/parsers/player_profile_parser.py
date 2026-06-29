@@ -1,6 +1,7 @@
 """
 KBO Player Profile Parser
-Parses raw KBO profile texts and original string fields into structured attributes.
+Parse raw KBO profile texts and original string fields into structured attributes.
+
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ class PlayerProfileParsed(BaseModel):
     @property
     def education_path(self) -> list[str]:
         """
-        Handles the education path operation.
+        Handle the education path operation.
 
         Returns:
             List of results.
@@ -57,7 +58,14 @@ class PlayerProfileParsed(BaseModel):
         return self.education_or_career_path
 
     def __getitem__(self, item: str) -> object:
-        """Returns the item at the given key."""
+        """
+        Return the item at the given key.
+
+        Args:
+            item: Item.
+            item: Item.
+
+        """
         if item == "education_path":
             return self.education_path
         if hasattr(self, item):
@@ -66,9 +74,13 @@ class PlayerProfileParsed(BaseModel):
 
     def get(self, item: str, default: object = None) -> object:
         """
-        Gets get.
+        Get get.
 
         Args:
+            item: Item.
+            default: Default.
+            item: Item.
+            default: Default.
             item: Item.
             default: Default.
 
@@ -123,9 +135,11 @@ POS_MAP = {
 
 def _clean(s: str | None) -> str:
     """
-    Handles the clean operation.
+    Handle the clean operation.
 
     Args:
+        s: S.
+        s: S.
         s: S.
 
     Returns:
@@ -139,13 +153,30 @@ def _clean(s: str | None) -> str:
 
 
 def _to_year(two_digits: int, cutoff: int = 50) -> int:
-    """00~cutoff-1 -> 2000s, cutoff~99 -> 1900s (e.g. 06 -> 2006, 98 -> 1998)."""
+    """
+    00~cutoff-1 -> 2000s, cutoff~99 -> 1900s (e.g. 06 -> 2006, 98 -> 1998).
+
+    Args:
+        two_digits: Two Digits.
+        cutoff: Cutoff.
+        two_digits: Two Digits.
+        cutoff: Cutoff.
+
+    """
     return (2000 + two_digits) if two_digits < cutoff else (1900 + two_digits)
 
 
 def tokenize_profile(raw: str) -> dict[str, str]:
-    """Tokenize raw text by matching defined KBO labels."""
+    """
+    Tokenize raw text by matching defined KBO labels.
+
+    Args:
+        raw: Raw.
+        raw: Raw.
+
+    """
     raw = _clean(raw)
+
     out: dict[str, str] = {}
     for m in LABEL_REGEX.finditer(raw):
         key = _clean(m.group("key"))
@@ -155,7 +186,14 @@ def tokenize_profile(raw: str) -> dict[str, str]:
 
 
 def parse_back_number(s: str) -> int | None:
-    """Extract back number from values like 'No.25' or '25'."""
+    """
+    Extract back number from values like 'No.25' or '25'.
+
+    Args:
+        s: S.
+        s: S.
+
+    """
     if not s:
         return None
     m = re.search(r"(?:No\.\s*)?(\d+)", _clean(s))
@@ -163,7 +201,14 @@ def parse_back_number(s: str) -> int | None:
 
 
 def parse_birth_date(s: str) -> str | None:
-    """Convert '1987년 06월 05일' to '1987-06-05'."""
+    """
+    Convert '1987년 06월 05일' to '1987-06-05'.
+
+    Args:
+        s: S.
+        s: S.
+
+    """
     if not s:
         return None
     m = re.search(r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일", _clean(s))
@@ -178,8 +223,16 @@ def parse_birth_date(s: str) -> str | None:
 
 
 def parse_position_and_hands(s: str) -> dict[str, str | None]:
-    """Parse position and throwing/batting hands: '포수(우투우타)' -> C, R, R."""
+    """
+    Parse position and throwing/batting hands: '포수(우투우타)' -> C, R, R.
+
+    Args:
+        s: S.
+        s: S.
+
+    """
     s = _clean(s)
+
     if not s:
         return {"position": None, "throwing_hand": None, "batting_hand": None}
 
@@ -199,7 +252,14 @@ def parse_position_and_hands(s: str) -> dict[str, str | None]:
 
 
 def parse_height_weight(s: str) -> dict[str, int | None]:
-    """Parse height/weight from '180cm/95kg' format."""
+    """
+    Parse height/weight from '180cm/95kg' format.
+
+    Args:
+        s: S.
+        s: S.
+
+    """
     if not s:
         return {"height_cm": None, "weight_kg": None}
     m = re.search(r"(\d+)\s*cm\s*/\s*(\d+)\s*kg", _clean(s), re.IGNORECASE)
@@ -207,7 +267,14 @@ def parse_height_weight(s: str) -> dict[str, int | None]:
 
 
 def parse_path(s: str) -> list[str]:
-    """Parse education or career path string: '송정동초-무등중-진흥고' -> list."""
+    """
+    Parse education or career path string: '송정동초-무등중-진흥고' -> list.
+
+    Args:
+        s: S.
+        s: S.
+
+    """
     if not s:
         return []
     # Support hyphens, arrows, slashes, or commas as dividers
@@ -220,6 +287,11 @@ def parse_money(s: str) -> dict[str, Any | None]:
     Parse currency amounts:
     - '200000달러' -> amount=200000, currency='USD'
     - '160000만원' -> amount=1600000000, currency='KRW'.
+
+    Args:
+        s: S.
+        s: S.
+
     """
     if not s:
         return {"amount": None, "currency": None, "original": None}
@@ -247,7 +319,14 @@ def parse_money(s: str) -> dict[str, Any | None]:
 
 
 def parse_draft(s: str) -> dict[str, Any | None]:
-    """Parse draft info like '06 두산 2차 8라운드 59순위', '25 삼성 자유선발', or '98 삼성 1차'."""
+    """
+    Parse draft info like '06 두산 2차 8라운드 59순위', '25 삼성 자유선발', or '98 삼성 1차'.
+
+    Args:
+        s: S.
+        s: S.
+
+    """
     default_res = {
         "draft_year": None,
         "draft_team_code": None,
@@ -300,7 +379,14 @@ def parse_draft(s: str) -> dict[str, Any | None]:
 
 
 def parse_entry_year_team(s: str) -> dict[str, Any | None]:
-    """Parse entrant details like '06두산' or '25 삼성'."""
+    """
+    Parse entrant details like '06두산' or '25 삼성'.
+
+    Args:
+        s: S.
+        s: S.
+
+    """
     if not s:
         return {"entry_year": None, "entry_team_code": None}
 
@@ -330,8 +416,17 @@ def parse_profile(
     is_foreign: bool | None = None,
 ) -> PlayerProfileParsed:
     """
-    Main entry point. Tokenizes raw profile text and returns a structured dictionary
+    Tokenize raw profile text raw profile text and returns a structured dictionary
     of all parsed values.
+
+    Args:
+        raw_text: Raw Text.
+        is_active: Is Active.
+        is_foreign: Is Foreign.
+        raw_text: Raw Text.
+        is_active: Is Active.
+        is_foreign: Is Foreign.
+
     """
     tokens = tokenize_profile(raw_text)
 

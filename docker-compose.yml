@@ -10,15 +10,31 @@ services:
     env_file:
       - .env
     environment:
+      TZ: Asia/Seoul
       DATABASE_URL: sqlite:////app/data/kbo_dev.db
       OCI_DB_URL: ${OCI_DB_URL:-}
       TARGET_DATABASE_URL: ${TARGET_DATABASE_URL:-}
       SOURCE_DATABASE_URL: sqlite:////app/data/kbo_dev.db
+      PLAYWRIGHT_WS_ENDPOINT: ws://browserless:3000
+    depends_on:
+      - browserless
     volumes:
+      # Note: On Linux systems, verify that the host data/ and logs/ folders
+      # are owned by UID 1000 or the running user to avoid 'Permission Denied' errors.
       - ./data:/app/data
       - ./logs:/app/logs
       - playwright-browsers:/ms-playwright
     command: ["python", "-m", "scripts.scheduler"]
+
+  browserless:
+    image: browserless/chrome:latest
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - MAX_CONCURRENT_SESSIONS=10
+      - CONNECTION_TIMEOUT=300000
+      - KEEP_ALIVE=true
 
 volumes:
   playwright-browsers:

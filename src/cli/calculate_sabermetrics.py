@@ -23,7 +23,14 @@ SABERMETRICS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeE
 
 
 def batch_calculate_sabermetrics(years: list[int], *, sync_oci: bool = False) -> None:
-    """Batches through years and updates all players with advanced Sabermetrics."""
+    """
+    Batches through years and updates all players with advanced Sabermetrics.
+
+    Args:
+        years: Years.
+        sync_oci: Sync Oci.
+
+    """
     with SessionLocal() as session:
         for year in years:
             logger.info("📈 Calculating Sabermetrics for %s...", year)
@@ -89,8 +96,15 @@ def batch_calculate_sabermetrics(years: list[int], *, sync_oci: bool = False) ->
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Calculate Sabermetrics for players.")
+
     parser.add_argument("--years", type=str, default="2020-2026")
     parser.add_argument("--sync", action="store_true", help="Sync results to OCI")
     args = parser.parse_args(argv)

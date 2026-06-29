@@ -3,6 +3,7 @@ Backfill missing pregame preview data for scheduled games.
 
 This CLI finds scheduled game dates whose preview summaries or starting
 pitcher fields are incomplete, then runs daily_preview_batch for those dates.
+
 """
 
 from __future__ import annotations
@@ -79,13 +80,20 @@ def find_missing_pregame_dates(
     limit_dates: int | None = None,
 ) -> list[PregameBackfillDate]:
     """
-    Finds missing pregame dates.
+    Find missing pregame dates.
+
+    Args:
+        start_date: Start Date.
+        end_date: End Date.
+        include_complete: Include Complete.
+        limit_dates: Limit Dates.
 
     Returns:
         List of results.
 
     """
     query = """
+
         SELECT
             REPLACE(CAST(g.game_date AS TEXT), '-', '') AS target_date,
             g.game_id,
@@ -157,9 +165,10 @@ def find_missing_pregame_dates(
 
 def get_pregame_date_status(target_date: str) -> PregameBackfillDate | None:
     """
-    Gets pregame date status.
+    Get pregame date status.
 
     Args:
+        target_date: Target date for the operation.
         target_date: Target Date.
 
     Returns:
@@ -228,9 +237,10 @@ def _log_backfill_result(saved_total: int, failed: list[str], incomplete: list[s
 
 async def run_backfill(args: argparse.Namespace) -> int:
     """
-    Runs run backfill.
+    Run run backfill.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     Returns:
@@ -238,6 +248,7 @@ async def run_backfill(args: argparse.Namespace) -> int:
 
     """
     start_date, end_date = _resolve_backfill_range(args)
+
     targets = find_missing_pregame_dates(
         start_date=start_date,
         end_date=end_date,
@@ -278,13 +289,14 @@ async def run_backfill(args: argparse.Namespace) -> int:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Backfill missing scheduled pregame previews")
+
     parser.add_argument("--start-date", type=_yyyymmdd, help="Start date YYYYMMDD. Defaults to today in KST.")
     parser.add_argument("--end-date", type=_yyyymmdd, help="End date YYYYMMDD. Defaults to today + --days-ahead.")
     parser.add_argument("--days-ahead", type=int, default=1, help="Default end-date offset when --end-date is omitted.")
@@ -306,8 +318,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     return asyncio.run(run_backfill(args))
 

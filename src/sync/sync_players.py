@@ -23,10 +23,13 @@ from src.models.player import (
     PlayerIdentity,
     PlayerMovement,
 )
+from src.sync.sync_base import SyncBaseProtocol
 
 
-class PlayerSyncMixin:
+class PlayerSyncMixin(SyncBaseProtocol):
     """Mixin for player-related sync operations."""
+
+    _player_id_mapping_cache: dict[int, int]
 
     def sync_players(self) -> int:
         """Sync master player records (players table) from SQLite to OCI using bulk COPY upsert."""
@@ -46,7 +49,7 @@ class PlayerSyncMixin:
 
         valid_ids = list(player_mapping.keys())
 
-        def _map_player_id(data: dict) -> dict[str, Any]:
+        def _map_player_id(data: dict[str, Any]) -> dict[str, Any]:
             data["player_id"] = player_mapping.get(data["player_id"], data["player_id"])
             return data
 
@@ -86,7 +89,14 @@ class PlayerSyncMixin:
         }
 
     def sync_player_basic(self, limit: int | None = None) -> int:
-        """Sync player_basic data from SQLite to OCI using fast bulk COPY."""
+        """
+        Sync player_basic data from SQLite to OCI using fast bulk COPY.
+
+        Args:
+            limit: Limit.
+            limit: Limit.
+
+        """
         return self.sync_simple_table(
             PlayerBasic,
             conflict_keys=["player_id"],
@@ -99,8 +109,16 @@ class PlayerSyncMixin:
         )
 
     def sync_player_basic_by_ids(self, player_ids: list[int]) -> int:
-        """Sync specific players from SQLite to OCI by their IDs using bulk COPY upsert."""
+        """
+        Sync specific players from SQLite to OCI by their IDs using bulk COPY upsert.
+
+        Args:
+            player_ids: Player Ids.
+            player_ids: Player Ids.
+
+        """
         target_player_ids = sorted({int(player_id) for player_id in player_ids if player_id is not None})
+
         if not target_player_ids:
             return 0
 
@@ -155,8 +173,16 @@ class PlayerSyncMixin:
         return synced
 
     def _sync_referenced_player_basic_for_games(self, game_ids: list[str]) -> int:
-        """Sync local player_basic rows referenced by game child tables before FK-bound child sync."""
+        """
+        Sync local player_basic rows referenced by game child tables before FK-bound child sync.
+
+        Args:
+            game_ids: Game Ids.
+            game_ids: Game Ids.
+
+        """
         target_game_ids = sorted({str(game_id) for game_id in game_ids if game_id})
+
         if not target_game_ids:
             return 0
 
@@ -210,7 +236,7 @@ class PlayerSyncMixin:
     def sync_player_movements(self) -> int:
         """Sync player_movements from SQLite to OCI using bulk COPY upsert."""
 
-        def _fix_team_code(data: dict) -> dict[str, Any]:
+        def _fix_team_code(data: dict[str, Any]) -> dict[str, Any]:
             if not data.get("team_code"):
                 data["team_code"] = data.get("canonical_team_id") or "N/A"
             return data
@@ -235,7 +261,7 @@ class PlayerSyncMixin:
 
     def sync_crawl_runs(self) -> int:
         """
-        Syncs runs.
+        Sync runs.
 
         Returns:
             Integer result.

@@ -350,9 +350,15 @@ def _parse_json_team_events(
 
 def parse_team_events(html: str, source_key: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """
-    Parses team events.
+    Parse team events.
 
     Args:
+        html: Html.
+        source_key: Source Key.
+        metadata: Metadata.
+        html: Html.
+        source_key: Source Key.
+        metadata: Metadata.
         html: Html.
         source_key: Source Key.
         metadata: Metadata.
@@ -362,6 +368,7 @@ def parse_team_events(html: str, source_key: str, metadata: dict[str, Any] | Non
 
     """
     team_code = TEAM_CODE_FROM_SOURCE_KEY.get(source_key, "UNKNOWN")
+
     if team_code == "UNKNOWN":
         return []
     config = SOURCE_CONFIG_MAP.get(source_key, {"link_prefix": ""})

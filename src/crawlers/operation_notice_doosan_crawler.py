@@ -6,6 +6,7 @@ operational announcements for Jamsil Stadium (Doosan's home).
 
 Target URL pattern:
   https://www.doosanbears.com/event/board?page={page}
+
 """
 
 from __future__ import annotations
@@ -70,24 +71,37 @@ def _extract_article_id(href: str) -> str | None:
 
 class OperationNoticeDoosanCrawler:
     """
-    Crawls Doosan Bears official announcements and maps them to
+    Doosan Bears official announcements and maps them to
     StadiumOperationNotice records for JAMSIL stadium.
+
     """
 
     def __init__(self, max_pages: int = 5) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            max_pages: Max Pages.
+
+        """
         self.max_pages = max_pages
+
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
         """
-        Runs run.
+        Run run.
+
+        Args:
+            save: Whether to persist the results.
+            stop_at_external_id: Stop At External ID.
 
         Returns:
             List of results.
 
         """
         all_notices: list[dict] = []
+
         from src.utils.playwright_pool import AsyncPlaywrightPool
 
         async with AsyncPlaywrightPool(max_pages=1, block_resources=True) as pool, pool.page() as page:

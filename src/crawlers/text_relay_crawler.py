@@ -10,6 +10,7 @@ KBO 공식 웹사이트의 LiveText.aspx 페이지에 접근하여
 사용 예시:
     crawler = TextRelayCrawler()
     df = await crawler.crawl_game_relay("20260412SKLG0", save=True)
+
 """
 
 from __future__ import annotations
@@ -71,7 +72,7 @@ class RelayRow:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Handles the to dict operation.
+        Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -106,7 +107,7 @@ class RelayCrawlResult:
 
     def to_dataframe(self) -> pd.DataFrame:
         """
-        Handles the to dataframe operation.
+        Handle the to dataframe operation.
 
         Returns:
             The result of the operation.
@@ -135,9 +136,11 @@ class RelayCrawlResult:
 
     def save_csv(self, output_dir: str = DEFAULT_OUTPUT_DIR) -> Path:
         """
-        Saves csv.
+        Save csv.
 
         Args:
+            output_dir: Output Dir.
+            output_dir: Output Dir.
             output_dir: Output directory path.
 
         Returns:
@@ -145,6 +148,7 @@ class RelayCrawlResult:
 
         """
         df = self.to_dataframe()
+
         output_path = Path(output_dir) / f"{self.game_id}_text_relay.csv"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_path, index=False, encoding=DEFAULT_CSV_ENCODING)
@@ -176,8 +180,22 @@ class TextRelayCrawler:
         pool: AsyncPlaywrightPool | None = None,
         output_dir: str = DEFAULT_OUTPUT_DIR,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            policy: Policy.
+            pool: Connection pool for async operations.
+            output_dir: Output Dir.
+            request_delay: Request Delay.
+            policy: Policy.
+            pool: Connection pool for async operations.
+            output_dir: Output Dir.
+
+        """
         self.base_url = LIVE_TEXT_URL
+
         self.policy = policy or RequestPolicy.with_delay(request_delay, request_delay + 0.5)
         self.pool = pool
         self._context_kwargs = self.policy.build_context_kwargs(locale="ko-KR")
@@ -186,12 +204,31 @@ class TextRelayCrawler:
 
     @staticmethod
     def _is_auth_redirect(page: Page) -> bool:
-        """인증 리다이렉트 여부 확인."""
+        """
+        인증 리다이렉트 여부 확인.
+
+        Args:
+            page: Page.
+            page: Page.
+
+        """
         return "Error.html" in page.url or "Login.aspx" in page.url
 
     async def _prepare_live_text_page(self, page: Page, game_date: str, url: str) -> bool:
-        """LiveText 페이지 준비 (Referer warmup 포함)."""
+        """
+        LiveText 페이지 준비 (Referer warmup 포함).
+
+        Args:
+            page: Page.
+            game_date: Game Date.
+            url: Url.
+            page: Page.
+            game_date: Game Date.
+            url: Url.
+
+        """
         logger.info("[FETCH] Text Relay Data: %s", url)
+
         if not await compliance.is_allowed(url):
             logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
             return False
@@ -207,7 +244,16 @@ class TextRelayCrawler:
         return True
 
     async def _wait_for_relay_container(self, page: Page, game_id: str) -> bool:
-        """문자중계 컨테이너 대기."""
+        """
+        문자중계 컨테이너 대기.
+
+        Args:
+            page: Page.
+            game_id: Game ID.
+            page: Page.
+            game_id: Game ID.
+
+        """
         try:
             await page.wait_for_selector('div[id^="numCont"]', timeout=SEL_TIMEOUT)
         except (PlaywrightError, TimeoutError):
@@ -248,7 +294,14 @@ class TextRelayCrawler:
 
     @staticmethod
     def _parse_inning_header(text: str, cls: str) -> tuple[int, str] | None:
-        """이닝 헤더 파싱 (예: '3회초' -> (3, '초'))."""
+        """
+        이닝 헤더 파싱 (예: '3회초' -> (3, '초')).
+
+        Args:
+            text: Text.
+            cls: CSS class string.
+
+        """
         if "blue" not in cls or "회" not in text:
             return None
         match = re.search(r"(\d+)회(초|말)", text)
@@ -260,15 +313,30 @@ class TextRelayCrawler:
 
     @staticmethod
     def _is_event_text(text: str, cls: str) -> bool:
-        """이벤트 텍스트 여부 확인."""
+        """
+        이벤트 텍스트 여부 확인.
+
+        Args:
+            text: Text.
+            cls: CSS class string.
+
+        """
         if "normaiflTxt" not in cls and "red" not in cls:
             return False
         return "경기 준비중" not in text and "경기 시작" not in text
 
     @staticmethod
     def _extract_pitch_info(text: str) -> tuple[str, str]:
-        """구종/구속 추출 (예: '145km/h 슬라이더' -> ('슬라이더', '145'))."""
+        """
+        구종/구속 추출 (예: '145km/h 슬라이더' -> ('슬라이더', '145')).
+
+        Args:
+            text: Text.
+            text: Text.
+
+        """
         pitch_type = ""
+
         pitch_speed = ""
 
         # 구속 패턴: 145km/h, 150km 등
@@ -301,8 +369,16 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_player_names(text: str) -> tuple[str, str]:
-        """투수명/타자명 추출."""
+        """
+        투수명/타자명 추출.
+
+        Args:
+            text: Text.
+            text: Text.
+
+        """
         pitcher = ""
+
         batter = ""
 
         # 타자명 추출: "타자: 김하성" 패턴
@@ -319,7 +395,14 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_result(text: str) -> str:
-        """결과 추출 (스트라이크/볼/아웃/안타 등)."""
+        """
+        결과 추출 (스트라이크/볼/아웃/안타 등).
+
+        Args:
+            text: Text.
+            text: Text.
+
+        """
         result_keywords = [
             "스트라이크",
             "볼",
@@ -350,8 +433,16 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_pitch_count(text: str) -> tuple[int, int]:
-        """볼/스트라이크 카운트 추출."""
+        """
+        볼/스트라이크 카운트 추출.
+
+        Args:
+            text: Text.
+            text: Text.
+
+        """
         balls = 0
+
         strikes = 0
 
         # "2볼 1스트라이크" 패턴
@@ -367,7 +458,14 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_runners(text: str) -> str:
-        """주자 상태 추출 (예: '1루', '1,2루', '만루')."""
+        """
+        주자 상태 추출 (예: '1루', '1,2루', '만루').
+
+        Args:
+            text: Text.
+            text: Text.
+
+        """
         if "만루" in text:
             return "만루"
 
@@ -376,8 +474,16 @@ class TextRelayCrawler:
         return ",".join(runners) if runners else ""
 
     def _parse_relay_spans(self, raw_spans: list[dict[str, str]]) -> list[RelayRow]:
-        """원시 span 데이터를 RelayRow 리스트로 파싱."""
+        """
+        원시 span 데이터를 RelayRow 리스트로 파싱.
+
+        Args:
+            raw_spans: Raw Spans.
+            raw_spans: Raw Spans.
+
+        """
         rows: list[RelayRow] = []
+
         current_inning = 0
         current_half = ""
         at_bat_num = 0
@@ -439,7 +545,14 @@ class TextRelayCrawler:
         return rows
 
     async def _extract_relay_rows(self, page: Page) -> list[RelayRow]:
-        """페이지에서 문자중계 행 추출."""
+        """
+        페이지에서 문자중계 행 추출.
+
+        Args:
+            page: Page.
+            page: Page.
+
+        """
         extraction_script = self._build_extraction_script()
 
         try:
@@ -464,6 +577,10 @@ class TextRelayCrawler:
         특정 경기의 문자중계 데이터를 수집합니다.
 
         Args:
+            game_id: Game ID.
+            save: Whether to persist the results.
+            game_id: Game ID.
+            save: Whether to persist the results.
             game_id: KBO 경기 ID (예: "20260412SKLG0")
             save: CSV 저장 여부
 
@@ -472,6 +589,7 @@ class TextRelayCrawler:
 
         """
         self.last_failure_reason = None
+
         game_date = game_id[:8]
         url = f"{self.base_url}?leagueId=1&seriesId=0&gameId={game_id}&gyear={game_date[:4]}"
 
@@ -549,6 +667,10 @@ class TextRelayCrawler:
         여러 경기의 문자중계 데이터를 일괄 수집합니다.
 
         Args:
+            game_ids: Game Ids.
+            save: Whether to persist the results.
+            game_ids: Game Ids.
+            save: Whether to persist the results.
             game_ids: KBO 경기 ID 리스트
             save: CSV 저장 여부
 
@@ -557,6 +679,7 @@ class TextRelayCrawler:
 
         """
         results: list[RelayCrawlResult] = []
+
         for game_id in game_ids:
             result = await self.crawl_game_relay(game_id, save=save)
             results.append(result)
@@ -579,6 +702,12 @@ async def crawl_text_relay(
     단일 경기 문자중계 수집 편의 함수.
 
     Args:
+        game_id: Game ID.
+        save: Whether to persist the results.
+        output_dir: Output Dir.
+        game_id: Game ID.
+        save: Whether to persist the results.
+        output_dir: Output Dir.
         game_id: KBO 경기 ID
         save: CSV 저장 여부
         output_dir: 출력 디렉토리
@@ -588,6 +717,7 @@ async def crawl_text_relay(
 
     """
     crawler = TextRelayCrawler(output_dir=output_dir)
+
     result = await crawler.crawl_game_relay(game_id, save=save)
     if result.status == "success":
         return result.to_dataframe()
@@ -605,6 +735,12 @@ async def crawl_text_relays(
     여러 경기 문자중계 수집 편의 함수.
 
     Args:
+        game_ids: Game Ids.
+        save: Whether to persist the results.
+        output_dir: Output Dir.
+        game_ids: Game Ids.
+        save: Whether to persist the results.
+        output_dir: Output Dir.
         game_ids: KBO 경기 ID 리스트
         save: CSV 저장 여부
         output_dir: 출력 디렉토리
@@ -614,6 +750,7 @@ async def crawl_text_relays(
 
     """
     crawler = TextRelayCrawler(output_dir=output_dir)
+
     results = await crawler.crawl_games(game_ids, save=save)
     saved_paths: list[str] = []
     for result in results:

@@ -1,6 +1,7 @@
 """
 Database engine configuration
 Supports both SQLite (dev) and MySQL (production).
+
 """
 
 from __future__ import annotations
@@ -49,9 +50,13 @@ def _is_sqlite(url: str | None) -> bool:
 
 def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLAlchemyEngine:
     """
-    Creates engine for url.
+    Create engine for url.
 
     Args:
+        url: Url.
+        disable_sqlite_wal: Disable Sqlite Wal.
+        url: Url.
+        disable_sqlite_wal: Disable Sqlite Wal.
         url: Url.
 
     Returns:
@@ -90,13 +95,14 @@ SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expi
 @contextmanager
 def get_db_session() -> Iterator[Session]:
     """
-    Gets db session.
+    Get db session.
 
     Returns:
         The result of the operation.
 
     """
     session = SessionLocal()
+
     try:
         yield session
         session.commit()
@@ -239,6 +245,7 @@ def _migrate_game_table(conn: Connection) -> None:
     conn.exec_driver_sql(
         """
         CREATE TABLE game (
+
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             game_id VARCHAR(20) NOT NULL UNIQUE,
             game_date DATE NOT NULL,
@@ -293,6 +300,7 @@ def _migrate_game_table(conn: Connection) -> None:
         FROM game_old;
         """
     conn.exec_driver_sql(insert_sql)
+
     conn.exec_driver_sql("DROP TABLE game_old;")
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
@@ -314,6 +322,7 @@ def _migrate_game_summary_table(conn: Connection) -> None:
     conn.exec_driver_sql(
         """
         CREATE TABLE game_summary (
+
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             game_id VARCHAR(20) NOT NULL,
             summary_type VARCHAR(50),
@@ -340,7 +349,7 @@ def _migrate_game_summary_table(conn: Connection) -> None:
 
 def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
-    """Initializes db."""
+    """Initialize db."""
     from src.models.base import Base
 
     try:

@@ -36,7 +36,22 @@ def retry_navigation(
     timeout: int = _NAVIGATION_TIMEOUT,
     wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
 ) -> bool:
-    """Retry page.goto with simple incremental backoff."""
+    """
+    Retry page.goto with simple incremental backoff.
+
+    Args:
+        page: Page.
+        url: Url.
+        max_retries: Max Retries.
+        timeout: Timeout.
+        wait_until: Wait Until.
+        page: Page.
+        url: Url.
+        max_retries: Max Retries.
+        timeout: Timeout.
+        wait_until: Wait Until.
+
+    """
     for attempt in range(1, max_retries + 1):
         try:
             logger.info("Navigating to %s (Attempt %s/%s)", url, attempt, max_retries)
@@ -64,7 +79,22 @@ def retry_click(
     timeout: int = _CLICK_TIMEOUT,
     pre_wait_timeout: int = _SELECTOR_TIMEOUT,
 ) -> bool:
-    """Retry page.click with wait_for_selector pre-check, reloading on timeout."""
+    """
+    Retry page.click with wait_for_selector pre-check, reloading on timeout.
+
+    Args:
+        page: Page.
+        selector: Selector.
+        max_retries: Max Retries.
+        timeout: Timeout.
+        pre_wait_timeout: Pre Wait Timeout.
+        page: Page.
+        selector: Selector.
+        max_retries: Max Retries.
+        timeout: Timeout.
+        pre_wait_timeout: Pre Wait Timeout.
+
+    """
     for attempt in range(1, max_retries + 1):
         try:
             page.wait_for_selector(selector, timeout=pre_wait_timeout, state="visible")
@@ -88,7 +118,22 @@ def retry_wait_for_selector(
     timeout: int = _SELECTOR_TIMEOUT,
     state: Literal["attached", "detached", "hidden", "visible"] = "visible",
 ) -> bool:
-    """Retry wait_for_selector, reloading between timeout attempts."""
+    """
+    Retry wait_for_selector, reloading between timeout attempts.
+
+    Args:
+        page: Page.
+        selector: Selector.
+        max_retries: Max Retries.
+        timeout: Timeout.
+        state: State.
+        page: Page.
+        selector: Selector.
+        max_retries: Max Retries.
+        timeout: Timeout.
+        state: State.
+
+    """
     for attempt in range(1, max_retries + 1):
         try:
             page.wait_for_selector(selector, timeout=timeout, state=state)

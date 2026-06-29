@@ -13,8 +13,16 @@ def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
     """
     Backward-compatible wrapper that flattens inning-grouped relay payloads and
     forwards them to the canonical writer in game_repository.
+
+    Args:
+        game_id: Game ID.
+        innings_data: Innings Data.
+        game_id: Game ID.
+        innings_data: Innings Data.
+
     """
     flat_rows: list[dict[str, Any]] = []
+
     for inning_data in innings_data or []:
         inning = inning_data.get("inning")
         half = inning_data.get("half")
@@ -35,9 +43,11 @@ def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
 
 def get_game_relay_summary(game_id: str) -> dict[str, Any]:
     """
-    Gets game relay summary.
+    Get game relay summary.
 
     Args:
+        game_id: Game ID.
+        game_id: Game ID.
         game_id: Game ID.
 
     Returns:

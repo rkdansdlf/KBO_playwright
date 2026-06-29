@@ -21,18 +21,35 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 
 class StaticTextCrawler:
     """
-    Crawls and extracts static text (rules, history, terminology)
+    crawl and extracts static text (rules, history, terminology)
     from local/remote PDFs and wikis.
+
     """
 
     def __init__(self, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            pool: Connection pool for async operations.
+            pool: Connection pool for async operations.
+
+        """
         self.pool = pool
+
         self._raw_pages: list[dict] = []
 
     def parse_local_pdf(self, pdf_path: str) -> list[dict[str, Any]]:
-        """Parses a local PDF rulebook using pypdf and extracts text by page."""
+        """
+        Parse a local PDF rulebook using pypdf and extracts text by page.
+
+        Args:
+            pdf_path: Pdf file path.
+            pdf_path: Pdf file path.
+
+        """
         logger.info("📄 Parsing local PDF: %s", pdf_path)
+
         if not Path(pdf_path).exists():
             msg = f"PDF file not found at: {pdf_path}"
             raise FileNotFoundError(msg)
@@ -66,8 +83,15 @@ class StaticTextCrawler:
 
     async def crawl_namuwiki(self, url: str, *, save: bool = False) -> dict[str, Any]:
         """
-        Crawls a Namuwiki page using Playwright to bypass Cloudflare protection
+        Crawl a Namuwiki page using Playwright to bypass Cloudflare protection
         and extracts cleaned main content with BeautifulSoup.
+
+        Args:
+            url: Url.
+            save: Whether to persist the results.
+            url: Url.
+            save: Whether to persist the results.
+
         """
         logger.info("🌐 Crawling Namuwiki page: %s", url)
 

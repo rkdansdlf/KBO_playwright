@@ -12,6 +12,7 @@
 
     # 특정 월 수집
     python -m src.cli.crawl_text_relay --season 2026 --month 4 --save
+
 """
 
 from __future__ import annotations
@@ -39,7 +40,12 @@ async def run_single_game(
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> int:
     """
-    Runs single game.
+    Run single game.
+
+    Args:
+        game_id: Game ID.
+        save: Whether to persist the results.
+        output_dir: Output Dir.
 
     Returns:
         Integer result.
@@ -61,7 +67,13 @@ async def run_season(
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> dict[str, int]:
     """
-    Runs season.
+    Run season.
+
+    Args:
+        season: Season year.
+        month: Month.
+        save: Whether to persist the results.
+        output_dir: Output Dir.
 
     Returns:
         Dictionary result.
@@ -86,9 +98,10 @@ async def run_season(
 
 async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
     """
-    Runs from args.
+    Run from args.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     Returns:
@@ -114,7 +127,7 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
@@ -163,8 +176,15 @@ Examples:
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, int]:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     return asyncio.run(run_from_args(args))
 

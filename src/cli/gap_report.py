@@ -1,13 +1,14 @@
 """
 Unified data gap reporter for KBO pipeline.
 
-Aggregates gap checks from multiple existing monitors into a single
+Aggregate gap checks from multiple existing monitors into a single
 structured report, then sends gap-type-aware alerts via Slack/Telegram.
 
 Usage:
     python -m src.cli.gap_report                     # run + alert
     python -m src.cli.gap_report --no-alert           # run only
     python -m src.cli.gap_report --dry-run            # print only
+
 """
 
 from __future__ import annotations
@@ -129,6 +130,37 @@ def check_team_stats_gaps() -> dict[str, Any]:
         }
 
 
+def check_season_stat_team_code_gaps() -> dict[str, Any]:
+    """Check NULL team_code in player_season_batting/pitching tables."""
+    with SessionLocal() as session:
+        batting_null = session.execute(
+            text("SELECT COUNT(*) FROM player_season_batting WHERE team_code IS NULL"),
+        ).scalar()
+        batting_total = session.execute(
+            text("SELECT COUNT(*) FROM player_season_batting"),
+        ).scalar()
+        pitching_null = session.execute(
+            text("SELECT COUNT(*) FROM player_season_pitching WHERE team_code IS NULL OR team_code = ''"),
+        ).scalar()
+        pitching_total = session.execute(
+            text("SELECT COUNT(*) FROM player_season_pitching"),
+        ).scalar()
+
+        batting_rate = (batting_null / batting_total * 100) if batting_total else 0
+        pitching_rate = (pitching_null / pitching_total * 100) if pitching_total else 0
+
+        return {
+            "ok": batting_null == 0 and pitching_null == 0,
+            "batting_null": batting_null,
+            "batting_total": batting_total,
+            "batting_null_rate": round(batting_rate, 1),
+            "pitching_null": pitching_null,
+            "pitching_total": pitching_total,
+            "pitching_null_rate": round(pitching_rate, 1),
+            "total_null": batting_null + pitching_null,
+        }
+
+
 def build_gap_report() -> dict[str, Any]:
     """Run all gap checks and return a unified report dict."""
     report: dict[str, Any] = {
@@ -210,6 +242,13 @@ def build_gap_report() -> dict[str, Any]:
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
         logger.exception("TEAM_STATS gap check failed")
         report["gaps"]["TEAM_STATS"] = {"ok": False, "error": str(e)}
+
+    # 9. Season stat team_code completeness
+    try:
+        report["gaps"]["SEASON_TEAM_CODE"] = check_season_stat_team_code_gaps()
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("SEASON_TEAM_CODE gap check failed")
+        report["gaps"]["SEASON_TEAM_CODE"] = {"ok": False, "error": str(e)}
 
     return report
 
@@ -309,7 +348,13 @@ def _gap_detail_items(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
 
 
 def send_gap_alerts(report: dict[str, Any]) -> None:
-    """Send gap-type-aware alerts for each non-ok gap in the report."""
+    """
+    Send gap-type-aware alerts for each non-ok gap in the report.
+
+    Args:
+        report: Report.
+
+    """
     for gap_type, gap_data in report.get("gaps", {}).items():
         severity = _gap_severity(gap_data)
         if severity == "ok":
@@ -322,8 +367,15 @@ def send_gap_alerts(report: dict[str, Any]) -> None:
 
 
 def format_report_summary(report: dict[str, Any]) -> str:
-    """Return a human-readable one-line summary of all gap states."""
+    """
+    Return a human-readable one-line summary of all gap states.
+
+    Args:
+        report: Report.
+
+    """
     parts = []
+
     for gap_type, gap_data in report.get("gaps", {}).items():
         emoji = GAP_EMOJI_MAP.get(gap_type, "\u2753")
         sev = _gap_severity(gap_data)
@@ -333,7 +385,14 @@ def format_report_summary(report: dict[str, Any]) -> str:
 
 
 def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
-    """Build and optionally alert the unified gap report."""
+    """
+    Build and optionally alert the unified gap report.
+
+    Args:
+        alert: Alert.
+        dry_run: If True, performs a dry run without persisting changes.
+
+    """
     if dry_run:
         logger.info("[GAP-REPORT] DRY RUN — no alerts will be sent")
 
@@ -366,21 +425,29 @@ def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, An
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="KBO Unified Data Gap Report")
+
     parser.add_argument("--no-alert", action="store_true", help="Suppress Slack/Telegram alerts")
     parser.add_argument("--dry-run", action="store_true", help="Print only, no alerts")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     run_gap_report(alert=not args.no_alert, dry_run=args.dry_run)
 

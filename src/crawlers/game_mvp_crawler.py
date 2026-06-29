@@ -34,9 +34,11 @@ class GameMvpCrawler:
 
     async def run(self, game_ids: list[str] | None = None, *, save: bool = False) -> None:
         """
-        Runs run.
+        Run run.
 
         Args:
+            game_ids: Game Ids.
+            save: Whether to persist the results.
             game_ids: Game Ids.
 
         """

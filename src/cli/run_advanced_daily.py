@@ -1,7 +1,8 @@
 """
 KBO Advanced Daily Data Update Orchestrator.
 
-Fetches fielding, baserunning, and team-level cumulative stats.
+Fetch fielding, baserunning, and team-level cumulative stats.
+
 """
 
 from __future__ import annotations
@@ -148,13 +149,17 @@ async def run_advanced_update(
     headless: bool = True,
 ) -> None:
     """
-    Runs advanced.
+    Run advanced.
 
     Args:
+        year: Season year.
+        sync: Whether to sync to remote database.
+        headless: Whether to run the browser in headless mode.
         year: Season year.
 
     """
     logger.info("\n%s", "=" * 60)
+
     logger.info("🚀 KBO Advanced Daily Sync Started for Year: %s", year)
     logger.info("%s", "=" * 60)
 
@@ -204,7 +209,7 @@ async def run_advanced_update(
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Advanced Daily Data Orchestrator")
     parser.add_argument("--year", type=int, help="Target year. Defaults to current year.")
     parser.add_argument("--sync", action="store_true", help="Sync to OCI")

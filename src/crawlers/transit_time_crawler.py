@@ -13,6 +13,7 @@ Configured origin points for JAMSIL:
 
 Scheduling recommendation (via scheduler.py):
   - Run every 15 minutes between D-2h and D+1h on game days.
+
 """
 
 from __future__ import annotations
@@ -76,15 +77,25 @@ JAMSIL_ORIGINS: list[dict] = [
 
 
 class TransitTimeCrawler:
-    """Collects transit time measurements from map APIs and persists them."""
+    """collect transit time measurements from map APIs and persists them."""
 
     def __init__(
         self,
         stadium_code: str = STADIUM_CODE,
         origins: list[dict] | None = None,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            stadium_code: Stadium Code.
+            origins: Origins.
+            stadium_code: Stadium Code.
+            origins: Origins.
+
+        """
         self.stadium_code = stadium_code
+
         self.origins = origins or JAMSIL_ORIGINS
 
     async def run(
@@ -97,12 +108,17 @@ class TransitTimeCrawler:
         Measure transit times from all configured origins.
 
         Args:
+            game_date: Game Date.
+            save: Whether to persist the results.
+            game_date: Game Date.
+            save: Whether to persist the results.
             game_date: The game date to associate with measurements.
                        Defaults to today.
             save: Persist results to the database.
 
         """
         game_date = game_date or datetime.now(KST).date()
+
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 
         logger.info(

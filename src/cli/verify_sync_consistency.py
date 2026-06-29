@@ -3,6 +3,7 @@ verify_sync_consistency.py.
 
 CLI tool to verify data consistency between the local SQLite database
 and the remote OCI PostgreSQL database.
+
 """
 
 from __future__ import annotations
@@ -49,8 +50,16 @@ TABLES_TO_VERIFY = [
 
 
 def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[dict[str, Any]]:
-    """Compares row counts for verified tables between SQLite and OCI."""
+    """
+    Compare row counts for verified tables between SQLite and OCI.
+
+    Args:
+        sqlite_conn: Sqlite Conn.
+        oci_conn: Oci Conn.
+
+    """
     results = []
+
     for table_name, pk_cols in TABLES_TO_VERIFY:
         # Check if table exists in SQLite
         sqlite_exists = inspect(sqlite_conn).has_table(table_name)
@@ -98,9 +107,11 @@ def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[di
 
 def get_row_count(conn: Connection, table_name: str) -> int:
     """
-    Gets row count.
+    Get row count.
 
     Args:
+        conn: Conn.
+        table_name: Table Name.
         conn: Conn.
         table_name: Table Name.
 
@@ -122,7 +133,16 @@ def check_deep_ids(
     table_name: str,
     pk_cols: list[str],
 ) -> tuple[int, list[object]]:
-    """Performs deep ID-level matching to identify SQLite rows missing in OCI."""
+    """
+    Perform deep ID-level matching to identify SQLite rows missing in OCI.
+
+    Args:
+        sqlite_conn: Sqlite Conn.
+        oci_conn: Oci Conn.
+        table_name: Table Name.
+        pk_cols: Pk Cols.
+
+    """
     try:
         cols_str = ", ".join(pk_cols)
 
@@ -136,9 +156,10 @@ def check_deep_ids(
 
         def stringify_row(row: Sequence[object]) -> tuple[str, ...]:
             """
-            Handles the stringify row operation.
+            Handle the stringify row operation.
 
             Args:
+                row: Row.
                 row: Row.
 
             Returns:
@@ -230,14 +251,23 @@ def _send_consistency_mismatch_alert(alert_lines: list[str], *, trigger_alert: b
 
 
 def check_game_season_fk(sqlite_conn: Connection, oci_conn: Connection) -> list[dict[str, Any]]:
-    """Check that game.season_id values reference existing kbo_seasons rows."""
+    """
+    Check that game.season_id values reference existing kbo_seasons rows.
+
+    Args:
+        sqlite_conn: Sqlite Conn.
+        oci_conn: Oci Conn.
+
+    """
     results = []
+
     for label, conn in [("SQLite", sqlite_conn), ("OCI", oci_conn)]:
         try:
             orphan = conn.execute(
                 text(
                     """
                     SELECT COUNT(*) AS cnt
+
                     FROM game g
                     LEFT JOIN kbo_seasons s ON g.season_id = s.season_id
                     WHERE s.season_id IS NULL
@@ -251,8 +281,15 @@ def check_game_season_fk(sqlite_conn: Connection, oci_conn: Connection) -> list[
 
 
 def _log_game_season_fk_results(fk_results: list[dict[str, Any]]) -> list[str]:
-    """Log FK check results and return alert messages for mismatches."""
+    """
+    Log FK check results and return alert messages for mismatches.
+
+    Args:
+        fk_results: Fk Results.
+
+    """
     alerts = []
+
     for res in fk_results:
         cnt = res["orphan_game_count"]
         if cnt == -1:
@@ -267,13 +304,18 @@ def _log_game_season_fk_results(fk_results: list[dict[str, Any]]) -> list[str]:
 
 def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> bool:
     """
-    Runs consistency audit.
+    Run consistency audit.
+
+    Args:
+        deep: Deep.
+        trigger_alert: Trigger Alert.
 
     Returns:
         True if successful, False otherwise.
 
     """
     source_url = get_source_db_url()
+
     target_url = get_oci_url()
 
     if not target_url:
@@ -313,7 +355,7 @@ def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> 
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO SQLite to OCI PostgreSQL consistency auditor")
     parser.add_argument(
         "--deep",

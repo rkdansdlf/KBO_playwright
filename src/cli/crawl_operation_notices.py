@@ -9,6 +9,7 @@ Usage:
     python -m src.cli.crawl_operation_notices --source naver --save        # Naver 검색
     python -m src.cli.crawl_operation_notices --source naver --days 1      # 오늘자만
     python -m src.cli.crawl_operation_notices --source all --save          # 전체 소스
+
 """
 
 from __future__ import annotations
@@ -35,7 +36,13 @@ TEAM_CRAWLERS = {
 
 
 async def _run_official_crawlers(args: argparse.Namespace) -> None:
-    """LG/Doosan 공식 홈페이지 크롤러 실행."""
+    """
+    LG/Doosan 공식 홈페이지 크롤러 실행.
+
+    Args:
+        args: Positional arguments to pass through.
+
+    """
     teams = [args.team.upper()] if args.team else list(TEAM_CRAWLERS.keys())
 
     for team_code in teams:
@@ -58,7 +65,13 @@ async def _run_official_crawlers(args: argparse.Namespace) -> None:
 
 
 async def _run_naver_crawler(args: argparse.Namespace) -> None:
-    """Naver 검색 API 기반 공지 크롤러 실행."""
+    """
+    Naver 검색 API 기반 공지 크롤러 실행.
+
+    Args:
+        args: Positional arguments to pass through.
+
+    """
     from src.crawlers.operation_notice_naver_crawler import OperationNoticeNaverCrawler
 
     days = getattr(args, "days", 3)
@@ -68,9 +81,10 @@ async def _run_naver_crawler(args: argparse.Namespace) -> None:
 
 async def run(args: argparse.Namespace) -> None:
     """
-    Runs run.
+    Run run.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     """
@@ -88,13 +102,14 @@ async def run(args: argparse.Namespace) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Crawl stadium operation notices (official + Naver search)")
+
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument(
         "--source",
@@ -125,8 +140,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     asyncio.run(run(args))
 

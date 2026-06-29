@@ -54,7 +54,13 @@ _CATEGORY_MAP: dict[str, str] = {
 
 
 def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
-    """Enriches chunk metadata using LLM and prepares content strings for vector embedding."""
+    """
+    Enrichens chunk metadata using LLM and prepares content strings for vector embedding.
+
+    Args:
+        all_chunks: All Chunks.
+
+    """
     from src.services.metadata_enrichment_service import MetadataEnrichmentService
 
     enrich_svc = MetadataEnrichmentService()
@@ -197,7 +203,13 @@ def _sync_static_chunks_to_oci(session: Session) -> None:
 
 
 async def run_static_pipeline(pdf_path: str | None = None) -> None:
-    """Runs extraction, chunking, and embedding for static rulebooks and wikis."""
+    """
+    Run extraction, chunking, and embedding for static rulebooks and wikis.
+
+    Args:
+        pdf_path: Pdf file path.
+
+    """
     logger.info("\n🏁 Starting Static Text Pipeline...")
 
     crawler = StaticTextCrawler()
@@ -213,7 +225,7 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
 
 
 async def run_dynamic_pipeline() -> None:
-    """Runs extraction and DB updates for schedules, rosters, and ticket times."""
+    """Run extraction and DB updates for schedules, rosters, and ticket times."""
     logger.info("\n🏁 Starting Dynamic Data Pipeline...")
 
     with get_db_session() as session:
@@ -253,7 +265,7 @@ async def run_dynamic_pipeline() -> None:
 
 
 async def run_realtime_pipeline() -> None:
-    """Runs news and community thread crawler, transforms text, embeds and loads."""
+    """Run news and community thread crawler, transforms text, embeds and loads."""
     logger.info("\n🏁 Starting Realtime Issue Pipeline...")
 
     crawler = RealtimeIssueCrawler()
@@ -320,11 +332,16 @@ async def run_realtime_pipeline() -> None:
 
 def run_consistency_check(*, deep: bool = False) -> None:
     """
-    Runs a post-sync consistency audit between local SQLite and OCI.
+    Run a post-sync consistency audit between local SQLite and OCI.
 
-    Sends an alert if mismatches are found. Skips silently if OCI is not configured.
+    Send an alert if mismatches are found. Skips silently if OCI is not configured.
+
+    Args:
+        deep: Deep.
+
     """
     oci_url = get_oci_url()
+
     if not oci_url:
         logger.info("ℹ️  OCI URL not configured — skipping consistency check.")
         return
@@ -344,11 +361,17 @@ def run_consistency_check(*, deep: bool = False) -> None:
 
 def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
     """
-    Helper to run async pipeline synchronously and catch errors for Telegram alerts.
+    Run async pipeline synchronously and catch errors for Telegram alerts.
 
     After OCI sync completes, automatically runs a count-level consistency audit.
+
+    Args:
+        pipeline_type: Pipeline Type.
+        pdf_path: Pdf file path.
+
     """
     run_sync = os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1"
+
     try:
         if pipeline_type == "static":
             asyncio.run(run_static_pipeline(pdf_path))
@@ -372,7 +395,7 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
 
 
 def start_scheduler() -> None:
-    """Starts APScheduler daemon in the background to execute pipelines periodically."""
+    """Start APScheduler daemon in the background to execute pipelines periodically."""
     logger.info("\n⏰ Starting background scheduler daemon...")
     scheduler = BlockingScheduler()
 
@@ -433,7 +456,7 @@ def start_scheduler() -> None:
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Knowledge & Issue Crawler Pipeline Orchestrator")
     parser.add_argument(
         "--type",

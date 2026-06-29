@@ -16,9 +16,15 @@ def extract_rows_fast(
     link_query: str = "td:nth-child(2) a",
 ) -> list[dict[str, object]] | None:
     """
-    Extracts rows fast.
+    Extract rows fast.
 
     Args:
+        page: Page.
+        selector: Selector.
+        link_query: Link Query.
+        page: Page.
+        selector: Selector.
+        link_query: Link Query.
         page: Playwright page object.
         selector: Selector.
         link_query: Link Query.
@@ -31,6 +37,7 @@ def extract_rows_fast(
         payload = page.evaluate(
             """
             (args) => {
+
                 const table = document.querySelector(args.selector);
                 if (!table) return null;
                 const body = table.tBodies && table.tBodies.length ? table.tBodies[0] : table;

@@ -77,5 +77,5 @@ class FAContract(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<FAContract(player='{self.player_name}', year={self.year}, type='{self.fa_type}', team='{self.new_team}', amount='{self.total_amount}')>"

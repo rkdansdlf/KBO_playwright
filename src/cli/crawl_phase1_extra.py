@@ -1,6 +1,7 @@
 """
 CLI entrypoint to execute Phase 1 supplementary crawlers:
 broadcast, game MVP, injury/IL, foreign player, manager change, fan culture.
+
 """
 
 from __future__ import annotations
@@ -14,7 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 async def run_broadcast(*, save: bool = False) -> None:
-    """Runs broadcast."""
+    """
+    Run broadcast.
+
+    Args:
+        save: Whether to persist the results.
+        save: Whether to persist the results.
+
+    """
     from src.crawlers.broadcast_crawler import BroadcastCrawler
 
     crawler = BroadcastCrawler()
@@ -23,9 +31,13 @@ async def run_broadcast(*, save: bool = False) -> None:
 
 async def run_game_mvp(game_ids: list[str] | None = None, *, save: bool = False) -> None:
     """
-    Runs game mvp.
+    Run game mvp.
 
     Args:
+        game_ids: Game Ids.
+        save: Whether to persist the results.
+        game_ids: Game Ids.
+        save: Whether to persist the results.
         game_ids: Game Ids.
 
     """
@@ -36,7 +48,14 @@ async def run_game_mvp(game_ids: list[str] | None = None, *, save: bool = False)
 
 
 async def run_injury(*, save: bool = False) -> None:
-    """Runs injury."""
+    """
+    Run injury.
+
+    Args:
+        save: Whether to persist the results.
+        save: Whether to persist the results.
+
+    """
     from src.crawlers.injury_crawler import InjuryCrawler
 
     crawler = InjuryCrawler()
@@ -44,7 +63,14 @@ async def run_injury(*, save: bool = False) -> None:
 
 
 async def run_foreign_player(*, save: bool = False) -> None:
-    """Runs foreign player."""
+    """
+    Run foreign player.
+
+    Args:
+        save: Whether to persist the results.
+        save: Whether to persist the results.
+
+    """
     from src.crawlers.foreign_player_crawler import ForeignPlayerCrawler
 
     crawler = ForeignPlayerCrawler()
@@ -52,7 +78,14 @@ async def run_foreign_player(*, save: bool = False) -> None:
 
 
 async def run_manager_change(*, save: bool = False) -> None:
-    """Runs manager change."""
+    """
+    Run manager change.
+
+    Args:
+        save: Whether to persist the results.
+        save: Whether to persist the results.
+
+    """
     from src.crawlers.manager_change_crawler import ManagerChangeCrawler
 
     crawler = ManagerChangeCrawler()
@@ -60,7 +93,14 @@ async def run_manager_change(*, save: bool = False) -> None:
 
 
 async def run_fan_culture(*, save: bool = False) -> None:
-    """Runs fan culture."""
+    """
+    Run fan culture.
+
+    Args:
+        save: Whether to persist the results.
+        save: Whether to persist the results.
+
+    """
     from src.crawlers.fan_culture_crawler import FanCultureCrawler
 
     crawler = FanCultureCrawler()
@@ -68,15 +108,23 @@ async def run_fan_culture(*, save: bool = False) -> None:
 
 
 def seed_stadium_info() -> None:
-    """Seeds stadium info."""
+    """Seed stadium info."""
     from scripts.seed_stadium_info import seed_stadium_info
 
     seed_stadium_info()
 
 
 async def run_all_crawlers(*, save: bool = False) -> None:
-    """Run all news-based crawlers (broadcast, mvp, injury, foreign, manager)."""
+    """
+    Run all news-based crawlers (broadcast, mvp, injury, foreign, manager).
+
+    Args:
+        save: Whether to persist the results.
+        save: Whether to persist the results.
+
+    """
     logger.info("Starting Phase 1 news-based crawlers...")
+
     await run_broadcast(save=save)
     await run_game_mvp(save=save)
     await run_injury(save=save)
@@ -93,13 +141,21 @@ def run_all_seeds() -> None:
 
 
 async def run_all(*, save: bool = False) -> None:
-    """Run all Phase 1 crawlers and seeds (legacy compat)."""
+    """
+    Run all Phase 1 crawlers and seeds (legacy compat).
+
+    Args:
+        save: Whether to persist the results.
+        save: Whether to persist the results.
+
+    """
     await run_all_crawlers(save=save)
+
     run_all_seeds()
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Phase 1 Supplementary Crawlers")
     parser.add_argument(
         "--type",

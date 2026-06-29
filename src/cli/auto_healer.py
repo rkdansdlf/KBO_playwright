@@ -15,6 +15,7 @@ Two healing modes:
 2. PBP mode (--pbp flag):
    Scans game_metadata for games with pbp_validation_status='unverified' in COMPLETED/DRAW state,
    re-crawls PBP data from the KBO official website, re-validates, and sends Telegram notifications.
+
 """
 
 from __future__ import annotations
@@ -68,6 +69,7 @@ def _find_inconsistent_games() -> list[Game]:
     query = text(
         """
         SELECT g.game_id FROM game g
+
         JOIN (
             SELECT g.game_id, g.away_score, g.home_score,
                    COALESCE((SELECT SUM(runs) FROM game_inning_scores i WHERE i.game_id = g.game_id AND i.team_side = 'away'), 0) as away_sum,
@@ -90,7 +92,12 @@ def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> 
     """
     Apply status repair based on one shared collection result item.
 
-    Returns one of: 'completed', 'cancelled', 'unresolved'
+    Return one of: 'completed', 'cancelled', 'unresolved'
+
+    Args:
+        game_id: Game ID.
+        item: Item.
+
     """
     if item and item.detail_saved:
         logger.info("  ✅ %s → COMPLETED (score saved)", game_id)
@@ -250,7 +257,12 @@ async def run_healer_async(
     target_game_ids: list[str] | None = None,
 ) -> int:
     """
-    Runs healer async.
+    Run healer async.
+
+    Args:
+        dry_run: If True, performs a dry run without persisting changes.
+        reset_checkpoint: Reset Checkpoint.
+        target_game_ids: Target Game Ids.
 
     Returns:
         Integer result.
@@ -298,13 +310,18 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
     """
     Scan game_metadata for finished games whose PBP is still 'unverified'.
 
-    Returns a list of dicts: {game_id, game_date, away_team, home_team, error_reason}
+    Return a list of dicts: {game_id, game_date, away_team, home_team, error_reason}
+
+    Args:
+        lookback_days: Lookback Days.
+
     """
     cutoff = (datetime.now(KST).date() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
     query = text(
         """
         SELECT
+
             g.game_id,
             g.game_date,
             g.away_team,
@@ -358,6 +375,12 @@ async def run_pbp_healer_async(
       5. Send Telegram notification with the final result.
 
     Returns a summary dict: {found, recovered, failed, skipped}
+
+    Args:
+        dry_run: If True, performs a dry run without persisting changes.
+        lookback_days: Lookback Days.
+        target_game_ids: Target Game Ids.
+
     """
     logger.info("\n🩺 [PBP Healer] 검증 실패 PBP 게임 스캔 중...")
 
@@ -366,6 +389,7 @@ async def run_pbp_healer_async(
         query = text(
             """
             SELECT g.game_id, g.game_date, g.away_team, g.home_team, m.source_payload
+
             FROM game g
             LEFT JOIN game_metadata m ON g.game_id = m.game_id
             WHERE g.game_id IN :ids
@@ -496,8 +520,15 @@ async def run_pbp_healer_async(
 
 
 def run_pbp_healer(argv: Sequence[str] | None = None) -> int:
-    """CLI entry point for PBP-specific auto-healing."""
+    """
+    CLI entry point for PBP-specific auto-healing.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="KBO PBP 자동 치유 도구")
+
     parser.add_argument("--dry-run", action="store_true", help="발견만 하고 재크롤 생략")
     parser.add_argument(
         "--lookback-days",
@@ -530,9 +561,10 @@ def run_pbp_healer(argv: Sequence[str] | None = None) -> int:
 
 def run_healer(argv: Sequence[str] | None = None) -> int:
     """
-    Runs healer.
+    Run healer.
 
     Args:
+        argv: Argv.
         argv: Argv.
 
     Returns:
@@ -540,6 +572,7 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
 
     """
     parser = argparse.ArgumentParser(description="KBO Data Auto-Healer daemon")
+
     parser.add_argument(
         "--pbp",
         action="store_true",
@@ -583,7 +616,13 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     return run_healer(argv)
 
 

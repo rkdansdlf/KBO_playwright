@@ -3,6 +3,7 @@ Model for measured transit times to stadiums.
 
 Captures real-time travel duration from nearby transit hubs (subway/bus stops)
 to the stadium on game days, collected from map APIs (Kakao, Naver, TMAP).
+
 """
 
 from __future__ import annotations
@@ -103,7 +104,7 @@ class StadiumTransitTime(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return (
             f"<StadiumTransitTime("
             f"stadium='{self.stadium_code}', "

@@ -51,6 +51,8 @@ from src.repositories.game_save import (
     save_schedule_game,
 )
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def engine():

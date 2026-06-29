@@ -22,14 +22,23 @@ class DataSourceRepository:
     """DataSourceRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> DataSource:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -37,6 +46,7 @@ class DataSourceRepository:
 
         """
         source_key = data["source_key"]
+
         stmt = select(DataSource).where(DataSource.source_key == source_key)
         existing = self.session.execute(stmt).scalar_one_or_none()
         if existing:
@@ -50,9 +60,11 @@ class DataSourceRepository:
 
     def get_by_key(self, source_key: str) -> DataSource | None:
         """
-        Gets by key.
+        Get by key.
 
         Args:
+            source_key: Source Key.
+            source_key: Source Key.
             source_key: Source Key.
 
         Returns:
@@ -60,13 +72,16 @@ class DataSourceRepository:
 
         """
         stmt = select(DataSource).where(DataSource.source_key == source_key)
+
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_by_domain(self, target_domain: str) -> list[DataSource]:
         """
-        Gets by domain.
+        Get by domain.
 
         Args:
+            target_domain: Target Domain.
+            target_domain: Target Domain.
             target_domain: Target Domain.
 
         Returns:
@@ -74,13 +89,16 @@ class DataSourceRepository:
 
         """
         stmt = select(DataSource).where(DataSource.target_domain == target_domain).order_by(DataSource.source_key)
+
         return list(self.session.execute(stmt).scalars().all())
 
     def get_active_by_domain(self, target_domain: str) -> list[DataSource]:
         """
-        Gets active by domain.
+        Get active by domain.
 
         Args:
+            target_domain: Target Domain.
+            target_domain: Target Domain.
             target_domain: Target Domain.
 
         Returns:
@@ -96,20 +114,25 @@ class DataSourceRepository:
 
     def get_all_active(self) -> list[DataSource]:
         """
-        Gets all active.
+        Get all active.
 
         Returns:
             List of results.
 
         """
         stmt = select(DataSource).where(DataSource.is_active).order_by(DataSource.source_key)
+
         return list(self.session.execute(stmt).scalars().all())
 
     def mark_success(self, source_key: str, content_hash: str) -> DataSource | None:
         """
-        Handles the mark success operation.
+        Handle the mark success operation.
 
         Args:
+            source_key: Source Key.
+            content_hash: Content Hash.
+            source_key: Source Key.
+            content_hash: Content Hash.
             source_key: Source Key.
             content_hash: Content Hash.
 
@@ -118,6 +141,7 @@ class DataSourceRepository:
 
         """
         now = datetime.now(UTC).replace(tzinfo=None)
+
         stmt = (
             update(DataSource)
             .where(DataSource.source_key == source_key)
@@ -128,9 +152,11 @@ class DataSourceRepository:
 
     def get_stale_sources(self, max_hours: int = 48) -> list[DataSource]:
         """
-        Gets stale sources.
+        Get stale sources.
 
         Args:
+            max_hours: Max Hours.
+            max_hours: Max Hours.
             max_hours: Max Hours.
 
         Returns:
@@ -138,6 +164,7 @@ class DataSourceRepository:
 
         """
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=max_hours)
+
         stmt = select(DataSource).where(
             DataSource.is_active,
             DataSource.last_success_at < cutoff,
@@ -149,14 +176,23 @@ class RawSourceSnapshotRepository:
     """RawSourceSnapshotRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> RawSourceSnapshot:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -164,15 +200,20 @@ class RawSourceSnapshotRepository:
 
         """
         new_record = RawSourceSnapshot(**data)
+
         self.session.add(new_record)
         self.session.flush()
         return new_record
 
     def get_by_source_id(self, data_source_id: int, limit: int = 50) -> list[RawSourceSnapshot]:
         """
-        Gets by source id.
+        Get by source id.
 
         Args:
+            data_source_id: Data Source ID.
+            limit: Limit.
+            data_source_id: Data Source ID.
+            limit: Limit.
             data_source_id: Data Source ID.
             limit: Limit.
 
@@ -190,9 +231,13 @@ class RawSourceSnapshotRepository:
 
     def get_by_hash(self, data_source_id: int, content_hash: str) -> RawSourceSnapshot | None:
         """
-        Gets by hash.
+        Get by hash.
 
         Args:
+            data_source_id: Data Source ID.
+            content_hash: Content Hash.
+            data_source_id: Data Source ID.
+            content_hash: Content Hash.
             data_source_id: Data Source ID.
             content_hash: Content Hash.
 
@@ -208,9 +253,11 @@ class RawSourceSnapshotRepository:
 
     def get_unparsed(self, limit: int = 100) -> list[RawSourceSnapshot]:
         """
-        Gets unparsed.
+        Get unparsed.
 
         Args:
+            limit: Limit.
+            limit: Limit.
             limit: Limit.
 
         Returns:
@@ -227,9 +274,13 @@ class RawSourceSnapshotRepository:
 
     def get_failed_for_retry(self, retry_after_hours: int = 1, limit: int = 50) -> list[RawSourceSnapshot]:
         """
-        Gets failed for retry.
+        Get failed for retry.
 
         Args:
+            retry_after_hours: Retry After Hours.
+            limit: Limit.
+            retry_after_hours: Retry After Hours.
+            limit: Limit.
             retry_after_hours: Retry After Hours.
             limit: Limit.
 
@@ -238,6 +289,7 @@ class RawSourceSnapshotRepository:
 
         """
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=retry_after_hours)
+
         from sqlalchemy import and_
 
         stmt = (
@@ -255,9 +307,11 @@ class RawSourceSnapshotRepository:
 
     def get_reprocess_pending(self, limit: int = 100) -> list[RawSourceSnapshot]:
         """
-        Gets reprocess pending.
+        Get reprocess pending.
 
         Args:
+            limit: Limit.
+            limit: Limit.
             limit: Limit.
 
         Returns:
@@ -280,9 +334,17 @@ class RawSourceSnapshotRepository:
         error_message: str | None = None,
     ) -> None:
         """
-        Updates status.
+        Update status.
 
         Args:
+            snapshot_id: Snapshot ID.
+            status: Status.
+            parser_version: Parser Version.
+            error_message: Error Message.
+            snapshot_id: Snapshot ID.
+            status: Status.
+            parser_version: Parser Version.
+            error_message: Error Message.
             snapshot_id: Snapshot ID.
             status: Status.
             parser_version: Parser Version.
@@ -290,6 +352,7 @@ class RawSourceSnapshotRepository:
 
         """
         record = self.session.get(RawSourceSnapshot, snapshot_id)
+
         if record:
             record.parse_status = status
             if parser_version:
@@ -299,7 +362,18 @@ class RawSourceSnapshotRepository:
 
 
 def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
-    """Save a list of raw page dicts as RawSourceSnapshot records. Returns count saved."""
+    """
+    Save a list of raw page dicts as RawSourceSnapshot records.
+
+        Returns count saved.
+
+    Args:
+        session: Session.
+        raw_pages: Raw Pages.
+        session: Session.
+        raw_pages: Raw Pages.
+
+    """
     import hashlib
 
     snap_repo = RawSourceSnapshotRepository(session)

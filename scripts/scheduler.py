@@ -46,6 +46,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import sys
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
@@ -61,9 +62,11 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.append(str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-from apscheduler.events import EVENT_JOB_ERROR
+import time
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_SUBMITTED
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
+import sentry_sdk
 from requests import RequestException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -79,6 +82,15 @@ from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
 from src.utils.lock import ProcessLock
+from src.utils.sentry import init_sentry
+from src.utils.metrics import (
+    start_metrics_server,
+    KBO_SCHEDULER_JOB_TOTAL,
+    KBO_SCHEDULER_JOB_DURATION_SECONDS,
+    KBO_OCI_SYNC_LAG_SECONDS,
+    KBO_OCI_LAST_SYNC_TIMESTAMP_SECONDS,
+    KBO_OCI_SYNC_ERRORS_TOTAL,
+)
 
 # Stadium real-time data job functions (imported lazily inside job bodies to avoid startup overhead)
 
@@ -366,8 +378,10 @@ def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
                         game_id,
                         (datetime.now(KST) - game_started_at).total_seconds(),
                     )
-                except SCHEDULER_JOB_EXCEPTIONS:
+                except SCHEDULER_JOB_EXCEPTIONS as e:
                     failed_game_ids.append(game_id)
+                    KBO_OCI_SYNC_ERRORS_TOTAL.inc()
+                    sentry_sdk.capture_exception(e)
                     logger.exception(
                         "Background realtime OCI %s sync failed game_id=%s elapsed=%.1fs",
                         sync_kind,
@@ -378,13 +392,18 @@ def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
                     if syncer is not None:
                         try:
                             syncer.close()
-                        except SCHEDULER_JOB_EXCEPTIONS:
+                        except SCHEDULER_JOB_EXCEPTIONS as e:
+                            sentry_sdk.capture_exception(e)
                             logger.exception(
                                 "Failed to close background realtime OCI %s syncer game_id=%s",
                                 sync_kind,
                                 game_id,
                             )
-        except SCHEDULER_JOB_EXCEPTIONS:
+            if succeeded > 0:
+                KBO_OCI_LAST_SYNC_TIMESTAMP_SECONDS.set(time.time())
+        except SCHEDULER_JOB_EXCEPTIONS as e:
+            KBO_OCI_SYNC_ERRORS_TOTAL.inc()
+            sentry_sdk.capture_exception(e)
             logger.exception("Background realtime OCI %s sync setup failed", sync_kind)
         finally:
             REALTIME_OCI_SYNC_LOCK.release()
@@ -1188,14 +1207,11 @@ def compute_rankings_job():
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Rankings Computation ===")
         try:
-            from src.aggregators.ranking_aggregator import RankingAggregator
-            from src.db.engine import SessionLocal
+            from src.cli.calculate_rankings import rebuild_rankings
 
             current_year = datetime.now(KST).year
-            with SessionLocal() as session:
-                agg = RankingAggregator(session)
-                agg.run_for_season(current_year)
-                logger.info("=== Rankings Computation Completed ===")
+            rebuild_rankings(current_year)
+            logger.info("=== Rankings Computation Completed ===")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Rankings computation failed")
 
@@ -1361,20 +1377,97 @@ def crawl_p0_non_game_job():
             logger.exception("P0 non-game crawl failed")
 
 
-def job_error_listener(event):
-    """Listener for failed APScheduler jobs."""
-    if event.exception:
-        import traceback
+job_start_times: dict[str, float] = {}
 
-        job = event.job_id
-        exc = event.exception
-        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
 
-        logger.error(f"Job {job} failed: {exc}")
-        try:
-            SlackWebhookClient.send_error_alert(f"🚨 <b>Scheduler Job Failed: {job}</b>\nError: {exc}\n\n{tb}")
-        except ALERT_EXCEPTIONS:
-            logger.exception("Failed to send Slack alert for failed job %s", job)
+def job_lifecycle_listener(event: object) -> None:
+    """Listener for APScheduler job lifecycle events to collect metrics and capture errors."""
+    event_code = getattr(event, "code", None)
+    job_id = getattr(event, "job_id", "unknown")
+
+    if event_code == EVENT_JOB_SUBMITTED:
+        job_start_times[job_id] = time.time()
+
+    elif event_code == EVENT_JOB_EXECUTED:
+        start_time = job_start_times.pop(job_id, None)
+        duration = time.time() - start_time if start_time else 0.0
+
+        KBO_SCHEDULER_JOB_TOTAL.labels(job_id=job_id, status="success").inc()
+        KBO_SCHEDULER_JOB_DURATION_SECONDS.labels(job_id=job_id).observe(duration)
+
+    elif event_code == EVENT_JOB_ERROR:
+        start_time = job_start_times.pop(job_id, None)
+        duration = time.time() - start_time if start_time else 0.0
+
+        KBO_SCHEDULER_JOB_TOTAL.labels(job_id=job_id, status="failure").inc()
+        KBO_SCHEDULER_JOB_DURATION_SECONDS.labels(job_id=job_id).observe(duration)
+
+        exc = getattr(event, "exception", None)
+        if exc:
+            import traceback
+
+            tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            logger.error("Job %s failed: %s", job_id, exc)
+
+            sentry_sdk.capture_exception(exc)
+
+            try:
+                SlackWebhookClient.send_error_alert(f"🚨 <b>Scheduler Job Failed: {job_id}</b>\nError: {exc}\n\n{tb}")
+            except ALERT_EXCEPTIONS:
+                logger.exception("Failed to send Slack alert for failed job %s", job_id)
+
+
+def update_oci_sync_lag_metrics() -> None:
+    """Calculate and report the time lag between SQLite and OCI database."""
+    sqlite_max = None
+    try:
+        with SessionLocal() as sqlite_session:
+            row = sqlite_session.execute(text("SELECT MAX(updated_at) FROM game")).scalar()
+            if row:
+                if isinstance(row, str):
+                    sqlite_max = datetime.fromisoformat(row)
+                else:
+                    sqlite_max = row
+    except Exception as e:
+        logger.exception("Failed to query SQLite max updated_at")
+        sentry_sdk.capture_exception(e)
+        return
+
+    if sqlite_max is None:
+        return
+
+    oci_url = os.getenv("OCI_DB_URL")
+    if not oci_url:
+        return
+
+    oci_max = None
+    try:
+        from sqlalchemy import create_engine
+
+        engine = create_engine(oci_url, pool_pre_ping=True)
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT MAX(updated_at) FROM game")).scalar()
+            if row:
+                if isinstance(row, str):
+                    oci_max = datetime.fromisoformat(row)
+                else:
+                    oci_max = row
+    except Exception as e:
+        logger.exception("Failed to query OCI max updated_at")
+        sentry_sdk.capture_exception(e)
+        KBO_OCI_SYNC_ERRORS_TOTAL.inc()
+        return
+
+    if sqlite_max and oci_max:
+        if sqlite_max.tzinfo is None:
+            sqlite_max = sqlite_max.replace(tzinfo=KST)
+        if oci_max.tzinfo is None:
+            oci_max = oci_max.replace(tzinfo=KST)
+
+        lag_seconds = (sqlite_max - oci_max).total_seconds()
+        lag_seconds = max(0.0, lag_seconds)
+        KBO_OCI_SYNC_LAG_SECONDS.set(lag_seconds)
+        logger.info("Updated OCI sync lag metric: %.1f seconds", lag_seconds)
 
 
 def main(argv: Sequence[str] | None = None):
@@ -1392,8 +1485,16 @@ def main(argv: Sequence[str] | None = None):
         crawl_retired_players_job(limit=args.limit)
         return
 
+    # Initialize monitoring services
+    init_sentry()
+    prometheus_port = _env_int("PROMETHEUS_PORT", 8000)
+    start_metrics_server(prometheus_port)
+
     scheduler = BlockingScheduler(timezone="Asia/Seoul")
-    scheduler.add_listener(job_error_listener, EVENT_JOB_ERROR)
+    scheduler.add_listener(
+        job_lifecycle_listener,
+        EVENT_JOB_SUBMITTED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR,
+    )
 
     # Job 1.9: Daily Games Crawl (03:00 KST)
     # Ensures daily schedule and game detail collection even if GH Actions fails
@@ -1647,6 +1748,17 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: crawl_team_info_history (Weekly Sunday 06:00 KST)")
 
+    # Job M4: OCI Sync Lag Metric Update — Every 5 minutes
+    scheduler.add_job(
+        update_oci_sync_lag_metrics,
+        trigger=CronTrigger(minute="*/5"),
+        id="update_oci_sync_lag",
+        name="Update OCI Sync Lag Metrics",
+        misfire_grace_time=300,
+        max_instances=1,
+    )
+    logger.info("Registered job: update_oci_sync_lag (Every 5m)")
+
     # Optional one-time startup backfill for missed days
     startup_run = os.getenv("STARTUP_RUN", "1") == "1" and not args.no_startup_run
     if startup_run:
@@ -1685,6 +1797,25 @@ def main(argv: Sequence[str] | None = None):
     logger.info(" 19. OCI Hydration: Daily 05:00 KST (local fallback)")
     logger.info(" 20. Team Info/History: Weekly Sunday 06:00 KST")
     logger.info("%s\n", "=" * 60)
+
+    def shutdown_handler(signum: int, frame: object) -> None:
+        logger.info("Received signal %s. Stopping scheduler gracefully...", signum)
+        try:
+            scheduler.shutdown(wait=False)
+        except Exception as e:
+            logger.warning("Error during scheduler shutdown: %s", e)
+
+        logger.info("Releasing active process locks...")
+        for lock in [LIVE_LOCK, DAILY_LOCK, MAINTENANCE_LOCK, REALTIME_OCI_SYNC_LOCK]:
+            try:
+                lock.release()
+            except Exception as e:
+                logger.warning("Error releasing lock %s: %s", lock.name, e)
+        logger.info("Scheduler stopped.")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
 
     try:
         scheduler.start()

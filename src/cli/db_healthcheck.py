@@ -7,6 +7,7 @@
 
 사용법:
   python -m src.cli.db_healthcheck
+
 """
 
 from __future__ import annotations
@@ -22,7 +23,13 @@ logger = logging.getLogger(__name__)
 
 
 def main(_argv: list[str] | None = None) -> None:
-    """데이터베이스 상태 점검을 수행하는 메인 함수."""
+    """
+    데이터베이스 상태 점검을 수행하는 메인 함수.
+
+    Args:
+        _argv: Argv.
+
+    """
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
     url = DATABASE_URL

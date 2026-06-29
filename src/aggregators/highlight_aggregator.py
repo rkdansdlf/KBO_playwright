@@ -13,10 +13,16 @@ if TYPE_CHECKING:
 
 
 class HighlightAggregator:
-    """Computes and tags game highlights from Play-by-Play event records."""
+    """Compute and tags game highlights from Play-by-Play event records."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+
+        """
         self.session = session
 
     def _query_play_events(self, game_id: str) -> list[GameEvent]:
@@ -146,10 +152,16 @@ class HighlightAggregator:
 
     def aggregate_game_highlights(self, game_id: str, min_wpa_threshold: float = 0.05) -> list[GameHighlight]:
         """
-        Scans all play events for a given game, detects significant plays,
+        Scan all play events for a given game, detects significant plays,
         tags them, and calculates an importance score for ranking.
+
+        Args:
+            game_id: Game ID.
+            min_wpa_threshold: Min Wpa Threshold.
+
         """
         events = self._query_play_events(game_id)
+
         if not events:
             return []
 
@@ -171,8 +183,16 @@ class HighlightAggregator:
         return highlights
 
     def save_highlights(self, game_id: str, highlights: list[GameHighlight]) -> int:
-        """Deletes existing highlights for a game and saves the new ones."""
+        """
+        Delete existing highlights for a game and saves the new ones.
+
+        Args:
+            game_id: Game ID.
+            highlights: Highlights.
+
+        """
         existing = self.session.query(GameHighlight).filter(GameHighlight.game_id == game_id).all()
+
         for highlight in existing:
             self.session.delete(highlight)
         if existing:

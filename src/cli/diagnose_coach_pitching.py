@@ -5,6 +5,7 @@ Shows, per game, where starter and bullpen data is present or missing across:
 1. raw crawl tables (game_pitching_stats),
 2. repository payload construction,
 3. final postgame Coach review JSON (game_summary / 리뷰_WPA).
+
 """
 
 from __future__ import annotations
@@ -85,8 +86,15 @@ def _print_text_report(rows: list[dict]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Trace completed-game Coach starter/bullpen data by game.")
+
     parser.add_argument("--date", help="Completed game date to inspect (YYYYMMDD)")
     parser.add_argument(
         "--game-id",

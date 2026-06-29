@@ -2,6 +2,7 @@
 CLI tool to recalculate team-level season stats from player season statistics.
 
 Useful for self-healing / rollup recalculations when team stats pages fail.
+
 """
 
 from __future__ import annotations
@@ -119,9 +120,17 @@ def run_recalc(
     pitching_only: bool = False,
 ) -> int:
     """
-    Recalculates team statistics for the given season.
+    Recalculate team statistics for the given season.
 
-    Returns 0 on success, non-zero on failure.
+    Return 0 on success, non-zero on failure.
+
+    Args:
+        season: Season year.
+        team_id: Team ID.
+        dry_run: If True, performs a dry run without persisting changes.
+        batting_only: Batting Only.
+        pitching_only: Pitching Only.
+
     """
     if team_id:
         team_id = team_id.upper()
@@ -144,7 +153,7 @@ def run_recalc(
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Recalculate team cumulative statistics from player stats.")
 
     # We allow --season as a required argument but support --year/--season flexibly

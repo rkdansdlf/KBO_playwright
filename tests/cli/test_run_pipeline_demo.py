@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.cli.run_pipeline_demo import main
+from src.db.engine import Engine
+from src.models.base import Base
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def _test_db_tables():
+    Base.metadata.create_all(bind=Engine)
+    yield
 
 
 class TestRunPipelineDemoCLI:

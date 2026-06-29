@@ -82,7 +82,11 @@ class RelayRecoveryTarget:
         state: GameStateInput,
     ) -> RelayRecoveryTarget:
         """
-        Handles the from game state operation.
+        Handle the from game state operation.
+
+        Args:
+            state: State.
+            state: State.
 
         Returns:
             RelayRecoveryTarget instance.
@@ -181,9 +185,11 @@ class RecoveryLoopContext:
 
 def parse_source_order(value: str | None) -> list[str] | None:
     """
-    Parses source order.
+    Parse source order.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -198,9 +204,11 @@ def parse_source_order(value: str | None) -> list[str] | None:
 
 def load_game_ids_from_file(path: str | Path | None) -> list[str]:
     """
-    Loads game ids from file.
+    Load game ids from file.
 
     Args:
+        path: Path.
+        path: Path.
         path: Path.
 
     Returns:
@@ -235,9 +243,13 @@ def load_relay_recovery_targets(
     log: Callable[[str], None] = logger.info,
 ) -> list[RelayRecoveryTarget]:
     """
-    Loads relay recovery targets.
+    Load relay recovery targets.
 
     Args:
+        criteria: Criteria.
+        log: Logger instance.
+        criteria: Criteria.
+        log: Logger instance.
         criteria: Criteria.
 
     Returns:
@@ -245,6 +257,7 @@ def load_relay_recovery_targets(
 
     """
     allowed_statuses = list(COMPLETED_LIKE_GAME_STATUSES)
+
     if criteria.include_incomplete:
         allowed_statuses.extend([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED])
 
@@ -308,9 +321,15 @@ async def recover_relay_data(
     orchestrator: RelayRecoveryOrchestrator | None = None,
 ) -> RelayRecoveryResult:
     """
-    Handles the recover relay data operation.
+    Handle the recover relay data operation.
 
     Args:
+        targets: Targets.
+        config: Configuration object.
+        orchestrator: Orchestrator.
+        targets: Targets.
+        config: Configuration object.
+        orchestrator: Orchestrator.
         targets: Targets.
         config: Config.
         orchestrator: Orchestrator.
@@ -320,6 +339,7 @@ async def recover_relay_data(
 
     """
     cfg = config or RelayRecoveryConfig()
+
     target_list = list(targets)
     run_result = RelayRecoveryResult(total_targets=len(target_list))
     if not target_list:
@@ -430,9 +450,11 @@ def _relay_validator(
 ) -> Callable[[NormalizedRelayResult], str | None]:
     def validator(relay_result: NormalizedRelayResult) -> str | None:
         """
-        Handles the validator operation.
+        Handle the validator operation.
 
         Args:
+            relay_result: Relay Result.
+            relay_result: Relay Result.
             relay_result: Relay Result.
 
         Returns:
@@ -608,13 +630,22 @@ def build_relay_recovery_orchestrator(
     source_timeout: float = 30.0,
 ) -> RelayRecoveryOrchestrator:
     """
-    Builds relay recovery orchestrator.
+    Build relay recovery orchestrator.
+
+    Args:
+        import_manifest: Import Manifest.
+        capability_path: Capability file path.
+        source_timeout: Source Timeout.
+        import_manifest: Import Manifest.
+        capability_path: Capability file path.
+        source_timeout: Source Timeout.
 
     Returns:
         RelayRecoveryOrchestrator instance.
 
     """
     manifest_entries = read_manifest_entries(import_manifest)
+
     manifest_base_dir = _manifest_base_dir(import_manifest)
     adapters = {
         "naver": NaverRelayAdapter(),
@@ -646,9 +677,15 @@ def write_relay_recovery_report(
     log: Callable[[str], None] = logger.info,
 ) -> None:
     """
-    Writes relay recovery.
+    Write relay recovery.
 
     Args:
+        report_path: Report file path.
+        rows: Rows.
+        log: Logger instance.
+        report_path: Report file path.
+        rows: Rows.
+        log: Logger instance.
         report_path: Report file path.
         rows: Rows.
 
@@ -840,7 +877,18 @@ def _should_mark_source_unavailable(
     attempts: list[dict[str, Any]],
     relay_result: NormalizedRelayResult,
 ) -> bool:
-    """Return true when a historical miss should be recorded as explainably unavailable."""
+    """
+    Return true when a historical miss should be recorded as explainably unavailable.
+
+    Args:
+        bucket_id: Bucket ID.
+        attempts: Attempts.
+        relay_result: Relay Result.
+        bucket_id: Bucket ID.
+        attempts: Attempts.
+        relay_result: Relay Result.
+
+    """
     if not bucket_id.endswith("_legacy"):
         return False
     try:

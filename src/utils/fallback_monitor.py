@@ -20,12 +20,29 @@ class FallbackMonitor:
     모니터링 및 알림 시스템을 담당하는 클래스.
 
     폴백 이벤트 발생 시 로그 기록 및 알림(Slack 등)을 수행합니다.
+
     """
 
     @staticmethod
     def log_fallback(year: int, series: str, stat_type: str, reason: str, player_count: int | None = None) -> None:
-        """폴백 이벤트 로그 기록 및 알림 전송."""
+        """
+        폴백 이벤트 로그 기록 및 알림 전송.
+
+        Args:
+            year: Season year.
+            series: Series.
+            stat_type: Type of statistics to validate.
+            reason: Reason.
+            player_count: Player Count.
+            year: Season year.
+            series: Series.
+            stat_type: Type of statistics to validate.
+            reason: Reason.
+            player_count: Player Count.
+
+        """
         msg = f"🔄 [FALLBACK TRIGGERED] {year} {series} {stat_type} fallback initiated. Reason: {reason}"
+
         if player_count is not None:
             msg += f" (Processed {player_count} players)"
 
@@ -60,6 +77,19 @@ class FallbackMonitor:
         수정 전 데이터 스냅샷을 logs/audit_fixes/ 폴더에 {date}_{player_id}_{type}.json 형태로 저장합니다.
 
         기존 백업 파일이 있으면 list에 append하여 덮어쓰기를 방지합니다.
+
+        Args:
+            player_id: Player ID.
+            type_name: Type Name.
+            original_data: Original Data.
+            calculated_data: Calculated Data.
+            player_name: Player Name.
+            player_id: Player ID.
+            type_name: Type Name.
+            original_data: Original Data.
+            calculated_data: Calculated Data.
+            player_name: Player Name.
+
         """
         from pathlib import Path
 
@@ -68,9 +98,11 @@ class FallbackMonitor:
 
             def default(self, o: object) -> object:
                 """
-                Handles the default operation.
+                Handle the default operation.
 
                 Args:
+                    o: O.
+                    o: O.
                     o: O.
 
                 Returns:
@@ -118,7 +150,18 @@ class FallbackMonitor:
 
     @staticmethod
     def save_audit_event(category: str, event_type: str, data: dict[str, Any]) -> None:
-        """Saves an audit event (e.g. warning, abort) to logs/audit_fixes/{date}_{event_type}_{category}.json."""
+        """
+        Save an audit event (e.g. warning, abort) to logs/audit_fixes/{date}_{event_type}_{category}.json.
+
+        Args:
+            category: Category.
+            event_type: Event Type.
+            data: Data.
+            category: Category.
+            event_type: Event Type.
+            data: Data.
+
+        """
         from pathlib import Path
 
         project_root = Path(__file__).resolve().parent.parent.parent

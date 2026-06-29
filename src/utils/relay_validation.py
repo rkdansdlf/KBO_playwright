@@ -1,8 +1,9 @@
 """
 Play-by-play (PBP) data validation rules.
 
-Validates structural integrity (e.g. missing innings) and score correctness.
+Validate structural integrity (e.g. missing innings) and score correctness.
 Supports two-phase validation: live (structural) and post-game (cross-check).
+
 """
 
 import logging
@@ -49,10 +50,16 @@ def validate_live_events(events: list[dict[str, Any]]) -> list[str]:
     """
     Validate event sequence structure during live play.
 
-    Checks for structural errors only — no cross-referencing with box scores.
+    Check for structural errors only — no cross-referencing with box scores.
     Returns a list of warning/error messages (empty = clean).
+
+    Args:
+        events: Events.
+        events: Events.
+
     """
     warnings: list[str] = []
+
     if not events:
         return warnings
 
@@ -95,9 +102,19 @@ def _score_regression_warnings(
     prev_away_score: int,
 ) -> list[str]:
     """
-    Handles the score regression warnings operation.
+    Handle the score regression warnings operation.
 
     Args:
+        index: Index.
+        home_score: Home Score.
+        away_score: Away Score.
+        prev_home_score: Prev Home Score.
+        prev_away_score: Prev Away Score.
+        index: Index.
+        home_score: Home Score.
+        away_score: Away Score.
+        prev_home_score: Prev Home Score.
+        prev_away_score: Prev Away Score.
         index: Index.
         home_score: Home Score.
         away_score: Away Score.
@@ -109,6 +126,7 @@ def _score_regression_warnings(
 
     """
     warnings = []
+
     if home_score < prev_home_score:
         warnings.append(f"event_{index}: home_score decreased {prev_home_score}->{home_score}")
     if away_score < prev_away_score:
@@ -124,9 +142,19 @@ def _inning_regression_warnings(
     prev_half: str | None,
 ) -> list[str]:
     """
-    Handles the inning regression warnings operation.
+    Handle the inning regression warnings operation.
 
     Args:
+        index: Index.
+        inning: Inning.
+        half: Half.
+        prev_inning: Prev Inning.
+        prev_half: Prev Half.
+        index: Index.
+        inning: Inning.
+        half: Half.
+        prev_inning: Prev Inning.
+        prev_half: Prev Half.
         index: Index.
         inning: Inning number.
         half: Half.
@@ -163,9 +191,11 @@ class OutCountContext:
 
 def _out_count_warnings(ctx: OutCountContext) -> list[str]:
     """
-    Handles the out count warnings operation.
+    Handle the out count warnings operation.
 
     Args:
+        ctx: Ctx.
+        ctx: Ctx.
         ctx: Ctx.
 
     Returns:
@@ -189,9 +219,15 @@ def _out_count_warnings(ctx: OutCountContext) -> list[str]:
 
 def _event_sequence_warnings(index: int, event: dict[str, Any], events: list[dict[str, Any]]) -> list[str]:
     """
-    Handles the event sequence warnings operation.
+    Handle the event sequence warnings operation.
 
     Args:
+        index: Index.
+        event: Event.
+        events: Events.
+        index: Index.
+        event: Event.
+        events: Events.
         index: Index.
         event: Event.
         events: List of events.
@@ -201,6 +237,7 @@ def _event_sequence_warnings(index: int, event: dict[str, Any], events: list[dic
 
     """
     seq = event.get("event_seq")
+
     if seq is None or index <= 0:
         return []
     prev_seq = events[index - 1].get("event_seq")
@@ -217,8 +254,17 @@ def cross_validate_with_box_score(
     """
     Cross-validate PBP event scores against game_inning_scores table.
 
-    Returns (is_match, error_reason).
+    Return (is_match, error_reason).
     Only applicable for completed games with inning score data.
+
+    Args:
+        session: Session.
+        game_id: Game ID.
+        events: Events.
+        session: Session.
+        game_id: Game ID.
+        events: Events.
+
     """
     from src.models.game import GameInningScore
 
@@ -286,7 +332,18 @@ def validate_pbp_payload(
     """
     Validate final PBP payload for structural integrity and score correctness.
 
-    Returns (is_valid, error_reason).
+    Return (is_valid, error_reason).
+
+    Args:
+        session: Session.
+        game_id: Game ID.
+        events: Events.
+        raw_pbp_rows: Raw Pbp Rows.
+        session: Session.
+        game_id: Game ID.
+        events: Events.
+        raw_pbp_rows: Raw Pbp Rows.
+
     """
     if not events and not raw_pbp_rows:
         return False, "empty_payload"
@@ -307,9 +364,13 @@ def validate_pbp_payload(
 
 def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[str, Any]]) -> str | None:
     """
-    Validates pbp innings.
+    Validate pbp innings.
 
     Args:
+        events: Events.
+        raw_pbp_rows: Raw Pbp Rows.
+        events: Events.
+        raw_pbp_rows: Raw Pbp Rows.
         events: List of events.
         raw_pbp_rows: Raw Pbp Rows.
 
@@ -318,6 +379,7 @@ def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[
 
     """
     innings_in_pbp = sorted({row.get("inning") for row in raw_pbp_rows if row.get("inning") is not None})  # type: ignore[type-var]
+
     if not innings_in_pbp:
         innings_in_pbp = sorted({event.get("inning") for event in events if event.get("inning") is not None})  # type: ignore[type-var]
 
@@ -337,9 +399,13 @@ def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[
 
 def _validate_pbp_final_score(game: Game, events: list[dict[str, Any]]) -> str | None:
     """
-    Validates pbp final score.
+    Validate pbp final score.
 
     Args:
+        game: Game.
+        events: Events.
+        game: Game.
+        events: Events.
         game: Game.
         events: List of events.
 
@@ -348,6 +414,7 @@ def _validate_pbp_final_score(game: Game, events: list[dict[str, Any]]) -> str |
 
     """
     db_home_score = game.home_score
+
     db_away_score = game.away_score
 
     if db_home_score is None or db_away_score is None:
@@ -365,9 +432,11 @@ def _validate_pbp_final_score(game: Game, events: list[dict[str, Any]]) -> str |
 
 def _last_pbp_score(events: list[dict[str, Any]]) -> tuple[int, int] | None:
     """
-    Handles the last pbp score operation.
+    Handle the last pbp score operation.
 
     Args:
+        events: Events.
+        events: Events.
         events: List of events.
 
     Returns:

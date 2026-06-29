@@ -4,6 +4,7 @@ Crawler for daily roster transactions (call-up / send-down).
 Sources:
   - KBO mobile registration page: https://m.koreabaseball.com/Kbo/PlayerAdd.aspx
   - KBO player register page: https://www.koreabaseball.com/Player/Register.aspx.
+
 """
 
 from __future__ import annotations
@@ -64,8 +65,18 @@ class RosterTransactionCrawler:
     """RosterTransactionCrawler class."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+
+        """
         self.mobile_url = "https://m.koreabaseball.com/Kbo/PlayerAdd.aspx"
+
         self.register_url = REGISTER
         self.request_delay = request_delay
         self.pool = pool
@@ -73,7 +84,13 @@ class RosterTransactionCrawler:
 
     async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
         """
-        Runs run.
+        Run run.
+
+        Args:
+            save: Whether to persist the results.
+            target_date: Target date for the operation.
+            save: Whether to persist the results.
+            target_date: Target date for the operation.
 
         Returns:
             List of results.
@@ -125,7 +142,16 @@ class RosterTransactionCrawler:
         return self._parse_mobile_html(html, target_date)
 
     def _parse_mobile_html(self, html: str, target_date: date) -> list[dict[str, Any]]:
-        """Parse the mobile KBO registration page."""
+        """
+        Parse the mobile KBO registration page.
+
+        Args:
+            html: Html.
+            target_date: Target date for the operation.
+            html: Html.
+            target_date: Target date for the operation.
+
+        """
         transactions = []
 
         # Split into registered and deregistered sections
@@ -187,7 +213,16 @@ class RosterTransactionCrawler:
         return transactions
 
     def _parse_alternate_mobile(self, html: str, target_date: date) -> list[dict[str, Any]]:
-        """Fallback parser for alternate mobile page layout."""
+        """
+        Fallback parser for alternate mobile page layout.
+
+        Args:
+            html: Html.
+            target_date: Target date for the operation.
+            html: Html.
+            target_date: Target date for the operation.
+
+        """
         transactions = []
 
         # Look for table-based layout
@@ -230,7 +265,14 @@ class RosterTransactionCrawler:
         return transactions
 
     async def _crawl_desktop_page(self, target_date: date) -> list[dict[str, Any]]:
-        """Fallback: crawl the desktop ASP.NET page."""
+        """
+        Fallback: crawl the desktop ASP.NET page.
+
+        Args:
+            target_date: Target date for the operation.
+            target_date: Target date for the operation.
+
+        """
         transactions = []
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
@@ -314,6 +356,7 @@ class RosterTransactionCrawler:
         }
         """
         data = await page.evaluate(script)
+
         return [
             {
                 "transaction_date": roster_date,

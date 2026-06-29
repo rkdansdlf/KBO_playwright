@@ -12,18 +12,20 @@ from .team_stats_repository import BaseStatsUpsertRepository
 
 
 class PlayerSeasonFieldingRepository(BaseStatsUpsertRepository):
-    """UPSERT logic for player-level fielding aggregates."""
+    """upsert logic for player-level fielding aggregates."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         super().__init__(PlayerSeasonFielding, ["player_id", "team_id", "year", "position_id"])
         self.last_filter_counts: Counter = Counter()
 
     def upsert_many(self, records: list[dict[str, Any]]) -> int:
         """
-        Inserts or updates many.
+        Insert or update many.
 
         Args:
+            records: Records.
+            records: Records.
             records: Records.
 
         Returns:
@@ -39,8 +41,8 @@ class PlayerSeasonFieldingRepository(BaseStatsUpsertRepository):
 
 
 class PlayerSeasonBaserunningRepository(BaseStatsUpsertRepository):
-    """UPSERT logic for player-level baserunning aggregates."""
+    """upsert logic for player-level baserunning aggregates."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         super().__init__(PlayerSeasonBaserunning, ["player_id", "team_id", "year"])

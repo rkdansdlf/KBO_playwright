@@ -28,9 +28,11 @@ _GAME_ID_RE = re.compile(r"^(\d{8})([A-Z]+)(\d)$")
 
 def parse_schedule_date(value: object) -> date | None:
     """
-    Parses schedule date.
+    Parse schedule date.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -38,6 +40,7 @@ def parse_schedule_date(value: object) -> date | None:
 
     """
     text = str(value or "").replace("-", "").strip()
+
     if len(text) != DATE_STR_LEN or not text.isdigit():
         return None
     try:
@@ -48,9 +51,11 @@ def parse_schedule_date(value: object) -> date | None:
 
 def split_schedule_game_id(game_id: object) -> tuple[str, str, str, str] | None:
     """
-    Splits schedule game id.
+    Split schedule game id.
 
     Args:
+        game_id: Game ID.
+        game_id: Game ID.
         game_id: Game ID.
 
     Returns:
@@ -58,6 +63,7 @@ def split_schedule_game_id(game_id: object) -> tuple[str, str, str, str] | None:
 
     """
     raw = str(game_id or "").strip().upper()
+
     if not raw:
         return None
 
@@ -83,9 +89,15 @@ def validate_schedule_game_payload(
     expected_month: int | None = None,
 ) -> tuple[bool, str | None]:
     """
-    Validates schedule game payload.
+    Validate schedule game payload.
 
     Args:
+        game: Game.
+        expected_year: Expected Year.
+        expected_month: Expected Month.
+        game: Game.
+        expected_year: Expected Year.
+        expected_month: Expected Month.
         game: Game.
 
     Returns:
@@ -93,6 +105,7 @@ def validate_schedule_game_payload(
 
     """
     game_id_status = _validate_schedule_game_id(game)
+
     if game_id_status[0] is None:
         return False, game_id_status[1]
     game_id = game_id_status[0]
@@ -110,9 +123,11 @@ def validate_schedule_game_payload(
 
 def _validate_schedule_fields(game: Mapping[str, Any]) -> tuple[bool, str | None]:
     """
-    Validates schedule fields.
+    Validate schedule fields.
 
     Args:
+        game: Game.
+        game: Game.
         game: Game.
 
     Returns:
@@ -131,9 +146,11 @@ def _validate_schedule_fields(game: Mapping[str, Any]) -> tuple[bool, str | None
 
 def _validate_schedule_game_id(game: Mapping[str, Any]) -> tuple[str | None, str | None]:
     """
-    Validates schedule game id.
+    Validate schedule game id.
 
     Args:
+        game: Game.
+        game: Game.
         game: Game.
 
     Returns:
@@ -141,6 +158,7 @@ def _validate_schedule_game_id(game: Mapping[str, Any]) -> tuple[str | None, str
 
     """
     game_id = str(game.get("game_id") or "").strip()
+
     if not game_id:
         return None, "missing_game_id"
     return game_id, None
@@ -153,9 +171,15 @@ def _validate_schedule_date(
     expected_month: int | None,
 ) -> tuple[date | None, str | None]:
     """
-    Validates schedule date.
+    Validate schedule date.
 
     Args:
+        game: Game.
+        expected_year: Expected Year.
+        expected_month: Expected Month.
+        game: Game.
+        expected_year: Expected Year.
+        expected_month: Expected Month.
         game: Game.
 
     Returns:
@@ -163,6 +187,7 @@ def _validate_schedule_date(
 
     """
     game_date = parse_schedule_date(game.get("game_date"))
+
     if not game_date:
         return None, "invalid_game_date"
     if expected_year is not None and game_date.year != expected_year:
@@ -174,9 +199,13 @@ def _validate_schedule_date(
 
 def _validate_schedule_id_date(game_id: str, game_date: date) -> str | None:
     """
-    Validates schedule id date.
+    Validate schedule id date.
 
     Args:
+        game_id: Game ID.
+        game_date: Game Date.
+        game_id: Game ID.
+        game_date: Game Date.
         game_id: Game ID.
         game_date: Game Date.
 
@@ -185,6 +214,7 @@ def _validate_schedule_id_date(game_id: str, game_date: date) -> str | None:
 
     """
     id_parts = split_schedule_game_id(game_id)
+
     if not id_parts:
         return "invalid_game_id"
     id_date, _, _, _ = id_parts
@@ -195,9 +225,13 @@ def _validate_schedule_id_date(game_id: str, game_date: date) -> str | None:
 
 def is_detail_candidate_game(game: Mapping[str, Any], *, today: date | None = None) -> bool:
     """
-    Returns whether the detail candidate game.
+    Return whether the detail candidate game.
 
     Args:
+        game: Game.
+        today: Today.
+        game: Game.
+        today: Today.
         game: Game.
 
     Returns:
@@ -205,6 +239,7 @@ def is_detail_candidate_game(game: Mapping[str, Any], *, today: date | None = No
 
     """
     game_date = parse_schedule_date(game.get("game_date"))
+
     if not game_date:
         return False
     if today is not None and game_date > today:

@@ -3,6 +3,7 @@ SLA tracker: measure data freshness SLAs over time.
 
 Tracks PBP coverage rate, game completion rate, detail capture rate.
 Generates daily/weekly/monthly SLA reports.
+
 """
 
 from __future__ import annotations
@@ -33,14 +34,23 @@ class SlaTracker:
     """SlaTracker class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def compute_daily_sla(self, target_date: str) -> dict[str, Any]:
         """
-        Computes daily sla.
+        Compute daily sla.
 
         Args:
+            target_date: Target date for the operation.
+            target_date: Target date for the operation.
             target_date: Target Date.
 
         Returns:
@@ -49,6 +59,8 @@ class SlaTracker:
         """
         if isinstance(target_date, str) and len(target_date) == 8:
             query_date = date(int(target_date[:4]), int(target_date[4:6]), int(target_date[6:8]))
+        elif isinstance(target_date, str):
+            query_date = date.fromisoformat(target_date)
         else:
             query_date = target_date
 
@@ -97,11 +109,15 @@ class SlaTracker:
             "completion_rate": round(len(completed) / total, 3) if total else 0,
         }
 
-    def compute_weekly_sla(self, end_date: str, days: int = 7) -> list[dict]:
+    def compute_weekly_sla(self, end_date: str, days: int = 7) -> list[dict[str, Any]]:
         """
-        Computes weekly sla.
+        Compute weekly sla.
 
         Args:
+            end_date: End Date.
+            days: Days.
+            end_date: End Date.
+            days: Days.
             end_date: End Date.
             days: Days.
 
@@ -110,6 +126,7 @@ class SlaTracker:
 
         """
         end = parse_datetime_str(end_date)
+
         results = []
         for i in range(days):
             d = (end - timedelta(days=i)).strftime("%Y%m%d")
@@ -118,13 +135,16 @@ class SlaTracker:
 
     def print_weekly_report(self, end_date: str) -> None:
         """
-        Prints weekly.
+        Print weekly.
 
         Args:
+            end_date: End Date.
+            end_date: End Date.
             end_date: End Date.
 
         """
         sla_data = self.compute_weekly_sla(end_date, days=7)
+
         if not sla_data or sla_data[0]["total"] == 0:
             logger.info("[SLA] No data for week ending %s", end_date)
             return
@@ -161,6 +181,11 @@ class SlaTracker:
         Compute the past 7-day SLA data and send a summary to Telegram/Slack.
 
         If end_date is None, uses today (UTC).
+
+        Args:
+            end_date: End Date.
+            end_date: End Date.
+
         """
         if end_date is None:
             end_date = datetime.now(UTC).strftime("%Y%m%d")

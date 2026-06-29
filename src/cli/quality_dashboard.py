@@ -121,9 +121,12 @@ def load_quality_records(
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Loads quality records.
+    Load quality records.
 
     Args:
+        report_dir: Report Dir.
+        days: Days.
+        limit: Limit.
         report_dir: Report directory path.
 
     Returns:
@@ -131,6 +134,7 @@ def load_quality_records(
 
     """
     records: list[dict[str, Any]] = []
+
     for path in sorted(report_dir.glob("*.json")):
         report = _load_report(path)
         if report is None:
@@ -146,9 +150,12 @@ def load_quality_records(
 
 def build_quality_dashboard(report_dir: Path, *, days: int | None = None, limit: int | None = None) -> dict[str, Any]:
     """
-    Builds quality dashboard.
+    Build quality dashboard.
 
     Args:
+        report_dir: Report Dir.
+        days: Days.
+        limit: Limit.
         report_dir: Report directory path.
 
     Returns:
@@ -156,6 +163,7 @@ def build_quality_dashboard(report_dir: Path, *, days: int | None = None, limit:
 
     """
     records = load_quality_records(report_dir, days=days, limit=limit)
+
     failure_counts: dict[str, int] = {}
     for record in records:
         for failure in record["failures"]:
@@ -200,8 +208,15 @@ def _log_dashboard_summary(dashboard: dict[str, Any]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     parser = argparse.ArgumentParser(description="Summarize generated quality report JSON files")
     parser.add_argument(
         "--report-dir",

@@ -3,6 +3,7 @@ P0 game-data readiness checks.
 
 This module keeps the operational readiness rules in one place so the CLI,
 daily finalize summary, and freshness monitor report the same gaps.
+
 """
 
 from __future__ import annotations
@@ -57,9 +58,11 @@ def _env_enabled(name: str, default: str = "1") -> bool:
 
 def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
     """
-    Normalizes yyyymmdd.
+    Normalize yyyymmdd.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -622,8 +625,26 @@ def build_p0_readiness(
     oci_skip_counts: dict[str, int] | None = None,
     oci_skip_game_ids: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
-    """Build a JSON-serializable P0 readiness report for a date window."""
+    """
+    Build a JSON-serializable P0 readiness report for a date window.
+
+    Args:
+        session: Session.
+        target_date: Target date for the operation.
+        lookback_days: Lookback Days.
+        lookahead_days: Lookahead Days.
+        oci_skip_counts: Oci Skip Counts.
+        oci_skip_game_ids: Oci Skip Game Ids.
+        session: Session.
+        target_date: Target date for the operation.
+        lookback_days: Lookback Days.
+        lookahead_days: Lookahead Days.
+        oci_skip_counts: Oci Skip Counts.
+        oci_skip_game_ids: Oci Skip Game Ids.
+
+    """
     target = normalize_yyyymmdd(target_date)
+
     target_day = _date_from_yyyymmdd(target)
     start_day = target_day - timedelta(days=max(0, int(lookback_days or 0)))
     end_day = target_day + timedelta(days=max(0, int(lookahead_days or 0)))
@@ -746,9 +767,11 @@ def build_p0_readiness(
 
 def format_p0_readiness_summary(readiness: dict[str, Any] | None) -> str:
     """
-    Formats p0 readiness summary.
+    Format p0 readiness summary.
 
     Args:
+        readiness: Readiness.
+        readiness: Readiness.
         readiness: Readiness.
 
     Returns:

@@ -24,5 +24,5 @@ class StadiumFood(Base, TimestampMixin):
     recommended_by: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="추천 주체 (예: 팬, 구단)")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<StadiumFood(stadium='{self.stadium_name}', restaurant='{self.restaurant_name}', menu='{self.menu_item}')>"

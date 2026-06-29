@@ -42,9 +42,11 @@ PARSER_REGISTRY: dict[str, ParserFunc] = {
 
 def get_parser(source_key: str) -> ParserFunc | None:
     """
-    Gets parser.
+    Get parser.
 
     Args:
+        source_key: Source Key.
+        source_key: Source Key.
         source_key: Source Key.
 
     Returns:

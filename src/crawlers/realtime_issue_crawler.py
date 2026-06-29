@@ -20,11 +20,18 @@ logger = logging.getLogger(__name__)
 
 
 class RealtimeIssueCrawler:
-    """Scrapes real-time baseball topics, headlines, and forum discussions."""
+    """Scrape real-time baseball topics, headlines, and forum discussions."""
 
     def __init__(self, timeout: int = 15) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            timeout: Timeout.
+
+        """
         self.timeout = timeout
+
         self._raw_pages: list[dict] = []
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -34,10 +41,15 @@ class RealtimeIssueCrawler:
 
     def fetch_naver_news_headlines(self, *, save: bool = False) -> list[dict[str, Any]]:
         """
-        Fetches latest baseball news headlines from Naver Sports GW API (JSON)
+        Fetch latest baseball news headlines from Naver Sports GW API (JSON)
         with fallback to web scraping if API is down.
+
+        Args:
+            save: Whether to persist the results.
+
         """
         articles = self._fetch_naver_news_from_api()
+
         if articles is None:
             articles = self._fetch_naver_news_from_html()
         if save and self._raw_pages:
@@ -157,8 +169,15 @@ class RealtimeIssueCrawler:
         return articles
 
     def fetch_mlbpark_bullpen_posts(self, *, save: bool = False) -> list[dict[str, Any]]:
-        """Crawls popular titles and post details from MLBPark Bullpen forum."""
+        """
+        Crawl popular titles and post details from MLBPark Bullpen forum.
+
+        Args:
+            save: Whether to persist the results.
+
+        """
         url = "https://mlbpark.donga.com/mp/b.php?b=bullpen"
+
         logger.info("Fetching posts from MLBPark Bullpen: %s", url)
 
         posts = []

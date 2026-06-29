@@ -99,19 +99,35 @@ BATTING_FIELDS = {
 
 
 class TeamBattingStatsCrawler:
-    """Collects and persists team-level batting stats for a season."""
+    """collect and persists team-level batting stats for a season."""
 
     def __init__(self, league: str = "REGULAR", policy: RequestPolicy | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            league: League.
+            policy: Policy.
+            league: League.
+            policy: Policy.
+
+        """
         self.league = league
+
         self.repo = TeamSeasonBattingRepository()
         self.policy = policy or RequestPolicy()
 
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
         """
-        Crawls crawl.
+        Crawl crawl.
 
         Args:
+            season: Season year.
+            persist: Persist.
+            headless: Whether to run the browser in headless mode.
+            season: Season year.
+            persist: Persist.
+            headless: Whether to run the browser in headless mode.
             season: Season year.
 
         Returns:
@@ -119,6 +135,7 @@ class TeamBattingStatsCrawler:
 
         """
         team_mapping = get_team_mapping_for_year(season)
+
         stats = []
         try:
             stats = self._collect_from_site(season, team_mapping, headless=headless)
@@ -216,9 +233,17 @@ def parse_team_batting_html(
     team_mapping: dict[str, str],
 ) -> list[dict[str, Any]]:
     """
-    Parses team batting html.
+    Parse team batting html.
 
     Args:
+        html: Html.
+        season: Season year.
+        league: League.
+        team_mapping: Team Mapping.
+        html: Html.
+        season: Season year.
+        league: League.
+        team_mapping: Team Mapping.
         html: Html.
         season: Season year.
         league: League.
@@ -266,7 +291,7 @@ def _parse_team_batting_row(
 
 
 def main() -> None:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Crawl team-level batting stats.")
     parser.add_argument("--season", type=int, required=True, help="Season year (e.g., 2023)")
     parser.add_argument("--league", type=str, default="REGULAR", help="League code (default: REGULAR)")

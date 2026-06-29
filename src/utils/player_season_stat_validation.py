@@ -82,9 +82,11 @@ NUMERIC_FIELDS = {
 
 def _is_number_like(value: object) -> bool:
     """
-    Handles the is number like operation.
+    Handle the is number like operation.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -110,9 +112,11 @@ def _is_number_like(value: object) -> bool:
 
 def _number_or_none(value: object) -> float | None:
     """
-    Handles the number or none operation.
+    Handle the number or none operation.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -136,9 +140,13 @@ def _number_or_none(value: object) -> float | None:
 
 def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
     """
-    Handles the has core stats operation.
+    Handle the has core stats operation.
 
     Args:
+        payload: Payload.
+        stat_type: Type of statistics to validate.
+        payload: Payload.
+        stat_type: Type of statistics to validate.
         payload: Data payload to process.
         stat_type: Stat Type.
 
@@ -147,6 +155,7 @@ def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
 
     """
     fields: tuple[str, ...]
+
     if stat_type == "pitching":
         fields = PITCHING_CORE_STATS
     elif stat_type == "fielding":
@@ -158,9 +167,13 @@ def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
 
 def _validate_player_identity(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
     """
-    Validates player identity.
+    Validate player identity.
 
     Args:
+        payload: Payload.
+        stat_type: Type of statistics to validate.
+        payload: Payload.
+        stat_type: Type of statistics to validate.
         payload: Data payload to process.
         stat_type: Stat Type.
 
@@ -179,9 +192,13 @@ def _validate_player_identity(payload: Mapping[str, Any], stat_type: str) -> tup
 
 def _validate_season_key(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
     """
-    Validates season key.
+    Validate season key.
 
     Args:
+        payload: Payload.
+        stat_type: Type of statistics to validate.
+        payload: Payload.
+        stat_type: Type of statistics to validate.
         payload: Data payload to process.
         stat_type: Stat Type.
 
@@ -201,9 +218,13 @@ def _validate_season_key(payload: Mapping[str, Any], stat_type: str) -> tuple[bo
 
 def _validate_team_fields(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
     """
-    Validates team fields.
+    Validate team fields.
 
     Args:
+        payload: Payload.
+        stat_type: Type of statistics to validate.
+        payload: Payload.
+        stat_type: Type of statistics to validate.
         payload: Data payload to process.
         stat_type: Stat Type.
 
@@ -223,9 +244,11 @@ def _validate_team_fields(payload: Mapping[str, Any], stat_type: str) -> tuple[b
 
 def _validate_numeric_fields(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
     """
-    Validates numeric fields.
+    Validate numeric fields.
 
     Args:
+        payload: Payload.
+        payload: Payload.
         payload: Data payload to process.
 
     Returns:
@@ -240,9 +263,11 @@ def _validate_numeric_fields(payload: Mapping[str, Any]) -> tuple[bool, str | No
 
 def _validate_batting_consistency(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
     """
-    Validates batting consistency.
+    Validate batting consistency.
 
     Args:
+        payload: Payload.
+        payload: Payload.
         payload: Data payload to process.
 
     Returns:
@@ -250,6 +275,7 @@ def _validate_batting_consistency(payload: Mapping[str, Any]) -> tuple[bool, str
 
     """
     hits = _number_or_none(payload.get("hits"))
+
     at_bats = _number_or_none(payload.get("at_bats"))
     plate_appearances = _number_or_none(payload.get("plate_appearances"))
     if hits is not None and at_bats is not None and hits > at_bats:
@@ -261,9 +287,11 @@ def _validate_batting_consistency(payload: Mapping[str, Any]) -> tuple[bool, str
 
 def _validate_pitching_consistency(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
     """
-    Validates pitching consistency.
+    Validate pitching consistency.
 
     Args:
+        payload: Payload.
+        payload: Payload.
         payload: Data payload to process.
 
     Returns:
@@ -271,6 +299,7 @@ def _validate_pitching_consistency(payload: Mapping[str, Any]) -> tuple[bool, st
 
     """
     earned_runs = _number_or_none(payload.get("earned_runs"))
+
     runs_allowed = _number_or_none(payload.get("runs_allowed"))
     if earned_runs is not None and runs_allowed is not None and earned_runs > runs_allowed:
         return False, "earned_runs_gt_runs_allowed"
@@ -283,9 +312,13 @@ def validate_season_stat_payload(
     stat_type: str,
 ) -> tuple[bool, str | None]:
     """
-    Validates season stat payload.
+    Validate season stat payload.
 
     Args:
+        payload: Payload.
+        stat_type: Type of statistics to validate.
+        payload: Payload.
+        stat_type: Type of statistics to validate.
         payload: Data payload to process.
 
     Returns:
@@ -313,9 +346,11 @@ def validate_season_stat_payload(
 
 def normalize_season_stat_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     """
-    Normalizes season stat payload.
+    Normalize season stat payload.
 
     Args:
+        payload: Payload.
+        payload: Payload.
         payload: Data payload to process.
 
     Returns:
@@ -323,6 +358,7 @@ def normalize_season_stat_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     """
     row = dict(payload)
+
     row["player_id"] = normalize_player_id(row.get("player_id"))
     if "year" in row:
         row["year"] = int(str(row.get("year")).strip())
@@ -339,9 +375,13 @@ def filter_valid_season_stat_payloads(
     stat_type: str,
 ) -> tuple[list[dict[str, Any]], Counter[str]]:
     """
-    Filters valid season stat payloads.
+    Filter valid season stat payloads.
 
     Args:
+        payloads: Payloads.
+        stat_type: Type of statistics to validate.
+        payloads: Payloads.
+        stat_type: Type of statistics to validate.
         payloads: Payloads.
 
     Returns:
@@ -349,6 +389,7 @@ def filter_valid_season_stat_payloads(
 
     """
     rows: list[dict[str, Any]] = []
+
     reasons: Counter[str] = Counter[str]()
     for payload in payloads:
         ok, reason = validate_season_stat_payload(payload, stat_type=stat_type)

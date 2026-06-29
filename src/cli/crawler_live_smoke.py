@@ -110,7 +110,16 @@ async def run_smoke(
     relay_crawler: RelayCrawler | None = None,
 ) -> dict[str, Any]:
     """
-    Runs smoke.
+    Run smoke.
+
+    Args:
+        target_date: Target date for the operation.
+        scope: Scope.
+        game_id: Game ID.
+        limit: Limit.
+        schedule_crawler: Schedule Crawler.
+        detail_crawler: Detail Crawler.
+        relay_crawler: Relay Crawler.
 
     Returns:
         Dictionary result.
@@ -214,13 +223,14 @@ def _print_human_summary(result: Mapping[str, Any]) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Opt-in live smoke check for KBO crawler release verification")
+
     parser.add_argument("--date", required=True, help="Target date in YYYYMMDD format")
     parser.add_argument("--game-id", help="Specific game_id to smoke test")
     parser.add_argument("--limit", type=int, default=1, help="Maximum schedule candidates when --game-id is omitted")
@@ -231,8 +241,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     if len(args.date) != 8 or not args.date.isdigit():
         parser.error("--date must be YYYYMMDD")

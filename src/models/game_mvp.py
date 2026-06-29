@@ -39,5 +39,5 @@ class GameMvp(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<GameMvp(game={self.game_id}, player='{self.player_name}', type='{self.mvp_type}')>"

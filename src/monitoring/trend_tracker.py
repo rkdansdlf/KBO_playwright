@@ -1,8 +1,9 @@
 """
 Quality metric trend tracker.
 
-Reads daily quality report JSONs to compute trends over time.
+Read daily quality report JSONs to compute trends over time.
 Detects metric degradation (recent trend worsening).
+
 """
 
 from __future__ import annotations
@@ -26,12 +27,19 @@ class TrendTracker:
     """TrendTracker class."""
 
     def __init__(self, report_dir: str | Path = QUALITY_REPORT_DIR) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            report_dir: Report Dir.
+            report_dir: Report Dir.
+
+        """
         self.report_dir = Path(report_dir)
 
-    def load_reports(self, days: int = 30) -> list[dict]:
+    def load_reports(self, days: int = 30) -> list[dict[str, Any]]:
         """
-        Loads reports.
+        Load reports.
 
         Args:
             days: Days.
@@ -40,7 +48,8 @@ class TrendTracker:
             List of results.
 
         """
-        reports_by_date: dict[str, dict] = {}
+        reports_by_date: dict[str, dict[str, Any]] = {}
+
         cutoff = datetime.now(KST) - timedelta(days=days)
         if not self.report_dir.exists():
             return []
@@ -61,9 +70,13 @@ class TrendTracker:
 
     def get_trend(self, metric_key: str, days: int = 7) -> dict[str, Any]:
         """
-        Gets trend.
+        Get trend.
 
         Args:
+            metric_key: Metric Key.
+            days: Days.
+            metric_key: Metric Key.
+            days: Days.
             metric_key: Metric Key.
             days: Days.
 
@@ -72,6 +85,7 @@ class TrendTracker:
 
         """
         reports = self.load_reports(days=days)
+
         values = []
         for r in reports:
             val = self._resolve_key(r, metric_key)
@@ -88,9 +102,9 @@ class TrendTracker:
 
         return {"metric": metric_key, "values": values, "direction": direction}
 
-    def detect_degradations(self, threshold_map: dict[str, float], days: int = 14) -> list[dict]:
+    def detect_degradations(self, threshold_map: dict[str, float], days: int = 14) -> list[dict[str, Any]]:
         """
-        Handles the detect degradations operation.
+        Handle the detect degradations operation.
 
         Args:
             threshold_map: Threshold Map.
@@ -100,7 +114,8 @@ class TrendTracker:
             List of results.
 
         """
-        alerts = []
+        alerts: list[dict[str, Any]] = []
+
         reports = self.load_reports(days=days)
         if len(reports) < 2:
             return alerts
@@ -126,7 +141,7 @@ class TrendTracker:
                     )
         return alerts
 
-    def _resolve_key(self, report: dict, dotted_key: str) -> float | None:
+    def _resolve_key(self, report: dict[str, Any], dotted_key: str) -> float | None:
         parts = dotted_key.split(".")
         val: Any = report
         for p in parts:
@@ -138,7 +153,7 @@ class TrendTracker:
             return float(val)
         return None
 
-    def _extract_report_date(self, report: dict, path: Path) -> datetime:
+    def _extract_report_date(self, report: dict[str, Any], path: Path) -> datetime:
         raw_date = (report.get("metrics") or {}).get("date")
         if isinstance(raw_date, str):
             normalized = raw_date.replace("-", "")
@@ -146,7 +161,7 @@ class TrendTracker:
                 return parse_datetime_str(normalized)
         return parse_datetime_str(path.stem)
 
-    def _generated_at_key(self, report: dict) -> str:
+    def _generated_at_key(self, report: dict[str, Any]) -> str:
         generated_at = report.get("generated_at")
         if isinstance(generated_at, str):
             return generated_at
@@ -154,13 +169,16 @@ class TrendTracker:
 
     def print_trend_summary(self, days: int = 14) -> None:
         """
-        Prints trend summary.
+        Print trend summary.
 
         Args:
+            days: Days.
+            days: Days.
             days: Days.
 
         """
         reports = self.load_reports(days=days)
+
         if not reports:
             logger.info("[TrendTracker] No quality reports found in last %s days.", days)
             return
@@ -205,6 +223,11 @@ class TrendTracker:
         """
         Detect metric degradations over the last `days` days and send an alert
         via Telegram/Slack if any are found. Stays quiet when everything is healthy.
+
+        Args:
+            days: Days.
+            days: Days.
+
         """
         default_thresholds = {
             "metrics.relay_integrity.recent_missing_count": 50.0,  # +50% increase in missing PBP

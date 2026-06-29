@@ -18,16 +18,28 @@ class BaseStatsUpsertRepository:
     """Shared UPSERT helpers for stat tables."""
 
     def __init__(self, model: type[TeamSeasonBatting | TeamSeasonPitching], unique_keys: list[str]) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            model: Model.
+            unique_keys: Unique Keys.
+            model: Model.
+            unique_keys: Unique Keys.
+
+        """
         self.model = model
+
         self.unique_keys = unique_keys
         self.dialect = Engine.dialect.name
 
     def upsert_many(self, records: list[dict[str, Any]]) -> int:
         """
-        Inserts or updates many.
+        Insert or update many.
 
         Args:
+            records: Records.
+            records: Records.
             records: Records.
 
         Returns:
@@ -60,8 +72,16 @@ class BaseStatsUpsertRepository:
                     session.execute(text("PRAGMA foreign_keys = ON"))
 
     def _filter_model_fields(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Filter out keys that are not present in the model's columns."""
+        """
+        Filter out keys that are not present in the model's columns.
+
+        Args:
+            payload: Payload.
+            payload: Payload.
+
+        """
         model_columns = self.model.__table__.columns.keys()
+
         return {k: v for k, v in payload.items() if k in model_columns}
 
     def _build_insert_stmt(self, payload: dict[str, Any]) -> text | str:
@@ -100,16 +120,16 @@ class BaseStatsUpsertRepository:
 
 
 class TeamSeasonBattingRepository(BaseStatsUpsertRepository):
-    """UPSERT logic for team-level batting aggregates."""
+    """upsert logic for team-level batting aggregates."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         super().__init__(TeamSeasonBatting, ["team_id", "season", "league"])
 
 
 class TeamSeasonPitchingRepository(BaseStatsUpsertRepository):
-    """UPSERT logic for team-level pitching aggregates."""
+    """upsert logic for team-level pitching aggregates."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         super().__init__(TeamSeasonPitching, ["team_id", "season", "league"])

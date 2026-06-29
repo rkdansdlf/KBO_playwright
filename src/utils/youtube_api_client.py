@@ -1,7 +1,7 @@
 """
 YouTube Data API v3 client for KBO cheer song collection.
 
-Fetches cheer song playlists from official KBO team YouTube channels.
+Fetch cheer song playlists from official KBO team YouTube channels.
 This replaces the Namu Wiki crawler which is blocked.
 
 Free quota: 10,000 units/day (sufficient for all 10 teams daily).
@@ -12,6 +12,7 @@ Environment variable:
 Reference:
     https://developers.google.com/youtube/v3/docs/playlistItems/list
     https://developers.google.com/youtube/v3/docs/search/list
+
 """
 
 import logging
@@ -125,6 +126,8 @@ def _classify_song_type(title: str) -> str:
 
     Args:
         title: Title.
+        title: Title.
+        title: Title.
 
     Returns:
         String result.
@@ -138,9 +141,11 @@ def _classify_song_type(title: str) -> str:
 
 def _extract_player_name(title: str) -> str | None:
     """
-    Extracts player name.
+    Extract player name.
 
     Args:
+        title: Title.
+        title: Title.
         title: Title.
 
     Returns:
@@ -148,6 +153,7 @@ def _extract_player_name(title: str) -> str | None:
 
     """
     m = PLAYER_NAME_PATTERN.search(title)
+
     return m.group(1) if m else None
 
 
@@ -158,15 +164,16 @@ class YouTubeAPIClient:
     Usage:
         client = YouTubeAPIClient()
         items = await client.search_videos("UCiXGdRARMxrZ5kJLe7t4Xpg", "응원가")
+
     """
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         self.api_key = os.getenv("YOUTUBE_API_KEY", "")
 
     def is_configured(self) -> bool:
         """
-        Returns whether the configured.
+        Return whether the configured.
 
         Returns:
             True if the condition is met, False otherwise.
@@ -176,9 +183,13 @@ class YouTubeAPIClient:
 
     async def _get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         """
-        Gets  get.
+        Get  get.
 
         Args:
+            endpoint: Endpoint.
+            params: Params.
+            endpoint: Endpoint.
+            params: Params.
             endpoint: Endpoint.
             params: Parameters dictionary.
 
@@ -187,11 +198,12 @@ class YouTubeAPIClient:
 
         """
         params["key"] = self.api_key
+
         url = f"{YOUTUBE_API_BASE}/{endpoint}"
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url, params=params)
             resp.raise_for_status()
-            return resp.json()  # type: ignore[no-any-return]
+            return resp.json()
 
     async def search_videos(
         self,
@@ -199,7 +211,18 @@ class YouTubeAPIClient:
         query: str,
         max_results: int = 50,
     ) -> list[YouTubeVideoItem]:
-        """Search videos in a channel matching a query."""
+        """
+        Search videos in a channel matching a query.
+
+        Args:
+            channel_id: Channel ID.
+            query: Query.
+            max_results: Max Results.
+            channel_id: Channel ID.
+            query: Query.
+            max_results: Max Results.
+
+        """
         try:
             data = await self._get(
                 "search",
@@ -236,7 +259,16 @@ class YouTubeAPIClient:
         return items
 
     async def get_channel_playlists(self, channel_id: str, max_results: int = 20) -> list[dict[str, Any]]:
-        """List playlists for a channel."""
+        """
+        List playlists for a channel.
+
+        Args:
+            channel_id: Channel ID.
+            max_results: Max Results.
+            channel_id: Channel ID.
+            max_results: Max Results.
+
+        """
         try:
             data = await self._get(
                 "playlists",
@@ -249,11 +281,21 @@ class YouTubeAPIClient:
         except httpx.HTTPError as e:
             logger.warning("[YouTube] Playlists failed for ch=%s: %s", channel_id, e)
             return []
-        return data.get("items", [])  # type: ignore[no-any-return]
+        return data.get("items", [])
 
     async def get_playlist_items(self, playlist_id: str, max_results: int = 50) -> list[YouTubeVideoItem]:
-        """List videos in a specific playlist."""
+        """
+        List videos in a specific playlist.
+
+        Args:
+            playlist_id: Playlist ID.
+            max_results: Max Results.
+            playlist_id: Playlist ID.
+            max_results: Max Results.
+
+        """
         items: list[YouTubeVideoItem] = []
+
         page_token: str | None = None
 
         while True:

@@ -12,9 +12,13 @@ if TYPE_CHECKING:
 
 def get_cell_value(cells: list[Any], index: int) -> str | None:
     """
-    Gets cell value.
+    Get cell value.
 
     Args:
+        cells: Cells.
+        index: Index.
+        cells: Cells.
+        index: Index.
         cells: Cells.
         index: Index.
 
@@ -24,14 +28,18 @@ def get_cell_value(cells: list[Any], index: int) -> str | None:
     """
     if index >= len(cells):
         return None
-    return cells[index].get_text(strip=True)  # type: ignore[no-any-return]
+    return cells[index].get_text(strip=True)
 
 
 def resolve_team_id(team_name: str, team_mapping: dict[str, str]) -> str | None:
     """
-    Resolves team id.
+    Resolve team id.
 
     Args:
+        team_name: Team Name.
+        team_mapping: Team Mapping.
+        team_name: Team Name.
+        team_mapping: Team Mapping.
         team_name: Team Name.
         team_mapping: Team Mapping.
 
@@ -40,6 +48,7 @@ def resolve_team_id(team_name: str, team_mapping: dict[str, str]) -> str | None:
 
     """
     key = team_name.strip()
+
     if key in team_mapping:
         return team_mapping[key]
     normalized = key.replace(" ", "")
@@ -50,9 +59,13 @@ def resolve_team_id(team_name: str, team_mapping: dict[str, str]) -> str | None:
 
 def parse_numeric(value: str, *, as_float: bool) -> float | int | None:
     """
-    Parses numeric.
+    Parse numeric.
 
     Args:
+        value: Value.
+        as_float: As Float.
+        value: Value.
+        as_float: As Float.
         value: Value.
 
     Returns:
@@ -60,6 +73,7 @@ def parse_numeric(value: str, *, as_float: bool) -> float | int | None:
 
     """
     cleaned = value.replace(",", "").replace("%", "")
+
     if cleaned in ("", "-", "N/A"):
         return None
     try:
@@ -73,9 +87,11 @@ def parse_numeric(value: str, *, as_float: bool) -> float | int | None:
 
 def extract_team_stat_rows(table: Tag) -> list[Tag]:
     """
-    Extracts team stat rows.
+    Extract team stat rows.
 
     Args:
+        table: Table.
+        table: Table.
         table: Table.
 
     Returns:
@@ -83,6 +99,7 @@ def extract_team_stat_rows(table: Tag) -> list[Tag]:
 
     """
     rows = table.select("tbody tr")
+
     if rows:
         return rows
     return [row for row in table.select("tr") if row.find_all("td")]
@@ -90,9 +107,13 @@ def extract_team_stat_rows(table: Tag) -> list[Tag]:
 
 def build_team_column_map(headers: list[str], header_map: dict[str, str]) -> dict[str, int]:
     """
-    Builds team column.
+    Build team column.
 
     Args:
+        headers: Headers.
+        header_map: Header Map.
+        headers: Headers.
+        header_map: Header Map.
         headers: Headers.
         header_map: Header Map.
 
@@ -101,6 +122,7 @@ def build_team_column_map(headers: list[str], header_map: dict[str, str]) -> dic
 
     """
     indexes: dict[str, int] = {}
+
     for idx, raw in enumerate(headers):
         key = raw.strip().lower()
         normalized = header_map.get(key)
@@ -123,9 +145,25 @@ def parse_team_stats_html(
     value_parser: Any = None,
 ) -> list[dict[str, Any]]:
     """
-    Parses team stats html.
+    Parse team stats html.
 
     Args:
+        html: Html.
+        season: Season year.
+        league: League.
+        team_mapping: Team Mapping.
+        header_map: Header Map.
+        stat_fields: Stat Fields.
+        float_fields: Float Fields.
+        value_parser: Value Parser.
+        html: Html.
+        season: Season year.
+        league: League.
+        team_mapping: Team Mapping.
+        header_map: Header Map.
+        stat_fields: Stat Fields.
+        float_fields: Float Fields.
+        value_parser: Value Parser.
         html: Raw HTML content.
         season: Season year.
         league: League identifier.
@@ -139,6 +177,7 @@ def parse_team_stats_html(
 
     """
     soup = BeautifulSoup(html, "lxml")
+
     table = soup.select_one("table.tData01") or soup.select_one("table")
     if not table:
         return []
@@ -178,9 +217,25 @@ def _parse_one_team_row(
     value_parser: Any,
 ) -> dict[str, Any] | None:
     """
-    Parses one team row.
+    Parse one team row.
 
     Args:
+        row: Row.
+        indexes: Indexes.
+        season: Season year.
+        league: League.
+        team_mapping: Team Mapping.
+        stat_fields: Stat Fields.
+        float_fields: Float Fields.
+        value_parser: Value Parser.
+        row: Row.
+        indexes: Indexes.
+        season: Season year.
+        league: League.
+        team_mapping: Team Mapping.
+        stat_fields: Stat Fields.
+        float_fields: Float Fields.
+        value_parser: Value Parser.
         row: Row.
         indexes: Indexes.
         season: Season year.
@@ -195,6 +250,7 @@ def _parse_one_team_row(
 
     """
     cells = row.find_all("td")
+
     if len(cells) < len(indexes):
         return None
     team_name = get_cell_value(cells, indexes["team_name"])

@@ -16,14 +16,23 @@ class BroadcastRepository:
     """BroadcastRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save_broadcast(self, data: dict) -> GameBroadcast:
         """
-        Saves broadcast.
+        Save broadcast.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -31,6 +40,7 @@ class BroadcastRepository:
 
         """
         game_id = data["game_id"]
+
         broadcaster = data["broadcaster"]
 
         stmt = select(GameBroadcast).where(
@@ -51,9 +61,11 @@ class BroadcastRepository:
 
     def get_by_game(self, game_id: str) -> list[GameBroadcast]:
         """
-        Gets by game.
+        Get by game.
 
         Args:
+            game_id: Game ID.
+            game_id: Game ID.
             game_id: Game ID.
 
         Returns:
@@ -61,15 +73,19 @@ class BroadcastRepository:
 
         """
         stmt = select(GameBroadcast).where(GameBroadcast.game_id == game_id)
+
         return list(self.session.execute(stmt).scalars().all())
 
     def delete_by_game(self, game_id: str) -> None:
         """
-        Deletes by game.
+        Delete by game.
 
         Args:
+            game_id: Game ID.
+            game_id: Game ID.
             game_id: Game ID.
 
         """
         stmt = delete(GameBroadcast).where(GameBroadcast.game_id == game_id)
+
         self.session.execute(stmt)

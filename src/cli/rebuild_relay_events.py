@@ -67,13 +67,26 @@ def rebuild_relay_events(
     log: Callable[..., Any] = logger.info,
 ) -> list[RebuildReportRow]:
     """
-    Handles the rebuild relay events operation.
+    Handle the rebuild relay events operation.
+
+    Args:
+        seasons: Seasons.
+        game_ids: Game Ids.
+        apply: Apply.
+        sync_oci: Sync Oci.
+        oci_sync_mode: Oci Sync Mode.
+        min_events: Min Events.
+        report_out: Report Out.
+        backup_out: Backup Out.
+        oci_url: Oci URL.
+        log: Logger instance.
 
     Returns:
         List of results.
 
     """
     season_values = tuple(int(season) for season in seasons)
+
     timestamp = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
     report_path = Path(report_out) if report_out else DEFAULT_REPORT_DIR / f"relay_event_rebuild_report_{timestamp}.csv"
     backup_path = Path(backup_out) if backup_out else DEFAULT_REPORT_DIR / f"relay_event_rebuild_backup_{timestamp}.csv"
@@ -433,9 +446,10 @@ def _chunked(values: Sequence[str], size: int) -> Iterable[Sequence[str]]:
 
 def run(argv: Sequence[str] | None = None) -> int:
     """
-    Runs run.
+    Run run.
 
     Args:
+        argv: Argv.
         argv: Argv.
 
     Returns:
@@ -443,6 +457,7 @@ def run(argv: Sequence[str] | None = None) -> int:
 
     """
     parser = argparse.ArgumentParser(description="Rebuild noisy relay game_events from existing local rows")
+
     parser.add_argument("--season", type=int, action="append", help="Season to rebuild. Repeatable.")
     parser.add_argument("--game-id", action="append", default=[], help="Specific game_id to rebuild. Repeatable.")
     parser.add_argument("--game-ids-file", help="File containing one game_id per line or a CSV with game_id first")
@@ -482,7 +497,7 @@ def run(argv: Sequence[str] | None = None) -> int:
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     return run()
 
 

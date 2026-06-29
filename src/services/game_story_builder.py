@@ -64,9 +64,13 @@ class GameStoryBuilder:
 
     def build(self, game: Game, events: Iterable[GameEvent]) -> dict[str, Any]:
         """
-        Builds build.
+        Build build.
 
         Args:
+            game: Game.
+            events: Events.
+            game: Game.
+            events: Events.
             game: Game.
             events: Events.
 

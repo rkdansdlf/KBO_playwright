@@ -16,6 +16,11 @@ from src.services.postgame_reconciliation_service import ReconciliationRequest
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_COMPLETED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
 
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
 class _FakeDetailCrawler:
     pass
 

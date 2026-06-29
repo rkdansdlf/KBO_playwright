@@ -45,7 +45,7 @@ class StadiumInfo(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", comment="Currently in use")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<StadiumInfo(code='{self.stadium_code}', name='{self.name_kr}')>"
 
 
@@ -66,5 +66,5 @@ class StadiumRegulation(Base, TimestampMixin):
     source: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Source of regulation")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<StadiumRegulation(stadium='{self.stadium_code}', type='{self.regulation_type}')>"

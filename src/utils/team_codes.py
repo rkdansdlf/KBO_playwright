@@ -95,9 +95,13 @@ KBO_LEGACY_TECHNICAL_CODE = {
 
 def resolve_team_code(name: str | None, season_year: int | None = None) -> str | None:
     """
-    Resolves team code.
+    Resolve team code.
 
     Args:
+        name: Name.
+        season_year: Season Year.
+        name: Name.
+        season_year: Season Year.
         name: Name.
         season_year: Season Year.
 
@@ -125,9 +129,13 @@ def resolve_team_code(name: str | None, season_year: int | None = None) -> str |
 
 def resolve_kbo_legacy_team_code(name: str | None, season_year: int | None = None) -> str | None:
     """
-    Resolves kbo legacy team code.
+    Resolve kbo legacy team code.
 
     Args:
+        name: Name.
+        season_year: Season Year.
+        name: Name.
+        season_year: Season Year.
         name: Name.
         season_year: Season Year.
 
@@ -136,11 +144,21 @@ def resolve_kbo_legacy_team_code(name: str | None, season_year: int | None = Non
 
     """
     code = resolve_team_code(name, season_year)
+
     return KBO_LEGACY_TECHNICAL_CODE.get(code or "", code)
 
 
 def kbo_game_id_team_code(team_code: str | None, season_year: int | None = None) -> str | None:
-    """Return the KBO GameCenter team-code token for a team code."""
+    """
+    Return the KBO GameCenter team-code token for a team code.
+
+    Args:
+        team_code: Team Code.
+        season_year: Season Year.
+        team_code: Team Code.
+        season_year: Season Year.
+
+    """
     if not team_code:
         return None
 
@@ -163,7 +181,22 @@ def build_kbo_game_id(
     doubleheader_no: object | None = 0,
     season_year: int | None = None,
 ) -> str | None:
-    """Build a canonical KBO legacy GameCenter ID from explicit game fields."""
+    """
+    Build a canonical KBO legacy GameCenter ID from explicit game fields.
+
+    Args:
+        game_date: Game Date.
+        away_team_code: Away Team Code.
+        home_team_code: Home Team Code.
+        doubleheader_no: Doubleheader No.
+        season_year: Season Year.
+        game_date: Game Date.
+        away_team_code: Away Team Code.
+        home_team_code: Home Team Code.
+        doubleheader_no: Doubleheader No.
+        season_year: Season Year.
+
+    """
     if not game_date:
         return None
 
@@ -218,9 +251,13 @@ GAME_ID_SEGMENT_TO_CODE = {
 
 def team_code_from_game_id_segment(segment: str | None, season_year: int | None = None) -> str | None:
     """
-    Handles the team code from game id segment operation.
+    Handle the team code from game id segment operation.
 
     Args:
+        segment: Segment.
+        season_year: Season Year.
+        segment: Segment.
+        season_year: Season Year.
         segment: Segment.
         season_year: Season Year.
 
@@ -254,6 +291,11 @@ def normalize_kbo_game_id(game_id: str) -> str:
 
     Format: YYYYMMDD + AWAY(2-3) + HOME(2-3) + DH(0-2)
     Example: 20260418SSGNC0 -> 20260418SKNC0
+
+    Args:
+        game_id: Game ID.
+        game_id: Game ID.
+
     """
     if not game_id or len(game_id) < 12:
         return game_id
@@ -307,7 +349,14 @@ KBO_GAME_ID_TEAM_CODES = tuple(
 
 
 def _split_game_id_team_part(team_part: str) -> tuple[str | None, str | None]:
-    """Split AWAY+HOME team code suffix using known KBO game-id code tokens."""
+    """
+    Split AWAY+HOME team code suffix using known KBO game-id code tokens.
+
+    Args:
+        team_part: Team Part.
+        team_part: Team Part.
+
+    """
     for away_code in KBO_GAME_ID_TEAM_CODES:
         if not team_part.startswith(away_code):
             continue

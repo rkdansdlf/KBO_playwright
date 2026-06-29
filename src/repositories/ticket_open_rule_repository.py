@@ -16,14 +16,23 @@ class TicketOpenRuleRepository:
     """TicketOpenRuleRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> TicketOpenRule:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -48,9 +57,11 @@ class TicketOpenRuleRepository:
 
     def get_by_team(self, team_id: str) -> list[TicketOpenRule]:
         """
-        Gets by team.
+        Get by team.
 
         Args:
+            team_id: Team ID.
+            team_id: Team ID.
             team_id: Team ID.
 
         Returns:
@@ -66,20 +77,23 @@ class TicketOpenRuleRepository:
 
     def get_all_active(self) -> list[TicketOpenRule]:
         """
-        Gets all active.
+        Get all active.
 
         Returns:
             List of results.
 
         """
         stmt = select(TicketOpenRule).order_by(TicketOpenRule.team_id)
+
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
         """
-        Saves bulk.
+        Save bulk.
 
         Args:
+            records: Records.
+            records: Records.
             records: Records.
 
         Returns:
@@ -87,6 +101,7 @@ class TicketOpenRuleRepository:
 
         """
         count = 0
+
         for data in records:
             self.save(data)
             count += 1

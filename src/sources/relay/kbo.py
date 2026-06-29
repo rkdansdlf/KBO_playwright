@@ -12,15 +12,25 @@ class KboRelayAdapter(RelaySourceAdapter):
     """KboRelayAdapter class."""
 
     def __init__(self, crawler: PBPCrawler | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            crawler: Crawler.
+            crawler: Crawler.
+
+        """
         super().__init__("kbo")
+
         self.crawler = crawler or PBPCrawler()
 
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
         """
-        Fetches game.
+        Fetch game.
 
         Args:
+            game_id: Game ID.
+            game_id: Game ID.
             game_id: Game ID.
 
         Returns:
@@ -28,6 +38,7 @@ class KboRelayAdapter(RelaySourceAdapter):
 
         """
         game_id = normalize_kbo_game_id(game_id)
+
         result = await self.crawler.crawl_game_events(game_id)
         events = list((result or {}).get("events") or [])
         failure_reason = getattr(self.crawler, "last_failure_reason", None)
@@ -37,7 +48,7 @@ class KboRelayAdapter(RelaySourceAdapter):
             "empty": "No events extracted from KBO relay",
             "error": "KBO relay crawl failed",
         }
-        notes = None if events else note_map.get(failure_reason, "No events extracted from KBO relay")
+        notes = None if events else note_map.get(failure_reason or "empty", "No events extracted from KBO relay")
         return NormalizedRelayResult(
             game_id=game_id,
             source_name=self.source_name,

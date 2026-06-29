@@ -1,13 +1,14 @@
 """
 CLI tool to recalculate player-level season stats from game-level (transactional) data.
 
-Aggregates GameBattingStat -> PlayerSeasonBatting
+Aggregate GameBattingStat -> PlayerSeasonBatting
 Aggregates GamePitchingStat -> PlayerSeasonPitching.
 
 Resolves mismatches detected by QualityGate:
   - "Transactional PA > Cumulative PA"
   - "Missing cumulative record"
   - "Transactional Outs > Cumulative Outs"
+
 """
 
 from __future__ import annotations
@@ -41,7 +42,15 @@ def _get_regular_season_ids(session: Session, year: int) -> list[int]:
 
 
 def _get_player_teams(session: Session, season_ids: list[int], model: type[object]) -> dict[int, str]:
-    """Get the most common canonical_team_code per player_id."""
+    """
+    Get the most common canonical_team_code per player_id.
+
+    Args:
+        session: Session.
+        season_ids: Season Ids.
+        model: Model.
+
+    """
     rows = (
         session.query(
             model.player_id,
@@ -380,9 +389,13 @@ def run_recalc(
     pitching_only: bool = False,
 ) -> int:
     """
-    Runs run recalc.
+    Run run recalc.
 
     Args:
+        season: Season year.
+        dry_run: If True, performs a dry run without persisting changes.
+        batting_only: Batting Only.
+        pitching_only: Pitching Only.
         season: Season year.
 
     Returns:
@@ -390,6 +403,7 @@ def run_recalc(
 
     """
     league = "REGULAR"
+
     level = "KBO1"
 
     with SessionLocal() as session:
@@ -428,8 +442,15 @@ def run_recalc(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Recalculate player cumulative statistics from game-level data.")
+
     parser.add_argument("--season", type=int, required=True, help="Season year")
     parser.add_argument(
         "--dry-run",

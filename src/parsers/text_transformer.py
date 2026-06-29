@@ -21,10 +21,17 @@ class ChunkingContext:
 
 
 class TextTransformer:
-    """Cleans raw text and splits it into semantic chunks based on document type (rules vs news)."""
+    """Clean raw text and splits it into semantic chunks based on document type (rules vs news)."""
 
     def clean_text(self, text: str) -> str:
-        """Removes noisy characters, consecutive whitespace, tabs, and markdown clutter."""
+        """
+        Remove noisy characters, consecutive whitespace, tabs, and markdown clutter.
+
+        Args:
+            text: Text.
+            text: Text.
+
+        """
         if not text:
             return ""
 
@@ -45,10 +52,18 @@ class TextTransformer:
 
     def chunk_document(self, doc: dict[str, Any]) -> list[dict[str, Any]]:
         """
-        Main entry point for chunking. Dispatches to the appropriate chunking strategy
+        Handle main entry point for chunking.
+
+            Dispatches to the appropriate chunking strategy
         based on the document's category metadata and environment configuration.
+
+        Args:
+            doc: Doc.
+            doc: Doc.
+
         """
         content = self.clean_text(doc.get("content", ""))
+
         meta = doc.get("meta", {}).copy()
         category = meta.get("category", "unknown")
         title = doc.get("title", "")
@@ -84,10 +99,22 @@ class TextTransformer:
         similarity_threshold: float = 0.6,
     ) -> list[dict[str, Any]]:
         """
-        Splits text into sentences, generates embeddings, calculates cosine similarity between adjacent sentences,
+        Split text into sentences, generates embeddings, calculates cosine similarity between adjacent sentences,
         and splits the document at boundaries where similarity falls below the threshold.
+
+        Args:
+            doc_title: Doc Title.
+            text: Text.
+            meta: Meta.
+            similarity_threshold: Similarity Threshold.
+            doc_title: Doc Title.
+            text: Text.
+            meta: Meta.
+            similarity_threshold: Similarity Threshold.
+
         """
         # 1. Split text into sentences using simple regex
+
         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
         if len(sentences) <= 1:
             return [self._create_news_chunk(doc_title, text, meta, 1)]
@@ -102,9 +129,13 @@ class TextTransformer:
         def cosine_similarity(v1: list[float], v2: list[float]) -> float:
             # Since our embeddings are already L2 normalized: similarity = dot product
             """
-            Handles the cosine similarity operation.
+            Handle the cosine similarity operation.
 
             Args:
+                v1: V1.
+                v2: V2.
+                v1: V1.
+                v2: V2.
                 v1: V1.
                 v2: V2.
 
@@ -153,8 +184,21 @@ class TextTransformer:
         """
         Divides the document into large parent chunks, then splits each parent into smaller child chunks.
 
-        Stores parent content inside the child's metadata so that the child can be retrieved via embedding,
+        Store parent content inside the child's metadata so that the child can be retrieved via embedding,
         while the parent context is passed to the LLM.
+
+        Args:
+            text: Text.
+            parent_size: Parent Size.
+            child_size: Child Size.
+            child_overlap: Child Overlap.
+            ctx: Ctx.
+            text: Text.
+            parent_size: Parent Size.
+            child_size: Child Size.
+            child_overlap: Child Overlap.
+            ctx: Ctx.
+
         """
         if ctx is None:
             raise ValueError from None
@@ -214,7 +258,7 @@ class TextTransformer:
 
     def chunk_by_headings(self, doc_title: str, text: str, meta: dict[str, Any]) -> list[dict[str, Any]]:
         """
-        Splits rulebooks or glossaries by clause headings.
+        Split rulebooks or glossaries by clause headings.
 
         Recognized heading patterns:
           - Markdown: ## 개요, ### 조항 N
@@ -224,6 +268,15 @@ class TextTransformer:
 
         Also extracts a '## 키워드' section as meta["keywords"] list and
         merges stub chunks (< 50 chars) into the preceding chunk.
+
+        Args:
+            doc_title: Doc Title.
+            text: Text.
+            meta: Meta.
+            doc_title: Doc Title.
+            text: Text.
+            meta: Meta.
+
         """
         import logging as _log
 
@@ -335,8 +388,21 @@ class TextTransformer:
         overlap_char_limit: int = 150,
     ) -> list[dict[str, Any]]:
         """
-        Splits articles or columns by paragraph blocks, merging them until the character limit is reached,
+        Split articles or columns by paragraph blocks, merging them until the character limit is reached,
         then overlaps 10%-20% of the text.
+
+        Args:
+            doc_title: Doc Title.
+            text: Text.
+            meta: Meta.
+            chunk_char_limit: Chunk Char Limit.
+            overlap_char_limit: Overlap Char Limit.
+            doc_title: Doc Title.
+            text: Text.
+            meta: Meta.
+            chunk_char_limit: Chunk Char Limit.
+            overlap_char_limit: Overlap Char Limit.
+
         """
         ctx = ChunkingContext(
             doc_title=doc_title,

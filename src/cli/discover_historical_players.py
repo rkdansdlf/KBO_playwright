@@ -2,6 +2,7 @@
 CLI to discover and store historical player IDs from 1982 to current.
 
 Phase 1 of the Retired Player Backfill project.
+
 """
 
 from __future__ import annotations
@@ -25,9 +26,12 @@ logger = logging.getLogger(__name__)
 
 async def discover_and_save_players(start_year: int, end_year: int, active_year: int) -> None:
     """
-    Saves discover and players.
+    Save discover and players.
 
     Args:
+        start_year: Start Year.
+        end_year: End Year.
+        active_year: Active Year.
         start_year: Start Year.
         end_year: End Year.
         active_year: Active Year.
@@ -83,8 +87,15 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     _current_year = datetime.now(KST).year
+
     parser = argparse.ArgumentParser(description="Discover and store historical player IDs")
     parser.add_argument("--start", type=int, default=1982)
     parser.add_argument("--end", type=int, default=_current_year - 1)

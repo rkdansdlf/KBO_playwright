@@ -4,6 +4,8 @@ import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 import src.cli.live_crawler as live_crawler
 from src.cli.live_crawler import (
     GameActivityState,
@@ -13,6 +15,17 @@ from src.cli.live_crawler import (
     _query_enriched_game_state,
     _select_live_shard,
 )
+from src.db.engine import Engine
+from src.models.base import Base
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def _test_db_tables():
+    Base.metadata.create_all(bind=Engine)
+    yield
+
 
 # ===================================================================
 # _compute_base_dynamic_interval tests (refactored helper)

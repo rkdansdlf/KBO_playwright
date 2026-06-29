@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from bs4 import BeautifulSoup
 
@@ -35,7 +35,7 @@ class SelectorTarget:
     source: str
     source_type: str = "file"
     checks: Sequence[SelectorCheck] = field(default_factory=tuple)
-    wait_until: str = "networkidle"
+    wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] | None = "networkidle"
     timeout_ms: int = 30_000
 
 
@@ -51,7 +51,7 @@ class SelectorIssue:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Handles the to dict operation.
+        Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -79,7 +79,7 @@ class SelectorGateResult:
     @property
     def ok(self) -> bool:
         """
-        Handles the ok operation.
+        Handle the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -90,7 +90,7 @@ class SelectorGateResult:
     @property
     def issue_count(self) -> int:
         """
-        Handles the issue count operation.
+        Handle the issue count operation.
 
         Returns:
             Integer result.
@@ -100,7 +100,7 @@ class SelectorGateResult:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Handles the to dict operation.
+        Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -127,7 +127,7 @@ class SelectorGateSummary:
     @property
     def ok(self) -> bool:
         """
-        Handles the ok operation.
+        Handle the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -138,7 +138,7 @@ class SelectorGateSummary:
     @property
     def target_count(self) -> int:
         """
-        Handles the target count operation.
+        Handle the target count operation.
 
         Returns:
             Integer result.
@@ -149,7 +149,7 @@ class SelectorGateSummary:
     @property
     def issue_count(self) -> int:
         """
-        Handles the issue count operation.
+        Handle the issue count operation.
 
         Returns:
             Integer result.
@@ -159,7 +159,7 @@ class SelectorGateSummary:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Handles the to dict operation.
+        Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -175,8 +175,18 @@ class SelectorGateSummary:
 
 
 def evaluate_html_target(target: SelectorTarget, html: str) -> SelectorGateResult:
-    """Evaluate one target against already-captured HTML."""
+    """
+    Evaluate one target against already-captured HTML.
+
+    Args:
+        target: Target.
+        html: Html.
+        target: Target.
+        html: Html.
+
+    """
     soup = BeautifulSoup(html, "html.parser")
+
     check_payloads: dict[str, dict[str, Any]] = {}
     issues: list[SelectorIssue] = []
 
@@ -252,8 +262,16 @@ def evaluate_html_target(target: SelectorTarget, html: str) -> SelectorGateResul
 
 
 def load_selector_config(path: str | Path) -> list[SelectorTarget]:
-    """Load selector targets from a JSON config file."""
+    """
+    Load selector targets from a JSON config file.
+
+    Args:
+        path: Path.
+        path: Path.
+
+    """
     config_path = Path(path)
+
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     targets = payload.get("targets", [])
     if not isinstance(targets, list):
@@ -268,8 +286,18 @@ def run_selector_gate(
     *,
     output_dir: str | Path | None = None,
 ) -> SelectorGateSummary:
-    """Run selector checks for all targets and optionally write a JSON report."""
+    """
+    Run selector checks for all targets and optionally write a JSON report.
+
+    Args:
+        targets: Targets.
+        output_dir: Output Dir.
+        targets: Targets.
+        output_dir: Output Dir.
+
+    """
     output_path = Path(output_dir) if output_dir else None
+
     if output_path:
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -294,7 +322,14 @@ def run_selector_gate(
 
 
 def render_selector_summary(summary: SelectorGateSummary) -> str:
-    """Render a compact text report for terminal use."""
+    """
+    Render a compact text report for terminal use.
+
+    Args:
+        summary: Summary.
+        summary: Summary.
+
+    """
     lines = [
         f"Selector gate: {'PASS' if summary.ok else 'FAIL'}",
         f"Targets: {summary.target_count}",
@@ -323,7 +358,7 @@ def _target_from_dict(payload: dict[str, Any], config_dir: Path) -> SelectorTarg
         source=source,
         source_type=source_type,
         checks=checks,
-        wait_until=str(payload.get("wait_until", "networkidle")),
+        wait_until=payload.get("wait_until", "networkidle"),
         timeout_ms=int(payload.get("timeout_ms", 30_000)),
     )
 

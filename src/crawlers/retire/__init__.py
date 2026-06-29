@@ -4,6 +4,7 @@ from __future__ import annotations
 
 """
 Retired/inactive player crawlers.
+
 """
 
 from .detail import RetiredPlayerDetailCrawler

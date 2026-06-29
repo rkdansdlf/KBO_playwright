@@ -4,6 +4,7 @@ Seed canonical relay validation metrics for completed games.
 This command is intentionally conservative: it records a validation state for
 every completed/DRAW game so relay gaps are explainable, but it does not invent
 PBP rows or events.
+
 """
 
 from __future__ import annotations
@@ -39,13 +40,18 @@ def seed_relay_validation_metrics(
     mark_legacy_unavailable: bool = True,
 ) -> dict[str, int]:
     """
-    Seeds relay validation metrics.
+    Seed relay validation metrics.
+
+    Args:
+        season: Season year.
+        mark_legacy_unavailable: Mark Legacy Unavailable.
 
     Returns:
         Dictionary result.
 
     """
     counts: dict[str, int] = {}
+
     with SessionLocal() as session:
         query = session.query(Game).filter(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
         if season is not None:
@@ -121,8 +127,15 @@ def seed_relay_validation_metrics(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Seed relay validation metrics for completed games")
+
     parser.add_argument("--season", type=int, help="Optional season year")
     parser.add_argument(
         "--no-mark-legacy-unavailable",

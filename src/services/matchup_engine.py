@@ -32,12 +32,27 @@ class MatchupEngine:
     """Service to aggregate splits matrices natively from Box Scores and Play-by-Play."""
 
     def __init__(self, session: Session | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def execute_all(self, season_year: int) -> None:
-        """Runs the entire suite of split calculations."""
+        """
+        Run the entire suite of split calculations.
+
+        Args:
+            season_year: Season Year.
+            season_year: Season Year.
+
+        """
         sess = self.session or SessionLocal()
+
         try:
             logger.info("📊 Recalculating matchups for %s...", season_year)
             self._calc_batter_team_splits(sess, season_year)
@@ -205,8 +220,18 @@ class MatchupEngine:
                 self._add_new_bvp(session, batter_id, pitcher_id, stats)
 
     def _calc_precise_bvp(self, session: Session, season_year: int) -> None:
-        """Aggregates precise batter vs pitcher stats from GameEvents."""
+        """
+        Aggregate precise batter vs pitcher stats from GameEvents.
+
+        Args:
+            session: Session.
+            season_year: Season Year.
+            session: Session.
+            season_year: Season Year.
+
+        """
         logger.info("   🎯 Calculating precise BvP for %s...", season_year)
+
         events = self._fetch_bvp_events(session, season_year)
         self._upsert_bvp_map(session, self._build_bvp_map(events))
 
@@ -378,7 +403,14 @@ class MatchupEngine:
                 )
 
     def _calc_situational_splits(self, session: Session, season_year: int) -> None:
-        """Calculates RISP and vs Handedness splits using GameEvents."""
+        """
+        RISP and vs Handedness splits using GameEvents.
+
+        Args:
+            session: Session.
+            season_year: Season Year.
+
+        """
         logger.info("   📉 Calculating situational splits for %s...", season_year)
 
         self._clear_situational_splits(session, season_year)
@@ -394,8 +426,18 @@ class MatchupEngine:
         self._insert_pitcher_situational_splits(session, season_year, pit_splits)
 
     def _calc_batter_team_splits(self, session: Session, season_year: int) -> None:
-        """Aggregates batter stats partitioned by the opposing team."""
+        """
+        Aggregate batter stats partitioned by the opposing team.
+
+        Args:
+            session: Session.
+            season_year: Season Year.
+            session: Session.
+            season_year: Season Year.
+
+        """
         # Find which team is the opponent
+
         opponent_case = case((GameBattingStat.team_code == Game.home_team, Game.away_team), else_=Game.home_team).label(
             "opponent_team_code",
         )
@@ -543,7 +585,16 @@ class MatchupEngine:
         session.add_all(splits)
 
     def _calc_batter_stadium_splits(self, session: Session, season_year: int) -> None:
-        """Aggregates batter stats by stadium."""
+        """
+        Aggregate batter stats by stadium.
+
+        Args:
+            session: Session.
+            season_year: Season Year.
+            session: Session.
+            season_year: Season Year.
+
+        """
         stmt = (
             select(
                 GameBattingStat.player_id,
@@ -616,8 +667,18 @@ class MatchupEngine:
         session.add_all(splits)
 
     def _calc_batter_vs_starter(self, session: Session, season_year: int) -> None:
-        """Determines the opposing starting pitcher heuristically and aggregates batter stats against them."""
+        """
+        Determine the opposing starting pitcher heuristically and aggregates batter stats against them.
+
+        Args:
+            session: Session.
+            season_year: Season Year.
+            session: Session.
+            season_year: Season Year.
+
+        """
         # Find which team is opposing, and get their starting pitcher from `Game`
+
         opposing_pitcher = case(
             (GameBattingStat.team_code == Game.home_team, Game.away_pitcher),
             else_=Game.home_pitcher,
@@ -690,7 +751,18 @@ class MatchupEngine:
         *,
         is_full: bool = True,
     ) -> tuple[float, float, float, float]:
-        """Helper to calculate composite rates safely."""
+        """
+        Calculate composite rates safely.
+
+        Args:
+            stats: Stats.
+            pa: Pa.
+            is_full: Is Full.
+            stats: Stats.
+            pa: Pa.
+            is_full: Is Full.
+
+        """
         avg = round(stats.hits / stats.at_bats, 3) if stats.at_bats > 0 else 0.0
 
         obp = 0.0

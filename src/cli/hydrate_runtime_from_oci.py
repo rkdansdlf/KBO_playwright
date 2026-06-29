@@ -8,6 +8,7 @@ import os
 from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from src.db.engine import SessionLocal, create_engine_for_url
@@ -21,8 +22,15 @@ logger = logging.getLogger(__name__)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     load_dotenv()
+
     parser = argparse.ArgumentParser(description="Hydrate local runtime SQLite cache from OCI/Postgres")
     parser.add_argument("--source-url", type=str, default=os.getenv("OCI_DB_URL"), help="OCI/Postgres source URL")
     parser.add_argument("--year", type=int, required=True, help="Season year to hydrate")
@@ -43,12 +51,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     source_session_factory = sessionmaker(bind=source_engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
     with source_session_factory() as source_session, SessionLocal() as target_session:
-        hydrator = RuntimeHydrator(source_session, target_session)
-        summary = hydrator.hydrate_year(
-            args.year,
-            target_date=target_date,
-            preserve_aliases=args.preserve_aliases,
-        )
+        # Disable FK constraints during hydration to allow out-of-order inserts
+        target_session.execute(text("PRAGMA foreign_keys=OFF"))
+        try:
+            hydrator = RuntimeHydrator(source_session, target_session)
+            summary = hydrator.hydrate_year(
+                args.year,
+                target_date=target_date,
+                preserve_aliases=args.preserve_aliases,
+            )
+            target_session.execute(text("PRAGMA foreign_keys=ON"))
+        except Exception:
+            target_session.execute(text("PRAGMA foreign_keys=ON"))
+            raise
 
     logger.info("✅ Hydrated runtime cache for %s: %s", args.year, summary)
     source_engine.dispose()

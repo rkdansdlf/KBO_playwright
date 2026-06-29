@@ -10,6 +10,7 @@ Each 감독/코치 row contains a playerId link from which we extract the KBO pl
 Usage:
     python3 -m src.cli.crawl_staff_register --all-teams
     python3 -m src.cli.crawl_staff_register --team LG
+
 """
 
 from __future__ import annotations
@@ -99,8 +100,16 @@ def _parse_birth_date(text: str) -> date_type | None:
 
 
 def _parse_hands(text: str) -> tuple[str | None, str | None]:
-    """Parse throws/bats from '우투우타' style string."""
+    """
+    Parse throws/bats from '우투우타' style string.
+
+    Args:
+        text: Text.
+        text: Text.
+
+    """
     m = HAND_RE.search(text)
+
     if m:
         throws = HAND_MAP.get(m.group(1))
         bats = HAND_MAP.get(m.group(2))
@@ -176,7 +185,7 @@ _EXTRACT_JS = """
 
 class StaffRegisterCrawler:
     """
-    Scrapes Register.aspx to collect manager and coach records.
+    Register.aspx to collect manager and coach records.
 
     Returns a list of dicts suitable for upsert into player_basic:
     {
@@ -184,11 +193,22 @@ class StaffRegisterCrawler:
         height_cm, weight_kg, throws, bats,
         status, staff_role, status_source
     }
+
     """
 
     def __init__(self, *, headless: bool = True, request_delay: float = 1.5) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            headless: Whether to run the browser in headless mode.
+            request_delay: Request Delay.
+            headless: Whether to run the browser in headless mode.
+            request_delay: Request Delay.
+
+        """
         self.headless = headless
+
         self.policy = RequestPolicy.with_delay(request_delay, request_delay)
 
     async def crawl_team(
@@ -197,8 +217,20 @@ class StaffRegisterCrawler:
         kbo_team_code: str,
         _team_display_name: str | None = None,
     ) -> list[dict]:
-        """Crawl a single team's staff registration page."""
+        """
+        Crawl a single team's staff registration page.
+
+        Args:
+            page: Page.
+            kbo_team_code: Kbo Team Code.
+            _team_display_name: Team Display Name.
+            page: Page.
+            kbo_team_code: Kbo Team Code.
+            _team_display_name: Team Display Name.
+
+        """
         await self.policy.delay_async(host="www.koreabaseball.com")
+
         await page.evaluate(f"fnSearchChange('{kbo_team_code}')")
         await page.wait_for_timeout(1500)
 
@@ -250,8 +282,16 @@ class StaffRegisterCrawler:
         return records
 
     async def crawl_all_teams(self, team_codes: list[str] | None = None) -> list[dict]:
-        """Crawl all (or specified) teams and return combined staff records."""
+        """
+        Crawl all (or specified) teams and return combined staff records.
+
+        Args:
+            team_codes: Team Codes.
+            team_codes: Team Codes.
+
+        """
         targets = team_codes or list(KBO_TEAM_MAP.keys())
+
         all_records: list[dict] = []
 
         async with async_playwright() as p:
@@ -297,6 +337,13 @@ class StaffRegisterCrawler:
         - Records WITHOUT a player_id (no profile link found): skipped with warning.
         - Records WITH a player_id: upsert with status='staff', staff_role,
           status_source='register'.  Physical/bio fields are also updated.
+
+        Args:
+            records: Records.
+            dry_run: If True, performs a dry run without persisting changes.
+            records: Records.
+            dry_run: If True, performs a dry run without persisting changes.
+
         """
         from src.repositories.player_basic_repository import PlayerBasicRepository
 

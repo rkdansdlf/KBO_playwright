@@ -2,6 +2,7 @@
 Crawler for Daily 1st Team Registration Status.
 
 Source: https://www.koreabaseball.com/Player/Register.aspx.
+
 """
 
 from __future__ import annotations
@@ -45,8 +46,16 @@ class DailyRosterCrawler:
     """Crawl daily roster changes."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+
+        """
         self.base_url = REGISTER
+
         self.request_delay = request_delay
         self.pool = pool
 
@@ -56,8 +65,17 @@ class DailyRosterCrawler:
         end_date: str,
         save_callback: Callable[[list[dict[str, Any]]], Awaitable[object] | object] | None = None,
     ) -> list[dict[str, Any]]:
-        """Crawl roster for a range of dates (format: YYYY-MM-DD)."""
+        """
+        Crawl roster for a range of dates (format: YYYY-MM-DD).
+
+        Args:
+            start_date: Start Date.
+            end_date: End Date.
+            save_callback: Save Callback.
+
+        """
         s_date = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=KST).date()
+
         e_date = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=KST).date()
 
         results = []
@@ -220,6 +238,7 @@ class DailyRosterCrawler:
         """
 
         data = await page.evaluate(script)
+
         if data and data[0].get("status") == "no_tables":
             logger.debug("   No tables found for team %s", team_code)
             return []
@@ -249,7 +268,7 @@ class DailyRosterCrawler:
 
 
 async def main() -> None:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     crawler = DailyRosterCrawler()
     # Test for yesterday
     (datetime.now(KST).date()).strftime("%Y-%m-%d")

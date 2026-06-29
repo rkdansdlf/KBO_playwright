@@ -5,6 +5,7 @@
 1. 특정 시즌의 모든 현역 선수 ID 목록을 가져옵니다.
 2. 각 선수에 대해 퓨처스리그 기록 페이지로 이동하여 연도별 타격 데이터를 크롤링하고 파싱합니다.
 3. 파싱된 데이터를 데이터베이스에 UPSERT(존재하면 업데이트, 없으면 삽입)하여 저장합니다.
+
 """
 
 from __future__ import annotations
@@ -90,8 +91,16 @@ def _has_player_basic(player_id: str) -> bool:
 
 
 async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, dict[str, str]]:
-    """지정된 시즌의 모든 현역 선수 ID와 메타정보(포지션, 이름)를 수집합니다."""
+    """
+    지정된 시즌의 모든 현역 선수 ID와 메타정보(포지션, 이름)를 수집합니다.
+
+    Args:
+        season_year: Season Year.
+        delay: Delay.
+
+    """
     logger.info("Gathering active player list for %s...", season_year)
+
     crawler = PlayerListCrawler(request_delay=delay)
     result = await crawler.crawl_all_players(season_year=season_year)
 
@@ -132,11 +141,17 @@ async def process_player(
     """
     단일 선수의 퓨처스리그 기록을 크롤링하고 데이터베이스에 저장합니다.
 
+    Args:
+        target: Target.
+        repository: Repository.
+        pool: Connection pool for async operations.
+
     Returns:
         (player_id, 저장된 시즌 기록 수)
 
     """
     result = await process_player_result(target, repository, pool)
+
     return (str(result["player_id"]), int(result["saved"]))
 
 
@@ -146,9 +161,12 @@ async def process_player_result(
     pool: AsyncPlaywrightPool,
 ) -> dict[str, Any]:
     """
-    Processes player result.
+    Process player result.
 
     Args:
+        target: Target.
+        repository: Repository.
+        pool: Connection pool for async operations.
         target: Target.
         repository: Repository.
         pool: Pool.
@@ -158,6 +176,7 @@ async def process_player_result(
 
     """
     normalized_id = normalize_player_id(target.player_id)
+
     if normalized_id is None:
         return _fail_result(target.player_id, "invalid_player_id", status="failed")
 
@@ -299,8 +318,15 @@ def _build_pitching_payload(row: dict[str, Any], player_id: str, player_name: st
 
 
 async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
-    """퓨처스리그 크롤링 메인 로직."""
+    """
+    퓨처스리그 크롤링 메인 로직.
+
+    Args:
+        args: Positional arguments to pass through.
+
+    """
     logger.info("\n=== Futures League Stats Crawler ===")
+
     logger.info("Season: %s", args.season)
     logger.info("Concurrency: %s", args.concurrency)
     logger.info("Delay: %ss\n", args.delay)
@@ -383,9 +409,11 @@ async def _run_futures_players(
 
     async def runner(pid: str, meta: dict) -> None:
         """
-        Handles the runner operation.
+        Handle the runner operation.
 
         Args:
+            pid: Pid.
+            meta: Meta.
             pid: Pid.
             meta: Meta.
 
@@ -543,8 +571,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     _configure_cli_logging()
+
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 

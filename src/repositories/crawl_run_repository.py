@@ -31,9 +31,11 @@ class CrawlRunRepository:
 
     def create_run(self, stats: RunStats) -> CrawlRun:
         """
-        Creates create run.
+        Create create run.
 
         Args:
+            stats: Stats.
+            stats: Stats.
             stats: Stats.
 
         Returns:

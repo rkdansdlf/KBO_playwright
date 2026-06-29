@@ -24,7 +24,12 @@ def _load_csv_file(csv_path: Path, session: Session) -> int:
     """
     Load a single text relay CSV into game_play_by_play.
 
-    Returns the number of rows inserted.
+    Return the number of rows inserted.
+
+    Args:
+        csv_path: Csv file path.
+        session: Session.
+
     """
     from src.models.game import GamePlayByPlay
 
@@ -60,7 +65,13 @@ def _load_csv_file(csv_path: Path, session: Session) -> int:
 
 
 def _find_csv_files(input_dir: Path) -> list[Path]:
-    """Find all text relay CSV files in the directory."""
+    """
+    Find all text relay CSV files in the directory.
+
+    Args:
+        input_dir: Input Dir.
+
+    """
     return sorted(input_dir.glob("*_text_relay.csv"))
 
 
@@ -72,9 +83,15 @@ def load_text_relays(
     """
     Load all text relay CSVs from a directory into the database.
 
-    Returns {game_id: rows_inserted}.
+    Return {game_id: rows_inserted}.
+
+    Args:
+        input_dir: Input Dir.
+        dry_run: If True, performs a dry run without persisting changes.
+
     """
     csv_files = _find_csv_files(input_dir)
+
     if not csv_files:
         logger.info("No text relay CSV files found in %s", input_dir)
         return {}
@@ -110,7 +127,7 @@ def load_text_relays(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
@@ -134,8 +151,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
 
     results = load_text_relays(args.input_dir, dry_run=args.dry_run)

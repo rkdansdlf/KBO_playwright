@@ -1,7 +1,8 @@
 """
 Batting Stat Calculator Service.
 
-Calculates ratios (AVG, OBP, SLG, etc.) from raw count data.
+Calculate ratios (AVG, OBP, SLG, etc.) from raw count data.
+
 """
 
 from __future__ import annotations
@@ -15,12 +16,18 @@ class BattingStatCalculator:
     @staticmethod
     def calculate_ratios(data: dict[str, Any]) -> dict[str, float | None]:
         """
-        Calculates advanced/ratio stats from a dictionary of raw stats.
+        Calculate advanced/ratio stats from a dictionary of raw stats.
 
         Required keys: at_bats, hits, walks, hbp, sacrifice_flies,
                       doubles, triples, home_runs, strikeouts, plate_appearances.
+
+        Args:
+            data: Data.
+            data: Data.
+
         """
         ab = data.get("at_bats", 0) or 0
+
         h = data.get("hits", 0) or 0
         bb = data.get("walks", 0) or 0
         hbp = data.get("hbp", 0) or 0
@@ -102,7 +109,7 @@ class BattingStatCalculator:
 
 
 class PitchingStatCalculator:
-    """Calculates derived pitching statistics from raw data."""
+    """Calculate derived pitching statistics from raw data."""
 
     # FIP constant (league average, approximately 3.10 for recent years)
     FIP_CONSTANT = 3.10
@@ -110,10 +117,17 @@ class PitchingStatCalculator:
     @staticmethod
     def calculate_ratios(data: dict[str, Any], fip_constant: float | None = None) -> dict[str, float | None]:
         """
-        Calculates pitching ratios from raw stats.
+        Calculate pitching ratios from raw stats.
 
         Required keys: innings_outs, earned_runs, hits_allowed, walks_allowed, strikeouts,
                        home_runs_allowed, hit_batters, batters_faced.
+
+        Args:
+            data: Data.
+            fip_constant: Fip Constant.
+            data: Data.
+            fip_constant: Fip Constant.
+
         """
         if fip_constant is None:
             fip_constant = PitchingStatCalculator.FIP_CONSTANT

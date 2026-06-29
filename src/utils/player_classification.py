@@ -30,9 +30,11 @@ STAFF_KEYWORDS = (
 
 def _normalize(value: str | None) -> str:
     """
-    Normalizes  normalize.
+    Normalize  normalize.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -49,8 +51,14 @@ def classify_player(entry: dict[str, object]) -> PlayerCategory:
     - Position strings with 감독/코치 계열 → staff categories
     - Empty team/position or explicit '은퇴' 키워드 → RETIRED
     - Otherwise treated as ACTIVE.
+
+    Args:
+        entry: Entry.
+        entry: Entry.
+
     """
     status_source = entry.get("status_source")
+
     if status_source == "register":
         role = entry.get("staff_role")
         if role == "manager":
@@ -71,6 +79,12 @@ def _classify_active_player(position: str, team: str, team_lower: str) -> Player
     Classifies active player.
 
     Args:
+        position: Position.
+        team: Team.
+        team_lower: Team Lower.
+        position: Position.
+        team: Team.
+        team_lower: Team Lower.
         position: Position.
         team: Team.
         team_lower: Team Lower.

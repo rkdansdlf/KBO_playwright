@@ -10,6 +10,7 @@ Naver Search API is free up to 25,000 calls/day.
 Usage:
     python -m src.crawlers.operation_notice_naver_crawler --save
     python -m src.crawlers.operation_notice_naver_crawler --days 1 --save
+
 """
 
 from __future__ import annotations
@@ -44,7 +45,13 @@ TEAM_SOURCE_MAP = {
 
 
 def _infer_game_date(result: NaverSearchResult) -> date | None:
-    """Infer game date from publication date (assume same-day notice)."""
+    """
+    Infer game date from publication date (assume same-day notice).
+
+    Args:
+        result: Result.
+
+    """
     if result.pub_date:
         return result.pub_date.date()
     return datetime.now(KST).date()
@@ -73,20 +80,31 @@ def _result_to_notice(result: NaverSearchResult) -> dict[str, Any]:
 
 class OperationNoticeNaverCrawler:
     """
-    Crawls Naver News for KBO game-day operation notices.
+    Naver News for KBO game-day operation notices.
 
     Complements official team website crawlers with real-time news coverage.
     Results are tagged is_confirmed=False to distinguish from official notices.
+
     """
 
     def __init__(self, days_back: int = 3) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            days_back: Days Back.
+
+        """
         self.days_back = days_back
+
         self.client = NaverSearchClient()
 
     async def run(self, *, save: bool = False) -> list[dict]:
         """
-        Runs run.
+        Run run.
+
+        Args:
+            save: Whether to persist the results.
 
         Returns:
             List of results.

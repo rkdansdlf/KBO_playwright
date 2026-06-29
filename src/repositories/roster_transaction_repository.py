@@ -20,14 +20,23 @@ class RosterTransactionRepository:
     """RosterTransactionRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> RosterTransaction:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -35,6 +44,7 @@ class RosterTransactionRepository:
 
         """
         data = dict(data)
+
         if not self._player_basic_exists(data.get("player_id")):
             data["player_id"] = None
 
@@ -68,9 +78,13 @@ class RosterTransactionRepository:
 
     def get_by_team_date(self, team_id: str, transaction_date: date) -> list[RosterTransaction]:
         """
-        Gets by team date.
+        Get by team date.
 
         Args:
+            team_id: Team ID.
+            transaction_date: Transaction Date.
+            team_id: Team ID.
+            transaction_date: Transaction Date.
             team_id: Team ID.
             transaction_date: Transaction Date.
 
@@ -90,9 +104,11 @@ class RosterTransactionRepository:
 
     def get_by_date(self, transaction_date: date) -> list[RosterTransaction]:
         """
-        Gets by date.
+        Get by date.
 
         Args:
+            transaction_date: Transaction Date.
+            transaction_date: Transaction Date.
             transaction_date: Transaction Date.
 
         Returns:
@@ -108,9 +124,13 @@ class RosterTransactionRepository:
 
     def get_by_player(self, player_id: int, limit: int = 50) -> list[RosterTransaction]:
         """
-        Gets by player.
+        Get by player.
 
         Args:
+            player_id: Player ID.
+            limit: Limit.
+            player_id: Player ID.
+            limit: Limit.
             player_id: Player ID.
             limit: Limit.
 
@@ -128,9 +148,13 @@ class RosterTransactionRepository:
 
     def get_recent_by_team(self, team_id: str, days: int = 7) -> list[RosterTransaction]:
         """
-        Gets recent by team.
+        Get recent by team.
 
         Args:
+            team_id: Team ID.
+            days: Days.
+            team_id: Team ID.
+            days: Days.
             team_id: Team ID.
             days: Days.
 
@@ -139,6 +163,7 @@ class RosterTransactionRepository:
 
         """
         since = datetime.now(KST).date() - timedelta(days=days)
+
         stmt = (
             select(RosterTransaction)
             .where(
@@ -151,9 +176,11 @@ class RosterTransactionRepository:
 
     def exists(self, dedupe_key: str) -> bool:
         """
-        Handles the exists operation.
+        Handle the exists operation.
 
         Args:
+            dedupe_key: Dedupe Key.
+            dedupe_key: Dedupe Key.
             dedupe_key: Dedupe Key.
 
         Returns:
@@ -161,13 +188,16 @@ class RosterTransactionRepository:
 
         """
         stmt = select(RosterTransaction).where(RosterTransaction.dedupe_key == dedupe_key)
+
         return self.session.execute(stmt).scalar_one_or_none() is not None
 
     def bulk_save(self, records: list[dict]) -> int:
         """
-        Saves bulk.
+        Save bulk.
 
         Args:
+            records: Records.
+            records: Records.
             records: Records.
 
         Returns:
@@ -175,6 +205,7 @@ class RosterTransactionRepository:
 
         """
         count = 0
+
         for data in records:
             self.save(data)
             count += 1

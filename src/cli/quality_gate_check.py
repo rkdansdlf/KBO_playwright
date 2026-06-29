@@ -58,8 +58,15 @@ def _print_category(category: str, result: dict) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="KBO Data Statistical Quality Gate")
+
     parser.add_argument("--year", type=int, help="Season year to check")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     args = parser.parse_args(argv)

@@ -1,6 +1,7 @@
 """
 KBO Schedule Crawler POC
 Collects game IDs from the KBO schedule page.
+
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ class ScheduleCrawler:
     - 페이지 내의 모든 경기 링크를 분석하여 고유 ID(gameId)를 추출합니다.
     - gameId를 바탕으로 경기 날짜, 홈/어웨이 팀 코드 등의 상세 정보를 파싱합니다.
     - 수집된 경기 정보 리스트를 반환합니다.
+
     """
 
     def __init__(
@@ -52,8 +54,20 @@ class ScheduleCrawler:
         pool: AsyncPlaywrightPool | None = None,
         policy: RequestPolicy | None = None,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+            policy: Policy.
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+            policy: Policy.
+
+        """
         self.base_url = SCHEDULE
+
         self.request_delay = request_delay
         self.pool = pool
         self.policy = policy or RequestPolicy.with_delay(request_delay)
@@ -61,9 +75,11 @@ class ScheduleCrawler:
 
     def get_last_failure_reason(self, key: str) -> str | None:
         """
-        Gets last failure reason.
+        Get last failure reason.
 
         Args:
+            key: Key.
+            key: Key.
             key: Key.
 
         Returns:
@@ -81,6 +97,12 @@ class ScheduleCrawler:
         지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
         Args:
+            year: Season year.
+            month: Month.
+            series_id: Series ID.
+            year: Season year.
+            month: Month.
+            series_id: Series ID.
             year: 시즌 연도 (예: 2024)
             month: 월 (1-12)
             series_id: 시리즈 ID (옵션)
@@ -120,12 +142,19 @@ class ScheduleCrawler:
         주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
         Args:
+            year: Season year.
+            months: Months.
+            series_id: Series ID.
+            year: Season year.
+            months: Months.
+            series_id: Series ID.
             year: 시즌 연도
             months: 크롤링할 월 목록 (기본값: 3월-10월)
             series_id: 시리즈 ID (옵션)
 
         """
         months = months or list(range(3, 11))
+
         all_games: list[dict] = []
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
@@ -210,8 +239,20 @@ class ScheduleCrawler:
         특정 월의 경기 일정 페이지에서 정보를 추출합니다.
 
         series_id가 지정되지 않은 경우 전 시리즈(시범/정규/포스트)를 순회합니다.
+
+        Args:
+            page: Page.
+            year: Season year.
+            month: Month.
+            series_id: Series ID.
+            page: Page.
+            year: Season year.
+            month: Month.
+            series_id: Series ID.
+
         """
         crawl_key = self._schedule_key(year, month, series_id)
+
         self._last_failure_reason.pop(crawl_key, None)
 
         ok, failure_reason = await self._navigate_schedule_page(page)
@@ -280,8 +321,20 @@ class ScheduleCrawler:
         return all_games
 
     async def _select_year_month(self, page: Page, year: int, month: int) -> tuple[bool, str]:
-        """연도와 월 드롭다운을 선택하고 페이지 갱신을 기다립니다."""
+        """
+        연도와 월 드롭다운을 선택하고 페이지 갱신을 기다립니다.
+
+        Args:
+            page: Page.
+            year: Season year.
+            month: Month.
+            page: Page.
+            year: Season year.
+            month: Month.
+
+        """
         current_year = await page.eval_on_selector("#ddlYear", "el => el.value")
+
         if current_year != str(year):
             ok, failure_reason = await self._select_option_with_retry(
                 page,
@@ -331,11 +384,25 @@ class ScheduleCrawler:
 
     async def _extract_games(self, page: Page, year: int, month: int, season_type: str = "regular") -> list[dict]:
         """
-        페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path).
+        페이지에서 경기 관련 데이터를 추출합니다.
+
+            (JS Fast Path).
 
         `gameId`가 포함된 모든 링크를 찾아, 각 링크에서 경기 ID, 날짜, 팀 정보 등을 파싱합니다.
+
+        Args:
+            page: Page.
+            year: Season year.
+            month: Month.
+            season_type: Season Type.
+            page: Page.
+            year: Season year.
+            month: Month.
+            season_type: Season Type.
+
         """
         # JS를 사용하여 모든 게임 정보를 한 번에 추출
+
         extraction_script = r"""
         ({year, season_type}) => {
             const results = [];
@@ -607,7 +674,14 @@ class ScheduleCrawler:
 
     @staticmethod
     def _extract_game_id(href: str) -> str:
-        """URL(href)에서 game_id를 안전하게 추출합니다."""
+        """
+        URL(href)에서 game_id를 안전하게 추출합니다.
+
+        Args:
+            href: Href.
+            href: Href.
+
+        """
         try:
             if "gameId=" in href:
                 return href.split("gameId=")[1].split("&", maxsplit=1)[0]

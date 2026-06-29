@@ -4,6 +4,7 @@ Sync collected pregame preview rows for scheduled games to OCI/Postgres.
 This is intentionally scoped to games that already have local preview summaries
 or registered starting pitchers, so backfilled pregame data can be published
 without pushing an entire season.
+
 """
 
 from __future__ import annotations
@@ -61,9 +62,11 @@ def _default_end_date(days_ahead: int) -> str:
 
 def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyncTarget]:
     """
-    Finds pregame targets.
+    Find pregame targets.
 
     Args:
+        start_date: Start Date.
+        end_date: End Date.
         start_date: Start Date.
         end_date: End Date.
 
@@ -74,6 +77,7 @@ def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyn
     query = text(
         """
         SELECT
+
             REPLACE(CAST(g.game_date AS TEXT), '-', '') AS game_date,
             g.game_id,
             COALESCE(g.away_pitcher, '') AS away_pitcher,
@@ -111,9 +115,10 @@ def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyn
 
 def run_sync(args: argparse.Namespace) -> int:
     """
-    Runs run sync.
+    Run run sync.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     Returns:
@@ -121,6 +126,7 @@ def run_sync(args: argparse.Namespace) -> int:
 
     """
     load_dotenv()
+
     target_url = args.target_url or get_oci_url()
     if not target_url:
         msg = "OCI_DB_URL or TARGET_DATABASE_URL is required"
@@ -174,13 +180,14 @@ def run_sync(args: argparse.Namespace) -> int:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Sync collected pregame previews to OCI/Postgres")
+
     parser.add_argument("--start-date", type=_yyyymmdd, help="Start date YYYYMMDD. Defaults to today in KST.")
     parser.add_argument("--end-date", type=_yyyymmdd, help="End date YYYYMMDD. Defaults to today + --days-ahead.")
     parser.add_argument("--days-ahead", type=int, default=1, help="Default end-date offset when --end-date is omitted.")
@@ -190,8 +197,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     return run_sync(parser.parse_args(argv))
 
 

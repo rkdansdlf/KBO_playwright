@@ -103,9 +103,12 @@ def backfill_stats(years: list[int], series: str) -> None:
     Args:
         years: Years.
         series: Series.
+        years: Years.
+        series: Series.
 
     """
     fielding_repo = PlayerSeasonFieldingRepository()
+
     baserun_repo = PlayerSeasonBaserunningRepository()
 
     with SessionLocal() as session:
@@ -119,8 +122,15 @@ def backfill_stats(years: list[int], series: str) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Backfill missing advanced stats from transactions.")
+
     parser.add_argument("--years", type=str, default="2020-2026")
     parser.add_argument("--series", type=str, default="regular")
     args = parser.parse_args(argv)

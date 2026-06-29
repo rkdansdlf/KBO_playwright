@@ -1,11 +1,22 @@
-from __future__ import annotations
-
+import os
 import subprocess
 import sys
 import threading
 from pathlib import Path
 
+import pytest
+
 from src.utils.lock import LockAcquisitionError, ProcessLock
+
+
+@pytest.fixture(autouse=True)
+def _clean_env_pg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure standard tests do not use PG advisory locks unless explicitly mocked."""
+    monkeypatch.delenv("OCI_DB_URL", raising=False)
+    monkeypatch.delenv("TARGET_DATABASE_URL", raising=False)
+    db_url = os.getenv("DATABASE_URL", "")
+    if "postgresql" in db_url:
+        monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
 
 
 def test_lock_basic_acquire_release(tmp_path: Path) -> None:
@@ -119,3 +130,76 @@ else:
     # Now the main process should be able to acquire the lock
     assert main_lock.acquire() is True
     main_lock.release()
+
+
+def test_postgresql_advisory_lock_acquire_release() -> None:
+    """Test that ProcessLock calls pg_try_advisory_lock or pg_advisory_lock when PostgreSQL is detected."""
+    from unittest.mock import MagicMock, patch
+
+    lock_name = "test_pg_lock"
+
+    mock_connection = MagicMock()
+    mock_connection.execute.return_value.scalar.return_value = True
+
+    mock_engine = MagicMock()
+    mock_engine.connect.return_value = mock_connection
+
+    with (
+        patch.object(ProcessLock, "_get_postgres_url", return_value="postgresql://localhost/db"),
+        patch.object(ProcessLock, "_get_pg_engine", return_value=mock_engine),
+    ):
+        lock = ProcessLock(lock_name, blocking=False)
+        assert lock.acquire() is True
+
+        mock_connection.execute.assert_called()
+        call_args = mock_connection.execute.call_args[0][0]
+        assert "pg_try_advisory_lock" in str(call_args)
+
+        lock.release()
+
+        last_call_args = mock_connection.execute.call_args[0][0]
+        assert "pg_advisory_unlock" in str(last_call_args)
+
+
+def test_postgresql_advisory_lock_blocking() -> None:
+    """Test that ProcessLock calls pg_advisory_lock when blocking=True."""
+    from unittest.mock import MagicMock, patch
+
+    lock_name = "test_pg_lock_blocking"
+
+    mock_connection = MagicMock()
+    mock_engine = MagicMock()
+    mock_engine.connect.return_value = mock_connection
+
+    with (
+        patch.object(ProcessLock, "_get_postgres_url", return_value="postgresql://localhost/db"),
+        patch.object(ProcessLock, "_get_pg_engine", return_value=mock_engine),
+    ):
+        lock = ProcessLock(lock_name, blocking=True)
+        assert lock.acquire() is True
+
+        mock_connection.execute.assert_called()
+        call_args = mock_connection.execute.call_args[0][0]
+        assert "pg_advisory_lock" in str(call_args)
+
+        lock.release()
+
+
+def test_postgresql_advisory_lock_fallback_on_failure(tmp_path: Path) -> None:
+    """Test that ProcessLock falls back to fcntl file locking if database connection raises an error."""
+    from unittest.mock import MagicMock, patch
+    from sqlalchemy.exc import SQLAlchemyError
+
+    lock_name = "test_pg_lock_fallback"
+
+    mock_engine = MagicMock()
+    mock_engine.connect.side_effect = SQLAlchemyError("DB Connection Down")
+
+    with (
+        patch.object(ProcessLock, "_get_postgres_url", return_value="postgresql://localhost/db"),
+        patch.object(ProcessLock, "_get_pg_engine", return_value=mock_engine),
+    ):
+        lock = ProcessLock(lock_name, lock_dir=tmp_path, blocking=False)
+        assert lock.acquire() is True
+        assert lock.lock_file_path.exists()
+        lock.release()

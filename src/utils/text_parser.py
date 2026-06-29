@@ -5,6 +5,7 @@ Extracts:
 - Outs (from "1사", "2사", etc.)
 - Runners (from "1루", "1,2루", "만루")
 - Score Changes (from "1점 득점", "홈런").
+
 """
 
 from __future__ import annotations
@@ -18,13 +19,18 @@ class KBOTextParser:
     @staticmethod
     def parse_runners(text: str) -> int:
         """
-        Parses runner state bitmask from text.
+        Parse runner state bitmask from text.
 
         0=Empty, 1=1B, 2=2B, 4=3B
         Combinations: 3=1,2B, 5=1,3B, 6=2,3B, 7=Full.
 
         Typical text: "1사 1,2루", "무사 만루", "2사 3루"
         This usually appears in the PRE-STATE description or result text.
+
+        Args:
+            text: Text.
+            text: Text.
+
         """
         if "만루" in text:
             return 7
@@ -43,7 +49,14 @@ class KBOTextParser:
 
     @staticmethod
     def parse_outs(text: str) -> int:
-        """Parses out count 0, 1, 2."""
+        """
+        Parse out count 0, 1, 2.
+
+        Args:
+            text: Text.
+            text: Text.
+
+        """
         if "2사" in text or "투아웃" in text:
             return 2
         if "1사" in text or "원아웃" in text:
@@ -55,11 +68,17 @@ class KBOTextParser:
     @staticmethod
     def parse_score_change(text: str) -> int:
         """
-        Parses runs scored from event description.
+        Parse runs scored from event description.
 
         e.g. "좌월 1점 홈런", "1타점 적시타", "밀어내기 볼넷 (1점 득점)".
+
+        Args:
+            text: Text.
+            text: Text.
+
         """
         # Explicit score mention
+
         match = re.search(r"(\d+)점\s*(?:홈런|득점)", text)
         if match:
             return int(match.group(1))

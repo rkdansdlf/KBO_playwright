@@ -114,6 +114,8 @@ def resolve_stadium_code(stadium_name: str | None) -> str | None:
     Resolve a stadium name (Korean short or full) to canonical stadium_code.
 
     Args:
+        stadium_name: Stadium Name.
+        stadium_name: Stadium Name.
         stadium_name: Korean stadium name (short like '잠실' or full like '잠실야구장')
 
     Returns:
@@ -147,6 +149,10 @@ def resolve_stadium_code_from_db(
     Falls back to the static mapping if DB lookup fails.
 
     Args:
+        session: Session.
+        stadium_name: Stadium Name.
+        session: Session.
+        stadium_name: Stadium Name.
         session: SQLAlchemy session
         stadium_name: Korean stadium name
 
@@ -169,7 +175,7 @@ def resolve_stadium_code_from_db(
             {"name": stadium_name.strip()},
         ).one_or_none()
         if row is not None:
-            return row[0]  # type: ignore[no-any-return]
+            return row[0]
     except SQLAlchemyError:
         logger.debug("DB stadium lookup failed for: %s", stadium_name)
 

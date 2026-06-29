@@ -59,13 +59,14 @@ class RefreshResult:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Refresh DataSource raw snapshots")
+
     selector = parser.add_mutually_exclusive_group(required=True)
     selector.add_argument("--all", action="store_true", help="Refresh all active DataSources")
     selector.add_argument("--domain", type=str, help="Refresh active DataSources for one target domain")
@@ -177,9 +178,10 @@ async def _fetch_source(
 
 async def refresh_sources(args: argparse.Namespace) -> list[RefreshResult]:
     """
-    Handles the refresh sources operation.
+    Handle the refresh sources operation.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     Returns:
@@ -263,8 +265,15 @@ def _write_results(results: Sequence[RefreshResult], *, json_output: bool) -> No
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     results = asyncio.run(refresh_sources(args))

@@ -13,6 +13,7 @@ class KboSeason(Base, TimestampMixin):
     Represents a specific KBO season (e.g., 2024 Regular Season).
 
     Mirrors `Docs/schema/KBO_시즌별 메타 테이블 제약조건.csv`.
+
     """
 
     __tablename__ = "kbo_seasons"
@@ -25,5 +26,5 @@ class KboSeason(Base, TimestampMixin):
     end_date: Mapped[Date | None] = mapped_column(Date, nullable=True, comment="시즌 종료일")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<KboSeason(season_id={self.season_id}, year={self.season_year}, name='{self.league_type_name}')>"

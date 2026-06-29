@@ -214,6 +214,7 @@ def _query_db_season_by_date_range(session: Session, season_year: int, game_date
                 text(
                     """
                     SELECT MIN(season_id)
+
                     FROM kbo_seasons
                     WHERE season_year = :season_year
                       AND start_date IS NOT NULL
@@ -241,6 +242,7 @@ def _apply_season_date_rules(session: Session, season_year: int, game_date: date
                         text(
                             """
                             SELECT MIN(season_id)
+
                             FROM kbo_seasons
                             WHERE season_year = :season_year
                               AND league_type_name = :league_type_name
@@ -263,6 +265,7 @@ def _query_db_season_by_code(session: Session, season_year: int, league_type_cod
                 text(
                     """
                     SELECT MIN(season_id)
+
                     FROM kbo_seasons
                     WHERE season_year = :season_year
                       AND league_type_code = :league_type_code
@@ -329,8 +332,20 @@ def _ensure_season_exists(
     season_year: int,
     league_type_code: int,
 ) -> int:
-    """Auto-create a kbo_seasons row if missing; return its season_id."""
+    """
+    Auto-create a kbo_seasons row if missing; return its season_id.
+
+    Args:
+        session: Session.
+        season_year: Season Year.
+        league_type_code: League Type Code.
+        session: Session.
+        season_year: Season Year.
+        league_type_code: League Type Code.
+
+    """
     result = _query_db_season_by_code(session, season_year, league_type_code)
+
     if result is not None:
         return result
     sid = season_year * 100 + league_type_code
@@ -352,6 +367,7 @@ def _ensure_season_exists(
         text(
             """
             INSERT OR IGNORE INTO kbo_seasons
+
                 (season_id, season_year, league_type_code, league_type_name,
                  created_at, updated_at)
             VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -369,7 +385,20 @@ def _resolve_game_season_id(
     game_date: date,
     existing_season_id: int | None,
 ) -> int | None:
-    """Resolve season_id for non-schedule write paths that only know game_date."""
+    """
+    Resolve season_id for non-schedule write paths that only know game_date.
+
+    Args:
+        session: Session.
+        game_data: Game Data.
+        game_date: Game Date.
+        existing_season_id: Existing Season ID.
+        session: Session.
+        game_data: Game Data.
+        game_date: Game Date.
+        existing_season_id: Existing Season ID.
+
+    """
     if existing_season_id is not None:
         return existing_season_id
     season_data = {
@@ -381,7 +410,14 @@ def _resolve_game_season_id(
 
 
 def _canonicalize_game_id(game_id: object) -> tuple[str | None, str | None]:
-    """Return (canonical legacy game_id, original game_id)."""
+    """
+    Return (canonical legacy game_id, original game_id).
+
+    Args:
+        game_id: Game ID.
+        game_id: Game ID.
+
+    """
     if not game_id:
         return None, None
     original = str(game_id).strip().upper()
@@ -394,7 +430,18 @@ def _canonicalize_game_id_for_payload(
     payload: CanonicalGameIdPayload | None = None,
     **kwargs: object,
 ) -> tuple[str | None, str | None]:
-    """Return a canonical game_id, preferring explicit payload teams when available."""
+    """
+    Return a canonical game_id, preferring explicit payload teams when available.
+
+    Args:
+        game_id: Game ID.
+        payload: Payload.
+        kwargs: Keyword arguments to pass through.
+        game_id: Game ID.
+        payload: Payload.
+        kwargs: Keyword arguments to pass through.
+
+    """
     if payload is None:
         payload = CanonicalGameIdPayload(**kwargs)
     elif kwargs:
@@ -570,7 +617,18 @@ def _infer_score_from_children(session: Session, game_id: str, team_side: str) -
 
 
 def _infer_pitcher_from_children(session: Session, game_id: str, team_side: str) -> str | None:
-    """Find starting pitcher name from game_pitching_stats."""
+    """
+    Find starting pitcher name from game_pitching_stats.
+
+    Args:
+        session: Session.
+        game_id: Game ID.
+        team_side: Team Side.
+        session: Session.
+        game_id: Game ID.
+        team_side: Team Side.
+
+    """
     row = (
         session.query(GamePitchingStat.player_name)
         .filter(
@@ -634,6 +692,7 @@ def _ensure_game_stub(session: Session, game_id: str) -> None:
                     text(
                         """
                         SELECT MIN(season_id)
+
                         FROM kbo_seasons
                         WHERE season_year = :season_year
                           AND league_type_code = 0
@@ -1124,8 +1183,18 @@ def _safe_time(value: object) -> time | None:
 
 
 def _resolve_winner(home: dict[str, Any], away: dict[str, Any]) -> tuple[str | None, int | None]:
-    """Determine winning team code and score based on box score."""
+    """
+    Determine winning team code and score based on box score.
+
+    Args:
+        home: Home.
+        away: Away.
+        home: Home.
+        away: Away.
+
+    """
     home_score = home.get("score")
+
     away_score = away.get("score")
     if home_score is None or away_score is None:
         return None, None
@@ -1456,6 +1525,13 @@ def _extract_players_from_text(category: str, text: str) -> list[tuple[str, str 
 
     Example: '강민호1호(2회1점 쿠에바스) 로하스1호(4회1점 코너)'
              -> [('강민호', '강민호1호(...)'), ('로하스', '로하스1호(...)')].
+
+    Args:
+        category: Category.
+        text: Text.
+        category: Category.
+        text: Text.
+
     """
     if not text or text == "없음":
         return []
@@ -1505,7 +1581,14 @@ def _clean_extras(extras: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _auto_sync_to_oci(game_id: str) -> None:
-    """Helper to trigger OCI synchronization if enabled."""
+    """
+    Trigger OCI synchronization if enabled.
+
+    Args:
+        game_id: Game ID.
+        game_id: Game ID.
+
+    """
     if os.getenv("AUTO_SYNC_OCI") == "true":
         try:
             from src.sync.oci_sync import OCISync

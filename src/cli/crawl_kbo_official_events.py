@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 
 async def run(args: argparse.Namespace) -> int:
     """
-    Runs run.
+    Run run.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     Returns:
@@ -27,6 +28,7 @@ async def run(args: argparse.Namespace) -> int:
 
     """
     crawler = KboEventCrawler(base_url=args.url)
+
     events = await crawler.run(save=args.save)
     if args.save:
         logger.info("[KBO_EVENT] Saved crawl result.")
@@ -38,21 +40,29 @@ async def run(args: argparse.Namespace) -> int:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Crawl KBO official event/promotion links")
+
     parser.add_argument("--save", action="store_true", help="Save raw snapshot and extracted links")
     parser.add_argument("--url", help="Single KBO official event page URL to inspect")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     return asyncio.run(run(args))
