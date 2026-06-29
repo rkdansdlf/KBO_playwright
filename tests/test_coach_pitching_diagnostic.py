@@ -36,7 +36,7 @@ def _seed_pitching_game(session):
             away_score=4,
             home_score=2,
             game_status=GAME_STATUS_COMPLETED,
-        )
+        ),
     )
     session.add_all(
         [
@@ -92,7 +92,7 @@ def _seed_pitching_game(session):
                 earned_runs=1,
                 strikeouts=3,
             ),
-        ]
+        ],
     )
     session.add_all(
         [
@@ -122,7 +122,7 @@ def _seed_pitching_game(session):
                 era=2.95,
                 holds=12,
             ),
-        ]
+        ],
     )
     session.commit()
 
@@ -159,7 +159,7 @@ def test_coach_pitching_diagnostic_identifies_final_payload_drop():
                 game_id="20250401LGSS0",
                 summary_type="리뷰_WPA",
                 detail_text=json.dumps({"crucial_moments": []}, ensure_ascii=False),
-            )
+            ),
         )
         session.commit()
         missing_pitching = agg.diagnose_completed_game_coach_pitching("20250401LGSS0")
@@ -174,7 +174,7 @@ def test_coach_pitching_diagnostic_identifies_final_payload_drop():
                         "away": {"pitchers": [{"player_name": "원정불펜"}]},
                         "home": {"pitchers": [{"player_name": "홈불펜"}]},
                     },
-                }
+                },
             },
             ensure_ascii=False,
         )
@@ -199,7 +199,7 @@ def test_review_summary_upsert_updates_duplicate_rows():
                     summary_type="리뷰_WPA",
                     detail_text=json.dumps({"old": True}, ensure_ascii=False),
                 ),
-            ]
+            ],
         )
         session.commit()
 

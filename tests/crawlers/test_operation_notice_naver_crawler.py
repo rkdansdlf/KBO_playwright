@@ -66,7 +66,7 @@ class TestInferGameDate:
                 source_type="news",
                 team_hint="LG",
                 raw={},
-            )
+            ),
         )
         assert result == datetime(2026, 6, 3, tzinfo=KST).date()
 
@@ -80,7 +80,7 @@ class TestInferGameDate:
                 source_type="news",
                 team_hint=None,
                 raw={},
-            )
+            ),
         )
         assert result is not None  # falls back to today
 

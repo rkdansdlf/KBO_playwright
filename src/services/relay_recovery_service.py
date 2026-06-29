@@ -734,7 +734,7 @@ def _load_target_rows(
             )
             .all()
         )
-        row_map = dict(found_rows)
+        row_map: dict[str, str] = {row[0]: row[1] for row in found_rows}
         return [(game_id, row_map[game_id]) for game_id in requested_ids if game_id in row_map]
 
     query = (
@@ -927,7 +927,7 @@ def _coerce_int(value: object) -> int | None:
     if value is None or value == "":
         return None
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 

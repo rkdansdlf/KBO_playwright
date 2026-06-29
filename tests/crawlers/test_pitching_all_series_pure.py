@@ -209,7 +209,13 @@ class TestBuildPitchingCrawlSummary:
     def test_all_valid(self):
         stats_list = [
             PitcherStats(
-                player_id=1, season=2023, league="REGULAR", player_name="A", team_code="LG", games=25, wins=10
+                player_id=1,
+                season=2023,
+                league="REGULAR",
+                player_name="A",
+                team_code="LG",
+                games=25,
+                wins=10,
             ),
             PitcherStats(player_id=2, season=2023, league="REGULAR", player_name="B", team_code="SS", games=20, wins=8),
         ]

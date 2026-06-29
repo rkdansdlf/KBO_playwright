@@ -77,7 +77,7 @@ class TestMetadataEnrichmentService:
                 mock_response = MagicMock()
                 mock_response.status_code = 200
                 mock_response.json.return_value = {
-                    "choices": [{"message": {"content": '{"summary": "s", "keywords": ["k"], "questions": ["q"]}'}}]
+                    "choices": [{"message": {"content": '{"summary": "s", "keywords": ["k"], "questions": ["q"]}'}}],
                 }
                 mock_instance.post.return_value = mock_response
                 MockClient.return_value.__enter__.return_value = mock_instance
@@ -117,8 +117,8 @@ class TestMetadataEnrichmentService:
                 mock_response.status_code = 200
                 mock_response.json.return_value = {
                     "candidates": [
-                        {"content": {"parts": [{"text": '{"summary": "s", "keywords": ["k"], "questions": ["q"]}'}]}}
-                    ]
+                        {"content": {"parts": [{"text": '{"summary": "s", "keywords": ["k"], "questions": ["q"]}'}]}},
+                    ],
                 }
                 mock_instance.post.return_value = mock_response
                 MockClient.return_value.__enter__.return_value = mock_instance

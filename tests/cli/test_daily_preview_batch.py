@@ -37,7 +37,7 @@ class TestDailyPreviewBatchCLI:
             mock_dt.strptime.return_value.replace.return_value.date.return_value.year = 2025
             mock_instance = MagicMock()
             mock_instance.crawl_preview_for_date = AsyncMock(
-                return_value=[{"game_id": "20251015LGHH0", "away_team_name": "LG", "home_team_name": "SS"}]
+                return_value=[{"game_id": "20251015LGHH0", "away_team_name": "LG", "home_team_name": "SS"}],
             )
             MockCrawler.return_value = mock_instance
             mock_save.return_value = True

@@ -20,7 +20,7 @@ class TestNormalizeGameIds:
                 "broadcaster": "SPOTV",
                 "channel_name": "SPOTV",
                 "source": "KBO",
-            }
+            },
         ]
         assert BroadcastCrawler._normalize_game_ids(data, 2023) == []
 
@@ -33,7 +33,7 @@ class TestNormalizeGameIds:
                 "broadcaster": "SPOTV",
                 "channel_name": "SPOTV",
                 "source": "KBO",
-            }
+            },
         ]
         assert BroadcastCrawler._normalize_game_ids(data, 2023) == []
 
@@ -46,7 +46,7 @@ class TestNormalizeGameIds:
                 "broadcaster": "SPOTV",
                 "channel_name": "SPOTV",
                 "source": "KBO",
-            }
+            },
         ]
         assert BroadcastCrawler._normalize_game_ids(data, 2023) == []
 
@@ -59,7 +59,7 @@ class TestNormalizeGameIds:
                 "broadcaster": "SPOTV",
                 "channel_name": "SPOTV",
                 "source": "KBO",
-            }
+            },
         ]
         result = BroadcastCrawler._normalize_game_ids(data, 2023)
         assert len(result) == 1
@@ -73,7 +73,7 @@ class TestNormalizeGameIds:
                 "home_team_code": "SS",
                 "broadcaster": "SPOTV",
                 "channel_name": "SPOTV",
-            }
+            },
         ]
         result = BroadcastCrawler._normalize_game_ids(data, 2023)
         assert result[0]["source"] == "KBO"
@@ -87,7 +87,7 @@ class TestNormalizeGameIds:
                 "broadcaster": "SPOTV",
                 "channel_name": "SPOTV",
                 "source": "CUSTOM",
-            }
+            },
         ]
         result = BroadcastCrawler._normalize_game_ids(data, 2023)
         assert result[0]["source"] == "CUSTOM"
@@ -156,7 +156,7 @@ class TestSaveToDb:
         ):
             crawler = BroadcastCrawler()
             crawler._save_to_db(
-                [{"game_id": "20230625LGSS0", "broadcaster": "SPOTV", "channel_name": "SPOTV", "source": "KBO"}]
+                [{"game_id": "20230625LGSS0", "broadcaster": "SPOTV", "channel_name": "SPOTV", "source": "KBO"}],
             )
 
     def test_save_rollback_on_error(self):
@@ -172,7 +172,7 @@ class TestSaveToDb:
         ):
             crawler = BroadcastCrawler()
             crawler._save_to_db(
-                [{"game_id": "20230625LGSS0", "broadcaster": "SPOTV", "channel_name": "SPOTV", "source": "KBO"}]
+                [{"game_id": "20230625LGSS0", "broadcaster": "SPOTV", "channel_name": "SPOTV", "source": "KBO"}],
             )
             mock_session.rollback.assert_called()
 
@@ -186,6 +186,6 @@ class TestSaveToDb:
         ):
             crawler = BroadcastCrawler()
             crawler._save_to_db(
-                [{"game_id": "20230625LGSS0", "broadcaster": "SPOTV", "channel_name": "SPOTV", "source": "KBO"}]
+                [{"game_id": "20230625LGSS0", "broadcaster": "SPOTV", "channel_name": "SPOTV", "source": "KBO"}],
             )
             mock_session.close.assert_called()

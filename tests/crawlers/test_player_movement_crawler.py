@@ -29,7 +29,7 @@ class TestExtractTable:
                 {"date": "2024-03-15", "section": "Trade", "team_code": "LG", "player_name": "Kim", "remarks": ""},
                 {"date": "", "section": "Trade", "team_code": "SS", "player_name": "Park", "remarks": ""},
                 {"date": "2024-04-01", "section": "", "team_code": "NC", "player_name": "Lee", "remarks": ""},
-            ]
+            ],
         )
         result = await crawler._extract_table(mock_page)
         assert len(result) == 1
@@ -42,7 +42,7 @@ class TestExtractTable:
             return_value=[
                 {"date": "2024-03-15", "section": "Trade", "team_code": "LG", "player_name": "Kim", "remarks": "cash"},
                 {"date": "2024-04-01", "section": "FA", "team_code": "SS", "player_name": "Park", "remarks": ""},
-            ]
+            ],
         )
         result = await crawler._extract_table(mock_page)
         assert len(result) == 2
@@ -68,7 +68,7 @@ class TestCrawlYear:
             side_effect=[
                 [{"date": "2024-03-15", "section": "Trade", "team_code": "LG", "player_name": "Kim", "remarks": ""}],
                 [],
-            ]
+            ],
         )
         mock_page.get_by_role.return_value.count = AsyncMock(return_value=0)
         mock_page.locator.return_value.count = AsyncMock(return_value=0)
@@ -102,7 +102,7 @@ class TestCrawlYears:
             side_effect=[
                 [{"date": "2023-01-01", "section": "Trade", "team_code": "LG", "player_name": "A", "remarks": ""}],
                 [{"date": "2024-01-01", "section": "FA", "team_code": "SS", "player_name": "B", "remarks": ""}],
-            ]
+            ],
         )
         mock_page.get_by_role.return_value.count = AsyncMock(return_value=0)
         mock_page.locator.return_value.count = AsyncMock(return_value=0)

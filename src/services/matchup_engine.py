@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import case, func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -111,9 +111,9 @@ class MatchupEngine:
         is_sf = "희생플라이" in desc
 
         if is_hit:
-            MatchupEngine._apply_bvp_hit(stats, desc)
+            MatchupEngine._apply_bvp_hit(stats, cast("str", desc))
         elif is_bb:
-            MatchupEngine._apply_bvp_walk(stats, desc)
+            MatchupEngine._apply_bvp_walk(stats, cast("str", desc))
         elif is_sf:
             stats["sf"] += 1
         elif "희생번트" not in desc:
@@ -143,7 +143,7 @@ class MatchupEngine:
     def _build_bvp_map(self, events: list[GameEvent]) -> dict[tuple[int, int], dict[str, Any]]:
         bvp_map: dict[tuple[int, int], dict[str, Any]] = {}
         for event in events:
-            key = (event.batter_id, event.pitcher_id)
+            key = (cast("int", event.batter_id), cast("int", event.pitcher_id))
             stats = bvp_map.setdefault(key, self._empty_bvp_stats(event))
             self._apply_bvp_event(stats, event)
         return bvp_map
@@ -162,17 +162,20 @@ class MatchupEngine:
         existing.sacrifice_flies += stats["sf"]
         avg, obp, slg, ops = self._calc_rate_stats(
             BattingStats(
-                hits=existing.hits,
-                at_bats=existing.at_bats,
-                walks=existing.walks,
-                hbp=existing.hbp,
-                doubles=existing.doubles,
-                triples=existing.triples,
-                home_runs=existing.home_runs,
+                hits=cast("int", existing.hits),
+                at_bats=cast("int", existing.at_bats),
+                walks=cast("int", existing.walks),
+                hbp=cast("int", existing.hbp),
+                doubles=cast("int", existing.doubles),
+                triples=cast("int", existing.triples),
+                home_runs=cast("int", existing.home_runs),
             ),
-            existing.plate_appearances,
+            cast("int", existing.plate_appearances),
         )
-        existing.avg, existing.obp, existing.slg, existing.ops = avg, obp, slg, ops
+        existing.avg = avg  # type: ignore[assignment]
+        existing.obp = obp  # type: ignore[assignment]
+        existing.slg = slg  # type: ignore[assignment]
+        existing.ops = ops  # type: ignore[assignment]
 
     def _add_new_bvp(self, session: Session, batter_id: int, pitcher_id: int, stats: dict[str, Any]) -> None:
         avg, obp, slg, ops = self._calc_rate_stats(
@@ -324,18 +327,28 @@ class MatchupEngine:
         bat_splits: dict[int, dict[str, dict[str, int]]],
         pit_splits: dict[int, dict[str, dict[str, int]]],
     ) -> None:
-        batter = players.get(event.batter_id)
-        pitcher = players.get(event.pitcher_id)
-        event_flags = self._classify_event(event.description or "")
+        batter = players.get(cast("int", event.batter_id))
+        pitcher = players.get(cast("int", event.pitcher_id))
+        event_flags = self._classify_event(cast("str", event.description or ""))
         is_risp = "2" in (event.bases_before or "") or "3" in (event.bases_before or "")
 
         if is_risp:
-            self._update_batter_split(bat_splits, event.batter_id, "RISP", event_flags)
-            self._update_pitcher_split(pit_splits, event.pitcher_id, "RISP", event_flags)
+            self._update_batter_split(bat_splits, cast("int", event.batter_id), "RISP", event_flags)
+            self._update_pitcher_split(pit_splits, cast("int", event.pitcher_id), "RISP", event_flags)
         if pitcher:
-            self._update_batter_split(bat_splits, event.batter_id, f"vs{pitcher.throws or 'R'}", event_flags)
+            self._update_batter_split(
+                bat_splits,
+                cast("int", event.batter_id),
+                f"vs{pitcher.throws or 'R'}",
+                event_flags,
+            )
         if batter:
-            self._update_pitcher_split(pit_splits, event.pitcher_id, f"vs{batter.bats or 'R'}", event_flags)
+            self._update_pitcher_split(
+                pit_splits,
+                cast("int", event.pitcher_id),
+                f"vs{batter.bats or 'R'}",
+                event_flags,
+            )
 
     def _insert_batter_situational_splits(
         self,

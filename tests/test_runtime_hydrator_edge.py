@@ -73,7 +73,9 @@ def test_hydration_specs_returns_all_models():
 
     with source_factory() as source_session, target_factory() as target_session:
         specs = RuntimeHydrator(source_session, target_session)._hydration_specs(
-            2025, target_date=None, preserve_aliases=False
+            2025,
+            target_date=None,
+            preserve_aliases=False,
         )
 
     labels = [s.label for s in specs]
@@ -91,7 +93,9 @@ def test_hydration_specs_with_target_date_adjusts_roster_window():
 
     with source_factory() as source_session, target_factory() as target_session:
         specs = RuntimeHydrator(source_session, target_session)._hydration_specs(
-            2025, target_date=date(2025, 6, 15), preserve_aliases=False
+            2025,
+            target_date=date(2025, 6, 15),
+            preserve_aliases=False,
         )
 
     roster_spec = next(s for s in specs if s.label == "team_daily_roster")
@@ -104,7 +108,9 @@ def test_hydration_specs_preserve_aliases_skips_alias_spec():
 
     with source_factory() as source_session, target_factory() as target_session:
         specs = RuntimeHydrator(source_session, target_session)._hydration_specs(
-            2025, target_date=None, preserve_aliases=True
+            2025,
+            target_date=None,
+            preserve_aliases=True,
         )
 
     labels = [s.label for s in specs]
@@ -163,7 +169,7 @@ def test_hydrate_spec_filters_child_rows_without_parent_game():
                 standard_position="CF",
                 hits=2,
                 at_bats=4,
-            )
+            ),
         )
         source_session.commit()
 
@@ -193,7 +199,7 @@ def test_hydrate_spec_with_parent_game_includes_child_rows():
                 home_team="SS",
                 game_status="COMPLETED",
                 season_id=2025,
-            )
+            ),
         )
         source_session.add(
             GameBattingStat(
@@ -207,7 +213,7 @@ def test_hydrate_spec_with_parent_game_includes_child_rows():
                 standard_position="CF",
                 hits=2,
                 at_bats=4,
-            )
+            ),
         )
         source_session.commit()
 
@@ -220,7 +226,7 @@ def test_hydrate_spec_with_parent_game_includes_child_rows():
                 home_team="SS",
                 game_status="SCHEDULED",
                 season_id=2025,
-            )
+            ),
         )
         session.commit()
 
@@ -262,8 +268,8 @@ def test_restore_aliases_filters_missing_canonical_games():
                     "canonical_game_id": "20250401LGSS0",
                     "source": "test",
                     "reason": "preserve",
-                }
-            ]
+                },
+            ],
         )
 
     assert result == 0
@@ -282,7 +288,7 @@ def test_restore_aliases_inserts_matching_canonical_games():
                 home_team="SS",
                 game_status="COMPLETED",
                 season_id=2025,
-            )
+            ),
         )
         session.add(
             GameIdAlias(
@@ -290,7 +296,7 @@ def test_restore_aliases_inserts_matching_canonical_games():
                 canonical_game_id="20250401LGSS0",
                 source="test",
                 reason="preserve",
-            )
+            ),
         )
         session.commit()
 
@@ -303,8 +309,8 @@ def test_restore_aliases_inserts_matching_canonical_games():
                     "canonical_game_id": "20250401LGSS0",
                     "source": "test",
                     "reason": "preserve",
-                }
-            ]
+                },
+            ],
         )
 
     assert result == 1
@@ -323,7 +329,7 @@ def test_snapshot_aliases_excludes_timestamps():
                 home_team="SS",
                 game_status="COMPLETED",
                 season_id=2025,
-            )
+            ),
         )
         session.flush()
         session.add(
@@ -332,7 +338,7 @@ def test_snapshot_aliases_excludes_timestamps():
                 canonical_game_id="20250401LGSS0",
                 source="test",
                 reason="preserve",
-            )
+            ),
         )
         session.commit()
 
@@ -359,7 +365,7 @@ def test_delete_alias_scope_removes_matching_rows():
                 home_team="SS",
                 game_status="COMPLETED",
                 season_id=2025,
-            )
+            ),
         )
         session.flush()
         session.add(
@@ -368,7 +374,7 @@ def test_delete_alias_scope_removes_matching_rows():
                 canonical_game_id="20250401LGSS0",
                 source="test",
                 reason="preserve",
-            )
+            ),
         )
         session.commit()
 
@@ -461,7 +467,7 @@ def test_insert_mappings_uses_upsert_for_sqlite():
                 home_team="SS",
                 game_status="COMPLETED",
                 season_id=2025,
-            )
+            ),
         )
         session.commit()
 
@@ -503,7 +509,7 @@ def test_insert_mappings_uses_upsert_for_sqlite():
                     "sacrifice_flies": 0,
                     "gdp": 0,
                     "plate_appearances": 0,
-                }
+                },
             ],
             [
                 "game_id",

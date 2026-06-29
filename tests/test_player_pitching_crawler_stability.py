@@ -36,7 +36,7 @@ def test_parse_basic2_page_does_not_create_pitcher_without_basic1(monkeypatch):
                 "cells": ["1", "Basic2전용", "삼성", "100"],
                 "linkText": "Basic2전용",
                 "linkHref": "x?playerId=2001",
-            }
+            },
         ],
     )
 
@@ -48,7 +48,7 @@ def test_parse_basic2_page_does_not_create_pitcher_without_basic1(monkeypatch):
             league="REGULAR",
             pitchers=pitchers,
             sort_key="NP",
-        )
+        ),
     )
 
     assert processed == 0
@@ -66,7 +66,7 @@ def test_parse_basic2_page_enriches_existing_basic1_pitcher(monkeypatch):
                 "cells": ["1", "원태인", "삼성", "100"],
                 "linkText": "원태인",
                 "linkHref": "x?playerId=2001",
-            }
+            },
         ],
     )
     pitchers = {
@@ -78,7 +78,7 @@ def test_parse_basic2_page_enriches_existing_basic1_pitcher(monkeypatch):
             team_code="SS",
             games=10,
             innings_outs=90,
-        )
+        ),
     }
 
     processed = parse_basic2_page(
@@ -88,7 +88,7 @@ def test_parse_basic2_page_enriches_existing_basic1_pitcher(monkeypatch):
             league="REGULAR",
             pitchers=pitchers,
             sort_key="NP",
-        )
+        ),
     )
 
     assert processed == 1
@@ -115,7 +115,7 @@ def test_pitching_crawl_summary_filters_rows_without_core_basic1_stats():
                 team_code="SS",
                 extra_stats={"metrics": {"np": 100}},
             ),
-        ]
+        ],
     )
 
     assert summary == {

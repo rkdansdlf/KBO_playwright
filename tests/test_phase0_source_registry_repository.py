@@ -38,10 +38,10 @@ class TestDataSourceRepository:
     def test_save_updates_existing(self, session):
         repo = DataSourceRepository(session)
         repo.save(
-            {"source_key": "test_key", "source_type": "official_kbo", "target_domain": "event", "is_active": True}
+            {"source_key": "test_key", "source_type": "official_kbo", "target_domain": "event", "is_active": True},
         )
         repo.save(
-            {"source_key": "test_key", "source_type": "official_team", "target_domain": "event", "is_active": False}
+            {"source_key": "test_key", "source_type": "official_team", "target_domain": "event", "is_active": False},
         )
         ds = repo.get_by_key("test_key")
         assert ds.source_type == "official_team"
@@ -60,7 +60,7 @@ class TestDataSourceRepository:
 
         repo = DataSourceRepository(session)
         ds = repo.save(
-            {"source_key": "stale", "source_type": "official_kbo", "target_domain": "event", "is_active": True}
+            {"source_key": "stale", "source_type": "official_kbo", "target_domain": "event", "is_active": True},
         )
         ds.last_success_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=72)
         session.commit()
@@ -109,7 +109,7 @@ class TestRawSourceSnapshotRepository:
     def test_save_and_get_by_source(self, session):
         ds_repo = DataSourceRepository(session)
         ds = ds_repo.save(
-            {"source_key": "s1", "source_type": "official_kbo", "target_domain": "event", "is_active": True}
+            {"source_key": "s1", "source_type": "official_kbo", "target_domain": "event", "is_active": True},
         )
         session.flush()
 
@@ -122,7 +122,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "/tmp/test.json",
                 "content_hash": "hash1",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         assert snap.data_source_id == ds.id
         assert snap.parse_status == "pending"
@@ -133,7 +133,7 @@ class TestRawSourceSnapshotRepository:
     def test_get_by_hash(self, session):
         ds_repo = DataSourceRepository(session)
         ds = ds_repo.save(
-            {"source_key": "s2", "source_type": "official_kbo", "target_domain": "event", "is_active": True}
+            {"source_key": "s2", "source_type": "official_kbo", "target_domain": "event", "is_active": True},
         )
         session.flush()
 
@@ -146,7 +146,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "/tmp/a.json",
                 "content_hash": "abc",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         snap_repo.save(
             {
@@ -154,7 +154,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "/tmp/b.json",
                 "content_hash": "def",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
 
         found = snap_repo.get_by_hash(ds.id, "abc")
@@ -167,7 +167,7 @@ class TestRawSourceSnapshotRepository:
     def test_get_unparsed(self, session):
         ds_repo = DataSourceRepository(session)
         ds = ds_repo.save(
-            {"source_key": "s3", "source_type": "official_kbo", "target_domain": "event", "is_active": True}
+            {"source_key": "s3", "source_type": "official_kbo", "target_domain": "event", "is_active": True},
         )
         session.flush()
 
@@ -180,7 +180,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "/tmp/a.json",
                 "content_hash": "h1",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         snap_repo.save(
             {
@@ -189,7 +189,7 @@ class TestRawSourceSnapshotRepository:
                 "content_hash": "h2",
                 "parse_status": "done",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         session.commit()
 
@@ -200,7 +200,7 @@ class TestRawSourceSnapshotRepository:
     def test_update_parse_status(self, session):
         ds_repo = DataSourceRepository(session)
         ds = ds_repo.save(
-            {"source_key": "s4", "source_type": "official_kbo", "target_domain": "event", "is_active": True}
+            {"source_key": "s4", "source_type": "official_kbo", "target_domain": "event", "is_active": True},
         )
         session.flush()
 
@@ -213,7 +213,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "/tmp/a.json",
                 "content_hash": "h1",
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         session.commit()
 
@@ -227,7 +227,7 @@ class TestSaveRawSnapshots:
     def test_new_snapshot_marks_data_source_success(self, session):
         ds_repo = DataSourceRepository(session)
         ds_repo.save(
-            {"source_key": "p0_event", "source_type": "official_team", "target_domain": "event", "is_active": True}
+            {"source_key": "p0_event", "source_type": "official_team", "target_domain": "event", "is_active": True},
         )
         session.flush()
 
@@ -240,7 +240,7 @@ class TestSaveRawSnapshots:
                     "url": "https://example.com/events",
                     "html": html,
                     "status_code": 200,
-                }
+                },
             ],
         )
 
@@ -254,7 +254,7 @@ class TestSaveRawSnapshots:
 
         ds_repo = DataSourceRepository(session)
         ds = ds_repo.save(
-            {"source_key": "p1_seat", "source_type": "official_team", "target_domain": "seat", "is_active": True}
+            {"source_key": "p1_seat", "source_type": "official_team", "target_domain": "seat", "is_active": True},
         )
         session.flush()
 
@@ -272,7 +272,7 @@ class TestSaveRawSnapshots:
                 "content_hash": content_hash,
                 "fetched_at": old_success_at,
                 "status_code": 200,
-            }
+            },
         )
         session.commit()
 
@@ -284,7 +284,7 @@ class TestSaveRawSnapshots:
                     "url": "https://example.com/seat",
                     "html": html,
                     "status_code": 200,
-                }
+                },
             ],
         )
         session.commit()

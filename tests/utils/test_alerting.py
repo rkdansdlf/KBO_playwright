@@ -89,3 +89,28 @@ class TestSlackWebhookClient:
         mock_telegram.return_value = True
         SlackWebhookClient.send_error_alert("Traceback line 1")
         mock_telegram.assert_called_once()
+
+
+class TestSlackFallback:
+    """Slack webhook fallback paths."""
+
+    def test_no_config_returns_true(self, monkeypatch):
+        from src.utils.alerting import SlackWebhookClient
+
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
+        monkeypatch.setenv("SLACK_WEBHOOK_URL", "")
+        result = SlackWebhookClient.send_alert("test")
+        assert result is True
+
+    def test_slack_http_error_returns_false(self, monkeypatch):
+        from src.utils.alerting import SlackWebhookClient
+        import urllib.error
+
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
+        monkeypatch.setenv("SLACK_WEBHOOK_URL", "http://fake-webhook.test/hook")
+        monkeypatch.setattr(
+            "urllib.request.urlopen",
+            lambda *a, **kw: (_ for _ in ()).throw(urllib.error.URLError("fail")),
+        )
+        result = SlackWebhookClient.send_alert("test")
+        assert result is False

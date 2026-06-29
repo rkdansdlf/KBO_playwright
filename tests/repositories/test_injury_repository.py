@@ -33,7 +33,7 @@ class TestInjuryRepository:
                 "injury_type": "elbow strain",
                 "il_placement_date": date(2025, 4, 1),
                 "status": "15_IL",
-            }
+            },
         )
         session.commit()
 
@@ -55,7 +55,7 @@ class TestInjuryRepository:
                 "il_placement_date": date(2025, 4, 1),
                 "status": "15_IL",
                 "note": "initial",
-            }
+            },
         )
         session.commit()
 
@@ -67,7 +67,7 @@ class TestInjuryRepository:
                 "il_placement_date": date(2025, 4, 1),
                 "status": "60_IL",
                 "note": "updated",
-            }
+            },
         )
         session.commit()
 
@@ -86,7 +86,7 @@ class TestInjuryRepository:
                 "team_id": "LG",
                 "il_placement_date": date(2025, 4, 1),
                 "status": "ACTIVE",
-            }
+            },
         )
         session.commit()
 
@@ -96,7 +96,7 @@ class TestInjuryRepository:
                 "team_id": "LG",
                 "il_placement_date": date(2025, 4, 1),
                 "status": "ACTIVE",
-            }
+            },
         )
         session.commit()
 
@@ -115,7 +115,7 @@ class TestInjuryRepository:
                 "team_id": "LG",
                 "il_placement_date": date(2025, 4, 1),
                 "status": "ACTIVE",
-            }
+            },
         )
         repo.save_injury(
             {
@@ -124,7 +124,7 @@ class TestInjuryRepository:
                 "team_id": "LG",
                 "il_placement_date": date(2025, 4, 5),
                 "status": "15_IL",
-            }
+            },
         )
         repo.save_injury(
             {
@@ -133,7 +133,7 @@ class TestInjuryRepository:
                 "team_id": "LG",
                 "il_placement_date": date(2025, 4, 10),
                 "status": "RETURNED",
-            }
+            },
         )
         session.commit()
 
@@ -162,7 +162,7 @@ class TestInjuryRepository:
                 "team_id": "LG",
                 "il_placement_date": date(2025, 4, 1),
                 "status": "ACTIVE",
-            }
+            },
         )
         repo.save_injury(
             {
@@ -171,7 +171,7 @@ class TestInjuryRepository:
                 "team_id": "SSG",
                 "il_placement_date": date(2025, 4, 5),
                 "status": "RETURNED",
-            }
+            },
         )
         session.commit()
 
@@ -200,7 +200,7 @@ class TestInjuryRepository:
                 "team_id": "LG",
                 "il_placement_date": date(2025, 4, 1),
                 "status": "15_IL",
-            }
+            },
         )
         session.commit()
 

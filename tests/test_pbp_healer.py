@@ -175,7 +175,7 @@ class TestRunPBPHealerAsync:
                 "away_team": "NC",
                 "home_team": "SSG",
                 "error_reason": "missing_innings_[4]",
-            }
+            },
         ]
 
         with (
@@ -213,7 +213,7 @@ class TestRunPBPHealerAsync:
                 "away_team": "KT",
                 "home_team": "LG",
                 "error_reason": "score_mismatch",
-            }
+            },
         ]
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games", return_value=fake_games),
@@ -224,7 +224,7 @@ class TestRunPBPHealerAsync:
                     return_value=SimpleNamespace(
                         saved_games=1,
                         report_rows=[{"game_id": "2025053001", "status": "saved"}],
-                    )
+                    ),
                 ),
             ),
         ):
@@ -249,7 +249,7 @@ class TestRunPBPHealerAsync:
                 "away_team": "두산",
                 "home_team": "삼성",
                 "error_reason": "empty_payload",
-            }
+            },
         ]
 
         with (
@@ -277,7 +277,7 @@ class TestRunPBPHealerAsync:
                 "away_team": "한화",
                 "home_team": "롯데",
                 "error_reason": "score_mismatch",
-            }
+            },
         ]
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games", return_value=fake_games),
@@ -319,7 +319,7 @@ class TestRunPBPHealerAsync:
                 "away_team": "키움",
                 "home_team": "NC",
                 "error_reason": "empty_payload",
-            }
+            },
         ]
 
         with (

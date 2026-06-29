@@ -31,7 +31,7 @@ class TestAuditGameLogic:
                     away_score=3,
                     home_inning_total=4,
                     away_inning_total=3,
-                )
+                ),
             ]
             return mock_result
 

@@ -50,7 +50,7 @@ class TestFormatReportMd:
                         "distinct_count": 2,
                         "severity": "HIGH",
                         "samples": [],
-                    }
+                    },
                 ],
                 "database": "local",
             },

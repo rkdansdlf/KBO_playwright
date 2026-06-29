@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Integer, case, func, or_
 
+# `is_not` is used via func.is_not at call sites below
 from src.models.game import Game, GameBattingStat, GameEvent, GameLineup, GamePitchingStat
 from src.models.player import PlayerBasic
 from src.models.season import KboSeason
@@ -156,7 +157,7 @@ class SeasonStatAggregator:
             )
             .join(Game, GameBattingStat.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
-            .filter(GameBattingStat.player_id is not None)
+            .filter(GameBattingStat.player_id.isnot(None))
             .filter(KboSeason.season_year == year)
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
             .group_by(GameBattingStat.player_id)
@@ -294,7 +295,7 @@ class SeasonStatAggregator:
             )
             .join(Game, GamePitchingStat.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
-            .filter(GamePitchingStat.player_id is not None)
+            .filter(GamePitchingStat.player_id.isnot(None))
             .filter(KboSeason.season_year == year)
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
             .group_by(GamePitchingStat.player_id)
@@ -389,7 +390,7 @@ class SeasonStatAggregator:
             )
             .join(Game, GameBattingStat.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
-            .filter(GameBattingStat.player_id is not None)
+            .filter(GameBattingStat.player_id.isnot(None))
             .filter(KboSeason.season_year == year)
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
             .group_by(GameBattingStat.player_id)
@@ -434,7 +435,7 @@ class SeasonStatAggregator:
             session.query(GameLineup.player_id, GameLineup.standard_position, func.count(GameLineup.id).label("games"))
             .join(Game, GameLineup.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
-            .filter(GameLineup.player_id is not None)
+            .filter(GameLineup.player_id.isnot(None))
             .filter(KboSeason.season_year == year)
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
             .group_by(GameLineup.player_id, GameLineup.standard_position)
@@ -456,7 +457,7 @@ class SeasonStatAggregator:
         players = session.query(PlayerBasic.player_id, PlayerBasic.name).all()
         pid_to_name = {p.player_id: p.name for p in players}
 
-        error_map = {}
+        error_map: dict[tuple[int, str], int] = {}
         for event_game_id, desc in error_events:
             game_lineups = (
                 session.query(GameLineup.player_id, GameLineup.standard_position)

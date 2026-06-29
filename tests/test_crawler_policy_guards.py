@@ -69,7 +69,7 @@ def test_futures_batting_returns_empty_when_compliance_blocks(monkeypatch):
             "12345",
             "https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId=12345",
             pool=pool,
-        )
+        ),
     )
 
     assert rows == []
@@ -95,7 +95,7 @@ def test_futures_profile_returns_none_when_compliance_blocks(monkeypatch):
             page,
             "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx",
             "12345",
-        )
+        ),
     )
 
     assert result is None

@@ -81,8 +81,8 @@ class TestRetryCandidates:
                 "retry_candidates": {
                     "detail": ["20250401LGSS0", "20250402LGHH0"],
                     "relay": ["20250401LGSS0"],
-                }
-            }
+                },
+            },
         }
         detail, relay = retry_candidates(summary)
         assert "20250401LGSS0" in detail
@@ -127,8 +127,8 @@ class TestBuildRetryCommands:
                 "retry_candidates": {
                     "detail": ["20250401LGSS0"],
                     "relay": [],
-                }
-            }
+                },
+            },
         }
         commands = build_retry_commands(summary, sync=True)
         assert len(commands) == 2
@@ -140,8 +140,8 @@ class TestBuildRetryCommands:
                 "retry_candidates": {
                     "detail": [],
                     "relay": ["20250401LGSS0"],
-                }
-            }
+                },
+            },
         }
         commands = build_retry_commands(summary)
         assert len(commands) == 1

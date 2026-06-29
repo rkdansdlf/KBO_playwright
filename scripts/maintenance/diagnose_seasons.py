@@ -42,8 +42,8 @@ def diagnose_null_seasons() -> dict:
                 FROM kbo_seasons
                 WHERE season_year IS NULL OR league_type_code IS NULL
                 ORDER BY season_id
-                """
-            )
+                """,
+            ),
         )
         rows = result.fetchall()
         return {
@@ -69,8 +69,8 @@ def diagnose_missing_core_types() -> dict:
                 SELECT season_year, league_type_code
                 FROM kbo_seasons
                 WHERE league_type_code IN (0, 1, 2, 3, 4, 5)
-                """
-            )
+                """,
+            ),
         )
         existing = {(r[0], r[1]) for r in result.fetchall()}
 
@@ -93,8 +93,8 @@ def diagnose_orphan_games() -> dict:
                 FROM game g
                 LEFT JOIN kbo_seasons s ON g.season_id = s.season_id
                 WHERE s.season_id IS NULL
-                """
-            )
+                """,
+            ),
         )
         count = result.scalar() or 0
         return {"orphan_game_count": count}
@@ -132,7 +132,7 @@ def fix_null_seasons(dry_run: bool) -> int:
                         VALUES (:sid, :year, :code, :name,
                                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         ON CONFLICT DO NOTHING
-                        """
+                        """,
                     ),
                     {
                         "sid": sid,
@@ -166,8 +166,8 @@ def fix_orphan_games(dry_run: bool) -> int:
                 LEFT JOIN kbo_seasons s ON g.season_id = s.season_id
                 WHERE s.season_id IS NULL
                 LIMIT 1000
-                """
-            )
+                """,
+            ),
         )
         orphans = result.fetchall()
         if not orphans:

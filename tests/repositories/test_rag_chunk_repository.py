@@ -28,7 +28,7 @@ class TestRagChunkRepository:
                 "title": "Rule 1",
                 "content": "Ground rule double...",
                 "meta": {"category": "rulebook", "source_row_id": "rule_001"},
-            }
+            },
         ]
         count = repo.upsert_chunks(session, chunks)
 
@@ -49,7 +49,7 @@ class TestRagChunkRepository:
                 "title": "Rule 1",
                 "content": "v1",
                 "meta": {"category": "rulebook", "source_row_id": "rule_001"},
-            }
+            },
         ]
         repo.upsert_chunks(session, chunks1)
 
@@ -58,7 +58,7 @@ class TestRagChunkRepository:
                 "title": "Rule 1",
                 "content": "v2",
                 "meta": {"category": "rulebook", "source_row_id": "rule_001"},
-            }
+            },
         ]
         count = repo.upsert_chunks(session, chunks2)
 

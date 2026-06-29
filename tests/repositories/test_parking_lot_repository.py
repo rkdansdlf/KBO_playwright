@@ -30,7 +30,7 @@ class TestParkingLotRepository:
                 "name": "잠실주차장",
                 "lot_type": "official",
                 "capacity": 500,
-            }
+            },
         )
         session.commit()
         assert lot.id is not None
@@ -48,7 +48,7 @@ class TestParkingLotRepository:
                 "name": "잠실주차장",
                 "lot_type": "official",
                 "capacity": 500,
-            }
+            },
         )
         session.commit()
 
@@ -59,7 +59,7 @@ class TestParkingLotRepository:
                 "lot_type": "official",
                 "capacity": 600,
                 "operating_hours": "09:00-22:00",
-            }
+            },
         )
         session.commit()
 
@@ -90,7 +90,7 @@ class TestParkingLotRepository:
             [
                 {"stadium_id": "JAMSIL", "name": "A", "lot_type": "official"},
                 {"stadium_id": "JAMSIL", "name": "B", "lot_type": "public"},
-            ]
+            ],
         )
         session.commit()
         assert count == 2
@@ -126,7 +126,7 @@ class TestParkingFeeRuleRepository:
                 "vehicle_type": "sedan",
                 "base_fee": 2000,
                 "base_minutes": 30,
-            }
+            },
         )
         session.commit()
         assert rule.id is not None
@@ -145,7 +145,7 @@ class TestParkingFeeRuleRepository:
                 "vehicle_type": "sedan",
                 "base_fee": 2000,
                 "base_minutes": 30,
-            }
+            },
         )
         session.commit()
 
@@ -156,7 +156,7 @@ class TestParkingFeeRuleRepository:
                 "base_fee": 2500,
                 "base_minutes": 30,
                 "daily_max_fee": 10000,
-            }
+            },
         )
         session.commit()
 

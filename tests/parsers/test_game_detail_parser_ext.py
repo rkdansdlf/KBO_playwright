@@ -64,7 +64,7 @@ class TestBuildHitterPayloadWithDbSession:
                 "선수ID": [None],
                 "타수": [3],
                 "안타": [1],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams, db_session=mock_session)
@@ -83,7 +83,7 @@ class TestBuildHitterPayloadWithDbSession:
                 "playerId": ["N/A"],
                 "타수": [4],
                 "안타": [2],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams, db_session=mock_session)
@@ -103,7 +103,7 @@ class TestBuildPitcherPayloadWithDbSession:
                 "선수ID": [None],
                 "이닝": ["5.0"],
                 "삼진": [3],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams, db_session=mock_session)
@@ -122,7 +122,7 @@ class TestBuildPitcherPayloadWithDbSession:
                 "playerId": ["N/A"],
                 "IP": ["3.0"],
                 "삼진": [2],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams, db_session=mock_session)

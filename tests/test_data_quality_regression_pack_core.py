@@ -85,7 +85,7 @@ def test_regression_pack_reports_core_data_quality_violations() -> None:
                     ('G1', 1001, 5, 4, 1, 0, 0, 0, 2),
                     ('G2', 1002, 4, 4, 1, 0, 0, 0, 5),
                     ('G3', NULL, 3, 3, 0, 0, 0, 0, 1)
-                """
+                """,
             ),
         )
         conn.execute(
@@ -93,7 +93,7 @@ def test_regression_pack_reports_core_data_quality_violations() -> None:
                 """
                 INSERT INTO game_pitching_stats (game_id, player_id, runs_allowed, earned_runs)
                 VALUES ('G4', 2001, 2, 3)
-                """
+                """,
             ),
         )
         conn.execute(
@@ -101,7 +101,7 @@ def test_regression_pack_reports_core_data_quality_violations() -> None:
                 """
                 INSERT INTO game_lineups (game_id, player_id, player_name)
                 VALUES ('G5', NULL, 'Unknown Player')
-                """
+                """,
             ),
         )
         conn.execute(
@@ -118,7 +118,7 @@ def test_regression_pack_reports_core_data_quality_violations() -> None:
                     (3003, 4, 4, 1, 0, 0, 0, 'FUTURES', 'AGGREGATED'),
                     -- Case 4: REGULAR, CRAWLER (non-AGGREGATED), violates formula but should be ignored (OK)
                     (3004, 4, 4, 1, 0, 0, 0, 'REGULAR', 'CRAWLER')
-                """
+                """,
             ),
         )
 
@@ -158,7 +158,7 @@ def test_data_quality_regression_pack_cli_emits_json(tmp_path: Path) -> None:
                 INSERT INTO game_batting_stats
                     (game_id, player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, hits)
                 VALUES ('G1', 1001, 5, 4, 1, 0, 0, 0, 2)
-                """
+                """,
             ),
         )
 

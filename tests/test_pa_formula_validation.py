@@ -19,8 +19,8 @@ def _make_session():
                     league_type_code INTEGER NOT NULL,
                     league_type_name TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -31,8 +31,8 @@ def _make_session():
                     season_id INTEGER,
                     game_date DATE
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -51,8 +51,8 @@ def _make_session():
                     runs INTEGER,
                     home_runs INTEGER
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -82,8 +82,8 @@ def _make_session():
                     sacrifice_flies INTEGER,
                     gdp INTEGER
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -95,8 +95,8 @@ def _make_session():
                     wins INTEGER,
                     strikeouts INTEGER
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -133,8 +133,8 @@ def _make_session():
                     sacrifices_allowed INTEGER,
                     sacrifice_flies_allowed INTEGER
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -162,8 +162,8 @@ def _make_session():
                     sacrifice_flies INTEGER,
                     gdp INTEGER
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -195,8 +195,8 @@ def _make_session():
                     sacrifices_allowed INTEGER,
                     sacrifice_flies_allowed INTEGER
                 )
-                """
-            )
+                """,
+            ),
         )
     return sessionmaker(bind=engine)()
 
@@ -207,7 +207,7 @@ def _insert_regular_season(session, year: int = 2025):
             """
             INSERT INTO kbo_seasons (season_id, season_year, league_type_code, league_type_name)
             VALUES (:sid, :year, 0, 'Regular Season')
-            """
+            """,
         ),
         {"sid": year * 100 + 1, "year": year},
     )
@@ -223,8 +223,8 @@ def test_pa_formula_matches_when_formula_holds():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         # PA=5 = AB(2)+BB(1)+HBP(0)+SH(1)+SF(1)
         session.execute(
@@ -233,8 +233,8 @@ def test_pa_formula_matches_when_formula_holds():
                 INSERT INTO game_batting_stats
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, hits, runs, home_runs)
                 VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1, 1, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -257,8 +257,8 @@ def test_pa_formula_detects_violation():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         # PA=10 but AB+BB+HBP+SH+SF = 4+0+0+0+0 = 4
         session.execute(
@@ -267,8 +267,8 @@ def test_pa_formula_detects_violation():
                 INSERT INTO game_batting_stats
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -296,8 +296,8 @@ def test_pa_formula_null_coalesce():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         # PA=3, AB=3, all others NULL → expected = 3+0+0+0+0 = 3 → match
         session.execute(
@@ -306,8 +306,8 @@ def test_pa_formula_null_coalesce():
                 INSERT INTO game_batting_stats
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Player1', 3, 3, NULL, NULL, NULL, NULL)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -330,8 +330,8 @@ def test_pa_formula_excludes_non_completed():
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'SCHEDULED', 202501, '2025-04-01'),
                        ('G2', 'CANCELLED', 202501, '2025-04-02')
-                """
-            )
+                """,
+            ),
         )
         # Both games have violations but neither is COMPLETED → should be ignored
         session.execute(
@@ -341,8 +341,8 @@ def test_pa_formula_excludes_non_completed():
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Player1', 10, 2, 0, 0, 0, 0),
                        ('G2', 10, 'Player1', 5, 1, 0, 0, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -378,8 +378,8 @@ def test_pa_formula_multiple_players_mixed():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         # Player 10: PA=5 = 2+1+0+1+1 → OK
         # Player 20: PA=8 ≠ 3+0+0+0+0=3 → violation
@@ -390,8 +390,8 @@ def test_pa_formula_multiple_players_mixed():
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Good', 5, 2, 1, 0, 1, 1),
                        ('G1', 20, 'Bad', 8, 3, 0, 0, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -415,8 +415,8 @@ def test_pa_formula_all_zeros():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         # PA=0, all components 0 or NULL → expected = 0 → OK
         session.execute(
@@ -425,8 +425,8 @@ def test_pa_formula_all_zeros():
                 INSERT INTO game_batting_stats
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Zero', 0, 0, 0, 0, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -448,8 +448,8 @@ def test_pa_formula_integrity_function():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -457,8 +457,8 @@ def test_pa_formula_integrity_function():
                 INSERT INTO game_batting_stats
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -479,8 +479,8 @@ def test_pa_formula_integrity_function_detects_violations():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -488,8 +488,8 @@ def test_pa_formula_integrity_function_detects_violations():
                 INSERT INTO game_batting_stats
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -515,8 +515,8 @@ def test_run_quality_gate_includes_pa_formula():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -524,8 +524,8 @@ def test_run_quality_gate_includes_pa_formula():
                 INSERT INTO game_batting_stats
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -533,16 +533,16 @@ def test_run_quality_gate_includes_pa_formula():
                 INSERT INTO player_season_batting
                     (player_id, season, league, team_code, plate_appearances, at_bats, hits, runs, home_runs)
                 VALUES (10, 2025, 'REGULAR', 'SS', 5, 2, 1, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO team_season_batting (team_id, season, league, games, plate_appearances, at_bats, runs, hits)
                 VALUES ('SS', 2025, 'REGULAR', 1, 5, 2, 0, 1)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -550,16 +550,16 @@ def test_run_quality_gate_includes_pa_formula():
                 INSERT INTO player_season_pitching
                     (player_id, season, league, team_code, games)
                 VALUES (10, 2025, 'REGULAR', 'SS', 0)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO team_season_pitching (team_id, season, league, games, wins)
                 VALUES ('SS', 2025, 'REGULAR', 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -581,8 +581,8 @@ def test_run_quality_gate_fails_on_pa_formula_violation():
                 """
                 INSERT INTO game (game_id, game_status, season_id, game_date)
                 VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -590,8 +590,8 @@ def test_run_quality_gate_fails_on_pa_formula_violation():
                 INSERT INTO game_batting_stats
                     (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
                 VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -599,16 +599,16 @@ def test_run_quality_gate_fails_on_pa_formula_violation():
                 INSERT INTO player_season_batting
                     (player_id, season, league, team_code, plate_appearances, at_bats, hits, runs, home_runs)
                 VALUES (10, 2025, 'REGULAR', 'SS', 5, 4, 1, 0, 0)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO team_season_batting (team_id, season, league, games, plate_appearances, at_bats, runs, hits)
                 VALUES ('SS', 2025, 'REGULAR', 1, 5, 4, 0, 1)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -616,16 +616,16 @@ def test_run_quality_gate_fails_on_pa_formula_violation():
                 INSERT INTO player_season_pitching
                     (player_id, season, league, team_code, games)
                 VALUES (10, 2025, 'REGULAR', 'SS', 0)
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO team_season_pitching (team_id, season, league, games)
                 VALUES ('SS', 2025, 'REGULAR', 0)
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 

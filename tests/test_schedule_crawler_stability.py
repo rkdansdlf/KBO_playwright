@@ -62,7 +62,7 @@ class _FakeSchedulePage:
     async def wait_for_timeout(self, *_args, **_kwargs):
         return None
 
-    async def evaluate(self, _script: str, arg=None):
+    async def evaluate(self, _script: str, arg=None, _extra=None):
         if arg is None:
             return []
         return self.raw_games
@@ -121,7 +121,7 @@ def test_extract_games_filters_invalid_rows_and_normalizes_status():
                 "stadium": "잠실",
                 "url_suffix": "",
             },
-        ]
+        ],
     )
     crawler = ScheduleCrawler(policy=_FakePolicy())
 

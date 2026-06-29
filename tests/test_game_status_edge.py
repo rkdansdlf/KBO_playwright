@@ -71,7 +71,7 @@ def test_refresh_game_status_past_game_with_scores(MockSessionLocal):
     )
     session.add(g)
     session.add(
-        GameBattingStat(game_id="20241015LGSSG0", team_side="home", player_id=1, player_name="test", appearance_seq=1)
+        GameBattingStat(game_id="20241015LGSSG0", team_side="home", player_id=1, player_name="test", appearance_seq=1),
     )
     session.commit()
 
@@ -117,7 +117,7 @@ def test_refresh_game_status_today_with_lineups(MockSessionLocal):
             player_name="test",
             appearance_seq=1,
             is_starter=True,
-        )
+        ),
     )
     session.commit()
 
@@ -193,17 +193,17 @@ def test_refresh_game_status_multiple_games_by_status(MockSessionLocal):
             home_score=5,
             away_score=3,
             game_status="unresolved",
-        )
+        ),
     )
     session.add(
         Game(
             game_id="20241015KTWO0",
             game_date=date(2024, 10, 15),
             game_status="unresolved",
-        )
+        ),
     )
     session.add(
-        GameBattingStat(game_id="20241015LGSS0", team_side="home", player_id=1, player_name="test", appearance_seq=1)
+        GameBattingStat(game_id="20241015LGSS0", team_side="home", player_id=1, player_name="test", appearance_seq=1),
     )
     session.commit()
 
@@ -275,10 +275,10 @@ def test_refresh_game_status_game_ids_by_status_structure(MockSessionLocal):
             home_score=5,
             away_score=3,
             game_status="unresolved",
-        )
+        ),
     )
     session.add(
-        GameBattingStat(game_id="20241015LGSS0", team_side="home", player_id=1, player_name="test", appearance_seq=1)
+        GameBattingStat(game_id="20241015LGSS0", team_side="home", player_id=1, player_name="test", appearance_seq=1),
     )
     session.commit()
 

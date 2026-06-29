@@ -26,7 +26,7 @@ def test_ingest_schedule_html_uses_schedule_save_service(monkeypatch, tmp_path, 
     monkeypatch.setattr(ingest_schedule_html, "save_schedule_games", _fake_save_schedule_games)
 
     ingest_schedule_html.ingest_schedule_html(
-        argparse.Namespace(fixtures_dir=str(tmp_path), default_year=2025, season_type="regular")
+        argparse.Namespace(fixtures_dir=str(tmp_path), default_year=2025, season_type="regular"),
     )
 
     out = capsys.readouterr().out
@@ -92,7 +92,9 @@ def test_run_pipeline_demo_fixture_ingest_uses_shared_save_paths(monkeypatch, tm
         lambda html, game_id, game_date: detail_payload,
     )
     monkeypatch.setattr(
-        run_pipeline_demo, "save_game_detail", lambda payload: captured.setdefault("detail", payload) is payload
+        run_pipeline_demo,
+        "save_game_detail",
+        lambda payload: captured.setdefault("detail", payload) is payload,
     )
 
     schedule_count = run_pipeline_demo.ingest_schedule_fixtures(schedule_dir, "regular", 2025)

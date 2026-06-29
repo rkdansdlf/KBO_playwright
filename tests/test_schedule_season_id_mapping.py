@@ -32,7 +32,7 @@ def test_save_schedule_game_preserves_existing_season_id_when_mapping_missing(mo
                 season_id=225,
                 home_team="SS",
                 away_team="LG",
-            )
+            ),
         )
         session.commit()
 
@@ -44,7 +44,7 @@ def test_save_schedule_game_preserves_existing_season_id_when_mapping_missing(mo
             "away_team_code": "LG",
             "season_year": 2099,  # no kbo_seasons mapping
             "season_type": "regular",
-        }
+        },
     )
     assert saved is True
 
@@ -66,7 +66,7 @@ def test_save_schedule_game_uses_official_kbo_season_id(monkeypatch):
                 season_year=2025,
                 league_type_code=0,
                 league_type_name="정규시즌",
-            )
+            ),
         )
         session.add(
             KboSeason(
@@ -74,7 +74,7 @@ def test_save_schedule_game_uses_official_kbo_season_id(monkeypatch):
                 season_year=2025,
                 league_type_code=0,
                 league_type_name="정규시즌",
-            )
+            ),
         )
         session.commit()
 
@@ -86,7 +86,7 @@ def test_save_schedule_game_uses_official_kbo_season_id(monkeypatch):
             "away_team_code": "LG",
             "season_year": 2025,
             "season_type": "regular",
-        }
+        },
     )
     assert saved is True
 

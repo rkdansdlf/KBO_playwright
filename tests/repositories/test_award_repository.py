@@ -30,7 +30,7 @@ class TestAwardRepository:
                 "category": "Pitcher",
                 "player_name": "Kim",
                 "team_name": "LG",
-            }
+            },
         )
         session.commit()
 
@@ -51,7 +51,7 @@ class TestAwardRepository:
                 "category": None,
                 "player_name": "Kim",
                 "team_name": "LG",
-            }
+            },
         )
         session.commit()
 
@@ -62,7 +62,7 @@ class TestAwardRepository:
                 "category": None,
                 "player_name": "Kim",
                 "team_name": "LG",
-            }
+            },
         )
         session.commit()
 

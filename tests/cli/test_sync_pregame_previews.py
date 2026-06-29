@@ -26,6 +26,6 @@ class TestSyncPregamePreviews:
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_session.execute.return_value.all.return_value = []
             result = main(
-                ["--start-date", "20250401", "--end-date", "20250402", "--target-url", "postgresql://localhost/test"]
+                ["--start-date", "20250401", "--end-date", "20250402", "--target-url", "postgresql://localhost/test"],
             )
             assert result == 0

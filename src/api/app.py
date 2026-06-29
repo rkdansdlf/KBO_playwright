@@ -5,9 +5,12 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import os
 from typing import Annotated, Any
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
 
 from src.db.engine import get_db_session
 from src.models.game import Game, GamePlayByPlay
@@ -21,6 +24,33 @@ app = FastAPI(
     description="REST API to monitor and control KBO data crawlers.",
     version="1.0.0",
 )
+
+# CORS configuration
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
+def get_api_key(api_key: str | None = Depends(api_key_header)) -> str | None:
+    """Validate API Key if REST_API_KEY environment variable is configured."""
+    expected_key = os.getenv("REST_API_KEY")
+    if not expected_key:
+        return api_key
+
+    if not api_key or api_key != expected_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Could not validate credentials",
+        )
+    return api_key
 
 
 def _check_lock_status(lock_name: str) -> bool:
@@ -38,7 +68,7 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/status")
+@app.get("/status", dependencies=[Depends(get_api_key)])
 def get_system_status() -> dict[str, Any]:
     """Query database statistics and system lock statuses."""
     try:
@@ -85,7 +115,7 @@ def _async_run_daily_update() -> None:
         logger.exception("[API] Background daily update crawl failed")
 
 
-@app.post("/crawl/daily-update")
+@app.post("/crawl/daily-update", dependencies=[Depends(get_api_key)])
 def trigger_daily_update(background_tasks: BackgroundTasks) -> dict[str, str]:
     """Asynchronously triggers the daily update crawler pipeline."""
     if _check_lock_status("daily_update"):
@@ -95,7 +125,7 @@ def trigger_daily_update(background_tasks: BackgroundTasks) -> dict[str, str]:
     return {"status": "Daily update pipeline triggered in background"}
 
 
-@app.post("/upload/text-relay")
+@app.post("/upload/text-relay", dependencies=[Depends(get_api_key)])
 async def upload_text_relay(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
     """Upload and ingest a Naver Sports text-relay CSV file into the database."""
     if not file.filename:

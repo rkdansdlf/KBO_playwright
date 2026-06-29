@@ -22,7 +22,7 @@ def test_batting_crawl_summary_filters_basic2_only_rows():
                 "walks": 10,
                 "obp": 0.4,
             },
-        ]
+        ],
     )
 
     assert summary == {

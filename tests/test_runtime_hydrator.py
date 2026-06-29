@@ -77,7 +77,7 @@ def _seed_source(SessionLocal):
                 games=10,
                 hits=12,
                 at_bats=40,
-            )
+            ),
         )
         session.add(
             PlayerSeasonPitching(
@@ -90,7 +90,7 @@ def _seed_source(SessionLocal):
                 games=3,
                 innings_outs=54,
                 strikeouts=20,
-            )
+            ),
         )
         session.add(
             PlayerMovement(
@@ -98,7 +98,7 @@ def _seed_source(SessionLocal):
                 section="등록",
                 team_code="LG",
                 player_name="홍길동",
-            )
+            ),
         )
         session.add(
             TeamDailyRoster(
@@ -107,7 +107,7 @@ def _seed_source(SessionLocal):
                 player_id=1001,
                 player_name="홍길동",
                 position="외야수",
-            )
+            ),
         )
         session.add(
             Game(
@@ -119,7 +119,7 @@ def _seed_source(SessionLocal):
                 home_score=3,
                 game_status="COMPLETED",
                 season_id=2025,
-            )
+            ),
         )
         session.flush()
         session.add(
@@ -134,7 +134,7 @@ def _seed_source(SessionLocal):
                 standard_position="CF",
                 hits=2,
                 at_bats=4,
-            )
+            ),
         )
         session.add(GameMetadata(game_id="20250401LGSS0", stadium_name="잠실"))
         session.add(
@@ -144,7 +144,7 @@ def _seed_source(SessionLocal):
                 team_code="LG",
                 inning=1,
                 runs=2,
-            )
+            ),
         )
         session.add(
             GameLineup(
@@ -156,7 +156,7 @@ def _seed_source(SessionLocal):
                 batting_order=1,
                 appearance_seq=1,
                 is_starter=True,
-            )
+            ),
         )
         session.add(
             GamePitchingStat(
@@ -170,7 +170,7 @@ def _seed_source(SessionLocal):
                 is_starting=True,
                 innings_outs=18,
                 strikeouts=8,
-            )
+            ),
         )
         session.add(
             GameEvent(
@@ -187,7 +187,7 @@ def _seed_source(SessionLocal):
                 bases_before="---",
                 bases_after="1--",
                 wpa=0.12,
-            )
+            ),
         )
         session.add(
             GameSummary(
@@ -195,7 +195,7 @@ def _seed_source(SessionLocal):
                 summary_type="결승타",
                 player_name="홍길동",
                 detail_text="1회 결승타",
-            )
+            ),
         )
         session.add(
             GamePlayByPlay(
@@ -207,7 +207,7 @@ def _seed_source(SessionLocal):
                 play_description="홍길동 : 좌전 안타",
                 event_type="batting",
                 result="안타",
-            )
+            ),
         )
         session.commit()
 
@@ -229,7 +229,7 @@ def test_runtime_hydrator_copies_operational_year_scope():
                 home_team="SS",
                 game_status="SCHEDULED",
                 season_id=2025,
-            )
+            ),
         )
         session.flush()
         session.add(
@@ -239,7 +239,7 @@ def test_runtime_hydrator_copies_operational_year_scope():
                 team_code="OLD",
                 inning=1,
                 runs=9,
-            )
+            ),
         )
         session.commit()
 
@@ -298,7 +298,7 @@ def test_runtime_hydrator_can_preserve_local_aliases():
                 home_team="SS",
                 game_status="SCHEDULED",
                 season_id=2025,
-            )
+            ),
         )
         session.flush()
         session.add(
@@ -307,7 +307,7 @@ def test_runtime_hydrator_can_preserve_local_aliases():
                 canonical_game_id="20250401LGSS0",
                 source="test",
                 reason="preserve",
-            )
+            ),
         )
         session.commit()
 

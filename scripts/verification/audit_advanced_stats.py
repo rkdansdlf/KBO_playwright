@@ -47,7 +47,7 @@ def audit_batting_stats(session: Session, limit: int = 5000):
                 continue
             if abs(recalc[key] - stored_val) > 0.002:
                 logger.info(
-                    f"❌ Batting Mismatch [ID:{rec.id}, S:{rec.season}, P:{rec.player_id}]: {key} Stored={stored_val}, Recalc={recalc[key]}"
+                    f"❌ Batting Mismatch [ID:{rec.id}, S:{rec.season}, P:{rec.player_id}]: {key} Stored={stored_val}, Recalc={recalc[key]}",
                 )
                 errors += 1
                 is_rec_valid = False
@@ -101,7 +101,7 @@ def audit_pitching_stats(session: Session, limit: int = 5000):
                 continue
             if abs(recalc[key] - stored_val) > 0.02:
                 logger.info(
-                    f"❌ Pitching Mismatch [ID:{rec.id}, S:{rec.season}, P:{rec.player_id}]: {key} Stored={stored_val}, Recalc={recalc[key]} (Outs={innings_outs})"
+                    f"❌ Pitching Mismatch [ID:{rec.id}, S:{rec.season}, P:{rec.player_id}]: {key} Stored={stored_val}, Recalc={recalc[key]} (Outs={innings_outs})",
                 )
                 errors += 1
                 is_rec_valid = False

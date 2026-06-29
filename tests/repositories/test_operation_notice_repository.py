@@ -135,16 +135,16 @@ class TestOperationNoticeRepository:
                 {
                     "external_id": "old-id",
                     "published_at": datetime(2024, 10, 14, 10, 0),
-                }
-            )
+                },
+            ),
         )
         repo.upsert(
             _make_data(
                 {
                     "external_id": "new-id",
                     "published_at": datetime(2024, 10, 15, 10, 0),
-                }
-            )
+                },
+            ),
         )
         session.commit()
 

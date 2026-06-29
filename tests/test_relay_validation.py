@@ -21,7 +21,10 @@ def test_validate_pbp_payload_empty():
 def test_validate_pbp_payload_no_innings():
     session = MagicMock()
     is_valid, reason = validate_pbp_payload(
-        session, "20260401SKLG0", [{"description": "No inning"}], [{"play_description": "No inning"}]
+        session,
+        "20260401SKLG0",
+        [{"description": "No inning"}],
+        [{"play_description": "No inning"}],
     )
     assert not is_valid
     assert reason == "no_innings_found"
@@ -66,7 +69,7 @@ def test_validate_pbp_payload_score_mismatch():
     session.query().filter().first.return_value = mock_game
 
     events = [{"inning": i, "home_score": 0, "away_score": 0} for i in range(1, 9)] + [
-        {"inning": 9, "home_score": 4, "away_score": 3}
+        {"inning": 9, "home_score": 4, "away_score": 3},
     ]  # Last score is 4-3, mismatching 5-3
     raw_pbp = [{"inning": i, "play_description": "play"} for i in range(1, 10)]
     is_valid, reason = validate_pbp_payload(session, "20260401SKLG0", events, raw_pbp)
@@ -83,7 +86,7 @@ def test_validate_pbp_payload_success():
     session.query().filter().first.return_value = mock_game
 
     events = [{"inning": i, "home_score": 0, "away_score": 0} for i in range(1, 9)] + [
-        {"inning": 9, "home_score": 5, "away_score": 3}
+        {"inning": 9, "home_score": 5, "away_score": 3},
     ]  # Match 5-3
     raw_pbp = [{"inning": i, "play_description": "play"} for i in range(1, 10)]
     is_valid, reason = validate_pbp_payload(session, "20260401SKLG0", events, raw_pbp)
@@ -180,7 +183,7 @@ def test_validate_pbp_payload_with_none_scores_does_not_crash():
     session.query().filter().first.return_value = mock_game
 
     events = [{"inning": i, "home_score": 0, "away_score": 0} for i in range(1, 9)] + [
-        {"inning": 9, "home_score": 3, "away_score": 1}
+        {"inning": 9, "home_score": 3, "away_score": 1},
     ]
     raw_pbp = [{"inning": i, "play_description": "play"} for i in range(1, 10)]
     is_valid, reason = validate_pbp_payload(session, "g1", events, raw_pbp)

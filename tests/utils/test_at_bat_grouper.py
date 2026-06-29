@@ -18,7 +18,13 @@ class TestGroupEventsIntoAtBats:
 
     def test_single_event(self):
         events = [
-            {"batter_name": "홍길동", "inning": 1, "inning_half": "top", "event_type": "batting", "description": "안타"}
+            {
+                "batter_name": "홍길동",
+                "inning": 1,
+                "inning_half": "top",
+                "event_type": "batting",
+                "description": "안타",
+            },
         ]
         result = group_events_into_at_bats(events)
         assert result[0]["at_bat_seq"] == 1
@@ -72,14 +78,14 @@ class TestGroupEventsIntoAtBats:
                 "inning_half": "top",
                 "event_type": "runner_advance",
                 "description": "진루",
-            }
+            },
         ]
         result = group_events_into_at_bats(events)
         assert result[0]["at_bat_event_role"] == ROLE_RUNNER_ADVANCE
 
     def test_runner_out_role(self):
         events = [
-            {"batter_name": "", "inning": 1, "inning_half": "top", "event_type": "runner_out", "description": "주루사"}
+            {"batter_name": "", "inning": 1, "inning_half": "top", "event_type": "runner_out", "description": "주루사"},
         ]
         result = group_events_into_at_bats(events)
         assert result[0]["at_bat_event_role"] == ROLE_RUNNER_OUT
@@ -87,7 +93,7 @@ class TestGroupEventsIntoAtBats:
 
     def test_unknown_event_type(self):
         events = [
-            {"batter_name": "홍길동", "inning": 1, "inning_half": "top", "event_type": "unknown", "description": "???"}
+            {"batter_name": "홍길동", "inning": 1, "inning_half": "top", "event_type": "unknown", "description": "???"},
         ]
         result = group_events_into_at_bats(events)
         assert result[0]["at_bat_event_role"] == ROLE_UNKNOWN
@@ -146,7 +152,7 @@ class TestGroupEventsIntoAtBats:
 
     def test_batter_name_from_batter_key(self):
         events = [
-            {"batter": "홍길동", "inning": 1, "inning_half": "top", "event_type": "batting", "description": "안타"}
+            {"batter": "홍길동", "inning": 1, "inning_half": "top", "event_type": "batting", "description": "안타"},
         ]
         result = group_events_into_at_bats(events)
         assert result[0]["at_bat_seq"] == 1

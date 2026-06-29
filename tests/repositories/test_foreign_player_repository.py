@@ -32,7 +32,7 @@ class TestForeignPlayerRepository:
                 "season": 2025,
                 "change_type": "SIGNED",
                 "note": "New signing",
-            }
+            },
         )
         session.commit()
 
@@ -53,7 +53,7 @@ class TestForeignPlayerRepository:
                 "season": 2025,
                 "change_type": "SIGNED",
                 "note": "v1",
-            }
+            },
         )
         session.commit()
 
@@ -64,7 +64,7 @@ class TestForeignPlayerRepository:
                 "season": 2025,
                 "change_type": "SIGNED",
                 "note": "v2",
-            }
+            },
         )
         session.commit()
 
@@ -84,7 +84,7 @@ class TestForeignPlayerRepository:
                 "season": 2025,
                 "change_type": "SIGNED",
                 "announcement_date": date(2025, 1, 15),
-            }
+            },
         )
         repo.save_change(
             {
@@ -93,7 +93,7 @@ class TestForeignPlayerRepository:
                 "season": 2025,
                 "change_type": "RELEASED",
                 "announcement_date": date(2025, 6, 1),
-            }
+            },
         )
         repo.save_change({"player_name": "C", "team_id": "SSG", "season": 2025, "change_type": "SIGNED"})
         session.commit()
@@ -136,7 +136,7 @@ class TestForeignPlayerRepository:
                 "season": 2025,
                 "change_type": "SIGNED",
                 "announcement_date": date(2025, 1, 10),
-            }
+            },
         )
         repo.save_change(
             {
@@ -145,7 +145,7 @@ class TestForeignPlayerRepository:
                 "season": 2025,
                 "change_type": "SIGNED",
                 "announcement_date": date(2025, 2, 20),
-            }
+            },
         )
         repo.save_change({"player_name": "C", "team_id": "KT", "season": 2024, "change_type": "SIGNED"})
         session.commit()

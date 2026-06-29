@@ -54,7 +54,7 @@ def build_matrix(
         JOIN game g ON e.game_id = g.game_id
         WHERE g.game_status IN ('COMPLETED', 'FINISHED', '종료')
           AND e.inning <= :max_inning
-        """
+        """,
     )
 
     with SessionLocal() as session:

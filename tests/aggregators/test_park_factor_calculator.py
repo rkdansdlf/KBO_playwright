@@ -27,7 +27,13 @@ def _add_season(session, season_id=1, year=2025, league_type="정규시즌"):
 
 
 def _add_game(
-    session, game_id="20250101", stadium="잠실", home_score=5, away_score=3, game_status="COMPLETED", season_id=1
+    session,
+    game_id="20250101",
+    stadium="잠실",
+    home_score=5,
+    away_score=3,
+    game_status="COMPLETED",
+    season_id=1,
 ):
     session.add(
         Game(
@@ -38,7 +44,7 @@ def _add_game(
             game_status=game_status,
             season_id=season_id,
             game_date=date(2025, 1, 1),
-        )
+        ),
     )
     session.commit()
 

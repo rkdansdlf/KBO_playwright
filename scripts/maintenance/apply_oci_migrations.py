@@ -29,7 +29,7 @@ def check_migrations():
     with Session() as session:
         try:
             result = session.execute(
-                text("SELECT filename, applied_at FROM _schema_migrations ORDER BY filename")
+                text("SELECT filename, applied_at FROM _schema_migrations ORDER BY filename"),
             ).fetchall()
             applied: dict[str, str] = {row[0]: str(row[1]) for row in result}
         except SQLAlchemyError:
@@ -80,14 +80,15 @@ def apply_migrations():
                 filename TEXT PRIMARY KEY,
                 applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """),
         )
         session.commit()
 
         for file_path in migration_files:
             filename = file_path.name
             result = session.execute(
-                text("SELECT 1 FROM _schema_migrations WHERE filename = :filename"), {"filename": filename}
+                text("SELECT 1 FROM _schema_migrations WHERE filename = :filename"),
+                {"filename": filename},
             )
             if result.fetchone() is not None:
                 print(f"⏭️  Skipping already applied migration: {filename}")
@@ -99,7 +100,8 @@ def apply_migrations():
                     sql = f.read()
                 session.execute(text(sql))
                 session.execute(
-                    text("INSERT INTO _schema_migrations (filename) VALUES (:filename)"), {"filename": filename}
+                    text("INSERT INTO _schema_migrations (filename) VALUES (:filename)"),
+                    {"filename": filename},
                 )
                 session.commit()
                 print(f"✅ Successfully applied {filename}")

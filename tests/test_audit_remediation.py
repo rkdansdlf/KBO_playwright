@@ -105,7 +105,7 @@ def test_audit_batting_remediation_within_threshold(tmp_path):
                 records = session.query(PlayerSeasonBatting).all()
                 for r in records:
                     print(
-                        f"DEBUG RECORD: player_id={r.player_id}, season={r.season}, league={r.league}, level={r.level}, hits={r.hits}, source={r.source}"
+                        f"DEBUG RECORD: player_id={r.player_id}, season={r.season}, league={r.league}, level={r.level}, hits={r.hits}, source={r.source}",
                     )
                 db_record = session.query(PlayerSeasonBatting).filter_by(player_id=1001).first()
                 assert db_record.hits == 2  # Fixed!
@@ -447,7 +447,12 @@ def test_audit_pitching_remediation_aborted_by_max_innings_outs_diff(tmp_path):
     ):
         with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
             audit_module.StatAudit.audit_pitching(
-                2025, "regular", fix=True, max_mismatches=5, max_game_diff=5, max_innings_outs_diff=30
+                2025,
+                "regular",
+                fix=True,
+                max_mismatches=5,
+                max_game_diff=5,
+                max_innings_outs_diff=30,
             )
 
             with TestSessionLocal() as session:

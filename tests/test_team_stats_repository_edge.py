@@ -60,7 +60,7 @@ class TestBaseStatsUpsertRepository:
                     "games": 144,
                     "invalid_field": "should_be_removed",
                 },
-            ]
+            ],
         )
         assert result == 1
         row = session.query(TeamSeasonBatting).one()
@@ -85,7 +85,7 @@ class TestBaseStatsUpsertRepository:
                     "games": 144,
                     "avg": None,
                 },
-            ]
+            ],
         )
         assert result == 1
 
@@ -116,7 +116,7 @@ class TestBaseStatsUpsertRepository:
         with patch("src.repositories.team_stats_repository.get_database_type", return_value="sqlite"):
             repo = TeamSeasonBattingRepository()
             result = repo.upsert_many(
-                [{"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144}]
+                [{"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144}],
             )
         assert result == 1
 
@@ -131,7 +131,7 @@ class TestBaseStatsUpsertRepository:
         with patch("src.repositories.team_stats_repository.get_database_type", return_value="postgresql"):
             repo = TeamSeasonBattingRepository()
             result = repo.upsert_many(
-                [{"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144}]
+                [{"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144}],
             )
         assert result == 1
 
@@ -187,7 +187,7 @@ class TestBaseStatsUpsertRepository:
                     "wins": 80,
                     "invalid_field": "should_be_removed",
                 },
-            ]
+            ],
         )
         assert result == 1
         row = session.query(TeamSeasonPitching).one()
@@ -213,7 +213,7 @@ class TestBaseStatsUpsertRepository:
                 {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144},
                 {"team_id": "SSG", "team_name": "SSG", "season": 2024, "league": "REGULAR", "games": 144},
                 {"team_id": "KT", "team_name": "KT", "season": 2024, "league": "REGULAR", "games": 144},
-            ]
+            ],
         )
         assert result == 3
         assert session.query(TeamSeasonBatting).count() == 3
@@ -237,7 +237,7 @@ class TestBaseStatsUpsertRepository:
                     "games": None,
                     "avg": None,
                 },
-            ]
+            ],
         )
         assert result == 1
 
@@ -260,7 +260,7 @@ class TestBaseStatsUpsertRepository:
                     "games": 144,
                     "extra_stats": {"custom_metric": 42},
                 },
-            ]
+            ],
         )
         assert result == 1
         row = session.query(TeamSeasonBatting).one()

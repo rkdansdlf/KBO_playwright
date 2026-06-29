@@ -90,7 +90,11 @@ class TestGameStatus:
         MockSessionLocal.return_value.__exit__.return_value = None
 
         g = Game(
-            game_id="20241015LGSSG0", game_date=date(2024, 10, 15), home_score=5, away_score=3, game_status="unresolved"
+            game_id="20241015LGSSG0",
+            game_date=date(2024, 10, 15),
+            home_score=5,
+            away_score=3,
+            game_status="unresolved",
         )
         session.add(g)
         session.add(GameInningScore(game_id="20241015LGSSG0", team_side="home", inning=1, runs=5))

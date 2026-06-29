@@ -70,7 +70,7 @@ class TestRuntimeHydratorHydrateYear:
                 game_date=date(2025, 6, 1),
                 home_team="SSG",
                 away_team="LG",
-            )
+            ),
         )
         s1.commit()
 
@@ -91,14 +91,14 @@ class TestRuntimeHydratorHydrateYear:
                 game_date=date(2025, 6, 1),
                 home_team="SSG",
                 away_team="LG",
-            )
+            ),
         )
         s1.commit()
         s2.add(
             GameIdAlias(
                 alias_game_id="old_20250601_01",
                 canonical_game_id="20250601_01",
-            )
+            ),
         )
         s2.commit()
 
@@ -116,7 +116,7 @@ class TestRuntimeHydratorHydrateYear:
                 game_date=date(2025, 6, 1),
                 home_team="SSG",
                 away_team="LG",
-            )
+            ),
         )
         s1.commit()
 

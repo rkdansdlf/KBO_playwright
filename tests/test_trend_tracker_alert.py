@@ -16,7 +16,7 @@ def test_send_degradation_alert_triggered(tmp_path):
                 "recent_missing_count": 10,
             },
             "completed_count": 100,
-        }
+        },
     }
     report2 = {
         "metrics": {
@@ -25,7 +25,7 @@ def test_send_degradation_alert_triggered(tmp_path):
                 "recent_missing_count": 25,  # +150% increase (threshold is +50%)
             },
             "completed_count": 100,
-        }
+        },
     }
 
     with (tmp_path / f"{yesterday}.json").open("w") as f:
@@ -54,7 +54,7 @@ def test_detect_degradations_supports_completed_count_when_explicit(tmp_path):
                 "recent_missing_count": 10,
             },
             "completed_count": 100,
-        }
+        },
     }
     report2 = {
         "metrics": {
@@ -63,7 +63,7 @@ def test_detect_degradations_supports_completed_count_when_explicit(tmp_path):
                 "recent_missing_count": 10,
             },
             "completed_count": 70,  # -30% drop (threshold is -20%)
-        }
+        },
     }
 
     with (tmp_path / f"{yesterday}.json").open("w") as f:
@@ -89,7 +89,7 @@ def test_send_degradation_alert_ignores_completed_count_by_default(tmp_path):
                 "recent_missing_count": 10,
             },
             "completed_count": 100,
-        }
+        },
     }
     report2 = {
         "metrics": {
@@ -98,7 +98,7 @@ def test_send_degradation_alert_ignores_completed_count_by_default(tmp_path):
                 "recent_missing_count": 10,
             },
             "completed_count": 0,
-        }
+        },
     }
 
     with (tmp_path / f"{yesterday}.json").open("w") as f:
@@ -154,7 +154,7 @@ def test_send_degradation_alert_quiet_when_healthy(tmp_path):
                 "recent_missing_count": 10,
             },
             "completed_count": 100,
-        }
+        },
     }
     report2 = {
         "metrics": {
@@ -163,7 +163,7 @@ def test_send_degradation_alert_quiet_when_healthy(tmp_path):
                 "recent_missing_count": 11,  # +10% increase (threshold is +50%)
             },
             "completed_count": 95,  # -5% drop (threshold is -20%)
-        }
+        },
     }
 
     with (tmp_path / f"{yesterday}.json").open("w") as f:

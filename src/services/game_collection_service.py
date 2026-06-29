@@ -6,7 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -292,7 +292,7 @@ def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
         game_id = _get_value(game, "game_id")
         if not game_id:
             continue
-        normalized_id = normalize_kbo_game_id(game_id)
+        normalized_id = normalize_kbo_game_id(str(game_id))
         if not normalized_id or normalized_id in seen:
             continue
         game_date = _format_game_date(_get_value(game, "game_date"), fallback_game_id=normalized_id)
@@ -449,7 +449,9 @@ async def _collect_detail_phase(
             concurrency=ctx.cfg.concurrency,
         )
         payload_by_id = {
-            normalize_kbo_game_id(payload.get("game_id")): payload for payload in payloads if payload.get("game_id")
+            normalize_kbo_game_id(str(payload.get("game_id"))): payload
+            for payload in payloads
+            if payload.get("game_id")
         }
 
         detail_ctx = DetailProcessingContext(
@@ -527,7 +529,7 @@ def _detail_payload_failure_reason(
     payload: dict[str, Any] | None,
     detail_crawler: DetailCrawler,
     should_save_detail: Callable[[dict[str, Any]], bool] | None,
-) -> tuple[str, str, str] | None:
+) -> tuple[str, str | None, str] | None:
     if not payload:
         return "crawl_failed", _get_failure_reason(detail_crawler, target.game_id), "no_detail_payload"
     if not _has_required_detail_rows(payload):
@@ -678,7 +680,8 @@ def _get_failure_reason(crawler: object, game_id: str) -> str | None:
     if not callable(getter):
         return None
     try:
-        return getter(game_id)
+        result = getter(game_id)
+        return cast("str | None", result)
     except (RuntimeError, TypeError, ValueError) as exc:
         logger.warning("Failed to get last failure reason from crawler: %s", exc)
         return None

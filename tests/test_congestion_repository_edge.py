@@ -35,7 +35,7 @@ class TestCongestionRepositoryEdge:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -49,7 +49,7 @@ class TestCongestionRepositoryEdge:
                 "congestion_level": "very_high",
                 "congestion_index": None,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -72,7 +72,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "high",
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
         original_updated = r1.updated_at
@@ -86,7 +86,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "very_high",
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -108,7 +108,7 @@ class TestCongestionRepositoryEdge:
                 "congestion_level": "high",
                 "source": "seoul_open_api",
                 "raw_data": {"api_version": "2.0", "response_time": 0.5},
-            }
+            },
         )
         session.commit()
 
@@ -141,7 +141,7 @@ class TestCongestionRepositoryEdge:
                     "congestion_level": "very_high",
                     "source": "seoul_open_api",
                 },
-            ]
+            ],
         )
         session.commit()
         assert created == 1
@@ -181,7 +181,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "high",
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -192,7 +192,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "normal",
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -203,7 +203,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "normal",
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -225,7 +225,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "very_high",
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -236,7 +236,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "normal",
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -268,7 +268,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "high",
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -279,7 +279,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "very_high",
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -312,7 +312,7 @@ class TestCongestionRepositoryEdge:
                 "congestion_level": "high",
                 "congestion_index": None,
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -324,7 +324,7 @@ class TestCongestionRepositoryEdge:
                 "congestion_level": "very_high",
                 "congestion_index": 90.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -348,7 +348,7 @@ class TestCongestionRepositoryEdge:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -360,7 +360,7 @@ class TestCongestionRepositoryEdge:
                 "congestion_level": "very_high",
                 "congestion_index": 95.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -382,7 +382,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "high",
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -393,7 +393,7 @@ class TestCongestionRepositoryEdge:
                 "game_date": date(2024, 10, 15),
                 "congestion_level": "very_high",
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 

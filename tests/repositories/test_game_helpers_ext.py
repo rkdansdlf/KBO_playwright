@@ -233,7 +233,7 @@ class TestHasGameChildRows:
                 team_side="away",
                 appearance_seq=1,
                 at_bats=4,
-            )
+            ),
         )
         session.commit()
         assert _has_game_child_rows(session, GameBattingStat, "20241015LGSS0") is True
@@ -267,7 +267,7 @@ class TestInferScoreFromChildren:
 
     def test_from_batting_stats(self, session):
         session.add(
-            GameBattingStat(game_id="g1", player_name="Kim", team_side="away", appearance_seq=1, runs=4, at_bats=4)
+            GameBattingStat(game_id="g1", player_name="Kim", team_side="away", appearance_seq=1, runs=4, at_bats=4),
         )
         session.flush()
         result = _infer_score_from_children(session, "g1", "away")
@@ -287,7 +287,7 @@ class TestInferPitcherFromChildren:
                 team_side="home",
                 appearance_seq=1,
                 is_starting=True,
-            )
+            ),
         )
         session.flush()
         result = _infer_pitcher_from_children(session, "g1", "home")
@@ -301,7 +301,7 @@ class TestInferPitcherFromChildren:
                 team_side="home",
                 appearance_seq=1,
                 is_starting=False,
-            )
+            ),
         )
         session.flush()
         result = _infer_pitcher_from_children(session, "g1", "home")
@@ -395,7 +395,7 @@ class TestReplaceRecords:
                 "sacrifice_hits": 0,
                 "sacrifice_flies": 0,
                 "gdp": 0,
-            }
+            },
         ]
         result = _replace_records(session, GameBattingStat, "g1", mappings, ctx)
         assert result is False
@@ -433,7 +433,7 @@ class TestReplaceRecords:
                 "sacrifice_hits": 0,
                 "sacrifice_flies": 0,
                 "gdp": 0,
-            }
+            },
         ]
         result = _replace_records(session, GameBattingStat, "g1", mappings, ctx)
         assert result is True
@@ -476,7 +476,7 @@ class TestReplaceRecordsForSide:
                 "sacrifice_hits": 0,
                 "sacrifice_flies": 0,
                 "gdp": 0,
-            }
+            },
         ]
         record_key = RecordKey(model=GameBattingStat, game_id="g1", team_side="away")
         result = _replace_records_for_side(session, record_key, mappings, ctx)
@@ -770,7 +770,9 @@ class TestAssertNoPlayerTeamCollisions:
         from src.repositories.game_helpers import _assert_no_player_team_collisions
 
         _assert_no_player_team_collisions(
-            "g1", "game_batting_stats", [{"player_id": 1001, "team_side": "away", "team_code": "LG"}]
+            "g1",
+            "game_batting_stats",
+            [{"player_id": 1001, "team_side": "away", "team_code": "LG"}],
         )
 
     def test_collision_detected(self, session):
@@ -810,7 +812,7 @@ class TestUpsertGameSummaryEntry:
                 player_name="강민호",
                 player_id=1001,
                 detail_text="old",
-            )
+            ),
         )
         session.flush()
 

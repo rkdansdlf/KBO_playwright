@@ -42,7 +42,7 @@ class TestBuildFieldingCrawlSummary:
                 "year": 2025,
                 "errors": 1,
                 "games": 10,
-            }
+            },
         ]
         summary, _ = build_fielding_crawl_summary(records)
         assert "valid_rows" in summary

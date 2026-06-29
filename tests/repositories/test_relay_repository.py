@@ -94,7 +94,7 @@ class TestRelayRepository:
                 GamePlayByPlay(game_id="G1", inning=1, inning_half="top", event_type="batting"),
                 GamePlayByPlay(game_id="G1", inning=1, inning_half="bottom", event_type="strikeout"),
                 GamePlayByPlay(game_id="G1", inning=2, inning_half="top", event_type="home_run"),
-            ]
+            ],
         )
         session.commit()
 

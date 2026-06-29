@@ -52,10 +52,14 @@ def test_collect_uses_player_id_resolver_and_closes_session(monkeypatch):
 
     monkeypatch.setattr(cli, "SessionLocal", FakeSession)
     monkeypatch.setattr(
-        cli, "load_game_targets_from_db", lambda y, m: fake_load_targets(year=y, month=m, game_ids=None)
+        cli,
+        "load_game_targets_from_db",
+        lambda y, m: fake_load_targets(year=y, month=m, game_ids=None),
     )
     monkeypatch.setattr(
-        cli, "load_game_targets_by_ids", lambda gids: fake_load_targets(year=None, month=None, game_ids=gids)
+        cli,
+        "load_game_targets_by_ids",
+        lambda gids: fake_load_targets(year=None, month=None, game_ids=gids),
     )
     monkeypatch.setattr(pid_module, "PlayerIdResolver", FakeResolver)
     monkeypatch.setattr(cli, "GameDetailCrawler", FakeDetailCrawler)

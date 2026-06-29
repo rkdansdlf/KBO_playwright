@@ -262,7 +262,7 @@ def _pregame_refresh_summary(target_date: str) -> tuple[int, int, int]:
         ) p ON p.game_id = g.game_id
         WHERE UPPER(g.game_status) = 'SCHEDULED'
           AND REPLACE(CAST(g.game_date AS TEXT), '-', '') = :target_date
-        """
+        """,
     )
 
     with SessionLocal() as session:
@@ -790,7 +790,7 @@ def crawl_pregame_refresh():
                     try:
                         SlackWebhookClient.send_alert(
                             f"⚠️ Pregame missing remains for {target_date}: "
-                            f"starters_missing={post_refresh[1]}, preview_missing={post_refresh[2]}"
+                            f"starters_missing={post_refresh[1]}, preview_missing={post_refresh[2]}",
                         )
                     except ALERT_EXCEPTIONS:
                         logger.exception("Failed to send pregame missing alert for target_date=%s", target_date)
@@ -889,7 +889,10 @@ def _get_live_poll_interval_seconds() -> int:
                     start_time = now.replace(hour=parts[0], minute=parts[1], second=0, microsecond=0)
                 else:
                     start_time = now.replace(
-                        hour=start_time_raw.hour, minute=start_time_raw.minute, second=0, microsecond=0
+                        hour=start_time_raw.hour,
+                        minute=start_time_raw.minute,
+                        second=0,
+                        microsecond=0,
                     )
 
                 if start_time < now:
@@ -976,7 +979,7 @@ def crawl_live_refresh():
                 sync_to_oci=False,
                 max_active_games=_live_refresh_max_games_per_cycle(),
                 detail_snapshot_background=True,
-            )
+            ),
         )
 
         if isinstance(result, dict):

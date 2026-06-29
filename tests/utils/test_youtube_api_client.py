@@ -109,7 +109,7 @@ def _make_search_response():
                     "channelId": "UCtest123",
                 },
             },
-        ]
+        ],
     }
 
 
@@ -119,8 +119,8 @@ def _make_playlists_response():
             {
                 "id": "PL001",
                 "snippet": {"title": "응원가 모음", "channelId": "UCtest123"},
-            }
-        ]
+            },
+        ],
     }
 
 
@@ -135,7 +135,7 @@ def _make_playlist_items_response(next_page_token=None):
                     "thumbnails": {"default": {"url": "http://img.com/a.jpg"}},
                     "resourceId": {"videoId": "pl_vid001"},
                     "channelId": "UCtest123",
-                }
+                },
             },
             {
                 "snippet": {
@@ -145,9 +145,9 @@ def _make_playlist_items_response(next_page_token=None):
                     "thumbnails": {"default": {"url": "http://img.com/b.jpg"}},
                     "resourceId": {"videoId": "pl_vid002"},
                     "channelId": "UCtest123",
-                }
+                },
             },
-        ]
+        ],
     }
     if next_page_token:
         data["nextPageToken"] = next_page_token
@@ -223,7 +223,7 @@ class TestYouTubeAPIClient:
                         "thumbnails": {},
                     },
                 },
-            ]
+            ],
         }
 
         mock_response = MagicMock()
@@ -328,9 +328,9 @@ class TestYouTubeAPIClient:
                         "thumbnails": {"default": {"url": "http://img.com/c.jpg"}},
                         "resourceId": {"videoId": "pl_vid003"},
                         "channelId": "UCtest123",
-                    }
-                }
-            ]
+                    },
+                },
+            ],
         }
 
         responses = [page1, page2]
@@ -368,7 +368,7 @@ class TestYouTubeAPIClient:
                         "publishedAt": "",
                         "thumbnails": {},
                         "resourceId": {},
-                    }
+                    },
                 },
                 {
                     "snippet": {
@@ -377,9 +377,9 @@ class TestYouTubeAPIClient:
                         "publishedAt": "",
                         "thumbnails": {},
                         "resourceId": {"videoId": "valid001"},
-                    }
+                    },
                 },
-            ]
+            ],
         }
 
         mock_response = MagicMock()
@@ -410,10 +410,10 @@ class TestYouTubeAPIClient:
                         "publishedAt": "",
                         "thumbnails": {},
                         "resourceId": {"videoId": f"vid{i:03d}"},
-                    }
+                    },
                 }
                 for i in range(3)
-            ]
+            ],
         }
 
         mock_response = MagicMock()

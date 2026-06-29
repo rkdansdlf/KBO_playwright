@@ -86,7 +86,7 @@ class PlayerStatusConfirmer:
                 await pool.close()
         return {"attempted": attempts, "confirmed": confirmed}
 
-    async def _confirm_single(self, page: Page, player_id: str) -> dict[str, str] | None:
+    async def _confirm_single(self, page: Page, player_id: str) -> dict[str, object] | None:
         url = f"{self.base_url}?playerId={player_id}"
         await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
         await asyncio.sleep(self.request_delay)

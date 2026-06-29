@@ -35,7 +35,7 @@ class TestCongestionRepository:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -59,7 +59,7 @@ class TestCongestionRepository:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -74,7 +74,7 @@ class TestCongestionRepository:
                 "congestion_index": 90.0,
                 "source": "seoul_open_api",
                 "people_count": 500,
-            }
+            },
         )
         session.commit()
 
@@ -112,7 +112,7 @@ class TestCongestionRepository:
                     "congestion_index": 30.0,
                     "source": "seoul_open_api",
                 },
-            ]
+            ],
         )
         session.commit()
         assert created == 2
@@ -134,7 +134,7 @@ class TestCongestionRepository:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -160,7 +160,7 @@ class TestCongestionRepository:
                     "congestion_index": 10.0,
                     "source": "seoul_open_api",
                 },
-            ]
+            ],
         )
         session.commit()
         assert created == 1
@@ -182,7 +182,7 @@ class TestCongestionRepository:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -194,7 +194,7 @@ class TestCongestionRepository:
                 "congestion_level": "very_high",
                 "congestion_index": 90.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -206,7 +206,7 @@ class TestCongestionRepository:
                 "congestion_level": "normal",
                 "congestion_index": 40.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -229,7 +229,7 @@ class TestCongestionRepository:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -241,7 +241,7 @@ class TestCongestionRepository:
                 "congestion_level": "normal",
                 "congestion_index": 40.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -264,7 +264,7 @@ class TestCongestionRepository:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -276,7 +276,7 @@ class TestCongestionRepository:
                 "congestion_level": "very_high",
                 "congestion_index": 90.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 
@@ -300,7 +300,7 @@ class TestCongestionRepository:
                 "congestion_level": "high",
                 "congestion_index": 75.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         repo.upsert(
             {
@@ -312,7 +312,7 @@ class TestCongestionRepository:
                 "congestion_level": "very_high",
                 "congestion_index": 90.0,
                 "source": "seoul_open_api",
-            }
+            },
         )
         session.commit()
 

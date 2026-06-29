@@ -32,7 +32,7 @@ class TestTicketOpenRuleRepository:
                 "open_offset_days": 7,
                 "open_time": time(11, 0),
                 "max_tickets_per_user": 4,
-            }
+            },
         )
         session.commit()
 
@@ -53,7 +53,7 @@ class TestTicketOpenRuleRepository:
                 "open_offset_days": 7,
                 "open_time": time(11, 0),
                 "max_tickets_per_user": 4,
-            }
+            },
         )
         session.commit()
 
@@ -65,7 +65,7 @@ class TestTicketOpenRuleRepository:
                 "open_time": time(11, 0),
                 "max_tickets_per_user": 6,
                 "note": "updated",
-            }
+            },
         )
         session.commit()
 
@@ -117,7 +117,7 @@ class TestTicketOpenRuleRepository:
             [
                 {"team_id": "LG", "platform": "A", "open_offset_days": 7, "open_time": time(11, 0)},
                 {"team_id": "SSG", "platform": "B", "open_offset_days": 3, "open_time": time(10, 0)},
-            ]
+            ],
         )
         session.commit()
 

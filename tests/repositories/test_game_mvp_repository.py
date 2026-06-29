@@ -28,7 +28,7 @@ class TestGameMvpRepository:
                 "game_id": "20241015_LGvSSG",
                 "player_name": "Kim Hyun-soo",
                 "team_id": "LG",
-            }
+            },
         )
         session.commit()
 
@@ -48,7 +48,7 @@ class TestGameMvpRepository:
                 "mvp_type": "GAME",
                 "player_name": "Kim",
                 "team_id": None,
-            }
+            },
         )
         session.commit()
 
@@ -58,7 +58,7 @@ class TestGameMvpRepository:
                 "mvp_type": "GAME",
                 "player_name": "Kim",
                 "team_id": "LG",
-            }
+            },
         )
         session.commit()
 

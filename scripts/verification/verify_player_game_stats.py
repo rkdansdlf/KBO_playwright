@@ -61,7 +61,7 @@ def check_duplicates(session, *, year: int | None = None, date: str | None = Non
         scope_sql, params = _scope_clause(year=year, date=date)
         count = session.execute(
             text(
-                f"SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM {tbl}{scope_sql} GROUP BY game_id, player_id HAVING COUNT(*) > 1)"
+                f"SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM {tbl}{scope_sql} GROUP BY game_id, player_id HAVING COUNT(*) > 1)",
             ),
             params,
         ).scalar()
@@ -116,7 +116,7 @@ def check_rate_stats(session, *, year: int | None = None, date: str | None = Non
     scope_sql, params = _and_scope_clause(year=year, date=date)
     avg_gt_obp = session.execute(
         text(
-            f"SELECT COUNT(*) FROM player_game_batting WHERE avg IS NOT NULL AND obp IS NOT NULL AND avg > obp{scope_sql}"
+            f"SELECT COUNT(*) FROM player_game_batting WHERE avg IS NOT NULL AND obp IS NOT NULL AND avg > obp{scope_sql}",
         ),
         params,
     ).scalar()
@@ -232,7 +232,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     logger.info("\n%s", "=" * 60)
     logger.info(
-        "Summary: batting=%s pitching=%s games=%s", f"{total_batting:,}", f"{total_pitching:,}", f"{total_games:,}"
+        "Summary: batting=%s pitching=%s games=%s",
+        f"{total_batting:,}",
+        f"{total_pitching:,}",
+        f"{total_games:,}",
     )
     if all_bad:
         info_count = sum(1 for i in all_bad if i.startswith("INFO:"))

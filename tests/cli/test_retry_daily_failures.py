@@ -11,8 +11,8 @@ class TestRetryDailyFailures:
                     "retry_candidates": {
                         "detail": ["20250401LGSS0"],
                         "relay": ["20250401LGSS0"],
-                    }
-                }
+                    },
+                },
             }
             result = main(["--date", "20250401"])
             assert result == 0
@@ -24,8 +24,8 @@ class TestRetryDailyFailures:
                     "retry_candidates": {
                         "detail": [],
                         "relay": [],
-                    }
-                }
+                    },
+                },
             }
             result = main(["--date", "20250401", "--apply"])
             assert result == 0

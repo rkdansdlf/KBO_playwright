@@ -229,7 +229,7 @@ class TestApplyWpaTransitions:
                 "home_score": 1,
                 "away_score": 0,
                 "base_state": 3,
-            }
+            },
         ]
         apply_wpa_transitions(events)
         assert "bases_before" in events[0]

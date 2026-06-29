@@ -261,7 +261,7 @@ class TestAppendBullpenPitcher:
                 "earned_runs": 0,
                 "walks_allowed": 1,
                 "strikeouts": 3,
-            }
+            },
         }
         agg._append_bullpen_pitcher(side_payload, payload_row)
         assert len(side_payload["pitchers"]) == 1
@@ -285,14 +285,14 @@ class TestDiagnoseCompletedGameCoachPitching:
                 "starters": {},
                 "bullpen": {},
                 "unmatched_season_stats": [],
-            }
+            },
         )
         result = agg.diagnose_completed_game_coach_pitching("20240101LGSS0")
         assert result["drop_stage"] == "raw_game_pitching_stats_missing"
 
     def test_with_summaries(self, agg):
         mock_summary = StubRow(
-            detail_text='{"pitching_breakdown": {"starters": {"away": {"name": "Kim"}}, "bullpen": {"away": {"pitchers": [{"name": "A"}]}}}}'
+            detail_text='{"pitching_breakdown": {"starters": {"away": {"name": "Kim"}}, "bullpen": {"away": {"pitchers": [{"name": "A"}]}}}}',
         )
         agg.session.query.return_value.filter.return_value.all.return_value = [mock_summary]
         breakdown = {
@@ -460,7 +460,7 @@ class TestGetCrucialMoments:
             pitcher_name="Park",
         )
         agg.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-            event
+            event,
         ]
         with patch("src.services.context_aggregator.is_relay_noise_text", return_value=True):
             result = agg.get_crucial_moments("20240501LGSS0")
@@ -479,7 +479,7 @@ class TestGetCrucialMoments:
             pitcher_name="Park",
         )
         agg.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-            event
+            event,
         ]
         with patch("src.services.context_aggregator.is_relay_noise_text", return_value=True):
             result = agg.get_crucial_moments("20240501LGSS0")
@@ -640,7 +640,7 @@ class TestGetTeamErrorGames:
         row.player_name = "Kim"
         row.detail_text = "실책"
         agg.session.query.return_value.join.return_value.join.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            row
+            row,
         ]
         result = agg.get_team_error_games("LG", 2024)
         assert len(result) == 1

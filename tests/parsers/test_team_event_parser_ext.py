@@ -289,7 +289,11 @@ class TestParseJsonTeamEventsExtended:
         payload = json.dumps([{"title": "이벤트 안내", "pubDate": "2025-06-15"}])
         metadata = {"url": "https://www.lgtwins.com/feed/events", "fetched_at": "2025-06-01T00:00:00"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            metadata,
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 1
 
@@ -297,7 +301,11 @@ class TestParseJsonTeamEventsExtended:
         payload = json.dumps([{"TITLE": "이벤트 안내", "createdDate": "2025-06-15"}])
         metadata = {"url": "https://www.lgtwins.com/feed/events", "fetched_at": "2025-06-01T00:00:00"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            metadata,
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 1
 
@@ -305,7 +313,11 @@ class TestParseJsonTeamEventsExtended:
         payload = json.dumps([{"TITLE": "이벤트 안내", "showDate": "2025-06-15"}])
         metadata = {"url": "https://www.lgtwins.com/feed/events", "fetched_at": "2025-06-01T00:00:00"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            metadata,
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 1
 
@@ -313,7 +325,11 @@ class TestParseJsonTeamEventsExtended:
         payload = json.dumps([{"TITLE": "이벤트 안내", "PUB_DATE": "2024-01-01"}])
         metadata = {"url": "https://www.lgtwins.com/feed/events"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            metadata,
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 0
 
@@ -321,7 +337,11 @@ class TestParseJsonTeamEventsExtended:
         payload = json.dumps([{"TITLE": "일반 기사", "PUB_DATE": "2025-06-15"}])
         metadata = {"url": "https://www.lgtwins.com/news"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            metadata,
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 0
 
@@ -329,7 +349,11 @@ class TestParseJsonTeamEventsExtended:
         payload = json.dumps([{"TITLE": "이벤트 안내", "PUB_DATE": "2025-06-15", "ID": 123}])
         metadata = {"url": "https://www.lgtwins.com/feed/events", "fetched_at": "2025-06-01T00:00:00"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            metadata,
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert len(events) == 1
         assert "#id=123" in events[0]["source_url"]
@@ -339,7 +363,11 @@ class TestParseJsonTeamEventsExtended:
         for source_key, team_code in TEAM_CODE_FROM_SOURCE_KEY.items():
             metadata = {"url": "https://example.com/feed/events"}
             events = _parse_json_team_events(
-                payload, source_key, metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+                payload,
+                source_key,
+                metadata,
+                datetime(2025, 1, 1, tzinfo=KST),
+                datetime(2025, 6, 1, tzinfo=KST),
             )
             assert len(events) == 1
             assert events[0]["team_id"] == team_code
@@ -350,11 +378,15 @@ class TestParseJsonTeamEventsExtended:
                 {"TITLE": "증정 이벤트", "PUB_DATE": "2025-06-15"},
                 {"TITLE": "시구 행사", "PUB_DATE": "2025-06-16"},
                 {"TITLE": "할인 프로모션", "PUB_DATE": "2025-06-17"},
-            ]
+            ],
         )
         metadata = {"url": "https://www.lgtwins.com/feed/events", "fetched_at": "2025-06-01T00:00:00"}
         events = _parse_json_team_events(
-            payload, "lg_twins_events", metadata, datetime(2025, 1, 1, tzinfo=KST), datetime(2025, 6, 1, tzinfo=KST)
+            payload,
+            "lg_twins_events",
+            metadata,
+            datetime(2025, 1, 1, tzinfo=KST),
+            datetime(2025, 6, 1, tzinfo=KST),
         )
         assert events[0]["event_type"] == "giveaway"
         assert events[1]["event_type"] == "first_pitch"
@@ -540,7 +572,7 @@ class TestParseTeamEventsExtended:
         payload = json.dumps(
             [
                 {"TITLE": "JSON 이벤트", "PUB_DATE": "2025-03-15"},
-            ]
+            ],
         )
         events = parse_team_events(
             payload,

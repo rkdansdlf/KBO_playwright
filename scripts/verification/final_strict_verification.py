@@ -58,7 +58,7 @@ def final_strict_verification():
 
         # Stats
         total_p = conn.execute(
-            f"SELECT COUNT(*) FROM player_season_batting WHERE season={year} AND league='REGULAR'"
+            f"SELECT COUNT(*) FROM player_season_batting WHERE season={year} AND league='REGULAR'",
         ).fetchone()[0]
 
         # Mismatch count in this strict range

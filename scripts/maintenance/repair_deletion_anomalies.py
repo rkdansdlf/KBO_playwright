@@ -225,7 +225,12 @@ def _columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
 
 
 def _add_column(
-    conn: sqlite3.Connection, table_name: str, column_name: str, definition: str, actions: list[Action], apply: bool
+    conn: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    definition: str,
+    actions: list[Action],
+    apply: bool,
 ) -> None:
     if not _table_exists(conn, table_name) or column_name in _columns(conn, table_name):
         return
@@ -489,8 +494,8 @@ def _repair_players(conn: sqlite3.Connection, actions: list[Action], apply: bool
                       WHERE player_basic.player_id = CAST(players.kbo_person_id AS INTEGER)
                   )
                   AND (player_basic_id IS NULL OR player_basic_id <> CAST(kbo_person_id AS INTEGER))
-                """
-            ).fetchone()[0]
+                """,
+            ).fetchone()[0],
         )
     actions.append(Action("backfill players.player_basic_id", count, "applied" if apply else "dry_run"))
 
@@ -517,12 +522,14 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
                 END
             )
             WHERE position = '포지션'
-            """
+            """,
         )
     actions.append(
         Action(
-            "normalize team_daily_roster parser artifact positions", artifact_count, "applied" if apply else "dry_run"
-        )
+            "normalize team_daily_roster parser artifact positions",
+            artifact_count,
+            "applied" if apply else "dry_run",
+        ),
     )
 
     if not {"person_type", "player_basic_id", "position", "player_id"} <= _columns(conn, "team_daily_roster"):
@@ -534,13 +541,13 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
             conn.execute(
                 f"UPDATE team_daily_roster SET person_type = 'player' WHERE position IN ({player_marks})",
                 tuple(PLAYER_ROSTER_POSITIONS),
-            )
+            ),
         )
         staff_count = _rowcount(
             conn.execute(
                 f"UPDATE team_daily_roster SET person_type = 'staff', player_basic_id = NULL WHERE position IN ({staff_marks})",
                 tuple(STAFF_ROSTER_POSITIONS),
-            )
+            ),
         )
         unknown_count = _rowcount(
             conn.execute(
@@ -550,7 +557,7 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
                 WHERE position NOT IN ({player_marks},{staff_marks})
                 """,
                 (*PLAYER_ROSTER_POSITIONS, *STAFF_ROSTER_POSITIONS),
-            )
+            ),
         )
         link_count = _rowcount(
             conn.execute(
@@ -559,27 +566,27 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
                 SET player_basic_id = player_id
                 WHERE person_type = 'player'
                   AND EXISTS (SELECT 1 FROM player_basic WHERE player_basic.player_id = team_daily_roster.player_id)
-                """
-            )
+                """,
+            ),
         )
     else:
         player_count = int(
             conn.execute(
                 f"SELECT COUNT(*) FROM team_daily_roster WHERE position IN ({player_marks})",
                 tuple(PLAYER_ROSTER_POSITIONS),
-            ).fetchone()[0]
+            ).fetchone()[0],
         )
         staff_count = int(
             conn.execute(
                 f"SELECT COUNT(*) FROM team_daily_roster WHERE position IN ({staff_marks})",
                 tuple(STAFF_ROSTER_POSITIONS),
-            ).fetchone()[0]
+            ).fetchone()[0],
         )
         unknown_count = int(
             conn.execute(
                 f"SELECT COUNT(*) FROM team_daily_roster WHERE position NOT IN ({player_marks},{staff_marks})",
                 (*PLAYER_ROSTER_POSITIONS, *STAFF_ROSTER_POSITIONS),
-            ).fetchone()[0]
+            ).fetchone()[0],
         )
         link_count = int(
             conn.execute(
@@ -587,8 +594,8 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
                 SELECT COUNT(*) FROM team_daily_roster
                 WHERE position IN ('투수','포수','내야수','외야수')
                   AND EXISTS (SELECT 1 FROM player_basic WHERE player_basic.player_id = team_daily_roster.player_id)
-                """
-            ).fetchone()[0]
+                """,
+            ).fetchone()[0],
         )
     actions.extend(
         [
@@ -596,12 +603,17 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
             Action("classify roster staff rows", staff_count, "applied" if apply else "dry_run"),
             Action("classify roster unknown rows", unknown_count, "applied" if apply else "dry_run"),
             Action("backfill roster player_basic_id", link_count, "applied" if apply else "dry_run"),
-        ]
+        ],
     )
 
 
 def _repair_game_player_refs(
-    conn: sqlite3.Connection, table_name: str, id_column: str, name_column: str, actions: list[Action], apply: bool
+    conn: sqlite3.Connection,
+    table_name: str,
+    id_column: str,
+    name_column: str,
+    actions: list[Action],
+    apply: bool,
 ) -> None:
     if not {id_column, name_column} <= _columns(conn, table_name):
         return
@@ -611,14 +623,16 @@ def _repair_game_player_refs(
         FROM {table_name} AS t
         WHERE t.{id_column} IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM player_basic AS p WHERE p.player_id = t.{id_column})
-        """
+        """,
     ).fetchall()
     remapped = 0
     nulled = 0
     if apply:
         for rowid, _bad_id, raw_name in rows:
             resolved_id = _unique_player_id_by_name(
-                conn, _normalize_name(raw_name), position=_extract_position(raw_name)
+                conn,
+                _normalize_name(raw_name),
+                position=_extract_position(raw_name),
             )
             if resolved_id:
                 conn.execute(f"UPDATE {table_name} SET {id_column} = ? WHERE rowid = ?", (resolved_id, rowid))
@@ -631,14 +645,14 @@ def _repair_game_player_refs(
             f"repair {table_name}.{id_column} remap",
             remapped if apply else len(rows),
             "applied" if apply else "dry_run",
-        )
+        ),
     )
     actions.append(
         Action(
             f"repair {table_name}.{id_column} null unresolved",
             nulled if apply else len(rows),
             "applied" if apply else "dry_run",
-        )
+        ),
     )
 
 
@@ -661,15 +675,15 @@ def _delete_invalid_matchups(conn: sqlite3.Connection, actions: list[Action], ap
                 f"""
                 SELECT COUNT(*) FROM {table_name} AS t
                 WHERE NOT EXISTS (SELECT 1 FROM player_basic AS p WHERE p.player_id = t.{column})
-                """
-            ).fetchone()[0]
+                """,
+            ).fetchone()[0],
         )
         if apply and count:
             conn.execute(
                 f"""
                 DELETE FROM {table_name}
                 WHERE NOT EXISTS (SELECT 1 FROM player_basic AS p WHERE p.player_id = {table_name}.{column})
-                """
+                """,
             )
         actions.append(Action(f"delete invalid {table_name}.{column}", count, "applied" if apply else "dry_run"))
 
@@ -705,7 +719,11 @@ def _repair_movements(conn: sqlite3.Connection, actions: list[Action], apply: bo
             unresolved_team += 1
         player_id = (
             _unique_player_id_by_name(
-                conn, _normalize_name(raw_name), canonical_team, year, _extract_position(raw_name)
+                conn,
+                _normalize_name(raw_name),
+                canonical_team,
+                year,
+                _extract_position(raw_name),
             )
             if canonical_team
             else None
@@ -733,7 +751,7 @@ def _repair_movements(conn: sqlite3.Connection, actions: list[Action], apply: bo
             Action("resolve player_movements player_basic_id", player_resolved, "applied" if apply else "dry_run"),
             Action("mark player_movements unresolved_player", unresolved_player, "applied" if apply else "dry_run"),
             Action("mark player_movements unresolved_team", unresolved_team, "applied" if apply else "dry_run"),
-        ]
+        ],
     )
 
 

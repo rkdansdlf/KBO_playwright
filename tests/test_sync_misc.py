@@ -67,7 +67,7 @@ class TestSyncTeams:
                 franchise_id=1,
                 is_active=True,
                 aliases=["Test", "TT"],
-            )
+            ),
         )
         # Seed a second team with string aliases
         session.add(
@@ -79,7 +79,7 @@ class TestSyncTeams:
                 franchise_id=1,
                 is_active=True,
                 aliases='["Second","SS"]',
-            )
+            ),
         )
         # Seed a third team with None aliases
         session.add(
@@ -91,7 +91,7 @@ class TestSyncTeams:
                 franchise_id=1,
                 is_active=True,
                 aliases=None,
-            )
+            ),
         )
         session.flush()
 

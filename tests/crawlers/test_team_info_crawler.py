@@ -121,7 +121,7 @@ class TestCrawl:
                 "Seoul Address",
                 "02-1234",
                 "https://ssg.com",
-            ]
+            ],
         )
         close_btn = MagicMock()
         close_btn.count = AsyncMock(return_value=0)
@@ -181,7 +181,7 @@ class TestSave:
                 "address": "Seoul",
                 "phone": "02-1234",
                 "homepage": "https://lg.com",
-            }
+            },
         ]
 
         await crawler.save(data)

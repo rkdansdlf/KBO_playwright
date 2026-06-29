@@ -81,8 +81,6 @@ def coerce_int(value: object) -> int | None:
 
     Args:
         value: Value.
-        value: Value.
-        value: Value.
 
     Returns:
         The result of the operation.
@@ -91,7 +89,7 @@ def coerce_int(value: object) -> int | None:
     if value is None or value == "":
         return None
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 

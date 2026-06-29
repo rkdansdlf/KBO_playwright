@@ -120,7 +120,7 @@ class TestFetchOpenRouterEmbeddings:
             "data": [
                 {"index": 0, "embedding": [0.1]},
                 {"index": 1, "embedding": [0.2]},
-            ]
+            ],
         }
         with patch("httpx.Client") as mock_client:
             mock_client.return_value.__enter__.return_value.post.return_value = mock_response

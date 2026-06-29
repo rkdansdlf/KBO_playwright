@@ -57,7 +57,9 @@ def _save_parsed(session, target_domain: str, parsed_data: list[dict]) -> int:
                 count += 1
             except BATCH_PARSE_EXCEPTIONS:
                 logger.exception(
-                    "Save failed in domain=%s: %s", target_domain, item.get("title", item.get("player_name", ""))
+                    "Save failed in domain=%s: %s",
+                    target_domain,
+                    item.get("title", item.get("player_name", "")),
                 )
         return count
 
@@ -94,7 +96,10 @@ def _save_parsed(session, target_domain: str, parsed_data: list[dict]) -> int:
 
 
 def run_batch_parse(
-    limit: int = 50, dry_run: bool = False, retry_failed: bool = True, retry_after_hours: int = 1
+    limit: int = 50,
+    dry_run: bool = False,
+    retry_failed: bool = True,
+    retry_after_hours: int = 1,
 ) -> dict[str, int]:
     stats: dict[str, int] = {"processed": 0, "done": 0, "failed": 0, "skipped": 0}
 
@@ -146,7 +151,9 @@ def run_batch_parse(
                 actual_hash = hashlib.sha256(resp.text.encode()).hexdigest()
                 if snapshot.content_hash and actual_hash != snapshot.content_hash:
                     snap_repo.update_parse_status(
-                        snapshot.id, "failed", error="Content hash mismatch (page changed since crawl)"
+                        snapshot.id,
+                        "failed",
+                        error="Content hash mismatch (page changed since crawl)",
                     )
                     stats["failed"] += 1
                     continue
@@ -186,7 +193,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="Fetch + parse but do not save to repos")
     parser.add_argument("--no-retry", action="store_true", help="Skip retry of failed snapshots")
     parser.add_argument(
-        "--retry-after-hours", type=int, default=1, help="Retry failed snapshots older than N hours (default: 1)"
+        "--retry-after-hours",
+        type=int,
+        default=1,
+        help="Retry failed snapshots older than N hours (default: 1)",
     )
     return parser
 
@@ -195,7 +205,10 @@ def main() -> None:
     parser = build_arg_parser()
     args = parser.parse_args()
     run_batch_parse(
-        limit=args.limit, dry_run=args.dry_run, retry_failed=not args.no_retry, retry_after_hours=args.retry_after_hours
+        limit=args.limit,
+        dry_run=args.dry_run,
+        retry_failed=not args.no_retry,
+        retry_after_hours=args.retry_after_hours,
     )
 
 

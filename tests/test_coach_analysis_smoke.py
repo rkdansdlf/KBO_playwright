@@ -40,7 +40,7 @@ def _seed_full_pitching_game(session):
             away_score=4,
             home_score=2,
             game_status=GAME_STATUS_COMPLETED,
-        )
+        ),
     )
     session.add_all(
         [
@@ -96,7 +96,7 @@ def _seed_full_pitching_game(session):
                 earned_runs=1,
                 strikeouts=3,
             ),
-        ]
+        ],
     )
     session.add(
         PlayerSeasonPitching(
@@ -110,7 +110,7 @@ def _seed_full_pitching_game(session):
             games_started=20,
             innings_pitched=120.0,
             era=3.15,
-        )
+        ),
     )
     session.add(
         PlayerSeasonPitching(
@@ -125,7 +125,7 @@ def _seed_full_pitching_game(session):
             innings_pitched=42.0,
             era=2.95,
             holds=12,
-        )
+        ),
     )
     session.commit()
 
@@ -175,11 +175,11 @@ class TestApiResponseShape:
                                     "away": {"pitchers": [{"player_name": "원정불펜"}]},
                                     "home": {"pitchers": [{"player_name": "홈불펜"}]},
                                 },
-                            }
+                            },
                         },
                         ensure_ascii=False,
                     ),
-                )
+                ),
             )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401LGSS0")
@@ -226,7 +226,7 @@ class TestDropStages:
                     away_score=0,
                     home_score=0,
                     game_status=GAME_STATUS_COMPLETED,
-                )
+                ),
             )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401HHLG0")
@@ -245,7 +245,7 @@ class TestDropStages:
                     away_score=0,
                     home_score=0,
                     game_status=GAME_STATUS_COMPLETED,
-                )
+                ),
             )
             session.add(
                 GamePitchingStat(
@@ -257,7 +257,7 @@ class TestDropStages:
                     is_starting=False,
                     appearance_seq=1,
                     innings_outs=9,
-                )
+                ),
             )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401HHLG0")
@@ -281,7 +281,7 @@ class TestDropStages:
                     game_id="20250401LGSS0",
                     summary_type="리뷰_WPA",
                     detail_text=json.dumps({"crucial_moments": []}, ensure_ascii=False),
-                )
+                ),
             )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401LGSS0")
@@ -304,11 +304,11 @@ class TestDropStages:
                                     "away": {"pitchers": [{"player_name": "원정불펜"}]},
                                     "home": {"pitchers": [{"player_name": "홈불펜"}]},
                                 },
-                            }
+                            },
                         },
                         ensure_ascii=False,
                     ),
-                )
+                ),
             )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401LGSS0")
@@ -355,12 +355,12 @@ class TestRegression:
                                         "away": {"pitchers": [{"player_name": "원정불펜"}]},
                                         "home": {"pitchers": [{"player_name": "홈불펜"}]},
                                     },
-                                }
+                                },
                             },
                             ensure_ascii=False,
                         ),
                     ),
-                ]
+                ],
             )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401LGSS0")
@@ -388,7 +388,7 @@ class TestRegression:
                     away_score=3,
                     home_score=1,
                     game_status=GAME_STATUS_COMPLETED,
-                )
+                ),
             )
             session.add_all(
                 [
@@ -414,7 +414,7 @@ class TestRegression:
                         innings_outs=18,
                         pitches=88,
                     ),
-                ]
+                ],
             )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401HHLG0")

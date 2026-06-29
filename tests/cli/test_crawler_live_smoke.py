@@ -217,7 +217,7 @@ class TestRunSmoke:
             return_value={
                 "hitters": {"away": [1], "home": [1]},
                 "pitchers": {"away": [1], "home": [1]},
-            }
+            },
         )
         result = await run_smoke(
             target_date="20250615",

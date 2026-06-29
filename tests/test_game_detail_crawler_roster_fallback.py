@@ -19,7 +19,7 @@ def test_extract_hitters_uses_roster_map_for_missing_player_id():
                 "타수": "4",
                 "안타": "1",
             },
-        }
+        },
     ]
 
     async def fake_extract_table_rows(_page, selector: str):

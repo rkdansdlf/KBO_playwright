@@ -431,7 +431,7 @@ def _sa_add_check(
                 "base_sql": base_sql,
                 "distinct_expr": distinct_expr,
                 "sample_expr": sample_expr,
-            }
+            },
         )
 
 
@@ -588,7 +588,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
                 "base_sql": "FROM team_daily_roster AS t WHERE t.position IN ('포지션')",
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
-            }
+            },
         )
     if _sa_has_columns(conn, "team_daily_roster", {"person_type", "player_basic_id"}):
         checks.append(
@@ -597,7 +597,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
                 "base_sql": "FROM team_daily_roster AS t WHERE t.person_type = 'player' AND t.player_basic_id IS NULL",
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
-            }
+            },
         )
     if _sa_has_columns(conn, "player_movements", {"canonical_team_id"}):
         checks.append(
@@ -606,7 +606,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
                 "base_sql": "FROM player_movements AS t WHERE t.canonical_team_id IS NULL",
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
-            }
+            },
         )
     if _sa_has_columns(conn, "player_movements", {"resolution_status"}):
         checks.append(
@@ -618,7 +618,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
                 "severity": "warning",
-            }
+            },
         )
     if _sa_has_columns(conn, "players", {"kbo_person_id", "player_basic_id"}):
         if dialect == "postgresql":
@@ -637,7 +637,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
                 ),
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
-            }
+            },
         )
         checks.append(
             {
@@ -646,7 +646,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
                 "severity": "warning",
-            }
+            },
         )
 
     if _sa_has_columns(conn, "player_basic", {"player_id", "name"}):
@@ -656,7 +656,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
                 "base_sql": f"FROM player_basic AS p WHERE {_sa_unknown_player_predicate('p', dialect)}",
                 "distinct_expr": "p.player_id",
                 "sample_expr": "p.player_id",
-            }
+            },
         )
 
     return [
@@ -691,7 +691,7 @@ def _add_check(
                 "base_sql": base_sql,
                 "distinct_expr": distinct_expr,
                 "sample_expr": sample_expr,
-            }
+            },
         )
 
 
@@ -850,7 +850,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
                 "base_sql": "FROM team_daily_roster AS t WHERE t.position IN ('포지션')",
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
-            }
+            },
         )
     if _has_columns(conn, "team_daily_roster", {"person_type", "player_basic_id"}):
         checks.append(
@@ -859,7 +859,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
                 "base_sql": "FROM team_daily_roster AS t WHERE t.person_type = 'player' AND t.player_basic_id IS NULL",
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
-            }
+            },
         )
     if _has_columns(conn, "player_movements", {"canonical_team_id"}):
         checks.append(
@@ -868,7 +868,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
                 "base_sql": "FROM player_movements AS t WHERE t.canonical_team_id IS NULL",
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
-            }
+            },
         )
     if _has_columns(conn, "player_movements", {"resolution_status"}):
         checks.append(
@@ -880,7 +880,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
                 "severity": "warning",
-            }
+            },
         )
     if _has_columns(conn, "players", {"kbo_person_id", "player_basic_id"}):
         checks.append(
@@ -894,7 +894,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
                 ),
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
-            }
+            },
         )
         checks.append(
             {
@@ -903,7 +903,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
                 "severity": "warning",
-            }
+            },
         )
 
     if _has_columns(conn, "player_basic", {"player_id", "name"}):
@@ -913,7 +913,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
                 "base_sql": f"FROM player_basic AS p WHERE {_unknown_player_predicate('p')}",
                 "distinct_expr": "p.player_id",
                 "sample_expr": "p.player_id",
-            }
+            },
         )
 
     return [

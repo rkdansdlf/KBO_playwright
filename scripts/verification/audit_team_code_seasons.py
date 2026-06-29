@@ -72,7 +72,11 @@ def _valid_for_year(code: str, year: int) -> bool:
 
 
 def _collect_table_issues(
-    conn, table: str, year_expr: str, team_column: str, sample_limit: int
+    conn,
+    table: str,
+    year_expr: str,
+    team_column: str,
+    sample_limit: int,
 ) -> list[dict[str, Any]]:
     rows = conn.execute(
         text(
@@ -81,8 +85,8 @@ def _collect_table_issues(
             FROM {table}
             WHERE {team_column} IS NOT NULL
             GROUP BY {year_expr}, {team_column}
-            """
-        )
+            """,
+        ),
     ).fetchall()
     issues: list[dict[str, Any]] = []
     for season_year, team_code, row_count in rows:
@@ -103,7 +107,7 @@ def _collect_table_issues(
                     "season": year,
                     "team_code": code,
                     "row_count": int(row_count or 0),
-                }
+                },
             )
             if len(issues) >= sample_limit:
                 break
@@ -119,21 +123,25 @@ def collect_issues(db_url: str, sample_limit: int = 50) -> list[dict[str, Any]]:
             columns = _columns(inspector, table)
             if {season_column, team_column} <= columns:
                 issues.extend(
-                    _collect_table_issues(conn, table, f"CAST({season_column} AS INTEGER)", team_column, sample_limit)
+                    _collect_table_issues(conn, table, f"CAST({season_column} AS INTEGER)", team_column, sample_limit),
                 )
         for table, date_column, team_column in DATE_TABLES:
             columns = _columns(inspector, table)
             if {date_column, team_column} <= columns:
                 issues.extend(
-                    _collect_table_issues(conn, table, _date_year_expr(conn, date_column), team_column, sample_limit)
+                    _collect_table_issues(conn, table, _date_year_expr(conn, date_column), team_column, sample_limit),
                 )
         for table, game_id_column, team_column in GAME_ID_TABLES:
             columns = _columns(inspector, table)
             if {game_id_column, team_column} <= columns:
                 issues.extend(
                     _collect_table_issues(
-                        conn, table, f"CAST(SUBSTR({game_id_column}, 1, 4) AS INTEGER)", team_column, sample_limit
-                    )
+                        conn,
+                        table,
+                        f"CAST(SUBSTR({game_id_column}, 1, 4) AS INTEGER)",
+                        team_column,
+                        sample_limit,
+                    ),
                 )
     engine.dispose()
     return issues[:sample_limit]
@@ -168,7 +176,7 @@ def main() -> None:
         logger.info("FAIL: team codes outside valid seasons")
         for issue in issues:
             logger.info(
-                f"  {issue['table']}.{issue['column']} {issue['season']} {issue['team_code']} rows={issue['row_count']}"
+                f"  {issue['table']}.{issue['column']} {issue['season']} {issue['team_code']} rows={issue['row_count']}",
             )
     else:
         logger.info("PASS: all managed team codes are valid for their seasons")

@@ -119,7 +119,7 @@ class TestInspectExistingGameData:
             mock_session = MagicMock()
             mock_sl.return_value.__enter__.return_value = mock_session
             mock_session.query.return_value.filter.return_value.distinct.return_value.all.return_value = [
-                ("20240315LGSS0",)
+                ("20240315LGSS0",),
             ]
             result = inspect_existing_game_data(targets)
             assert "20240315LGSS0" in result

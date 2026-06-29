@@ -24,11 +24,11 @@ class TestNaverRelayAdapter:
                         "home_score": 2,
                         "away_score": 1,
                         "base_state": 1,
-                    }
+                    },
                 ],
                 "raw_pbp_rows": [{"inning": 1}],
                 "parser_version": "2.0",
-            }
+            },
         )
         mock_crawler.get_last_failure_reason = MagicMock(return_value=None)
 

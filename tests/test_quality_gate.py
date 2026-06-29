@@ -44,8 +44,8 @@ def _create_quality_gate_tables(conn):
                 away_score INTEGER,
                 game_status TEXT
             )
-            """
-        )
+            """,
+        ),
     )
     conn.execute(text("CREATE TABLE game_batting_stats (game_id TEXT, player_id INTEGER)"))
     conn.execute(text("CREATE TABLE game_pitching_stats (game_id TEXT, player_id INTEGER)"))
@@ -184,8 +184,8 @@ def test_collect_metrics_treats_current_date_as_operational_not_past():
                     ('PAST0', date(CURRENT_DATE, '-1 day'), 'SCHEDULED'),
                     ('RAIN0', date(CURRENT_DATE, '-1 day'), 'CANCELLED'),
                     ('POSTPONED0', date(CURRENT_DATE, '-1 day'), 'POSTPONED')
-                """
-            )
+                """,
+            ),
         )
 
         metrics = collect_metrics(conn)
@@ -210,8 +210,8 @@ def test_collect_metrics_counts_pitching_missing_profiles_and_unknown_stubs():
                     (1001, '정상타자'),
                     (1002, 'Unknown 1002'),
                     (2002, '정상투수')
-                """
-            )
+                """,
+            ),
         )
 
         metrics = collect_metrics(conn)
