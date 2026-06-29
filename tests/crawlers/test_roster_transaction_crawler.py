@@ -178,7 +178,7 @@ class TestSaveToDb:
     def setup_method(self):
         self.crawler = RosterTransactionCrawler()
         self.crawler._raw_pages = [
-            {"source_key": "kbo_today_roster", "url": "http://test", "html": "<html>", "status_code": 200}
+            {"source_key": "kbo_today_roster", "url": "http://test", "html": "<html>", "status_code": 200},
         ]
 
     def test_save_commits_and_clears_raw_pages(self):

@@ -75,7 +75,7 @@ def test_save_schedule_game_records_alias_for_modern_source_id(monkeypatch):
             "away_team_code": "LG",
             "season_year": 2026,
             "season_type": "regular",
-        }
+        },
     )
 
     assert saved is True
@@ -102,7 +102,7 @@ def test_save_schedule_game_records_alias_for_legacy_source_id(monkeypatch):
             "doubleheader_no": 1,
             "season_year": 2001,
             "season_type": "regular",
-        }
+        },
     )
 
     assert saved is True
@@ -128,7 +128,7 @@ def test_save_schedule_game_uses_payload_teams_for_malformed_source_id(monkeypat
             "home_team_code": "KT",
             "season_year": 2026,
             "season_type": "regular",
-        }
+        },
     )
 
     assert saved is True
@@ -154,7 +154,7 @@ def test_resolve_canonical_game_id_uses_alias_table(monkeypatch):
                 canonical_game_id="20260319LGSK0",
                 source="test",
                 reason="alias",
-            )
+            ),
         )
         session.commit()
 

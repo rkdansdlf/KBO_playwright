@@ -51,7 +51,7 @@ def _seed_duplicate_snapshot(
                 "source_type": source_type,
                 "target_domain": target_domain,
                 "is_active": True,
-            }
+            },
         )
         session.flush()
         RawSourceSnapshotRepository(session).save(
@@ -61,7 +61,7 @@ def _seed_duplicate_snapshot(
                 "content_hash": content_hash,
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                 "status_code": 200,
-            }
+            },
         )
         session.commit()
     return content_hash
@@ -84,7 +84,7 @@ def _set_duplicate_raw_page_and_save(crawler, source_key: str, html: str, save_c
             "url": f"https://example.com/{source_key}",
             "html": html,
             "status_code": 200,
-        }
+        },
     ]
     save_call()
 
@@ -93,7 +93,10 @@ def test_team_event_save_marks_duplicate_raw_page_success(monkeypatch, source_re
     source_key = "lg_twins_events"
     html = "<html>unchanged team event page</html>"
     expected_hash = _seed_duplicate_snapshot(
-        source_registry_session_factory, source_key=source_key, target_domain="event", html=html
+        source_registry_session_factory,
+        source_key=source_key,
+        target_domain="event",
+        html=html,
     )
     monkeypatch.setattr(event_module, "SessionLocal", source_registry_session_factory)
     monkeypatch.setattr(event_module, "TeamEventRepository", _NoopRepository)
@@ -148,7 +151,10 @@ def test_seat_save_marks_duplicate_raw_page_success(monkeypatch, source_registry
     source_key = "lg_twins_seat"
     html = "<html>unchanged seat page</html>"
     expected_hash = _seed_duplicate_snapshot(
-        source_registry_session_factory, source_key=source_key, target_domain="seat", html=html
+        source_registry_session_factory,
+        source_key=source_key,
+        target_domain="seat",
+        html=html,
     )
     monkeypatch.setattr(seat_module, "SessionLocal", source_registry_session_factory)
     monkeypatch.setattr(seat_module, "StadiumSeatSectionRepository", _NoopRepository)
@@ -163,7 +169,10 @@ def test_parking_save_marks_duplicate_raw_page_success(monkeypatch, source_regis
     source_key = "ssg_landers_parking"
     html = "<html>unchanged parking page</html>"
     expected_hash = _seed_duplicate_snapshot(
-        source_registry_session_factory, source_key=source_key, target_domain="parking", html=html
+        source_registry_session_factory,
+        source_key=source_key,
+        target_domain="parking",
+        html=html,
     )
     monkeypatch.setattr(parking_module, "SessionLocal", source_registry_session_factory)
     monkeypatch.setattr(parking_module, "ParkingLotRepository", _NoopRepository)
@@ -180,7 +189,10 @@ def test_food_save_marks_duplicate_raw_page_success(monkeypatch, source_registry
     source_key = "lotte_giants_fnb"
     html = "<html>unchanged food page</html>"
     expected_hash = _seed_duplicate_snapshot(
-        source_registry_session_factory, source_key=source_key, target_domain="food", html=html
+        source_registry_session_factory,
+        source_key=source_key,
+        target_domain="food",
+        html=html,
     )
     monkeypatch.setattr(food_module, "SessionLocal", source_registry_session_factory)
     monkeypatch.setattr(food_module, "StadiumFoodVendorRepository", _NoopRepository)

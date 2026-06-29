@@ -219,8 +219,8 @@ class TestLoadSelectorConfig:
                     "source": str(html_path),
                     "source_type": "file",
                     "checks": [{"name": "c1", "selector": "div"}],
-                }
-            ]
+                },
+            ],
         }
         config_path = tmp_path / "cfg.json"
         config_path.write_text(json.dumps(config), encoding="utf-8")

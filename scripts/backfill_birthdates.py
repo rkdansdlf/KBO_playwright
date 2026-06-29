@@ -126,7 +126,7 @@ def backfill(limit: int = 0, dry_run: bool = False, verbose: bool = False) -> in
                     session.execute(
                         update(PlayerBasic)
                         .where(PlayerBasic.player_id == p.player_id)
-                        .values(birth_date_date=parsed_date)
+                        .values(birth_date_date=parsed_date),
                     )
             else:
                 parse_fail_count += 1

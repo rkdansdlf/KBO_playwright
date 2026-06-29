@@ -86,3 +86,15 @@ class TestLogin:
                 mock_page.goto.assert_called()
                 mock_page.fill.assert_called()
                 mock_page.click.assert_called()
+
+
+class TestIsAuthenticated:
+    def test_returns_false_when_no_state(self, monkeypatch):
+        monkeypatch.setattr("pathlib.Path.exists", lambda self: False)
+        assert KboAuthenticator.is_authenticated() is False
+
+
+class TestGetAuthStatePath:
+    def test_returns_correct_path(self):
+        path = KboAuthenticator.get_auth_state_path()
+        assert "kbo_auth_state.json" in path

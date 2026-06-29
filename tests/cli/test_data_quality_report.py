@@ -159,8 +159,8 @@ class TestWriteCsvReport:
                     "pitching": {"total": 0, "consistency_rate": "N/A", "sources": {}},
                     "fielding": {"total": 0, "consistency_rate": "N/A", "sources": {}},
                     "baserunning": {"total": 0, "consistency_rate": "N/A", "sources": {}},
-                }
-            }
+                },
+            },
         }
         path = str(tmp_path / "test.csv")
         _write_csv_report(data, path)

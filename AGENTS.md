@@ -377,7 +377,7 @@ Total enabled rules: **167** (E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G, BLE,
 Unit-test mode (`-m "not integration and not slow and not oci"`): **7,521 passed**, 0 failed.
 Full suite: 7,749 passed, 19 failed (integration tests requiring live `data/test_runtime.db`).
 
-### Phase 47 Complete (2026-06-29) — Sync module bug fixes + test stabilization
+### Phase 47 Complete (2026-06-29) — Sync module bug fixes + test stabilization + CLI coverage expansion
 
 - **`src/sync/sync_base.py`**: Added `Protocol` to `from typing import TYPE_CHECKING, Any, Protocol` — fixed 80 collection errors across sync tests.
 - **`src/sync/sync_misc.py`**: Added missing `from src.sync.sync_base import SyncBaseProtocol` import.
@@ -386,7 +386,9 @@ Full suite: 7,749 passed, 19 failed (integration tests requiring live `data/test
 - **`tests/sync/test_sync_base_integration.py`**: Changed `pytest.mark.usefixtures("_db_session")` to `_db_engine` + `_make_session()` pattern (fixture didn't exist).
 - **`tests/cli/test_auto_healer.py`**: Added missing `_apply_heal_outcome` import; fixed `test_with_target_game_ids` to mock `_find_recovery_targets`.
 - **`src/validators/quality_gate.py`**: Restored 4 pure module-level functions (`_batting_pa_mismatch`, `_team_stat_mismatch`, `_pa_formula_expected`, `_ip_to_outs_float`) accidentally deleted during prior edit.
-- **Result**: Unit-test mode 7,521 passed, 0 failed.
+- **`src/aggregators/season_stat_aggregator.py`**: Removed invalid `is_not` import from sqlalchemy.
+- **New tests**: `test_freshness_gate_pure.py` (26), `test_check_data_status_pure.py` (26), `test_generate_quality_report_pure.py` (22), `test_calculate_sabermetrics_pure.py` (4), `test_quality_gate_check_pure.py` (4), `test_monthly_pa_audit_pure.py` (4), `test_calculate_standings_pure.py` (9).
+- **Result**: Unit-test mode 7,629 passed, 0 failed.
 
 ### Phase 20-28 Complete (2026-06-26) — Ruff rule expansion, test cleanup, pre-commit
 

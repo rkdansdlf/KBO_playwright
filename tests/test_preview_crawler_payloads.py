@@ -71,7 +71,7 @@ def test_crawl_preview_recovers_starters_and_lineup_flag_from_current_payloads()
             '{"row":[{"Text":"1"},{"Text":"중견수"},{"Text":"이원석"}]},'
             '{"row":[{"Text":"2"},{"Text":"우익수"},{"Text":"페라자"}]}'
             "]}"
-        )
+        ),
     ]
 
     class FakePreviewCrawler(PreviewCrawler):
@@ -92,8 +92,8 @@ def test_crawl_preview_recovers_starters_and_lineup_flag_from_current_payloads()
                             "B_PIT_P_ID": 64213,
                             "START_PIT_CK": 0,
                             "LINEUP_CK": 0,
-                        }
-                    ]
+                        },
+                    ],
                 }
             if url == self.LINEUP_URL:
                 return [[{"LINEUP_CK": "1"}], [], [], grid, grid]
@@ -127,7 +127,7 @@ def test_crawl_preview_ignores_stale_lineup_payload_but_keeps_game_list_starters
             '{"row":[{"Text":"8"},{"Text":"포수"},{"Text":"김형준"}]},'
             '{"row":[{"Text":"9"},{"Text":"2루수"},{"Text":"김한별"}]}'
             "]}"
-        )
+        ),
     ]
 
     class FakePreviewCrawler(PreviewCrawler):
@@ -148,8 +148,8 @@ def test_crawl_preview_ignores_stale_lineup_payload_but_keeps_game_list_starters
                             "B_PIT_P_ID": 64001,
                             "START_PIT_CK": 1,
                             "LINEUP_CK": 0,
-                        }
-                    ]
+                        },
+                    ],
                 }
             if url == self.LINEUP_URL:
                 return [
@@ -188,7 +188,7 @@ def test_parse_lineup_grid_empty_and_ordered_rows():
             '{"row":[{"Text":"1"},{"Text":"2루수"},{"Text":"박찬호"}]},'
             '{"row":[{"Text":"2"},{"Text":"유격수"},{"Text":"김도영"}]}'
             "]}"
-        )
+        ),
     ]
     parsed = crawler._parse_lineup_grid(grid)
     assert parsed == [

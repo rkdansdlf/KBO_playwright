@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -108,3 +108,62 @@ class TestGetTransitTimesBatch:
         origins = [{"label": "A", "lat": 37.0, "lng": 127.0}]
         result = await get_transit_times_batch(origins)
         assert isinstance(result, list)
+
+
+class TestCallKakaoEdge:
+    @pytest.mark.asyncio
+    async def test_nonzero_result_code_returns_none(self, monkeypatch):
+        from src.utils.map_api_client import _call_kakao
+
+        client = AsyncMock()
+        client.get.side_effect = [
+            MagicMock(json=lambda: {"routes": [{"result_code": 1}], "raise_for_status": lambda: None}),
+        ]
+        result = await _call_kakao(client, 37.0, 127.0, 37.5, 127.1, "car")
+        assert result is None
+
+
+class TestCallNaverEdge:
+    @pytest.mark.asyncio
+    async def test_json_error_returns_none(self, monkeypatch):
+        from src.utils.map_api_client import _call_naver
+
+        client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.json.side_effect = ValueError("bad json")
+        client.get.return_value = mock_resp
+        result = await _call_naver(client, 37.0, 127.0, 37.5, 127.1, "car")
+        assert result is None
+
+
+class TestCallTmapEdge:
+    @pytest.mark.asyncio
+    async def test_nonok_result_code_returns_none(self, monkeypatch):
+        from src.utils.map_api_client import _call_tmap
+
+        client = AsyncMock()
+        client.post.return_value = {"resultCode": "FAIL"}
+        monkeypatch.setenv("TMAP_REST_API_KEY", "key")
+        result = await _call_tmap(client, 37.0, 127.0, 37.5, 127.1, "car")
+        assert result is None
+
+
+class TestGetTransitTimeEdge:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_keys(self, monkeypatch):
+        from src.utils.map_api_client import get_transit_time, TransitRequest
+
+        monkeypatch.setenv("KAKAO_REST_API_KEY", "")
+        monkeypatch.setenv("NAVER_CLIENT_ID", "")
+        monkeypatch.setenv("NAVER_CLIENT_SECRET", "")
+        monkeypatch.setenv("TMAP_REST_API_KEY", "")
+        result = await get_transit_time(
+            TransitRequest(
+                origin_label="A",
+                origin_lat=37.0,
+                origin_lng=127.0,
+                dest_lat=37.5,
+                dest_lng=127.1,
+            ),
+        )
+        assert result is None

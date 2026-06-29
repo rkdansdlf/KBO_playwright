@@ -30,7 +30,7 @@ class TestStadiumFoodVendorRepository:
                 "vendor_name": "잠실푸드",
                 "location_text": "1층",
                 "confidence": "high",
-            }
+            },
         )
         session.commit()
         assert vendor.id is not None
@@ -48,7 +48,7 @@ class TestStadiumFoodVendorRepository:
                 "vendor_name": "잠실푸드",
                 "location_text": "1층",
                 "confidence": "medium",
-            }
+            },
         )
         session.commit()
 
@@ -58,7 +58,7 @@ class TestStadiumFoodVendorRepository:
                 "vendor_name": "잠실푸드",
                 "location_text": "2층",
                 "confidence": "high",
-            }
+            },
         )
         session.commit()
 
@@ -89,7 +89,7 @@ class TestStadiumFoodVendorRepository:
             [
                 {"stadium_id": "JAMSIL", "vendor_name": "A", "confidence": "high"},
                 {"stadium_id": "JAMSIL", "vendor_name": "B", "confidence": "medium"},
-            ]
+            ],
         )
         session.commit()
         assert count == 2
@@ -125,7 +125,7 @@ class TestStadiumFoodMenuItemRepository:
                 "menu_name": "떡볶이",
                 "price": 5000,
                 "category": "snack",
-            }
+            },
         )
         session.commit()
         assert item.id is not None
@@ -144,7 +144,7 @@ class TestStadiumFoodMenuItemRepository:
                 "menu_name": "떡볶이",
                 "price": 5000,
                 "category": "snack",
-            }
+            },
         )
         session.commit()
 
@@ -155,7 +155,7 @@ class TestStadiumFoodMenuItemRepository:
                 "price": 5500,
                 "category": "snack",
                 "is_signature": True,
-            }
+            },
         )
         session.commit()
 
@@ -203,7 +203,7 @@ class TestStadiumFoodMenuItemRepository:
             [
                 {"vendor_id": vendor_id, "menu_name": "떡볶이", "price": 5000, "category": "snack"},
                 {"vendor_id": vendor_id, "menu_name": "김밥", "price": 3000, "category": "snack"},
-            ]
+            ],
         )
         session.commit()
         assert count == 2

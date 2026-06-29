@@ -25,7 +25,8 @@ from src.models.game import (
     PlayerGamePitching,
 )
 from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
-from src.models.team import TeamDailyRoster
+from src.models.season import KboSeason
+from src.models.team import Team, TeamDailyRoster
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -60,6 +61,8 @@ class RuntimeHydrator:
         PlayerBasic: ("player_id",),
         PlayerGameBatting: ("game_id", "player_id"),
         PlayerGamePitching: ("game_id", "player_id"),
+        KboSeason: ("season_id",),
+        Team: ("team_id",),
     }
 
     def __init__(self, source_session: Session, target_session: Session) -> None:
@@ -123,6 +126,22 @@ class RuntimeHydrator:
             roster_since = max(start_of_year, date.fromordinal(target_date.toordinal() - 45))
 
         specs = [
+            HydrationSpec(
+                "teams",
+                Team,
+                (),
+                (),
+                replace_scope=False,
+                exclude_columns=("created_at", "updated_at"),
+            ),
+            HydrationSpec(
+                "kbo_seasons",
+                KboSeason,
+                (),
+                (),
+                replace_scope=False,
+                exclude_columns=("created_at", "updated_at"),
+            ),
             HydrationSpec(
                 "player_basic",
                 PlayerBasic,

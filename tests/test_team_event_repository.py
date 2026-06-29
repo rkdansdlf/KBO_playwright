@@ -59,7 +59,7 @@ class TestTeamEventRepository:
                 "title": "LG 이벤트1",
                 "source_url": "u1",
                 "published_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         repo.save(
             {
@@ -68,7 +68,7 @@ class TestTeamEventRepository:
                 "title": "LG 이벤트2",
                 "source_url": "u2",
                 "published_at": datetime.now(UTC).replace(tzinfo=None),
-            }
+            },
         )
         repo.save({"event_scope": "team", "team_id": "SS", "title": "SS 이벤트", "source_url": "u3"})
         session.commit()

@@ -42,7 +42,9 @@ def _load_rows(path: Path) -> list[dict[str, str]]:
 
 
 def _selected_rows(
-    input_path: Path, game_ids: set[str] | None = None, limit: int | None = None
+    input_path: Path,
+    game_ids: set[str] | None = None,
+    limit: int | None = None,
 ) -> list[dict[str, str]]:
     rows = _load_rows(input_path)
     selected: list[dict[str, str]] = []
@@ -121,7 +123,7 @@ def _query_wayback(search_url: str, match_type: str, timeout: float) -> list[dic
                 "original": str(row[1] or "").strip(),
                 "statuscode": str(row[2] or "").strip(),
                 "mimetype": str(row[3] or "").strip(),
-            }
+            },
         )
     return results
 
@@ -204,7 +206,7 @@ def discover_captures(
                         "mimetype": capture["mimetype"],
                         "download_path": download_path,
                         "notes": notes,
-                    }
+                    },
                 )
                 break
             game_rows.append(
@@ -219,7 +221,7 @@ def discover_captures(
                     "mimetype": "",
                     "download_path": "",
                     "notes": notes or "No capture found",
-                }
+                },
             )
             time.sleep(sleep_seconds)
         if not found:
@@ -280,7 +282,7 @@ def _write_manifest_from_report(report_rows: list[dict[str, str]], output_path: 
                 "format": manifest_format,
                 "priority": 50,
                 "notes": f"wayback:{row.get('timestamp')} {row.get('original')}",
-            }
+            },
         )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as handle:

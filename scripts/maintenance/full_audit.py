@@ -82,7 +82,7 @@ def table_exists(conn, table_name: str) -> bool:
             conn.execute(
                 text("SELECT 1 FROM sqlite_master WHERE type='table' AND name = :table_name"),
                 {"table_name": table_name},
-            ).first()
+            ).first(),
         )
     return bool(conn.execute(text("SELECT to_regclass(:table_name)"), {"table_name": table_name}).scalar())
 
@@ -105,7 +105,7 @@ def table_columns(conn, table_name: str) -> set[str]:
             FROM information_schema.columns
             WHERE table_name = :table_name
               AND table_schema = CURRENT_SCHEMA()
-            """
+            """,
         ),
         {"table_name": table_name},
     ).fetchall()
@@ -190,7 +190,11 @@ def _count_condition(conn, table_name: str, required_columns: tuple[str, ...], c
 
 
 def _distribution(
-    conn, table_name: str, group_column: str, condition_columns: tuple[str, ...], condition: str
+    conn,
+    table_name: str,
+    group_column: str,
+    condition_columns: tuple[str, ...],
+    condition: str,
 ) -> dict[str, int]:
     required = (group_column, *condition_columns)
     if not _has_columns(conn, table_name, required):
@@ -507,7 +511,7 @@ def flatten_gate_metrics(report: Mapping[str, Any]) -> dict[str, int]:
         "game_batting_duplicate_player_groups": int(duplicates.get("game_batting_duplicate_player_groups", 0) or 0),
         "game_pitching_duplicate_player_groups": int(duplicates.get("game_pitching_duplicate_player_groups", 0) or 0),
         "game_lineups_duplicate_player_team_groups": int(
-            duplicates.get("game_lineups_duplicate_player_team_groups", 0) or 0
+            duplicates.get("game_lineups_duplicate_player_team_groups", 0) or 0,
         ),
         "game_batting_player_team_collisions": int(collisions.get("game_batting_player_team_collisions", 0) or 0),
         "game_pitching_player_team_collisions": int(collisions.get("game_pitching_player_team_collisions", 0) or 0),

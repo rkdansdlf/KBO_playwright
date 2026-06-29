@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from src.urls import GAME_CENTER
 from src.utils.request_policy import RequestPolicy
@@ -67,7 +67,7 @@ def build_hitter_url(game_id: str, game_date: str) -> str:
     return f"{KBO_GAME_CENTER_URL}?gameDate={date_compact}&gameId={game_id}&section=HITTER"
 
 
-def _get_column_index_map(table_tag: BeautifulSoup) -> dict[str, int]:
+def _get_column_index_map(table_tag: Tag) -> dict[str, int]:
     """
     Map column header text to cell index for a stats table.
 
@@ -134,13 +134,13 @@ def parse_hitter_sh_sf(html: str, game_id: str) -> dict[int | str, dict[str, int
             if not link:
                 continue
 
-            href = link.get("href", "")
+            href = cast("str", link.get("href", ""))
             player_id_match = re.search(r"playerId=(\d+)", href)
 
             if player_id_match:
                 player_key: int | str = int(player_id_match.group(1))
             else:
-                player_name = link.get_text(strip=True) or link.get("title", "")
+                player_name = link.get_text(strip=True) or cast("str", link.get("title", ""))
                 if not player_name:
                     continue
                 player_key = player_name
@@ -287,7 +287,7 @@ def derive_sh_sf_from_hitter_page(
               AND {where_clause}
         """)
         result = session.execute(sql, params)
-        updated += result.rowcount or 0
+        updated += result.rowcount or 0  # type: ignore[attr-defined]
 
     if updated:
         logger.info(

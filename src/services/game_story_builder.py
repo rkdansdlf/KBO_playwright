@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from src.utils.relay_text import compact_relay_text, is_relay_noise_text
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from src.models.game import Game, GameEvent
 
@@ -50,7 +50,7 @@ class _StoryContext:
     event: GameEvent
     inning_half: str | None
     batting_team: str | None
-    score_before: dict[str, int | None]
+    score_before: dict[str, int]
     score_after: dict[str, int | None]
     score_diff_before: int | None
     score_diff_after: int | None
@@ -112,7 +112,7 @@ class GameStoryBuilder:
         return {
             "schema_version": STORY_SCHEMA_VERSION,
             "game_id": game.game_id,
-            "game_date": self._date_string(game.game_date),
+            "game_date": self._date_string(cast("date | datetime | None", game.game_date)),
             "teams": {
                 "away": game.away_team,
                 "home": game.home_team,
@@ -182,7 +182,7 @@ class GameStoryBuilder:
         event_type = str(event.event_type or "").strip().lower()
         return event_type != "substitution"
 
-    def _score_after(self, event: GameEvent, score_before: dict[str, int | None]) -> dict[str, int | None]:
+    def _score_after(self, event: GameEvent, score_before: dict[str, int]) -> dict[str, int | None]:
         away_score = event.away_score if event.away_score is not None else score_before["away"]
         home_score = event.home_score if event.home_score is not None else score_before["home"]
         return {
@@ -193,19 +193,14 @@ class GameStoryBuilder:
     def _runs_scored(
         self,
         event: GameEvent,
-        score_before: dict[str, int | None],
+        score_before: dict[str, int],
         score_after: dict[str, int | None],
     ) -> int:
-        if None not in (
-            score_before["away"],
-            score_before["home"],
-            score_after["away"],
-            score_after["home"],
-        ):
-            before_total = int(score_before["away"] or 0) + int(score_before["home"] or 0)
-            after_total = int(score_after["away"] or 0) + int(score_after["home"] or 0)
-            return max(0, after_total - before_total)
-        return max(0, int(event.rbi or 0))
+        if score_after["away"] is None or score_after["home"] is None:
+            return max(0, int(event.rbi or 0))
+        before_total = score_before["away"] + score_before["home"]
+        after_total = score_after["away"] + score_after["home"]
+        return max(0, after_total - before_total)
 
     def _base_tags(
         self,
@@ -243,7 +238,7 @@ class GameStoryBuilder:
     def _is_critical_error(self, event: GameEvent, description: str, result_code: str, runs_scored: int) -> bool:
         if "실책" not in description and result_code not in {"E", "ROE"}:
             return False
-        return runs_scored > 0 or abs(float(event.wpa or 0.0)) >= 0.2 or (event.inning or 0) >= 7
+        return bool(runs_scored > 0 or abs(float(event.wpa or 0.0)) >= 0.2 or (event.inning or 0) >= 7)
 
     def _score_diff_tags(self, score_diff_before: int | None, score_diff_after: int | None) -> set[str]:
         if score_diff_before is None or score_diff_after is None:
@@ -272,14 +267,14 @@ class GameStoryBuilder:
         score_diff_after: int | None,
         runs_scored: int,
     ) -> bool:
-        return (
+        return bool(
             inning_half == "bottom"
             and (event.inning or 0) >= 9
             and score_diff_before is not None
             and score_diff_after is not None
             and score_diff_before <= 0
             and score_diff_after > 0
-            and runs_scored > 0
+            and runs_scored > 0,
         )
 
     def _mark_decisive_score(self, game: Game, contexts: Sequence[_StoryContext]) -> None:
@@ -356,7 +351,7 @@ class GameStoryBuilder:
         event = context.event
         return {
             "event_seq": event.event_seq,
-            "inning_label": self._inning_label(event.inning, context.inning_half),
+            "inning_label": self._inning_label(cast("int | None", event.inning), context.inning_half),
             "batting_team": context.batting_team,
             "tags": self._ordered_tags(context.tags),
             "importance_score": context.importance_score,
@@ -380,9 +375,9 @@ class GameStoryBuilder:
 
     def _batting_team(self, game: Game, inning_half: str | None) -> str | None:
         if inning_half == "top":
-            return game.away_team
+            return cast("str | None", game.away_team)
         if inning_half == "bottom":
-            return game.home_team
+            return cast("str | None", game.home_team)
         return None
 
     def _normalize_half(self, value: object) -> str | None:
@@ -396,13 +391,13 @@ class GameStoryBuilder:
     def _inning_label(self, inning: int | None, inning_half: str | None) -> str | None:
         if inning is None:
             return None
-        suffix = {"top": "초", "bottom": "말"}.get(inning_half, "")
+        suffix = {"top": "초", "bottom": "말"}.get(cast("str", inning_half), "")
         return f"{inning}회{suffix}"
 
-    def _score_diff(self, score: dict[str, int | None]) -> int | None:
+    def _score_diff(self, score: Mapping[str, int | None]) -> int | None:
         if score["away"] is None or score["home"] is None:
             return None
-        return int(score["home"] or 0) - int(score["away"] or 0)
+        return score["home"] - score["away"]
 
     def _final_score_diff(self, game: Game) -> int | None:
         if game.home_score is None or game.away_score is None:

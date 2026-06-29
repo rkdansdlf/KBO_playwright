@@ -39,7 +39,7 @@ class TestPlayerSeasonFieldingRepository:
                     "innings": 800.0,
                     "fielding_pct": 0.991,
                 },
-            ]
+            ],
         )
         assert result == 1
         row = session.query(PlayerSeasonFielding).one()
@@ -71,7 +71,7 @@ class TestPlayerSeasonFieldingRepository:
                     "games": 100,
                     "fielding_pct": 0.991,
                 },
-            ]
+            ],
         )
         result = repo.upsert_many(
             [
@@ -83,7 +83,7 @@ class TestPlayerSeasonFieldingRepository:
                     "games": 101,
                     "fielding_pct": 0.992,
                 },
-            ]
+            ],
         )
         assert result == 1
         rows = session.query(PlayerSeasonFielding).all()
@@ -112,7 +112,7 @@ class TestPlayerSeasonBaserunningRepository:
         result = repo.upsert_many(
             [
                 {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 30, "caught_stealing": 5},
-            ]
+            ],
         )
         assert result == 1
         row = session.query(PlayerSeasonBaserunning).one()
@@ -137,12 +137,12 @@ class TestPlayerSeasonBaserunningRepository:
         repo.upsert_many(
             [
                 {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 30},
-            ]
+            ],
         )
         repo.upsert_many(
             [
                 {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 35},
-            ]
+            ],
         )
         rows = session.query(PlayerSeasonBaserunning).all()
         assert len(rows) == 1

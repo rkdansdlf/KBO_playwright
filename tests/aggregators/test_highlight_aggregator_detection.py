@@ -30,7 +30,7 @@ def _add_game(session, game_id="20250101", status="COMPLETED"):
             game_date=date(2025, 1, 1),
             home_team="LG",
             away_team="SS",
-        )
+        ),
     )
     session.commit()
 
@@ -62,7 +62,7 @@ def _add_event(
             away_score=away_score,
             bases_before=bases_before,
             batter_id=batter_id,
-        )
+        ),
     )
     session.commit()
 
@@ -185,7 +185,13 @@ class TestHighlightAggregator:
     def test_importance_score_calculation(self, session):
         _add_game(session)
         _add_event(
-            session, inning=9, inning_half="bottom", home_score=2, away_score=1, description="끝내기 홈런", wpa=0.35
+            session,
+            inning=9,
+            inning_half="bottom",
+            home_score=2,
+            away_score=1,
+            description="끝내기 홈런",
+            wpa=0.35,
         )
         agg = HighlightAggregator(session)
         highlights = agg.aggregate_game_highlights("20250101")

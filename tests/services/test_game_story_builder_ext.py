@@ -109,14 +109,22 @@ class TestBaseTags:
     def test_game_tying_tag(self):
         builder = GameStoryBuilder()
         tags = builder._base_tags(
-            MagicMock(wpa=0.1, rbi=0, result_code="H", description="안타", inning=5, inning_half="top"), "top", -1, 0, 1
+            MagicMock(wpa=0.1, rbi=0, result_code="H", description="안타", inning=5, inning_half="top"),
+            "top",
+            -1,
+            0,
+            1,
         )
         assert "game_tying" in tags
 
     def test_go_ahead_tag(self):
         builder = GameStoryBuilder()
         tags = builder._base_tags(
-            MagicMock(wpa=0.1, rbi=0, result_code="H", description="안타", inning=5, inning_half="top"), "top", 0, 1, 1
+            MagicMock(wpa=0.1, rbi=0, result_code="H", description="안타", inning=5, inning_half="top"),
+            "top",
+            0,
+            1,
+            1,
         )
         assert "go_ahead" in tags
 

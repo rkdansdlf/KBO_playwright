@@ -125,7 +125,9 @@ class TestImportRelayAdapter:
             priority=1,
         )
         with patch.object(
-            adapter._relay_parser, "_parse_naver_payload", return_value={"events": [{"id": 1}], "raw_pbp_rows": []}
+            adapter._relay_parser,
+            "_parse_naver_payload",
+            return_value={"events": [{"id": 1}], "raw_pbp_rows": []},
         ):
             result = adapter._parse_naver_json(entry)
             assert not result.is_empty
@@ -141,7 +143,9 @@ class TestImportRelayAdapter:
             priority=1,
         )
         with patch.object(
-            adapter._relay_parser, "_parse_naver_payload", return_value={"events": [{"id": 1}], "raw_pbp_rows": []}
+            adapter._relay_parser,
+            "_parse_naver_payload",
+            return_value={"events": [{"id": 1}], "raw_pbp_rows": []},
         ):
             result = adapter._parse_naver_json(entry)
             assert not result.is_empty

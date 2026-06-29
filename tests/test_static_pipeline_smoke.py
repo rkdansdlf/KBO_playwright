@@ -81,7 +81,7 @@ def _load_markdown_docs() -> list[dict[str, Any]]:
                     "source_file": md_path.name,
                     "category": category,
                 },
-            }
+            },
         )
     return docs
 

@@ -30,8 +30,11 @@ def session():
 def _add_season(session, season_id=1, year=2025, league_type_code=1, league_type_name="정규시즌"):
     session.add(
         KboSeason(
-            season_id=season_id, season_year=year, league_type_code=league_type_code, league_type_name=league_type_name
-        )
+            season_id=season_id,
+            season_year=year,
+            league_type_code=league_type_code,
+            league_type_name=league_type_name,
+        ),
     )
     session.commit()
 
@@ -46,7 +49,7 @@ def _add_game(session, game_id="20250101", status="COMPLETED", season_id=1):
             game_date=date(2025, 1, 1),
             home_team="LG",
             away_team="SS",
-        )
+        ),
     )
     session.commit()
 
@@ -59,7 +62,7 @@ def _add_event(session, game_id="20250101", batter_id=10001, wpa=0.05, win_expec
             event_seq=event_seq,
             wpa=wpa,
             win_expectancy_before=win_expectancy_before,
-        )
+        ),
     )
     session.commit()
 
@@ -183,7 +186,7 @@ def _add_player_season_batting(session, player_id, season=2025, league="REGULAR"
             level="KBO1",
             source="ROLLUP",
             team_code="LG",
-        )
+        ),
     )
     session.commit()
 

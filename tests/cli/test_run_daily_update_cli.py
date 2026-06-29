@@ -57,7 +57,7 @@ def test_main_forwards_cli_options_and_releases_lock(monkeypatch):
             "--skip-season-stats",
             "--skip-oci-supporting-sync",
             "--skip-p0-non-game",
-        ]
+        ],
     )
 
     assert result == 0

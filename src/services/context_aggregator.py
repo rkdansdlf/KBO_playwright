@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import and_, desc, func, or_
 
@@ -60,7 +60,7 @@ class ContextAggregator:
         if innings_pitched is None:
             return None
         try:
-            value = float(innings_pitched)
+            value = float(cast("float", innings_pitched))
         except (TypeError, ValueError):
             return None
 
@@ -234,7 +234,7 @@ class ContextAggregator:
                     },
                 )
 
-            if self._assign_pitching_role(row, payload_row, side, starters, bullpen):
+            if self._assign_pitching_role(row, payload_row, cast("str", side), starters, bullpen):
                 continue
 
         for side_payload in bullpen.values():
@@ -385,7 +385,7 @@ class ContextAggregator:
         if not summary.detail_text:
             return None
         try:
-            payload = json.loads(summary.detail_text)
+            payload = json.loads(cast("str", summary.detail_text))
         except (TypeError, ValueError):
             return {}
         return payload if isinstance(payload, dict) else None
@@ -647,7 +647,7 @@ class ContextAggregator:
             .filter(
                 GamePitchingStat.game_id.in_(game_ids),
                 GamePitchingStat.team_code == team_code,
-                not GamePitchingStat.is_starting,
+                GamePitchingStat.is_starting.is_(False),
             )
             .first()
         )
@@ -893,7 +893,7 @@ class ContextAggregator:
 
         return [
             {
-                "date": m.movement_date.isoformat(),
+                "date": m.movement_date.isoformat() if isinstance(m.movement_date, datetime) else str(m.movement_date),
                 "section": m.section,
                 "player": m.player_name,
                 "remarks": m.remarks,
@@ -1105,7 +1105,7 @@ class ContextAggregator:
                 },
             )
 
-        results.sort(key=lambda x: (x["win_rate"], -x["losses"]))
+        results.sort(key=lambda x: (x["win_rate"], -cast("int", x["losses"])))
         return results
 
     def get_position_avg_comparison(self, player_id: int, position: str, season_year: int) -> dict[str, Any]:

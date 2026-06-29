@@ -248,20 +248,40 @@ class TestBuildGameSyncEligibilityCompleted:
         )
         session.add(g)
         session.add(
-            GameBattingStat(game_id="20250601_01", team_side="home", player_id="p1", player_name="P1", appearance_seq=1)
+            GameBattingStat(
+                game_id="20250601_01",
+                team_side="home",
+                player_id="p1",
+                player_name="P1",
+                appearance_seq=1,
+            ),
         )
         session.add(
-            GameBattingStat(game_id="20250601_01", team_side="away", player_id="p2", player_name="P2", appearance_seq=2)
+            GameBattingStat(
+                game_id="20250601_01",
+                team_side="away",
+                player_id="p2",
+                player_name="P2",
+                appearance_seq=2,
+            ),
         )
         session.add(
             GamePitchingStat(
-                game_id="20250601_01", team_side="home", player_id="p3", player_name="P3", appearance_seq=1
-            )
+                game_id="20250601_01",
+                team_side="home",
+                player_id="p3",
+                player_name="P3",
+                appearance_seq=1,
+            ),
         )
         session.add(
             GamePitchingStat(
-                game_id="20250601_01", team_side="away", player_id="p4", player_name="P4", appearance_seq=2
-            )
+                game_id="20250601_01",
+                team_side="away",
+                player_id="p4",
+                player_name="P4",
+                appearance_seq=2,
+            ),
         )
         session.commit()
 
@@ -288,20 +308,40 @@ class TestBuildGameSyncEligibilityCompleted:
         )
         session.add(g)
         session.add(
-            GameBattingStat(game_id="20250601_01", team_side="home", player_id="p1", player_name="P1", appearance_seq=1)
+            GameBattingStat(
+                game_id="20250601_01",
+                team_side="home",
+                player_id="p1",
+                player_name="P1",
+                appearance_seq=1,
+            ),
         )
         session.add(
-            GameBattingStat(game_id="20250601_01", team_side="away", player_id="p2", player_name="P2", appearance_seq=2)
+            GameBattingStat(
+                game_id="20250601_01",
+                team_side="away",
+                player_id="p2",
+                player_name="P2",
+                appearance_seq=2,
+            ),
         )
         session.add(
             GamePitchingStat(
-                game_id="20250601_01", team_side="home", player_id="p3", player_name="P3", appearance_seq=1
-            )
+                game_id="20250601_01",
+                team_side="home",
+                player_id="p3",
+                player_name="P3",
+                appearance_seq=1,
+            ),
         )
         session.add(
             GamePitchingStat(
-                game_id="20250601_01", team_side="away", player_id="p4", player_name="P4", appearance_seq=2
-            )
+                game_id="20250601_01",
+                team_side="away",
+                player_id="p4",
+                player_name="P4",
+                appearance_seq=2,
+            ),
         )
         session.commit()
 

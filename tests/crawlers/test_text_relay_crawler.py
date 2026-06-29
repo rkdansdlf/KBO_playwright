@@ -312,7 +312,7 @@ class TestTextRelayCrawlerExtractRelayRows:
             [
                 {"text": "1회초 삼성 공격", "class": "blue"},
                 {"text": "타자 김하성 : 안타", "class": "normaiflTxt"},
-            ]
+            ],
         )
         rows = await self.crawler._extract_relay_rows(page)  # type: ignore[arg-type]
         assert len(rows) == 1
@@ -329,7 +329,7 @@ class TestTextRelayCrawlerExtractRelayRows:
                 {"text": "타자 박병호 : 아웃", "class": "normaiflTxt"},
                 {"text": "타자 김하성 : 안타", "class": "normaiflTxt"},
                 {"text": "1회초 삼성 공격", "class": "blue"},
-            ]
+            ],
         )
         rows = await self.crawler._extract_relay_rows(page)  # type: ignore[arg-type]
         assert len(rows) == 2

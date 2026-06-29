@@ -47,7 +47,13 @@ def session():
 
 
 def _add_game(
-    session, game_id="20250101", stadium="잠실", home="LG", away="SS", home_pitcher="Kim", away_pitcher="Park"
+    session,
+    game_id="20250101",
+    stadium="잠실",
+    home="LG",
+    away="SS",
+    home_pitcher="Kim",
+    away_pitcher="Park",
 ):
     session.add(
         Game(
@@ -60,7 +66,7 @@ def _add_game(
             game_status="END",
             season_id=1,
             game_date=date(2025, 1, 1),
-        )
+        ),
     )
     session.commit()
 
@@ -100,7 +106,7 @@ def _add_event(
             bases_before=bases_before,
             inning=inning,
             event_seq=event_seq,
-        )
+        ),
     )
     session.commit()
 
@@ -150,7 +156,7 @@ def _add_batting(
             stolen_bases=stolen_bases,
             caught_stealing=caught_stealing,
             gdp=gdp,
-        )
+        ),
     )
     session.commit()
 
@@ -188,7 +194,7 @@ def _add_pitching(
             strikeouts=strikeouts,
             batters_faced=batters_faced,
             pitches=pitches,
-        )
+        ),
     )
     session.commit()
 

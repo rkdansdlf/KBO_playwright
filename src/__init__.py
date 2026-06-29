@@ -23,7 +23,7 @@ def _apply_playwright_patch() -> None:
 
     try:
 
-        async def _patched_async_launch(self: object, *args: object, **kwargs: object) -> object:
+        async def _patched_async_launch(self: object, **kwargs: object) -> object:
             endpoint = os.getenv("PLAYWRIGHT_WS_ENDPOINT")
             if endpoint:
                 logger.info(
@@ -34,9 +34,9 @@ def _apply_playwright_patch() -> None:
                 connect_keys = {"ws_endpoint", "headers", "timeout", "slow_mo"}
                 connect_kwargs = {k: v for k, v in kwargs.items() if k in connect_keys}
                 return await self.connect(endpoint, **connect_kwargs)  # type: ignore[attr-defined]
-            return await _original_async_launch(self, *args, **kwargs)
+            return await _original_async_launch(self, **kwargs)  # type: ignore[arg-type]
 
-        def _patched_sync_launch(self: object, *args: object, **kwargs: object) -> object:
+        def _patched_sync_launch(self: object, **kwargs: object) -> object:
             endpoint = os.getenv("PLAYWRIGHT_WS_ENDPOINT")
             if endpoint:
                 logger.info(
@@ -47,11 +47,11 @@ def _apply_playwright_patch() -> None:
                 connect_keys = {"ws_endpoint", "headers", "timeout", "slow_mo"}
                 connect_kwargs = {k: v for k, v in kwargs.items() if k in connect_keys}
                 return self.connect(endpoint, **connect_kwargs)  # type: ignore[attr-defined]
-            return _original_sync_launch(self, *args, **kwargs)
+            return _original_sync_launch(self, **kwargs)  # type: ignore[arg-type]
 
         # Apply monkeypatches
-        AsyncBrowserType.launch = _patched_async_launch  # type: ignore[assignment]
-        SyncBrowserType.launch = _patched_sync_launch  # type: ignore[assignment]
+        AsyncBrowserType.launch = _patched_async_launch  # type: ignore[assignment,method-assign]
+        SyncBrowserType.launch = _patched_sync_launch  # type: ignore[assignment,method-assign]
         logger.info("[PLAYWRIGHT-PATCH] Playwright launch methods globally patched.")
     except ImportError:
         pass

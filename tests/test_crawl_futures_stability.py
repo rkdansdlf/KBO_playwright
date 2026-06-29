@@ -106,7 +106,7 @@ def test_process_player_result_marks_empty_futures_as_skip(monkeypatch):
             module.FuturesPlayerTarget("1001", "hitter", "PlayerA"),
             _FakeRepository(),
             pool=None,
-        )
+        ),
     )
 
     assert result == {
@@ -133,7 +133,7 @@ def test_process_player_result_does_not_save_when_profile_upsert_fails(monkeypat
             module.FuturesPlayerTarget("1001", "hitter", "PlayerA"),
             _FakeRepository(player=None),
             pool=None,
-        )
+        ),
     )
 
     assert result["status"] == "failed"
@@ -162,7 +162,7 @@ def test_process_player_result_skips_when_player_basic_missing(monkeypatch):
             module.FuturesPlayerTarget("5669", "hitter", "PlayerA"),
             _FakeRepository(),
             pool=None,
-        )
+        ),
     )
 
     assert result == {
@@ -187,7 +187,7 @@ def test_process_player_result_reports_pitching_filter_reason_when_save_returns_
             module.FuturesPlayerTarget("1001", "pitcher", "PlayerA"),
             _FakeRepository(player=object()),
             pool=None,
-        )
+        ),
     )
 
     assert result["status"] == "failed"

@@ -45,7 +45,7 @@ def _add_fielding(
             putouts=putouts,
             assists=assists,
             innings=innings,
-        )
+        ),
     )
     session.commit()
 
@@ -59,7 +59,7 @@ def _add_baserunning(session, year=2025, team_id="LG", stolen_bases=50, caught_s
             stolen_bases=stolen_bases,
             caught_stealing=caught_stealing,
             out_on_base=out_on_base,
-        )
+        ),
     )
     session.commit()
 
@@ -94,7 +94,7 @@ class TestAggregateFielding:
                 putouts=0,
                 assists=0,
                 innings=0,
-            )
+            ),
         )
         session.commit()
         agg = TeamFieldingAggregator(session)
@@ -186,7 +186,7 @@ class TestRunAll:
                 double_plays=0,
                 triple_plays=0,
                 def_innings=0,
-            )
+            ),
         )
         session.commit()
         _add_fielding(session, team_id="LG")

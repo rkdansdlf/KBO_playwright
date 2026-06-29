@@ -417,7 +417,7 @@ class TestFindUnverifiedPbpGames:
             mock_row.away_team = "LG"
             mock_row.home_team = "SSG"
             mock_row.source_payload = json.dumps(
-                {"pbp_validation_status": "unverified", "pbp_validation_error": "missing innings"}
+                {"pbp_validation_status": "unverified", "pbp_validation_error": "missing innings"},
             )
             mock_session.execute.return_value.fetchall.return_value = [mock_row]
             result = _find_unverified_pbp_games(lookback_days=3)
@@ -569,7 +569,8 @@ class TestRunPbpHealerAsync:
 
             with patch("src.cli.auto_healer.TelegramBotClient") as mock_tg:
                 with patch(
-                    "src.services.relay_recovery_service.recover_relay_data", new_callable=AsyncMock
+                    "src.services.relay_recovery_service.recover_relay_data",
+                    new_callable=AsyncMock,
                 ) as mock_recover:
                     mock_recovery_result = MagicMock()
                     mock_recovery_result.saved_games = 1
@@ -596,7 +597,8 @@ class TestRunPbpHealerAsync:
         ):
             with patch("src.cli.auto_healer.TelegramBotClient"):
                 with patch(
-                    "src.services.relay_recovery_service.recover_relay_data", new_callable=AsyncMock
+                    "src.services.relay_recovery_service.recover_relay_data",
+                    new_callable=AsyncMock,
                 ) as mock_recover:
                     mock_recovery_result = MagicMock()
                     mock_recovery_result.saved_games = 1

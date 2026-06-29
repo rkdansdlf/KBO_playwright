@@ -51,7 +51,7 @@ class TestStatsSyncMixin:
                 "local": {"count": 5, "max_updated_at": "2025-01-01"},
                 "remote": {"count": 5, "max_updated_at": "2025-01-01"},
                 "match": True,
-            }
+            },
         )
         result = mixin.sync_player_season_batting(year=2025)
         assert result == 0

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from unittest import mock
 
+import pytest
+
 from src.db.engine import Engine, SessionLocal
 from src.models.embedding_cache import EmbeddingCache
 from src.services.embedding_service import EmbeddingService
+
+pytestmark = pytest.mark.integration
 
 
 def test_embedding_cache_mechanism():

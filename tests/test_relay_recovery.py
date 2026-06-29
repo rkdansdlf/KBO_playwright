@@ -36,7 +36,7 @@ def _seed_game(SessionLocal, game_id: str):
                 game_date=date(2025, 4, 1),
                 home_team="LG",
                 away_team="SS",
-            )
+            ),
         )
         session.commit()
 
@@ -111,10 +111,10 @@ def test_naver_relay_events_persist_with_wpa_state(monkeypatch):
                             "base2": "0",
                             "base3": "0",
                         },
-                    }
+                    },
                 ],
-            }
-        ]
+            },
+        ],
     )
 
     saved = game_repository.save_relay_data(
@@ -184,7 +184,7 @@ def test_save_relay_data_pbp_only_preserves_existing_events(monkeypatch):
                 "play_description": "끝내기 안타",
                 "event_type": "batting",
                 "result": "안타",
-            }
+            },
         ],
     )
     assert saved == 1
@@ -251,7 +251,7 @@ def test_backfill_missing_game_stubs_for_relays(monkeypatch):
                 base_state=0,
                 home_score=0,
                 away_score=0,
-            )
+            ),
         )
         session.commit()
 

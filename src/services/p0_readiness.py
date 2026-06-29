@@ -12,7 +12,7 @@ import logging
 import os
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, inspect, text
@@ -100,7 +100,7 @@ def _status(value: object) -> str:
 
 
 def _is_cancelled_or_postponed(game: object) -> bool:
-    return _status(game.game_status) in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED}
+    return _status(cast("Any", game).game_status) in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED}
 
 
 def _has_text(value: object) -> bool:
@@ -109,7 +109,7 @@ def _has_text(value: object) -> bool:
 
 def _safe_rows(query: object) -> list[Any]:
     try:
-        return list(query.all())
+        return list(cast("Any", query).all())
     except P0_READINESS_DB_EXCEPTIONS:
         logger.exception("P0 readiness query failed")
         return []
@@ -272,7 +272,8 @@ def _rows_by_date(session: Session, _model: type[Any], date_column: object, date
     date_list = list(dates)
     if not date_list:
         return {}
-    rows = _safe_rows(session.query(date_column, func.count()).filter(date_column.in_(date_list)).group_by(date_column))
+    col = cast("Any", date_column)
+    rows = _safe_rows(session.query(col, func.count()).filter(col.in_(date_list)).group_by(col))
     return {_date_key(row_date): int(count or 0) for row_date, count in rows}
 
 
@@ -301,7 +302,8 @@ def _coverage(ok: int, total: int) -> float:
 
 
 def _score_present(game: object) -> bool:
-    return game.home_score is not None and game.away_score is not None
+    g = cast("Any", game)
+    return g.home_score is not None and g.away_score is not None
 
 
 def _meta_has_start_time(meta: GameMetadata | None) -> bool:
@@ -780,11 +782,16 @@ def format_p0_readiness_summary(readiness: dict[str, Any] | None) -> str:
     """
     if not isinstance(readiness, dict):
         return "p0=unavailable"
-    summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
-    schedule = readiness.get("schedule") if isinstance(readiness.get("schedule"), dict) else {}
-    pregame = readiness.get("pregame") if isinstance(readiness.get("pregame"), dict) else {}
-    postgame = readiness.get("postgame") if isinstance(readiness.get("postgame"), dict) else {}
-    relay = readiness.get("relay") if isinstance(readiness.get("relay"), dict) else {}
+    summary_raw = readiness.get("summary")
+    schedule_raw = readiness.get("schedule")
+    pregame_raw = readiness.get("pregame")
+    postgame_raw = readiness.get("postgame")
+    relay_raw = readiness.get("relay")
+    summary = summary_raw if isinstance(summary_raw, dict) else {}
+    schedule = schedule_raw if isinstance(schedule_raw, dict) else {}
+    pregame = pregame_raw if isinstance(pregame_raw, dict) else {}
+    postgame = postgame_raw if isinstance(postgame_raw, dict) else {}
+    relay = relay_raw if isinstance(relay_raw, dict) else {}
     return (
         f"p0_ok={summary.get('ok', False)} "
         f"p0_failures={summary.get('failure_count', 0)} "

@@ -233,8 +233,8 @@ class TestNaverSearchClient:
                     "link": "",
                     "originallink": "https://original.com",
                     "pubDate": "Tue, 03 Jun 2026 14:32:00 +0900",
-                }
-            ]
+                },
+            ],
         }
 
         mock_response = MagicMock()
@@ -264,8 +264,8 @@ class TestNaverSearchClient:
                     "description": "Desc",
                     "link": "https://test.com",
                     "pubDate": "invalid date",
-                }
-            ]
+                },
+            ],
         }
 
         mock_response = MagicMock()
@@ -305,7 +305,7 @@ class TestNaverSearchClient:
                     "pubDate": "Tue, 03 Jun 2026 14:32:00 +0900",
                 }
                 for i in range(2)
-            ]
+            ],
         )
 
         mock_response = MagicMock()
@@ -347,8 +347,8 @@ class TestNaverSearchClient:
                     "link": "https://naver.com/same",
                     "originallink": "https://example.com/same",
                     "pubDate": "Tue, 03 Jun 2026 14:32:00 +0900",
-                }
-            ]
+                },
+            ],
         )
 
         mock_response = MagicMock()
@@ -390,8 +390,8 @@ class TestNaverSearchClient:
                     "link": "https://naver.com/old",
                     "originallink": "https://example.com/old",
                     "pubDate": "Mon, 01 Jan 2024 00:00:00 +0900",
-                }
-            ]
+                },
+            ],
         )
 
         mock_response = MagicMock()

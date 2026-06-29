@@ -195,7 +195,11 @@ class TestModelRepr:
 
     def test_rag_chunk_repr(self):
         obj = RagChunk(
-            league_type_code=1, source_table="games", source_row_id="1", title="Game 1", content="some content"
+            league_type_code=1,
+            source_table="games",
+            source_row_id="1",
+            title="Game 1",
+            content="some content",
         )
         r = repr(obj)
         assert "games" in r

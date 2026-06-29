@@ -37,7 +37,13 @@ class TestBaseDynamicInterval:
         return datetime(2025, 4, 1, hour, 0, 0, tzinfo=ZoneInfo("Asia/Seoul"))
 
     def _state(
-        self, *, active=False, active_playing=False, active_suspended=False, last_active_time=None, now=None
+        self,
+        *,
+        active=False,
+        active_playing=False,
+        active_suspended=False,
+        last_active_time=None,
+        now=None,
     ) -> GameActivityState:
         return GameActivityState(
             active=active,
@@ -314,8 +320,8 @@ class TestRunLiveCrawlerCycleSharding:
                     "result": {
                         "games": [
                             {"awayTeamCode": "AA", "homeTeamCode": "BB", "status": "RUNNING"},
-                        ]
-                    }
+                        ],
+                    },
                 }
 
         class _FakeAsyncClient:
@@ -373,7 +379,7 @@ class TestRunLiveCrawlerCycleSharding:
                 sync_to_oci=False,
                 max_active_games=1,
                 detail_snapshot_background=True,
-            )
+            ),
         )
 
         assert crawled_game_ids == ["20260531AABB0"]
@@ -416,8 +422,8 @@ class TestRunLiveCrawlerCycleSharding:
                         "games": [
                             {"awayTeamCode": "AA", "homeTeamCode": "BB", "status": "RUNNING"},
                             {"awayTeamCode": "CC", "homeTeamCode": "DD", "status": "RUNNING"},
-                        ]
-                    }
+                        ],
+                    },
                 }
 
         class _FakeAsyncClient:
@@ -501,8 +507,8 @@ class TestRunLiveCrawlerCycleSharding:
                         "games": [
                             {"awayTeamCode": "AA", "homeTeamCode": "BB", "status": "RUNNING"},
                             {"awayTeamCode": "CC", "homeTeamCode": "DD", "status": "RUNNING"},
-                        ]
-                    }
+                        ],
+                    },
                 }
 
         class _FakeAsyncClient:

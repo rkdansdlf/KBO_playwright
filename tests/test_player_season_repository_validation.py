@@ -55,7 +55,7 @@ def test_save_batting_stats_filters_invalid_and_basic2_only_payloads(monkeypatch
                 "team_code": "LG",
                 "games": 1,
             },
-        ]
+        ],
     )
 
     assert saved == 1
@@ -102,7 +102,7 @@ def test_save_pitching_stats_filters_invalid_and_basic2_only_payloads(monkeypatc
                 "team_code": "SS",
                 "games": "bad",
             },
-        ]
+        ],
     )
 
     assert saved == 1
@@ -146,7 +146,7 @@ def test_fielding_repository_filters_invalid_payloads(monkeypatch, tmp_path):
                 "position_id": "SS",
                 "games": 1,
             },
-        ]
+        ],
     )
 
     assert saved == 1

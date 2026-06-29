@@ -142,7 +142,7 @@ class TestBuildHitterPayload:
                 "안타": [2, 1],
                 "득점": [1, 0],
                 "타율": [0.667, 0.500],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams)
@@ -154,7 +154,7 @@ class TestBuildHitterPayload:
                 "선수": ["팀합계", "홍길동"],
                 "타수": [10, 3],
                 "안타": [5, 2],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams)
@@ -175,7 +175,7 @@ class TestBuildPitcherPayload:
                 "실점": [2],
                 "자책": [2],
                 "ERA": [3.60],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
@@ -187,7 +187,7 @@ class TestBuildPitcherPayload:
             {
                 "선수": ["선발투수", "계투투수"],
                 "이닝": ["5.0", "3.0"],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
@@ -200,7 +200,7 @@ class TestBuildPitcherPayload:
                 "선수": ["투수1"],
                 "이닝": ["3.0"],
                 "결과": ["승"],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
@@ -212,7 +212,7 @@ class TestBuildPitcherPayload:
                 "선수명": ["P1"],
                 "IP": ["5.0"],
                 "삼진": [5],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
@@ -379,7 +379,7 @@ class TestBuildHitterPayloadWithPlayerId:
                 "선수": ["홍길동", "김철수"],
                 "타수": [3, 2],
                 "안타": [1, 0],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams)
@@ -393,7 +393,7 @@ class TestBuildHitterPayloadWithPlayerId:
                 "선수명": ["테스트"],
                 "타수": [4],
                 "안타": [2],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams)
@@ -405,7 +405,7 @@ class TestBuildHitterPayloadWithPlayerId:
                 "선수ID": ["N/A"],
                 "선수": ["미정"],
                 "타수": [0],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams)
@@ -417,7 +417,7 @@ class TestBuildHitterPayloadWithPlayerId:
                 "선수": ["P1", "P2", "P3"],
                 "타순": ["1", "10", ""],
                 "타수": [4, 3, 1],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams)
@@ -444,7 +444,7 @@ class TestBuildPitcherPayloadWithPlayerId:
                 "이닝": ["5.2"],
                 "삼진": [7],
                 "결과": ["승"],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
@@ -458,7 +458,7 @@ class TestBuildPitcherPayloadWithPlayerId:
                 "선수": ["투수2"],
                 "이닝": ["1.0"],
                 "결과": ["홀드"],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
@@ -470,7 +470,7 @@ class TestBuildPitcherPayloadWithPlayerId:
                 "선수": ["투수3"],
                 "IP": ["3.1"],
                 "삼진": [4],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
@@ -481,7 +481,7 @@ class TestBuildPitcherPayloadWithPlayerId:
             {
                 "선수": ["선발", "계투1", "계투2"],
                 "이닝": ["6.0", "2.0", "1.0"],
-            }
+            },
         )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)

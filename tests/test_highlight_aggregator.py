@@ -95,7 +95,7 @@ class TestHighlightAggregator:
                 home_score=3,
                 away_score=4,
                 bases_before="---",
-            )
+            ),
         )
         session.add(
             _make_event(
@@ -109,7 +109,7 @@ class TestHighlightAggregator:
                 home_score=5,
                 away_score=4,
                 bases_before="-23",
-            )
+            ),
         )
         session.commit()
 
@@ -143,7 +143,7 @@ class TestHighlightAggregator:
                 home_score=0,
                 away_score=1,
                 bases_before="-2-",
-            )
+            ),
         )
         # Event 2: Home team hits 2-run HR, reversing lead: 0-1 Away -> 2-1 Home (Home leads)
         # score_diff goes from -1 to +1
@@ -159,7 +159,7 @@ class TestHighlightAggregator:
                 home_score=2,
                 away_score=1,
                 bases_before="1--",
-            )
+            ),
         )
         # Event 3: Away team ties: 2-1 Home -> 2-2 Tie
         # score_diff goes from +1 to 0
@@ -175,7 +175,7 @@ class TestHighlightAggregator:
                 home_score=2,
                 away_score=2,
                 bases_before="---",
-            )
+            ),
         )
         session.commit()
 
@@ -220,7 +220,7 @@ class TestHighlightAggregator:
                 home_score=4,
                 away_score=0,
                 bases_before="123",
-            )
+            ),
         )
         # Event 2: Double play (병살)
         session.add(
@@ -235,7 +235,7 @@ class TestHighlightAggregator:
                 home_score=4,
                 away_score=0,
                 bases_before="1--",
-            )
+            ),
         )
         session.commit()
 
@@ -276,8 +276,12 @@ class TestHighlightAggregator:
         # Resave (should delete first)
         new_highlights = [
             GameHighlight(
-                game_id=game_id, event_seq=3, highlight_type="WALK_OFF", description="New Play", tags=["끝내기"]
-            )
+                game_id=game_id,
+                event_seq=3,
+                highlight_type="WALK_OFF",
+                description="New Play",
+                tags=["끝내기"],
+            ),
         ]
         saved_count_new = agg.save_highlights(game_id, new_highlights)
         assert saved_count_new == 1

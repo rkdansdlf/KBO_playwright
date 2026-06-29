@@ -177,7 +177,7 @@ class TestSaveScheduleGame:
                 "game_status": "scheduled",
                 "game_time": "18:30",
                 "stadium": "Jamsil",
-            }
+            },
         )
         assert result is True
 
@@ -216,7 +216,7 @@ class TestSavePregameLineups:
                 "home_team_name": "LG",
                 "away_lineup": [{"player_name": "Kim", "batting_order": 1, "position": "CF"}],
                 "home_lineup": [{"player_name": "Park", "batting_order": 1, "position": "SS"}],
-            }
+            },
         )
         assert result is True
 
@@ -283,7 +283,7 @@ class TestSaveScheduleGameWithWriteContract:
                 "season_year": 2024,
                 "game_status": "scheduled",
                 "stadium": "Jamsil",
-            }
+            },
         )
         assert result is True
 
@@ -302,7 +302,7 @@ class TestSaveScheduleGameWithWriteContract:
                 "home_team_code": "LG",
                 "season_year": 2024,
                 "game_status": "scheduled",
-            }
+            },
         )
         assert result is True
 
@@ -538,7 +538,7 @@ class TestSavePregameLineupsExtended:
                 "home_starter": "Park",
                 "away_lineup": [{"player_name": "Kim", "batting_order": 1, "position": "CF"}],
                 "home_lineup": [{"player_name": "Park", "batting_order": 1, "position": "SS"}],
-            }
+            },
         )
         assert result is True
 
@@ -566,7 +566,7 @@ class TestSavePregameLineupsExtended:
                     "game_date": "2024-10-15",
                     "away_team_name": "SSG",
                     "home_team_name": "LG",
-                }
+                },
             )
             assert result is False
 

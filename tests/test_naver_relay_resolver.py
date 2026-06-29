@@ -37,7 +37,7 @@ def test_match_schedule_game_for_postseason_prefix_id():
             "gameId": "44441002KTOB02024",
             "awayTeamCode": "KT",
             "homeTeamCode": "OB",
-        }
+        },
     ]
 
     matched = crawler._match_schedule_game("20241002KTOB0", games)
@@ -74,7 +74,7 @@ def test_match_schedule_game_for_all_star():
             "gameId": "99990712EAWE02025",
             "awayTeamCode": "EA",
             "homeTeamCode": "WE",
-        }
+        },
     ]
 
     matched = crawler._match_schedule_game("20250712EAWE0", games)
@@ -145,9 +145,9 @@ def test_resolve_naver_game_id_scans_nearby_dates_for_rescheduled_postseason_gam
                         "result": {
                             "games": [
                                 {"gameId": "77771022SSHT02024", "awayTeamCode": "SS", "homeTeamCode": "HT"},
-                            ]
-                        }
-                    }
+                            ],
+                        },
+                    },
                 )
             if date == "2024-10-23":
                 return _Response(
@@ -156,9 +156,9 @@ def test_resolve_naver_game_id_scans_nearby_dates_for_rescheduled_postseason_gam
                             "games": [
                                 {"gameId": "77771023SSHT02024", "awayTeamCode": "SS", "homeTeamCode": "HT"},
                                 {"gameId": "77771021SSHT02024", "awayTeamCode": "SS", "homeTeamCode": "HT"},
-                            ]
-                        }
-                    }
+                            ],
+                        },
+                    },
                 )
             return _Response({"result": {"games": []}})
 
@@ -189,10 +189,10 @@ def test_parse_naver_data_handles_null_nested_payloads():
                         "batterRecord": None,
                         "text": "대한민국 : 좌익수 뜬공",
                         "pitcherName": None,
-                    }
+                    },
                 ],
-            }
-        ]
+            },
+        ],
     )
 
     assert len(events) == 1
@@ -241,8 +241,8 @@ def test_parse_naver_payload_splits_raw_pbp_from_result_events():
                         "text": "승리투수: 이로운",
                     },
                 ],
-            }
-        ]
+            },
+        ],
     )
 
     assert [event["description"] for event in payload["events"]] == ["박성한 : 중견수 플라이 아웃"]
@@ -280,8 +280,8 @@ def test_parse_naver_payload_promotes_scoring_runner_homein_rows():
                         "text": "3루주자 김주원 : 홈인",
                     },
                 ],
-            }
-        ]
+            },
+        ],
     )
 
     assert [event["description"] for event in payload["events"]] == [
@@ -308,8 +308,8 @@ def test_parse_naver_payload_keeps_home_run_when_result_contains_distance_colon(
                         "text": "에레디아 : 좌익수 뒤 홈런 (홈런거리:105M)",
                     },
                 ],
-            }
-        ]
+            },
+        ],
     )
 
     assert [event["description"] for event in payload["events"]] == [
@@ -395,7 +395,7 @@ def test_parse_naver_payload_keeps_all_batter_segments_in_chronological_order():
                     },
                 ],
             },
-        ]
+        ],
     )
 
     assert [event["description"] for event in payload["events"]] == [
@@ -463,7 +463,7 @@ def test_relay_request_helper_uses_compliance_delay_and_retry(monkeypatch):
             client,
             "https://api-gw.sports.naver.com/schedule/today-games",
             params={"date": "2025-04-01"},
-        )
+        ),
     )
 
     assert payload == {"result": {"ok": True}}
@@ -483,7 +483,7 @@ def test_match_schedule_game_rejects_team_mismatch_even_when_id_suffix_matches()
                 "gameId": "77770401LGSS02025",
                 "awayTeamCode": "KT",
                 "homeTeamCode": "SS",
-            }
+            },
         ],
     )
 

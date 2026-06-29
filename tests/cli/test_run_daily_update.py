@@ -114,8 +114,8 @@ def test_detail_recovery_escalates_repeated_recoverable_failures(monkeypatch, tm
                     detail_saved=False,
                     detail_status="crawl_failed",
                     failure_reason="incomplete_detail",
-                )
-            }
+                ),
+            },
         )
 
     monkeypatch.setattr(daily, "DETAIL_RECOVERY_MAX_ROUNDS", 3)
@@ -168,7 +168,7 @@ def test_detail_step_exception_preserves_cancelled_and_tracks_queued_targets(mon
                     game_date=date(2026, 5, 27),
                     game_status=GAME_STATUS_SCHEDULED,
                 ),
-            ]
+            ],
         )
         session.commit()
 
@@ -221,7 +221,7 @@ def test_resolve_null_player_ids_before_quality_gate_runs_conservative_resolver(
             "--apply",
             "--no-backup",
             "--delete-duplicates",
-        ]
+        ],
     ]
 
 

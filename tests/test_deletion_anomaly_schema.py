@@ -35,7 +35,7 @@ def test_game_delete_cascades_to_game_children():
                 """
                 INSERT INTO game (game_id, game_date, away_team, home_team)
                 VALUES ('20250401LGSS0', :game_date, 'LG', 'SS')
-                """
+                """,
             ),
             {"game_date": date(2025, 4, 1)},
         )
@@ -44,16 +44,16 @@ def test_game_delete_cascades_to_game_children():
                 """
                 INSERT INTO game_events (game_id, event_seq, batter_id, pitcher_id)
                 VALUES ('20250401LGSS0', 1, 1001, 2001)
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
                 """
                 INSERT INTO game_summary (game_id, summary_type, player_id)
                 VALUES ('20250401LGSS0', '결승타', 1001)
-                """
-            )
+                """,
+            ),
         )
 
         conn.execute(text("DELETE FROM game WHERE game_id = '20250401LGSS0'"))
@@ -79,8 +79,8 @@ def test_player_and_team_deletes_are_restricted_when_referenced():
                 """
                 INSERT INTO teams (team_id, team_name, team_short_name, city, is_active)
                 VALUES ('LG', 'LG 트윈스', 'LG', '서울', 1)
-                """
-            )
+                """,
+            ),
         )
         conn.execute(text("INSERT INTO player_basic (player_id, name) VALUES (1001, '홍길동')"))
         conn.execute(
@@ -88,7 +88,7 @@ def test_player_and_team_deletes_are_restricted_when_referenced():
                 """
                 INSERT INTO game (game_id, game_date, away_team, home_team)
                 VALUES ('20250401LGSS0', :game_date, 'LG', 'SS')
-                """
+                """,
             ),
             {"game_date": date(2025, 4, 1)},
         )
@@ -97,8 +97,8 @@ def test_player_and_team_deletes_are_restricted_when_referenced():
                 """
                 INSERT INTO game_summary (game_id, summary_type, player_id)
                 VALUES ('20250401LGSS0', '결승타', 1001)
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -107,7 +107,7 @@ def test_player_and_team_deletes_are_restricted_when_referenced():
                     (roster_date, team_code, player_id, player_basic_id, person_type, player_name, position)
                 VALUES
                     (:roster_date, 'LG', 1001, 1001, 'player', '홍길동', '외야수')
-                """
+                """,
             ),
             {"roster_date": date(2025, 4, 1)},
         )

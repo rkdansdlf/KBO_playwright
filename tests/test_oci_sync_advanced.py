@@ -204,7 +204,7 @@ def test_sync_referenced_player_basic_for_games_partial_missing(caplog, monkeypa
                 player_name="홍길동",
                 batting_order=1,
                 appearance_seq=1,
-            )
+            ),
         )
         session.add(
             GameLineup(
@@ -215,7 +215,7 @@ def test_sync_referenced_player_basic_for_games_partial_missing(caplog, monkeypa
                 player_name="없는선수",
                 batting_order=2,
                 appearance_seq=2,
-            )
+            ),
         )
         session.commit()
 
@@ -252,7 +252,7 @@ def test_sync_referenced_player_basic_for_games_all_missing(caplog, monkeypatch)
                 player_name="없는선수",
                 batting_order=1,
                 appearance_seq=1,
-            )
+            ),
         )
         session.commit()
 

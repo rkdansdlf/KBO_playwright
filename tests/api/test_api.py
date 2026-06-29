@@ -2,7 +2,7 @@ import io
 import os
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -168,3 +168,67 @@ def test_upload_text_relay_success(db_session_factory: Any) -> None:
         assert plays[1].pitcher_name == "김광현"
         assert plays[1].batter_name == "김현수"
         assert plays[1].result == "STRIKEOUT"
+
+
+@pytest.fixture(autouse=True)
+def _clear_env_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear REST_API_KEY from environment to keep default tests anonymous."""
+    monkeypatch.delenv("REST_API_KEY", raising=False)
+
+
+def test_api_key_unauthorized_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that protected endpoints return 403 when REST_API_KEY is set but header is missing or wrong."""
+    monkeypatch.setenv("REST_API_KEY", "secure_secret_key")
+
+    # /status should return 403
+    response = client.get("/status")
+    assert response.status_code == 403
+    assert "Could not validate credentials" in response.json()["detail"]
+
+    response = client.get("/status", headers={"X-API-Key": "wrong_key"})
+    assert response.status_code == 403
+
+    # /crawl/daily-update should return 403
+    response = client.post("/crawl/daily-update")
+    assert response.status_code == 403
+
+    # /upload/text-relay should return 403
+    response = client.post("/upload/text-relay", files={"file": ("test.csv", b"")})
+    assert response.status_code == 403
+
+
+def test_api_key_authorized_when_set(monkeypatch: pytest.MonkeyPatch, db_session_factory: Any) -> None:
+    """Test that protected endpoints succeed when correct X-API-Key is provided."""
+    monkeypatch.setenv("REST_API_KEY", "secure_secret_key")
+    headers = {"X-API-Key": "secure_secret_key"}
+
+    # /status should succeed
+    response = client.get("/status", headers=headers)
+    assert response.status_code == 200
+
+    # /crawl/daily-update should succeed
+    mock_run = MagicMock()
+    with (
+        patch("src.api.app._check_lock_status", return_value=False),
+        patch("src.api.app._async_run_daily_update", mock_run),
+    ):
+        response = client.post("/crawl/daily-update", headers=headers)
+        assert response.status_code == 200
+
+    # /upload/text-relay should succeed
+    csv_data = "inning,inning_half,pitcher_name,batter_name,play_description,event_type,result\n"
+    file_bytes = io.BytesIO(csv_data.encode("utf-8"))
+    response = client.post(
+        "/upload/text-relay",
+        headers=headers,
+        files={"file": ("20260412SKLG0_text_relay.csv", file_bytes, "text/csv")},
+    )
+    assert response.status_code == 200
+
+
+def test_health_always_public(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that health check is public and doesn't require API key even when configured."""
+    monkeypatch.setenv("REST_API_KEY", "secure_secret_key")
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from src.constants import KST
 from src.models.game import Game
@@ -36,7 +36,7 @@ class ParkFactorCalculator:
         """
         self.session = session
 
-    def calculate(self, year: int) -> list[dict]:
+    def calculate(self, year: int) -> list[dict[str, Any]]:
         """
         Calculate calculate.
 
@@ -68,7 +68,7 @@ class ParkFactorCalculator:
         # Standard simplified Park Factor:
         # PF = (runs per game at venue) / (league average runs per game)
         # 1.00 = neutral, >1.00 = hitter-friendly, <1.00 = pitcher-friendly
-        venue_games: dict[str, dict] = defaultdict(
+        venue_games: dict[str, dict[str, Any]] = defaultdict(
             lambda: {
                 "home_runs": 0,
                 "away_runs": 0,
@@ -77,7 +77,7 @@ class ParkFactorCalculator:
         )
 
         for g in games:
-            stadium = g.stadium or "UNKNOWN"
+            stadium = cast("str | None", g.stadium) or "UNKNOWN"
             vg = venue_games[stadium]
             vg["home_runs"] += g.home_score or 0
             vg["away_runs"] += g.away_score or 0

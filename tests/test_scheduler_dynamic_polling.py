@@ -52,7 +52,7 @@ def test_get_live_poll_interval_seconds_all_terminal(monkeypatch):
                 game_date=today_date,
                 game_status="COMPLETED",
                 updated_at=(now_kst - timedelta(minutes=30)).replace(tzinfo=None),
-            )
+            ),
         )
         # Game 2: CANCELLED, updated_at 40 minutes ago
         session.add(
@@ -61,7 +61,7 @@ def test_get_live_poll_interval_seconds_all_terminal(monkeypatch):
                 game_date=today_date,
                 game_status="CANCELLED",
                 updated_at=(now_kst - timedelta(minutes=40)).replace(tzinfo=None),
-            )
+            ),
         )
         session.commit()
 
@@ -94,7 +94,7 @@ def test_get_live_poll_interval_seconds_active_games(monkeypatch):
                 game_date=today_date,
                 game_status="LIVE",
                 updated_at=now_kst.replace(tzinfo=None),
-            )
+            ),
         )
         session.commit()
 
@@ -128,7 +128,7 @@ def test_get_live_poll_interval_seconds_scheduled_games(monkeypatch):
                 game_date=today_date,
                 game_status="SCHEDULED",
                 updated_at=now_kst.replace(tzinfo=None),
-            )
+            ),
         )
         session.add(GameMetadata(game_id="20260607SCHED0", start_time=start_time_1))
         session.commit()

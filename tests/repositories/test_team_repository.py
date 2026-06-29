@@ -34,7 +34,7 @@ class TestTeamRepository:
                 "player_name": "홍길동",
                 "position": "투수",
                 "back_number": "18",
-            }
+            },
         ]
         count = repo.save_daily_rosters(rosters)
         assert count == 1
@@ -76,7 +76,7 @@ class TestTeamRepository:
                 "player_name": "김감독",
                 "position": "감독",
                 "back_number": None,
-            }
+            },
         ]
         count = repo.save_daily_rosters(rosters)
         assert count == 1

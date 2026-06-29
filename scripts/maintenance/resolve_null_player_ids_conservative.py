@@ -115,7 +115,7 @@ def _table_columns(session, table_name: str) -> set[str]:
             SELECT column_name
             FROM information_schema.columns
             WHERE table_name = :table_name
-            """
+            """,
         ),
         {"table_name": table_name},
     ).fetchall()
@@ -229,7 +229,7 @@ def fetch_group_uniform_nos(
               AND player_name = :player_name
               AND uniform_no IS NOT NULL
               AND trim(uniform_no) != ''
-            """
+            """,
         ),
         {"year": str(year), "team_code": team_code, "player_name": player_name},
     ).fetchall()
@@ -241,7 +241,7 @@ def _existing_player_id(session, player_id: int) -> bool:
         session.execute(
             text("SELECT 1 FROM player_basic WHERE player_id = :player_id LIMIT 1"),
             {"player_id": player_id},
-        ).first()
+        ).first(),
     )
 
 
@@ -278,7 +278,7 @@ def _existing_non_null_player_ids_for_group(
               AND substr(game_id, 1, 4) = :year
               AND COALESCE(team_code, '') = :team_code
               AND player_name = :player_name
-            """
+            """,
         ),
         {"year": str(year), "team_code": team_code, "player_name": player_name},
     ).fetchall()
@@ -306,7 +306,7 @@ def _candidate_ids_from_season_table(
             WHERE ps.season = :season
               AND pb.name = :player_name
               {team_filter}
-            """
+            """,
         ),
         params,
     ).fetchall()
@@ -323,7 +323,7 @@ def _filter_by_uniform(session, candidate_ids: list[int], uniform_nos: list[str]
             FROM player_basic
             WHERE player_id IN :candidate_ids
               AND CAST(uniform_no AS TEXT) IN :uniform_nos
-            """
+            """,
         )
         .bindparams(bindparam("candidate_ids", expanding=True))
         .bindparams(bindparam("uniform_nos", expanding=True))
@@ -345,7 +345,7 @@ def _unique_player_basic_exact_name(session, player_name: str) -> list[int]:
             SELECT player_id
             FROM player_basic
             WHERE name = :player_name
-            """
+            """,
         ),
         {"player_name": player_name},
     ).fetchall()
@@ -445,7 +445,7 @@ def choose_candidate_ids(
                 season=season,
                 team_code=None,
                 player_name=canonical_name,
-            )
+            ),
         )
     candidate_ids = sorted(season_candidates)
     uniform_filtered = _filter_by_uniform(session, candidate_ids, uniform_nos)
@@ -595,11 +595,11 @@ def _row_override_duplicate_count(session, *, table_name: str, entry: RowOverrid
                         AND existing.player_id = :player_id
                         AND existing.id != {table_name}.id
                   )
-                """
+                """,
             ),
             params,
         ).scalar()
-        or 0
+        or 0,
     )
 
 
@@ -676,7 +676,7 @@ def _collect_null_groups(session, *, tables: tuple[str, ...], years: tuple[int, 
                   AND substr(game_id, 1, 4) IN :years
                 GROUP BY substr(game_id, 1, 4), COALESCE(team_code, ''), player_name
                 ORDER BY year, team_code, player_name
-                """
+                """,
         ).bindparams(bindparam("years", expanding=True))
         groups.extend(
             {
@@ -762,7 +762,7 @@ def resolve_null_player_ids(
                             "resolved_player_id": entry.resolved_player_id,
                             "updated_rows": updated,
                             "duplicate_null_rows": duplicate_rows,
-                        }
+                        },
                     )
 
             groups = _collect_null_groups(session, tables=tables, years=years)
@@ -822,11 +822,11 @@ def resolve_null_player_ids(
                             "resolved_player_id": candidate_ids[0],
                             "updated_rows": updated,
                             "duplicate_null_rows": duplicate_rows,
-                        }
+                        },
                     )
                 else:
                     unresolved_rows.append(
-                        {**base_row, "resolved_player_id": "", "updated_rows": 0, "duplicate_null_rows": 0}
+                        {**base_row, "resolved_player_id": "", "updated_rows": 0, "duplicate_null_rows": 0},
                     )
             if apply:
                 session.commit()

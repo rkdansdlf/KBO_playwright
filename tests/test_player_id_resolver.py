@@ -20,8 +20,8 @@ def _build_resolver_session():
                     career TEXT,
                     status TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -30,8 +30,8 @@ def _build_resolver_session():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     kbo_person_id TEXT UNIQUE
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -41,8 +41,8 @@ def _build_resolver_session():
                     season INTEGER NOT NULL,
                     team_code TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         conn.execute(
             text(
@@ -52,8 +52,8 @@ def _build_resolver_session():
                     season INTEGER NOT NULL,
                     team_code TEXT
                 )
-                """
-            )
+                """,
+            ),
         )
         for table_name in ("game_lineups", "game_batting_stats", "game_pitching_stats"):
             conn.execute(
@@ -66,8 +66,8 @@ def _build_resolver_session():
                         player_name TEXT NOT NULL,
                         uniform_no TEXT
                     )
-                    """
-                )
+                    """,
+                ),
             )
     return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
 
@@ -82,8 +82,8 @@ def test_resolver_does_not_register_unknown_when_season_candidates_are_ambiguous
                 VALUES
                     (50996, '중복인', 'NC'),
                     (55121, '중복인', 'NC')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -92,8 +92,8 @@ def test_resolver_does_not_register_unknown_when_season_candidates_are_ambiguous
                 VALUES
                     (50996, 2026, 'NC'),
                     (55121, 2026, 'NC')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -115,8 +115,8 @@ def test_resolver_canonicalizes_ob_to_db_for_season_lookup():
                 VALUES
                     (53554, '김민석', '두산'),
                     (54097, '김민석', 'KT')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -125,8 +125,8 @@ def test_resolver_canonicalizes_ob_to_db_for_season_lookup():
                 VALUES
                     (53554, 2026, 'DB'),
                     (54097, 2026, 'KT')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -147,8 +147,8 @@ def test_preloaded_resolver_keeps_same_team_same_name_candidates_ambiguous():
                 VALUES
                     (76100, '이병규', 'LG'),
                     (97109, '이병규', 'LG')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -157,8 +157,8 @@ def test_preloaded_resolver_keeps_same_team_same_name_candidates_ambiguous():
                 VALUES
                     (76100, 2010, 'LG'),
                     (97109, 2010, 'LG')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -182,8 +182,8 @@ def test_strict_resolver_does_not_use_global_unique_name_or_register_unknown():
                 """
                 INSERT INTO player_basic (player_id, name, team)
                 VALUES (77777, '전역선수', 'LG')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -224,16 +224,16 @@ def test_strict_resolver_uses_unique_same_season_game_fact_evidence():
                 """
                 INSERT INTO player_basic (player_id, name, team)
                 VALUES (61234, '신규타자', '키움')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO game_batting_stats (game_id, team_code, player_id, player_name)
                 VALUES ('20260601WOLT0', 'KH', 61234, '신규타자')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -258,8 +258,8 @@ def test_strict_resolver_keeps_same_season_game_fact_conflicts_ambiguous():
                 VALUES
                     (61234, '충돌타자', '키움'),
                     (61235, '충돌타자', '키움')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
@@ -268,8 +268,8 @@ def test_strict_resolver_keeps_same_season_game_fact_conflicts_ambiguous():
                 VALUES
                     ('20260601WOLT0', 'KH', 61234, '충돌타자'),
                     ('20260602WOLT0', 'KH', 61235, '충돌타자')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -316,8 +316,8 @@ def test_resolver_reuses_existing_unknown_exact_key():
                 VALUES
                     (900123, '새선수', 'LG', '17', 'Unknown/Local'),
                     (900456, '새선수', 'LG', '17', 'Unknown/Local')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -339,24 +339,24 @@ def test_resolver_cache_is_role_aware_for_same_name_same_team():
                 VALUES
                     (1001, '역할중복', 'LG'),
                     (2001, '역할중복', 'LG')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO player_season_batting (player_id, season, team_code)
                 VALUES (1001, 2026, 'LG')
-                """
-            )
+                """,
+            ),
         )
         session.execute(
             text(
                 """
                 INSERT INTO player_season_pitching (player_id, season, team_code)
                 VALUES (2001, 2026, 'LG')
-                """
-            )
+                """,
+            ),
         )
         session.commit()
 
@@ -379,8 +379,8 @@ def test_surrogate_filter_does_not_map_when_target_name_differs():
                     (2438, '김민수', '롯데'),
                     (67504, '김정율', '롯데'),
                     (99999, '다른후보', '롯데')
-                """
-            )
+                """,
+            ),
         )
         session.execute(text("INSERT INTO players (id, kbo_person_id) VALUES (2438, '67504')"))
         session.commit()
@@ -403,8 +403,8 @@ def test_surrogate_filter_maps_when_target_name_matches():
                     (101, '동일선수', 'LG'),
                     (50101, '동일선수', 'LG'),
                     (99999, '다른후보', 'LG')
-                """
-            )
+                """,
+            ),
         )
         session.execute(text("INSERT INTO players (id, kbo_person_id) VALUES (101, '50101')"))
         session.commit()

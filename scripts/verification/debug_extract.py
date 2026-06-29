@@ -22,11 +22,11 @@ def main():
         SELECT player_name, at_bats, hits, strikeouts, walks, hbp, plate_appearances
         FROM game_batting_stats
         WHERE game_id = '20250308HTLT0'
-    """)
+    """),
     ).fetchall()
     for row in rows:
         logger.info(
-            f"Name: {row[0]}, AB: {row[1]}, H: {row[2]}, SO: {row[3]}, BB: {row[4]}, HBP: {row[5]}, PA: {row[6]}"
+            f"Name: {row[0]}, AB: {row[1]}, H: {row[2]}, SO: {row[3]}, BB: {row[4]}, HBP: {row[5]}, PA: {row[6]}",
         )
 
     session.close()

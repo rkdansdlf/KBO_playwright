@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import func
 
@@ -40,15 +40,18 @@ class HighlightAggregator:
 
     @staticmethod
     def _is_walkoff(event: GameEvent, score_diff_before: int, score_diff_after: int) -> bool:
-        is_bottom_late = (event.inning or 1) >= 9 and event.inning_half == "bottom"
-        return (is_bottom_late and score_diff_before <= 0 and score_diff_after > 0) or (
-            event.description and "끝내기" in event.description
-        )
+        inning = cast("int | None", event.inning)
+        description = cast("str | None", event.description)
+        is_bottom_late = (inning or 1) >= 9 and event.inning_half == "bottom"
+        walkoff_by_score = is_bottom_late and score_diff_before <= 0 and score_diff_after > 0
+        walkoff_by_desc = description is not None and "끝내기" in description
+        return bool(walkoff_by_score or walkoff_by_desc)
 
     @staticmethod
     def _is_home_run(event: GameEvent) -> bool:
+        description = cast("str | None", event.description)
         return bool(
-            (event.description and "홈런" in event.description)
+            (description and "홈런" in description)
             or (event.event_type and event.event_type.lower() in ("hr", "homerun")),
         )
 
@@ -83,9 +86,10 @@ class HighlightAggregator:
 
     @staticmethod
     def _add_event_tags(event: GameEvent, tags: list[str]) -> None:
+        description = cast("str | None", event.description)
         if event.bases_before == "123":
             tags.append("만루")
-        if event.description and "병살" in event.description:
+        if description and "병살" in description:
             tags.append("병살")
         if HighlightAggregator._is_home_run(event):
             tags.append("홈런")
@@ -105,7 +109,7 @@ class HighlightAggregator:
             importance += 0.10
         if "홈런" in tags:
             importance += 0.05
-        return importance + 0.01 * (event.inning or 1)
+        return importance + 0.01 * (cast("int | None", event.inning) or 1)
 
     @staticmethod
     def _is_significant(highlight_type: str, tags: list[str], abs_wpa: float, min_wpa_threshold: float) -> bool:
@@ -123,8 +127,10 @@ class HighlightAggregator:
         prev_away_score: int,
         min_wpa_threshold: float,
     ) -> GameHighlight | None:
-        home_score = event.home_score if event.home_score is not None else 0
-        away_score = event.away_score if event.away_score is not None else 0
+        home_score_raw = cast("int | None", event.home_score)
+        away_score_raw = cast("int | None", event.away_score)
+        home_score = home_score_raw if home_score_raw is not None else 0
+        away_score = away_score_raw if away_score_raw is not None else 0
         score_diff_before = prev_home_score - prev_away_score
         score_diff_after = home_score - away_score
         wpa_val = event.wpa or 0.0
@@ -173,8 +179,10 @@ class HighlightAggregator:
             highlight = self._highlight_from_event(game_id, event, prev_home_score, prev_away_score, min_wpa_threshold)
             if highlight:
                 highlights.append(highlight)
-            home_score = event.home_score if event.home_score is not None else 0
-            away_score = event.away_score if event.away_score is not None else 0
+            home_score_raw = cast("int | None", event.home_score)
+            away_score_raw = cast("int | None", event.away_score)
+            home_score = home_score_raw if home_score_raw is not None else 0
+            away_score = away_score_raw if away_score_raw is not None else 0
             prev_home_score = home_score
             prev_away_score = away_score
 

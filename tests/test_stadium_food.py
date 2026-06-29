@@ -52,7 +52,10 @@ def test_stadium_food_unique_constraint():
 
         # Insert duplicate record (should fail)
         food2 = StadiumFood(
-            stadium_name="잠실야구장", restaurant_name="잠실원샷", menu_item="원샷치킨", description="다른 설명"
+            stadium_name="잠실야구장",
+            restaurant_name="잠실원샷",
+            menu_item="원샷치킨",
+            description="다른 설명",
         )
         session.add(food2)
         with pytest.raises(IntegrityError):

@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: test-suite-${{ github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -32,6 +32,13 @@ jobs:
         run: ruff format --check src/ tests/ scripts/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
+      - name: Workflow YAML lint
+        run: |
+          if command -v actionlint >/dev/null 2>&1; then
+            actionlint
+          else
+            echo "actionlint not installed, skipping"
+          fi
 
   test:
     runs-on: ubuntu-latest
@@ -85,7 +92,7 @@ jobs:
       - uses: ./.github/actions/kbo-job-setup
         with:
           python-version: "3.12"
-          playwright: "true"
+          playwright: "false"
           init-db: 'false'
       - name: Initialize test DB
         run: python -c "from src.db.engine import init_db; init_db()"

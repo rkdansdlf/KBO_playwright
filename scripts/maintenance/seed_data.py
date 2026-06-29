@@ -452,7 +452,7 @@ def _seed_default_seasons(session: Session):
                 text(
                     "INSERT OR IGNORE INTO kbo_seasons "
                     "(season_id, season_year, league_type_code, league_type_name, created_at, updated_at) "
-                    "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                    "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ),
                 {"sid": sid, "year": year, "code": code, "name": name},
             )

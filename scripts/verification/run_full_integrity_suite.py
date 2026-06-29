@@ -67,16 +67,16 @@ def format_report_md(
     md.append("| Verification Module | Status | Details |")
     md.append("| --- | --- | --- |")
     md.append(
-        f"| Referential Gaps (Orphans) | {'✅ PASS' if orphan_ok else '❌ FAIL'} | {len(orphan_results.get('checks', []))} checks executed |"
+        f"| Referential Gaps (Orphans) | {'✅ PASS' if orphan_ok else '❌ FAIL'} | {len(orphan_results.get('checks', []))} checks executed |",
     )
     md.append(
-        f"| Mathematical Game Logic | {'✅ PASS' if logic_ok else '❌ FAIL'} | {len(logic_violations)} violations detected |"
+        f"| Mathematical Game Logic | {'✅ PASS' if logic_ok else '❌ FAIL'} | {len(logic_violations)} violations detected |",
     )
     md.append(
-        f"| Quality Gate Baseline | {'✅ PASS' if qgate_ok else '❌ FAIL'} | {len(qgate_results.get('failures', []))} threshold violations |"
+        f"| Quality Gate Baseline | {'✅ PASS' if qgate_ok else '❌ FAIL'} | {len(qgate_results.get('failures', []))} threshold violations |",
     )
     md.append(
-        f"| Standings Rollup Integrity | {'✅ PASS' if standings_ok else '❌ FAIL'} | Checked standings on {len(standings_results)} dates |"
+        f"| Standings Rollup Integrity | {'✅ PASS' if standings_ok else '❌ FAIL'} | Checked standings on {len(standings_results)} dates |",
     )
     md.append("")
 
@@ -91,7 +91,7 @@ def format_report_md(
     for check in orphan_results.get("checks", []):
         chk_status = "✅ PASS" if check["status"] == "PASS" else ("⚠️ WARN" if check["status"] == "WARN" else "❌ FAIL")
         md.append(
-            f"| {check['name']} | {chk_status} | {check['row_count']} | {check['distinct_count']} | {check['severity']} |"
+            f"| {check['name']} | {chk_status} | {check['row_count']} | {check['distinct_count']} | {check['severity']} |",
         )
     md.append("")
 
@@ -166,7 +166,10 @@ def main():
     parser.add_argument("--strict-zero", action="store_true", help="Require all baseline metrics to be zero")
     parser.add_argument("--skip-oci", action="store_true", help="Skip remote OCI database comparison")
     parser.add_argument(
-        "--standings-days", type=int, default=5, help="Number of random historic days to verify standings integrity"
+        "--standings-days",
+        type=int,
+        default=5,
+        help="Number of random historic days to verify standings integrity",
     )
     args = parser.parse_args()
 

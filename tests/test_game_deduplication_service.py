@@ -34,7 +34,7 @@ def db_path():
             away_franchise_id INT,
             is_primary INT DEFAULT 0
         )
-        """
+        """,
     )
     conn.execute(
         """
@@ -42,7 +42,7 @@ def db_path():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             game_id TEXT
         )
-        """
+        """,
     )
     conn.commit()
     conn.close()

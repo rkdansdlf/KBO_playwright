@@ -30,6 +30,7 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import SEL_TIMEOUT, SHORT_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.schedule_validation import validate_schedule_game_payload
+from src.utils.stadium_codes import STADIUM_SHORT_NAME_MAP
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
@@ -404,7 +405,7 @@ class ScheduleCrawler:
         # JS를 사용하여 모든 게임 정보를 한 번에 추출
 
         extraction_script = r"""
-        ({year, season_type}) => {
+        ({year, season_type}, STADIUM_SHORT_NAME_MAP) => {
             const results = [];
             const rows = document.querySelectorAll('.tbl tbody tr');
             let currentDateString = ""; // To handle rowspan or implicit date
@@ -566,7 +567,11 @@ class ScheduleCrawler:
         """
 
         try:
-            raw_games = await page.evaluate(extraction_script, {"year": year, "season_type": season_type})
+            raw_games = await page.evaluate(
+                extraction_script,
+                {"year": year, "season_type": season_type},
+                STADIUM_SHORT_NAME_MAP,
+            )
             games = []
 
             for g in raw_games:

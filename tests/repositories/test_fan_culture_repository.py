@@ -33,7 +33,7 @@ class TestFanCultureRepository:
                 "team_id_b": "KIW",
                 "rivalry_name": "Korean Series",
                 "intensity": "HIGH",
-            }
+            },
         )
         session.commit()
 
@@ -52,7 +52,7 @@ class TestFanCultureRepository:
                 "team_id_b": "LG",
                 "rivalry_name": "Cannons Derby",
                 "intensity": "MEDIUM",
-            }
+            },
         )
         session.commit()
 
@@ -71,7 +71,7 @@ class TestFanCultureRepository:
                 "team_id_b": "KIW",
                 "rivalry_name": "Korean Series",
                 "intensity": "HIGH",
-            }
+            },
         )
         session.commit()
 
@@ -81,7 +81,7 @@ class TestFanCultureRepository:
                 "team_id_b": "KIW",
                 "rivalry_name": "Korean Series",
                 "intensity": "LOW",  # updated
-            }
+            },
         )
         session.commit()
 
@@ -123,7 +123,7 @@ class TestFanCultureRepository:
                 "song_name": "Viva LG",
                 "song_type": "TEAM",
                 "lyrics": "We are LG...",
-            }
+            },
         )
         session.commit()
 
@@ -142,7 +142,7 @@ class TestFanCultureRepository:
                 "song_name": "Viva LG",
                 "song_type": "TEAM",
                 "lyrics": "v1",
-            }
+            },
         )
         session.commit()
 
@@ -152,7 +152,7 @@ class TestFanCultureRepository:
                 "song_name": "Viva LG",
                 "song_type": "TEAM",
                 "lyrics": "v2",
-            }
+            },
         )
         session.commit()
 
@@ -194,7 +194,7 @@ class TestFanCultureRepository:
                 "team_id": "LG",
                 "chant_text": "Let's go LG!",
                 "situation": "TOP_1ST",
-            }
+            },
         )
         session.commit()
 
@@ -212,7 +212,7 @@ class TestFanCultureRepository:
                 "team_id": "LG",
                 "chant_text": "Let's go LG!",
                 "situation": None,
-            }
+            },
         )
         session.commit()
 
@@ -221,7 +221,7 @@ class TestFanCultureRepository:
                 "team_id": "LG",
                 "chant_text": "Let's go LG!",
                 "situation": "TOP_1ST",
-            }
+            },
         )
         session.commit()
 

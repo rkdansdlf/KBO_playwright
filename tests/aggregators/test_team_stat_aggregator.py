@@ -479,7 +479,7 @@ class TestAggregateTeamBatting:
                 at_bats=18,
                 hits=7,
                 home_runs=2,
-            )
+            ),
         )
         session.commit()
 
@@ -627,7 +627,7 @@ class TestTeamStatAggregatorInstanceMethods:
                 sacrifice_hits=0,
                 sacrifice_flies=0,
                 gdp=1,
-            )
+            ),
         )
         session.commit()
 
@@ -661,7 +661,7 @@ class TestTeamStatAggregatorInstanceMethods:
                 balks=0,
                 sacrifices_allowed=0,
                 sacrifice_flies_allowed=0,
-            )
+            ),
         )
         session.commit()
 

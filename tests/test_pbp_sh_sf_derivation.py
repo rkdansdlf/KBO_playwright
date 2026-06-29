@@ -45,7 +45,7 @@ def test_derive_sh_sf_for_game_basic(db_session):
                 plate_appearances=4,
                 at_bats=3,
             ),
-        ]
+        ],
     )
 
     # Add PBP events:
@@ -79,7 +79,7 @@ def test_derive_sh_sf_for_game_basic(db_session):
                 description="PlayerC : 포수 희생번트 아웃",
                 outs=1,
             ),
-        ]
+        ],
     )
     db_session.commit()
 
@@ -115,7 +115,7 @@ def test_derive_sh_sf_for_game_name_to_id_resolution(db_session):
                 team_side="home",
                 appearance_seq=1,
             ),
-        ]
+        ],
     )
 
     # Add event where batter_id is NULL but batter_name matches "PlayerC"
@@ -128,7 +128,7 @@ def test_derive_sh_sf_for_game_name_to_id_resolution(db_session):
                 batter_name="PlayerC",
                 description="PlayerC : 투수 희생번트 아웃",
             ),
-        ]
+        ],
     )
     db_session.commit()
 
@@ -182,7 +182,7 @@ def test_apply_sh_sf_to_batting_stats(db_session):
                 batter_name="PlayerB",
                 description="PlayerB : 우익수 희생플라이 아웃",
             ),
-        ]
+        ],
     )
     db_session.commit()
 

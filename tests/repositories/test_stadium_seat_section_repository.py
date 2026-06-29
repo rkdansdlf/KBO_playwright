@@ -29,7 +29,7 @@ class TestStadiumSeatSectionRepository:
                 "section_code": "101B",
                 "section_name": "1루 블루석",
                 "seat_grade": "블루석",
-            }
+            },
         )
         session.commit()
         assert sec.id is not None
@@ -46,7 +46,7 @@ class TestStadiumSeatSectionRepository:
                 "stadium_id": "JAMSIL",
                 "section_name": "1루 블루석",
                 "seat_grade": "블루석",
-            }
+            },
         )
         session.commit()
         assert sec.id is not None
@@ -63,7 +63,7 @@ class TestStadiumSeatSectionRepository:
                 "section_code": "101B",
                 "section_name": "1루 블루석",
                 "seat_grade": "블루석",
-            }
+            },
         )
         session.commit()
 
@@ -74,7 +74,7 @@ class TestStadiumSeatSectionRepository:
                 "section_name": "1루 블루석",
                 "seat_grade": "프리미엄",
                 "is_home_cheering": True,
-            }
+            },
         )
         session.commit()
 
@@ -104,7 +104,7 @@ class TestStadiumSeatSectionRepository:
 
         repo.save({"stadium_id": "JAMSIL", "section_code": "H1", "section_name": "홈응원", "is_home_cheering": True})
         repo.save(
-            {"stadium_id": "JAMSIL", "section_code": "A1", "section_name": "어웨이응원", "is_away_cheering": True}
+            {"stadium_id": "JAMSIL", "section_code": "A1", "section_name": "어웨이응원", "is_away_cheering": True},
         )
         repo.save({"stadium_id": "JAMSIL", "section_code": "N1", "section_name": "중립"})
         session.commit()
@@ -133,7 +133,7 @@ class TestStadiumSeatSectionRepository:
             [
                 {"stadium_id": "JAMSIL", "section_code": "A1", "section_name": "1루"},
                 {"stadium_id": "JAMSIL", "section_code": "B2", "section_name": "3루"},
-            ]
+            ],
         )
         session.commit()
         assert count == 2

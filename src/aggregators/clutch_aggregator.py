@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -40,7 +40,7 @@ class ClutchAggregator:
         """
         self.session = session
 
-    def aggregate(self, year: int) -> list[dict]:
+    def aggregate(self, year: int) -> list[dict[str, Any]]:
         """
         Aggregate aggregate.
 
@@ -70,7 +70,7 @@ class ClutchAggregator:
             return []
 
         # Aggregate by batter
-        batter_stats: dict[int, dict] = defaultdict(
+        batter_stats: dict[int, dict[str, Any]] = defaultdict(
             lambda: {
                 "wpa_sum": 0.0,
                 "wpa_abs_sum": 0.0,
@@ -81,7 +81,7 @@ class ClutchAggregator:
         )
 
         for e in events:
-            bid = e.batter_id
+            bid = cast("int | None", e.batter_id)
             if not bid:
                 continue
 

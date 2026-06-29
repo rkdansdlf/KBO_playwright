@@ -39,7 +39,9 @@ def test_check_table_counts_and_deep_ids(monkeypatch):
         import src.cli.verify_sync_consistency
 
         monkeypatch.setattr(
-            src.cli.verify_sync_consistency, "TABLES_TO_VERIFY", [("rag_chunks", ["id"]), ("stadium_foods", ["id"])]
+            src.cli.verify_sync_consistency,
+            "TABLES_TO_VERIFY",
+            [("rag_chunks", ["id"]), ("stadium_foods", ["id"])],
         )
 
         results = check_table_counts(sqlite_conn, oci_conn)

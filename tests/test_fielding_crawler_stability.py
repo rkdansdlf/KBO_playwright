@@ -36,7 +36,7 @@ def test_fielding_crawl_summary_filters_invalid_rows():
                 "team_id": "LG",
                 "position_id": "SS",
             },
-        ]
+        ],
     )
 
     assert summary == {

@@ -34,13 +34,13 @@ def test_refresh_game_status_recovers_past_scores_from_inning_totals(monkeypatch
                 away_team="KT",
                 home_team="WO",
                 game_status=GAME_STATUS_UNRESOLVED,
-            )
+            ),
         )
         session.add_all(
             [
                 GameInningScore(game_id="20260531KTWO0", team_side="away", inning=1, runs=5),
                 GameInningScore(game_id="20260531KTWO0", team_side="home", inning=1, runs=1),
-            ]
+            ],
         )
         session.commit()
 

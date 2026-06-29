@@ -24,7 +24,7 @@ def test_upsert_players_filters_invalid_payloads_before_save(monkeypatch, tmp_pa
             {"player_id": 1002, "name": "Unknown Player"},
             {"player_id": 1004, "name": "Unknown 1004"},
             {"player_id": 1003, "name": "정상선수", "team": "LG", "position": "투수"},
-        ]
+        ],
     )
 
     assert saved == 1
@@ -49,7 +49,7 @@ def test_upsert_players_deduplicates_by_player_id_with_last_valid_row(monkeypatc
         [
             {"player_id": "1001", "name": "이전이름", "team": "LG"},
             {"player_id": 1001, "name": "현재이름", "team": "KT"},
-        ]
+        ],
     )
 
     assert saved == 1

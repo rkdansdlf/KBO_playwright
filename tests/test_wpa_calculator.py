@@ -44,7 +44,7 @@ def test_calculate_wpa_perspective():
             outs_after=2,
             runners_after=0,
             score_diff_after=1,
-        )
+        ),
     )
 
     assert wpa > 0

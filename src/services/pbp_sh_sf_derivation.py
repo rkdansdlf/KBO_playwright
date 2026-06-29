@@ -16,7 +16,7 @@ For legacy PBP data (pre-2025), falls back to batter_name matching.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -53,14 +53,15 @@ def derive_sh_sf_for_game(session: Session, game_id: str) -> dict[int | str, dic
     event_rows = session.execute(_DERIVE_EVENTS_SQL, {"game_id": game_id}).all()
 
     for row in event_rows:
-        desc = row.description or ""
+        desc = cast("str", getattr(row, "description", None) or "")
         is_sh = "희생번트" in desc
         is_sf = "희생플라이" in desc
         if not is_sh and not is_sf:
             continue
 
         # SF only counts with fewer than 2 outs before the play
-        if is_sf and row.outs is not None and row.outs >= 2:
+        outs = cast("int | None", getattr(row, "outs", None))
+        if is_sf and outs is not None and outs >= 2:
             continue
 
         key = _resolve_derived_batter_key(row, name_to_id)
@@ -95,10 +96,12 @@ def _build_unique_batter_name_map(session: Session, game_id: str) -> dict[str, i
 
 
 def _resolve_derived_batter_key(row: object, name_to_id: dict[str, int]) -> int | str | None:
-    if row.batter_id is not None:
-        return int(row.batter_id)
-    if row.batter_name:
-        name = row.batter_name.strip()
+    batter_id = cast("int | None", getattr(row, "batter_id", None))
+    if batter_id is not None:
+        return int(batter_id)
+    batter_name = cast("str | None", getattr(row, "batter_name", None))
+    if batter_name:
+        name = batter_name.strip()
         return name_to_id.get(name, name)
     return None
 
@@ -120,12 +123,13 @@ def count_sh_sf_from_events(
     """
     result: dict[int | str, dict[str, int]] = {}
     for row in event_rows:
-        desc = row.description or ""
+        desc = cast("str", getattr(row, "description", None) or "")
         is_sh = "희생번트" in desc
         is_sf = "희생플라이" in desc
         if not is_sh and not is_sf:
             continue
-        if is_sf and row.outs is not None and row.outs >= 2:
+        outs = cast("int | None", getattr(row, "outs", None))
+        if is_sf and outs is not None and outs >= 2:
             continue
         key = _resolve_derived_batter_key(row, name_to_id)
         if key is None:
@@ -184,8 +188,8 @@ def apply_sh_sf_to_batting_stats(session: Session, game_id: str) -> int:
             WHERE game_id = :game_id
               AND {where_clause}
         """)
-        result = session.execute(sql, params)
-        updated += result.rowcount or 0
+        exec_result: Any = session.execute(sql, params)
+        updated += cast("int", exec_result.rowcount) or 0
 
         # Also update player_game_batting if it has SH/SF columns
         try:

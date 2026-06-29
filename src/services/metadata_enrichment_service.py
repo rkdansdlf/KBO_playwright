@@ -57,7 +57,7 @@ class MetadataEnrichmentService:
             f"텍스트 본문:\n{content}"
         )
 
-        if self.api_key.startswith("sk-or-v1-"):
+        if self.api_key and self.api_key.startswith("sk-or-v1-"):
             return self._call_openrouter(prompt)
         return self._call_google(prompt)
 

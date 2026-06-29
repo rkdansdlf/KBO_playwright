@@ -32,7 +32,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "event_scope": "team",
                 "status": "scheduled",
-            }
+            },
         )
         session.commit()
         assert event.id is not None
@@ -51,7 +51,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "event_scope": "team",
                 "status": "scheduled",
-            }
+            },
         )
         session.commit()
 
@@ -62,7 +62,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "event_scope": "team",
                 "status": "open",
-            }
+            },
         )
         session.commit()
 
@@ -81,7 +81,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "event_scope": "team",
                 "status": "scheduled",
-            }
+            },
         )
         session.commit()
 
@@ -92,7 +92,7 @@ class TestTeamEventRepository:
                 "event_scope": "team",
                 "status": "open",
                 "description": "Updated description",
-            }
+            },
         )
         session.commit()
 
@@ -113,7 +113,7 @@ class TestTeamEventRepository:
                 "event_scope": "team",
                 "status": "scheduled",
                 "published_at": datetime(2024, 1, 2),
-            }
+            },
         )
         repo.save(
             {
@@ -123,7 +123,7 @@ class TestTeamEventRepository:
                 "event_scope": "team",
                 "status": "scheduled",
                 "published_at": datetime(2024, 1, 1),
-            }
+            },
         )
         repo.save(
             {
@@ -132,7 +132,7 @@ class TestTeamEventRepository:
                 "team_id": "SSG",
                 "event_scope": "team",
                 "status": "scheduled",
-            }
+            },
         )
         session.commit()
 
@@ -154,7 +154,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "event_scope": "team",
                 "status": "scheduled",
-            }
+            },
         )
         repo.save(
             {
@@ -163,7 +163,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "event_scope": "team",
                 "status": "scheduled",
-            }
+            },
         )
         session.commit()
 
@@ -183,7 +183,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "event_scope": "team",
                 "status": "scheduled",
-            }
+            },
         )
         session.commit()
 
@@ -210,7 +210,7 @@ class TestTeamEventRepository:
                 "event_scope": "team",
                 "status": "scheduled",
                 "event_end_at": future,
-            }
+            },
         )
         repo.save(
             {
@@ -220,7 +220,7 @@ class TestTeamEventRepository:
                 "event_scope": "team",
                 "status": "scheduled",
                 "event_end_at": past,
-            }
+            },
         )
         session.commit()
 

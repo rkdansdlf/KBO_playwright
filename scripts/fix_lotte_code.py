@@ -21,7 +21,7 @@ def fix_lotte_code():
         try:
             # Check current state
             check_sql = text(
-                "SELECT id, name, original_code, current_code FROM team_franchises WHERE original_code = 'LT'"
+                "SELECT id, name, original_code, current_code FROM team_franchises WHERE original_code = 'LT'",
             )
             result = session.execute(check_sql).fetchone()
 

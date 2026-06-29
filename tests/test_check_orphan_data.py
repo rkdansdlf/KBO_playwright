@@ -20,7 +20,7 @@ def test_check_orphan_data_reports_missing_profiles_and_unknown_stubs(tmp_path):
             INSERT INTO player_season_batting (player_id, team_code) VALUES (1001, 'LG');
             INSERT INTO player_season_pitching (player_id, team_code) VALUES (2001, 'SS');
             INSERT INTO game_metadata (game_id) VALUES ('20250101LGSS0');
-            """
+            """,
         )
         conn.commit()
     finally:
@@ -80,7 +80,7 @@ def test_check_orphan_data_reports_roster_and_movement_integrity_gaps(tmp_path):
                 (1, '2025-04-01', '등록', 'LG', 'LG', 1001, 'resolved', '홍길동'),
                 (2, '2025-04-01', '등록', 'LG', 'LG', NULL, 'unresolved_player', '동명이인'),
                 (3, '2025-04-01', '등록', '미상', NULL, NULL, 'unresolved_team', '미상');
-            """
+            """,
         )
         conn.commit()
     finally:

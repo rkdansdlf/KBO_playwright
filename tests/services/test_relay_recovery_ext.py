@@ -106,7 +106,8 @@ class TestMaybeDerivePbp:
         )
         config = RelayRecoveryConfig(allow_derived_pbp=True)
         with patch(
-            "src.services.relay_recovery_service.backfill_game_play_by_play_from_existing_events", return_value=10
+            "src.services.relay_recovery_service.backfill_game_play_by_play_from_existing_events",
+            return_value=10,
         ):
             assert _maybe_derive_pbp(ctx, config) is True
             assert ctx.run_result.derived_pbp_games == 1
@@ -123,7 +124,8 @@ class TestMaybeDerivePbp:
         )
         config = RelayRecoveryConfig(allow_derived_pbp=True)
         with patch(
-            "src.services.relay_recovery_service.backfill_game_play_by_play_from_existing_events", return_value=10
+            "src.services.relay_recovery_service.backfill_game_play_by_play_from_existing_events",
+            return_value=10,
         ):
             assert _maybe_derive_pbp(ctx, config) is True
             assert ctx.run_result.derived_pbp_games == 1
@@ -422,7 +424,7 @@ class TestLoadRelayRecoveryTargets:
             mock_event.wpa = 0.5
             mock_session.query.return_value.filter.return_value.all.return_value = [mock_event]
             mock_session.query.return_value.filter.return_value.distinct.return_value.all.return_value = [
-                ("20240315LGSS0",)
+                ("20240315LGSS0",),
             ]
             criteria = RecoveryTargetCriteria(season=2024, missing_only=True)
             result = load_relay_recovery_targets(criteria)

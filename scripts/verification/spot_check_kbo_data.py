@@ -61,9 +61,9 @@ class SpotChecker:
                     query.filter(
                         PlayerBasic.player_id.in_(
                             session.query(func.distinct(PlayerBasic.player_id)).filter(
-                                (PlayerBasic.debut_year <= year) | (PlayerBasic.debut_year.is_(None))
-                            )
-                        )
+                                (PlayerBasic.debut_year <= year) | (PlayerBasic.debut_year.is_(None)),
+                            ),
+                        ),
                     )
                     .order_by(func.random())
                     .limit(sample_players)
@@ -85,7 +85,7 @@ class SpotChecker:
                     live_profile = await self.profile_crawler.crawl_player_profile(pid_str, position=p.position)
                     if not live_profile:
                         logger.info(
-                            f"   ⚠️ Could not load profile for {p.name} (ID: {pid_str}). (Possibly retired/inactive or layout mismatch)"
+                            f"   ⚠️ Could not load profile for {p.name} (ID: {pid_str}). (Possibly retired/inactive or layout mismatch)",
                         )
                         continue
 
@@ -130,7 +130,7 @@ class SpotChecker:
             for idx, g in enumerate(games, 1):
                 game_date_str = g.game_date.strftime("%Y%m%d")
                 logger.info(
-                    f"[{idx}/{len(games)}] Checking Game: {g.game_id} ({g.away_team} @ {g.home_team}) - {game_date_str}"
+                    f"[{idx}/{len(games)}] Checking Game: {g.game_id} ({g.away_team} @ {g.home_team}) - {game_date_str}",
                 )
 
                 try:
@@ -176,11 +176,16 @@ class SpotChecker:
                             )
                         else:
                             for inning_idx, (db_runs, live_runs) in enumerate(
-                                zip(db_side_innings, live_line, strict=False), 1
+                                zip(db_side_innings, live_line, strict=False),
+                                1,
                             ):
                                 if db_runs != live_runs:
                                     self.log_mismatch(
-                                        "GameInnings", g.game_id, f"{side}_inning_{inning_idx}", db_runs, live_runs
+                                        "GameInnings",
+                                        g.game_id,
+                                        f"{side}_inning_{inning_idx}",
+                                        db_runs,
+                                        live_runs,
                                     )
 
                     db_batting = {
@@ -201,7 +206,11 @@ class SpotChecker:
                                     db_hitter = fallback_matches[0]
                                 else:
                                     self.log_mismatch(
-                                        "GameBatting", g.game_id, f"missing_hitter_{h_name}", None, f"Seq {h_seq}"
+                                        "GameBatting",
+                                        g.game_id,
+                                        f"missing_hitter_{h_name}",
+                                        None,
+                                        f"Seq {h_seq}",
                                     )
                                     continue
                             else:
@@ -213,7 +222,11 @@ class SpotChecker:
                                 live_val = live_stats.get(stat_key) or 0
                                 if db_val != live_val:
                                     self.log_mismatch(
-                                        "GameBatting", g.game_id, f"{h_name}_{stat_key}", db_val, live_val
+                                        "GameBatting",
+                                        g.game_id,
+                                        f"{h_name}_{stat_key}",
+                                        db_val,
+                                        live_val,
                                     )
 
                     db_pitching = {
@@ -234,7 +247,11 @@ class SpotChecker:
                                     db_pitcher = fallback_matches[0]
                                 else:
                                     self.log_mismatch(
-                                        "GamePitching", g.game_id, f"missing_pitcher_{p_name}", None, f"Seq {p_seq}"
+                                        "GamePitching",
+                                        g.game_id,
+                                        f"missing_pitcher_{p_name}",
+                                        None,
+                                        f"Seq {p_seq}",
                                     )
                                     continue
                             else:
@@ -253,7 +270,11 @@ class SpotChecker:
                                 live_val = live_stats.get(stat_key) or 0
                                 if db_val != live_val:
                                     self.log_mismatch(
-                                        "GamePitching", g.game_id, f"{p_name}_{stat_key}", db_val, live_val
+                                        "GamePitching",
+                                        g.game_id,
+                                        f"{p_name}_{stat_key}",
+                                        db_val,
+                                        live_val,
                                     )
 
                 except (
@@ -312,7 +333,7 @@ async def main():
             logger.info("\n🚨 Mismatch details:")
             for m in checker.mismatches:
                 logger.info(
-                    f"  - [{m['category']}] {m['id']}: {m['field']} (DB: '{m['db_value']}' vs Live: '{m['live_value']}')"
+                    f"  - [{m['category']}] {m['id']}: {m['field']} (DB: '{m['db_value']}' vs Live: '{m['live_value']}')",
                 )
 
             logger.info("\n💡 Suggested Remediation Commands:")
@@ -325,7 +346,7 @@ async def main():
                 logger.info("    python3 -m src.crawlers.player_profile_crawler --year 2025 --force")
         else:
             logger.info(
-                "\n✅ Perfect agreement! No mismatches found between the sampled DB data and the live KBO website."
+                "\n✅ Perfect agreement! No mismatches found between the sampled DB data and the live KBO website.",
             )
 
         if args.output:

@@ -58,7 +58,7 @@ def test_navigate_search_page_uses_compliance_delay_retry_and_selector(monkeypat
             required_selector=module.TABLE_ROWS,
             timeout=12345,
             selector_timeout=6789,
-        )
+        ),
     )
 
     assert ok is True
@@ -96,7 +96,7 @@ def test_collect_page_rows_filters_invalid_player_payloads():
             height_cm=180,
             weight_kg=80,
             career="고교",
-        )
+        ),
     ]
     assert crawler.get_failure_summary() == {
         "insufficient_columns": 1,
@@ -125,7 +125,7 @@ def test_collect_page_rows_keeps_players_with_unparseable_height_weight():
             height_cm=None,
             weight_kg=None,
             career="고교",
-        )
+        ),
     ]
 
 

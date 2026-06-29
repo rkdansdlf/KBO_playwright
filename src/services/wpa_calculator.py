@@ -41,7 +41,7 @@ class WPACalculator:
             base_dir = Path(__file__).resolve().parent.parent.parent
             matrix_path = str(base_dir / "src" / "data" / "win_expectancy.csv")
 
-        self._matrix: dict[tuple, float] = {}
+        self._matrix: dict[tuple[int, str, int, int, int], float] = {}
         self._load_matrix(matrix_path)
 
     def _load_matrix(self, path: str) -> None:

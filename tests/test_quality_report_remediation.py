@@ -25,7 +25,7 @@ def test_get_auto_remediation_summary_fixed(tmp_path):
             "player_name": "홍길동",
             "original": {"hits": 5, "at_bats": 10},
             "calculated": {"hits": 2, "at_bats": 10},
-        }
+        },
     ]
     with (audit_fixes_dir / "20260531_10001_batting.json").open("w", encoding="utf-8") as f:
         json.dump(player_data, f)

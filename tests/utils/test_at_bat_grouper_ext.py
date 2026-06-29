@@ -29,7 +29,7 @@ class TestGroupEventsIntoAtBats:
                 "inning_half": "top",
                 "event_type": "batting",
                 "description": "홍길동: 안타",
-            }
+            },
         ]
         result = group_events_into_at_bats(events)
         assert len(result) == 1
@@ -107,7 +107,7 @@ class TestGroupEventsIntoAtBats:
                 "inning_half": "top",
                 "event_type": "unknown",
                 "description": "타자 등판",
-            }
+            },
         ]
         result = group_events_into_at_bats(events)
         assert result[0]["at_bat_confidence"] == "medium"
@@ -120,7 +120,7 @@ class TestGroupEventsIntoAtBats:
                 "inning_half": "top",
                 "event_type": "batting",
                 "description": "안타",
-            }
+            },
         ]
         result = group_events_into_at_bats(events)
         assert result[0]["at_bat_confidence"] == "high"

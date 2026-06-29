@@ -129,8 +129,8 @@ class TestTransitTimeRepository:
                     "game_date": date(2024, 10, 15),
                     "duration_minutes": 20,
                     "measured_at": datetime(2024, 10, 15, 10, 0),
-                }
-            )
+                },
+            ),
         )
         repo.upsert(
             _make_data(
@@ -138,8 +138,8 @@ class TestTransitTimeRepository:
                     "game_date": date(2024, 10, 15),
                     "duration_minutes": 30,
                     "measured_at": datetime(2024, 10, 15, 18, 0),
-                }
-            )
+                },
+            ),
         )
         session.commit()
 

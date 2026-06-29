@@ -30,7 +30,7 @@ LEGACY_DETAIL_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueEr
 def crawl_2009_details():
     logger.info(
         "[LEGACY] scripts/crawl_2009_game_details.py is a manual 2009 repair/debug path. "
-        "Operational detail collection should use src.cli.collect_games or src.cli.run_daily_update."
+        "Operational detail collection should use src.cli.collect_games or src.cli.run_daily_update.",
     )
 
     # DB Session

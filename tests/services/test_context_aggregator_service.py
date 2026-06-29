@@ -247,7 +247,7 @@ class TestGetCrucialMoments:
         )
         session = MagicMock()
         session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-            event
+            event,
         ]
         with pytest.MonkeyPatch().context() as mp:
             mp.setattr("src.services.context_aggregator.is_relay_noise_text", lambda x: True)
