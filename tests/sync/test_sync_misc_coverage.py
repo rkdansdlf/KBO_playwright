@@ -20,19 +20,21 @@ class TestNormalizeDailyRosterDateEdgeCases:
     def test_whitespace_string(self):
         assert _normalize_daily_roster_date("   ") is None
 
-    def test_datetime_with_timezone(self):
-        dt = datetime(2025, 6, 1, 12, 0)
-        result = _normalize_daily_roster_date(dt)
-        assert result == date(2025, 6, 1)
+    def test_invalid_string_raises(self):
+        with pytest.raises(ValueError):
+            _normalize_daily_roster_date("not a date at all")
+
+    def test_none_returns_none(self):
+        assert _normalize_daily_roster_date(None) is None
 
 
-class TestFormatDailyRosterScopeEdgeCases:
+class TestResolveDailyRosterTeamCode:
     def test_same_start_end(self):
         result = _format_daily_roster_scope(date(2025, 6, 1), date(2025, 6, 1))
         assert "2025-06-01" in result
 
 
-class TestResolveDailyRosterTeamCode:
+class TestResolveDailyRosterTeamCode2:
     def test_empty_team_code(self):
         data = {"team_code": "", "roster_date": date(2025, 6, 1)}
         _resolve_daily_roster_team_code(data)
