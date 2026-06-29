@@ -8,11 +8,12 @@ Acts as a fallback when KBO's team cumulative record pages are unavailable.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date as date_type
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import func, or_, text
+from sqlalchemy import Executable, func, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import get_database_type
@@ -22,11 +23,6 @@ from src.models.team import Team
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
 if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -203,12 +199,17 @@ class TeamStatAggregator:
             if actual_query.rows is not None
             else (actual_query.season if actual_query.season is not None else None)
         )
-        actual_names = actual_query.team_names if actual_query.team_names is not None else actual_query.team_id
+        actual_names_raw = actual_query.team_names if actual_query.team_names is not None else actual_query.team_id
+        actual_names = cast(dict[str, str] | None, actual_names_raw)
 
         if actual_query.season is not None:
             return self._aggregate_batting_db(actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run)
         if actual_rows is not None:
-            return self._aggregate_batting_mem(actual_rows, actual_names, actual_query.team_games_map)
+            return self._aggregate_batting_mem(
+                cast(Iterable[PlayerSeasonBatting], actual_rows),
+                actual_names,
+                actual_query.team_games_map,
+            )
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
@@ -249,12 +250,17 @@ class TeamStatAggregator:
             if actual_query.rows is not None
             else (actual_query.season if actual_query.season is not None else None)
         )
-        actual_names = actual_query.team_names if actual_query.team_names is not None else actual_query.team_id
+        actual_names_raw = actual_query.team_names if actual_query.team_names is not None else actual_query.team_id
+        actual_names = cast(dict[str, str] | None, actual_names_raw)
 
         if actual_query.season is not None:
             return self._aggregate_pitching_db(actual_query.season, actual_query.team_id, dry_run=actual_query.dry_run)
         if actual_rows is not None:
-            return self._aggregate_pitching_mem(actual_rows, actual_names, actual_query.team_games_map)
+            return self._aggregate_pitching_mem(
+                cast(Iterable[PlayerSeasonPitching], actual_rows),
+                actual_names,
+                actual_query.team_games_map,
+            )
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
@@ -508,8 +514,9 @@ class TeamStatAggregator:
         return results
 
     def _save_batting_records(self, records: list[dict[str, Any]]) -> None:
-        if not records:
+        if not records or self.session is None:
             return
+        session = self.session
         from src.repositories.team_stats_repository import TeamSeasonBattingRepository
 
         repo = TeamSeasonBattingRepository()
@@ -518,19 +525,20 @@ class TeamStatAggregator:
         db_type = get_database_type()
         try:
             if db_type == "sqlite":
-                self.session.execute(text("PRAGMA foreign_keys = OFF"))
+                session.execute(text("PRAGMA foreign_keys = OFF"))
             for payload in cleaned:
                 stmt = repo._build_insert_stmt(payload)
-                self.session.execute(stmt)
+                session.execute(cast(Executable, stmt))
 
-            self.session.commit()
+            session.commit()
         except Exception:
-            self.session.rollback()
+            session.rollback()
             raise
 
     def _save_pitching_records(self, records: list[dict[str, Any]]) -> None:
-        if not records:
+        if not records or self.session is None:
             return
+        session = self.session
         from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 
         repo = TeamSeasonPitchingRepository()
@@ -539,17 +547,17 @@ class TeamStatAggregator:
         db_type = get_database_type()
         try:
             if db_type == "sqlite":
-                self.session.execute(text("PRAGMA foreign_keys = OFF"))
+                session.execute(text("PRAGMA foreign_keys = OFF"))
             for payload in cleaned:
                 stmt = repo._build_insert_stmt(payload)
-                self.session.execute(stmt)
-            self.session.commit()
+                session.execute(cast(Executable, stmt))
+            session.commit()
         except SQLAlchemyError:
-            self.session.rollback()
+            session.rollback()
             raise
         finally:
             if db_type == "sqlite":
-                self.session.execute(text("PRAGMA foreign_keys = ON"))
+                session.execute(text("PRAGMA foreign_keys = ON"))
 
     def _aggregate_batting_mem(
         self,
