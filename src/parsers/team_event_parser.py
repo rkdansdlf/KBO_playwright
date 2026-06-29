@@ -161,7 +161,7 @@ def _classify_event(title: str) -> str:
     return "promotion"
 
 
-def _parse_fetched_at(metadata: dict | None) -> datetime:
+def _parse_fetched_at(metadata: dict[str, Any] | None) -> datetime:
     fetched_at_str = (metadata or {}).get("fetched_at", "")
     if not fetched_at_str:
         return datetime.now(KST)
@@ -197,13 +197,13 @@ def _is_event_title(title: str, page_url: str) -> bool:
     return any(kw in title for kw in EVENT_KEYWORDS)
 
 
-def _filter_dict_rows(items: object) -> list[dict]:
+def _filter_dict_rows(items: object) -> list[dict[str, Any]]:
     if isinstance(items, list):
         return [item for item in items if isinstance(item, dict)]
     return []
 
 
-def _iter_json_rows(payload: object) -> list[dict]:
+def _iter_json_rows(payload: object) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return _filter_dict_rows(payload)
     if not isinstance(payload, dict):
@@ -214,7 +214,7 @@ def _iter_json_rows(payload: object) -> list[dict]:
     return _extract_rows_from_dict_payload(payload)
 
 
-def _extract_rows_from_dict_payload(payload: dict[str, Any]) -> list[dict]:
+def _extract_rows_from_dict_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     result = payload.get("result")
     if isinstance(result, dict):
         for key in ("data", "content"):
@@ -286,10 +286,10 @@ def _extract_published_at(tag: Tag, date_sel: str, cutoff_date: datetime) -> dat
 def _parse_json_team_events(
     html: str,
     source_key: str,
-    metadata: dict | None,
+    metadata: dict[str, Any] | None,
     cutoff_date: datetime,
     fetched_at: datetime,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     try:
         payload = json.loads(html)
     except (TypeError, ValueError):
@@ -348,7 +348,7 @@ def _parse_json_team_events(
     return events
 
 
-def parse_team_events(html: str, source_key: str, metadata: dict | None = None) -> list[dict]:
+def parse_team_events(html: str, source_key: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """
     Parses team events.
 

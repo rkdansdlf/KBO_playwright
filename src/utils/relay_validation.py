@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.constants import MAX_OUTS
 from src.models.game import Game
-from src.repositories.game_helpers import (
+from src.utils.game_status import (
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,
 )

@@ -64,7 +64,7 @@ class RefreshManifestSpec:
     stability: Mapping[str, Any] | None = None
 
 
-def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: Any) -> Path:
+def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: object) -> Path:
     """
     Writes refresh manifest.
 
@@ -76,7 +76,7 @@ def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: An
 
     """
     if spec is None:
-        spec = RefreshManifestSpec(**kwargs)
+        spec = RefreshManifestSpec(**kwargs)  # type: ignore[arg-type]
     elif kwargs:
         msg = "Pass either RefreshManifestSpec or keyword fields, not both"
         raise TypeError(msg)

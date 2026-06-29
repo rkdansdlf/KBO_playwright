@@ -133,8 +133,8 @@ class TeamMapper:
     def __init__(self) -> None:
         """Initializes a new instance."""
         self.static_mapping = self._get_static_mapping()
-        self.oci_mapping = {}
-        self.year_specific_mapping = {}
+        self.oci_mapping: dict[str, str] = {}
+        self.year_specific_mapping: dict[int, dict[str, str]] = {}
         self._oci_loaded = False
 
     def _get_static_mapping(self) -> dict[str, str]:
@@ -255,7 +255,7 @@ class TeamMapper:
                 session.rollback()
             else:
                 logger.info("✅ 쿼리 패턴 %s 성공: %s개 행 조회", index, len(query_result))
-                return query_result
+                return list(query_result)
         return None
 
     def _apply_oci_mapping_rows(self, rows: Iterable[Sequence[object]]) -> None:
@@ -280,14 +280,14 @@ class TeamMapper:
         team_name = row[0]
         team_code = row[1]
         try:
-            start_year = int(row[2])
-            end_year = int(row[3]) if row[3] is not None else 9999
+            start_year = int(row[2])  # type: ignore[call-overload]
+            end_year = int(row[3]) if row[3] is not None else 9999  # type: ignore[call-overload]
         except (ValueError, TypeError):
             return
-        self._add_mapping_for_years(team_name, team_code, start_year, end_year)
+        self._add_mapping_for_years(str(team_name), str(team_code), start_year, end_year)
         franchise = row[4]
         if franchise and franchise != team_name:
-            self._add_mapping_for_years(franchise, team_code, start_year, end_year)
+            self._add_mapping_for_years(str(franchise), str(team_code), start_year, end_year)
 
     def _add_mapping_for_years(self, team_name: str, team_code: str, start_year: int, end_year: int) -> None:
         """

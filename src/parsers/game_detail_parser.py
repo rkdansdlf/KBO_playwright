@@ -95,7 +95,7 @@ def _build_team_info(
     game_id: str,
     season_year: int | None,
 ) -> dict[str, dict[str, Any]]:
-    away_info = {
+    away_info: dict[str, Any] = {
         "name": None,
         "code": team_code_from_game_id_segment(game_id[8:10] if len(game_id) >= GAME_ID_MIN_LEN else None, season_year),
         "score": None,
@@ -103,7 +103,7 @@ def _build_team_info(
         "errors": None,
         "line_score": [],
     }
-    home_info = {
+    home_info: dict[str, Any] = {
         "name": None,
         "code": team_code_from_game_id_segment(
             game_id[10:12] if len(game_id) >= GAME_ID_FULL_LEN else None,
@@ -153,7 +153,7 @@ def _build_hitter_payload(
     teams: dict[str, dict[str, Any]],
     db_session: Session | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    results = {"away": [], "home": []}
+    results: dict[str, list[dict[str, Any]]] = {"away": [], "home": []}
     team_cycle = ["away", "home"]
     team_index = 0
 
@@ -179,7 +179,7 @@ def _build_hitter_payload(
                 "team_side": team_side,
                 "batting_order": safe_int_or_none(row.get("타순")),
                 "position": str(row.get("POS", "") or row.get("포지션", "")).strip() or None,
-                "is_starter": safe_int_or_none(row.get("타순")) is not None and safe_int_or_none(row.get("타순")) <= 9,
+                "is_starter": ((bo := safe_int_or_none(row.get("타순"))) is not None and bo <= 9),
                 "stats": {
                     "plate_appearances": safe_int_or_none(row.get("타석")),
                     "at_bats": safe_int_or_none(row.get("타수")),
@@ -216,7 +216,7 @@ def _build_pitcher_payload(
     teams: dict[str, dict[str, Any]],
     db_session: Session | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    results = {"away": [], "home": []}
+    results: dict[str, list[dict[str, Any]]] = {"away": [], "home": []}
     team_cycle = ["away", "home"]
     team_index = 0
 
@@ -281,7 +281,7 @@ def _parse_metadata(soup: BeautifulSoup) -> dict[str, Any]:
     if info_area:
         info_text = info_area.get_text(" ", strip=True)
 
-    metadata = {
+    metadata: dict[str, Any] = {
         "stadium": None,
         "attendance": None,
         "start_time": None,
@@ -404,24 +404,22 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
         if not rows:
             return None
         if len(rows) == 1:
-            return rows[0][0]
+            return rows[0][0]  # type: ignore[no-any-return]
 
         # If multiple, try to find a team match
         # This is a heuristic - KBO team names in player_basic vary (e.g. '한화 이글스')
+        from src.utils.team_codes import TEAM_NAME_TO_CODE
+
+        code_to_name = {v: k for k, v in TEAM_NAME_TO_CODE.items()}
+        k_name = code_to_name.get(team_code, "")
         for r_id, r_team in rows:
             if not r_team:
                 continue
-            # Check if team_code (e.g. 'HH') is represented in Korean team name (e.g. '한화')
-            # This requires some knowledge of team mapping, but 'LIKE' is a start
-            from src.utils.team_codes import STANDARD_TEAM_CODES
-
-            team_meta = STANDARD_TEAM_CODES.get(team_code, {})
-            k_name = team_meta.get("name", "")
             if k_name and k_name in r_team:
-                return r_id
+                return r_id  # type: ignore[no-any-return]
 
         # Last resort: just return first if we have to, but better to be safe
-        return rows[0][0]
+        return rows[0][0]  # type: ignore[no-any-return]
     except SQLAlchemyError:
         return None
 

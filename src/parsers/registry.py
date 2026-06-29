@@ -8,10 +8,10 @@ from typing import Any
 from .team_event_parser import parse_team_events
 from .ticket_parser import parse_ticket_page
 
-ParserFunc = Callable[[str, str, dict | None], list[dict[str, Any]]]
+ParserFunc = Callable[[str, str, dict[str, Any] | None], list[dict[str, Any]]]
 
 
-def _parse_ticket_map(_html: str, _source_key: str, _metadata: dict | None = None) -> list[dict[str, Any]]:
+def _parse_ticket_map(_html: str, _source_key: str, _metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     return []
 
 

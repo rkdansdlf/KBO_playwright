@@ -247,7 +247,7 @@ def _apply_stat(
             break
 
 
-def _merge_extra_stats(record: dict[str, Any], row: dict[str, str], consumed: set) -> None:
+def _merge_extra_stats(record: dict[str, Any], row: dict[str, str], consumed: set[str]) -> None:
     extra = record.setdefault("extra_stats", {})
     for key, value in row.items():
         if key in consumed:

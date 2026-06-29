@@ -29,7 +29,7 @@ YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 # 10개 KBO 구단 공식 YouTube 채널 ID
 # Handle ID (@xxx 형식)는 channels API로 실제 채널 ID 조회 필요.
 # 여기서는 채널 핸들과 채널 ID를 모두 관리.
-TEAM_YOUTUBE_CHANNELS: dict[str, dict] = {
+TEAM_YOUTUBE_CHANNELS: dict[str, dict[str, Any]] = {
     "LG": {
         "handle": "@LGTwinsTV",
         "channel_id": "UCL6QZZxb-HR4hCh_eFAnQWA",
@@ -93,7 +93,7 @@ TEAM_YOUTUBE_CHANNELS: dict[str, dict] = {
 }
 
 # 응원가 유형 분류 키워드
-SONG_TYPE_RULES: list[tuple[re.Pattern, str]] = [
+SONG_TYPE_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"팀\s*응원가|team\s*song|응원가\s*모음|전체\s*응원", re.IGNORECASE), "TEAM"),
     (re.compile(r"타순|lead.off|1번타자", re.IGNORECASE), "LEADOFF"),
     (re.compile(r"끝내기|walk.off|끝내|승리의", re.IGNORECASE), "WALKOFF"),
@@ -116,7 +116,7 @@ class YouTubeVideoItem:
     thumbnail_url: str
     playlist_id: str | None = None
     channel_id: str | None = None
-    raw: dict = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 def _classify_song_type(title: str) -> str:
@@ -174,7 +174,7 @@ class YouTubeAPIClient:
         """
         return bool(self.api_key)
 
-    async def _get(self, endpoint: str, params: dict) -> dict[str, Any]:
+    async def _get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         """
         Gets  get.
 
@@ -191,7 +191,7 @@ class YouTubeAPIClient:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url, params=params)
             resp.raise_for_status()
-            return resp.json()
+            return resp.json()  # type: ignore[no-any-return]
 
     async def search_videos(
         self,
@@ -235,7 +235,7 @@ class YouTubeAPIClient:
             )
         return items
 
-    async def get_channel_playlists(self, channel_id: str, max_results: int = 20) -> list[dict]:
+    async def get_channel_playlists(self, channel_id: str, max_results: int = 20) -> list[dict[str, Any]]:
         """List playlists for a channel."""
         try:
             data = await self._get(
@@ -249,7 +249,7 @@ class YouTubeAPIClient:
         except httpx.HTTPError as e:
             logger.warning("[YouTube] Playlists failed for ch=%s: %s", channel_id, e)
             return []
-        return data.get("items", [])
+        return data.get("items", [])  # type: ignore[no-any-return]
 
     async def get_playlist_items(self, playlist_id: str, max_results: int = 50) -> list[YouTubeVideoItem]:
         """List videos in a specific playlist."""

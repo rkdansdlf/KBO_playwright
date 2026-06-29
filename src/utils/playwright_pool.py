@@ -38,7 +38,7 @@ class AsyncPlaywrightPool:
     def __init__(self, options: AsyncPlaywrightPoolOptions | None = None, **overrides: object) -> None:
         """Initializes a new instance."""
         if options is None:
-            options = AsyncPlaywrightPoolOptions(**overrides)
+            options = AsyncPlaywrightPoolOptions(**overrides)  # type: ignore[arg-type]
         elif overrides:
             msg = "Pass either AsyncPlaywrightPoolOptions or keyword options, not both"
             raise TypeError(msg)
@@ -109,7 +109,7 @@ class AsyncPlaywrightPool:
 
     async def _start_browser_context(self) -> None:
         """Handles the start browser context operation."""
-        self._playwright = await async_playwright().start()
+        self._playwright = await async_playwright().start()  # type: ignore[assignment]
         browser_factory = getattr(self._playwright, self.browser_type)
 
         # Add evasion arguments
@@ -206,8 +206,8 @@ class AsyncPlaywrightPool:
             self._pages.append(page)
         await self._queue.put(page)
 
-    @asynccontextmanager
-    async def page(self) -> Page:
+    @asynccontextmanager  # type: ignore[arg-type]
+    async def page(self) -> Page:  # type: ignore[misc]
         """
         Handles the page operation.
 

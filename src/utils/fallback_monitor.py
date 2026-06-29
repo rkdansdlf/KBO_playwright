@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime
+from typing import Any
 
 # 로깅 설정
 from src.constants import KST
@@ -51,8 +52,8 @@ class FallbackMonitor:
     def save_audit_backup(
         player_id: str,
         type_name: str,
-        original_data: dict,
-        calculated_data: dict | None = None,
+        original_data: dict[str, Any],
+        calculated_data: dict[str, Any] | None = None,
         player_name: str | None = None,
     ) -> str:
         """
@@ -116,7 +117,7 @@ class FallbackMonitor:
         return str(file_path)
 
     @staticmethod
-    def save_audit_event(category: str, event_type: str, data: dict) -> None:
+    def save_audit_event(category: str, event_type: str, data: dict[str, Any]) -> None:
         """Saves an audit event (e.g. warning, abort) to logs/audit_fixes/{date}_{event_type}_{category}.json."""
         from pathlib import Path
 
