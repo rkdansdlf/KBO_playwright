@@ -45,8 +45,14 @@ LOCK_DIR = ROOT / "data" / "locks"
 
 
 @pytest.fixture(autouse=True)
-def _clean_test_db():
-    """Remove test database before each test to ensure clean state."""
+def _clean_test_db(request):
+    """Remove test database before each test to ensure clean state.
+
+    Integration tests manage their own DB lifecycle, so skip cleanup for them.
+    """
+    if request.node.get_closest_marker("integration"):
+        yield
+        return
     test_db = ROOT / "data" / "test_runtime.db"
     if test_db.exists():
         test_db.unlink()

@@ -46,6 +46,7 @@ from src.models.team import Team, TeamCodeMap, TeamDailyRoster
 from src.models.team_event import TeamEvent
 from src.models.team_history import TeamHistory
 from src.models.ticket_schedule import TicketSchedule
+from src.sync.sync_base import SyncBaseProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def _format_daily_roster_scope(start_date: date | None, end_date: date | None) -
     return ""
 
 
-class MiscSyncMixin:
+class MiscSyncMixin(SyncBaseProtocol):
     """Mixin for misc sync operations."""
 
     def sync_franchises(self) -> int:
