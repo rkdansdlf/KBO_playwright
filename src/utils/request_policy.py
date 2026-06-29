@@ -7,12 +7,9 @@ import random
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 from src.utils.throttle import throttle
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")

@@ -7,7 +7,7 @@ Supports two-phase validation: live (structural) and post-game (cross-check).
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -17,9 +17,6 @@ from src.utils.game_status import (
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

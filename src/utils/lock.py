@@ -4,10 +4,7 @@ import logging
 import threading
 from pathlib import Path
 from types import TracebackType
-from typing import IO, TYPE_CHECKING, Self
-
-if TYPE_CHECKING:
-    pass
+from typing import IO, Self
 
 logger = logging.getLogger(__name__)
 
