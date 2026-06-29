@@ -497,6 +497,11 @@ exclude_also = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow-running (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests requiring external services",
+    "oci: requires OCI database connection",
+]
 
 [tool.mypy]
 python_version = "3.12"
