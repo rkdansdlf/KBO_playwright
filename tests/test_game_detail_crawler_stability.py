@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import asyncio
 
 import src.crawlers.game_detail_crawler as game_detail_module
@@ -112,6 +114,7 @@ def test_navigate_section_uses_compliance_delay_retry_and_selector(monkeypatch):
     assert page.selector_calls == [("#tblAwayHitter", 6789)]
 
 
+@pytest.mark.slow
 def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkeypatch):
     crawler = GameDetailCrawler()
     sections = []
@@ -172,6 +175,7 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
     assert crawler.get_last_failure_reason("20250401LGSS0") is None
 
 
+@pytest.mark.slow
 def test_crawl_single_marks_incomplete_detail_when_fallback_is_empty(monkeypatch):
     crawler = GameDetailCrawler()
 

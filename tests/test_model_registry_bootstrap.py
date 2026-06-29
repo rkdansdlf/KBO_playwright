@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +17,7 @@ def _configure_models_snippet() -> str:
     )
 
 
+@pytest.mark.slow
 def test_model_registry_configures_fa_contract_relationships() -> None:
     result = subprocess.run(
         [sys.executable, "-c", _configure_models_snippet()],

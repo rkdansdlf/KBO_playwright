@@ -261,23 +261,24 @@ class TestAppendSections:
         from src.cli.generate_quality_report import _append_collection_section
 
         lines: list[str] = []
-        metrics = {"collection": {"total": 500, "complete": 480, "failed": 10}}
+        metrics = {"total_games": 500, "completed_count": 480, "status_counts": {"completed": 480, "failed": 10}}
         _append_collection_section(lines, metrics)
         assert len(lines) > 0
         assert any("500" in line for line in lines)
 
-    def test_parity_section_ok(self) -> None:
+    def test_parity_section_ok_no_output(self) -> None:
         from src.cli.generate_quality_report import _append_parity_section
 
         lines: list[str] = []
-        parity = {"all_parity_ok": True, "details": []}
+        parity = {"ok": True, "details": []}
         _append_parity_section(lines, parity)
-        assert len(lines) > 0
+        assert len(lines) == 0
 
     def test_parity_section_not_ok(self) -> None:
         from src.cli.generate_quality_report import _append_parity_section
 
         lines: list[str] = []
-        parity = {"all_parity_ok": False, "details": [{"field": "hr"}]}
+        parity = {"ok": False, "local_count": 100, "oci_count": 95, "diff": 5}
         _append_parity_section(lines, parity)
-        assert len(lines) > 0
+        assert len(lines) == 1
+        assert "Parity" in lines[0]

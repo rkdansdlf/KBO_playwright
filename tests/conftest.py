@@ -44,7 +44,7 @@ if root.handlers:
 LOCK_DIR = ROOT / "data" / "locks"
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True, scope="session")
 def _clean_test_db(request):
     """Remove test database before each test to ensure clean state.
 
