@@ -374,7 +374,19 @@ Total enabled rules: **167** (E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G, BLE,
 
 ### Test Suite Status (2026-06-29)
 
-All previously flagged pre-existing failures resolved. Active test suite: **8,006 passed** (independent run). Sequential run exhibits 80 errors in sync/models modules from cross-test state leakage — tracked as separate infra item.
+Unit-test mode (`-m "not integration and not slow and not oci"`): **7,521 passed**, 0 failed.
+Full suite: 7,749 passed, 19 failed (integration tests requiring live `data/test_runtime.db`).
+
+### Phase 47 Complete (2026-06-29) — Sync module bug fixes + test stabilization
+
+- **`src/sync/sync_base.py`**: Added `Protocol` to `from typing import TYPE_CHECKING, Any, Protocol` — fixed 80 collection errors across sync tests.
+- **`src/sync/sync_misc.py`**: Added missing `from src.sync.sync_base import SyncBaseProtocol` import.
+- **`src/sync/sync_games.py`**: Fixed 2 `NameError: name 'filters' is not defined` bugs in `sync_player_game_batting` and `sync_player_game_pitching` — added `filters = [...]` assignment and `exclude_cols` parameter.
+- **`src/sync/sync_stats.py`**: Added missing `filters` parameter to `sync_stat_rankings` signature.
+- **`tests/sync/test_sync_base_integration.py`**: Changed `pytest.mark.usefixtures("_db_session")` to `_db_engine` + `_make_session()` pattern (fixture didn't exist).
+- **`tests/cli/test_auto_healer.py`**: Added missing `_apply_heal_outcome` import; fixed `test_with_target_game_ids` to mock `_find_recovery_targets`.
+- **`src/validators/quality_gate.py`**: Restored 4 pure module-level functions (`_batting_pa_mismatch`, `_team_stat_mismatch`, `_pa_formula_expected`, `_ip_to_outs_float`) accidentally deleted during prior edit.
+- **Result**: Unit-test mode 7,521 passed, 0 failed.
 
 ### Phase 20-28 Complete (2026-06-26) — Ruff rule expansion, test cleanup, pre-commit
 
@@ -530,5 +542,17 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **`tests/scripts` lint**: Verified 0 violations (previously flagged 100 violations already cleaned).
 - **Pre-existing failures resolution**: All 6 flagged files now pass independently.
 - **Full suite (isolated run)**: 8006 passed, 0 failed.
+- **Full suite (sequential run)**: 7,465 passed, 80 errors (test isolation in sync/models modules — pre-existing issue, 별도 수정 필요).
 - **Coverage**: 76.84% (fail_under=70).
 - **pytest**: 8,006 passed.
+
+### Current Verification Baseline (2026-06-29)
+
+- `ruff check src/ tests/ scripts/` = 0 errors (188 rules enabled, 0 warnings).
+- `ruff format --check .` = clean.
+- `python -m pytest -m "not integration and not slow and not oci"` = **7,521 passed**, 0 failures, 2 skipped, 1 xfailed; ~75s.
+- `python -m pytest` (full suite) = 7,749 passed, 19 failed (integration tests requiring `data/test_runtime.db`).
+- `ruff check --select C901 src/` = 0 violations (100% eliminated).
+- `--cov=src --cov-report=term` = **76.84%** (fail_under=70, exceeded target 75%).
+- `# noqa: BLE001` in `src/` = 0.
+- `pre-commit` hooks installed locally.

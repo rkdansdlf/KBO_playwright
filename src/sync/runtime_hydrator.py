@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.models.base import Base
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -416,7 +415,7 @@ class RuntimeHydrator:
     def _filter_child_rows_with_parent_games(self, spec: HydrationSpec, rows: list[object]) -> list[object]:
         if spec.model is Game or "game_id" not in spec.model.__table__.columns:
             return rows
-        game_ids = sorted({str(row.game_id) for row in rows if getattr(row, "game_id", None)})
+        game_ids = sorted({str(row.game_id) for row in rows if getattr(row, "game_id", None)})  # type: ignore[attr-defined]
         if not game_ids:
             return rows
         existing_ids = {
@@ -474,7 +473,7 @@ class RuntimeHydrator:
                 )
                 bulk_mappings.append(mapping)
 
-        stmt = sqlite_insert(PlayerBasic.__table__)
+        stmt = sqlite_insert(PlayerBasic.__table__)  # type: ignore[arg-type]
         update_columns = [c for c in full_columns if c != "player_id"]
         stmt = stmt.on_conflict_do_update(
             index_elements=[PlayerBasic.__table__.c.player_id],

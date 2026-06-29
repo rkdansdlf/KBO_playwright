@@ -161,14 +161,30 @@ def check_season_stat_team_code_gaps() -> dict[str, Any]:
         }
 
 
+def _collect_gaps(report: dict[str, Any]) -> None:
+    """Collect all gap checks into the report dict."""
+    _check_freshness(report)
+    _check_relay(report)
+    _check_staleness(report)
+    _check_standings(report)
+    _check_profile(report)
+    _check_id_resolution(report)
+    _check_pa_formula(report)
+    _check_team_stats(report)
+    _check_season_team_code(report)
+
+
 def build_gap_report() -> dict[str, Any]:
     """Run all gap checks and return a unified report dict."""
     report: dict[str, Any] = {
         "generated_at": datetime.now(KST).isoformat(),
         "gaps": {},
     }
+    _collect_gaps(report)
+    return report
 
-    # 1. Freshness gaps (per-game data completeness)
+
+def _check_freshness(report: dict[str, Any]) -> None:
     try:
         with SessionLocal() as session:
             freshness = collect_freshness_issues(session, days=3)
@@ -182,14 +198,16 @@ def build_gap_report() -> dict[str, Any]:
         logger.exception("FRESHNESS gap check failed")
         report["gaps"]["FRESHNESS"] = {"ok": False, "error": str(e)}
 
-    # 2. Relay/PBP gaps
+
+def _check_relay(report: dict[str, Any]) -> None:
     try:
         report["gaps"]["RELAY"] = check_relay_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
         logger.exception("RELAY gap check failed")
         report["gaps"]["RELAY"] = {"ok": False, "error": str(e)}
 
-    # 3. Source staleness
+
+def _check_staleness(report: dict[str, Any]) -> None:
     try:
         stale = check_freshness(dry_run=True)
         report["gaps"]["STALENESS"] = {
@@ -201,7 +219,8 @@ def build_gap_report() -> dict[str, Any]:
         logger.exception("STALENESS gap check failed")
         report["gaps"]["STALENESS"] = {"ok": False, "error": str(e)}
 
-    # 4. Standings integrity
+
+def _check_standings(report: dict[str, Any]) -> None:
     try:
         target_date = datetime.now(KST).date() - timedelta(days=1)
         with SessionLocal() as session:
@@ -215,42 +234,45 @@ def build_gap_report() -> dict[str, Any]:
         logger.exception("STANDINGS gap check failed")
         report["gaps"]["STANDINGS"] = {"ok": False, "error": str(e)}
 
-    # 5. Player profile gaps
+
+def _check_profile(report: dict[str, Any]) -> None:
     try:
         report["gaps"]["PROFILE"] = check_profile_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
         logger.exception("PROFILE gap check failed")
         report["gaps"]["PROFILE"] = {"ok": False, "error": str(e)}
 
-    # 6. Player ID resolution gaps
+
+def _check_id_resolution(report: dict[str, Any]) -> None:
     try:
         report["gaps"]["ID_RESOLUTION"] = check_id_resolution_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
         logger.exception("ID_RESOLUTION gap check failed")
         report["gaps"]["ID_RESOLUTION"] = {"ok": False, "error": str(e)}
 
-    # 7. PA formula gaps
+
+def _check_pa_formula(report: dict[str, Any]) -> None:
     try:
         report["gaps"]["PA_FORMULA"] = check_pa_formula_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
         logger.exception("PA_FORMULA gap check failed")
         report["gaps"]["PA_FORMULA"] = {"ok": False, "error": str(e)}
 
-    # 8. Team stats consistency
+
+def _check_team_stats(report: dict[str, Any]) -> None:
     try:
         report["gaps"]["TEAM_STATS"] = check_team_stats_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
         logger.exception("TEAM_STATS gap check failed")
         report["gaps"]["TEAM_STATS"] = {"ok": False, "error": str(e)}
 
-    # 9. Season stat team_code completeness
+
+def _check_season_team_code(report: dict[str, Any]) -> None:
     try:
         report["gaps"]["SEASON_TEAM_CODE"] = check_season_stat_team_code_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
         logger.exception("SEASON_TEAM_CODE gap check failed")
         report["gaps"]["SEASON_TEAM_CODE"] = {"ok": False, "error": str(e)}
-
-    return report
 
 
 def _gap_severity(gap: dict[str, Any]) -> str:

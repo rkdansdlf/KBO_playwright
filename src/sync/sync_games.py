@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 from src.sync.sync_base import (
     GameSyncEligibility,
+    SyncBaseProtocol,
     _log_sync_eligibility,
     build_game_sync_eligibility,
     detect_dirty_game_ids,
@@ -106,7 +107,7 @@ class GameDetailSyncScope:
     """Groups common sync parameters for game detail chunk operations."""
 
     scoped_game_ids: list[str]
-    filters: list
+    filters: list[Any]
     target_game_ids: list[str] | None
     year: int | None
     days: int | None
@@ -114,8 +115,10 @@ class GameDetailSyncScope:
     batch_size: int
 
 
-class GameSyncMixin:
+class GameSyncMixin(SyncBaseProtocol):
     """Mixin for game-level sync operations."""
+
+    _cached_game_metadata_source_payload_limit: int | None
 
     def _game_metadata_source_payload_limit(self) -> int | None:
         if hasattr(self, "_cached_game_metadata_source_payload_limit"):
@@ -134,13 +137,13 @@ class GameSyncMixin:
         self._cached_game_metadata_source_payload_limit = limit
         return limit
 
-    def _transform_game_metadata_for_target(self, data: dict) -> dict[str, Any]:
+    def _transform_game_metadata_for_target(self, data: dict[str, Any]) -> dict[str, Any]:
         limit = self._game_metadata_source_payload_limit()
         if limit and "source_payload" in data:
             data["source_payload"] = _compact_metadata_source_payload_for_limit(data["source_payload"], limit)
         return data
 
-    def _transform_game_lineup_for_target(self, data: dict) -> dict[str, Any]:
+    def _transform_game_lineup_for_target(self, data: dict[str, Any]) -> dict[str, Any]:
         batting_order = data.get("batting_order")
         appearance_seq = data.get("appearance_seq")
         if batting_order is None or appearance_seq == batting_order:
@@ -372,7 +375,7 @@ class GameSyncMixin:
             filters.append(Game.game_id.like(f"{year}%"))
         return filters, target_game_ids
 
-    def _scoped_game_ids(self, filters: list, target_game_ids: list[str] | None) -> list[str]:
+    def _scoped_game_ids(self, filters: list[Any], target_game_ids: list[str] | None) -> list[str]:
         if target_game_ids is not None:
             return target_game_ids
         scoped_query = self.sqlite_session.query(Game.game_id)
@@ -383,7 +386,7 @@ class GameSyncMixin:
     def _sync_parent_games_for_details(
         self,
         results: dict[str, int],
-        chunk_parent_filters: list,
+        chunk_parent_filters: list[Any],
         publishable_parent_game_ids: list[str] | None,
         *,
         unsynced_only: bool,
@@ -425,7 +428,7 @@ class GameSyncMixin:
                 batch_size=scope.batch_size,
             )
 
-    def _game_detail_child_filters(self, filters: list, year: int | None, days: int | None) -> list | None:
+    def _game_detail_child_filters(self, filters: list[Any], year: int | None, days: int | None) -> list | None:
         child_filters = []
         if year:
             child_filters.append(text("game_id LIKE :year_pattern").bindparams(year_pattern=f"{year}%"))
