@@ -96,22 +96,25 @@ class ProcessLock:
             return cls._pg_engines[url]
 
     def _acquire_pg_lock(self, *, effective_blocking: bool) -> bool:
-        """Acquire PostgreSQL advisory lock if configured."""
+        """
+        Acquire PostgreSQL advisory lock if configured.
+
+        Returns True if lock acquired or not needed.
+        Returns False only if lock is held by another process and should NOT fall back.
+        """
         pg_url = self._get_postgres_url()
         if not pg_url:
             return True
 
         from sqlalchemy import text
+        from sqlalchemy.engine import Connection
         from sqlalchemy.exc import SQLAlchemyError
 
         success = False
         try:
             engine = self._get_pg_engine(pg_url)
-            # Create a new connection from the engine
-            from sqlalchemy.engine import Connection
 
             if not isinstance(engine, Connection):
-                # Ensure connection is created
                 self.db_connection = engine.connect()  # type: ignore[attr-defined]
 
             lock_id = self._get_lock_id()
@@ -125,8 +128,13 @@ class ProcessLock:
                     logger.debug("Successfully acquired PostgreSQL advisory lock for: %s", self.name)
                     success = True
                 else:
+                    logger.warning(
+                        "PostgreSQL advisory lock held by another process for %s, falling back to file lock",
+                        self.name,
+                    )
                     self.db_connection.close()
                     self.db_connection = None
+                    return True
         except (SQLAlchemyError, OSError, RuntimeError) as e:
             logger.warning(
                 "Failed to acquire PostgreSQL advisory lock for %s, falling back to local lock: %s",
@@ -185,6 +193,8 @@ class ProcessLock:
 
             fcntl.flock(self.file_fd, flags)
             success = True
+            self.file_fd.write(f"{os.getpid()}\n")
+            self.file_fd.flush()
             logger.debug("Successfully acquired ProcessLock: %s", self.name)
         except OSError as e:
             logger.debug("Failed to acquire ProcessLock: %s. Error: %s", self.name, e)
@@ -254,3 +264,47 @@ class ProcessLock:
     ) -> None:
         """Exit the runtime context."""
         self.release()
+
+
+class ForceProcessLock(ProcessLock):
+    """
+    ProcessLock variant that force-acquires by clearing stale locks.
+
+    Use this when you need to guarantee lock acquisition even if a previous
+    process crashed without releasing the lock.
+    """
+
+    def acquire(self, *, blocking: bool | None = None) -> bool:
+        """Acquire the lock, clearing stale file locks if needed."""
+        try:
+            return super().acquire(blocking=blocking)
+        except LockAcquisitionError:
+            logger.warning("Normal lock acquisition failed for %s, attempting force-acquire", self.name)
+
+        logger.warning("Force-acquiring ProcessLock: %s (clearing stale lock)", self.name)
+        self._clear_stale_lock()
+        return super().acquire(blocking=blocking)
+
+    def _clear_stale_lock(self) -> None:
+        """Remove stale lock file if the owning process is no longer running."""
+        try:
+            if not self.lock_file_path.exists():
+                return
+
+            pid_str = self.lock_file_path.read_text().strip().split("\n")[0]
+            if not pid_str.isdigit():
+                self.lock_file_path.unlink(missing_ok=True)
+                return
+
+            pid = int(pid_str)
+            try:
+                os.kill(pid, 0)
+            except (OSError, ProcessLookupError):
+                logger.info(
+                    "Removing stale lock file for %s (PID %d not running)",
+                    self.name,
+                    pid,
+                )
+                self.lock_file_path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.debug("Error clearing stale lock for %s: %s", self.name, e)

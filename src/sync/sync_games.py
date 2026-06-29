@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.models.base import Base
 
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -152,7 +155,7 @@ class GameSyncMixin(SyncBaseProtocol):
         data["batting_order"] = None
         return data
 
-    def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:
+    def sync_games(self, limit: int | None = None, filters: list[Any] | None = None, batch_size: int = 5000) -> int:
         """
         Sync game detail data from SQLite to OCI using Batched UPSERT or COPY.
 
@@ -255,7 +258,11 @@ class GameSyncMixin(SyncBaseProtocol):
             batch_size=batch_size,
         )
 
-    def sync_all_game_data(self, limit: int | None = None) -> dict[str, int]:
+    def sync_game_schedules(self, limit: int | None = None) -> int:
+        """Stub: game schedules sync not yet implemented."""
+        return 0
+
+    def sync_all_game_data(self, limit: int | None = None) -> dict[str, Any]:
         """
         Sync all game-related data.
 
@@ -333,9 +340,9 @@ class GameSyncMixin(SyncBaseProtocol):
             """Handle the replace child rows operation."""
             for child_model in child_models:
                 if not self._target_table_exists(child_model):
-                    logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
+                    logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)  # type: ignore[attr-defined]
                     continue
-                self.target_session.query(child_model).filter(child_model.game_id.in_(target_game_ids)).delete(
+                self.target_session.query(child_model).filter(child_model.game_id.in_(target_game_ids)).delete(  # type: ignore[attr-defined]
                     synchronize_session=False,
                 )
             self.target_session.commit()
@@ -346,7 +353,7 @@ class GameSyncMixin(SyncBaseProtocol):
         )
         logger.info("🧹 Replaced OCI %s child rows for %s game(s)", label, len(target_game_ids))
 
-    def get_unsynced_or_modified_game_ids(self) -> list[str]:
+    def get_unsynced_or_modified_game_ids(self) -> list[Any]:
         """Detect dirty game_ids by comparing game + child-table signatures across local/OCI."""
         return detect_dirty_game_ids(self.sqlite_session, self.target_session)
 
@@ -356,8 +363,8 @@ class GameSyncMixin(SyncBaseProtocol):
         year: int | None,
         *,
         unsynced_only: bool,
-    ) -> tuple[list, list[str] | None]:
-        filters = []
+    ) -> tuple[list[Any], list[str] | None]:
+        filters: list[Any] = []
         target_game_ids = None
         if unsynced_only:
             logger.info("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
@@ -375,7 +382,7 @@ class GameSyncMixin(SyncBaseProtocol):
             filters.append(Game.game_id.like(f"{year}%"))
         return filters, target_game_ids
 
-    def _scoped_game_ids(self, filters: list[Any], target_game_ids: list[str] | None) -> list[str]:
+    def _scoped_game_ids(self, filters: list[Any], target_game_ids: list[str] | None) -> list[Any]:
         if target_game_ids is not None:
             return target_game_ids
         scoped_query = self.sqlite_session.query(Game.game_id)
@@ -428,8 +435,8 @@ class GameSyncMixin(SyncBaseProtocol):
                 batch_size=scope.batch_size,
             )
 
-    def _game_detail_child_filters(self, filters: list[Any], year: int | None, days: int | None) -> list | None:
-        child_filters = []
+    def _game_detail_child_filters(self, filters: list[Any], year: int | None, days: int | None) -> list[Any] | None:
+        child_filters: list[Any] = []
         if year:
             child_filters.append(text("game_id LIKE :year_pattern").bindparams(year_pattern=f"{year}%"))
         elif days:
@@ -464,12 +471,12 @@ class GameSyncMixin(SyncBaseProtocol):
     @staticmethod
     def _child_filter_for_model(
         model_cls: type,
-        child_filters: list | None,
+        child_filters: list[Any] | None,
         scoped_game_ids: list[str],
         eligibility: GameSyncEligibility,
-    ) -> list | None:
+    ) -> list[Any] | None:
         if model_cls in {GameEvent, GamePlayByPlay}:
-            return [model_cls.game_id.in_(eligibility.relay_game_ids)]
+            return [model_cls.game_id.in_(eligibility.relay_game_ids)]  # type: ignore[attr-defined]
         if model_cls is GameValidationMetrics:
             return [model_cls.game_id.in_(scoped_game_ids)]
         detail_models = {
@@ -484,7 +491,7 @@ class GameSyncMixin(SyncBaseProtocol):
             PlayerGamePitching,
         }
         if model_cls in detail_models:
-            return [model_cls.game_id.in_(eligibility.detail_game_ids)]
+            return [model_cls.game_id.in_(eligibility.detail_game_ids)]  # type: ignore[attr-defined]
         return child_filters
 
     def sync_game_details(
@@ -542,7 +549,7 @@ class GameSyncMixin(SyncBaseProtocol):
         )
         return self._aggregate_game_detail_chunks(scope)
 
-    def sync_game_details_for_ids(self, game_ids: list[str], batch_size: int = 5000) -> dict[str, int]:
+    def sync_game_details_for_ids(self, game_ids: list[str], batch_size: int = 5000) -> dict[str, Any]:
         """
         Sync completed game details for an explicit list of game IDs.
 
@@ -576,7 +583,7 @@ class GameSyncMixin(SyncBaseProtocol):
     def _aggregate_game_detail_chunks(
         self,
         scope: GameDetailSyncScope,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         game_chunk_size = 20
         chunked_game_ids = [
             scope.scoped_game_ids[i : i + game_chunk_size]
@@ -588,7 +595,7 @@ class GameSyncMixin(SyncBaseProtocol):
             game_chunk_size,
         )
 
-        results: dict[str, int] = {}
+        results: dict[str, Any] = {}
         total_chunks = len(chunked_game_ids)
         for idx, chunk_ids in enumerate(chunked_game_ids, start=1):
             logger.info("🚀 Syncing game detail chunk %s/%s (%s games)...", idx, total_chunks, len(chunk_ids))
@@ -617,7 +624,7 @@ class GameSyncMixin(SyncBaseProtocol):
         skip_year_purge: bool = False,
         batch_size: int = 5000,
     ) -> dict[str, Any]:
-        results = {}
+        results: dict[str, Any] = {}
         eligibility = build_game_sync_eligibility(self.sqlite_session, chunk_ids)
         results.update(eligibility.counts())
         _log_sync_eligibility(eligibility)
@@ -659,7 +666,7 @@ class GameSyncMixin(SyncBaseProtocol):
                 eligibility=eligibility,
             )
 
-        def get_child_filters(model_cls: type[Base]) -> list | None:
+        def get_child_filters(model_cls: type[Base]) -> list[Any] | None:
             """
             Get child filters.
 
@@ -986,7 +993,7 @@ class GameSyncMixin(SyncBaseProtocol):
 
     def _sync_game_summary_rows(
         self,
-        filters: list | None = None,
+        filters: list[Any] | None = None,
         *,
         summary_type: str | None = None,
         replace_game_ids: list[str] | None = None,
@@ -1037,7 +1044,7 @@ class GameSyncMixin(SyncBaseProtocol):
         logger.info("   Synced %s/%s rows via COPY...", len(records), len(records))
         return len(records)
 
-    def _sync_game_play_by_play(self, filters: list | None = None) -> int:
+    def _sync_game_play_by_play(self, filters: list[Any] | None = None) -> int:
 
         query = self.sqlite_session.query(GamePlayByPlay.game_id).distinct()
         if filters:

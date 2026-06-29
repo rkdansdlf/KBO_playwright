@@ -17,13 +17,15 @@ from datetime import datetime
 from itertools import count
 from typing import TYPE_CHECKING, Any, Protocol
 
+if TYPE_CHECKING:
+    from src.models.base import Base
+
 from psycopg2 import Error as PsycopgError
 from sqlalchemy import bindparam, create_engine, inspect, text
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Query, Session, sessionmaker
 
 from src.constants import KST
-from src.models.base import Base
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -92,6 +94,8 @@ class SyncBaseProtocol(Protocol):
     def sync_pitcher_data(self, *args: Any, **kwargs: Any) -> int: ...
     def sync_players(self) -> int: ...
     def sync_player_identities(self) -> int: ...
+    def sync_game_schedules(self, limit: int | None = ...) -> int: ...
+    def _chunked(self, items: list[str], size: int) -> list[list[str]]: ...
     def _sync_referenced_player_basic_for_games(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
@@ -692,7 +696,7 @@ class OCISyncBase:
         """Fetch and cache OCI season mapping (year, league_type_code) -> season_id."""
         cache = getattr(self, "_season_map_cache", None)
         if cache is not None:
-            return cache  # type: ignore[no-any-return]
+            return cache
 
         queries = [
             "SELECT season_id, season_year, league_type_code FROM kbo_seasons",
@@ -720,7 +724,7 @@ class OCISyncBase:
         """Get and cache SQLite franchise_id → OCI franchise_id mapping (single batch query)."""
         cache = getattr(self, "_franchise_id_mapping_cache", None)
         if cache is not None:
-            return cache  # type: ignore[no-any-return]
+            return cache
 
         from src.models.franchise import Franchise
 
