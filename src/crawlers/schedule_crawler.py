@@ -209,7 +209,7 @@ class ScheduleCrawler:
             return False, "schedule_empty"
         else:
             return True, "ok"
-            logger.exception("[WARN] Schedule table wait failed")
+            logger.error("[WARN] Schedule table wait failed")
             return False, "schedule_empty"
 
     async def _select_option_with_retry(

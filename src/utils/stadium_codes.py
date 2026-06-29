@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -175,7 +175,7 @@ def resolve_stadium_code_from_db(
             {"name": stadium_name.strip()},
         ).one_or_none()
         if row is not None:
-            return row[0]
+            return cast("str", row[0])
     except SQLAlchemyError:
         logger.debug("DB stadium lookup failed for: %s", stadium_name)
 

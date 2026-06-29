@@ -9,7 +9,7 @@ import os
 import struct
 import threading
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, ClassVar, Self
+from typing import IO, TYPE_CHECKING, ClassVar, Self, cast
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -72,7 +72,7 @@ class ProcessLock:
     def _get_lock_id(self) -> int:
         """Hash the lock name to a 64-bit signed integer for pg_advisory_lock."""
         h = hashlib.sha256(self.name.encode("utf-8")).digest()
-        return struct.unpack("q", h[:8])[0]
+        return cast("int", struct.unpack("q", h[:8])[0])
 
     def _get_postgres_url(self) -> str | None:
         """Dynamically detect PostgreSQL database URL from the environment."""
