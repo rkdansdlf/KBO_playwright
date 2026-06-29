@@ -394,7 +394,7 @@ ignore = [
 "src/repositories/player_season_pitching_repository.py" = ["PLW0603"]
 "src/repositories/safe_batting_repository.py" = ["PLW0603"]
 "src/utils/team_mapping.py" = ["PLW0603"]
-"src/utils/request_policy.py" = ["S311"]
+"src/utils/request_policy.py" = ["S311", "ANN401"]
 "src/utils/throttle.py" = ["S311"]
 "src/utils/alerting.py" = ["S310"]
 "src/utils/compliance.py" = ["ASYNC240"]
@@ -438,6 +438,8 @@ ignore = [
 "src/repositories/team_event_repository.py" = ["FURB171"]
 "src/repositories/stadium_food_repository.py" = ["SLF001"]
 "src/utils/team_stats_helpers.py" = ["PLR0913", "ANN401"]
+"src/utils/game_status.py" = ["ANN401"]
+"src/utils/refresh_manifest.py" = ["ANN401"]
 "src/sync/runtime_hydrator.py" = ["RUF012", "FURB171"]
 "src/services/game_deduplication_service.py" = ["S608", "PLR0913"]
 "src/services/hitter_page_fetcher.py" = ["S608"]
@@ -493,10 +495,6 @@ exclude_also = [
     "pragma: no cover",
 ]
 
-"src/utils/game_status.py" = ["ANN401"]
-"src/utils/refresh_manifest.py" = ["ANN401"]
-"src/utils/request_policy.py" = ["ANN401"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
@@ -505,5 +503,4 @@ python_version = "3.12"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 warn_unused_ignores = true
 ignore_missing_imports = true
-explicit_any = false
-files = ["src/models/", "src/utils/"]
+files = ["src/models/", "src/utils/", "src/db/", "src/parsers/"]

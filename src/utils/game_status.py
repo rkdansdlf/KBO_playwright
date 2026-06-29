@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
@@ -188,14 +188,14 @@ def _resolve_past_status(current_status: str | None, new_status: str | None) -> 
     return GAME_STATUS_UNRESOLVED
 
 
-def derive_stable_game_status(evidence: GameStatusEvidence | None = None, **kwargs: Any) -> str:
+def derive_stable_game_status(evidence: GameStatusEvidence | None = None, **kwargs: object) -> str:
     """
     Central logic to resolve game status based on date and evidence.
 
     Ensures stability and prevents premature LIVE/COMPLETED transitions.
     """
     if evidence is None:
-        evidence = GameStatusEvidence(**kwargs)
+        evidence = GameStatusEvidence(**kwargs)  # type: ignore[arg-type]
     elif kwargs:
         msg = "Pass either GameStatusEvidence or keyword evidence, not both"
         raise TypeError(msg)

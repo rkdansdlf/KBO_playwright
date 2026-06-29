@@ -340,7 +340,7 @@ def filter_valid_season_stat_payloads(
     payloads: Iterable[Mapping[str, Any]],
     *,
     stat_type: str,
-) -> tuple[list[dict[str, Any]], Counter]:
+) -> tuple[list[dict[str, Any]], Counter[str]]:
     """
     Filters valid season stat payloads.
 
@@ -352,7 +352,7 @@ def filter_valid_season_stat_payloads(
 
     """
     rows: list[dict[str, Any]] = []
-    reasons: Counter = Counter()
+    reasons: Counter[str] = Counter[str]()
     for payload in payloads:
         ok, reason = validate_season_stat_payload(payload, stat_type=stat_type)
         if not ok:

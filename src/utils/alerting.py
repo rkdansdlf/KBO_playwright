@@ -64,7 +64,7 @@ class TelegramBotClient:
 
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
-                return response.status == HTTPStatus.OK
+                return response.status == HTTPStatus.OK  # type: ignore[no-any-return]
         except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Telegram message")
             return False
@@ -74,7 +74,7 @@ class SlackWebhookClient:
     """Sends notifications. Now prioritizes Telegram if configured."""
 
     @staticmethod
-    def send_alert(message: str, blocks: list | None = None) -> bool:
+    def send_alert(message: str, blocks: list[Any] | None = None) -> bool:
         """
         Sends an alert message.
 

@@ -40,7 +40,7 @@ class TransitResult:
     duration_minutes: int
     distance_meters: int | None
     source_api: str
-    raw_response: dict
+    raw_response: dict[str, Any]
 
 
 # ─────────────────────────────────────────────────────────
@@ -279,7 +279,7 @@ async def get_transit_time(req: TransitRequest) -> TransitResult | None:
 
 
 async def get_transit_times_batch(
-    origins: list[dict],
+    origins: list[dict[str, Any]],
     mode: TransportMode = "mixed",
     dest_lat: float = JAMSIL_LAT,
     dest_lng: float = JAMSIL_LNG,

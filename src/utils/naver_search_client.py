@@ -41,7 +41,7 @@ NAVER_SEARCH_BASE = "https://openapi.naver.com/v1/search"
 
 # 잠실구장 관련 공지 탐지 쿼리
 # 팀별 + 공지 키워드 조합
-NOTICE_QUERIES: list[dict] = [
+NOTICE_QUERIES: list[dict[str, Any]] = [
     {
         "query": "LG트윈스 (입장 OR 취소 OR 게이트 OR 공지 OR 우천 OR 주차)",
         "team": "LG",
@@ -75,7 +75,7 @@ class NaverSearchResult:
     pub_date: datetime | None
     source_type: SearchType
     team_hint: str | None
-    raw: dict
+    raw: dict[str, Any]
 
 
 def _parse_naver_date(pub_date_str: str) -> datetime | None:

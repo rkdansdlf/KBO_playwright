@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -44,7 +45,7 @@ class CongestionSnapshot:
     congestion_index: float | None
     people_count: int | None
     source: str
-    raw_data: dict
+    raw_data: dict[str, Any]
 
 
 LEVEL_MAP = {

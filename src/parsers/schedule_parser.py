@@ -32,6 +32,8 @@ def parse_schedule_html(
 
     for anchor in soup.select("a[href*='gameId=']"):
         href = anchor.get("href") or ""
+        if not isinstance(href, str):
+            continue
         match = LINK_PATTERN.search(href)
         if not match:
             continue
@@ -42,9 +44,12 @@ def parse_schedule_html(
         int(game_id[4:6])
 
         id_parts = split_schedule_game_id(game_id)
+        away_segment: str | None
+        home_segment: str | None
+        doubleheader_no: int
         if id_parts:
-            _, away_segment, home_segment, doubleheader_no = id_parts
-            doubleheader_no = int(doubleheader_no)
+            _, away_segment, home_segment, dh_str = id_parts
+            doubleheader_no = int(dh_str)
         else:
             away_segment = game_id[8:10] if len(game_id) >= GAME_ID_MIN_LEN else None
             home_segment = game_id[10:12] if len(game_id) >= GAME_ID_FULL_LEN else None

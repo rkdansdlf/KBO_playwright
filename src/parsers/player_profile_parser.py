@@ -328,7 +328,7 @@ def parse_profile(
     *,
     is_active: bool | None = None,
     is_foreign: bool | None = None,
-) -> dict[str, Any]:
+) -> PlayerProfileParsed:
     """
     Main entry point. Tokenizes raw profile text and returns a structured dictionary
     of all parsed values.
