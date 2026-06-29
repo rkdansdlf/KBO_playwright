@@ -112,7 +112,7 @@ def validate_player_payload(payload: Mapping[str, Any]) -> tuple[bool, str | Non
 
 def filter_valid_player_payloads(
     payloads: Iterable[Mapping[str, Any]],
-) -> tuple[list[dict[str, Any]], Counter]:
+) -> tuple[list[dict[str, Any]], Counter[str]]:
     """
     Filters valid player payloads.
 
@@ -124,7 +124,7 @@ def filter_valid_player_payloads(
 
     """
     filtered: list[dict[str, Any]] = []
-    reasons: Counter = Counter()
+    reasons: Counter[str] = Counter[str]()
 
     for payload in payloads:
         ok, reason = validate_player_payload(payload)

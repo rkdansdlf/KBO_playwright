@@ -169,7 +169,7 @@ def resolve_stadium_code_from_db(
             {"name": stadium_name.strip()},
         ).one_or_none()
         if row is not None:
-            return row[0]
+            return row[0]  # type: ignore[no-any-return]
     except SQLAlchemyError:
         logger.debug("DB stadium lookup failed for: %s", stadium_name)
 

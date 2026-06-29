@@ -1,6 +1,9 @@
 """유틸리티: series validation."""
 
+from __future__ import annotations
+
 import logging
+from typing import Any
 
 from src.constants import (
     KBO_90S_ERA_END,
@@ -87,7 +90,7 @@ def filter_series_for_year(year: int, requested_series: list[str]) -> list[str]:
     return filtered
 
 
-def get_series_info() -> dict[str, dict]:
+def get_series_info() -> dict[str, dict[str, Any]]:
     """시리즈별 상세 정보 반환."""
     return {
         "regular": {"name": "KBO 정규시즌", "description": "4월-10월 정규 경기", "since": KBO_FOUNDING_YEAR},
@@ -99,7 +102,7 @@ def get_series_info() -> dict[str, dict]:
     }
 
 
-def validate_year_series_combination(year: int, series_key: str) -> tuple:
+def validate_year_series_combination(year: int, series_key: str) -> tuple[bool, str]:
     """
     연도-시리즈 조합 유효성 검증.
 

@@ -41,10 +41,10 @@ class RequestPolicyConfig:
 class RequestPolicy:
     """Centralized throttling and retry policy."""
 
-    def __init__(self, config: RequestPolicyConfig | None = None, **overrides: Any) -> None:
+    def __init__(self, config: RequestPolicyConfig | None = None, **overrides: object) -> None:
         """Initializes a new instance."""
         if config is None:
-            config = RequestPolicyConfig(**overrides)
+            config = RequestPolicyConfig(**overrides)  # type: ignore[arg-type]
         elif overrides:
             msg = "Pass either RequestPolicyConfig or keyword policy fields, not both"
             raise TypeError(msg)
@@ -191,7 +191,7 @@ class RequestPolicy:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
-                return await func(*args, **kwargs)  # type: ignore[misc]
+                return await func(*args, **kwargs)  # type: ignore[misc, no-any-return]
             except self.retry_exceptions as exc:
                 last_exc = exc
                 if attempt >= self.max_retries:
