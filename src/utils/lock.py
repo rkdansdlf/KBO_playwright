@@ -116,7 +116,7 @@ class ProcessLock:
 
             conn = engine.connect() if not isinstance(engine, Connection) else engine  # type: ignore[attr-defined]
 
-            self.db_connection = conn
+            self.db_connection = conn  # type: ignore[assignment]
             lock_id = self._get_lock_id()
 
             if effective_blocking:
