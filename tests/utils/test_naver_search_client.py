@@ -283,6 +283,7 @@ class TestNaverSearchClient:
         assert len(results) == 1
         assert results[0].pub_date is None
 
+    @pytest.mark.slow
     async def test_search_kbo_notices_without_keys(self, monkeypatch):
         monkeypatch.setenv("NAVER_CLIENT_ID", "")
         monkeypatch.setenv("NAVER_CLIENT_SECRET", "")

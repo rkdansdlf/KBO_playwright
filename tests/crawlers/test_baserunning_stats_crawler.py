@@ -82,6 +82,7 @@ class TestCrawlBaserunningStats:
         assert result[0]["stolen_bases"] == 15
         assert result[0]["games"] == 100
 
+    @pytest.mark.slow
     @patch("src.crawlers.baserunning_stats_crawler.sync_playwright")
     def test_safe_int_handles_dash(self, mock_sync_pw):
         mock_pw = MagicMock()
