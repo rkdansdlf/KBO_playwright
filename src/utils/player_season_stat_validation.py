@@ -2,12 +2,9 @@
 
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from src.utils.player_validation import normalize_player_id, normalize_player_name, validate_player_payload
-
-if TYPE_CHECKING:
-    pass
 
 BATTING_CORE_STATS = ("games", "plate_appearances", "at_bats", "hits")
 PITCHING_CORE_STATS = ("games", "innings_pitched", "innings_outs")
