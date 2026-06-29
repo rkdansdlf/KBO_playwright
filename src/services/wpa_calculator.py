@@ -70,7 +70,7 @@ class WPACalculator:
 
     def calculate_wpa(self, *, data: WpaInput) -> float:
         """
-        Calculates WPA = WinProb(After) - WinProb(Before).
+        Calculate WPA = WinProb(After) - WinProb(Before).
 
         Returns WPA from the perspective of the Batting Team.
         """
@@ -99,7 +99,7 @@ class WPACalculator:
 
     def get_win_probability(self, inning: int, *, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
         """
-        Returns probability (0.0 to 1.0) that HOME team wins.
+        Return probability (0.0 to 1.0) that HOME team wins.
 
         Uses Matrix lookup with fallback interpolation for missing keys.
         """
