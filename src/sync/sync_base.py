@@ -11,13 +11,14 @@ import json
 import logging
 import sqlite3
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import count
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from src.models.base import Base
 
 from psycopg2 import Error as PsycopgError
@@ -46,8 +47,6 @@ from src.utils.game_status import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from sqlalchemy.engine import Connection, Result
 
 RawConnection = Any  # psycopg2 connection, typed loosely to avoid heavy deps
@@ -696,7 +695,7 @@ class OCISyncBase:
         """Fetch and cache OCI season mapping (year, league_type_code) -> season_id."""
         cache = getattr(self, "_season_map_cache", None)
         if cache is not None:
-            return cache
+            return cast("dict[tuple[Any, ...], int]", cache)
 
         queries = [
             "SELECT season_id, season_year, league_type_code FROM kbo_seasons",
@@ -724,7 +723,7 @@ class OCISyncBase:
         """Get and cache SQLite franchise_id → OCI franchise_id mapping (single batch query)."""
         cache = getattr(self, "_franchise_id_mapping_cache", None)
         if cache is not None:
-            return cache
+            return cast("dict[int, int]", cache)
 
         from src.models.franchise import Franchise
 
