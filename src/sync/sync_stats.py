@@ -17,22 +17,33 @@ from src.models.player import (
 )
 from src.models.rankings import StatRanking
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
-from src.sync.sync_base import _serialize_scalar
+from src.sync.sync_base import SyncBaseProtocol, _serialize_scalar
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from src.models.base import Base
+
 logger = logging.getLogger(__name__)
 
 
-class StatsSyncMixin:
+class StatsSyncMixin(SyncBaseProtocol):
     """Mixin for season stats sync operations."""
 
-    def _add_existing_player_basic_filter(self, model: type, filters: list) -> list:
-        """Avoid FK failures when local season stats contain orphan player IDs."""
+    def _add_existing_player_basic_filter(self, model: type[Base], filters: list[Any]) -> list[Any]:
+        """
+        Avoid FK failures when local season stats contain orphan player IDs.
+
+        Args:
+            model: Model.
+            filters: Filters.
+            model: Model.
+            filters: Filters.
+
+        """
         from src.models.player import PlayerBasic
 
-        existing_player_filter = model.player_id.in_(self.sqlite_session.query(PlayerBasic.player_id))
+        existing_player_filter = model.player_id.in_(self.sqlite_session.query(PlayerBasic.player_id))  # type: ignore[attr-defined]
         missing_count = self.sqlite_session.query(model).filter(*filters, ~existing_player_filter).count()
         if missing_count:
             logger.warning(
@@ -59,7 +70,14 @@ class StatsSyncMixin:
         )
 
     def verify_pitcher_sync(self, expected_count: int) -> None:
-        """투수 데이터 동기화 결과 검증."""
+        """
+        투수 데이터 동기화 결과 검증.
+
+        Args:
+            expected_count: Expected Count.
+            expected_count: Expected Count.
+
+        """
         try:
             result = self.target_session.execute(
                 text("""
@@ -80,7 +98,14 @@ class StatsSyncMixin:
             logger.exception("⚠️ 투수 데이터 동기화 검증 실패")
 
     def verify_batting_sync(self, expected_count: int) -> None:
-        """타자 데이터 동기화 결과 검증."""
+        """
+        타자 데이터 동기화 결과 검증.
+
+        Args:
+            expected_count: Expected Count.
+            expected_count: Expected Count.
+
+        """
         try:
             result = self.target_session.execute(
                 text("""
@@ -145,18 +170,34 @@ class StatsSyncMixin:
         except SQLAlchemyError:
             logger.exception("⚠️ OCI 데이터 조회 실패")
 
-    def _get_table_signature(self, model: type, year: int | None = None, year_col: str = "season") -> dict[str, Any]:
+    def _get_table_signature(
+        self,
+        model: type[Base],
+        year: int | None = None,
+        year_col: str = "season",
+    ) -> dict[str, Any]:
         """
         Calculate a unique signature for a table/year combination to detect changes.
 
         Signature includes ROW COUNT and MAX(updated_at).
+
+        Args:
+            model: Model.
+            year: Season year.
+            year_col: Year Col.
+            model: Model.
+            year: Season year.
+            year_col: Year Col.
+
         """
 
         def get_sig(session: Session) -> dict[str, Any]:
             """
-            Gets sig.
+            Get sig.
 
             Args:
+                session: Session.
+                session: Session.
                 session: Session.
 
             Returns:
@@ -164,6 +205,7 @@ class StatsSyncMixin:
 
             """
             table_name = model.__tablename__
+
             where_clause = ""
             params = {}
             if year:
@@ -175,6 +217,8 @@ class StatsSyncMixin:
             sql = f'SELECT COUNT(*), MAX("updated_at") FROM "{table_name}" {where_clause}'
             try:
                 row = session.execute(text(sql), params).fetchone()
+                if row is None:
+                    return {"count": None, "max_updated_at": None}
                 return {"count": row[0] or 0, "max_updated_at": _serialize_scalar(row[1])}
             except SQLAlchemyError:
                 return {"count": None, "max_updated_at": None}
@@ -201,7 +245,18 @@ class StatsSyncMixin:
         *,
         force: bool = False,
     ) -> int:
-        """Sync player_season_batting data from SQLite to OCI using fast bulk COPY."""
+        """
+        Sync player_season_batting data from SQLite to OCI using fast bulk COPY.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+
+        """
         from src.models.player import PlayerSeasonBatting
 
         if year and not force:
@@ -230,7 +285,18 @@ class StatsSyncMixin:
         *,
         force: bool = False,
     ) -> int:
-        """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY."""
+        """
+        Sync player_season_pitching data from SQLite to OCI using fast bulk COPY.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+
+        """
         from src.models.player import PlayerSeasonPitching
 
         if year and not force:
@@ -264,7 +330,18 @@ class StatsSyncMixin:
         }
 
     def sync_team_season_batting(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
-        """Sync team_season_batting data from SQLite to OCI."""
+        """
+        Sync team_season_batting data from SQLite to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+
+        """
         if year and not force:
             sig = self._get_table_signature(TeamSeasonBatting, year)
             if sig["match"]:
@@ -284,7 +361,18 @@ class StatsSyncMixin:
         )
 
     def sync_team_season_pitching(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
-        """Sync team_season_pitching data from SQLite to OCI."""
+        """
+        Sync team_season_pitching data from SQLite to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+
+        """
         if year and not force:
             sig = self._get_table_signature(TeamSeasonPitching, year)
             if sig["match"]:
@@ -304,7 +392,18 @@ class StatsSyncMixin:
         )
 
     def sync_standings(self, year: int | None = None, days: int | None = None, batch_size: int = 10000) -> int:
-        """Sync calculated daily standings snapshots to OCI."""
+        """
+        Sync calculated daily standings snapshots to OCI.
+
+        Args:
+            year: Season year.
+            days: Days.
+            batch_size: Batch Size.
+            year: Season year.
+            days: Days.
+            batch_size: Batch Size.
+
+        """
         from src.models.base import Base
         from src.models.standings import TeamStandingsDaily
 
@@ -330,9 +429,25 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_stat_rankings(self, year: int | None = None, batch_size: int = 5000) -> int:
-        """Sync derived stat_rankings rows to OCI."""
-        filters = [StatRanking.season == year] if year else None
+    def sync_stat_rankings(
+        self,
+        year: int | None = None,
+        batch_size: int = 5000,
+        *,
+        filters: list[Any] | None = None,
+    ) -> int:
+        """
+        Sync derived stat_rankings rows to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            filters: Additional SQLAlchemy filters.
+            batch_size: Batch Size.
+            year: Season year.
+            batch_size: Batch Size.
+
+        """
         return self.sync_simple_table(
             StatRanking,
             ["season", "metric", "entity_id", "entity_type"],
@@ -342,7 +457,18 @@ class StatsSyncMixin:
         )
 
     def sync_fielding_stats(self, year: int | None = None, batch_size: int = 10000, *, force: bool = False) -> int:
-        """Sync player fielding stats to OCI."""
+        """
+        Sync player fielding stats to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+
+        """
         if year and not force:
             sig = self._get_table_signature(PlayerSeasonFielding, year, year_col="year")
             if sig["match"]:
@@ -360,7 +486,18 @@ class StatsSyncMixin:
         )
 
     def sync_baserunning_stats(self, year: int | None = None, batch_size: int = 10000, *, force: bool = False) -> int:
-        """Sync player baserunning stats to OCI."""
+        """
+        Sync player baserunning stats to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+
+        """
         if year and not force:
             sig = self._get_table_signature(PlayerSeasonBaserunning, year, year_col="year")
             if sig["match"]:
@@ -378,7 +515,18 @@ class StatsSyncMixin:
         )
 
     def sync_team_season_fielding(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
-        """Sync team_season_fielding aggregates from SQLite to OCI."""
+        """
+        Sync team_season_fielding aggregates from SQLite to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+
+        """
         from src.models.team import TeamSeasonFielding
 
         if year and not force:
@@ -403,7 +551,18 @@ class StatsSyncMixin:
         *,
         force: bool = False,
     ) -> int:
-        """Sync team_season_baserunning aggregates from SQLite to OCI."""
+        """
+        Sync team_season_baserunning aggregates from SQLite to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+            year: Season year.
+            batch_size: Batch Size.
+            force: If True, forces the operation even if data already exists.
+
+        """
         from src.models.team import TeamSeasonBaserunning
 
         if year and not force:
@@ -422,8 +581,18 @@ class StatsSyncMixin:
         )
 
     def purge_season_stats(self, year: int, type: str = "all") -> None:
-        """Delete year-scoped stats from OCI to prepare for a clean sync."""
+        """
+        Delete year-scoped stats from OCI to prepare for a clean sync.
+
+        Args:
+            year: Season year.
+            type: Type.
+            year: Season year.
+            type: Type.
+
+        """
         tables = []
+
         if type in ("batting", "all"):
             tables.append("player_season_batting")
             tables.append("team_season_batting")

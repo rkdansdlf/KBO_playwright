@@ -15,6 +15,7 @@ class Team(Base, TimestampMixin):
     Represents a KBO team.
 
     Data is seeded from Docs/schema/teams (구단 정보).csv.
+
     """
 
     __tablename__ = "teams"
@@ -45,7 +46,7 @@ class Team(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<Team(team_id='{self.team_id}', name='{self.team_name}')>"
 
 
@@ -54,9 +55,11 @@ class TeamDailyRoster(Base, TimestampMixin):
     Daily snapshot of 1st team registration.
 
     Source: https://www.koreabaseball.com/Player/Register.aspx.
+
     """
 
     __tablename__ = "team_daily_roster"
+
     __table_args__ = (UniqueConstraint("roster_date", "team_code", "player_id", name="uq_team_daily_roster"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -90,7 +93,7 @@ class TeamDailyRoster(Base, TimestampMixin):
     # But position string is descriptive.
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<Roster({self.roster_date}, {self.team_code}, {self.player_name})>"
 
 
@@ -99,9 +102,11 @@ class TeamCodeMap(Base, TimestampMixin):
     Canonical mapping of team codes by season.
 
     Bridging legacy codes, external codes, and franchise IDs.
+
     """
 
     __tablename__ = "team_code_map"
+
     __table_args__ = (UniqueConstraint("season", "curr_code", name="uq_team_code_map"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -116,7 +121,7 @@ class TeamCodeMap(Base, TimestampMixin):
     is_canonical: Mapped[bool] = mapped_column(Boolean, default=False, comment="Is this the modern canonical code?")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<TeamCodeMap(season={self.season}, code='{self.curr_code}', franchise={self.franchise_id})>"
 
 

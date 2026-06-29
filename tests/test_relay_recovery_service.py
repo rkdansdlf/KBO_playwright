@@ -3,13 +3,30 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
-from sqlalchemy import create_engine
+import pytest
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+from src.models.base import Base
 from src.models.game import Game, GameEvent, GamePlayByPlay, GameValidationMetrics
 from src.models.season import KboSeason
 from src.services import relay_recovery_service as service
 from src.sources.relay import NormalizedRelayResult
+
+pytestmark = pytest.mark.integration
+
+
+def _ensure_test_tables():
+    """Create all tables in the test DB (service uses SessionLocal, not the in-memory engine)."""
+    from src.db.engine import Engine
+
+    Base.metadata.create_all(bind=Engine)
+
+
+@pytest.fixture(autouse=True)
+def _test_db_tables():
+    _ensure_test_tables()
+    yield
 
 
 def _build_session_factory():

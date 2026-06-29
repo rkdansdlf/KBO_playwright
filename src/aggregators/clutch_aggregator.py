@@ -1,7 +1,8 @@
 """
 Clutch/WPA aggregator.
 
-Computes per-player, per-season clutch metrics from GameEvent WPA data.
+Compute per-player, per-season clutch metrics from GameEvent WPA data.
+
 """
 
 from __future__ import annotations
@@ -30,14 +31,21 @@ class ClutchAggregator:
     """ClutchAggregator class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+
+        """
         self.session = session
 
     def aggregate(self, year: int) -> list[dict]:
         """
-        Aggregates aggregate.
+        Aggregate aggregate.
 
         Args:
+            year: Season year.
             year: Season year.
 
         Returns:
@@ -112,13 +120,15 @@ class ClutchAggregator:
 
     def persist_to_extra_stats(self, year: int) -> None:
         """
-        Handles the persist to extra stats operation.
+        Handle the persist to extra stats operation.
 
         Args:
+            year: Season year.
             year: Season year.
 
         """
         results = self.aggregate(year)
+
         if not results:
             return
 
@@ -178,14 +188,17 @@ class ClutchAggregator:
 
     def print_report(self, year: int, top_n: int = 10) -> None:
         """
-        Prints print report.
+        Print print report.
 
         Args:
+            year: Season year.
+            top_n: Top N.
             year: Season year.
             top_n: Top N.
 
         """
         results = self.aggregate(year)
+
         if not results:
             return
 

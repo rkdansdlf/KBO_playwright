@@ -2,6 +2,7 @@
 DataSource 초기 시드 데이터를 데이터베이스에 등록하는 CLI 스크립트.
 
 P0/P1/P2 대상 출처를 DataSource 테이블에 등록합니다.
+
 """
 
 from __future__ import annotations
@@ -404,7 +405,13 @@ SEED_DATA: list[dict] = [
 
 
 def run_seed(*, dry_run: bool = False) -> None:
-    """Runs run seed."""
+    """
+    Run run seed.
+
+    Args:
+        dry_run: If True, performs a dry run without persisting changes.
+
+    """
     with SessionLocal() as session:
         repo = DataSourceRepository(session)
         created = 0
@@ -428,20 +435,28 @@ def run_seed(*, dry_run: bool = False) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Seed initial DataSource entries")
+
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     run_seed(dry_run=args.dry_run)
 

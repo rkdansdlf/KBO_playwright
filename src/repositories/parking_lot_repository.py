@@ -17,14 +17,23 @@ class ParkingLotRepository:
     """ParkingLotRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> ParkingLot:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -32,6 +41,7 @@ class ParkingLotRepository:
 
         """
         stadium_id = data["stadium_id"]
+
         name = data["name"]
         stmt = select(ParkingLot).where(
             ParkingLot.stadium_id == stadium_id,
@@ -50,9 +60,11 @@ class ParkingLotRepository:
 
     def get_by_stadium(self, stadium_id: str) -> list[ParkingLot]:
         """
-        Gets by stadium.
+        Get by stadium.
 
         Args:
+            stadium_id: Stadium ID.
+            stadium_id: Stadium ID.
             stadium_id: Stadium ID.
 
         Returns:
@@ -66,9 +78,11 @@ class ParkingLotRepository:
 
     def bulk_save(self, records: list[dict]) -> int:
         """
-        Saves bulk.
+        Save bulk.
 
         Args:
+            records: Records.
+            records: Records.
             records: Records.
 
         Returns:
@@ -76,6 +90,7 @@ class ParkingLotRepository:
 
         """
         count = 0
+
         for data in records:
             self.save(data)
             count += 1
@@ -86,14 +101,23 @@ class ParkingFeeRuleRepository:
     """ParkingFeeRuleRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save(self, data: dict) -> ParkingFeeRule:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -101,6 +125,7 @@ class ParkingFeeRuleRepository:
 
         """
         lot_id = data["parking_lot_id"]
+
         vehicle = data["vehicle_type"]
         stmt = select(ParkingFeeRule).where(
             ParkingFeeRule.parking_lot_id == lot_id,
@@ -118,9 +143,11 @@ class ParkingFeeRuleRepository:
 
     def get_by_lot(self, parking_lot_id: int) -> list[ParkingFeeRule]:
         """
-        Gets by lot.
+        Get by lot.
 
         Args:
+            parking_lot_id: Parking Lot ID.
+            parking_lot_id: Parking Lot ID.
             parking_lot_id: Parking Lot ID.
 
         Returns:

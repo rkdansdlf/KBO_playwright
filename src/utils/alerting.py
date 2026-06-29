@@ -40,17 +40,25 @@ GAP_CATEGORY_ENV_MAP: dict[str, str] = {
 
 
 class TelegramBotClient:
-    """Sends notifications via Telegram Bot API."""
+    """Send notifications via Telegram Bot API."""
 
     @staticmethod
     def send_message(message: str, chat_id: str | None = None) -> bool:
         """
-        Sends an alert message to a Telegram chat.
+        Send an alert message to a Telegram chat.
 
         Uses TELEGRAM_CHAT_ID by default, or the provided chat_id override.
         Requires TELEGRAM_BOT_TOKEN.
+
+        Args:
+            message: Message.
+            chat_id: Chat ID.
+            message: Message.
+            chat_id: Chat ID.
+
         """
         token = os.getenv("TELEGRAM_BOT_TOKEN")
+
         chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
 
         if not token or not chat_id:
@@ -64,23 +72,31 @@ class TelegramBotClient:
 
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
-                return response.status == HTTPStatus.OK  # type: ignore[no-any-return]
+                return response.status == HTTPStatus.OK
         except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Telegram message")
             return False
 
 
 class SlackWebhookClient:
-    """Sends notifications. Now prioritizes Telegram if configured."""
+    """Send notifications. Now prioritizes Telegram if configured."""
 
     @staticmethod
     def send_alert(message: str, blocks: list[Any] | None = None) -> bool:
         """
-        Sends an alert message.
+        Send an alert message.
 
         Tries Telegram first, falls back to Slack if configured.
+
+        Args:
+            message: Message.
+            blocks: Blocks.
+            message: Message.
+            blocks: Blocks.
+
         """
         # Try Telegram first
+
         if TelegramBotClient.send_message(message):
             return True
 
@@ -107,8 +123,20 @@ class SlackWebhookClient:
 
     @staticmethod
     def send_gap_alert(gap_type: str, summary: str, details: list[str] | None = None) -> bool:
-        """Send a gap-type-aware alert with optional per-category Telegram chat routing."""
+        """
+        Send a gap-type-aware alert with optional per-category Telegram chat routing.
+
+        Args:
+            gap_type: Gap Type.
+            summary: Summary.
+            details: Details.
+            gap_type: Gap Type.
+            summary: Summary.
+            details: Details.
+
+        """
         emoji = GAP_EMOJI_MAP.get(gap_type, "\u26a0\ufe0f")
+
         header = f"<b>{emoji} KBO {gap_type} Gap</b>\n{summary}"
         body = ""
         if details:
@@ -139,8 +167,16 @@ class SlackWebhookClient:
 
     @staticmethod
     def send_error_alert(traceback_msg: str) -> bool:
-        """Convenience to format and send a critical error trace."""
+        """
+        Format and send and send a critical error trace.
+
+        Args:
+            traceback_msg: Traceback Msg.
+            traceback_msg: Traceback Msg.
+
+        """
         message = f"<b>🚨 KBO Pipeline Critical Error</b>\n\n<pre>{traceback_msg[:3000]}</pre>"
+
         if TelegramBotClient.send_message(message):
             return True
 

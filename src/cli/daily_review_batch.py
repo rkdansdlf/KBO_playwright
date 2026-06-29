@@ -1,6 +1,7 @@
 """
 Daily Review Batch Script
-Generates post-game review context from game_events/WPA and persists it locally.
+Generate post-game review context from game_events/WPA and persists it locally.
+
 """
 
 from __future__ import annotations
@@ -115,9 +116,11 @@ def _trusted_relay_game_ids(session: Session, game_ids: Sequence[str]) -> set[st
 
 async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
     """
-    Runs review batch.
+    Run review batch.
 
     Args:
+        target_date: Target date for the operation.
+        sync_to_oci: Sync To Oci.
         target_date: Target Date.
 
     Returns:
@@ -220,8 +223,15 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="KBO Daily Review Context Generator")
+
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)

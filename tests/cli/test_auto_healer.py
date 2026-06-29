@@ -22,6 +22,8 @@ from src.cli.auto_healer import (
     run_pbp_healer_async,
 )
 
+pytestmark = pytest.mark.integration
+
 
 def _mock_game(game_id: str, status: str = "SCHEDULED", game_date: str = "2025-06-15") -> MagicMock:
     game = MagicMock()
@@ -524,7 +526,12 @@ class TestRunHealerAsync:
             mock_mgr.clear.assert_called()
 
     async def test_with_target_game_ids(self):
-        with patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls:
+        with (
+            patch("src.cli.auto_healer._find_recovery_targets") as mock_find,
+            patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
+        ):
+            mock_game = _mock_game("G1")
+            mock_find.return_value = ([mock_game], [], [])
             mock_mgr = MagicMock()
             mock_mgr_cls.return_value = mock_mgr
             mock_mgr.get_pending_targets.return_value = []

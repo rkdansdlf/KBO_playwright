@@ -7,6 +7,9 @@ import scripts.scheduler as scheduler
 import src.cli.generate_quality_report as generate_quality_report
 
 
+pytestmark = pytest.mark.integration
+
+
 class _Outcome:
     def __init__(self, exc):
         self._exc = exc

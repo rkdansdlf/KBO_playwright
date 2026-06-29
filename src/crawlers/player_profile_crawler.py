@@ -3,6 +3,7 @@ KBO Player Profile Crawler (Enhanced)
 Collects extended player profile: photo_url, bats, throws, salary, draft info, debut_year.
 
 Source: KBO HitterDetail/PitcherDetail Basic.aspx.
+
 """
 
 from __future__ import annotations
@@ -105,6 +106,7 @@ _EXTRACT_JS = f"""
 """
 
 # Pitcher positions
+
 PITCHER_POSITIONS = {"P", "투수"}
 # CDN no-image sentinel
 NO_IMAGE_SENTINEL = "no-Image.png"
@@ -123,8 +125,15 @@ PROFILE_CRAWL_EXCEPTIONS = (
 
 
 def _parse_hands(text: str) -> dict[str, str | None]:
-    """Parse throwing/batting hand from 포지션 텍스트 like '투수(우투우타)'."""
+    """
+    Parse throwing/batting hand from 포지션 텍스트 like '투수(우투우타)'.
+
+    Args:
+        text: Text.
+
+    """
     result = {"bats": None, "throws": None}
+
     m = re.search(r"\((.)[투](.)타\)", text)
     if m:
         result["throws"] = HAND_MAP.get(m.group(1))
@@ -133,7 +142,13 @@ def _parse_hands(text: str) -> dict[str, str | None]:
 
 
 def _parse_debut_year(text: str | None) -> int | None:
-    """Extract 4-digit year from a text like '2015 두산' or '2015년'."""
+    """
+    Extract 4-digit year from a text like '2015 두산' or '2015년'.
+
+    Args:
+        text: Text.
+
+    """
     if not text:
         return None
     # Extract digits (2 to 4 digits)
@@ -149,8 +164,15 @@ def _parse_debut_year(text: str | None) -> int | None:
 
 
 def _parse_height_weight(text: str | None) -> dict[str, int | None]:
-    """Parse height and weight from '185cm/92kg' format."""
+    """
+    Parse height and weight from '185cm/92kg' format.
+
+    Args:
+        text: Text.
+
+    """
     result = {"height_cm": None, "weight_kg": None}
+
     if not text:
         return result
     m = re.search(r"(\d+)\s*cm\s*/\s*(\d+)\s*kg", text)
@@ -161,7 +183,13 @@ def _parse_height_weight(text: str | None) -> dict[str, int | None]:
 
 
 def _clean_photo_url(raw: str | None) -> str | None:
-    """Return None for missing/default images."""
+    """
+    Return None for missing/default images.
+
+    Args:
+        raw: Raw.
+
+    """
     if not raw or NO_IMAGE_SENTINEL in raw:
         return None
     # Avoid local about:blank or data urls
@@ -178,9 +206,11 @@ class PlayerProfileCrawler:
     선수 고유 ID를 사용하여 KBO 공식 사이트에서 상세 프로필을 크롤링.
 
     타자/투수 페이지를 포지션 기준으로 자동 선택.
+
     """
 
     HITTER_URL = HITTER_DETAIL
+
     PITCHER_URL = PITCHER_DETAIL
     RETIRE_HITTER_URL = "https://www.koreabaseball.com/Record/Retire/Hitter.aspx"
     RETIRE_PITCHER_URL = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
@@ -188,17 +218,26 @@ class PlayerProfileCrawler:
     FUTURES_PITCHER_URL = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
     def __init__(self, request_delay: float = 1.2, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+
+        """
         self.request_delay = request_delay
+
         self.pool = pool
         self.policy = RequestPolicy.with_delay(request_delay, request_delay)
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, player_id: str) -> str | None:
         """
-        Gets last failure reason.
+        Get last failure reason.
 
         Args:
+            player_id: Player ID.
             player_id: Player ID.
 
         Returns:
@@ -208,7 +247,14 @@ class PlayerProfileCrawler:
         return self._last_failure_reason.get(str(player_id))
 
     def _select_urls(self, player_id: str, position: str | None) -> list[str]:
-        """순차적으로 시도할 URL 후보 목록을 반환."""
+        """
+        순차적으로 시도할 URL 후보 목록을 반환.
+
+        Args:
+            player_id: Player ID.
+            position: Position.
+
+        """
         is_pitcher = position and (
             position.strip() in PITCHER_POSITIONS or any(p in (position or "") for p in ["투수", "P"])
         )
@@ -243,10 +289,16 @@ class PlayerProfileCrawler:
         """
         Crawl the profile detail page for player_id.
 
-        Returns a dict with photo_url, bats, throws, debut_year,
+        Return a dict with photo_url, bats, throws, debut_year,
         salary_original, signing_bonus_original, draft_info.
+
+        Args:
+            player_id: Player ID.
+            position: Position.
+
         """
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
+
         owns_pool = self.pool is None
         await pool.start()
         try:

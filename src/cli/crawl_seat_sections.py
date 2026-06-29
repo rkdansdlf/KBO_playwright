@@ -12,8 +12,15 @@ logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Crawl stadium seat section info")
+
     parser.add_argument("--save", action="store_true")
     parser.add_argument("--team", type=str, default=None, help="Team code filter")
     args = parser.parse_args(argv)

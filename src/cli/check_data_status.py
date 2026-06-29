@@ -3,6 +3,7 @@
 
 데이터베이스에 저장된 경기 일정, 선수, 퓨처스리그 데이터 등의 상태를 확인하고,
 예상 수치와 비교하여 잠재적인 문제를 경고합니다.
+
 """
 
 from __future__ import annotations
@@ -70,6 +71,7 @@ def _operational_game_counts(session: Session) -> tuple[int, int]:
         session,
         """
         SELECT COUNT(*)
+
         FROM game
         WHERE UPPER(COALESCE(game_status, '')) = 'SCHEDULED'
         """,
@@ -126,7 +128,13 @@ def _validate_schedule_counts(total: int, operational_total: int, type_counts: d
 
 
 def check_schedules(session: Session) -> dict[str, Any]:
-    """`game_schedules` 테이블의 데이터 현황을 점검합니다."""
+    """
+    `game_schedules` 테이블의 데이터 현황을 점검합니다.
+
+    Args:
+        session: Session.
+
+    """
     logger.info("\n=== Game Schedules ===")
 
     total = _safe_scalar(session, "SELECT COUNT(*) FROM game_schedules")
@@ -158,7 +166,13 @@ def check_schedules(session: Session) -> dict[str, Any]:
 
 
 def check_players(session: Session) -> dict[str, Any]:
-    """`players` 테이블의 데이터 현황을 점검합니다."""
+    """
+    `players` 테이블의 데이터 현황을 점검합니다.
+
+    Args:
+        session: Session.
+
+    """
     logger.info("\n=== Players ===")
 
     # 전체 선수 수
@@ -178,7 +192,13 @@ def check_players(session: Session) -> dict[str, Any]:
 
 
 def check_futures_data(session: Session) -> dict[str, Any]:
-    """퓨처스리그 관련 데이터(타자/투수 기록) 현황을 점검합니다."""
+    """
+    퓨처스리그 관련 데이터(타자/투수 기록) 현황을 점검합니다.
+
+    Args:
+        session: Session.
+
+    """
     logger.info("\n=== Futures League Data ===")
 
     # 퓨처스리그 타자 기록 수
@@ -210,9 +230,10 @@ def check_futures_data(session: Session) -> dict[str, Any]:
 
 def check_game_data(session: Session) -> dict[str, Any]:
     """
-    Checks game data.
+    Check game data.
 
     Args:
+        session: Session.
         session: Session.
 
     Returns:
@@ -305,7 +326,14 @@ def check_game_data(session: Session) -> dict[str, Any]:
 
 
 def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -> dict[str, Any]:
-    """예정 경기 선발투수 적재율을 점검합니다."""
+    """
+    예정 경기 선발투수 적재율을 점검합니다.
+
+    Args:
+        session: Session.
+        verbose: Verbose.
+
+    """
     logger.info("\n=== Pregame Starting Pitchers ===")
 
     scheduled_filter = func.upper(Game.game_status) == "SCHEDULED"
@@ -374,6 +402,7 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
             text(
                 """
             SELECT COUNT(DISTINCT g.game_id)
+
             FROM game g
             JOIN game_summary gs ON gs.game_id = g.game_id
             WHERE UPPER(g.game_status) = 'SCHEDULED'
@@ -388,6 +417,7 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
             text(
                 """
             SELECT COUNT(DISTINCT g.game_id)
+
             FROM game g
             JOIN game_summary gs ON gs.game_id = g.game_id
             WHERE UPPER(g.game_status) = 'SCHEDULED'
@@ -406,6 +436,7 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
             text(
                 """
             SELECT COUNT(DISTINCT g.game_id)
+
             FROM game g
             LEFT JOIN (
                 SELECT DISTINCT game_id
@@ -428,6 +459,7 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
             text(
                 """
             SELECT COUNT(DISTINCT g.game_id)
+
             FROM game g
             LEFT JOIN (
                 SELECT DISTINCT game_id
@@ -475,6 +507,7 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
             text(
                 """
                 SELECT
+
                     g.game_date,
                     COUNT(*) AS total,
                     SUM(
@@ -654,8 +687,15 @@ def _run_full_status_check(*, verbose: bool) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """데이터 점검 스크립트의 메인 실행 함수."""
+    """
+    데이터 점검 스크립트의 메인 실행 함수.
+
+    Args:
+        argv: Argv.
+
+    """
     _configure_cli_logging()
+
     load_dotenv()
     parser = argparse.ArgumentParser(description="Check KBO database status and data integrity")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")

@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libcairo2 \
     libasound2 \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
@@ -39,11 +40,12 @@ RUN mkdir -p /ms-playwright && chmod 777 /ms-playwright && \
 
 COPY . .
 
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /app && \
+    chmod -R u+rwX,go+rX /app
 
 VOLUME /app/data
 
-USER appuser
+# USER appuser
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "from src.db.engine import SessionLocal; s=SessionLocal(); s.execute(text('SELECT 1')); s.close()" || exit 1

@@ -1,7 +1,8 @@
 """
 KBO Staff Register CLI
-Crawls the current day's manager and coaching staff registered on KBO Register.aspx,
+Crawl the current day's manager and coaching staff registered on KBO Register.aspx,
 upserts them to the local SQLite DB (player_basic table), and optionally synchronizes to OCI.
+
 """
 
 from __future__ import annotations
@@ -27,9 +28,10 @@ STAFF_REGISTER_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, Typ
 async def run_crawler(args: argparse.Namespace) -> int:
     # 1. Determine team codes to crawl
     """
-    Runs crawler.
+    Run crawler.
 
     Args:
+        args: Positional arguments to pass through.
         args: Args.
 
     Returns:
@@ -93,8 +95,15 @@ async def run_crawler(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Crawl KBO Manager & Coach roster registration")
+
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--team",

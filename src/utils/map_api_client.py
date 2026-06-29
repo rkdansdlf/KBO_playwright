@@ -15,6 +15,7 @@ Environment variables required (at least one group):
     NAVER_CLIENT_SECRET     — Naver Maps API client secret
     TMAP_API_KEY            — TMAP (SK) API key
     GOOGLE_MAPS_API_KEY     — Google Maps Directions API (fallback)
+
 """
 
 from __future__ import annotations
@@ -61,9 +62,21 @@ async def _call_kakao(
     _mode: TransportMode,
 ) -> dict[str, Any] | None:
     """
-    Handles the call kakao operation.
+    Handle the call kakao operation.
 
     Args:
+        client: Client.
+        origin_lat: Origin Lat.
+        origin_lng: Origin Lng.
+        dest_lat: Dest Lat.
+        dest_lng: Dest Lng.
+        _mode: Mode.
+        client: Client.
+        origin_lat: Origin Lat.
+        origin_lng: Origin Lng.
+        dest_lat: Dest Lat.
+        dest_lng: Dest Lng.
+        _mode: Mode.
         client: Client.
         origin_lat: Origin Lat.
         origin_lng: Origin Lng.
@@ -76,6 +89,7 @@ async def _call_kakao(
 
     """
     api_key = os.getenv("KAKAO_REST_API_KEY", "")
+
     if not api_key:
         return None
 
@@ -121,9 +135,21 @@ async def _call_naver(
     _mode: TransportMode,
 ) -> dict[str, Any] | None:
     """
-    Handles the call naver operation.
+    Handle the call naver operation.
 
     Args:
+        client: Client.
+        origin_lat: Origin Lat.
+        origin_lng: Origin Lng.
+        dest_lat: Dest Lat.
+        dest_lng: Dest Lng.
+        _mode: Mode.
+        client: Client.
+        origin_lat: Origin Lat.
+        origin_lng: Origin Lng.
+        dest_lat: Dest Lat.
+        dest_lng: Dest Lng.
+        _mode: Mode.
         client: Client.
         origin_lat: Origin Lat.
         origin_lng: Origin Lng.
@@ -136,6 +162,7 @@ async def _call_naver(
 
     """
     client_id = os.getenv("NAVER_CLIENT_ID", "")
+
     client_secret = os.getenv("NAVER_CLIENT_SECRET", "")
     if not client_id or not client_secret:
         return None
@@ -184,9 +211,21 @@ async def _call_tmap(
     _mode: TransportMode,
 ) -> dict[str, Any] | None:
     """
-    Handles the call tmap operation.
+    Handle the call tmap operation.
 
     Args:
+        client: Client.
+        origin_lat: Origin Lat.
+        origin_lng: Origin Lng.
+        dest_lat: Dest Lat.
+        dest_lng: Dest Lng.
+        _mode: Mode.
+        client: Client.
+        origin_lat: Origin Lat.
+        origin_lng: Origin Lng.
+        dest_lat: Dest Lat.
+        dest_lng: Dest Lng.
+        _mode: Mode.
         client: Client.
         origin_lat: Origin Lat.
         origin_lng: Origin Lng.
@@ -199,6 +238,7 @@ async def _call_tmap(
 
     """
     api_key = os.getenv("TMAP_API_KEY", "")
+
     if not api_key:
         return None
 
@@ -255,6 +295,11 @@ async def get_transit_time(req: TransitRequest) -> TransitResult | None:
 
     Falls through Kakao → Naver → TMAP until one succeeds.
     Returns None if all APIs fail or no keys are configured.
+
+    Args:
+        req: Req.
+        req: Req.
+
     """
     async with httpx.AsyncClient(timeout=15) as client:
         for caller, api_name in [
@@ -288,6 +333,17 @@ async def get_transit_times_batch(
     Batch transit time lookup for multiple origins.
 
     origins: list of {"label": str, "lat": float, "lng": float}
+
+    Args:
+        origins: Origins.
+        mode: Mode.
+        dest_lat: Dest Lat.
+        dest_lng: Dest Lng.
+        origins: Origins.
+        mode: Mode.
+        dest_lat: Dest Lat.
+        dest_lng: Dest Lng.
+
     """
     import asyncio
 

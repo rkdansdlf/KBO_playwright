@@ -89,7 +89,7 @@ class NormalizedRelayResult:
     @property
     def is_empty(self) -> bool:
         """
-        Returns whether the empty.
+        Return whether the empty.
 
         Returns:
             True if successful, False otherwise.
@@ -102,17 +102,27 @@ class RelaySourceAdapter(ABC):
     """RelaySourceAdapter class."""
 
     def __init__(self, source_name: str) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            source_name: Source Name.
+            source_name: Source Name.
+
+        """
         self.source_name = source_name
+
         self.supports_bucket_probe = True
         self.cache_negative_probe = True
 
     @abstractmethod
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
         """
-        Fetches game.
+        Fetch game.
 
         Args:
+            game_id: Game ID.
+            game_id: Game ID.
             game_id: Game ID.
 
         Returns:
@@ -123,8 +133,18 @@ class RelaySourceAdapter(ABC):
 
 
 def normalize_inning_half(value: object) -> str | None:
-    """Normalize inning half to 'top' or 'bottom'. Returns None for unrecognized values."""
+    """
+    Normalize inning half to 'top' or 'bottom'.
+
+        Returns None for unrecognized values.
+
+    Args:
+        value: Value.
+        value: Value.
+
+    """
     normalized = str(value or "").strip().lower()
+
     if normalized in {"top", "away", "초"}:
         return "top"
     if normalized in {"bottom", "home", "말"}:
@@ -134,9 +154,11 @@ def normalize_inning_half(value: object) -> str | None:
 
 def trailing_result_from_description(description: object) -> str | None:
     """
-    Handles the trailing result from description operation.
+    Handle the trailing result from description operation.
 
     Args:
+        description: Description.
+        description: Description.
         description: Description.
 
     Returns:
@@ -144,6 +166,7 @@ def trailing_result_from_description(description: object) -> str | None:
 
     """
     text = str(description or "").strip()
+
     if not text:
         return None
     if ":" in text:
@@ -154,9 +177,11 @@ def trailing_result_from_description(description: object) -> str | None:
 
 def event_to_pbp_row(event: dict[str, Any]) -> dict[str, Any]:
     """
-    Handles the event to pbp row operation.
+    Handle the event to pbp row operation.
 
     Args:
+        event: Event.
+        event: Event.
         event: Event.
 
     Returns:
@@ -184,6 +209,11 @@ def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
 
     Retains the user-facing play fields plus provider trace keys used by the
     persistence layer to make raw rows auditable.
+
+    Args:
+        row: Row.
+        row: Row.
+
     """
     return {
         "inning": row.get("inning"),
@@ -202,9 +232,11 @@ def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
 
 def event_has_minimum_state(event: dict[str, Any]) -> bool:
     """
-    Handles the event has minimum state operation.
+    Handle the event has minimum state operation.
 
     Args:
+        event: Event.
+        event: Event.
         event: Event.
 
     Returns:
@@ -216,9 +248,11 @@ def event_has_minimum_state(event: dict[str, Any]) -> bool:
 
 def events_have_minimum_state(events: Iterable[dict[str, Any]]) -> bool:
     """
-    Handles the events have minimum state operation.
+    Handle the events have minimum state operation.
 
     Args:
+        events: Events.
+        events: Events.
         events: Events.
 
     Returns:
@@ -226,14 +260,19 @@ def events_have_minimum_state(events: Iterable[dict[str, Any]]) -> bool:
 
     """
     events = list(events)
+
     return bool(events) and all(event_has_minimum_state(event) for event in events)
 
 
 def derive_bucket_id(game_id: str, league_type_name: str | None = None) -> str:
     """
-    Derives bucket id.
+    Derive bucket id.
 
     Args:
+        game_id: Game ID.
+        league_type_name: League Type Name.
+        game_id: Game ID.
+        league_type_name: League Type Name.
         game_id: Game ID.
         league_type_name: League Type Name.
 
@@ -242,6 +281,7 @@ def derive_bucket_id(game_id: str, league_type_name: str | None = None) -> str:
 
     """
     year = int(str(game_id)[:4])
+
     team_code = str(game_id)[8:12]
     league_name = str(league_type_name or "").strip().lower()
 
@@ -273,9 +313,11 @@ def _derive_bucket_by_date(game_id: str, year: int, team_code: str) -> str:
 
 def default_source_order_for_bucket(bucket_id: str) -> list[str]:
     """
-    Handles the default source order for bucket operation.
+    Handle the default source order for bucket operation.
 
     Args:
+        bucket_id: Bucket ID.
+        bucket_id: Bucket ID.
         bucket_id: Bucket ID.
 
     Returns:
@@ -303,9 +345,11 @@ def _coerce_manifest_paths(manifest_path: str | Path | Iterable[str | Path]) -> 
 
 def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> list[ManifestEntry]:
     """
-    Reads manifest entries.
+    Read manifest entries.
 
     Args:
+        manifest_path: Manifest file path.
+        manifest_path: Manifest file path.
         manifest_path: Manifest file path.
 
     Returns:
@@ -313,6 +357,7 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
 
     """
     entries: list[ManifestEntry] = []
+
     seen: set[tuple[str, str, str, str, int, str | None]] = set()
     for path in _coerce_manifest_paths(manifest_path):
         if not path.exists():
@@ -359,9 +404,11 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
 
 def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str], CapabilityRecord]:
     """
-    Loads capability records.
+    Load capability records.
 
     Args:
+        capability_path: Capability file path.
+        capability_path: Capability file path.
         capability_path: Capability file path.
 
     Returns:
@@ -369,6 +416,7 @@ def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str]
 
     """
     path = Path(capability_path)
+
     if not path.exists():
         return {}
 
@@ -395,14 +443,19 @@ def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str]
 
 def upsert_capability_record(capability_path: str | Path, record: CapabilityRecord) -> None:
     """
-    Inserts or updates capability record.
+    Insert or updates capability record.
 
     Args:
+        capability_path: Capability file path.
+        record: Record.
+        capability_path: Capability file path.
+        record: Record.
         capability_path: Capability file path.
         record: Record.
 
     """
     path = Path(capability_path)
+
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = load_capability_records(path)
     existing[(record.bucket_id, record.source_name)] = record

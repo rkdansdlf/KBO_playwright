@@ -9,6 +9,7 @@ Usage:
   python -m src.cli.dashboard_report --date 20260527 --format json
   python -m src.cli.dashboard_report --date 20260527 --report --notify
   python -m src.cli.dashboard_report --date 20260527 --sections quality --format html
+
 """
 
 from __future__ import annotations
@@ -44,7 +45,14 @@ AVAILABLE_SECTIONS = [
 
 
 def _r2dict(obj: object, model: type[object]) -> dict[str, Any]:
-    """Convert SQLAlchemy ORM instance to dict."""
+    """
+    Convert SQLAlchemy ORM instance to dict.
+
+    Args:
+        obj: Obj.
+        model: Model.
+
+    """
     return {c.name: getattr(obj, c.name) for c in model.__table__.columns}
 
 
@@ -538,7 +546,7 @@ def _send_dashboard_notification(data: dict[str, Any], date_str: str) -> None:
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     args = _parse_args()
 
     date_str = _date_or_today(args.date)

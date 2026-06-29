@@ -2,6 +2,7 @@
 KBO Daily Data Quality Report Generator.
 
 Analyzes daily data integrity and statistical consistency.
+
 """
 
 from __future__ import annotations
@@ -49,8 +50,15 @@ _REGULAR_SEASON_NAMES = ("정규시즌", "Regular Season", "regular")
 
 
 def _player_basic_table_for_new_players(session: Session) -> Table | None:
-    """Return a player_basic table object when new-player dates are queryable."""
+    """
+    Return a player_basic table object when new-player dates are queryable.
+
+    Args:
+        session: Session.
+
+    """
     table = PlayerBasic.__table__
+
     table_name = table.name
     bind = session.get_bind()
 
@@ -106,8 +114,17 @@ def get_relay_integrity_metrics(
     target_date: date,
     recent_days: int = 14,
 ) -> dict[str, Any]:
-    """Return completed games missing game_play_by_play rows."""
+    """
+    Return completed games missing game_play_by_play rows.
+
+    Args:
+        session: Session.
+        target_date: Target date for the operation.
+        recent_days: Recent Days.
+
+    """
     recent_start = target_date - timedelta(days=max(recent_days - 1, 0))
+
     pbp_game_ids = select(GamePlayByPlay.game_id).distinct()
 
     recent_missing = [
@@ -272,11 +289,17 @@ def _auto_remediation_status(*, has_abort: bool, has_warning: bool, has_fixed: b
 
 def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = None) -> dict[str, Any]:
     """
-    Scans logs/audit_fixes/ for files starting with target_date_str.
+    Scan logs/audit_fixes/ for files starting with target_date_str.
 
-    Parses warning, abort, and fixed player details to return a status summary.
+    Parse warning, abort, and fixed player details to return a status summary.
+
+    Args:
+        target_date_str: Target Date Str.
+        audit_dir: Audit Dir.
+
     """
     audit_dir = audit_dir or _default_audit_fix_dir()
+
     summary = _empty_auto_remediation_summary()
 
     if not audit_dir.exists():
@@ -317,7 +340,14 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
 
 
 def get_pa_formula_integrity(session: Session, year: int) -> dict[str, Any]:
-    """Check PA = AB + BB + HBP + SH + SF consistency for the current season."""
+    """
+    Check PA = AB + BB + HBP + SH + SF consistency for the current season.
+
+    Args:
+        session: Session.
+        year: Season year.
+
+    """
     season_ids = [
         row[0]
         for row in session.execute(
@@ -385,7 +415,14 @@ def get_pa_formula_integrity(session: Session, year: int) -> dict[str, Any]:
 
 
 def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
-    """Get PA formula violation trend for the last N months."""
+    """
+    Get PA formula violation trend for the last N months.
+
+    Args:
+        session: Session.
+        months: Months.
+
+    """
     start_date = datetime.now(_KST).date() - timedelta(days=months * 30)
 
     season_ids = [
@@ -461,9 +498,10 @@ def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
 
 def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
     """
-    Gets team stats integrity.
+    Get team stats integrity.
 
     Args:
+        gate_result: Gate Result.
         gate_result: Gate Result.
 
     Returns:
@@ -471,6 +509,7 @@ def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
 
     """
     team_batting = gate_result.get("team_batting", {})
+
     team_pitching = gate_result.get("team_pitching", {})
     batting_ok = team_batting.get("ok", True)
     pitching_ok = team_pitching.get("ok", True)
@@ -494,6 +533,11 @@ def get_team_stats_trend(session: Session, gate_result: dict[str, Any] | None = 
 
     TeamSeason*은 시즌 단위 aggregate라 월별 추세 산출 불가.
     run_quality_gate()를 호출하여 현재 상태만 반환.
+
+    Args:
+        session: Session.
+        gate_result: Gate Result.
+
     """
     if gate_result is None:
         year = datetime.now(_KST).year
@@ -523,7 +567,15 @@ def get_daily_metrics(
     target_date_str: str,
     gate_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Calculate core collection metrics for a specific date."""
+    """
+    Calculate core collection metrics for a specific date.
+
+    Args:
+        session: Session.
+        target_date_str: Target Date Str.
+        gate_result: Gate Result.
+
+    """
     target_dt = parse_date_str(target_date_str)
 
     # 1. Game Status Counts
@@ -800,8 +852,16 @@ def _append_new_players_section(lines: list[str], metrics: dict[str, Any]) -> No
 
 
 def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any]) -> str:
-    """Format the metrics and gate results into a readable Telegram message."""
+    """
+    Format the metrics and gate results into a readable Telegram message.
+
+    Args:
+        metrics: Metrics.
+        gate_result: Gate Result.
+
+    """
     parity = metrics.get("parity") or {}
+
     parity_icon = "✅" if parity.get("ok", True) else "🚨"
     lines = [f"{parity_icon} <b>KBO Quality Report ({metrics['date']})</b>\n"]
 
@@ -840,8 +900,15 @@ def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> 
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Generate KBO Daily Quality Report")
+
     parser.add_argument("--date", type=str, help="Target date YYYYMMDD (defaults to today)")
     parser.add_argument("--notify", action="store_true", help="Send to Telegram if issues found")
     parser.add_argument("--force-notify", action="store_true", help="Always send to Telegram")

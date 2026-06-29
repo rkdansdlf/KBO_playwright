@@ -44,7 +44,7 @@ def _process_pitching(year: int, series: str, *, save: bool) -> None:
 
 
 def main() -> int:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="Recalculate season cumulative stats from transactional game details.")
     parser.add_argument("--year", type=int, required=True, help="Season year")
     parser.add_argument(

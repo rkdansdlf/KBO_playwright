@@ -29,9 +29,10 @@ def _summary_path(target_date: str, summary_dir: str | Path | None = None) -> Pa
 
 def load_daily_summary(path: str | Path) -> dict[str, Any]:
     """
-    Loads daily summary.
+    Load daily summary.
 
     Args:
+        path: Path.
         path: Path.
 
     Returns:
@@ -39,6 +40,7 @@ def load_daily_summary(path: str | Path) -> dict[str, Any]:
 
     """
     summary_path = Path(path)
+
     if not summary_path.exists():
         msg = f"Daily summary not found: {summary_path}"
         raise FileNotFoundError(msg)
@@ -69,9 +71,10 @@ def _dedupe_game_ids(values: Iterable[object]) -> list[str]:
 
 def retry_candidates(summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
     """
-    Handles the retry candidates operation.
+    Handle the retry candidates operation.
 
     Args:
+        summary: Summary.
         summary: Summary.
 
     Returns:
@@ -79,6 +82,7 @@ def retry_candidates(summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
 
     """
     stability = summary.get("stability")
+
     if not isinstance(stability, Mapping):
         return [], []
 
@@ -113,9 +117,12 @@ def build_retry_commands(
     python_bin: str = sys.executable,
 ) -> list[Command]:
     """
-    Builds retry commands.
+    Build retry commands.
 
     Args:
+        summary: Summary.
+        sync: Whether to sync to remote database.
+        python_bin: Python Bin.
         summary: Summary.
 
     Returns:
@@ -123,6 +130,7 @@ def build_retry_commands(
 
     """
     detail_ids, relay_ids = retry_candidates(summary)
+
     commands: list[Command] = []
 
     for (year, month), game_ids in _detail_groups(detail_ids).items():
@@ -185,13 +193,22 @@ def run_retry(
     python_bin: str = sys.executable,
 ) -> int:
     """
-    Runs retry.
+    Run retry.
+
+    Args:
+        target_date: Target date for the operation.
+        summary_dir: Summary Dir.
+        apply: Apply.
+        sync: Whether to sync to remote database.
+        runner: Runner.
+        python_bin: Python Bin.
 
     Returns:
         Integer result.
 
     """
     summary_file = _summary_path(target_date, summary_dir)
+
     summary = load_daily_summary(summary_file)
     commands = build_retry_commands(summary, sync=sync, python_bin=python_bin)
 
@@ -217,13 +234,14 @@ def run_retry(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="Retry daily stability summary failure candidates")
+
     parser.add_argument("--date", required=True, help="Target date in YYYYMMDD format")
     parser.add_argument(
         "--summary-dir",
@@ -238,8 +256,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+        runner: Runner.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     if len(args.date) != 8 or not args.date.isdigit():
         parser.error("--date must be YYYYMMDD")

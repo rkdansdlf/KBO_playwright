@@ -21,16 +21,23 @@ class EmbeddingService:
     """Connects to external embedding providers to generate vector arrays for chunk texts."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         self.api_key = os.getenv("GEMINI_API_KEY")
         if not self.api_key:
             logger.warning("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
 
     def adjust_embedding_dimension(self, embedding: list[float], target_dim: int = 256) -> list[float]:
         """
-        Truncates or pads embedding list to target_dim.
+        Truncate or pad embedding list to target_dim.
 
         If truncating, L2 normalization is applied.
+
+        Args:
+            embedding: Embedding.
+            target_dim: Target Dim.
+            embedding: Embedding.
+            target_dim: Target Dim.
+
         """
         if not embedding:
             return [0.0] * target_dim
@@ -57,12 +64,27 @@ class EmbeddingService:
         return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
     def get_embedding(self, text: str) -> list[float]:
-        """Generates embedding for a single text string."""
+        """
+        Generate embedding for a single text string.
+
+        Args:
+            text: Text.
+            text: Text.
+
+        """
         results = self.get_embeddings_batch([text])
+
         return results[0] if results else [0.0] * 256
 
     def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
-        """Generates embeddings for a batch of text strings, utilizing a local SQLite cache."""
+        """
+        Generate embeddings for a batch of text strings, utilizing a local SQLite cache.
+
+        Args:
+            texts: Texts.
+            texts: Texts.
+
+        """
         if not texts:
             return []
 
@@ -162,8 +184,16 @@ class EmbeddingService:
             cached_map[hashes[missing_indices[idx]]] = emb
 
     def _fetch_openrouter_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """Calls OpenRouter's OpenAI-compatible embeddings endpoint."""
+        """
+        Call OpenRouter's's OpenAI-compatible embeddings endpoint.
+
+        Args:
+            texts: Texts.
+            texts: Texts.
+
+        """
         url = "https://openrouter.ai/api/v1/embeddings"
+
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
         # Default to openai/text-embedding-3-small which returns 1536-dimensional vectors
@@ -189,8 +219,16 @@ class EmbeddingService:
         return [[0.0] * 256 for _ in texts]
 
     def _fetch_google_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """Calls standard Google Gemini AI Studio Embeddings API."""
+        """
+        Call standard Google Gemini AI Studio Embeddings API.
+
+        Args:
+            texts: Texts.
+            texts: Texts.
+
+        """
         # Google text-embedding-004 supports batching via batchEmbedContents
+
         url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key={self.api_key}"
         headers = {"Content-Type": "application/json"}
 

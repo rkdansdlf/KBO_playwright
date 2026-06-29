@@ -32,7 +32,11 @@ services:
       - .env
 
     # 환경 변수 직접 설정 (오버라이드 가능)
+    depends_on:
+      - browserless
     environment:
+      - TZ=Asia/Seoul
+      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000
       # 크롤링 설정
       - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
       - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
@@ -95,7 +99,11 @@ services:
     env_file:
       - .env
 
+    depends_on:
+      - browserless
     environment:
+      - TZ=Asia/Seoul
+      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000
       - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
       - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}
@@ -127,7 +135,11 @@ services:
     env_file:
       - .env
 
+    depends_on:
+      - browserless
     environment:
+      - TZ=Asia/Seoul
+      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000
       - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
       - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}
@@ -141,6 +153,19 @@ services:
 
     profiles:
       - scheduler
+
+  browserless:
+    image: browserless/chrome:latest
+    container_name: kbo-text-relay-browserless
+    restart: always
+    ports:
+      - "3001:3000"
+    environment:
+      - MAX_CONCURRENT_SESSIONS=10
+      - CONNECTION_TIMEOUT=300000
+      - KEEP_ALIVE=true
+    networks:
+      - kbo-text-relay-network
 
 # 네트워크 정의
 networks:

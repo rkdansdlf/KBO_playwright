@@ -19,7 +19,13 @@ from src.sync.sync_base import (
     load_game_sync_signatures,
 )
 
-pytestmark = pytest.mark.usefixtures("_db_session")
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("_db_engine")]
+
+from sqlalchemy.orm import sessionmaker
+
+
+def _make_session(engine):
+    return sessionmaker(bind=engine)()
 
 
 class TestGameSyncEligibility:
@@ -126,13 +132,15 @@ class TestBuildCompositeSignatureQuery:
 
 
 class TestLoadGameSyncSignatures:
-    def test_empty_db(self, _db_session):
-        sigs = load_game_sync_signatures(_db_session)
+    def test_empty_db(self, _db_engine):
+        session = _make_session(_db_engine)
+        sigs = load_game_sync_signatures(session)
         assert sigs == {}
 
-    def test_with_game_data(self, _db_session):
+    def test_with_game_data(self, _db_engine):
         from src.models.game import Game
 
+        session = _make_session(_db_engine)
         g = Game(
             game_id="20250601_01",
             game_date=datetime(2025, 6, 1),
@@ -142,10 +150,10 @@ class TestLoadGameSyncSignatures:
             home_score=5,
             away_score=3,
         )
-        _db_session.add(g)
-        _db_session.commit()
+        session.add(g)
+        session.commit()
 
-        sigs = load_game_sync_signatures(_db_session)
+        sigs = load_game_sync_signatures(session)
         assert "20250601_01" in sigs
         assert sigs["20250601_01"]["game"]["home_team"] == "SSG"
 
@@ -199,9 +207,10 @@ class TestBuildGameSyncEligibility:
         e = build_game_sync_eligibility(session, [])
         assert e.parent_game_ids == []
 
-    def test_cancelled_game_skipped(self, _db_session):
+    def test_cancelled_game_skipped(self, _db_engine):
         from src.models.game import Game
 
+        session = _make_session(_db_engine)
         g = Game(
             game_id="20250601_01",
             game_date=datetime(2025, 6, 1),
@@ -209,15 +218,16 @@ class TestBuildGameSyncEligibility:
             away_team="LG",
             game_status="CANCELLED",
         )
-        _db_session.add(g)
-        _db_session.commit()
+        session.add(g)
+        session.commit()
 
-        e = build_game_sync_eligibility(_db_session, ["20250601_01"])
+        e = build_game_sync_eligibility(session, ["20250601_01"])
         assert "20250601_01" in e.skipped_cancelled
 
-    def test_scheduled_no_detail_skipped(self, _db_session):
+    def test_scheduled_no_detail_skipped(self, _db_engine):
         from src.models.game import Game
 
+        session = _make_session(_db_engine)
         g = Game(
             game_id="20250601_01",
             game_date=datetime(2025, 6, 1),
@@ -225,8 +235,8 @@ class TestBuildGameSyncEligibility:
             away_team="LG",
             game_status="SCHEDULED",
         )
-        _db_session.add(g)
-        _db_session.commit()
+        session.add(g)
+        session.commit()
 
-        e = build_game_sync_eligibility(_db_session, ["20250601_01"])
+        e = build_game_sync_eligibility(session, ["20250601_01"])
         assert "20250601_01" in e.skipped_schedule_only

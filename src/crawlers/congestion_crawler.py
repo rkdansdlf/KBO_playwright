@@ -14,6 +14,7 @@ Coverage:
 
 Scheduling recommendation:
   - Run every 5 minutes between D-3h and D+2h on game days.
+
 """
 
 from __future__ import annotations
@@ -71,7 +72,13 @@ class CongestionCrawler:
     """Orchestrates congestion data collection from multiple sources."""
 
     def __init__(self, stadium_code: str = STADIUM_CODE) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            stadium_code: Stadium Code.
+
+        """
         self.stadium_code = stadium_code
 
     async def run(
@@ -81,9 +88,11 @@ class CongestionCrawler:
         save: bool = False,
     ) -> list[dict]:
         """
-        Runs run.
+        Run run.
 
         Args:
+            game_date: Game Date.
+            save: Whether to persist the results.
             game_date: Game Date.
 
         Returns:
@@ -91,6 +100,7 @@ class CongestionCrawler:
 
         """
         game_date = game_date or datetime.now(KST).date()
+
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 
         logger.info("[Congestion] Collecting for %s at %s UTC", game_date, measured_at.strftime("%H:%M"))

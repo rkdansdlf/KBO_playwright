@@ -51,8 +51,26 @@ def mark_primary_games(
 
     The winner is the candidate with the most `game_batting_stats` rows. Ties
     prefer modern canonical team-code strings such as SSG/KH/DB/KIA.
+
+    Args:
+        db_path: Db file path.
+        windows: Windows.
+        reset_all: Reset All.
+        clear_years: Clear Years.
+        suffixes: Suffixes.
+        preferred_codes: Preferred Codes.
+        remove_extreme_dates: Remove Extreme Dates.
+        db_path: Db file path.
+        windows: Windows.
+        reset_all: Reset All.
+        clear_years: Clear Years.
+        suffixes: Suffixes.
+        preferred_codes: Preferred Codes.
+        remove_extreme_dates: Remove Extreme Dates.
+
     """
     conn = sqlite3.connect(db_path)
+
     try:
         cursor = conn.cursor()
         if reset_all:
@@ -97,6 +115,7 @@ def mark_primary_games(
             cursor.execute(
                 """
                 UPDATE game
+
                 SET is_primary = 0
                 WHERE (strftime('%m%d', game_date) < '0301' OR strftime('%m%d', game_date) > '1231')
                   AND strftime('%Y', game_date) != ?

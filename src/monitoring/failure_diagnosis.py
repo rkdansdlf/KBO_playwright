@@ -25,7 +25,7 @@ class DiagnosisFinding:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Handles the to dict operation.
+        Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -50,7 +50,7 @@ class DiagnosisReport:
     @property
     def source_count(self) -> int:
         """
-        Handles the source count operation.
+        Handle the source count operation.
 
         Returns:
             Integer result.
@@ -61,7 +61,7 @@ class DiagnosisReport:
     @property
     def highest_severity(self) -> str:
         """
-        Handles the highest severity operation.
+        Handle the highest severity operation.
 
         Returns:
             String result.
@@ -74,7 +74,7 @@ class DiagnosisReport:
     @property
     def exit_code(self) -> int:
         """
-        Handles the exit code operation.
+        Handle the exit code operation.
 
         Returns:
             Integer result.
@@ -85,13 +85,14 @@ class DiagnosisReport:
     @property
     def suggested_commands(self) -> tuple[str, ...]:
         """
-        Handles the suggested commands operation.
+        Handle the suggested commands operation.
 
         Returns:
             Tuple result.
 
         """
         commands: list[str] = []
+
         for finding in self.findings:
             for command in finding.suggested_commands:
                 if command not in commands:
@@ -100,7 +101,7 @@ class DiagnosisReport:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Handles the to dict operation.
+        Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -199,13 +200,30 @@ _RULES: tuple[_DiagnosisRule, ...] = (
 
 
 def diagnose_text(text: str, *, source: str = "stdin") -> DiagnosisReport:
-    """Diagnose one log text blob."""
+    """
+    Diagnose one log text blob.
+
+    Args:
+        text: Text.
+        source: Source.
+        text: Text.
+        source: Source.
+
+    """
     return diagnose_sources({source: text})
 
 
 def diagnose_sources(sources: Mapping[str, str]) -> DiagnosisReport:
-    """Diagnose one or more named log sources."""
+    """
+    Diagnose one or more named log sources.
+
+    Args:
+        sources: Sources.
+        sources: Sources.
+
+    """
     findings: list[DiagnosisFinding] = []
+
     seen_categories: set[str] = set()
     for source_name, text in sources.items():
         for line in text.splitlines():
@@ -231,7 +249,14 @@ def diagnose_sources(sources: Mapping[str, str]) -> DiagnosisReport:
 
 
 def render_diagnosis_text(report: DiagnosisReport) -> str:
-    """Render a human-readable diagnosis report."""
+    """
+    Render a human-readable diagnosis report.
+
+    Args:
+        report: Report.
+        report: Report.
+
+    """
     lines = [
         f"Failure diagnosis: {'PASS' if not report.findings else 'ISSUES'}",
         f"Sources: {report.source_count}",
@@ -253,9 +278,11 @@ def render_diagnosis_text(report: DiagnosisReport) -> str:
 
 def report_to_json(report: DiagnosisReport) -> str:
     """
-    Reports to json.
+    Report to json.
 
     Args:
+        report: Report.
+        report: Report.
         report: Report.
 
     Returns:

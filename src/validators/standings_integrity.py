@@ -29,8 +29,18 @@ STANDINGS_FIELDS = (
 
 
 def validate_standings_integrity(session: Session, target_date: date) -> dict[str, Any]:
-    """Compare one daily standings snapshot with an independent game-result rollup."""
+    """
+    Compare one daily standings snapshot with an independent game-result rollup.
+
+    Args:
+        session: Session.
+        target_date: Target date for the operation.
+        session: Session.
+        target_date: Target date for the operation.
+
+    """
     # Skip for years before 2020: TeamStandingsDaily has no season column,
+
     # so old snapshots contain multi-season accumulated data for the same team_code
     # (e.g. SK games from 2000 and SK games from 2020 merge under one row).
     if target_date.year < 2020:
@@ -167,8 +177,8 @@ def _aggregate_regular_season_results(
         if game.home_team in ("EA", "WE") or game.away_team in ("EA", "WE"):
             continue
 
-        home = standings.setdefault(game.home_team, _empty_team_state())
-        away = standings.setdefault(game.away_team, _empty_team_state())
+        home = standings.setdefault(str(game.home_team), _empty_team_state())
+        away = standings.setdefault(str(game.away_team), _empty_team_state())
         home_score = int(game.home_score)
         away_score = int(game.away_score)
 

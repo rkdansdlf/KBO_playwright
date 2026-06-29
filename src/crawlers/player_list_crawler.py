@@ -2,6 +2,7 @@
 Compatibility wrapper around the new player search crawler.
 
 Old pipelines expect a PlayerListCrawler that returns hitters/pitchers buckets.
+
 """
 
 from __future__ import annotations
@@ -51,16 +52,26 @@ class PlayerListCrawler:
     """Legacy API wrapper used by init_data_collection.py and futures crawler."""
 
     def __init__(self, *, request_delay: float = 1.5, headless: bool = True, max_pages: int | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            headless: Whether to run the browser in headless mode.
+            max_pages: Max Pages.
+
+        """
         self.request_delay = request_delay
+
         self.headless = headless
         self.max_pages = max_pages
 
     async def crawl_all_players(self, _season_year: int | None = None) -> dict[str, list[dict[str, Any]]]:
         """
-        Crawls all players.
+        Crawl all players.
 
         Args:
+            _season_year: Season Year.
             _season_year: Season Year.
 
         Returns:

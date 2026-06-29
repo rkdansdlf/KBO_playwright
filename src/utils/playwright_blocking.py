@@ -22,9 +22,13 @@ async def install_async_resource_blocking(
     blocked_types: Iterable[str] | None = None,
 ) -> None:
     """
-    Handles the install async resource blocking operation.
+    Handle the install async resource blocking operation.
 
     Args:
+        target: Target.
+        blocked_types: Blocked Types.
+        target: Target.
+        blocked_types: Blocked Types.
         target: Target.
         blocked_types: Blocked Types.
 
@@ -33,9 +37,11 @@ async def install_async_resource_blocking(
 
     async def handler(route: AsyncRoute) -> None:
         """
-        Handles the handler operation.
+        Handle the handler operation.
 
         Args:
+            route: Route.
+            route: Route.
             route: Route.
 
         """
@@ -52,9 +58,13 @@ def install_sync_resource_blocking(
     blocked_types: Iterable[str] | None = None,
 ) -> None:
     """
-    Syncs install resource blocking.
+    Sync install resource blocking.
 
     Args:
+        target: Target.
+        blocked_types: Blocked Types.
+        target: Target.
+        blocked_types: Blocked Types.
         target: Target.
         blocked_types: Blocked Types.
 
@@ -63,9 +73,11 @@ def install_sync_resource_blocking(
 
     def handler(route: SyncRoute) -> None:
         """
-        Handles the handler operation.
+        Handle the handler operation.
 
         Args:
+            route: Route.
+            route: Route.
             route: Route.
 
         """

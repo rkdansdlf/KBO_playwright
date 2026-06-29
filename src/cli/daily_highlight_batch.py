@@ -1,6 +1,7 @@
 """
 Daily Highlight Batch Script
-Generates game highlights from PBP/WPA data, persists them, syncs to OCI, and sends Telegram reports.
+Generate game highlights from PBP/WPA data, persists them, syncs to OCI, and sends Telegram reports.
+
 """
 
 from __future__ import annotations
@@ -180,9 +181,14 @@ async def run_highlight_batch(
     notify: bool = True,
 ) -> list[str]:
     """
-    Runs highlight batch.
+    Run highlight batch.
 
     Args:
+        target_date_str: Target Date Str.
+        force: If True, forces the operation even if data already exists.
+        dry_run: If True, performs a dry run without persisting changes.
+        sync_to_oci: Sync To Oci.
+        notify: Notify.
         target_date_str: Target Date Str.
 
     Returns:
@@ -222,8 +228,15 @@ async def run_highlight_batch(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="KBO Daily Highlights Generator")
+
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
     parser.add_argument("--force", action="store_true", help="Re-generate and overwrite highlights if they exist")
     parser.add_argument("--dry-run", action="store_true", help="Run without persisting database changes or alerting")

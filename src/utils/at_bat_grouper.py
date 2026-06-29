@@ -3,6 +3,7 @@ At-Bat grouping logic for KBO PBP events.
 
 Groups sequential game_event dicts into at-bats by tracking
 batter identity, result events, and inning/half boundaries.
+
 """
 
 from __future__ import annotations
@@ -37,6 +38,11 @@ def group_events_into_at_bats(
     Annotate event dicts with at_bat_seq, at_bat_event_role, at_bat_confidence.
 
     Each event dict is mutated in-place AND returned in a new list.
+
+    Args:
+        events: Events.
+        events: Events.
+
     """
     if not events:
         return events
@@ -108,7 +114,11 @@ class AtBatContext:
 
 def _needs_new_at_bat(*, ctx: AtBatContext) -> bool:
     """
-    Handles the needs new at bat operation.
+    Handle the needs new at bat operation.
+
+    Args:
+        ctx: Ctx.
+        ctx: Ctx.
 
     Returns:
         True if the condition is met, False otherwise.
@@ -124,9 +134,13 @@ def _needs_new_at_bat(*, ctx: AtBatContext) -> bool:
 
 def _event_role(event_type: str, description: str) -> str:
     """
-    Handles the event role operation.
+    Handle the event role operation.
 
     Args:
+        event_type: Event Type.
+        description: Description.
+        event_type: Event Type.
+        description: Description.
         event_type: Event Type.
         description: Description.
 
@@ -153,8 +167,14 @@ def compute_at_bat_pitch_count(events: list[dict[str, Any]]) -> list[dict[str, A
     Accumulate balls/strikes across pitch-count events within each at-bat.
 
     Mutates events in-place. Requires at_bat_seq to already be set.
+
+    Args:
+        events: Events.
+        events: Events.
+
     """
     current_at_bat = None
+
     balls = 0
     strikes = 0
 

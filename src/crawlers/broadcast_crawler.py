@@ -25,19 +25,23 @@ class BroadcastCrawler:
     """BroadcastCrawler class."""
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         self.url = SCHEDULE
 
     async def run(self, year: int | None = None, month: int | None = None, *, save: bool = False) -> None:
         """
-        Runs run.
+        Run run.
 
         Args:
+            year: Season year.
+            month: Month.
+            save: Whether to persist the results.
             year: Season year.
             month: Month number (1-12).
 
         """
         year = year or datetime.now(KST).year
+
         month = month or datetime.now(KST).month
 
         async with async_playwright() as p:
@@ -101,6 +105,7 @@ class BroadcastCrawler:
         }
         """
         data = await page.evaluate(script, {"year": year})
+
         return BroadcastCrawler._normalize_game_ids(data, year)
 
     @staticmethod

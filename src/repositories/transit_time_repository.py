@@ -21,7 +21,14 @@ class TransitTimeRepository:
     """TransitTimeRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     # ─────────────────────────────────────────────
@@ -35,6 +42,11 @@ class TransitTimeRepository:
         Dedup key: (stadium_code, origin_label, transport_mode, measured_at).
 
         Returns (record, created: bool).
+
+        Args:
+            data: Data.
+            data: Data.
+
         """
         stmt = select(StadiumTransitTime).where(
             and_(
@@ -59,8 +71,18 @@ class TransitTimeRepository:
         return record, True
 
     def bulk_upsert(self, records: list[dict]) -> tuple[int, int]:
-        """Upsert multiple records. Returns (created, updated)."""
+        """
+        Upsert multiple records.
+
+            Returns (created, updated).
+
+        Args:
+            records: Records.
+            records: Records.
+
+        """
         created = updated = 0
+
         for rec in records:
             try:
                 _, is_new = self.upsert(rec)
@@ -89,9 +111,17 @@ class TransitTimeRepository:
         transport_mode: str | None = None,
     ) -> list[StadiumTransitTime]:
         """
-        Gets by game date.
+        Get by game date.
 
         Args:
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+            origin_label: Origin Label.
+            transport_mode: Transport Mode.
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+            origin_label: Origin Label.
+            transport_mode: Transport Mode.
             stadium_code: Stadium Code.
             game_date: Game Date.
 
@@ -119,9 +149,15 @@ class TransitTimeRepository:
         transport_mode: str,
     ) -> StadiumTransitTime | None:
         """
-        Gets latest.
+        Get latest.
 
         Args:
+            stadium_code: Stadium Code.
+            origin_label: Origin Label.
+            transport_mode: Transport Mode.
+            stadium_code: Stadium Code.
+            origin_label: Origin Label.
+            transport_mode: Transport Mode.
             stadium_code: Stadium Code.
             origin_label: Origin Label.
             transport_mode: Transport Mode.
@@ -151,7 +187,20 @@ class TransitTimeRepository:
         game_date: date,
         transport_mode: str | None = None,
     ) -> float | None:
-        """Returns average measured duration for a given origin+game_date."""
+        """
+        Return average measured duration for a given origin+game_date.
+
+        Args:
+            stadium_code: Stadium Code.
+            origin_label: Origin Label.
+            game_date: Game Date.
+            transport_mode: Transport Mode.
+            stadium_code: Stadium Code.
+            origin_label: Origin Label.
+            game_date: Game Date.
+            transport_mode: Transport Mode.
+
+        """
         from sqlalchemy import func
 
         stmt = select(func.avg(StadiumTransitTime.duration_minutes)).where(

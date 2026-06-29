@@ -3,6 +3,7 @@
 
 OCISync 클래스와 전용 동기화 메서드를 사용하여 테이블별로 특화된 UPSERT/COPY 로직을
 수행합니다. `--truncate` 옵션을 사용하면 대상 테이블의 데이터를 삭제한 후 새로 삽입할 수 있습니다.
+
 """
 
 from __future__ import annotations
@@ -43,18 +44,30 @@ def run_parallel_sync(
     workers: int,
     **kwargs: object,
 ) -> None:
-    """연도별로 병렬 동기화 작업을 수행합니다."""
+    """
+    연도별로 병렬 동기화 작업을 수행합니다.
+
+    Args:
+        sync_fn: Sync Fn.
+        target_url: Target URL.
+        years: Years.
+        workers: Workers.
+        kwargs: Keyword arguments to pass through.
+
+    """
     logger.info("🚀 Starting parallel sync with %s workers for years: %s", workers, years)
 
     def sync_worker(year: int) -> None:
         """
-        Syncs worker.
+        Sync worker.
 
         Args:
+            year: Season year.
             year: Season year.
 
         """
         logger.info("🧵 Worker started for year %s", year)
+
         with SessionLocal() as session:
             try:
                 syncer = OCISync(target_url, session)
@@ -391,7 +404,15 @@ _ALLOWED_YEAR_COLUMNS = frozenset(
 
 
 def get_available_years(session: Session, model: type[object], column_name: str = "season") -> list[int]:
-    """대상 테이블에서 사용 가능한 연도 목록을 가져옵니다."""
+    """
+    대상 테이블에서 사용 가능한 연도 목록을 가져옵니다.
+
+    Args:
+        session: Session.
+        model: Model.
+        column_name: Column Name.
+
+    """
     if column_name not in _ALLOWED_YEAR_COLUMNS:
         msg = f"Disallowed column expression: {column_name}"
         raise ValueError(msg)
@@ -644,8 +665,15 @@ def _reset_sequences_if_requested(args: argparse.Namespace) -> None:
 
 
 def main(argv: Iterable[str] | None = None) -> None:
-    """스크립트의 메인 실행 함수."""
+    """
+    스크립트의 메인 실행 함수.
+
+    Args:
+        argv: Argv.
+
+    """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
     load_dotenv()
     parser = build_arg_parser()
     args = parser.parse_args(argv)

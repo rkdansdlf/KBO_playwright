@@ -13,9 +13,13 @@ if TYPE_CHECKING:
 
 def parse_date_str(value: str, fmt: str = "%Y%m%d") -> date:
     """
-    Parses date str.
+    Parse date str.
 
     Args:
+        value: Value.
+        fmt: Fmt.
+        value: Value.
+        fmt: Fmt.
         value: Value.
         fmt: Fmt.
 
@@ -28,9 +32,13 @@ def parse_date_str(value: str, fmt: str = "%Y%m%d") -> date:
 
 def parse_datetime_str(value: str, fmt: str = "%Y%m%d") -> datetime:
     """
-    Parses datetime str.
+    Parse datetime str.
 
     Args:
+        value: Value.
+        fmt: Fmt.
+        value: Value.
+        fmt: Fmt.
         value: Value.
         fmt: Fmt.
 
@@ -43,9 +51,11 @@ def parse_datetime_str(value: str, fmt: str = "%Y%m%d") -> datetime:
 
 def normalize_to_date(value: str) -> date:
     """
-    Normalizes to date.
+    Normalize to date.
 
     Args:
+        value: Value.
+        value: Value.
         value: Value.
 
     Returns:
@@ -53,4 +63,5 @@ def normalize_to_date(value: str) -> date:
 
     """
     cleaned = value.replace("-", "").replace("/", "").replace(".", "")
+
     return datetime.strptime(cleaned, "%Y%m%d").replace(tzinfo=KST).date()

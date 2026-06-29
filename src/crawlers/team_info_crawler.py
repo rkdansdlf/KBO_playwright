@@ -21,14 +21,15 @@ TEAM_INFO_MODAL_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, Value
 
 class TeamInfoCrawler:
     """
-    Crawls KBO Team Info page (https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx)
+    crawl KBO Team Info page (https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx).
     Collects: CEO, Owner, Founded Date, Homepage, Phone, Address.
+
     """
 
     BASE_URL = "https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx"
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         self.browser = None
         self.page = None
         self.playwright = None
@@ -36,7 +37,7 @@ class TeamInfoCrawler:
         self._raw_pages: list[dict] = []
 
     async def start(self) -> None:
-        """Handles the start operation."""
+        """Handle the start operation."""
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=True)
         self.context = await self.browser.new_context()
@@ -44,7 +45,7 @@ class TeamInfoCrawler:
         self.page = await self.context.new_page()
 
     async def close(self) -> None:
-        """Handles the close operation."""
+        """Handle the close operation."""
         if self.context:
             await self.context.close()
         if self.browser:
@@ -54,13 +55,18 @@ class TeamInfoCrawler:
 
     async def crawl(self, *, save: bool = False) -> list[dict]:
         """
-        Crawls crawl.
+        Crawl crawl.
+
+        Args:
+            save: Whether to persist the results.
+            save: Whether to persist the results.
 
         Returns:
             List of results.
 
         """
         logger.info("Crawling Team Info from %s", self.BASE_URL)
+
         if not self.page:
             await self.start()
 
@@ -174,13 +180,16 @@ class TeamInfoCrawler:
 
     async def save(self, data: list[dict]) -> None:
         """
-        Saves save.
+        Save save.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         """
         logger.info("Saving %d team profiles...", len(data))
+
         with SessionLocal() as session:
             for item in data:
                 stmt = select(Franchise).where(Franchise.name.like(f"%{item['name']}%"))

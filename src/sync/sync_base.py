@@ -11,10 +11,11 @@ import json
 import logging
 import sqlite3
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import count
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from psycopg2 import Error as PsycopgError
 from sqlalchemy import bindparam, create_engine, inspect, text
@@ -22,6 +23,7 @@ from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Query, Session, sessionmaker
 
 from src.constants import KST
+from src.models.base import Base
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -45,6 +47,53 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from sqlalchemy.engine import Connection, Result
+
+RawConnection = Any  # psycopg2 connection, typed loosely to avoid heavy deps
+
+
+class SyncBaseProtocol(Protocol):
+    """Protocol interface for sync mixin classes."""
+
+    sqlite_session: Any
+    target_session: Any
+    oci_engine: Any
+
+    def sync_simple_table(
+        self,
+        model: type[Base],
+        conflict_keys: list[str],
+        exclude_cols: list[str] | None = ...,
+        filters: list[Any] | None = ...,
+        transform_fn: Callable[..., Any] | None = ...,
+        batch_size: int = ...,
+        *,
+        update_timestamp: bool | None = ...,
+        dedupe_keys: list[str] | None = ...,
+    ) -> int: ...
+
+    def _bulk_copy_upsert(
+        self,
+        table_name: str,
+        records: list[dict[str, Any]],
+        unique_cols: list[str],
+        *,
+        update_timestamp: bool = ...,
+        connection: Any | None = ...,
+    ) -> None: ...
+    def _ensure_table(self, model: type[Base]) -> None: ...
+    def _target_table_exists(self, model: type[Base]) -> bool: ...
+    def _get_franchise_id_mapping(self) -> dict[int, int]: ...
+    def _get_season_map(self) -> dict[tuple[Any, ...], int]: ...
+    def _reset_target_sequence_for_table(self, table_name: str, column_name: str = ...) -> bool: ...
+    def _run_target_session_with_retries(self, *args: Any, **kwargs: Any) -> Any: ...
+    def test_connection(self) -> bool: ...
+    def close(self) -> None: ...
+    def sync_batting_data(self, *args: Any, **kwargs: Any) -> int: ...
+    def sync_pitcher_data(self, *args: Any, **kwargs: Any) -> int: ...
+    def sync_players(self) -> int: ...
+    def sync_player_identities(self) -> int: ...
+    def _sync_referenced_player_basic_for_games(self, *args: Any, **kwargs: Any) -> Any: ...
+
 
 LEAGUE_NAME_TO_CODE = {
     "REGULAR": 0,
@@ -85,7 +134,7 @@ class GameSyncEligibility:
 
     def counts(self) -> dict[str, int]:
         """
-        Handles the counts operation.
+        Return sync operation counts.
 
         Returns:
             Dictionary result.
@@ -103,8 +152,8 @@ class GameSyncEligibility:
 class SyncBatchConfig:
     """SyncBatchConfig class."""
 
-    model: type
-    query: Query
+    model: type[Base]
+    query: Query[Any]
     total_count: int
     columns: list[str]
     conflict_keys: list[str]
@@ -114,7 +163,7 @@ class SyncBatchConfig:
     dedupe_keys: list[str] | None = None
 
 
-def _serialize_scalar(value: object) -> object:
+def _serialize_scalar(value: object) -> Any:
     if value is None:
         return None
     if hasattr(value, "isoformat"):
@@ -178,7 +227,7 @@ def _execute_signature_query(
     sql: str,
     *,
     game_ids: list[str] | None = None,
-) -> Result[object]:
+) -> Result[Any]:
     stmt = text(sql)
     params = {}
     if game_ids is not None:
@@ -231,10 +280,11 @@ def load_game_sync_signatures(
     game_ids: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
-    Loads game signatures.
+    Load game signatures.
 
     Args:
         session_or_conn: Session Or Conn.
+        game_ids: Game Ids.
 
     Returns:
         Dictionary result.
@@ -280,7 +330,7 @@ def load_game_sync_signatures(
     return signatures
 
 
-def _is_game_dirty_by_game_section(_game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+def _is_game_dirty_by_game_section(_game_id: str, local_sig: dict[str, Any], remote_sig: dict[str, Any]) -> bool:
     local_game = local_sig.get("game", {})
     remote_game = remote_sig.get("game", {})
     for key in (
@@ -299,7 +349,7 @@ def _is_game_dirty_by_game_section(_game_id: str, local_sig: dict, remote_sig: d
     )
 
 
-def _is_game_dirty_by_metadata_section(_game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+def _is_game_dirty_by_metadata_section(_game_id: str, local_sig: dict[str, Any], remote_sig: dict[str, Any]) -> bool:
     metadata_local = local_sig.get("game_metadata", {})
     metadata_remote = remote_sig.get("game_metadata", {})
     if metadata_local.get("row_count") != metadata_remote.get("row_count"):
@@ -312,7 +362,7 @@ def _is_game_dirty_by_metadata_section(_game_id: str, local_sig: dict, remote_si
     )
 
 
-def _is_game_dirty_by_child_tables(_game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+def _is_game_dirty_by_child_tables(_game_id: str, local_sig: dict[str, Any], remote_sig: dict[str, Any]) -> bool:
     for table_name in GAME_SIGNATURE_CHILD_TABLES:
         if table_name == "game_metadata":
             continue
@@ -328,7 +378,7 @@ def _is_game_dirty_by_child_tables(_game_id: str, local_sig: dict, remote_sig: d
     return False
 
 
-def _is_game_dirty(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+def _is_game_dirty(game_id: str, local_sig: dict[str, Any], remote_sig: dict[str, Any]) -> bool:
     return (
         _is_game_dirty_by_game_section(game_id, local_sig, remote_sig)
         or _is_game_dirty_by_metadata_section(game_id, local_sig, remote_sig)
@@ -343,11 +393,12 @@ def detect_dirty_game_ids(
     game_ids: list[str] | None = None,
 ) -> list[str]:
     """
-    Handles the detect dirty game ids operation.
+    Detect dirty game IDs by comparing local and remote signatures.
 
     Args:
         local_session_or_conn: Local Session Or Conn.
         remote_session_or_conn: Remote Session Or Conn.
+        game_ids: Game Ids.
 
     Returns:
         List of results.
@@ -367,7 +418,7 @@ def detect_dirty_game_ids(
 
 def filter_game_ids_by_year(game_ids: list[str], year: int | None) -> list[str]:
     """
-    Filters game ids by year.
+    Filter game IDs by year.
 
     Args:
         game_ids: Game Ids.
@@ -383,10 +434,10 @@ def filter_game_ids_by_year(game_ids: list[str], year: int | None) -> list[str]:
     return [game_id for game_id in game_ids if str(game_id).startswith(prefix)]
 
 
-def _load_team_sides(session: Session, model: type, game_ids: list[str]) -> dict[str, set[str]]:
+def _load_team_sides(session: Session, model: type[Base], game_ids: list[str]) -> dict[str, set[str]]:
     if not game_ids:
         return {}
-    rows = session.query(model.game_id, model.team_side).filter(model.game_id.in_(game_ids)).distinct().all()
+    rows = session.query(model.game_id, model.team_side).filter(model.game_id.in_(game_ids)).distinct().all()  # type: ignore[attr-defined]
     result: dict[str, set[str]] = {}
     for game_id, team_side in rows:
         if not game_id or not team_side:
@@ -395,10 +446,10 @@ def _load_team_sides(session: Session, model: type, game_ids: list[str]) -> dict
     return result
 
 
-def _load_game_ids_with_rows(session: Session, model: type, game_ids: list[str]) -> set[str]:
+def _load_game_ids_with_rows(session: Session, model: type[Base], game_ids: list[str]) -> set[str]:
     if not game_ids:
         return set()
-    return {str(row[0]) for row in session.query(model.game_id).filter(model.game_id.in_(game_ids)).distinct().all()}
+    return {str(row[0]) for row in session.query(model.game_id).filter(model.game_id.in_(game_ids)).distinct().all()}  # type: ignore[attr-defined]
 
 
 def _has_both_team_sides(side_map: dict[str, set[str]], game_id: str) -> bool:
@@ -553,7 +604,7 @@ class OCISyncBase:
         self.target_session = target_session_factory()
 
         # Performance: caches for mapping queries called multiple times per sync
-        self._season_map_cache: dict[tuple, int] | None = None
+        self._season_map_cache: dict[tuple[Any, ...], int] | None = None
         self._franchise_id_mapping_cache: dict[int, int] | None = None
         self._temp_table_counter = count(1)
 
@@ -561,7 +612,7 @@ class OCISyncBase:
     def _chunked(items: list[str], size: int) -> list[list[str]]:
         return [items[idx : idx + size] for idx in range(0, len(items), size)]
 
-    def _target_table_exists(self, model: type) -> bool:
+    def _target_table_exists(self, model: type[Base]) -> bool:
         if not getattr(self, "oci_engine", None):
             return True
         try:
@@ -637,11 +688,11 @@ class OCISyncBase:
             logger.info("✅ OCI connection successful")
             return True
 
-    def _get_season_map(self) -> dict[tuple, int]:
+    def _get_season_map(self) -> dict[tuple[Any, ...], int]:
         """Fetch and cache OCI season mapping (year, league_type_code) -> season_id."""
         cache = getattr(self, "_season_map_cache", None)
         if cache is not None:
-            return cache
+            return cache  # type: ignore[no-any-return]
 
         queries = [
             "SELECT season_id, season_year, league_type_code FROM kbo_seasons",
@@ -669,7 +720,7 @@ class OCISyncBase:
         """Get and cache SQLite franchise_id → OCI franchise_id mapping (single batch query)."""
         cache = getattr(self, "_franchise_id_mapping_cache", None)
         if cache is not None:
-            return cache
+            return cache  # type: ignore[no-any-return]
 
         from src.models.franchise import Franchise
 
@@ -695,7 +746,7 @@ class OCISyncBase:
         unique_cols: list[str],
         *,
         update_timestamp: bool = True,
-        connection: object | None = None,
+        connection: Any | None = None,
     ) -> None:
         if not records:
             return None
@@ -782,7 +833,7 @@ class OCISyncBase:
         label: str,
         max_retries: int = 2,
         base_delay_seconds: float = 1.0,
-    ) -> object:
+    ) -> Any:
         """Open a raw OCI connection with bounded retry for transient network loss."""
         max_attempts = max_retries + 1
 
@@ -837,7 +888,7 @@ class OCISyncBase:
         label: str,
         max_retries: int = 2,
         base_delay_seconds: float = 1.0,
-    ) -> object:
+    ) -> Any:
         """Run an OCI session operation with bounded retry for transient connection loss."""
         max_attempts = max_retries + 1
 
@@ -872,7 +923,7 @@ class OCISyncBase:
         msg = "Unreachable: reconnect loop exited"
         raise RuntimeError(msg)
 
-    def _resolve_sync_columns(self, model: type, exclude_cols: list[str]) -> list[str]:
+    def _resolve_sync_columns(self, model: type[Base], exclude_cols: list[str]) -> list[str]:
         target_column_defs = {}
         target_columns = {c.key for c in model.__table__.columns}
         if getattr(self, "oci_engine", None) is not None:
@@ -917,17 +968,21 @@ class OCISyncBase:
 
     def sync_simple_table(
         self,
-        model: type,
+        model: type[Base],
         conflict_keys: list[str],
         exclude_cols: list[str] | None = None,
-        filters: list | None = None,
-        transform_fn: Callable | None = None,
+        filters: list[Any] | None = None,
+        transform_fn: Callable[..., Any] | None = None,
         batch_size: int = 5000,
         *,
         update_timestamp: bool | None = None,
         dedupe_keys: list[str] | None = None,
     ) -> int:
-        """Generic sync parameter for simple tables using Batched UPSERT or COPY."""
+        """
+        Sync simple table using Batched UPSERT or COPY.
+
+        Generic sync parameter for simple tables.
+        """
         if exclude_cols is None:
             exclude_cols = ["id"]
         elif "id" not in exclude_cols:
@@ -1036,7 +1091,7 @@ class OCISyncBase:
         unique_cols: list[str],
         *,
         update_timestamp: bool,
-        connection: object | None = None,
+        connection: Any | None = None,
     ) -> None:
         close_connection = connection is None
         if connection is None:
@@ -1100,7 +1155,7 @@ class OCISyncBase:
         conflict_keys: list[str],
         *,
         update_timestamp: bool,
-        connection: object,
+        connection: Any,
     ) -> None:
         """Perform a single direct SQL INSERT with ON CONFLICT UPDATE/DO NOTHING."""
         cursor = connection.cursor()
@@ -1131,11 +1186,11 @@ class OCISyncBase:
         finally:
             cursor.close()
 
-    def _ensure_table(self, model: type) -> None:
+    def _ensure_table(self, model: type[Base]) -> None:
         """Create table on OCI if it doesn't exist."""
         from src.models.base import Base
 
-        Base.metadata.create_all(self.oci_engine, tables=[model.__table__])
+        Base.metadata.create_all(self.oci_engine, tables=[model.__table__])  # type: ignore[list-item]
 
     def close(self) -> None:
         """Close OCI session."""

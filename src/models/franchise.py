@@ -15,6 +15,7 @@ class Franchise(Base, TimestampMixin):
     Represents a KBO Franchise (the entity behind the persistent technical ID).
 
     e.g., The 'SK' technical ID represents the franchise that is now 'SSG'.
+
     """
 
     __tablename__ = "team_franchises"
@@ -38,5 +39,5 @@ class Franchise(Base, TimestampMixin):
     web_url: Mapped[str] = mapped_column(String(255), nullable=True, comment="KBO Team Info URL")
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<Franchise(code='{self.original_code}', current='{self.current_code}')>"

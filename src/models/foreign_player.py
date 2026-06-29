@@ -54,5 +54,5 @@ class ForeignPlayerChange(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<ForeignPlayerChange(player='{self.player_name}', team='{self.team_id}', type='{self.change_type}', season={self.season})>"

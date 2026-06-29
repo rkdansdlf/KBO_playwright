@@ -50,7 +50,18 @@ class DetailCrawler(Protocol):
         *,
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
-        """Crawls game details for the given game list."""
+        """
+        Crawl game details for the given game list.
+
+        Args:
+            games: Games.
+            concurrency: Maximum number of concurrent requests.
+            lightweight: Lightweight.
+            games: Games.
+            concurrency: Maximum number of concurrent requests.
+            lightweight: Lightweight.
+
+        """
         ...
 
 
@@ -67,7 +78,7 @@ class GameScoreStatusSnapshot:
     @property
     def score_tuple(self) -> tuple[int | None, int | None]:
         """
-        Handles the score tuple operation.
+        Handle the score tuple operation.
 
         Returns:
             Tuple result.
@@ -94,7 +105,7 @@ class PostgameReconciliationChange:
     @property
     def status_changed(self) -> bool:
         """
-        Handles the status changed operation.
+        Handle the status changed operation.
 
         Returns:
             True if successful, False otherwise.
@@ -105,7 +116,7 @@ class PostgameReconciliationChange:
     @property
     def score_changed(self) -> bool:
         """
-        Handles the score changed operation.
+        Handle the score changed operation.
 
         Returns:
             True if successful, False otherwise.
@@ -130,7 +141,7 @@ class PostgameReconciliationResult:
     @property
     def changed_game_ids(self) -> list[str]:
         """
-        Handles the changed game ids operation.
+        Handle the changed game ids operation.
 
         Returns:
             List of results.
@@ -145,8 +156,20 @@ def find_postgame_reconciliation_targets(
     *,
     extra_game_ids: Iterable[str] | None = None,
 ) -> list[GameCollectionTarget]:
-    """Find recent games worth revisiting after a live/detail miss."""
+    """
+    Find recent games worth revisiting after a live/detail miss.
+
+    Args:
+        start_date: Start Date.
+        end_date: End Date.
+        extra_game_ids: Extra Game Ids.
+        start_date: Start Date.
+        end_date: End Date.
+        extra_game_ids: Extra Game Ids.
+
+    """
     start_day = _parse_yyyymmdd(start_date)
+
     end_day = _parse_yyyymmdd(end_date)
     if start_day > end_day:
         start_day, end_day = end_day, start_day
@@ -210,8 +233,16 @@ class ReconciliationRequest:
 async def reconcile_postgame_range(
     req: ReconciliationRequest,
 ) -> PostgameReconciliationResult:
-    """Re-crawl started-like games and return status/score changes."""
+    """
+    Re-crawl started-like games and return status/score changes.
+
+    Args:
+        req: Req.
+        req: Req.
+
+    """
     start_date, end_date = _normalize_range(req.start_date, req.end_date)
+
     targets = find_postgame_reconciliation_targets(
         start_date,
         end_date,
@@ -280,8 +311,16 @@ async def reconcile_postgame_range(
 
 
 def format_reconciliation_report(changes: Iterable[PostgameReconciliationChange]) -> str:
-    """Return a compact text report containing only games that changed."""
+    """
+    Return a compact text report containing only games that changed.
+
+    Args:
+        changes: Changes.
+        changes: Changes.
+
+    """
     rows = list(changes)
+
     if not rows:
         return "No status or score changes recorded during reconciliation."
 
@@ -309,9 +348,13 @@ def write_reconciliation_csv(
     output_path: str | Path,
 ) -> Path:
     """
-    Writes reconciliation csv.
+    Write reconciliation csv.
 
     Args:
+        changes: Changes.
+        output_path: Output file path.
+        changes: Changes.
+        output_path: Output file path.
         changes: Changes.
         output_path: Output file path.
 

@@ -4,6 +4,7 @@ Model for stadium area congestion measurements.
 Captures real-time congestion levels at stadium gates, surrounding subway stations,
 roads, and parking areas on game days. Sourced from Seoul Open Data API,
 Kakao/Naver map services, and S-DoT sensor data.
+
 """
 
 from __future__ import annotations
@@ -101,7 +102,7 @@ class StadiumCongestion(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return (
             f"<StadiumCongestion("
             f"stadium='{self.stadium_code}', "

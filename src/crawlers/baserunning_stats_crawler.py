@@ -52,6 +52,9 @@ def crawl_baserunning_stats(
     전체 선수의 주루 기록을 크롤링합니다.
 
     Args:
+        year: Season year.
+        max_retries: Max Retries.
+        timeout: Timeout.
         year: 시즌 연도 (None이면 현재 연도)
         max_retries: 최대 재시도 횟수
         timeout: 페이지 로드 타임아웃 (밀리초)
@@ -158,9 +161,12 @@ def save_baserunning_stats(
     db_path: str | None = None,
 ) -> None:
     """
-    Saves baserunning stats.
+    Save baserunning stats.
 
     Args:
+        player_list: Player List.
+        year: Season year.
+        db_path: Db file path.
         player_list: Player List.
         year: Season year.
         db_path: Db file path.

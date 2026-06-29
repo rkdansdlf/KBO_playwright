@@ -3,6 +3,7 @@ Player Search Crawler
 Collects comprehensive player information from KBO Player Search page.
 
 Now refactored into a class as expected by GameDetailCrawler.
+
 """
 
 from __future__ import annotations
@@ -112,8 +113,17 @@ class PlayerSearchCrawler:
         *,
         headless: bool = True,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            pool: Connection pool for async operations.
+            request_delay: Request Delay.
+            headless: Whether to run the browser in headless mode.
+
+        """
         self.pool = pool
+
         self.request_delay = request_delay
         self.headless = headless
         self.policy = RequestPolicy.with_delay(request_delay, request_delay)
@@ -124,7 +134,7 @@ class PlayerSearchCrawler:
 
     def get_failure_summary(self) -> dict[str, Any]:
         """
-        Gets failure summary.
+        Get failure summary.
 
         Returns:
             Dictionary result.
@@ -162,8 +172,15 @@ class PlayerSearchCrawler:
             return True, "ok"
 
     async def search_player(self, player_name: str) -> list[dict]:
-        """Searches for a player and returns matching profiles as dicts."""
+        """
+        Search for a player and returns matching profiles as dicts.
+
+        Args:
+            player_name: Player Name.
+
+        """
         clean_name = NAME_CLEAN_RE.sub("", player_name)
+
         if not clean_name:
             return []
 
@@ -195,9 +212,10 @@ class PlayerSearchCrawler:
 
     async def crawl_all_players(self, max_pages: int | None = None) -> list[PlayerRow]:
         """
-        Crawls all players.
+        Crawl all players.
 
         Args:
+            max_pages: Max Pages.
             max_pages: Max Pages.
 
         Returns:
@@ -205,6 +223,7 @@ class PlayerSearchCrawler:
 
         """
         active_pool = self.pool or AsyncPlaywrightPool(max_pages=1, headless=self.headless)
+
         owns_pool = self.pool is None
         if owns_pool:
             await active_pool.start()
@@ -473,9 +492,10 @@ class PlayerSearchCrawler:
     @staticmethod
     def row_to_dict(row: PlayerRow) -> dict[str, Any]:
         """
-        Handles the row to dict operation.
+        Handle the row to dict operation.
 
         Args:
+            row: Row.
             row: Row.
 
         Returns:
@@ -487,9 +507,10 @@ class PlayerSearchCrawler:
 
 def parse_birth_date(raw: str | None) -> date_type | None:
     """
-    Parses birth date.
+    Parse birth date.
 
     Args:
+        raw: Raw.
         raw: Raw.
 
     Returns:
@@ -529,9 +550,10 @@ def parse_birth_date(raw: str | None) -> date_type | None:
 
 def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
     """
-    Handles the player row to dict operation.
+    Handle the player row to dict operation.
 
     Args:
+        row: Row.
         row: Row.
 
     Returns:
@@ -539,6 +561,7 @@ def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
 
     """
     category = classify_player({"team": row.team, "position": row.position})
+
     status = "active"
     staff_role = None
     if category == PlayerCategory.RETIRED:
@@ -573,9 +596,14 @@ async def crawl_all_players(
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[PlayerRow]:
     """
-    Crawls all players.
+    Crawl all players.
 
     Args:
+        max_pages: Max Pages.
+        headless: Whether to run the browser in headless mode.
+        slow_mo: Slow Mo.
+        request_delay: Request Delay.
+        pool: Connection pool for async operations.
         max_pages: Max Pages.
 
     Returns:
@@ -673,7 +701,7 @@ def _sync_to_oci(oci_url: str) -> None:
 
 
 async def main() -> None:
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     args = _parse_crawl_args()
 
     logger.info("=" * 60)

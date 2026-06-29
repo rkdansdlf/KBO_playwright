@@ -23,9 +23,10 @@ logger = logging.getLogger(__name__)
 
 async def run_fetcher(argv: Sequence[str] | None = None) -> int:
     """
-    Runs fetcher.
+    Run fetcher.
 
     Args:
+        argv: Argv.
         argv: Argv.
 
     Returns:
@@ -99,7 +100,13 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     return asyncio.run(run_fetcher(argv))

@@ -8,7 +8,16 @@ _EMPTY_SENTINELS = frozenset({"", "-", "—", "–", "null"})
 
 
 def to_int(val: object, default: int = 0) -> int:
-    """Convert value to int, returning default on failure."""
+    """
+    Convert value to int, returning default on failure.
+
+    Args:
+        val: Val.
+        default: Default.
+        val: Val.
+        default: Default.
+
+    """
     try:
         return int(str(val).strip().replace(",", ""))
     except (ValueError, TypeError):
@@ -16,7 +25,14 @@ def to_int(val: object, default: int = 0) -> int:
 
 
 def safe_int(value: object) -> int:
-    """Convert cell text to int, returning 0 on failure."""
+    """
+    Convert cell text to int, returning 0 on failure.
+
+    Args:
+        value: Value.
+        value: Value.
+
+    """
     try:
         return int(str(value).strip().replace(",", ""))
     except (ValueError, TypeError):
@@ -24,7 +40,14 @@ def safe_int(value: object) -> int:
 
 
 def safe_int_or_none(value: object) -> int | None:
-    """Convert cell text to int, returning None for empty/invalid values."""
+    """
+    Convert cell text to int, returning None for empty/invalid values.
+
+    Args:
+        value: Value.
+        value: Value.
+
+    """
     if value is None:
         return None
     cleaned = str(value).replace(",", "").strip()
@@ -37,7 +60,14 @@ def safe_int_or_none(value: object) -> int | None:
 
 
 def safe_float(value: object) -> float:
-    """Convert cell text to float, returning 0.0 on failure."""
+    """
+    Convert cell text to float, returning 0.0 on failure.
+
+    Args:
+        value: Value.
+        value: Value.
+
+    """
     try:
         return float(str(value).strip().replace(",", ""))
     except (ValueError, TypeError):
@@ -45,7 +75,14 @@ def safe_float(value: object) -> float:
 
 
 def safe_float_or_none(value: object) -> float | None:
-    """Convert cell text to float, returning None for empty/invalid values."""
+    """
+    Convert cell text to float, returning None for empty/invalid values.
+
+    Args:
+        value: Value.
+        value: Value.
+
+    """
     if value is None:
         return None
     cleaned = str(value).replace(",", "").strip()
@@ -58,7 +95,14 @@ def safe_float_or_none(value: object) -> float | None:
 
 
 def parse_innings(value: str | None) -> float:
-    """Parse inning string like '112 1/3' to float 112.333..."""
+    """
+    Parse inning string like '112 1/3' to float 112.333...
+
+    Args:
+        value: Value.
+        value: Value.
+
+    """
     if not value:
         return 0.0
     txt = value.strip().replace(",", "")
@@ -79,9 +123,11 @@ def parse_innings(value: str | None) -> float:
 
 def _parse_fraction_innings(cleaned: str) -> int | None:
     """
-    Parses fraction innings.
+    Parse fraction innings.
 
     Args:
+        cleaned: Cleaned.
+        cleaned: Cleaned.
         cleaned: Cleaned.
 
     Returns:
@@ -89,6 +135,7 @@ def _parse_fraction_innings(cleaned: str) -> int | None:
 
     """
     frac_match = re.match(r"^(\d+)\s+(\d+)/(\d+)$", cleaned)
+
     if frac_match:
         whole = int(frac_match.group(1))
         num = int(frac_match.group(2))
@@ -104,9 +151,11 @@ def _parse_fraction_innings(cleaned: str) -> int | None:
 
 def _parse_decimal_innings(cleaned: str) -> int | None:
     """
-    Parses decimal innings.
+    Parse decimal innings.
 
     Args:
+        cleaned: Cleaned.
+        cleaned: Cleaned.
         cleaned: Cleaned.
 
     Returns:
@@ -135,8 +184,14 @@ def parse_innings_to_outs(text: str | None) -> int | None:
       - Decimal   (e.g. '5.1' -> 16, '0.2' -> 2)
       - 'X:Y'     (e.g. '5:1' -> 16)
       - Plain int (e.g. '5' -> 15)
+
+    Args:
+        text: Text.
+        text: Text.
+
     """
     cleaned = _clean_innings_text(text)
+
     if cleaned is None:
         return None
 
@@ -156,9 +211,11 @@ def parse_innings_to_outs(text: str | None) -> int | None:
 
 def _clean_innings_text(text: str | None) -> str | None:
     """
-    Handles the clean innings text operation.
+    Handle the clean innings text operation.
 
     Args:
+        text: Text.
+        text: Text.
         text: Input text content.
 
     Returns:
@@ -175,9 +232,11 @@ def _clean_innings_text(text: str | None) -> str | None:
 
 def _parse_colon_innings(cleaned: str) -> int:
     """
-    Parses colon innings.
+    Parse colon innings.
 
     Args:
+        cleaned: Cleaned.
+        cleaned: Cleaned.
         cleaned: Cleaned.
 
     Returns:
@@ -185,6 +244,7 @@ def _parse_colon_innings(cleaned: str) -> int:
 
     """
     parts = cleaned.split(":")
+
     innings = int(parts[0])
     remainder = int(parts[1]) if len(parts) > 1 else 0
     return innings * 3 + remainder

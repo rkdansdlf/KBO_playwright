@@ -23,12 +23,27 @@ class TeamRepository:
     """TeamRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save_daily_rosters(self, rosters: list[dict[str, Any]]) -> int:
-        """Save daily roster records with UPSERT logic."""
+        """
+        Save daily roster records with UPSERT logic.
+
+        Args:
+            rosters: Rosters.
+            rosters: Rosters.
+
+        """
         # Deduplicate input list by unique key (date, team, player)
+
         # to prevent IntegrityError if the list contains duplicates
         unique_rosters = {}
         for r in rosters:

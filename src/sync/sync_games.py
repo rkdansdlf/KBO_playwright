@@ -64,7 +64,16 @@ def _serialized_payload_length(payload: object) -> int:
 
 
 def _compact_metadata_source_payload_for_limit(payload: object, limit: int | None) -> object:
-    """Keep OCI varchar-backed source_payload values under the target length."""
+    """
+    Keep OCI varchar-backed source_payload values under the target length.
+
+    Args:
+        payload: Payload.
+        limit: Limit.
+        payload: Payload.
+        limit: Limit.
+
+    """
     if payload is None or not limit or _serialized_payload_length(payload) <= limit:
         return payload
 
@@ -141,8 +150,20 @@ class GameSyncMixin:
         return data
 
     def sync_games(self, limit: int | None = None, filters: list | None = None, batch_size: int = 5000) -> int:
-        """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY."""
+        """
+        Sync game detail data from SQLite to OCI using Batched UPSERT or COPY.
+
+        Args:
+            limit: Limit.
+            filters: Filters.
+            batch_size: Batch Size.
+            limit: Limit.
+            filters: Filters.
+            batch_size: Batch Size.
+
+        """
         season_map = self._get_season_map()
+
         unmapped_count = 0
 
         def transform(data: dict[str, Any]) -> dict[str, Any] | None:
@@ -190,27 +211,56 @@ class GameSyncMixin:
         return result
 
     def sync_player_game_batting(self, year: int | None = None, batch_size: int = 5000) -> int:
-        """Sync player game batting stats from SQLite to OCI."""
+        """
+        Sync player game batting stats from SQLite to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            year: Season year.
+            batch_size: Batch Size.
+
+        """
         filters = [PlayerGameBatting.game_id.like(f"{year}%")] if year else None
+
         return self.sync_simple_table(
             PlayerGameBatting,
             ["game_id", "player_id"],
+            exclude_cols=["created_at", "id"],
             filters=filters,
             batch_size=batch_size,
         )
 
     def sync_player_game_pitching(self, year: int | None = None, batch_size: int = 5000) -> int:
-        """Sync player game pitching stats from SQLite to OCI."""
+        """
+        Sync player game pitching stats from SQLite to OCI.
+
+        Args:
+            year: Season year.
+            batch_size: Batch Size.
+            year: Season year.
+            batch_size: Batch Size.
+
+        """
         filters = [PlayerGamePitching.game_id.like(f"{year}%")] if year else None
+
         return self.sync_simple_table(
             PlayerGamePitching,
             ["game_id", "player_id"],
+            exclude_cols=["created_at", "id"],
             filters=filters,
             batch_size=batch_size,
         )
 
     def sync_all_game_data(self, limit: int | None = None) -> dict[str, int]:
-        """Sync all game-related data."""
+        """
+        Sync all game-related data.
+
+        Args:
+            limit: Limit.
+            limit: Limit.
+
+        """
         return {
             "game_schedules": self.sync_game_schedules(limit=limit),
             "games": self.sync_games(limit=limit),
@@ -223,8 +273,14 @@ class GameSyncMixin:
         Delete year-scoped child detail rows on OCI before re-sync.
 
         This prevents stale duplicates when mutable fields (e.g. player_id) change.
+
+        Args:
+            year: Season year.
+            year: Season year.
+
         """
         pattern = f"{year}%"
+
         child_tables = [
             "game_metadata",
             "game_inning_scores",
@@ -241,7 +297,7 @@ class GameSyncMixin:
         ]
 
         def purge_child_rows() -> None:
-            """Purges child rows."""
+            """Purge child rows."""
             for table_name in child_tables:
                 self.target_session.execute(
                     text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),
@@ -271,7 +327,7 @@ class GameSyncMixin:
             return
 
         def replace_child_rows() -> None:
-            """Handles the replace child rows operation."""
+            """Handle the replace child rows operation."""
             for child_model in child_models:
                 if not self._target_table_exists(child_model):
                     logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
@@ -437,9 +493,17 @@ class GameSyncMixin:
         batch_size: int = 5000,
     ) -> dict[str, int]:
         """
-        Syncs game details.
+        Sync game details.
 
         Args:
+            days: Days.
+            year: Season year.
+            unsynced_only: Unsynced Only.
+            batch_size: Batch Size.
+            days: Days.
+            year: Season year.
+            unsynced_only: Unsynced Only.
+            batch_size: Batch Size.
             days: Days.
             year: Season year.
 
@@ -476,8 +540,18 @@ class GameSyncMixin:
         return self._aggregate_game_detail_chunks(scope)
 
     def sync_game_details_for_ids(self, game_ids: list[str], batch_size: int = 5000) -> dict[str, int]:
-        """Sync completed game details for an explicit list of game IDs."""
+        """
+        Sync completed game details for an explicit list of game IDs.
+
+        Args:
+            game_ids: Game Ids.
+            batch_size: Batch Size.
+            game_ids: Game Ids.
+            batch_size: Batch Size.
+
+        """
         scoped_game_ids = list(dict.fromkeys(game_id for game_id in game_ids if game_id))
+
         if not scoped_game_ids:
             return {}
         if not self.test_connection():
@@ -582,11 +656,13 @@ class GameSyncMixin:
                 eligibility=eligibility,
             )
 
-        def get_child_filters(model_cls: type) -> list | None:
+        def get_child_filters(model_cls: type[Base]) -> list | None:
             """
-            Gets child filters.
+            Get child filters.
 
             Args:
+                model_cls: Model Cls.
+                model_cls: Model Cls.
                 model_cls: Model Cls.
 
             Returns:
@@ -677,7 +753,14 @@ class GameSyncMixin:
         return results
 
     def sync_specific_game(self, game_id: str) -> dict[str, int]:
-        """Sync all related data for a single game_id."""
+        """
+        Sync all related data for a single game_id.
+
+        Args:
+            game_id: Game ID.
+            game_id: Game ID.
+
+        """
         if not self.test_connection():
             logger.error("❌ OCI connection failed. Aborting sync_specific_game.")
             return {}
@@ -790,7 +873,14 @@ class GameSyncMixin:
         return results
 
     def sync_pregame_game(self, game_id: str) -> dict[str, int]:
-        """Sync only pregame publish tables for one game without touching completed detail datasets."""
+        """
+        Sync only pregame publish tables for one game without touching completed detail datasets.
+
+        Args:
+            game_id: Game ID.
+            game_id: Game ID.
+
+        """
         if not game_id:
             return {}
 
@@ -810,7 +900,7 @@ class GameSyncMixin:
         results["player_basic"] = self._sync_referenced_player_basic_for_games([game_id])
 
         def delete_existing_lineups() -> None:
-            """Deletes existing lineups."""
+            """Delete existing lineups."""
             self.target_session.query(GameLineup).filter(GameLineup.game_id == game_id).delete(
                 synchronize_session=False,
             )
@@ -852,13 +942,23 @@ class GameSyncMixin:
         *,
         summary_type: str = "리뷰_WPA",
     ) -> dict[str, int]:
-        """Replace and sync review summary rows for a bounded game_id set."""
+        """
+        Replace and sync review summary rows for a bounded game_id set.
+
+        Args:
+            game_ids: Game Ids.
+            summary_type: Summary Type.
+            game_ids: Game Ids.
+            summary_type: Summary Type.
+
+        """
         target_game_ids = sorted({game_id for game_id in game_ids if game_id})
+
         if not target_game_ids:
             return {"summary": 0, "games": 0}
 
         def delete_existing_summaries() -> None:
-            """Deletes existing summaries."""
+            """Delete existing summaries."""
             for batch in self._chunked(target_game_ids, 500):
                 self.target_session.query(GameSummary).filter(
                     GameSummary.game_id.in_(batch),
@@ -905,7 +1005,7 @@ class GameSyncMixin:
         if game_ids:
 
             def delete_existing_game_summaries() -> None:
-                """Deletes existing game summaries."""
+                """Delete existing game summaries."""
                 for batch in self._chunked(game_ids, 500):
                     delete_query = self.target_session.query(GameSummary).filter(GameSummary.game_id.in_(batch))
                     if summary_type:
@@ -948,7 +1048,7 @@ class GameSyncMixin:
         self._reset_target_sequence_for_table("game_play_by_play")
 
         def delete_existing_play_by_play() -> None:
-            """Deletes existing play by play."""
+            """Delete existing play by play."""
             for batch in self._chunked(game_ids, 500):
                 self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(
                     synchronize_session=False,

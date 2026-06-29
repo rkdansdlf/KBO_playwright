@@ -2,6 +2,7 @@
 KBO Daily Data Update Orchestrator.
 
 This entrypoint is the postgame finalize + daily reconciliation job.
+
 """
 
 from __future__ import annotations
@@ -71,6 +72,7 @@ from src.utils.game_status import (
 )
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.schedule_validation import is_detail_candidate_game
+from src.utils.sentry import init_sentry
 from src.utils.team_codes import normalize_kbo_game_id
 
 
@@ -324,9 +326,10 @@ def _write_daily_update_summary(
 
 def format_stability_alert_summary(result: object) -> str | None:
     """
-    Formats stability summary.
+    Format stability summary.
 
     Args:
+        result: Result.
         result: Result.
 
     Returns:
@@ -418,8 +421,15 @@ def _run_oci_parity_quality_gate() -> dict[str, Any]:
 
 
 def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]]:
-    """Capture auto-healer candidates so repaired past games can be finalized and synced."""
+    """
+    Capture auto-healer candidates so repaired past games can be finalized and synced.
+
+    Args:
+        today: Today.
+
+    """
     yesterday = today - timedelta(days=1)
+
     try:
         with SessionLocal() as session:
             rows = (
@@ -1594,7 +1604,26 @@ async def run_update(
     skip_oci_supporting_sync: bool = False,
     run_p0_non_game: bool = True,
 ) -> dict[str, Any]:
-    """Main orchestration logic for postgame finalize and daily reconciliation."""
+    """
+    Handle main orchestration logic for postgame finalize and daily reconciliation.
+
+    Args:
+        target_date: Target date for the operation.
+        sync: Whether to sync to remote database.
+        headless: Whether to run the browser in headless mode.
+        limit: Limit.
+        step_runner: Step Runner.
+        summary_dir: Summary Dir.
+        seed_tomorrow_preview: Seed Tomorrow Preview.
+        run_auto_healer: Run Auto Healer.
+        run_postgame_reconciliation: Run Postgame Reconciliation.
+        postgame_reconcile_lookback_days: Postgame Reconcile Lookback Days.
+        fix: Fix.
+        skip_season_stats: Skip Season Stats.
+        skip_oci_supporting_sync: Skip Oci Supporting Sync.
+        run_p0_non_game: Run P0 Non Game.
+
+    """
     ctx = _RunContext(
         target_date=target_date,
         sync=sync,
@@ -1649,13 +1678,14 @@ async def run_update(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Builds arg parser.
+    Build arg parser.
 
     Returns:
         The result of the operation.
 
     """
     parser = argparse.ArgumentParser(description="KBO Daily Data Finalize Orchestrator")
+
     parser.add_argument(
         "--date",
         type=str,
@@ -1733,7 +1763,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
+    init_sentry()
+
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 

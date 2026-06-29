@@ -42,9 +42,11 @@ ALL_GAME_STATUSES = {
 
 def is_terminal_status(status: str | None) -> bool:
     """
-    Returns whether the terminal status.
+    Return whether the terminal status.
 
     Args:
+        status: Status.
+        status: Status.
         status: Status.
 
     Returns:
@@ -56,9 +58,11 @@ def is_terminal_status(status: str | None) -> bool:
 
 def is_completed_like_status(status: str | None) -> bool:
     """
-    Returns whether the completed like status.
+    Return whether the completed like status.
 
     Args:
+        status: Status.
+        status: Status.
         status: Status.
 
     Returns:
@@ -70,9 +74,11 @@ def is_completed_like_status(status: str | None) -> bool:
 
 def is_live_status(status: str | None) -> bool:
     """
-    Returns whether the live status.
+    Return whether the live status.
 
     Args:
+        status: Status.
+        status: Status.
         status: Status.
 
     Returns:
@@ -84,9 +90,11 @@ def is_live_status(status: str | None) -> bool:
 
 def normalize_game_status(status: str | None) -> str | None:
     """
-    Normalizes game status.
+    Normalize game status.
 
     Args:
+        status: Status.
+        status: Status.
         status: Status.
 
     Returns:
@@ -107,7 +115,7 @@ def normalize_game_status(status: str | None) -> str | None:
 
 def completed_like_statuses() -> Iterable[str]:
     """
-    Handles the completed like statuses operation.
+    Handle the completed like statuses operation.
 
     Returns:
         The result of the operation.
@@ -131,9 +139,17 @@ class GameStatusEvidence:
 
 def _resolve_scored_status(current_status: str | None, new_status: str | None, home_score: int, away_score: int) -> str:
     """
-    Resolves scored status.
+    Resolve scored status.
 
     Args:
+        current_status: Current Status.
+        new_status: New Status.
+        home_score: Home Score.
+        away_score: Away Score.
+        current_status: Current Status.
+        new_status: New Status.
+        home_score: Home Score.
+        away_score: Away Score.
         current_status: Current Status.
         new_status: New Status.
         home_score: Home Score.
@@ -150,9 +166,13 @@ def _resolve_scored_status(current_status: str | None, new_status: str | None, h
 
 def _resolve_today_status(evidence: GameStatusEvidence, new_status: str | None) -> str:
     """
-    Resolves today status.
+    Resolve today status.
 
     Args:
+        evidence: Evidence.
+        new_status: New Status.
+        evidence: Evidence.
+        new_status: New Status.
         evidence: Evidence.
         new_status: New Status.
 
@@ -167,9 +187,13 @@ def _resolve_today_status(evidence: GameStatusEvidence, new_status: str | None) 
 
 def _resolve_past_status(current_status: str | None, new_status: str | None) -> str:
     """
-    Resolves past status.
+    Resolve past status.
 
     Args:
+        current_status: Current Status.
+        new_status: New Status.
+        current_status: Current Status.
+        new_status: New Status.
         current_status: Current Status.
         new_status: New Status.
 
@@ -188,7 +212,14 @@ def derive_stable_game_status(evidence: GameStatusEvidence | None = None, **kwar
     """
     Central logic to resolve game status based on date and evidence.
 
-    Ensures stability and prevents premature LIVE/COMPLETED transitions.
+    Ensure stability and prevents premature LIVE/COMPLETED transitions.
+
+    Args:
+        evidence: Evidence.
+        kwargs: Keyword arguments to pass through.
+        evidence: Evidence.
+        kwargs: Keyword arguments to pass through.
+
     """
     if evidence is None:
         evidence = GameStatusEvidence(**kwargs)  # type: ignore[arg-type]

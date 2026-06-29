@@ -2,6 +2,7 @@
 Service to aggregate player season stats into team-level season stats.
 
 Acts as a fallback when KBO's team cumulative record pages are unavailable.
+
 """
 
 from __future__ import annotations
@@ -59,13 +60,20 @@ DEFAULT_TEAM_NAMES = {
 
 class TeamStatAggregator:
     """
-    Aggregates individual player season statistics into team-level season statistics.
+    aggregate individual player season statistics into team-level season statistics.
 
     Provides pure in-memory aggregation methods for testability and DB-integrated methods for CLI/Crawlers.
+
     """
 
     def __init__(self, session: Session | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+
+        """
         self.session = session
 
     @staticmethod
@@ -73,9 +81,16 @@ class TeamStatAggregator:
         """
         Get the total games played by a team in a season from standings.
 
-        Returns 0 if not found.
+        Return 0 if not found.
+
+        Args:
+            session: Session.
+            team_id: Team ID.
+            year: Season year.
+
         """
         start_date = date_type(year, 1, 1)
+
         end_date = date_type(year, 12, 31)
         latest_standings = (
             session.query(TeamStandingsDaily)
@@ -91,8 +106,17 @@ class TeamStatAggregator:
 
     @staticmethod
     def _get_team_record_from_standings(session: Session, team_id: str, year: int) -> dict[str, int]:
-        """Get the team win/loss/tie record from standings."""
+        """
+        Get the team win/loss/tie record from standings.
+
+        Args:
+            session: Session.
+            team_id: Team ID.
+            year: Season year.
+
+        """
         start_date = date_type(year, 1, 1)
+
         end_date = date_type(year, 12, 31)
         latest_standings = (
             session.query(TeamStandingsDaily)
@@ -153,8 +177,17 @@ class TeamStatAggregator:
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         """
-        Dispatches to database-driven aggregation if an integer season is passed,
+        Dispatch to database-driven aggregation if an integer season is passed,
         or pure in-memory aggregation if an iterable of rows is passed.
+
+        Args:
+            query: Query.
+            team_id: Team ID.
+            rows: Rows.
+            team_names: Team Names.
+            team_games_map: Team Games Map.
+            dry_run: If True, performs a dry run without persisting changes.
+
         """
         actual_query = self._build_aggregation_query(
             query,
@@ -190,8 +223,17 @@ class TeamStatAggregator:
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         """
-        Dispatches to database-driven aggregation if an integer season is passed,
+        Dispatch to database-driven aggregation if an integer season is passed,
         or pure in-memory aggregation if an iterable of rows is passed.
+
+        Args:
+            query: Query.
+            team_id: Team ID.
+            rows: Rows.
+            team_names: Team Names.
+            team_games_map: Team Games Map.
+            dry_run: If True, performs a dry run without persisting changes.
+
         """
         actual_query = self._build_aggregation_query(
             query,
@@ -223,8 +265,17 @@ class TeamStatAggregator:
         *,
         dry_run: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
-        """Aggregates and updates both batting and pitching stats."""
+        """
+        Aggregate and updates both batting and pitching stats.
+
+        Args:
+            season: Season year.
+            team_id: Team ID.
+            dry_run: If True, performs a dry run without persisting changes.
+
+        """
         batting_results = self.aggregate_batting(TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run))
+
         pitching_results = self.aggregate_pitching(
             TeamAggregationQuery(season=season, team_id=team_id, dry_run=dry_run),
         )
@@ -510,6 +561,12 @@ class TeamStatAggregator:
         Pure in-memory aggregation of player season batting rows into team batting stats.
 
         Grouped by (season, team_code).
+
+        Args:
+            rows: Rows.
+            team_names: Team Names.
+            team_games_map: Team Games Map.
+
         """
         if team_names is None:
             team_names = DEFAULT_TEAM_NAMES
@@ -606,6 +663,12 @@ class TeamStatAggregator:
         Pure in-memory aggregation of player season pitching rows into team pitching stats.
 
         Grouped by (season, team_code).
+
+        Args:
+            rows: Rows.
+            team_names: Team Names.
+            team_games_map: Team Games Map.
+
         """
         if team_names is None:
             team_names = DEFAULT_TEAM_NAMES
@@ -692,6 +755,12 @@ class TeamStatAggregator:
         Aggregate batting stats for all teams in a given season/league using database queries.
 
         Maintains legacy database-bound compatibility while reusing pure business logic under the hood.
+
+        Args:
+            session: Session.
+            year: Season year.
+            league: League.
+
         """
         league = league.upper()
 
@@ -730,6 +799,12 @@ class TeamStatAggregator:
         Aggregate pitching stats for all teams in a given season/league using database queries.
 
         Maintains legacy database-bound compatibility while reusing pure business logic under the hood.
+
+        Args:
+            session: Session.
+            year: Season year.
+            league: League.
+
         """
         league = league.upper()
 

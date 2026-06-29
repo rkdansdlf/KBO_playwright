@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 """
 Futures League Pitching Stats Crawler
+
 Fetches year-by-year Futures pitching statistics from player profile pages.
+
 """
 
 import re
@@ -18,6 +20,7 @@ from playwright.async_api import Error as PlaywrightError
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import LONG_TIMEOUT, SHORT_TIMEOUT
+from src.utils.team_codes import TEAM_NAME_TO_CODE
 from src.utils.throttle import throttle
 from src.utils.type_helpers import (
     parse_innings_to_outs,
@@ -99,8 +102,15 @@ HEADER_MAP = {
 
 
 def _norm_header(txt: str) -> str:
-    """Normalize header text to standard key."""
+    """
+    Normalize header text to standard key.
+
+    Args:
+        txt: Txt.
+
+    """
     t = re.sub(r"\s+", "", txt).lower()
+
     return HEADER_MAP.get(t, txt.strip())
 
 
@@ -135,6 +145,10 @@ def _parse_pitching_cell_row(headers: list[str], cells: list[str]) -> dict[str, 
             row["season"] = int(m.group()) if m else None
         elif key == "team_name":
             row["team_name"] = v
+            code = TEAM_NAME_TO_CODE.get(v.strip())
+            if not code:
+                code = TEAM_NAME_TO_CODE.get(v.strip().upper())
+            row["team_code"] = code
         elif key == "era":
             row["era"] = safe_float_or_none(v)
         elif key == "IP":
@@ -161,8 +175,15 @@ def _parse_pitching_cell_row(headers: list[str], cells: list[str]) -> dict[str, 
 
 
 def _pick_futures_pitching_table(soup: BeautifulSoup) -> Tag | None:
-    """Find the Futures pitching record table."""
+    """
+    Find the Futures pitching record table.
+
+    Args:
+        soup: Soup.
+
+    """
     # Method 1: Find by ID
+
     tbl = soup.find("table", id="tblPitcherRecord")
     if tbl:
         return tbl
@@ -183,8 +204,17 @@ async def fetch_and_parse_futures_pitching(
     profile_url: str,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[dict]:
-    """Fetch Futures pitching stats from player profile page."""
+    """
+    Fetch Futures pitching stats from player profile page.
+
+    Args:
+        _player_id: Player ID.
+        profile_url: Profile URL.
+        pool: Connection pool for async operations.
+
+    """
     active_pool = pool or AsyncPlaywrightPool(max_pages=1, context_kwargs={"locale": "ko-KR"})
+
     owns_pool = pool is None
     await active_pool.start()
     try:

@@ -1,7 +1,10 @@
 """
-통합 Game Stat 복구 스크립트. --type batting|pitching 으로 선택.
+통합 Game Stat 복구 스크립트.
+
+    --type batting|pitching 으로 선택.
 
 NULL/zero AVG, OBP, ERA, WHIP 등을 계산하여 채웁니다.
+
 """
 
 from __future__ import annotations
@@ -110,8 +113,15 @@ def _repair_pitching() -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Repair NULL/zero game stats")
+
     parser.add_argument("--type", choices=["batting", "pitching", "all"], default="all", help="Stat type to repair")
     args = parser.parse_args(argv)
     if args.type in ("batting", "all"):

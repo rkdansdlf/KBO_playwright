@@ -9,6 +9,10 @@ def validate_game_data(game_data: dict[str, Any]) -> tuple[bool, list[str], list
     """
     Validate parsed game data prior to persistence.
 
+    Args:
+        game_data: Game Data.
+        game_data: Game Data.
+
     Returns:
         (is_valid, errors, warnings)
         - errors: Critical issues that prevent saving
@@ -16,6 +20,7 @@ def validate_game_data(game_data: dict[str, Any]) -> tuple[bool, list[str], list
 
     """
     errors: list[str] = []
+
     warnings: list[str] = []
 
     # Critical validations (will block save)

@@ -1,7 +1,8 @@
 """
 Robots.txt compliance checker for KBO Data Crawler.
 
-Ensures that we follow Disallow rules from koreabaseball.com.
+Ensure that we follow Disallow rules from koreabaseball.com.
+
 """
 
 from __future__ import annotations
@@ -27,13 +28,21 @@ logger = logging.getLogger(__name__)
 
 
 class ComplianceChecker:
-    """Fetches and parses robots.txt to check crawling permissions."""
+    """Fetch and parses robots.txt to check crawling permissions."""
 
     _instance: ComplianceChecker | None = None
 
     def __init__(self, robots_url: str = "https://www.koreabaseball.com/robots.txt") -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            robots_url: Robots URL.
+            robots_url: Robots URL.
+
+        """
         self.robots_url = robots_url
+
         self.parser = urllib.robotparser.RobotFileParser()
         self.last_fetch_time = 0.0
         self.fetch_interval = 86400  # 24 hours
@@ -42,7 +51,7 @@ class ComplianceChecker:
     @classmethod
     def get_instance(cls) -> ComplianceChecker:
         """
-        Gets instance.
+        Get instance.
 
         Returns:
             ComplianceChecker instance.
@@ -98,16 +107,36 @@ class ComplianceChecker:
                         self.last_fetch_time = now
 
     async def is_allowed(self, url: str, user_agent: str = "*") -> bool:
-        """Check if the given URL is allowed for crawling."""
+        """
+        Check if the given URL is allowed for crawling.
+
+        Args:
+            url: Url.
+            user_agent: User Agent.
+            url: Url.
+            user_agent: User Agent.
+
+        """
         await self._ensure_loaded()
+
         allowed = self.parser.can_fetch(user_agent, url)
         if not allowed:
             logger.info("[COMPLIANCE] BLOCKED: %s is DISALLOWED by robots.txt", url)
         return allowed
 
     def is_allowed_sync(self, url: str, user_agent: str = "*") -> bool:
-        """Synchronous version of is_allowed (Wait if not loaded)."""
+        """
+        Provide synchronous version of is_allowed (Wait if not loaded).
+
+        Args:
+            url: Url.
+            user_agent: User Agent.
+            url: Url.
+            user_agent: User Agent.
+
+        """
         # If not loaded, we perform a sync fetch (minimal blocking)
+
         now = time.time()
         if now - self.last_fetch_time > self.fetch_interval:
             logger.info("[COMPLIANCE] Sync fetching robots.txt from %s", self.robots_url)

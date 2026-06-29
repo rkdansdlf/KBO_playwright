@@ -1,8 +1,9 @@
 """
 Repository for StadiumOperationNotice CRUD operations.
 
-Handles upsert logic based on (stadium_code, source_name, external_id)
+Handle upsert logic based on (stadium_code, source_name, external_id)
 or (stadium_code, source_name, title, published_at) as fallback.
+
 """
 
 from __future__ import annotations
@@ -27,7 +28,14 @@ class OperationNoticeRepository:
     """OperationNoticeRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     # ─────────────────────────────────────────────
@@ -38,9 +46,15 @@ class OperationNoticeRepository:
         """
         Insert or update a notice.
 
-        Returns (record, created: bool).
+        Return (record, created: bool).
+
+        Args:
+            data: Data.
+            data: Data.
+
         """
         stadium_code = data.get("stadium_code", "")
+
         source_name = data.get("source_name", "")
         external_id = data.get("external_id")
 
@@ -88,9 +102,15 @@ class OperationNoticeRepository:
         """
         Upsert multiple notices.
 
-        Returns (created, updated) counts.
+        Return (created, updated) counts.
+
+        Args:
+            notices: Notices.
+            notices: Notices.
+
         """
         created = updated = 0
+
         unique_notices = {}
         for n in notices:
             ext_id = n.get("external_id")
@@ -125,9 +145,15 @@ class OperationNoticeRepository:
         urgent_only: bool = False,
     ) -> list[StadiumOperationNotice]:
         """
-        Gets by game date.
+        Get by game date.
 
         Args:
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+            urgent_only: Urgent Only.
+            stadium_code: Stadium Code.
+            game_date: Game Date.
+            urgent_only: Urgent Only.
             stadium_code: Stadium Code.
             game_date: Game Date.
 
@@ -155,9 +181,17 @@ class OperationNoticeRepository:
         source_name: str | None = None,
     ) -> list[StadiumOperationNotice]:
         """
-        Gets recent.
+        Get recent.
 
         Args:
+            stadium_code: Stadium Code.
+            limit: Limit.
+            notice_type: Notice Type.
+            source_name: Source Name.
+            stadium_code: Stadium Code.
+            limit: Limit.
+            notice_type: Notice Type.
+            source_name: Source Name.
             stadium_code: Stadium Code.
 
         Returns:
@@ -165,6 +199,7 @@ class OperationNoticeRepository:
 
         """
         stmt = select(StadiumOperationNotice).where(StadiumOperationNotice.stadium_code == stadium_code)
+
         if notice_type:
             stmt = stmt.where(StadiumOperationNotice.notice_type == notice_type)
         if source_name:
@@ -174,9 +209,11 @@ class OperationNoticeRepository:
 
     def get_urgent_today(self, stadium_code: str) -> list[StadiumOperationNotice]:
         """
-        Gets urgent today.
+        Get urgent today.
 
         Args:
+            stadium_code: Stadium Code.
+            stadium_code: Stadium Code.
             stadium_code: Stadium Code.
 
         Returns:
@@ -184,10 +221,20 @@ class OperationNoticeRepository:
 
         """
         today = datetime.now(KST).date()
+
         return self.get_by_game_date(stadium_code, today, urgent_only=True)
 
     def get_latest_external_id(self, stadium_code: str, source_name: str) -> str | None:
-        """Returns the most recently published external_id for incremental crawling."""
+        """
+        Return the most recently published external_id for incremental crawling.
+
+        Args:
+            stadium_code: Stadium Code.
+            source_name: Source Name.
+            stadium_code: Stadium Code.
+            source_name: Source Name.
+
+        """
         stmt = (
             select(StadiumOperationNotice.external_id)
             .where(

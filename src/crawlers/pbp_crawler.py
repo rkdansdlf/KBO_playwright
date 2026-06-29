@@ -3,6 +3,7 @@ PBP Crawler - Historical Play-by-play data collection (`LiveTextView2.aspx`).
 
 Navigaes directly to the Live Text View page to collect events.
 Computes WPA transitions based on the events.
+
 """
 
 from __future__ import annotations
@@ -71,8 +72,17 @@ class PBPCrawler:
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
         # Using the older but more robust LiveText.aspx which behaves better with Referer checks
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            policy: Policy.
+            pool: Connection pool for async operations.
+
+        """
         self.base_url = "https://www.koreabaseball.com/Game/LiveText.aspx"
+
         self.policy = policy or RequestPolicy.with_delay(request_delay, request_delay + 0.5)
         self.pool = pool
         self._context_kwargs = self.policy.build_context_kwargs(locale="ko-KR")
@@ -207,8 +217,15 @@ class PBPCrawler:
         }
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """Loads the LiveText page for a specific game and extracts PBP data."""
+        """
+        Load the LiveText page for a specific game and extracts PBP data.
+
+        Args:
+            game_id: Game ID.
+
+        """
         self.last_failure_reason = None
+
         game_date = game_id[:8]
         # Common ids: leagueId=1 (KBO), seriesId=0 (Regular)
         url = f"{self.base_url}?leagueId=1&seriesId=0&gameId={game_id}&gyear={game_date[:4]}"
@@ -283,8 +300,15 @@ class PBPCrawler:
         return await self._crawl_game_events_with_pool(ctx.pool, ctx.game_id, ctx.game_date, ctx.url, retry_count=1)
 
     async def _extract_flat_events_legacy(self, page: Page) -> list[dict[str, Any]]:
-        """Extract events from LiveText.aspx which are in reverse chronological order."""
+        """
+        Extract events from LiveText.aspx which are in reverse chronological order.
+
+        Args:
+            page: Page.
+
+        """
         extraction_script = """
+
         () => {
             const getSpans = (container) => {
                 if (!container) return [];

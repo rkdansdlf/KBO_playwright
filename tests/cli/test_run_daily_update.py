@@ -17,6 +17,11 @@ from src.services.recovery_manager import RecoveryManager
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
 class TestRunDailyUpdateCLI:
     def test_main_default_date(self):
         with (

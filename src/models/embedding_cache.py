@@ -14,6 +14,7 @@ class EmbeddingCache(Base, TimestampMixin):
     """
     Cache table mapping SHA-256 hashes of text content and model names
     to their computed 256-dimensional float embedding vectors.
+
     """
 
     __tablename__ = "embedding_cache"
@@ -27,5 +28,5 @@ class EmbeddingCache(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<EmbeddingCache(model='{self.model_name}', hash='{self.text_hash[:8]}')>"

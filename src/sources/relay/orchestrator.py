@@ -41,8 +41,24 @@ class RelayRecoveryOrchestrator:
         timeout_seconds: float = 30.0,
         circuit_breaker: SourceCircuitBreaker | None = None,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            adapters: Adapters.
+            capability_path: Capability file path.
+            sample_size: Sample Size.
+            timeout_seconds: Timeout Seconds.
+            circuit_breaker: Circuit Breaker.
+            adapters: Adapters.
+            capability_path: Capability file path.
+            sample_size: Sample Size.
+            timeout_seconds: Timeout Seconds.
+            circuit_breaker: Circuit Breaker.
+
+        """
         self.adapters = adapters
+
         self.capability_path = Path(capability_path)
         self.sample_size = sample_size
         self.timeout_seconds = timeout_seconds
@@ -59,9 +75,13 @@ class RelayRecoveryOrchestrator:
 
     def get_capability(self, bucket_id: str, source_name: str) -> CapabilityRecord | None:
         """
-        Gets capability.
+        Get capability.
 
         Args:
+            bucket_id: Bucket ID.
+            source_name: Source Name.
+            bucket_id: Bucket ID.
+            source_name: Source Name.
             bucket_id: Bucket ID.
             source_name: Source Name.
 
@@ -116,9 +136,13 @@ class RelayRecoveryOrchestrator:
 
     def source_order_for_bucket(self, bucket_id: str, override: Iterable[str] | None = None) -> list[str]:
         """
-        Handles the source order for bucket operation.
+        Handle the source order for bucket operation.
 
         Args:
+            bucket_id: Bucket ID.
+            override: Override.
+            bucket_id: Bucket ID.
+            override: Override.
             bucket_id: Bucket ID.
             override: Override.
 
@@ -137,9 +161,15 @@ class RelayRecoveryOrchestrator:
         source_order: Iterable[str],
     ) -> dict[str, CapabilityRecord]:
         """
-        Handles the probe bucket operation.
+        Handle the probe bucket operation.
 
         Args:
+            bucket_id: Bucket ID.
+            game_ids: Game Ids.
+            source_order: Source Order.
+            bucket_id: Bucket ID.
+            game_ids: Game Ids.
+            source_order: Source Order.
             bucket_id: Bucket ID.
             game_ids: Game Ids.
             source_order: Source Order.
@@ -149,6 +179,7 @@ class RelayRecoveryOrchestrator:
 
         """
         self._invalidate_capability_cache()
+
         sample_ids = [game_id for game_id in game_ids if game_id][: self.sample_size]
         records: dict[str, CapabilityRecord] = {}
         if not sample_ids:
@@ -203,9 +234,17 @@ class RelayRecoveryOrchestrator:
         validator: Callable[[NormalizedRelayResult], str | None] | None = None,
     ) -> tuple[NormalizedRelayResult, list[dict[str, Any]]]:
         """
-        Fetches game.
+        Fetch game.
 
         Args:
+            game_id: Game ID.
+            bucket_id: Bucket ID.
+            source_order: Source Order.
+            validator: Validator instance.
+            game_id: Game ID.
+            bucket_id: Bucket ID.
+            source_order: Source Order.
+            validator: Validator instance.
             game_id: Game ID.
             bucket_id: Bucket ID.
             source_order: Source Order.
@@ -215,6 +254,7 @@ class RelayRecoveryOrchestrator:
 
         """
         attempts: list[dict[str, Any]] = []
+
         for source_name in source_order:
             cb = self.circuit_breaker
             if cb is not None and not cb.is_available(source_name, bucket_id):
@@ -243,7 +283,7 @@ class RelayRecoveryOrchestrator:
                         "bucket_id": bucket_id,
                         "source_name": source_name,
                         "status": "cached_unsupported",
-                        "notes": capability.notes,
+                        "notes": capability.notes if capability else "",
                     },
                 )
                 continue

@@ -31,7 +31,7 @@ class ScheduleSaveResult:
     @property
     def discovered(self) -> int:
         """
-        Handles the discovered operation.
+        Handle the discovered operation.
 
         Returns:
             Integer result.
@@ -49,9 +49,19 @@ def save_schedule_games(
     source_reason: str = "schedule_refresh",
 ) -> ScheduleSaveResult:
     """
-    Saves schedule games.
+    Save schedule games.
 
     Args:
+        games: Games.
+        log: Logger instance.
+        write_contract: Write Contract.
+        source_crawler: Source Crawler.
+        source_reason: Source Reason.
+        games: Games.
+        log: Logger instance.
+        write_contract: Write Contract.
+        source_crawler: Source Crawler.
+        source_reason: Source Reason.
         games: Games.
 
     Returns:
@@ -59,6 +69,7 @@ def save_schedule_games(
 
     """
     game_list = list(games)
+
     result = ScheduleSaveResult(games=game_list, saved_games=[], failed_games=[], filtered_games=[])
     contract = write_contract or GameWriteContract(run_label="schedule_collection", log=log)
     for game in game_list:

@@ -63,5 +63,5 @@ class ParkingLot(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return f"<ParkingLot(stadium='{self.stadium_id}', name='{self.name}')>"

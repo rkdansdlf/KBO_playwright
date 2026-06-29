@@ -18,6 +18,7 @@ Environment variables:
 
 Reference:
   https://developers.naver.com/docs/serviceapi/search/news/news.md
+
 """
 
 import asyncio
@@ -79,7 +80,14 @@ class NaverSearchResult:
 
 
 def _parse_naver_date(pub_date_str: str) -> datetime | None:
-    """Parse Naver API date string (RFC 2822 format)."""
+    """
+    Parse Naver API date string (RFC 2822 format).
+
+    Args:
+        pub_date_str: Pub Date Str.
+        pub_date_str: Pub Date Str.
+
+    """
     if not pub_date_str:
         return None
     try:
@@ -97,7 +105,14 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
 
 
 def _clean_html(text: str) -> str:
-    """Remove Naver search result HTML tags (e.g. <b>, </b>)."""
+    """
+    Remove Naver search result HTML tags (e.g. <b>, </b>).
+
+    Args:
+        text: Text.
+        text: Text.
+
+    """
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
@@ -108,16 +123,17 @@ class NaverSearchClient:
     Usage:
         client = NaverSearchClient()
         results = await client.search_news("LG트윈스 입장")
+
     """
 
     def __init__(self) -> None:
-        """Initializes a new instance."""
+        """Initialize a new instance."""
         self.client_id = os.getenv("NAVER_CLIENT_ID", "")
         self.client_secret = os.getenv("NAVER_CLIENT_SECRET", "")
 
     def _is_configured(self) -> bool:
         """
-        Handles the is configured operation.
+        Handle the is configured operation.
 
         Returns:
             True if the condition is met, False otherwise.
@@ -127,7 +143,7 @@ class NaverSearchClient:
 
     def _headers(self) -> dict[str, Any]:
         """
-        Handles the headers operation.
+        Handle the headers operation.
 
         Returns:
             Dictionary mapping.
@@ -149,6 +165,14 @@ class NaverSearchClient:
         Search Naver for news/blog/cafe articles.
 
         Args:
+            query: Query.
+            search_type: Search Type.
+            display: Display.
+            sort: Sort.
+            query: Query.
+            search_type: Search Type.
+            display: Display.
+            sort: Sort.
             query: Search query string.
             search_type: 'news', 'blog', or 'cafearticle'.
             display: Number of results (max 100).
@@ -201,10 +225,13 @@ class NaverSearchClient:
         Run all KBO notice queries and return deduplicated results.
 
         Args:
+            days_back: Days Back.
+            days_back: Days Back.
             days_back: Only return results from the last N days.
 
         """
         cutoff = datetime.now(KST) - timedelta(days=days_back)
+
         all_results: list[NaverSearchResult] = []
         seen_links: set[str] = set()
 

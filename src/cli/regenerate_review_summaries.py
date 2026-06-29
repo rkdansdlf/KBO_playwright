@@ -57,7 +57,7 @@ class ReviewRegenReportRow:
 
     def as_csv_row(self) -> dict[str, Any]:
         """
-        Handles the as csv row operation.
+        Handle the as csv row operation.
 
         Returns:
             Dictionary result.
@@ -351,13 +351,25 @@ def regenerate_review_summaries(
     log: Callable[[str], object] = logger.info,
 ) -> list[ReviewRegenReportRow]:
     """
-    Handles the regenerate review summaries operation.
+    Handle the regenerate review summaries operation.
+
+    Args:
+        game_ids: Game Ids.
+        dates: Dates.
+        seasons: Seasons.
+        apply: Apply.
+        sync_oci: Sync Oci.
+        oci_url: Oci URL.
+        report_out: Report Out.
+        backup_out: Backup Out.
+        log: Logger instance.
 
     Returns:
         List of results.
 
     """
     target_game_ids = list(game_ids or [])
+
     target_dates = list(dates or [])
     target_seasons = list(seasons or [])
     report_path = report_out or _default_report_path()
@@ -407,8 +419,15 @@ def _collect_game_ids(args: argparse.Namespace) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Regenerate Coach review summaries for selected games")
+
     parser.add_argument("--game-id", action="append", default=[], help="Target game_id. May be repeated.")
     parser.add_argument("--game-ids-file", type=str, help="Newline-delimited file of game_ids")
     parser.add_argument("--date", action="append", default=[], help="Target date YYYYMMDD. May be repeated.")

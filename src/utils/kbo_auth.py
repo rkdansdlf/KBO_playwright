@@ -1,6 +1,7 @@
 """
 KBO Authentication Utility
-Handles automated login and session persistence.
+Handle automated login and session persistence.
+
 """
 
 from __future__ import annotations
@@ -28,12 +29,29 @@ class KboAuthenticator:
     AUTH_STATE_PATH = "data/kbo_auth_state.json"
 
     def __init__(self, user_id: str | None = None, user_pwd: str | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            user_id: User ID.
+            user_pwd: User Pwd.
+            user_id: User ID.
+            user_pwd: User Pwd.
+
+        """
         self.user_id = user_id or os.getenv("KBO_USER_ID")
+
         self.user_pwd = user_pwd or os.getenv("KBO_USER_PWD")
 
     async def login(self, *, headless: bool = True) -> bool:
-        """Perform login and save state to file."""
+        """
+        Perform login and save state to file.
+
+        Args:
+            headless: Whether to run the browser in headless mode.
+            headless: Whether to run the browser in headless mode.
+
+        """
         if not self.user_id or not self.user_pwd:
             logger.info("[AUTH] Error: KBO_USER_ID or KBO_USER_PWD not set.")
             return False
@@ -114,7 +132,7 @@ class KboAuthenticator:
     @classmethod
     def get_auth_state_path(cls) -> str:
         """
-        Gets auth state path.
+        Get auth state path.
 
         Returns:
             String result.
@@ -125,7 +143,7 @@ class KboAuthenticator:
 
 async def main() -> None:
     # Simple CLI tool to refresh login
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     auth = KboAuthenticator()
     success = await auth.login(headless=True)
     if success:

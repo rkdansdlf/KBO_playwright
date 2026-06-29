@@ -8,11 +8,13 @@ from datetime import datetime
 from src.constants import KST
 
 logger = logging.getLogger(__name__)
+
 """
 Situational Splits Calculator Service.
 
 Computes RISP (Runners In Scoring Position) and L/R splits
 by querying the game_events PBP data with game_batting_stats.
+
 """
 
 import sys
@@ -30,10 +32,17 @@ if TYPE_CHECKING:
 
 
 class SituationalSplitCalculator:
-    """Computes situational batting splits from game_events (PBP) data."""
+    """Compute situational batting splits from game_events (PBP) data."""
 
     def __init__(self, session: Session | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self._session = session
 
     def _session_ctx(self) -> Session:
@@ -46,7 +55,16 @@ class SituationalSplitCalculator:
     # base_state bitmask: 1=1B, 2=2B, 4=3B  → RISP = 2B or 3B set → & 6
     # ------------------------------------------------------------------ #
     def _resolve_name(self, player_id: int, session: Session) -> str | None:
-        """Returns the Korean name for a given player_id."""
+        """
+        Return the Korean name for a given player_id.
+
+        Args:
+            player_id: Player ID.
+            session: Session.
+            player_id: Player ID.
+            session: Session.
+
+        """
         row = session.execute(
             text("SELECT name FROM player_basic WHERE player_id = :pid"),
             {"pid": player_id},
@@ -54,8 +72,16 @@ class SituationalSplitCalculator:
         return row.name if row else None
 
     def get_risp_stats(self, player_id: int, season: int) -> dict[str, Any]:
-        """Returns RISP batting stats for a player in a given season."""
+        """
+        RISP batting stats for a player in a given season.
+
+        Args:
+            player_id: Player ID.
+            season: Season year.
+
+        """
         query = """
+
         SELECT
             COUNT(CASE WHEN e.result_code NOT IN ('BB','HBP','SH','SF') AND e.result_code IS NOT NULL THEN 1 END) AS risp_ab,
             COUNT(CASE WHEN e.result_code IN ('H1','H2','H3','HR') THEN 1 END)           AS risp_hits,
@@ -65,6 +91,7 @@ class SituationalSplitCalculator:
             e.batter_name = :name
             AND SUBSTR(e.game_id, 1, 4) = :season
             AND (e.base_state & 6) > 0
+
         """
         with self._session_ctx() as session:
             name = self._resolve_name(player_id, session)
@@ -91,12 +118,20 @@ class SituationalSplitCalculator:
     # ------------------------------------------------------------------ #
     def get_lr_splits(self, player_id: int, season: int) -> dict[str, Any]:
         """
-        Returns batting splits vs LHP and RHP.
+        Return batting splits vs LHP and RHP.
 
         Joins game_events → game_pitching_stats → player_basic (throws).
         Uses batter_name since batter_id may be NULL in game_events.
+
+        Args:
+            player_id: Player ID.
+            season: Season year.
+            player_id: Player ID.
+            season: Season year.
+
         """
         query = """
+
         SELECT
             pb.throws,
             COUNT(CASE WHEN e.result_code NOT IN ('BB','HBP','SH','SF') AND e.result_code IS NOT NULL THEN 1 END) AS ab,
@@ -136,8 +171,18 @@ class SituationalSplitCalculator:
     # Two-Out RBI: Clutch situational stat
     # ------------------------------------------------------------------ #
     def get_two_out_stats(self, player_id: int, season: int) -> dict[str, Any]:
-        """Returns batting stats with 2 outs."""
+        """
+        Return batting stats with 2 outs.
+
+        Args:
+            player_id: Player ID.
+            season: Season year.
+            player_id: Player ID.
+            season: Season year.
+
+        """
         query = """
+
         SELECT
             COUNT(CASE WHEN result_code NOT IN ('BB','HBP','SH','SF') AND result_code IS NOT NULL THEN 1 END) AS ab,
             COUNT(CASE WHEN result_code IN ('H1','H2','H3','HR') THEN 1 END) AS hits,
@@ -147,6 +192,7 @@ class SituationalSplitCalculator:
             batter_name = :name
             AND SUBSTR(game_id, 1, 4) = :season
             AND outs = 2
+
         """
         with self._session_ctx() as session:
             name = self._resolve_name(player_id, session)
@@ -168,9 +214,13 @@ class SituationalSplitCalculator:
     # ------------------------------------------------------------------ #
     def get_full_splits(self, player_id: int, season: int) -> dict[str, Any]:
         """
-        Gets full splits.
+        Get full splits.
 
         Args:
+            player_id: Player ID.
+            season: Season year.
+            player_id: Player ID.
+            season: Season year.
             player_id: Player ID.
             season: Season year.
 

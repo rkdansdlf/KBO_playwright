@@ -6,6 +6,7 @@
    은퇴/비활동 선수 ID 목록을 식별합니다.
 2. 식별된 각 선수에 대해 은퇴 선수 기록 페이지(타자/투수)에 접근합니다.
 3. 선수의 프로필 정보와 연도별 시즌 기록을 파싱하여 데이터베이스에 저장합니다.
+
 """
 
 from __future__ import annotations
@@ -54,8 +55,18 @@ async def determine_inactive_ids(
     active_year: int,
     request_delay: float,
 ) -> set[str]:
-    """과거 시즌과 현재 시즌의 선수 명단을 비교하여 은퇴/비활동 선수 ID를 식별합니다."""
+    """
+    과거 시즌과 현재 시즌의 선수 명단을 비교하여 은퇴/비활동 선수 ID를 식별합니다.
+
+    Args:
+        start_year: Start Year.
+        end_year: End Year.
+        active_year: Active Year.
+        request_delay: Request Delay.
+
+    """
     listing_crawler = RetiredPlayerListingCrawler(request_delay=request_delay)
+
     return await listing_crawler.determine_inactive_player_ids(
         start_year=start_year,
         end_year=end_year,
@@ -68,8 +79,17 @@ async def process_player(
     detail_crawler: RetiredPlayerDetailCrawler,
     repository: PlayerRepository,
 ) -> None:
-    """단일 은퇴 선수의 상세 정보(프로필, 시즌 기록)를 크롤링하고 저장합니다."""
+    """
+    단일 은퇴 선수의 상세 정보(프로필, 시즌 기록)를 크롤링하고 저장합니다.
+
+    Args:
+        player_id: Player ID.
+        detail_crawler: Detail Crawler.
+        repository: Repository.
+
+    """
     # 타자 및 투수 페이지에서 선수 정보를 가져옵니다.
+
     detail_payload = await detail_crawler.fetch_player(player_id)
     hitter_payload = detail_payload.get("hitter")
     pitcher_payload = detail_payload.get("pitcher")
@@ -117,8 +137,15 @@ async def process_player(
 
 
 async def crawl_retired_players(args: argparse.Namespace) -> None:
-    """은퇴 선수 데이터 수집 파이프라인의 메인 로직."""
+    """
+    은퇴 선수 데이터 수집 파이프라인의 메인 로직.
+
+    Args:
+        args: Positional arguments to pass through.
+
+    """
     # 1단계: 은퇴/비활동 선수 ID 목록을 결정합니다.
+
     if args.seed_file:
         logger.info("📂 Loading seed IDs from %s...", args.seed_file)
         with Path(args.seed_file).open() as f:
@@ -146,9 +173,10 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
 
     async def runner(pid: str) -> None:
         """
-        Handles the runner operation.
+        Handle the runner operation.
 
         Args:
+            pid: Pid.
             pid: Pid.
 
         """
@@ -180,8 +208,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = build_arg_parser()
+
     args = parser.parse_args(argv)
     asyncio.run(crawl_retired_players(args))
 

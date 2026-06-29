@@ -4,6 +4,7 @@ Model for stadium operational notices and announcements.
 Captures game-day operational announcements from official team websites and
 KBO channels: gate changes, rain delays/cancellations, entry restrictions,
 special event announcements, and urgent notices.
+
 """
 
 from __future__ import annotations
@@ -123,7 +124,7 @@ class StadiumOperationNotice(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """Returns a string representation of this object."""
+        """Return a string representation of this object."""
         return (
             f"<StadiumOperationNotice("
             f"stadium='{self.stadium_code}', "

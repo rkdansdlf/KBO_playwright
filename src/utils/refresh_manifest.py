@@ -18,9 +18,13 @@ def infer_topics(
     derived_refresh: Sequence[str] | None = None,
 ) -> list[str]:
     """
-    Handles the infer topics operation.
+    Handle the infer topics operation.
 
     Args:
+        datasets: Datasets.
+        derived_refresh: Derived Refresh.
+        datasets: Datasets.
+        derived_refresh: Derived Refresh.
         datasets: Datasets.
         derived_refresh: Derived Refresh.
 
@@ -29,6 +33,7 @@ def infer_topics(
 
     """
     dataset_set = {item for item in (datasets or []) if item}
+
     derived_set = {item for item in (derived_refresh or []) if item}
     topics: set[str] = set()
 
@@ -63,9 +68,13 @@ class RefreshManifestSpec:
 
 def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: object) -> Path:
     """
-    Writes refresh manifest.
+    Write refresh manifest.
 
     Args:
+        spec: Spec.
+        kwargs: Keyword arguments to pass through.
+        spec: Spec.
+        kwargs: Keyword arguments to pass through.
         spec: Spec.
 
     Returns:

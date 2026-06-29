@@ -52,11 +52,22 @@ class DetailCrawler(Protocol):
         *,
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
-        """Crawls game details for the given game list."""
+        """
+        Crawl game details for the given game list.
+
+        Args:
+            games: Games.
+            concurrency: Maximum number of concurrent requests.
+            lightweight: Lightweight.
+            games: Games.
+            concurrency: Maximum number of concurrent requests.
+            lightweight: Lightweight.
+
+        """
         ...
 
     async def close(self) -> None:
-        """Closes the crawler."""
+        """Close the crawler."""
         ...
 
 
@@ -64,11 +75,18 @@ class RelayCrawler(Protocol):
     """RelayCrawler class."""
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """Crawls game events for a given game ID."""
+        """
+        Crawl game events for a given game ID.
+
+        Args:
+            game_id: Game ID.
+            game_id: Game ID.
+
+        """
         ...
 
     async def close(self) -> None:
-        """Closes the crawler."""
+        """Close the crawler."""
         ...
 
 
@@ -81,7 +99,7 @@ class GameCollectionTarget:
 
     def as_crawler_input(self) -> dict[str, str]:
         """
-        Handles the as crawler input operation.
+        Handle the as crawler input operation.
 
         Returns:
             Dictionary result.
@@ -172,9 +190,13 @@ class GameCollectionItemResult:
 
 def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
     """
-    Builds game id range.
+    Build game id range.
 
     Args:
+        year: Season year.
+        month: Month.
+        year: Season year.
+        month: Month.
         year: Season year.
         month: Month number (1-12).
 
@@ -193,9 +215,13 @@ def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
 
 def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameCollectionTarget]:
     """
-    Loads game targets from db.
+    Load game targets from db.
 
     Args:
+        year: Season year.
+        month: Month.
+        year: Season year.
+        month: Month.
         year: Season year.
         month: Month number (1-12).
 
@@ -204,6 +230,7 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
 
     """
     start_id, end_id = build_game_id_range(year, month)
+
     with SessionLocal() as session:
         rows = (
             session.query(Game.game_id, Game.game_date)
@@ -221,7 +248,14 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
 
 
 def load_game_targets_by_ids(game_ids: list[str]) -> list[GameCollectionTarget]:
-    """game_id 목록으로 GameCollectionTarget 리스트를 조회합니다."""
+    """
+    game_id 목록으로 GameCollectionTarget 리스트를 조회합니다.
+
+    Args:
+        game_ids: Game Ids.
+        game_ids: Game Ids.
+
+    """
     with SessionLocal() as session:
         rows = (
             session.query(Game.game_id, Game.game_date)
@@ -240,9 +274,11 @@ def load_game_targets_by_ids(game_ids: list[str]) -> list[GameCollectionTarget]:
 
 def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
     """
-    Normalizes game targets.
+    Normalize game targets.
 
     Args:
+        games: Games.
+        games: Games.
         games: Games.
 
     Returns:
@@ -250,6 +286,7 @@ def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
 
     """
     targets: list[GameCollectionTarget] = []
+
     seen: set[str] = set()
     for game in games:
         game_id = _get_value(game, "game_id")
@@ -266,9 +303,11 @@ def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
 
 def inspect_existing_game_data(targets: Iterable[GameCollectionTarget]) -> dict[str, ExistingGameData]:
     """
-    Handles the inspect existing game data operation.
+    Handle the inspect existing game data operation.
 
     Args:
+        targets: Targets.
+        targets: Targets.
         targets: Targets.
 
     Returns:
@@ -276,6 +315,7 @@ def inspect_existing_game_data(targets: Iterable[GameCollectionTarget]) -> dict[
 
     """
     target_list = list(targets)
+
     game_ids = [target.game_id for target in target_list]
     if not game_ids:
         return {}
@@ -303,9 +343,15 @@ async def crawl_and_save_game_details(
     config: GameCollectionConfig | None = None,
 ) -> GameCollectionResult:
     """
-    Crawls and game details.
+    Crawl and game details.
 
     Args:
+        games: Games.
+        detail_crawler: Detail Crawler.
+        config: Configuration object.
+        games: Games.
+        detail_crawler: Detail Crawler.
+        config: Configuration object.
         games: Games.
 
     Returns:
@@ -313,6 +359,7 @@ async def crawl_and_save_game_details(
 
     """
     targets = normalize_game_targets(games)
+
     result = GameCollectionResult(total_targets=len(targets))
     result.items = {
         target.game_id: GameCollectionItemResult(game_id=target.game_id, game_date=target.game_date)
@@ -698,8 +745,18 @@ async def _maybe_pause(
 
 
 def _derive_sh_sf_for_results(result: GameCollectionResult, log: Callable[[str], None]) -> None:
-    """Derive sacrifice_hits/sacrifice_flies from PBP events for collected games."""
+    """
+    Derive sacrifice_hits/sacrifice_flies from PBP events for collected games.
+
+    Args:
+        result: Result.
+        log: Logger instance.
+        result: Result.
+        log: Logger instance.
+
+    """
     updated_total = 0
+
     game_ids = [gid for gid, item in result.items.items() if item.detail_status == "success"]
     if not game_ids:
         return

@@ -2,6 +2,7 @@
 Crawler for Player Movement (Trade, FA, Waiver, etc.).
 
 Source: https://www.koreabaseball.com/Player/Trade.aspx.
+
 """
 
 from __future__ import annotations
@@ -43,8 +44,16 @@ class PlayerMovementCrawler:
     """Crawl player status changes (Trade, FA, Waiver, etc.)."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+
+        """
         self.base_url = "https://www.koreabaseball.com/Player/Trade.aspx"
+
         self.request_delay = request_delay
         self.pool = pool
         self._raw_pages: list[dict[str, object]] = []
@@ -56,8 +65,17 @@ class PlayerMovementCrawler:
         *,
         save_snapshots: bool = False,
     ) -> list[dict[str, Any]]:
-        """Crawl data for a range of years."""
+        """
+        Crawl data for a range of years.
+
+        Args:
+            start_year: Start Year.
+            end_year: End Year.
+            save_snapshots: Save Snapshots.
+
+        """
         results = []
+
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None
         await pool.start()
@@ -236,7 +254,7 @@ class PlayerMovementCrawler:
 
 async def main() -> None:
     # Test run
-    """Main entry point for this CLI command."""
+    """Run the main entry point for this CLI command."""
     crawler = PlayerMovementCrawler()
     data = await crawler.crawl_years(2023, 2023)
     logger.info("Total collected: %s", len(data))

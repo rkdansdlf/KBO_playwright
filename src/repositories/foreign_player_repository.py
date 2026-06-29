@@ -16,14 +16,23 @@ class ForeignPlayerRepository:
     """ForeignPlayerRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+            session: Session.
+
+        """
         self.session = session
 
     def save_change(self, data: dict) -> ForeignPlayerChange:
         """
-        Saves change.
+        Save change.
 
         Args:
+            data: Data.
+            data: Data.
             data: Data.
 
         Returns:
@@ -31,6 +40,7 @@ class ForeignPlayerRepository:
 
         """
         player_name = data["player_name"]
+
         team_id = data["team_id"]
         season = data["season"]
         change_type = data["change_type"]
@@ -55,9 +65,13 @@ class ForeignPlayerRepository:
 
     def get_by_team(self, team_id: str, season: int | None = None) -> list[ForeignPlayerChange]:
         """
-        Gets by team.
+        Get by team.
 
         Args:
+            team_id: Team ID.
+            season: Season year.
+            team_id: Team ID.
+            season: Season year.
             team_id: Team ID.
             season: Season year.
 
@@ -66,6 +80,7 @@ class ForeignPlayerRepository:
 
         """
         stmt = select(ForeignPlayerChange).where(ForeignPlayerChange.team_id == team_id)
+
         if season:
             stmt = stmt.where(ForeignPlayerChange.season == season)
         stmt = stmt.order_by(ForeignPlayerChange.announcement_date.desc().nullslast())
@@ -73,9 +88,11 @@ class ForeignPlayerRepository:
 
     def get_by_season(self, season: int) -> list[ForeignPlayerChange]:
         """
-        Gets by season.
+        Get by season.
 
         Args:
+            season: Season year.
+            season: Season year.
             season: Season year.
 
         Returns:

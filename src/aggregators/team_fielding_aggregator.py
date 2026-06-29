@@ -18,14 +18,22 @@ class TeamFieldingAggregator:
     """TeamFieldingAggregator class."""
 
     def __init__(self, session: Session) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            session: Session.
+
+        """
         self.session = session
 
     def aggregate_fielding(self, season: int, team_code: str) -> dict[str, Any]:
         """
-        Aggregates fielding.
+        Aggregate fielding.
 
         Args:
+            season: Season year.
+            team_code: Team Code.
             season: Season year.
             team_code: Team Code.
 
@@ -81,9 +89,11 @@ class TeamFieldingAggregator:
 
     def aggregate_baserunning(self, season: int, team_code: str) -> dict[str, Any]:
         """
-        Aggregates baserunning.
+        Aggregate baserunning.
 
         Args:
+            season: Season year.
+            team_code: Team Code.
             season: Season year.
             team_code: Team Code.
 
@@ -129,14 +139,17 @@ class TeamFieldingAggregator:
 
     def run_all(self, season: int, team_codes: list[str]) -> None:
         """
-        Runs all.
+        Run all.
 
         Args:
+            season: Season year.
+            team_codes: Team Codes.
             season: Season year.
             team_codes: Team Codes.
 
         """
         # Filter to teams that have actual player data for this season
+
         fielding_teams = {
             r[0]
             for r in self.session.query(PlayerSeasonFielding.team_id)

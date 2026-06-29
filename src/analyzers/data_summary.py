@@ -19,12 +19,14 @@ def _fmt(val: object) -> str:
 def _int(val: object) -> int:
     if val is None:
         return 0
-    return int(val)
+    if isinstance(val, int):
+        return val
+    return int(str(val))
 
 
 def analyze_events() -> list[dict[str, Any]]:
     """
-    Handles the analyze events operation.
+    Handle the analyze events operation.
 
     Returns:
         List of results.
@@ -53,7 +55,7 @@ def analyze_events() -> list[dict[str, Any]]:
 
 def analyze_roster() -> list[dict[str, Any]]:
     """
-    Handles the analyze roster operation.
+    Handle the analyze roster operation.
 
     Returns:
         List of results.
@@ -87,7 +89,7 @@ def analyze_roster() -> list[dict[str, Any]]:
 
 def analyze_tickets() -> list[dict[str, Any]]:
     """
-    Handles the analyze tickets operation.
+    Handle the analyze tickets operation.
 
     Returns:
         List of results.
@@ -121,7 +123,7 @@ def analyze_tickets() -> list[dict[str, Any]]:
 
 def analyze_seats() -> list[dict[str, Any]]:
     """
-    Handles the analyze seats operation.
+    Handle the analyze seats operation.
 
     Returns:
         List of results.
@@ -144,7 +146,7 @@ def analyze_seats() -> list[dict[str, Any]]:
 
 def analyze_parking() -> list[dict[str, Any]]:
     """
-    Handles the analyze parking operation.
+    Handle the analyze parking operation.
 
     Returns:
         List of results.
@@ -167,7 +169,7 @@ def analyze_parking() -> list[dict[str, Any]]:
 
 def analyze_food() -> list[dict[str, Any]]:
     """
-    Handles the analyze food operation.
+    Handle the analyze food operation.
 
     Returns:
         List of results.
@@ -199,13 +201,14 @@ def analyze_food() -> list[dict[str, Any]]:
 
 def generate_report() -> str:
     """
-    Generates generate report.
+    Generate generate report.
 
     Returns:
         String result.
 
     """
     lines = []
+
     lines.append("# KBO Pipeline Data Summary")
     lines.append(f"Generated: {datetime.now(UTC).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     lines.append("")

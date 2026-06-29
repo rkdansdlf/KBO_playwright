@@ -1,7 +1,7 @@
 """
 Morning PBP (Play-by-Play) Report CLI.
 
-Sends a daily Telegram notification summarizing PBP collection failures,
+Send a daily Telegram notification summarizing PBP collection failures,
 recovery results, and validation status from the most recent daily summary
 and current database state.
 
@@ -9,6 +9,7 @@ Usage:
     python3 -m src.cli.morning_pbp_report
     python3 -m src.cli.morning_pbp_report --date 20260528
     python3 -m src.cli.morning_pbp_report --dry-run
+
 """
 
 from __future__ import annotations
@@ -34,7 +35,13 @@ DAILY_SUMMARY_DIR = Path(__file__).resolve().parents[2] / "logs" / "daily_update
 
 
 def _find_latest_summary(target_date: str | None = None) -> tuple[str, dict[str, Any]] | None:
-    """Find the daily summary JSON for the given date (default: yesterday in KST)."""
+    """
+    Find the daily summary JSON for the given date (default: yesterday in KST).
+
+    Args:
+        target_date: Target date for the operation.
+
+    """
     if target_date is None:
         seoul_tz = ZoneInfo("Asia/Seoul")
         yesterday = datetime.now(seoul_tz) - timedelta(days=1)
@@ -154,8 +161,18 @@ def _build_telegram_message(
     *,
     dry_run: bool,
 ) -> str:
-    """Format a Telegram HTML message from the daily summary and validation data."""
+    """
+    Format a Telegram HTML message from the daily summary and validation data.
+
+    Args:
+        target_date: Target date for the operation.
+        summary: Summary.
+        validation_counts: Validation Counts.
+        dry_run: If True, performs a dry run without persisting changes.
+
+    """
     stability = summary.get("stability", {})
+
     retry = stability.get("retry_candidates", {})
     relay_failures: list[str] = retry.get("relay") or []
     detail_failures: list[str] = retry.get("detail") or []
@@ -176,8 +193,15 @@ def _build_telegram_message(
 
 
 def _read_pbp_report_csv(target_date: str) -> list[dict[str, str]]:
-    """Read the per-game PBP attempt CSV if available."""
+    """
+    Read the per-game PBP attempt CSV if available.
+
+    Args:
+        target_date: Target date for the operation.
+
+    """
     csv_path = DAILY_SUMMARY_DIR / f"pbp_report_daily_{target_date}.csv"
+
     if not csv_path.exists():
         return []
     try:
@@ -198,7 +222,12 @@ def run_morning_report(
     """
     Execute the morning PBP report.
 
-    Returns True if a notification was sent (or would be sent in dry-run).
+    Return True if a notification was sent (or would be sent in dry-run).
+
+    Args:
+        target_date: Target date for the operation.
+        dry_run: If True, performs a dry run without persisting changes.
+
     """
     found = _find_latest_summary(target_date)
 
@@ -231,8 +260,15 @@ def run_morning_report(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main entry point for this CLI command."""
+    """
+    Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
     parser = argparse.ArgumentParser(description="Morning PBP Report — Telegram notification")
+
     parser.add_argument(
         "--date",
         type=str,

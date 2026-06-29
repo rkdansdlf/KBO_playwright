@@ -34,8 +34,22 @@ class ImportRelayAdapter(RelaySourceAdapter):
         allowed_source_types: set[str] | None = None,
         manifest_base_dir: str | Path | None = None,
     ) -> None:
-        """Initializes a new instance."""
+        """
+        Initialize a new instance.
+
+        Args:
+            manifest_entries: Manifest Entries.
+            source_name: Source Name.
+            allowed_source_types: Allowed Source Types.
+            manifest_base_dir: Manifest Base Dir.
+            manifest_entries: Manifest Entries.
+            source_name: Source Name.
+            allowed_source_types: Allowed Source Types.
+            manifest_base_dir: Manifest Base Dir.
+
+        """
         super().__init__(source_name)
+
         self.supports_bucket_probe = False
         self.cache_negative_probe = False
         self.manifest_entries = list(manifest_entries or [])
@@ -45,9 +59,11 @@ class ImportRelayAdapter(RelaySourceAdapter):
 
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
         """
-        Fetches game.
+        Fetch game.
 
         Args:
+            game_id: Game ID.
+            game_id: Game ID.
             game_id: Game ID.
 
         Returns:

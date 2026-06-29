@@ -95,3 +95,4 @@ data/kbo_auth_state.json
 /.antigravitycli
 data/archive/
 *,cover
+/venv_new
