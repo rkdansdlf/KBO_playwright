@@ -70,6 +70,28 @@ jobs:
           root = tree.getroot()
           line_rate = float(root.attrib['line-rate']) * 100
           print(f'Coverage: {line_rate:.1f}%')
-           if line_rate < 70:
-               raise SystemExit(f'Coverage {line_rate:.1f}% is below 70% threshold')
+          if line_rate < 70:
+              raise SystemExit(f'Coverage {line_rate:.1f}% is below 70% threshold')
           "
+
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test
+    if: always() && needs.test.result == 'success'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          python-version: "3.12"
+          playwright: "true"
+          init-db: 'false'
+      - name: Initialize test DB
+        run: python -c "from src.db.engine import init_db; init_db()"
+        env:
+          DATABASE_URL: sqlite:///./data/kbo_dev.db
+      - name: Run integration tests
+        run: pytest -m integration --tb=short -v --durations=10 2>&1
+        env:
+          DATABASE_URL: sqlite:///./data/kbo_dev.db

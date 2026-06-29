@@ -81,7 +81,7 @@ from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
-from src.utils.lock import ProcessLock
+from src.utils.lock import ForceProcessLock, ProcessLock
 from src.utils.sentry import init_sentry
 from src.utils.metrics import (
     start_metrics_server,
@@ -124,7 +124,7 @@ SCHEDULER_JOB_EXCEPTIONS = (
 # Granular locking to prevent long-running batch jobs from blocking real-time updates
 LIVE_LOCK = ProcessLock("live_refresh")
 DAILY_LOCK = ProcessLock("daily_update")
-MAINTENANCE_LOCK = ProcessLock("maintenance")
+MAINTENANCE_LOCK = ForceProcessLock("maintenance")
 REALTIME_OCI_SYNC_LOCK = ProcessLock("realtime_oci_sync")
 
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
