@@ -28,7 +28,7 @@ def get_cell_value(cells: list[Any], index: int) -> str | None:
     """
     if index >= len(cells):
         return None
-    return cells[index].get_text(strip=True)
+    return str(cells[index].get_text(strip=True))
 
 
 def resolve_team_id(team_name: str, team_mapping: dict[str, str]) -> str | None:

@@ -4,11 +4,11 @@ set -euo pipefail
 # 1. Root privilege handling & Privilege dropping
 if [ "$(id -u)" = '0' ]; then
     echo "🐳 Running as root. Adjusting volume permissions..."
-    
+
     # PUID/PGID 환경변수가 제공되지 않은 경우, 볼륨의 소유자 UID/GID 감지
     TARGET_UID=${PUID:-}
     TARGET_GID=${PGID:-}
-    
+
     if [ -z "$TARGET_UID" ] && [ -d "/app/data" ]; then
         TARGET_UID=$(stat -c '%u' /app/data)
         TARGET_GID=$(stat -c '%g' /app/data)
@@ -18,24 +18,24 @@ if [ "$(id -u)" = '0' ]; then
             TARGET_GID=1000
         fi
     fi
-    
+
     TARGET_UID=${TARGET_UID:-1000}
     TARGET_GID=${TARGET_GID:-1000}
-    
+
     echo "🐳 Setting appuser to UID $TARGET_UID, GID $TARGET_GID"
-    
+
     # appuser의 GID 수정 (그룹이 이미 있으면 변경, 충돌 시 무시)
     if getent group appuser >/dev/null; then
         groupmod -g "$TARGET_GID" appuser || true
     else
         groupadd -g "$TARGET_GID" appuser || true
     fi
-    
+
     # appuser의 UID 수정
     if getent passwd appuser >/dev/null; then
         usermod -u "$TARGET_UID" -g "$TARGET_GID" appuser || true
     fi
-    
+
     # 볼륨 디렉토리 소유권 변경
     for dir in "/app/data" "/app/logs" "/ms-playwright"; do
         if [ -d "$dir" ]; then
@@ -43,7 +43,7 @@ if [ "$(id -u)" = '0' ]; then
             chown -R appuser:appuser "$dir"
         fi
     done
-    
+
     # gosu로 appuser 권한으로 재실행
     if command -v gosu >/dev/null 2>&1; then
         exec gosu appuser "$0" "$@"
@@ -91,7 +91,7 @@ if [[ -n "${OCI_DB_URL:-}" ]]; then
   # SQLite DB를 사용하는 경우에만 자동 하이드레이션 적용
   if [[ "${DATABASE_URL:-}" == *"sqlite"* ]] || [[ -z "${DATABASE_URL:-}" ]]; then
       HYDRATE_REQUIRED=0
-      
+
       if [ ! -f "$DB_PATH" ] || [ ! -s "$DB_PATH" ]; then
           echo "⚠️ SQLite database file not found or empty at: $DB_PATH. Recovery needed."
           HYDRATE_REQUIRED=1
@@ -113,7 +113,7 @@ else:
                   HYDRATE_REQUIRED=1
               fi
           fi
-          
+
           if [[ "${AUTO_HYDRATE_FORCE:-0}" == "1" ]]; then
               echo "🔄 AUTO_HYDRATE_FORCE is set. Forcing refresh."
               HYDRATE_REQUIRED=1
@@ -124,12 +124,12 @@ else:
           LOCKFILE="${DB_PATH}.lock"
           DB_DIR=$(dirname "$DB_PATH")
           mkdir -p "$DB_DIR"
-          
+
           (
               echo "🔒 Acquiring database lock for hydration: $LOCKFILE"
               if flock -x -w 120 9; then
                   echo "🔑 Lock acquired. Double-checking hydration requirement..."
-                  
+
                   RE_CHECK_REQUIRED=0
                   if [ ! -f "$DB_PATH" ] || [ ! -s "$DB_PATH" ]; then
                       RE_CHECK_REQUIRED=1
@@ -150,14 +150,14 @@ else:
                           RE_CHECK_REQUIRED=1
                       fi
                   fi
-                  
+
                   if [ "$RE_CHECK_REQUIRED" -eq 1 ]; then
                       echo "🔧 Schema initialization before hydration..."
                       python -c "from src.db.engine import init_db; init_db()"
-                      
+
                       CURRENT_YEAR=$(date +%Y)
                       YEARS_TO_HYDRATE="${HYDRATE_YEARS:-$CURRENT_YEAR}"
-                      
+
                       IFS=',' read -ra ADDR <<< "$YEARS_TO_HYDRATE"
                       HYDRATE_SUCCESS=1
                       for year in "${ADDR[@]}"; do
@@ -169,7 +169,7 @@ else:
                               HYDRATE_SUCCESS=0
                           fi
                       done
-                      
+
                       if [ "$HYDRATE_SUCCESS" -eq 1 ]; then
                           touch "$DB_PATH"
                           echo "🎉 Auto-hydration completed successfully."
