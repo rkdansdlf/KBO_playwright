@@ -427,7 +427,7 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
         if not rows:
             return None
         if len(rows) == 1:
-            return rows[0][0]
+            return int(rows[0][0])
 
         # If multiple, try to find a team match
         # This is a heuristic - KBO team names in player_basic vary (e.g. '한화 이글스')
@@ -439,10 +439,10 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
             if not r_team:
                 continue
             if k_name and k_name in r_team:
-                return r_id
+                return int(r_id)
 
         # Last resort: just return first if we have to, but better to be safe
-        return rows[0][0]
+        return int(rows[0][0])
     except SQLAlchemyError:
         return None
 

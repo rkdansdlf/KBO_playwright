@@ -203,7 +203,7 @@ class YouTubeAPIClient:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url, params=params)
             resp.raise_for_status()
-            return resp.json()
+            return dict(resp.json())
 
     async def search_videos(
         self,
@@ -281,7 +281,7 @@ class YouTubeAPIClient:
         except httpx.HTTPError as e:
             logger.warning("[YouTube] Playlists failed for ch=%s: %s", channel_id, e)
             return []
-        return data.get("items", [])
+        return list(data.get("items", []))
 
     async def get_playlist_items(self, playlist_id: str, max_results: int = 50) -> list[YouTubeVideoItem]:
         """

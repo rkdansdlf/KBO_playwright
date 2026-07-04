@@ -72,7 +72,7 @@ class TelegramBotClient:
 
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
-                return response.status == HTTPStatus.OK
+                return bool(response.status == HTTPStatus.OK)
         except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Telegram message")
             return False
