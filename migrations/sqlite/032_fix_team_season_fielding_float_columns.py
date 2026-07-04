@@ -1,4 +1,6 @@
-"""Migration 032: Fix INTEGER columns that should be REAL/FLOAT in
+# noqa: INP001
+"""
+Migration 032: Fix INTEGER columns that should be REAL/FLOAT in
 team_season_fielding and team_season_baserunning.
 
 SQLite doesn't support ALTER COLUMN TYPE, so we read the CREATE TABLE
@@ -14,6 +16,7 @@ DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "kbo_dev.db"
 
 
 def table_sql(conn, table_name):
+    """Get CREATE TABLE SQL for a given table name."""
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
         (table_name,),
@@ -22,6 +25,7 @@ def table_sql(conn, table_name):
 
 
 def column_has_type(create_sql, col_name, target_type):
+    """Check if a column has the given type in the CREATE TABLE SQL."""
     return bool(
         re.search(
             rf"\b{re.escape(col_name)}\s+{target_type}\b",
@@ -32,6 +36,7 @@ def column_has_type(create_sql, col_name, target_type):
 
 
 def fix_column(conn, table_name, col_name):
+    """Fix a single column type from INTEGER to REAL via table rebuild."""
     create_sql = table_sql(conn, table_name)
     if not create_sql:
         print(f"     Table {table_name} not found — skipping")
@@ -77,6 +82,7 @@ def fix_column(conn, table_name, col_name):
 
 
 def upgrade(conn=None):
+    """Upgrade INTEGER columns to REAL in team_season_fielding and team_season_baserunning."""
     should_close = conn is None
     if conn is None:
         conn = sqlite3.connect(DEFAULT_DB_PATH)
