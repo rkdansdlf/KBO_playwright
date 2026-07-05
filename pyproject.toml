@@ -41,7 +41,9 @@ select = [
     "W",       # pycodestyle warnings
     "F",       # pyflakes
     "I",       # isort
+    "A",       # flake8-builtins
     "UP",      # pyupgrade (Python 3.10+)
+    "DTZ",     # flake8-datetimez
     "RET",     # flake8-return
     "ANN001",  # missing-type-function-argument
     "ANN002",  # missing-type-args
@@ -365,6 +367,7 @@ select = [
     "TID251",
     "TID253",
     "D204",
+    "D205",
     "D206",
     "D207",
     "D208",
@@ -426,7 +429,6 @@ select = [
      "COM812",  # missing-trailing-comma (conflicts with formatter)
 
      "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
-      "D205",    # missing-blank-line-after-summary (no auto-fix for multi-line summaries)
       "PLC0415",  # import-outside-top-level (intentional lazy imports for circular deps)
      "PLR2004",  # magic-value-comparison (domain-specific thresholds)
 
@@ -443,7 +445,7 @@ select = [
 "src/crawlers/game_mvp_crawler.py" = ["ASYNC212"]
 "src/crawlers/game_detail_crawler.py" = ["ASYNC240", "RUF001", "D102", "D103", "D105"]
 "src/crawlers/player_search_crawler.py" = ["ASYNC109", "ARG001"]
-"src/crawlers/relay_crawler.py" = ["ASYNC109", "S324", "F821"]
+"src/crawlers/relay_crawler.py" = ["ASYNC109", "F821"]
 "src/crawlers/schedule_crawler.py" = ["ASYNC109"]
 "src/services/game_collection_service.py" = ["D102", "D103", "D105"]
 "src/services/postgame_reconciliation_service.py" = ["D102", "D103", "D105"]
@@ -452,36 +454,28 @@ select = [
 "src/repositories/player_season_pitching_repository.py" = ["PLW0603"]
 "src/repositories/safe_batting_repository.py" = ["PLW0603"]
 "src/utils/team_mapping.py" = ["PLW0603"]
-"src/utils/request_policy.py" = ["S311", "ANN401"]
-"src/utils/throttle.py" = ["S311"]
-"src/utils/alerting.py" = ["S310"]
+"src/utils/request_policy.py" = ["ANN401"]
 "src/utils/compliance.py" = ["ASYNC240"]
 "src/utils/lock.py" = ["PLW0127"]
 "src/sources/relay/base.py" = ["PLW0127"]
 "src/sources/relay/orchestrator.py" = ["PLW0127"]
 "src/monitoring/sla_tracker.py" = ["PLW0127"]
 "src/sources/relay/circuit_breaker.py" = ["RUF012"]
-"src/cli/retry_daily_failures.py" = ["S603", "PLR0913"]
-"src/cli/run_daily_update.py" = ["S603", "PLR0913", "RUF001"]
-"src/cli/run_periodic_extras.py" = ["S603", "ASYNC221"]
+"src/cli/retry_daily_failures.py" = ["PLR0913"]
+"src/cli/run_daily_update.py" = ["PLR0913", "RUF001"]
+"src/cli/run_periodic_extras.py" = ["ASYNC221"]
 "src/cli/run_all_crawlers.py" = ["ASYNC240", "RUF001"]
-"src/cli/check_data_status.py" = ["S608", "PLR0913"]
-"src/cli/db_healthcheck.py" = ["S608"]
-"src/cli/backfill_starting_pitchers_from_stats.py" = ["S608"]
-"src/db/engine.py" = ["S608"]
+"src/cli/check_data_status.py" = ["PLR0913"]
 "src/cli/crawler_live_smoke.py" = ["PLR0913", "SLF001", "ARG001", "TRY300", "TRY301"]
 "src/cli/crawler_selector_gate.py" = ["T201"]
 "src/cli/data_integrity_checker.py" = ["T201"]
 "src/cli/data_quality_regression_pack.py" = ["T201"]
 "src/cli/diagnose_crawler_failure.py" = ["T201"]
-"src/cli/health_check.py" = ["S608"]
-"src/cli/monitor_data_freshness.py" = ["S608"]
 "src/cli/rebuild_relay_events.py" = ["PLR0913"]
 "src/cli/regenerate_game_stories.py" = ["PLR0913"]
 "src/cli/regenerate_review_summaries.py" = ["PLR0913"]
 "src/cli/smart_polling_gate.py" = ["T201", "TRY300"]
 "src/cli/live_crawler.py" = ["TRY301", "SLF001", "ARG001", "TRY300"]
-"src/cli/verify_sync_consistency.py" = ["S608"]
 "src/crawlers/futures/futures_batting.py" = ["N806"]
 "src/crawlers/operation_notice_naver_crawler.py" = ["SLF001"]
 "src/crawlers/player_batting_all_series_crawler.py" = ["PLR0913", "RUF001"]
@@ -499,15 +493,13 @@ select = [
 "src/utils/game_status.py" = ["ANN401"]
 "src/utils/refresh_manifest.py" = ["ANN401"]
 "src/sync/runtime_hydrator.py" = ["RUF012", "FURB171"]
-"src/services/game_deduplication_service.py" = ["S608", "PLR0913"]
-"src/services/hitter_page_fetcher.py" = ["S608"]
-"src/services/p0_readiness.py" = ["S608", "PLR0913"]
-"src/services/pbp_sh_sf_derivation.py" = ["S608"]
+"src/services/game_deduplication_service.py" = ["PLR0913"]
+"src/services/p0_readiness.py" = ["PLR0913"]
 "src/sources/relay/importer.py" = ["SLF001"]
-"src/sync/sync_base.py" = ["S608", "PLR0913", "RUF001", "ANN401", "D102"]
-"src/sync/sync_games.py" = ["S608", "ARG002", "RUF001", "F821"]
+"src/sync/sync_base.py" = ["PLR0913", "RUF001", "ANN401", "D102"]
+"src/sync/sync_games.py" = ["ARG002", "RUF001", "F821"]
 "src/sync/sync_players.py" = ["ARG002"]
-"src/sync/sync_stats.py" = ["S608", "A002", "F821", "ARG002"]
+"src/sync/sync_stats.py" = ["A002", "F821", "ARG002"]
 "src/aggregators/team_stat_aggregator.py" = ["SLF001", "PLR0913", "PLC0415"]
 "src/aggregators/ranking_aggregator.py" = ["PLR0913"]
 "src/cli/calculate_rankings.py" = ["RUF001"]
@@ -529,10 +521,10 @@ select = [
 "src/sync/sync_misc.py" = ["RUF001"]
 "src/utils/player_season_stat_validation.py" = ["RUF001"]
 "src/utils/type_helpers.py" = ["RUF001"]
-"tests/**" = ["E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "TRY002", "ARG", "T201", "T20", "ERA001", "RUF001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1722", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "F821", "A002", "D100", "D104", "RUF034", "D101", "D102", "D103", "D105", "D107", "D400", "D415", "D213", "S108", "INP001", "Q000", "B007", "PERF102", "S607",
+"tests/**" = ["E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "TRY002", "ARG", "T201", "T20", "ERA001", "RUF001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1722", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "F821", "A002", "D100", "D104", "RUF034", "D101", "D102", "D103", "D105", "D107", "D205", "D400", "D415", "D213", "S108", "INP001", "Q000", "B007", "PERF102", "S607",
     "PLC2401",
 ]
-"scripts/**" = ["E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "ERA001", "RUF001", "I001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1704", "PLR1722", "D100", "D104", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "A002", "D101", "D102", "D103", "D105", "D107", "D400", "D415", "D213", "INP001", "EXE001", "PD002", "PLE1205", "Q000", "S607", "PERF102", "COM812", "TRY002",
+"scripts/**" = ["E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "ERA001", "RUF001", "I001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1704", "PLR1722", "D100", "D104", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "A002", "D101", "D102", "D103", "D105", "D107", "D205", "D400", "D415", "D213", "INP001", "EXE001", "PD002", "PLE1205", "Q000", "S607", "PERF102", "COM812", "TRY002",
     "PIE810",
     "PERF",]
 "migrations/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "T201", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001"]
