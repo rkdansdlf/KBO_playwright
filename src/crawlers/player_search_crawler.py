@@ -1,5 +1,6 @@
 """
-Player Search Crawler
+Player Search Crawler.
+
 Collects comprehensive player information from KBO Player Search page.
 
 Now refactored into a class as expected by GameDetailCrawler.
