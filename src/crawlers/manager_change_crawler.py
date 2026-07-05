@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -86,7 +86,7 @@ class ManagerChangeCrawler(NaverNewsCrawlerBase):
         return None
 
     @staticmethod
-    def _parse_date(pub_date: str) -> date:
+    def _parse_date(pub_date: str) -> date | None:
         return parse_iso_date(pub_date)
 
     @staticmethod

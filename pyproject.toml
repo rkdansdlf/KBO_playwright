@@ -579,9 +579,5 @@ module = ["src.repositories.*"]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = ["src.crawlers.*"]
-ignore_errors = true
-
-[[tool.mypy.overrides]]
 module = ["src.cli.*"]
 ignore_errors = true

@@ -65,7 +65,7 @@ def crawl_baserunning_stats(
     """
     if year is None:
         year = datetime.now(KST).year
-    baserunning_data = []
+    baserunning_data: list[dict[str, Any]] = []
     policy = RequestPolicy()
 
     with sync_playwright() as playwright:
@@ -116,7 +116,7 @@ def _parse_baserunning_page(page: Page, year: int) -> list[dict[str, Any]]:
     tbody = tables[0].query_selector("tbody")
     rows = tbody.query_selector_all("tr") if tbody else []
     logger.info("   ✓ %s명의 주루 기록 발견", len(rows))
-    return [stats for row in rows if (stats := _parse_baserunning_row(row, year))]
+    return [stats for row in rows if (stats := _parse_baserunning_row(row, year))]  # type: ignore[arg-type]
 
 
 def _extract_baserunning_player(cells: list[_BaserunningCell]) -> tuple[str | None, str]:

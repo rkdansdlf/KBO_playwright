@@ -37,7 +37,7 @@ class RetiredPlayerDetailCrawler:
         self.request_delay = request_delay
 
         self.pool = pool
-        self._internal_pool = None
+        self._internal_pool: AsyncPlaywrightPool | None = None
         self._lock = asyncio.Lock()
 
     async def _get_pool(self) -> AsyncPlaywrightPool:
@@ -47,13 +47,16 @@ class RetiredPlayerDetailCrawler:
             if self._internal_pool is None:
                 self._internal_pool = AsyncPlaywrightPool(max_pages=5)
                 await self._internal_pool.start()
+        if self._internal_pool is None:
+            msg = "Pool not initialized"
+            raise RuntimeError(msg)
         return self._internal_pool
 
     async def close(self) -> None:
         """Handle the close operation."""
         if self._internal_pool:
             await self._internal_pool.close()
-            self._internal_pool = None
+        self._internal_pool = None
 
     async def _wait(self) -> None:
         await throttle.wait()
@@ -78,7 +81,7 @@ class RetiredPlayerDetailCrawler:
 
         for attempt in range(retries + 1):
             try:
-                async with pool.page() as page:
+                async with pool.page() as page:  # type: ignore[var-annotated]
                     hitter_payload = await self._fetch_page(page, self.hitter_url, player_id)
                     pitcher_payload = await self._fetch_page(page, self.pitcher_url, player_id)
                     return {

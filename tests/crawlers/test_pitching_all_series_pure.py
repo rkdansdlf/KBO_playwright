@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from src.crawlers.player_pitching_all_series_crawler import (
     PitcherStats,
+    _extract_basic2_row_info,
     _map_pitcher_basic1_stats,
     _update_pitcher_basic2_stats,
     build_pitching_crawl_summary,
@@ -56,6 +57,43 @@ class TestExtractPlayerId:
 
     def test_large_id(self):
         assert extract_player_id("?playerId=999999") == 999999
+
+
+class TestExtractBasic2RowInfo:
+    def test_fast_path_valid(self):
+        row = {"cells": ["1", "홍길동", "LG", "0.250"], "linkHref": "/Player.aspx?playerId=12345"}
+        header_index = {"순위": 0, "선수명": 1, "팀": 2, "타율": 3}
+        result = _extract_basic2_row_info(row, header_index, use_fast=True)
+        assert result is not None
+        pid, cell_fn = result
+        assert pid == 12345
+        assert callable(cell_fn)
+
+    def test_fast_path_cell_fn_access(self):
+        row = {"cells": ["1", "홍길동", "LG", "0.250"], "linkHref": "/Player.aspx?playerId=12345"}
+        header_index = {"순위": 0, "선수명": 1, "팀": 2, "타율": 3}
+        _, cell_fn = _extract_basic2_row_info(row, header_index, use_fast=True)
+        assert cell_fn(0) == "1"
+        assert cell_fn(1) == "홍길동"
+        assert cell_fn(5) is None
+
+    def test_fast_path_too_few_cells(self):
+        row = {"cells": ["1", "홍길동"], "linkHref": "/Player.aspx?playerId=12345"}
+        header_index = {"순위": 0, "선수명": 1, "팀": 2, "타율": 3}
+        result = _extract_basic2_row_info(row, header_index, use_fast=True)
+        assert result is None
+
+    def test_fast_path_no_player_id(self):
+        row = {"cells": ["1", "홍길동", "LG", "0.250"], "linkHref": "/Player.aspx?other=value"}
+        header_index = {"순위": 0, "선수명": 1, "팀": 2, "타율": 3}
+        result = _extract_basic2_row_info(row, header_index, use_fast=True)
+        assert result is None
+
+    def test_fast_path_no_link_href(self):
+        row = {"cells": ["1", "홍길동", "LG", "0.250"]}
+        header_index = {"순위": 0, "선수명": 1, "팀": 2, "타율": 3}
+        result = _extract_basic2_row_info(row, header_index, use_fast=True)
+        assert result is None
 
 
 class TestUpdatePitcherBasic2Stats:
