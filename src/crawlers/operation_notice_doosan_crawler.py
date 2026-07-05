@@ -14,15 +14,20 @@ from __future__ import annotations
 import logging
 import re
 from http import HTTPStatus
+from typing import TYPE_CHECKING
 
 from bs4 import BeautifulSoup
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Page
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.naver_helpers import parse_multi_format_date
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -104,36 +109,41 @@ class OperationNoticeDoosanCrawler:
 
         from src.utils.playwright_pool import AsyncPlaywrightPool
 
-        async with AsyncPlaywrightPool(max_pages=1, block_resources=True) as pool, pool.page() as page:
-            for page_no in range(1, self.max_pages + 1):
-                url = f"{BASE_URL}?page={page_no}"
-                try:
-                    await throttle.wait(HOST)
-                    resp = await page.goto(url)
-                    if not resp or resp.status != HTTPStatus.OK:
-                        logger.warning(
-                            "[Doosan Notice] HTTP %s on page %d",
-                            resp.status if resp else "None",
-                            page_no,
+        pool2 = AsyncPlaywrightPool(max_pages=1, block_resources=True)
+        async with pool2:
+            page: Page = await pool2.acquire()
+            try:
+                for page_no in range(1, self.max_pages + 1):
+                    url = f"{BASE_URL}?page={page_no}"
+                    try:
+                        await throttle.wait(HOST)
+                        resp = await page.goto(url)
+                        if not resp or resp.status != HTTPStatus.OK:
+                            logger.warning(
+                                "[Doosan Notice] HTTP %s on page %d",
+                                resp.status if resp else "None",
+                                page_no,
+                            )
+                            break
+
+                        await page.wait_for_timeout(2000)
+                        html = await page.content()
+                        self._raw_pages.append(
+                            {"source_key": "doosan_bears_notices", "url": url, "html": html, "status_code": 200},
                         )
+
+                        notices, hit_stop = self._parse_page(html, stop_at_external_id)
+                        all_notices.extend(notices)
+                        logger.info("[Doosan Notice] page %s: %s notices", page_no, len(notices))
+
+                        if hit_stop or not notices:
+                            break
+
+                    except DOOSAN_NOTICE_CRAWL_EXCEPTIONS:
+                        logger.exception("[Doosan Notice] Failed to fetch page %d", page_no)
                         break
-
-                    await page.wait_for_timeout(2000)
-                    html = await page.content()
-                    self._raw_pages.append(
-                        {"source_key": "doosan_bears_notices", "url": url, "html": html, "status_code": 200},
-                    )
-
-                    notices, hit_stop = self._parse_page(html, stop_at_external_id)
-                    all_notices.extend(notices)
-                    logger.info("[Doosan Notice] page %s: %s notices", page_no, len(notices))
-
-                    if hit_stop or not notices:
-                        break
-
-                except DOOSAN_NOTICE_CRAWL_EXCEPTIONS:
-                    logger.exception("[Doosan Notice] Failed to fetch page %d", page_no)
-                    break
+            finally:
+                await pool2.release(page)
 
         logger.info("[Doosan Notice] Total: %s notices", len(all_notices))
 
@@ -157,7 +167,7 @@ class OperationNoticeDoosanCrawler:
             if not anchor:
                 continue
 
-            href = anchor["href"]
+            href = str(anchor["href"])
             href = href.removeprefix("./")
             if not href.startswith("http"):
                 if href.startswith("notice/"):

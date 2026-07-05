@@ -142,7 +142,7 @@ class RealtimeIssueCrawler:
     def _parse_naver_news_html(soup: BeautifulSoup) -> list[dict[str, Any]]:
         links = []
         for a in soup.find_all("a"):
-            href = a.get("href", "")
+            href = str(a.get("href", ""))
             title = a.get("title") or a.text.strip()
             if href and ("read" in href or "read.nhn" in href) and title:
                 if href.startswith("/"):
@@ -198,8 +198,8 @@ class RealtimeIssueCrawler:
 
                     seen_urls = set()
                     for a in soup.find_all("a"):
-                        href = a.get("href", "")
-                        title = a.text.strip()
+                        href = str(a.get("href", ""))
+                        title = str(a.text.strip())
 
                         if "id=" in href and "b=bullpen" in href and "m=view" in href:
                             if "pos=reply" in href or not title or (title.startswith("[") and title.endswith("]")):

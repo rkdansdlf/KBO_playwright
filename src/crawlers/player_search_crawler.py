@@ -319,7 +319,7 @@ class PlayerSearchCrawler:
                 self._record_failure("duplicate_player_id")
 
     @staticmethod
-    async def _current_pager_index(nums: object, count: int) -> int:
+    async def _current_pager_index(nums: Locator, count: int) -> int:
         for idx in range(count):
             if "on" in (await nums.nth(idx).get_attribute("class") or "").lower():
                 return idx
@@ -347,7 +347,9 @@ class PlayerSearchCrawler:
                 moved = True
         return moved
 
-    async def _click_pager_target(self, page: Page, target: object, collected: list[PlayerRow], seen: set[int]) -> bool:
+    async def _click_pager_target(
+        self, page: Page, target: Locator, collected: list[PlayerRow], seen: set[int]
+    ) -> bool:
         prev_v = await self._get_hfpage_value(page)
         first_b = await self._get_first_player_name(page)
         if not await self._trigger_postback(page, target):
@@ -396,6 +398,9 @@ class PlayerSearchCrawler:
                 self._record_failure("insufficient_columns")
                 continue
             pid = self._extract_pid(r["linkHref"])
+            if pid is None:
+                self._record_failure("missing_player_id")
+                continue
             name = normalize_player_name(cells[1] if len(cells) > 1 else None)
             ok, reason = validate_player_payload({"player_id": pid, "name": name})
             if not ok:
@@ -417,13 +422,15 @@ class PlayerSearchCrawler:
             )
         return res
 
-    def _extract_pid(self, href: str | None) -> int | None:
+    @staticmethod
+    def _extract_pid(href: str | None) -> int | None:
         if not href:
             return None
         m = re.search(r"playerId=(\d+)", href.replace(",", ""))
         return int(m.group(1)) if m else None
 
-    def _parse_hw(self, s: str) -> tuple[int, int] | None:
+    @staticmethod
+    def _parse_hw(s: str) -> tuple[int, int] | None:
         m = re.search(r"(\d+)cm.*/(\d+)kg", s.replace(" ", ""))
         return (int(m.group(1)), int(m.group(2))) if m else None
 
@@ -475,14 +482,14 @@ class PlayerSearchCrawler:
         with contextlib.suppress(TimeoutError):
             await page.wait_for_function(
                 "([s, v]) => document.querySelector(s)?.value !== v",
-                [HFPAGE, prev_v],
+                arg=[HFPAGE, prev_v],
                 timeout=SHORT_TIMEOUT,
             )
         await asyncio.sleep(self.request_delay)
 
-    async def _list_initial_links(self, page: Page) -> None:
+    async def _list_initial_links(self, page: Page) -> list[Locator]:
         links = page.locator("a")
-        res = []
+        res: list[Locator] = []
         for i in range(await links.count()):
             txt = (await links.nth(i).inner_text()).strip()
             if INITIAL_CH_RE.match(txt):

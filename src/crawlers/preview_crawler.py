@@ -129,7 +129,7 @@ class PreviewCrawler:
 
         """
         try:
-            return bool(int(value))
+            return bool(int(str(value)))
         except (TypeError, ValueError):
             if isinstance(value, str):
                 return value.strip() not in ("", "0", "false", "False", "FALSE")
@@ -221,7 +221,7 @@ class PreviewCrawler:
         )
 
     @staticmethod
-    def _extract_lineup_announced(lineup_rows: list[object], *, fallback: bool) -> bool:
+    def _extract_lineup_announced(lineup_rows: list[Any], *, fallback: bool) -> bool:
         """
         Read LINEUP_CK from GetLineUpAnalysis when present.
 
@@ -263,7 +263,7 @@ class PreviewCrawler:
         return game_ids
 
     @staticmethod
-    def _lineup_rows_match_game(lineup_rows: list[object], game_id: str) -> bool:
+    def _lineup_rows_match_game(lineup_rows: list[Any], game_id: str) -> bool:
         """
         Return False when KBO returns stale lineup rows for a different game.
 
@@ -325,8 +325,13 @@ class PreviewCrawler:
             return None
 
         try:
-            response = await self.policy.run_with_retry_async(page.request.post, url, form=form, headers=headers)
-            if response.ok:
+            response = await self.policy.run_with_retry_async(
+                page.request.post,
+                url,
+                form=form,
+                headers=headers,  # type: ignore[arg-type]
+            )
+            if response.ok:  # type: ignore[attr-defined]
                 payload = PreviewCrawler._coerce_api_payload(await response.json())
                 if isinstance(payload, (dict, list)):
                     return payload
@@ -365,6 +370,8 @@ class PreviewCrawler:
                 return []
 
             for g in games:
+                if not isinstance(g, dict):
+                    continue
                 preview_data = PreviewCrawler._build_preview_payload(g, game_date)
                 if not preview_data:
                     continue
@@ -434,7 +441,8 @@ class PreviewCrawler:
 
     @staticmethod
     def _build_preview_payload(game_row: dict[str, Any], game_date: str) -> dict[str, Any] | None:
-        game_id = normalize_kbo_game_id(game_row.get("G_ID"))
+        raw_id = game_row.get("G_ID")
+        game_id = normalize_kbo_game_id(raw_id) if raw_id else None
         if not game_id:
             return None
         away_starter = PreviewCrawler._extract_starter_name(game_row, "away")
@@ -479,12 +487,16 @@ class PreviewCrawler:
         if not lineup_data:
             return
         try:
-            PreviewCrawler._apply_lineup_payload(preview_data, PreviewCrawler._extract_list_payload(lineup_data))
+            extracted = PreviewCrawler._extract_list_payload(lineup_data)
+            PreviewCrawler._apply_lineup_payload(
+                preview_data,
+                [r for r in extracted if isinstance(r, dict)],
+            )
         except LINEUP_PARSE_EXCEPTIONS:
             logger.exception("⚠️ Error parsing lineup for %s", preview_data["game_id"])
 
     @staticmethod
-    def _apply_lineup_payload(preview_data: dict[str, Any], lineup_rows: list[dict[str, Any]]) -> None:
+    def _apply_lineup_payload(preview_data: dict[str, Any], lineup_rows: list[Any]) -> None:
         preview_data["lineup_announced"] = PreviewCrawler._extract_lineup_announced(
             lineup_rows,
             fallback=bool(preview_data["lineup_announced"]),
@@ -511,7 +523,7 @@ class PreviewCrawler:
         )
 
     @staticmethod
-    def _parse_lineup_grid(grid_str_list: list[str]) -> list[dict[str, str]]:
+    def _parse_lineup_grid(grid_str_list: list[Any]) -> list[dict[str, Any]]:
         """
         Parse the nested KBO Lineup grid JSON string into a structured list.
 
@@ -519,7 +531,7 @@ class PreviewCrawler:
             grid_str_list: Grid Str List.
 
         """
-        lineup = []
+        lineup: list[dict[str, Any]] = []
 
         if not grid_str_list or not isinstance(grid_str_list, list):
             return lineup

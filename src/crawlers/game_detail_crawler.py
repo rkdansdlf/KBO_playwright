@@ -240,7 +240,7 @@ class GameDetailCrawler:
     async def close(self) -> None:
         """Handle the close operation."""
         if self.pool:
-            await self.pool.stop()
+            await self.pool.close()
             self.pool = None
 
     def _section_url(self, game_id: str, game_date: str, section: str) -> str:
@@ -558,7 +558,9 @@ class GameDetailCrawler:
         metadata = await self._extract_metadata(page)
         game_summary = await self._extract_game_summary(page)
 
-        lifecycle_state = None
+        lifecycle_state: str | None = None
+        hitters: dict[str, list[dict[str, Any]]] = {"away": [], "home": []}
+        pitchers: dict[str, list[dict[str, Any]]] = {"away": [], "home": []}
         if lightweight:
             live_scores = await self._extract_live_scores(page)
             if live_scores and (
@@ -566,8 +568,6 @@ class GameDetailCrawler:
                 or live_scores.get("home", {}).get("score") is not None
             ):
                 lifecycle_state = "running"
-            hitters = {"away": [], "home": []}
-            pitchers = {"away": [], "home": []}
         else:
             detail_ctx = BoxscoreCrawlContext(
                 page=page,
@@ -775,12 +775,14 @@ class GameDetailCrawler:
             selector_timeout=SEL_TIMEOUT,
         )
         if ok:
-            return await self._extract_hitter_pair(
-                ctx.page,
-                ctx.team_info,
-                ctx.season_year,
-                ctx.roster_map,
-            )
+            team_info = ctx.team_info
+            if team_info:
+                return await self._extract_hitter_pair(
+                    ctx.page,
+                    team_info,
+                    ctx.season_year,
+                    ctx.roster_map,
+                )
         logger.warning("⚠️ HITTER section navigation failed for %s: %s", ctx.game_id, reason)
         return hitters, hitter_totals
 
@@ -811,12 +813,14 @@ class GameDetailCrawler:
             selector_timeout=SEL_TIMEOUT,
         )
         if ok:
-            return await self._extract_pitcher_pair(
-                ctx.page,
-                ctx.team_info,
-                ctx.season_year,
-                ctx.roster_map,
-            )
+            team_info = ctx.team_info
+            if team_info:
+                return await self._extract_pitcher_pair(
+                    ctx.page,
+                    team_info,
+                    ctx.season_year,
+                    ctx.roster_map,
+                )
         logger.warning("⚠️ PITCHER section navigation failed for %s: %s", ctx.game_id, reason)
         return pitchers
 
@@ -899,6 +903,9 @@ class GameDetailCrawler:
         """
         await self._click_review_tab_if_present(ctx.page)
 
+        if ctx.team_info is None or ctx.metadata is None or ctx.game_id is None:
+            msg = "Missing required context for extraction"
+            raise RuntimeError(msg)
         team_info = ctx.team_info
         hitters, hitter_totals = await self._extract_hitter_pair(ctx.page, team_info, ctx.season_year, ctx.roster_map)
         pitchers = await self._extract_pitcher_pair(ctx.page, team_info, ctx.season_year, ctx.roster_map)
@@ -1075,12 +1082,12 @@ class GameDetailCrawler:
             # 1. Try explicit ID selectors (common in older years)
             stadium_el = await page.query_selector(GAME_DETAIL.stadium)
             if stadium_el:
-                metadata["stadium"] = (await stadium_el.text_content()).replace("구장 :", "").strip()
+                metadata["stadium"] = (await stadium_el.text_content() or "").replace("구장 :", "").strip()
 
             crowd_el = await page.query_selector(GAME_DETAIL.crowd)
             if crowd_el:
                 try:
-                    val = (await crowd_el.text_content()).replace("관중 :", "").replace(",", "").strip()
+                    val = (await crowd_el.text_content() or "").replace("관중 :", "").replace(",", "").strip()
                     metadata["attendance"] = int(val)
                 except (ValueError, TypeError):
                     logger.debug("Failed to parse attendance value from %s", GAME_DETAIL.crowd)
@@ -1090,7 +1097,7 @@ class GameDetailCrawler:
             if not info_area:
                 return metadata
 
-            text = (await info_area.text_content()).replace("\n", " ")
+            text = (await info_area.text_content() or "").replace("\n", " ")
 
             self._parse_metadata_info_text(metadata, text)
             if metadata["game_time"]:
@@ -1209,7 +1216,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _build_line_score(cell_values: list[str]) -> list[int | None]:
-        line_score = []
+        line_score: list[int | None] = []
         for v in cell_values[1:13]:
             if v in {"-", ""}:
                 line_score.append(None)
@@ -1244,7 +1251,7 @@ class GameDetailCrawler:
 
     @staticmethod
     async def _parse_scoreboard_row_cells(
-        row: Page,
+        row: Any,  # noqa: ANN401
         side: str,
         away_code: str,
         home_code: str,
@@ -1396,8 +1403,8 @@ class GameDetailCrawler:
 
         result = await page.evaluate(script)
 
-        away_info: dict[str, Any]
-        home_info: dict[str, Any]
+        away_info: dict[str, Any] | None
+        home_info: dict[str, Any] | None
 
         if result and len(result["rows"]) >= 2:
             headers = result["headers"]
@@ -1588,7 +1595,7 @@ class GameDetailCrawler:
         ctx: BoxscoreCrawlContext,
         team_side: str,
         team_code: str | None,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """
         Extract hitters.
 
@@ -1633,7 +1640,7 @@ class GameDetailCrawler:
             extra_map = {row["playerName"]: row for row in extra_rows if row["playerName"]}
 
         results: list[dict[str, Any]] = []
-        team_total_stats = {}
+        team_total_stats: dict[str, Any] = {}
 
         for idx, row in enumerate(base_rows, start=1):
             player_name = row["playerName"]
@@ -1648,8 +1655,8 @@ class GameDetailCrawler:
 
             p_id = safe_int_or_none(row.get("playerId"))
 
-            stats = {}
-            extras = {}
+            stats: dict[str, Any] = {}
+            extras: dict[str, Any] = {}
             self._populate_hitter_stats(stats, extras, row["cells"])
 
             self._apply_hitter_inning_derivatives(stats, inning_rows, idx)
@@ -1830,9 +1837,9 @@ class GameDetailCrawler:
             Dictionary mapping.
 
         """
-        stats = {}
+        stats: dict[str, Any] = {}
 
-        extras = {}
+        extras: dict[str, Any] = {}
         GameDetailCrawler._populate_pitcher_stats(stats, extras, ctx.row["cells"])
 
         innings_text = ctx.row["cells"].get("이닝") or ctx.row["cells"].get("IP")
@@ -2156,7 +2163,7 @@ class GameDetailCrawler:
             pitchers: Pitchers.
 
         """
-        unresolved = []
+        unresolved: list[tuple[str | None, str | None, str | None]] = []
 
         for team_side in ("away", "home"):
             unresolved.extend(

@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from datetime import date
 
-from src.crawlers.player_search_crawler import parse_birth_date, player_row_to_dict
+from src.crawlers.player_search_crawler import (
+    PlayerSearchCrawler,
+    parse_birth_date,
+    player_row_to_dict,
+)
 
 
 @dataclass
@@ -93,3 +97,31 @@ class TestPlayerRowToDict:
         )
         result = player_row_to_dict(row)
         assert result["birth_date_date"] == date(1992, 3, 20)
+
+
+class TestExtractPid:
+    def test_normal_href(self):
+        assert PlayerSearchCrawler._extract_pid("javascript:playerId=12345") == 12345
+
+    def test_with_commas(self):
+        assert PlayerSearchCrawler._extract_pid("playerId=12,345") == 12345
+
+    def test_no_match(self):
+        assert PlayerSearchCrawler._extract_pid("no_id_here") is None
+
+    def test_none(self):
+        assert PlayerSearchCrawler._extract_pid(None) is None
+
+
+class TestParseHw:
+    def test_normal(self):
+        assert PlayerSearchCrawler._parse_hw("180cm / 80kg") == (180, 80)
+
+    def test_without_spaces(self):
+        assert PlayerSearchCrawler._parse_hw("175cm/70kg") == (175, 70)
+
+    def test_no_match(self):
+        assert PlayerSearchCrawler._parse_hw("no data") is None
+
+    def test_partial_number(self):
+        assert PlayerSearchCrawler._parse_hw("180cm") is None

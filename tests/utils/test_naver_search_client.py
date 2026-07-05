@@ -321,11 +321,9 @@ class TestNaverSearchClient:
         from src.constants import KST
 
         def mock_parse_date(date_str):
-            from datetime import datetime
-
             if not date_str:
                 return None
-            return datetime(2026, 6, 3, tzinfo=KST)
+            return datetime.now(KST)
 
         with patch("httpx.AsyncClient", return_value=mock_client):
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -364,11 +362,9 @@ class TestNaverSearchClient:
         from src.constants import KST
 
         def mock_parse_date(date_str):
-            from datetime import datetime
-
             if not date_str:
                 return None
-            return datetime(2026, 6, 3, tzinfo=KST)
+            return datetime.now(KST)
 
         with patch("httpx.AsyncClient", return_value=mock_client):
             with patch("asyncio.sleep", new_callable=AsyncMock):

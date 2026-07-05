@@ -66,7 +66,7 @@ class PlayerListCrawler:
         self.headless = headless
         self.max_pages = max_pages
 
-    async def crawl_all_players(self, _season_year: int | None = None) -> dict[str, list[dict[str, Any]]]:
+    async def crawl_all_players(self, _season_year: int | None = None) -> dict[str, Any]:
         """
         Crawl all players.
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from playwright.async_api import Browser, BrowserContext, Locator, Page, Playwright, async_playwright
 from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import Locator, async_playwright
 from sqlalchemy import select
 
 from src.db.engine import SessionLocal
@@ -30,10 +30,10 @@ class TeamInfoCrawler:
 
     def __init__(self) -> None:
         """Initialize a new instance."""
-        self.browser = None
-        self.page = None
-        self.playwright = None
-        self.context = None
+        self.browser: Browser | None = None
+        self.page: Page | None = None
+        self.playwright: Playwright | None = None
+        self.context: BrowserContext | None = None
         self._raw_pages: list[dict] = []
 
     async def start(self) -> None:
@@ -69,6 +69,9 @@ class TeamInfoCrawler:
 
         if not self.page:
             await self.start()
+        if self.page is None:
+            msg = "Page not initialized"
+            raise RuntimeError(msg)
 
         await self.page.goto(self.BASE_URL, wait_until="networkidle")
 

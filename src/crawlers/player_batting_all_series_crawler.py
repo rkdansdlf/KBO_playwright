@@ -112,7 +112,7 @@ def get_series_mapping() -> dict[str, dict[str, str]]:
     }
 
 
-def safe_parse_number(value_str: str, data_type: type, *, _allow_zero: bool = True) -> int | float | None:
+def safe_parse_number(value_str: str | None, data_type: type, *, _allow_zero: bool = True) -> int | float | None:
     """
     안전하게 숫자를 파싱하는 함수.
 
@@ -344,7 +344,7 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | N
         headers = []
         if thead:
             header_cells = thead.query_selector_all("th")
-            headers = [cell.text_content().strip() for cell in header_cells]
+            headers = [(cell.text_content() or "").strip() for cell in header_cells]
         is_basic2 = _is_basic2_headers(headers) if headers else False
 
         tbody = table.query_selector("tbody")
@@ -358,14 +358,16 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | N
             if len(cell_nodes) < 10:
                 continue
 
-            cells = [cell.text_content().strip() for cell in cell_nodes]
+            cells = [(cell.text_content() or "").strip() for cell in cell_nodes]
             name_link = cell_nodes[1].query_selector("a")
             href = name_link.get_attribute("href") if name_link else None
             player_id = _extract_player_id_from_href(href)
             if not player_id:
                 continue
 
-            player_name = name_link.text_content().strip() if name_link else (cells[1] if len(cells) > 1 else "")
+            player_name = (
+                (name_link.text_content() or "").strip() if name_link else (cells[1] if len(cells) > 1 else "")
+            )
             team_name = cells[2] if len(cells) > 2 else ""
             team_code = resolve_team_code(team_name, year) or team_name
 
@@ -573,7 +575,7 @@ def crawl_basic2_with_headers(
         policy: Policy.
 
     """
-    all_player_data = {}
+    all_player_data: dict[int, dict] = {}
 
     try:
         logger.info("   🔍 Basic2 접근을 위해 Basic1에서 시작...")
@@ -648,7 +650,7 @@ def _log_debug_legacy_table(page: Page, rows: list, description: str) -> None:
     thead = page.query_selector("thead")
     if thead:
         header_cells = thead.query_selector_all("th")
-        headers = [cell.text_content().strip() for cell in header_cells]
+        headers = [(cell.text_content() or "").strip() for cell in header_cells]
         logger.info("      🔍 %s 기준 테이블 헤더: %s", description, headers)
 
     if len(rows) > 0:
@@ -689,13 +691,13 @@ def _parse_legacy_row(ctx: LegacyRowContext) -> tuple[int, dict] | None:
         if not name_link:
             return None
 
-        player_name = name_link.text_content().strip()
+        player_name = (name_link.text_content() or "").strip()
         href = name_link.get_attribute("href")
         player_id = _extract_player_id_from_href(href)
         if not player_id:
             return None
 
-        team_name = cells[2].text_content().strip()
+        team_name = (cells[2].text_content() or "").strip()
         team_code = get_team_code(team_name, ctx.year)
         if not team_code:
             team_code = ctx.team_mapping.get(team_name, team_name)
@@ -707,7 +709,7 @@ def _parse_legacy_row(ctx: LegacyRowContext) -> tuple[int, dict] | None:
             "team_code": team_code,
         }
 
-        cell_texts = [c.text_content().strip() for c in cells]
+        cell_texts = [(c.text_content() or "").strip() for c in cells]
         _extract_basic2_stat_by_header(ctx.current_header, cell_texts, batting_data)
 
         _log_first_rows_basic2_legacy(ctx.row_idx, player_name, team_name, ctx.current_header, batting_data)
@@ -737,7 +739,7 @@ def _parse_basic2_header_data_legacy(
     """
     year = year or datetime.now(KST).year
 
-    players_data = {}
+    players_data: dict[int, dict] = {}
     team_mapping = get_team_mapping_for_year(year)
 
     try:
@@ -777,7 +779,7 @@ def _parse_basic2_header_data_legacy(
 def _log_debug_fast_table(rows_data: list[dict], description: str, thead_node: ElementHandle | None) -> None:
     if thead_node:
         header_cells = thead_node.query_selector_all("th")
-        headers = [cell.text_content().strip() for cell in header_cells]
+        headers = [(cell.text_content() or "").strip() for cell in header_cells]
         logger.info("      🔍 %s 기준 테이블 헤더: %s", description, headers)
 
     if rows_data:
@@ -926,8 +928,8 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
             .all()
         )
 
-        player_team_map = {}
-        player_latest_date = {}
+        player_team_map: dict[int, str] = {}
+        player_latest_date: dict[int, Any] = {}
         for pid, team_code, gdate in recent_games:
             if not pid or not team_code:
                 continue
@@ -1181,8 +1183,8 @@ def crawl_series_batting_stats(
         return []
 
     series_info = series_mapping[series_key]
-    all_players_data = []  # List of dicts
-    unique_players = set()  # Track by ID
+    all_players_data: list[dict] = []  # List of dicts
+    unique_players: set[int] = set()  # Track by ID
 
     policy = RequestPolicy()
 

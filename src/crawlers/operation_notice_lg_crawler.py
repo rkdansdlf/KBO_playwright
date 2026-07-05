@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import re
 from http import HTTPStatus
+from typing import TYPE_CHECKING
 
 import httpx
 from bs4 import BeautifulSoup
@@ -25,6 +26,9 @@ from src.repositories.operation_notice_repository import OperationNoticeReposito
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.naver_helpers import parse_multi_format_date
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +176,7 @@ class OperationNoticeLGCrawler:
             if not anchor:
                 continue
 
-            href = anchor["href"]
+            href = str(anchor["href"])
             href_clean = re.sub(r";jsessionid=[A-Za-z0-9.]+", "", href)
             if not href_clean.startswith("http"):
                 href_clean = LINK_PREFIX + href_clean

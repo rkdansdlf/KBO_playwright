@@ -50,8 +50,8 @@ def extract_kbo_event_links(html: str, base_url: str = KBO_EVENT_BASE_URL) -> li
     events: list[dict[str, object]] = []
     seen_urls: set[str] = set()
     for link in soup.select("a[href]"):
-        title = link.get_text(" ", strip=True)
-        href = link.get("href") or ""
+        title = str(link.get_text(" ", strip=True))
+        href = str(link.get("href") or "")
         normalized_href = href.strip().lower()
         if normalized_href.startswith(("#", "javascript:")) or title in GENERIC_LINK_TITLES:
             continue

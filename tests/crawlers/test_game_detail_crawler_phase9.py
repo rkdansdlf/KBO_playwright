@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from src.crawlers.game_detail_crawler import (
+    HitterPayloadContext,
     GameDetailCrawler,
+    PitcherPayloadContext,
 )
 
 
@@ -340,3 +342,320 @@ class TestParseScoreboardRow:
         row = ["LG무", "3", "7", "1"]
         result = self.crawler._parse_scoreboard_row(headers, row, 2025)
         assert result["name"] == "LG"
+
+
+class TestBuildLineScore:
+    def test_normal_values(self):
+        result = GameDetailCrawler._build_line_score(
+            ["TEAM", "0", "1", "2", "3", "0", "1", "2", "3", "0", "1", "2", "3"]
+        )
+        assert result == [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
+
+    def test_with_empty_and_dash(self):
+        result = GameDetailCrawler._build_line_score(["TEAM", "0", "-", "", "2"])
+        assert result == [0, None, None, 2]
+
+    def test_invalid_int(self):
+        result = GameDetailCrawler._build_line_score(["TEAM", "X", "1"])
+        assert result[0] is None
+        assert result[1] == 1
+
+    def test_short_list(self):
+        result = GameDetailCrawler._build_line_score(["TEAM", "1", "2"])
+        assert result == [1, 2]
+
+
+class TestExtractRHE:
+    def test_normal(self):
+        r, h, e = GameDetailCrawler._extract_rhe(["LG", "0", "1", "0", "2", "0", "3", "8", "1"])
+        assert r == 3
+        assert h == 8
+        assert e == 1
+
+    def test_only_r_and_h(self):
+        r, h, e = GameDetailCrawler._extract_rhe(["LG", "0", "1", "0", "2", "0", "3", "8"])
+        assert r == 0
+        assert h == 3
+        assert e == 8
+
+    def test_no_stats(self):
+        r, h, e = GameDetailCrawler._extract_rhe(["LG"])
+        assert r is None
+        assert h is None
+        assert e is None
+
+    def test_with_dashes(self):
+        r, h, e = GameDetailCrawler._extract_rhe(["LG", "0", "-", "", "-", "3", "-", "1"])
+        assert r == 0
+        assert h == 3
+        assert e == 1
+
+    def test_non_numeric_skipped(self):
+        r, h, e = GameDetailCrawler._extract_rhe(["LG", "0", "X", "1", "3", "7"])
+        assert r == 1
+        assert h == 3
+        assert e == 7
+
+
+class TestBoxscoreTimeoutDebugPath:
+    def test_normal(self):
+        path = GameDetailCrawler._boxscore_timeout_debug_path("20250412SKLG0", lightweight=False)
+        assert path.startswith("data/timeout_20250412SKLG0_")
+        assert path.endswith(".png")
+
+    def test_lightweight(self):
+        path = GameDetailCrawler._boxscore_timeout_debug_path("20250412SKLG0", lightweight=True)
+        assert path.startswith("data/lightweight_timeout_20250412SKLG0_")
+        assert path.endswith(".png")
+
+
+class TestApplyHitterInningDerivatives:
+    def test_backfills_stats(self):
+        stats = {"strikeouts": 0, "walks": None, "hbp": 0}
+        inning_rows = [{"cells": {"1": "삼진", "2": "4구"}}]
+        GameDetailCrawler._apply_hitter_inning_derivatives(stats, inning_rows, 1)
+        assert stats["strikeouts"] == 1
+        assert stats["walks"] == 1
+
+    def test_skips_existing_nonzero(self):
+        stats = {"strikeouts": 3, "walks": 0}
+        inning_rows = [{"cells": {"1": "삼진"}}]
+        GameDetailCrawler._apply_hitter_inning_derivatives(stats, inning_rows, 1)
+        assert stats["strikeouts"] == 3
+        assert stats["walks"] == 0
+
+    def test_empty_inning_rows(self):
+        stats = {"strikeouts": None}
+        GameDetailCrawler._apply_hitter_inning_derivatives(stats, [], 1)
+        assert stats["strikeouts"] is None
+
+    def test_idx_out_of_range(self):
+        stats = {"strikeouts": None}
+        inning_rows = [{"cells": {"1": "삼진"}}]
+        GameDetailCrawler._apply_hitter_inning_derivatives(stats, inning_rows, 5)
+        assert stats["strikeouts"] is None
+
+
+class TestBuildHitterPayload:
+    def test_starter(self):
+        ctx = HitterPayloadContext(
+            row={"cells": {"타순": "1", "POS": "SS"}},
+            idx=1,
+            player_name="홍길동",
+            p_id=123,
+            uniform_no="7",
+            team_code="LG",
+            team_side="home",
+            stats={"hits": 2, "at_bats": 4},
+            extras={"note": "test"},
+        )
+        result = GameDetailCrawler._build_hitter_payload(ctx)
+        assert result["player_id"] == 123
+        assert result["player_name"] == "홍길동"
+        assert result["uniform_no"] == "7"
+        assert result["team_code"] == "LG"
+        assert result["team_side"] == "home"
+        assert result["batting_order"] == 1
+        assert result["position"] == "SS"
+        assert result["is_starter"] is True
+        assert result["appearance_seq"] == 1
+        assert result["stats"] == {"hits": 2, "at_bats": 4}
+        assert result["extras"] == {"note": "test"}
+
+    def test_substitute(self):
+        ctx = HitterPayloadContext(
+            row={"cells": {"타순": "10"}},
+            idx=2,
+            player_name="김철수",
+            p_id=None,
+            uniform_no=None,
+            team_code="LG",
+            team_side="away",
+            stats={},
+            extras={},
+        )
+        result = GameDetailCrawler._build_hitter_payload(ctx)
+        assert result["player_id"] is None
+        assert result["batting_order"] == 10
+        assert result["is_starter"] is False
+        assert result["extras"] is None
+
+
+class TestBuildPitcherPayload:
+    def test_full(self):
+        ctx = PitcherPayloadContext(
+            row={"cells": {"이닝": "5.0", "삼진": "7", "승": "1"}},
+            idx=1,
+            player_name="최영",
+            p_id=456,
+            uniform_no="18",
+            team_code="SSG",
+            team_side="away",
+        )
+        result = GameDetailCrawler._build_pitcher_payload(ctx)
+        assert result["player_id"] == 456
+        assert result["player_name"] == "최영"
+        assert result["uniform_no"] == "18"
+        assert result["team_code"] == "SSG"
+        assert result["team_side"] == "away"
+        assert result["is_starting"] is True
+        assert result["appearance_seq"] == 1
+        assert result["stats"]["innings_outs"] == 15
+        assert result["stats"]["strikeouts"] == 7
+        assert result["extras"] is None
+
+    def test_substitute_with_extras(self):
+        ctx = PitcherPayloadContext(
+            row={"cells": {"ERA": "4.50", "Unknown": "val"}},
+            idx=3,
+            player_name="박철",
+            p_id=None,
+            uniform_no=None,
+            team_code="LG",
+            team_side="home",
+        )
+        result = GameDetailCrawler._build_pitcher_payload(ctx)
+        assert result["player_id"] is None
+        assert result["is_starting"] is False
+        assert result["stats"]["era"] == 4.5
+        assert result["stats"]["innings_outs"] is None
+        assert result["extras"] == {"Unknown": "val"}
+
+    def test_decision_hold(self):
+        ctx = PitcherPayloadContext(
+            row={"cells": {"이닝": "1.0", "결": "홀드"}},
+            idx=2,
+            player_name="이동",
+            p_id=789,
+            uniform_no="99",
+            team_code="KT",
+            team_side="away",
+        )
+        result = GameDetailCrawler._build_pitcher_payload(ctx)
+        assert result["stats"]["decision"] == "H"
+        assert result["stats"]["innings_outs"] == 3
+
+
+class TestSelectHitterExtraRow:
+    def test_extra_has_names_match(self):
+        extra_map = {"홍길동": {"extra_hits": 1}}
+        extra_rows = [{"extra_hits": 99}]
+        result = GameDetailCrawler._select_hitter_extra_row(
+            extra_has_names=True,
+            extra_map=extra_map,
+            extra_rows=extra_rows,
+            player_name="홍길동",
+            idx=1,
+        )
+        assert result == {"extra_hits": 1}
+
+    def test_extra_has_names_no_match(self):
+        extra_map = {"홍길동": {"extra_hits": 1}}
+        result = GameDetailCrawler._select_hitter_extra_row(
+            extra_has_names=True,
+            extra_map=extra_map,
+            extra_rows=[],
+            player_name="김철수",
+            idx=1,
+        )
+        assert result is None
+
+    def test_by_index(self):
+        extra_rows = [{"extra_hits": 10}, {"extra_hits": 20}]
+        result = GameDetailCrawler._select_hitter_extra_row(
+            extra_has_names=False,
+            extra_map={},
+            extra_rows=extra_rows,
+            player_name="any",
+            idx=2,
+        )
+        assert result == {"extra_hits": 20}
+
+    def test_by_index_out_of_range(self):
+        result = GameDetailCrawler._select_hitter_extra_row(
+            extra_has_names=False,
+            extra_map={},
+            extra_rows=[{"extra_hits": 1}],
+            player_name="any",
+            idx=5,
+        )
+        assert result is None
+
+
+class TestResolveHanwhaParkJunyoung:
+    def test_single_candidate_low_era(self):
+        row = {"cells": {"평균자책점": "2.50"}}
+        result = GameDetailCrawler._resolve_hanwha_park_junyoung(row, [row], 1)
+        assert result == 56709
+
+    def test_single_candidate_high_era(self):
+        row = {"cells": {"ERA": "5.00"}}
+        result = GameDetailCrawler._resolve_hanwha_park_junyoung(row, [row], 1)
+        assert result == 52731
+
+    def test_single_candidate_invalid_era(self):
+        row = {"cells": {}}
+        result = GameDetailCrawler._resolve_hanwha_park_junyoung(row, [row], 1)
+        assert result == 52731
+
+    def test_multiple_candidates_first(self):
+        rows = [
+            {"playerName": "박준영", "cells": {}},
+            {"playerName": "박준영", "cells": {}},
+            {"playerName": "김철수", "cells": {}},
+        ]
+        result = GameDetailCrawler._resolve_hanwha_park_junyoung(rows[0], rows, 1)
+        assert result == 52731
+
+    def test_multiple_candidates_second(self):
+        rows = [
+            {"playerName": "박준영", "cells": {}},
+            {"playerName": "박준영", "cells": {}},
+            {"playerName": "김철수", "cells": {}},
+        ]
+        result = GameDetailCrawler._resolve_hanwha_park_junyoung(rows[1], rows, 2)
+        assert result == 56709
+
+    def test_multiple_candidates_fallback_low_idx(self):
+        rows = [
+            {"playerName": "박준영", "cells": {}},
+            {"playerName": "박준영", "cells": {}},
+        ]
+        result = GameDetailCrawler._resolve_hanwha_park_junyoung(rows[0], rows, 0)
+        assert result == 56709
+
+    def test_multiple_candidates_fallback_high_idx(self):
+        rows = [
+            {"playerName": "박준영", "cells": {}},
+            {"playerName": "박준영", "cells": {}},
+        ]
+        result = GameDetailCrawler._resolve_hanwha_park_junyoung(rows[1], rows, 5)
+        assert result == 56709
+
+
+class TestLogUnresolvedPlayerIds:
+    def test_no_unresolved(self, caplog):
+        hitters = {"away": [{"player_name": "홍길동", "player_id": 1}]}
+        pitchers = {"home": [{"player_name": "최영", "player_id": 2}]}
+        GameDetailCrawler._log_unresolved_player_ids("game1", hitters, pitchers)
+        assert len(caplog.records) == 0
+
+    def test_unresolved_hitters(self, caplog):
+        caplog.set_level("WARNING")
+        hitters = {
+            "away": [{"player_name": "홍길동", "player_id": None, "team_code": "LG", "uniform_no": "7"}],
+            "home": [],
+        }
+        pitchers = {"away": [], "home": []}
+        GameDetailCrawler._log_unresolved_player_ids("game1", hitters, pitchers)
+        assert any("game1" in r.message for r in caplog.records)
+
+    def test_unresolved_pitchers(self, caplog):
+        caplog.set_level("INFO")
+        hitters = {"away": [], "home": []}
+        pitchers = {
+            "home": [{"player_name": "최영", "player_id": None, "team_code": "SSG", "uniform_no": "18"}],
+        }
+        GameDetailCrawler._log_unresolved_player_ids("game1", hitters, pitchers)
+        info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+        assert any("최영" in m for m in info_msgs)

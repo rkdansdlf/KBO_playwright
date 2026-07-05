@@ -132,7 +132,7 @@ def _parse_hands(text: str) -> dict[str, str | None]:
         text: Text.
 
     """
-    result = {"bats": None, "throws": None}
+    result: dict[str, str | None] = {"bats": None, "throws": None}
 
     m = re.search(r"\((.)[투](.)타\)", text)
     if m:
@@ -171,7 +171,7 @@ def _parse_height_weight(text: str | None) -> dict[str, int | None]:
         text: Text.
 
     """
-    result = {"height_cm": None, "weight_kg": None}
+    result: dict[str, int | None] = {"height_cm": None, "weight_kg": None}
 
     if not text:
         return result
@@ -413,7 +413,7 @@ def _profile_photo_url(raw: dict[str, Any], player_id: str) -> str | None:
     return f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{curr_year}/{player_id}.jpg"
 
 
-def _build_profile_result(player_id: str, raw: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
+def _build_profile_result(player_id: str, raw: dict[str, Any], parsed: Any) -> dict[str, Any]:  # noqa: ANN401
     hands = _parse_hands(raw.get("raw_text") or "")
     height_weight = _parse_height_weight(raw.get("height_weight"))
     return {
