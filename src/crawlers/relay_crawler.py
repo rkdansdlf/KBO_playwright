@@ -227,7 +227,8 @@ class RelayCrawler:
         """
         return await self.crawl_game_relay(game_id)
 
-    def _map_to_naver_id(self, kbo_game_id: str) -> str:
+    @staticmethod
+    def _map_to_naver_id(kbo_game_id: str) -> str:
         """
         Convert KBO game ID (e.g., 20260412SKLG0) to Naver ID (e.g., 20260412SKLG02026).
 
@@ -467,7 +468,8 @@ class RelayCrawler:
             diff_mins = abs((k_hours * 60 + k_mins) - (g_hours * 60 + g_mins))
             return _time_diff_score(diff_mins)
 
-    def _score_stadium_match(self, game: dict, stadium: str | None) -> int:
+    @staticmethod
+    def _score_stadium_match(game: dict, stadium: str | None) -> int:
         if not stadium:
             return 0
         g_stadium = str(game.get("stadium") or game.get("place") or "").strip().lower()
@@ -475,7 +477,8 @@ class RelayCrawler:
             return 30
         return 0
 
-    def _game_time_mins(self, game: dict) -> int:
+    @staticmethod
+    def _game_time_mins(game: dict) -> int:
         t = str(game.get("gameStartTime") or game.get("startTime") or "").strip()
         t_clean = re.sub(r"[^\d:]", "", t)
         if ":" in t_clean:
@@ -596,7 +599,8 @@ class RelayCrawler:
         logger.info("Matched %s to Naver gameId=%s score=%d", kbo_game_id, best_game.get("gameId"), best_score)
         return best_game
 
-    def _is_team_in_id(self, team_code: str, game_id: str) -> bool:
+    @staticmethod
+    def _is_team_in_id(team_code: str, game_id: str) -> bool:
         """
         Check if a team code (modern or legacy) is present in the game ID string.
 
@@ -780,7 +784,7 @@ class RelayCrawler:
                     if not game_time:
                         game_time = getattr(meta_row, "start_time", None)
                         if hasattr(game_time, "strftime"):
-                            game_time = game_time.strftime("%H:%M")
+                            game_time = game_time.strftime("%H:%M")  # type: ignore[union-attr]
         except SQLAlchemyError:
             logger.warning("Failed to extract game metadata for relay relay")
         return stadium, game_time
@@ -793,7 +797,7 @@ class RelayCrawler:
         stadium: str | None,
         game_time: str | None,
     ) -> tuple[str | None, list[dict[str, Any]] | None]:
-        naver_id = direct_naver_id
+        naver_id = direct_naver_id or ""
         all_text_relays = await self._fetch_text_relays(client, naver_id)
 
         if not all_text_relays:
@@ -852,8 +856,8 @@ class RelayCrawler:
         return f"naver:{identity.payload_hash}:{inning_token}{half_token}:{identity.segment_index}:{identity.log_index}:{text_hash}"
 
     def _parse_naver_payload(self, text_relays: list[dict[str, Any]]) -> dict[str, Any]:
-        parsed_events = []
-        raw_pbp_rows = []
+        parsed_events: list[dict[str, Any]] = []
+        raw_pbp_rows: list[dict[str, Any]] = []
         sequence = 1
         payload_hash = self._compute_payload_hash(text_relays)
 

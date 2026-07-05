@@ -405,7 +405,7 @@ class ScheduleCrawler:
         # JS를 사용하여 모든 게임 정보를 한 번에 추출
 
         extraction_script = r"""
-        ({year, season_type}, STADIUM_SHORT_NAME_MAP) => {
+        ([{year, season_type}, STADIUM_SHORT_NAME_MAP]) => {
             const results = [];
             const rows = document.querySelectorAll('.tbl tbody tr');
             let currentDateString = ""; // To handle rowspan or implicit date
@@ -569,8 +569,7 @@ class ScheduleCrawler:
         try:
             raw_games = await page.evaluate(
                 extraction_script,
-                {"year": year, "season_type": season_type},
-                STADIUM_SHORT_NAME_MAP,
+                [{"year": year, "season_type": season_type}, STADIUM_SHORT_NAME_MAP],
             )
             games = []
 

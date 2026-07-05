@@ -137,7 +137,9 @@ def _parse_fielding_row(
         return
     try:
         player_link = cells[1].query_selector("a")
-        player_id = player_link.get_attribute("href").split("playerId=")[1].split("&")[0] if player_link else None
+        player_id = (
+            (player_link.get_attribute("href") or "").split("playerId=")[1].split("&")[0] if player_link else None
+        )
         if not player_id:
             return
 
@@ -209,10 +211,11 @@ def _crawl_team_fielding_basic(ctx: FieldingCrawlContext) -> None:
                 _go_to_page(ctx.page, current_page, ctx.policy)
 
             table = ctx.page.query_selector(FIELDING_STATS.data_table)
-            if not table or not table.query_selector("tbody"):
+            tbody = table.query_selector("tbody") if table else None
+            if not tbody:
                 continue
 
-            for row in table.query_selector("tbody").query_selector_all("tr"):
+            for row in tbody.query_selector_all("tr"):
                 _parse_fielding_row(row, ctx.year, ctx.position_mapping, ctx.fielding_data_map)
     except CRAWLER_EXCEPTIONS:
         logger.exception("   ⚠️ [%s] 처리 중 오류", ctx.team_name)
@@ -228,7 +231,9 @@ def _parse_catcher_detail_row(
         return
     try:
         player_link = cells[1].query_selector("a")
-        player_id = player_link.get_attribute("href").split("playerId=")[1].split("&")[0] if player_link else None
+        player_id = (
+            (player_link.get_attribute("href") or "").split("playerId=")[1].split("&")[0] if player_link else None
+        )
         if not player_id:
             return
 
@@ -297,10 +302,11 @@ def _crawl_catcher_fielding_details(
                 _go_to_page(page, current_page, policy)
 
             table = page.query_selector(FIELDING_STATS.data_table)
-            if not table or not table.query_selector("tbody"):
+            tbody = table.query_selector("tbody") if table else None
+            if not tbody:
                 continue
 
-            for row in table.query_selector("tbody").query_selector_all("tr"):
+            for row in tbody.query_selector_all("tr"):
                 _parse_catcher_detail_row(row, year, fielding_data_map)
     except CRAWLER_EXCEPTIONS:
         logger.exception("   ⚠️ 포수 상세 수집 실패")
@@ -324,7 +330,7 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
     if year is None:
         year = datetime.now(KST).year
     fielding_data = []
-    fielding_data_map = {}  # (player_id, team_id, position_id) -> record
+    fielding_data_map: dict[tuple[str, str, str], dict[str, Any]] = {}  # (player_id, team_id, position_id) -> record
     policy = RequestPolicy()
 
     with sync_playwright() as playwright:

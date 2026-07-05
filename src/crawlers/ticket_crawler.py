@@ -189,9 +189,9 @@ class TicketCrawler:
         team_view = soup.find("ul", class_="teamView")
         if team_view:
             for link in team_view.find_all("a"):
-                href = link.get("href", "")
+                href = str(link.get("href", ""))
                 img = link.find("img")
-                alt = img.get("alt", "").strip() if img else ""
+                alt = str(img.get("alt", "")).strip() if img else ""
                 team_code = TicketCrawler._alt_to_team_code(alt)
                 if team_code and href:
                     current_url = TEAM_TICKET_INFO[team_code].get("ticket_url")

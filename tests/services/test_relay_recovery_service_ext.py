@@ -185,6 +185,14 @@ class TestManifestBaseDir:
         result = _manifest_base_dir("")
         assert result is not None
 
+    def test_from_iterable(self):
+        result = _manifest_base_dir(["/some/dir/file.csv"])
+        assert str(result).endswith("/some/dir")
+
+    def test_from_empty_iterable(self):
+        result = _manifest_base_dir([])
+        assert result is not None
+
 
 class TestRelayRecoveryTarget:
     def test_from_game_state_with_events(self):

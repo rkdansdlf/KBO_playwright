@@ -289,7 +289,7 @@ class PBPCrawler:
 
     async def _retry_after_auth_redirect(
         self,
-        ctx: AuthRedirectContext,
+        ctx: GameEventsContext,
     ) -> dict[str, Any] | None:
         logger.info("[ERROR] Redirected to %s.", ctx.page.url)
         self.last_failure_reason = "auth_required"
@@ -383,11 +383,3 @@ class PBPCrawler:
         if match:
             return {"inning": int(match.group(1)), "half": "top" if match.group(2) == "초" else "bottom"}
         return {"inning": idx + 1, "half": "unknown"}
-
-    @staticmethod
-    def _format_base_string(runners: int) -> str:
-        s = ""
-        s += "1" if (runners & 1) else "-"
-        s += "2" if (runners & 2) else "-"
-        s += "3" if (runners & 4) else "-"
-        return s

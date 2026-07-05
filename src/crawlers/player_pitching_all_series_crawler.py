@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 # Constants & configuration
 # ---------------------------------------------------------------------------
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.urls import PITCHER_BASIC1, PITCHER_BASIC2
 
@@ -317,7 +317,7 @@ def _apply_sort_by_label(page: Page, header_label: str) -> bool:
         if not anchor.is_visible():
             continue
 
-        label = normalize_header(anchor.text_content())
+        label = normalize_header(anchor.text_content() or "")
         if label == header_label:
             anchor.click()
             page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
@@ -401,9 +401,9 @@ class PitcherStats:
     kbb: float | None = None
     extra_stats: dict[str, object] = field(default_factory=lambda: {"rankings": {}})
 
-    def to_repository_payload(self) -> dict[str, object | None]:
+    def to_repository_payload(self) -> dict[str, Any]:
         """타자 크롤러 방식의 단순 데이터 구조."""
-        data = {
+        data: dict[str, Any] = {
             "player_id": self.player_id,
             "player_name": self.player_name,
             "season": self.season,
@@ -549,7 +549,9 @@ def _map_pitcher_basic1_stats(
     stats.era = safe_float_or_none(get_val("ERA")) if "ERA" in raw else stats.era
     stats.whip = safe_float_or_none(get_val("WHIP")) if "WHIP" in raw else stats.whip
 
-    metrics = stats.extra_stats.setdefault("metrics", {})
+    if "metrics" not in stats.extra_stats:
+        stats.extra_stats["metrics"] = {}
+    metrics: dict[str, Any] = stats.extra_stats["metrics"]  # type: ignore[assignment]
     for header, key in [("CG", "complete_games"), ("SHO", "shutouts"), ("TBF", "tbf")]:
         if header in raw:
             val = safe_int_or_none(get_val(header))
@@ -559,7 +561,9 @@ def _map_pitcher_basic1_stats(
     rank_value = safe_int_or_none(get_val("순위")) if "순위" in raw else None
     win_pct = safe_float_or_none(get_val("WPCT")) if "WPCT" in raw else None
 
-    rankings = stats.extra_stats.setdefault("rankings", {})
+    if "rankings" not in stats.extra_stats:
+        stats.extra_stats["rankings"] = {}
+    rankings: dict[str, Any] = stats.extra_stats["rankings"]  # type: ignore[assignment]
     rankings["basic1"] = rank_value
     if stats.era is not None:
         metrics["era"] = stats.era
@@ -666,10 +670,10 @@ def _extract_basic2_row_info(
     use_fast: bool,
 ) -> tuple[int | None, Callable[[int], str | None]] | None:
     if use_fast:
-        cells = row.get("cells") or []
+        cells = row.get("cells") or []  # type: ignore[union-attr]
         if len(cells) < len(header_index):
             return None
-        link_href = row.get("linkHref")
+        link_href = row.get("linkHref")  # type: ignore[union-attr]
         player_id = extract_player_id(link_href)
         if not player_id:
             return None
@@ -690,7 +694,7 @@ def _extract_basic2_row_info(
 
         return player_id, cell_text_fast
 
-    cells = row.query_selector_all("td")
+    cells = row.query_selector_all("td")  # type: ignore[union-attr]
     if len(cells) < len(header_index):
         return None
     link = cells[header_index["선수명"]].query_selector("a")
@@ -741,7 +745,7 @@ def _update_pitcher_basic2_stats(
         if header_name in header_index:
             value = caster(cell_text_fn(header_index[header_name]))
             if value is not None:
-                metrics[key] = value
+                metrics[key] = value  # type: ignore[index]
 
     single_mapping = {
         "IBB": "intentional_walks",
@@ -757,8 +761,10 @@ def _update_pitcher_basic2_stats(
 
     rank_val = safe_int_or_none(cell_text_fn(header_index.get("순위", 0))) if "순위" in header_index else None
     if rank_val is not None:
-        rankings = stats.extra_stats.setdefault("rankings", {})
-        rankings[sort_key] = rank_val
+        if "rankings" not in stats.extra_stats:
+            stats.extra_stats["rankings"] = {}
+        rankings = stats.extra_stats["rankings"]
+        rankings[sort_key] = rank_val  # type: ignore[index]
 
 
 def parse_basic2_page(ctx: Basic2PageContext) -> int:
@@ -777,7 +783,9 @@ def parse_basic2_page(ctx: Basic2PageContext) -> int:
         logger.warning("⚠️  Basic2 테이블 헤더 파싱 실패 (타임아웃)")
         return 0
 
-    headers = [normalize_header(th.text_content()) for th in ctx.page.query_selector_all("table.tData01 thead th")]
+    headers = [
+        normalize_header(th.text_content() or "") for th in ctx.page.query_selector_all("table.tData01 thead th")
+    ]
     header_index = {name: idx for idx, name in enumerate(headers)}
     get_team_mapping_for_year(ctx.season)
     use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
@@ -799,6 +807,8 @@ def parse_basic2_page(ctx: Basic2PageContext) -> int:
         if ctx.max_players and player_id not in ctx.pitchers and len(ctx.pitchers) >= ctx.max_players:
             continue
 
+        if player_id is None:
+            continue
         stats = ctx.pitchers.get(player_id)
         if not stats:
             continue
@@ -948,8 +958,8 @@ def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual 
             .all()
         )
 
-        player_team_map = {}
-        player_latest_date = {}
+        player_team_map: dict[int, str] = {}
+        player_latest_date: dict[int, Any] = {}
         for pid, team_code, gdate in recent_games:
             if not pid or not team_code:
                 continue

@@ -54,12 +54,12 @@ class GameMvpCrawler:
                 for d in results:
                     logger.info(d)
         else:
-            data = await self._fetch_recent_mvp_news()
-            logger.info("Found %s MVP entries.", len(data))
+            news_data = await self._fetch_recent_mvp_news()
+            logger.info("Found %s MVP entries.", len(news_data))
             if save:
-                GameMvpCrawler._save_to_db(data)
+                GameMvpCrawler._save_to_db(news_data)
             else:
-                for d in data[:10]:
+                for d in news_data[:10]:
                     logger.info(d)
 
     async def _search_mvp_for_game(self, game_id: str) -> dict[str, Any] | None:
