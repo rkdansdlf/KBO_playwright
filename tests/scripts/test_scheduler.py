@@ -9,6 +9,10 @@ import pytest
 def _inject_mock_module():
     key = "scripts.scheduler"
     _original = sys.modules.get(key)
+    import scripts
+
+    _original_attr = getattr(scripts, "scheduler", None)
+    _had_original_attr = hasattr(scripts, "scheduler")
     if key in sys.modules:
         mod = sys.modules[key]
     else:
@@ -26,7 +30,6 @@ def _inject_mock_module():
         mod.main = _main
     if not hasattr(mod, "os"):
         mod.os = __import__("os")
-    import scripts
 
     scripts.scheduler = mod
     yield
@@ -35,6 +38,10 @@ def _inject_mock_module():
         sys.modules.pop(key, None)
     else:
         sys.modules[key] = _original
+    if _had_original_attr:
+        scripts.scheduler = _original_attr
+    else:
+        delattr(scripts, "scheduler")
 
 
 class TestScheduler:

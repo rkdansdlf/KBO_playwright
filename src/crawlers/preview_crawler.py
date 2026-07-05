@@ -1,5 +1,6 @@
 """
-KBO Preview Crawler
+KBO Preview Crawler.
+
 Fetch Pre-game information (Starting Pitchers, Lineups) for LLM context generation.
 
 Uses KBO's internal XHR APIs (GetKboGameList, GetLineUpAnalysis) for stability.
@@ -287,7 +288,8 @@ class PreviewCrawler:
         page: Page | None = None,
     ) -> dict[str, object] | list[object] | None:
         """
-        Try direct HTTP first (fast/fewer dependencies), then fallback to Playwright
+        Try direct HTTP first (fast/fewer dependencies), then fallback to Playwright.
+
         request when a page is available.
 
         Args:
@@ -326,10 +328,10 @@ class PreviewCrawler:
 
         try:
             response = await self.policy.run_with_retry_async(
-                page.request.post,
+                page.request.post,  # type: ignore[arg-type]
                 url,
                 form=form,
-                headers=headers,  # type: ignore[arg-type]
+                headers=headers,
             )
             if response.ok:  # type: ignore[attr-defined]
                 payload = PreviewCrawler._coerce_api_payload(await response.json())
@@ -342,7 +344,8 @@ class PreviewCrawler:
 
     async def crawl_preview_for_date(self, game_date: str) -> list[dict[str, Any]]:
         """
-        주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해
+        주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해.
+
         선발투수와 선발 라인업(발표되었을 경우) 정보를 수집합니다.
 
         Args:
@@ -490,7 +493,7 @@ class PreviewCrawler:
             extracted = PreviewCrawler._extract_list_payload(lineup_data)
             PreviewCrawler._apply_lineup_payload(
                 preview_data,
-                [r for r in extracted if isinstance(r, dict)],
+                list(extracted),
             )
         except LINEUP_PARSE_EXCEPTIONS:
             logger.exception("⚠️ Error parsing lineup for %s", preview_data["game_id"])
