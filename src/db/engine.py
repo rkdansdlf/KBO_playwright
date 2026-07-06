@@ -19,6 +19,8 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from src.db.sqlite_integrity import is_sqlite_corruption_error
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -49,7 +51,23 @@ def _is_sqlite(url: str | None) -> bool:
     return url.startswith("sqlite:")
 
 
-def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLAlchemyEngine:
+def _normalize_sqlite_synchronous(value: str | None) -> str:
+    raw_value = (value or "NORMAL").strip().upper()
+    if raw_value in {"FULL", "NORMAL"}:
+        return raw_value
+    logger.warning("Unsupported SQLITE_SYNCHRONOUS=%r; defaulting to NORMAL", value)
+    return "NORMAL"
+
+
+SQLITE_SYNCHRONOUS = _normalize_sqlite_synchronous(os.getenv("SQLITE_SYNCHRONOUS", "NORMAL"))
+
+
+def create_engine_for_url(
+    url: str,
+    *,
+    disable_sqlite_wal: bool = False,
+    sqlite_synchronous: str | None = None,
+) -> SQLAlchemyEngine:
     """
     Create engine for url.
 
@@ -65,6 +83,7 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLA
 
     """
     if _is_sqlite(url):
+        synchronous_mode = _normalize_sqlite_synchronous(sqlite_synchronous or SQLITE_SYNCHRONOUS)
         engine = create_engine(
             url,
             connect_args={"check_same_thread": False, "timeout": 120},
@@ -80,7 +99,10 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLA
                 if not disable_sqlite_wal:
                     cursor.execute("PRAGMA journal_mode = WAL;")
                 cursor.execute("PRAGMA busy_timeout = 120000;")
-                cursor.execute("PRAGMA synchronous = NORMAL;")
+                if synchronous_mode == "FULL":
+                    cursor.execute("PRAGMA synchronous = FULL;")
+                else:
+                    cursor.execute("PRAGMA synchronous = NORMAL;")
                 cursor.close()
             except sqlite3.Error:
                 logger.warning("Failed to configure SQLite pragmas")
@@ -89,7 +111,11 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLA
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
 
 
-Engine = create_engine_for_url(DATABASE_URL, disable_sqlite_wal=DISABLE_SQLITE_WAL)
+Engine = create_engine_for_url(
+    DATABASE_URL,
+    disable_sqlite_wal=DISABLE_SQLITE_WAL,
+    sqlite_synchronous=SQLITE_SYNCHRONOUS,
+)
 SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
@@ -355,8 +381,13 @@ def init_db() -> None:
 
     try:
         Base.metadata.create_all(bind=Engine)
-    except SQLAlchemyError:
-        logger.exception("[DB] Failed to create tables")
+    except SQLAlchemyError as exc:
+        if is_sqlite_corruption_error(exc):
+            logger.exception(
+                "[DB] SQLite database appears corrupt; run src.cli.sqlite_integrity_guard before init_db",
+            )
+        else:
+            logger.exception("[DB] Failed to create tables")
         raise
 
     _ensure_player_batting_team_code_column()

@@ -53,18 +53,18 @@ def _get_player_teams(session: Session, season_ids: list[int], model: type[objec
     """
     rows = (
         session.query(
-            model.player_id,
-            model.canonical_team_code,
+            model.player_id,  # type: ignore[attr-defined]
+            model.canonical_team_code,  # type: ignore[attr-defined]
             func.count().label("cnt"),
         )
-        .join(Game, Game.game_id == model.game_id)
+        .join(Game, Game.game_id == model.game_id)  # type: ignore[attr-defined]
         .filter(
             Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
             Game.season_id.in_(season_ids),
-            model.canonical_team_code.isnot(None),
+            model.canonical_team_code.isnot(None),  # type: ignore[attr-defined]
         )
-        .group_by(model.player_id, model.canonical_team_code)
-        .order_by(model.player_id, func.count().desc())
+        .group_by(model.player_id, model.canonical_team_code)  # type: ignore[attr-defined]
+        .order_by(model.player_id, func.count().desc())  # type: ignore[attr-defined]
         .all()
     )
     result: dict[int, str] = {}
@@ -75,15 +75,15 @@ def _get_player_teams(session: Session, season_ids: list[int], model: type[objec
 
 
 def _compute_batting_rates(row: object) -> dict[str, Any]:
-    ab = row.at_bats or 0
-    h = row.hits or 0
-    bb = row.walks or 0
-    hbp = row.hbp or 0
-    sf = row.sacrifice_flies or 0
-    k = row.strikeouts or 0
-    dbl = row.doubles or 0
-    triple = row.triples or 0
-    hr = row.home_runs or 0
+    ab = row.at_bats or 0  # type: ignore[attr-defined]
+    h = row.hits or 0  # type: ignore[attr-defined]
+    bb = row.walks or 0  # type: ignore[attr-defined]
+    hbp = row.hbp or 0  # type: ignore[attr-defined]
+    sf = row.sacrifice_flies or 0  # type: ignore[attr-defined]
+    k = row.strikeouts or 0  # type: ignore[attr-defined]
+    dbl = row.doubles or 0  # type: ignore[attr-defined]
+    triple = row.triples or 0  # type: ignore[attr-defined]
+    hr = row.home_runs or 0  # type: ignore[attr-defined]
 
     avg = round(h / ab, 3) if ab > 0 else 0.0
     obp = round((h + bb + hbp) / (ab + bb + hbp + sf), 3) if (ab + bb + hbp + sf) > 0 else 0.0
@@ -295,7 +295,7 @@ def _upsert_batting(session: Session, records: list[dict[str, Any]], dialect: st
             elif dialect == "postgresql":
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-                stmt = pg_insert(PlayerSeasonBatting).values(**data)
+                stmt = pg_insert(PlayerSeasonBatting).values(**data)  # type: ignore[assignment]
                 stmt = stmt.on_conflict_do_update(
                     index_elements=conflict_keys,
                     set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
@@ -303,8 +303,8 @@ def _upsert_batting(session: Session, records: list[dict[str, Any]], dialect: st
             else:
                 from sqlalchemy.dialects.mysql import insert as my_insert
 
-                stmt = my_insert(PlayerSeasonBatting).values(**data)
-                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})
+                stmt = my_insert(PlayerSeasonBatting).values(**data)  # type: ignore[assignment]
+                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})  # type: ignore[attr-defined]
             session.execute(stmt)
             saved += 1
         except SQLAlchemyError as e:
@@ -333,7 +333,7 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
             elif dialect == "postgresql":
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-                stmt = pg_insert(PlayerSeasonPitching).values(**data)
+                stmt = pg_insert(PlayerSeasonPitching).values(**data)  # type: ignore[assignment]
                 stmt = stmt.on_conflict_do_update(
                     index_elements=conflict_keys,
                     set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
@@ -341,8 +341,8 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
             else:
                 from sqlalchemy.dialects.mysql import insert as my_insert
 
-                stmt = my_insert(PlayerSeasonPitching).values(**data)
-                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})
+                stmt = my_insert(PlayerSeasonPitching).values(**data)  # type: ignore[assignment]
+                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})  # type: ignore[attr-defined]
             session.execute(stmt)
             saved += 1
         except SQLAlchemyError as e:

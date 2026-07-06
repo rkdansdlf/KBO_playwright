@@ -219,6 +219,7 @@ def main() -> int:
 
     year = args.year or datetime.now(KST).year
     asyncio.run(run_advanced_update(year, sync=args.sync, headless=args.headless))
+    return 0
 
 
 if __name__ == "__main__":

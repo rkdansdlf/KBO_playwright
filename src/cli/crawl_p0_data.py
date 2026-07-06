@@ -157,7 +157,7 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
     result = await runner_map[args.type]()
     if isinstance(result, dict):
         return result
-    return {args.type: int(result)}
+    return {args.type: int(result)}  # type: ignore[call-overload]
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

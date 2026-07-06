@@ -56,7 +56,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
             stmt = select(Player).where(Player.kbo_person_id.in_(target_ids))
             logger.info("🎯 Targeted processing for %s IDs", len(target_ids))
         else:
-            stmt = select(Player).where(or_(Player.birth_date is None, Player.debut_year is None)).limit(limit)
+            stmt = select(Player).where(or_(Player.birth_date.is_(None), Player.debut_year.is_(None))).limit(limit)
 
         target_players = session.execute(stmt).scalars().all()
 
@@ -135,6 +135,7 @@ def main() -> int:
         target_ids = [i.strip() for i in args.ids.split(",")]
 
     asyncio.run(collect_profiles(args.limit, target_ids))
+    return 0
 
 
 if __name__ == "__main__":

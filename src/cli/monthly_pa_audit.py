@@ -80,7 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if target_year < 2020:
         logger.info("Skipping PA formula audit for year %s (before 2020)", target_year)
-        return
+        return 0
 
     try:
         logger.info("Starting PA formula audit for year %s", target_year)
@@ -91,6 +91,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     logger.info("PA formula audit completed for %s", target_year)
     logger.info("Fixed rows: %s", fixed_rows)
+    return fixed_rows
 
 
 if __name__ == "__main__":

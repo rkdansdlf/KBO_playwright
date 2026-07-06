@@ -125,7 +125,7 @@ def _fetch_inning_scores(
     )
     result: dict[str, list[GameInningScore]] = {}
     for row in rows:
-        result.setdefault(row.game_id, []).append(row)
+        result.setdefault(row.game_id, []).append(row)  # type: ignore[arg-type]
     return result
 
 
@@ -137,10 +137,10 @@ def _build_game_payload(
     home_innings = [i for i in innings if i.team_side == "home"]
 
     def _line_score(items: list[GameInningScore]) -> list[int | None]:
-        return [i.runs for i in sorted(items, key=lambda x: x.inning)]
+        return [i.runs for i in sorted(items, key=lambda x: x.inning)]  # type: ignore[misc]
 
     def _total_runs(items: list[GameInningScore]) -> int:
-        return sum(i.runs or 0 for i in items)
+        return sum(i.runs or 0 for i in items)  # type: ignore[misc]
 
     away_code = None
     home_code = None
@@ -211,7 +211,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with SessionLocal() as session:
         statuses = _resolve_statuses(args.status)
-        games = _fetch_live_games(session, target_date, args.game_id, args.limit, statuses)
+        games = _fetch_live_games(session, target_date, args.game_id, args.limit, statuses)  # type: ignore[arg-type]
 
         if not games:
             date_label = str(target_date)
@@ -222,9 +222,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         game_ids = [g.game_id for g in games]
-        inning_map = _fetch_inning_scores(session, game_ids)
+        inning_map = _fetch_inning_scores(session, game_ids)  # type: ignore[arg-type]
 
-        payloads = [_build_game_payload(g, inning_map.get(g.game_id, [])) for g in games]
+        payloads = [_build_game_payload(g, inning_map.get(g.game_id, [])) for g in games]  # type: ignore[call-overload]
 
     if args.json:
         sys.stdout.write(

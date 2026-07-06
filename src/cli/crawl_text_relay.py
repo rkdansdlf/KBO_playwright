@@ -83,7 +83,7 @@ async def run_season(
     from src.crawlers.text_relay_crawler import TextRelayCrawler
 
     schedule_crawler = ScheduleCrawler()
-    games = await schedule_crawler.fetch_schedule(year=season, month=month)
+    games = await schedule_crawler.crawl_schedule(year=season, month=month or 0)
 
     game_ids = [g["game_id"] for g in games if g.get("game_id")]
     logger.info("Found %d games for %d/%s", len(game_ids), season, month or "*")

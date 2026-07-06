@@ -208,6 +208,22 @@ class TestResolveLiveLifecycle:
         result = _resolve_live_lifecycle("result_pending_stabilization", [{"description": "안타"}], [])
         assert result == "result_pending_stabilization"
 
+    def test_game_end_from_has_ending_header(self) -> None:
+        result = _resolve_live_lifecycle(None, [], [{"event_type": "play", "play_description": "경기 종료"}])
+        assert result == "result_pending_stabilization"
+
+    def test_suspension_from_raw_pbp_rows(self) -> None:
+        result = _resolve_live_lifecycle(None, [], [{"play_description": "서스펜디드"}])
+        assert result == "suspended"
+
+    def test_suspension_from_flat_events_with_지연(self) -> None:
+        result = _resolve_live_lifecycle(None, [{"description": "지연 발생"}], [])
+        assert result == "suspended"
+
+    def test_no_events_no_lifecycle_running(self) -> None:
+        result = _resolve_live_lifecycle(None, [], [])
+        assert result == "running"
+
 
 class TestComputeBaseDynamicInterval:
     def test_active_playing(self) -> None:

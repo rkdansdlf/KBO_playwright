@@ -156,7 +156,7 @@ def check_season_stat_team_code_gaps() -> dict[str, Any]:
             "pitching_null": pitching_null,
             "pitching_total": pitching_total,
             "pitching_null_rate": round(pitching_rate, 1),
-            "total_null": batting_null + pitching_null,
+            "total_null": batting_null + pitching_null,  # type: ignore[operator]
         }
 
 
@@ -325,7 +325,7 @@ _GAP_SUMMARY_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
 
 
 def _freshness_detail_items(gap_data: dict[str, Any]) -> list[str]:
-    detail_items = []
+    detail_items: list[str] = []
     details = gap_data.get("details", {})
     for key, value in details.items():
         detail_items.extend(f"{key}: {game_id}" for game_id in value[:3])

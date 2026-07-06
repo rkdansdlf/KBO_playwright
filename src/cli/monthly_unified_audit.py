@@ -198,7 +198,7 @@ def _emit_unified_cli_output(
     if json_output:
         output = {"pa_formula": pa_result}
         if not pa_only:
-            output["team_stats"] = team_result
+            output["team_stats"] = team_result  # type: ignore[assignment]
         logger.info(json.dumps(output, indent=2, ensure_ascii=False))
         return
 
@@ -210,8 +210,8 @@ def _emit_unified_cli_output(
             sys.exit(1)
         return
 
-    team_bat_ok = _log_team_mismatches("Batting", team_result["batting"])
-    team_pit_ok = _log_team_mismatches("Pitching", team_result["pitching"])
+    team_bat_ok = _log_team_mismatches("Batting", team_result["batting"])  # type: ignore[index]
+    team_pit_ok = _log_team_mismatches("Pitching", team_result["pitching"])  # type: ignore[index]
     if not pa_ok or not team_bat_ok or not team_pit_ok:
         sys.exit(1)
 
@@ -230,17 +230,18 @@ def main() -> int:
 
     if target_year < 2020:
         logger.info("Skipping unified audit for year %s (before 2020)", target_year)
-        return
+        return 0
 
     logger.info("Running unified audit for year %s...", target_year)
 
     if args.team_only:
         _run_team_only(target_year, json_output=args.json)
-        return
+        return 0
 
     pa_result = _run_pa_audit_for_cli(target_year, dry_run=args.dry_run)
     team_result = None if args.pa_only else run_monthly_team_audit(target_year)
     _emit_unified_cli_output(pa_result, team_result, pa_only=args.pa_only, json_output=args.json)
+    return 0
 
 
 if __name__ == "__main__":

@@ -188,6 +188,7 @@ def main() -> int:
         result = runner()
         if asyncio.iscoroutine(result):
             asyncio.run(result)
+    return 0
 
 
 if __name__ == "__main__":

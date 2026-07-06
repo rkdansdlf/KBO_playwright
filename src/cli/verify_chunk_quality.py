@@ -375,7 +375,7 @@ def remove_duplicate_chunks(session: Session) -> int:
     """),
     )
     session.commit()
-    return result.rowcount
+    return result.rowcount  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------

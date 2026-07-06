@@ -22,12 +22,13 @@ from src.repositories.safe_batting_repository import save_batting_stats_safe
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from typing import Any
 
     from sqlalchemy.orm import Session
 
 
 def _build_player_team_map(session: Session) -> dict:
-    team_map = {}
+    team_map: dict[Any, Any] = {}
     for model in (GameBattingStat, GamePitchingStat):
         team_query = (
             session.query(

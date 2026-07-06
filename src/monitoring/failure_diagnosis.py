@@ -150,6 +150,19 @@ _RULES: tuple[_DiagnosisRule, ...] = (
         suggested_commands=("venv/bin/python -m src.cli.health_check --json",),
     ),
     _DiagnosisRule(
+        category="sqlite_corruption",
+        severity="high",
+        pattern=re.compile(
+            r"malformed database schema|invalid rootpage|database disk image is malformed|file is not a database",
+            re.IGNORECASE,
+        ),
+        message="SQLite database file corruption detected.",
+        suggested_commands=(
+            "venv/bin/python -m src.cli.sqlite_integrity_guard --database-url sqlite:///data/kbo_dev.db --action quarantine --json",
+            "venv/bin/python -m src.cli.db_healthcheck",
+        ),
+    ),
+    _DiagnosisRule(
         category="database",
         severity="high",
         pattern=re.compile(

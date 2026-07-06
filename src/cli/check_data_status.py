@@ -53,14 +53,14 @@ def _safe_scalar(session: Session, sql: str, default: int = 0) -> int:
 
 def _safe_rows(session: Session, sql: str) -> list:
     try:
-        return session.execute(text(sql)).all()
+        return session.execute(text(sql)).all()  # type: ignore[return-value]
     except SQLAlchemyError:
         return []
 
 
 def _safe_first(session: Session, sql: str) -> tuple[Any, Any]:
     try:
-        return session.execute(text(sql)).first()
+        return session.execute(text(sql)).first()  # type: ignore[return-value]
     except SQLAlchemyError:
         return None, None
 
@@ -111,7 +111,7 @@ def _log_schedule_date_ranges(session: Session, *, use_operational_fallback: boo
 
 
 def _validate_schedule_counts(total: int, operational_total: int, type_counts: dict[str, int]) -> list[str]:
-    warnings = []
+    warnings: list[str] = []
     expected = {"preseason": 42, "regular": 720, "postseason": 7}
     logger.info("\nValidation:")
     if total == 0 and operational_total > 0:
@@ -484,7 +484,7 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
     oci_url_present = bool(os.getenv("OCI_DB_URL"))
     oci_sync_ready = pregame_sync_enabled and oci_url_present
 
-    coverage_pct = 0.0 if total == 0 else (both_ok / total) * 100
+    coverage_pct = 0.0 if total == 0 else (both_ok / total) * 100  # type: ignore[operator]
 
     logger.info("Scheduled games: %s", total)
     logger.info("  Both starters present: %s (%.1f%%)", both_ok, coverage_pct)

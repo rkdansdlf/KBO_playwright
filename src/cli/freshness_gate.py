@@ -128,81 +128,81 @@ def _check_past_scheduled_games(
 
 
 def _check_metadata_start_time(session: Session, game: object, issues: dict[str, list[str]]) -> None:
-    metadata = session.query(GameMetadata.start_time).filter(GameMetadata.game_id == game.game_id).one_or_none()
+    metadata = session.query(GameMetadata.start_time).filter(GameMetadata.game_id == game.game_id).one_or_none()  # type: ignore[attr-defined]
     if metadata is None or metadata.start_time is None:
-        issues["missing_start_time"].append(game.game_id)
+        issues["missing_start_time"].append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_scores(game: object, issues: dict[str, list[str]]) -> None:
-    if game.away_score is None or game.home_score is None:
-        issues["missing_scores"].append(game.game_id)
+    if game.away_score is None or game.home_score is None:  # type: ignore[attr-defined]
+        issues["missing_scores"].append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_lineups(session: Session, game: object, issues: dict[str, list[str]]) -> None:
-    if session.query(GameLineup).filter(GameLineup.game_id == game.game_id).count() == 0:
-        issues["missing_lineups"].append(game.game_id)
+    if session.query(GameLineup).filter(GameLineup.game_id == game.game_id).count() == 0:  # type: ignore[attr-defined]
+        issues["missing_lineups"].append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_inning_scores(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     inning_rows = (
         session.query(GameInningScore.team_side, GameInningScore.runs)
-        .filter(GameInningScore.game_id == game.game_id)
+        .filter(GameInningScore.game_id == game.game_id)  # type: ignore[attr-defined]
         .all()
     )
     if not inning_rows:
-        issues["missing_inning_scores"].append(game.game_id)
+        issues["missing_inning_scores"].append(game.game_id)  # type: ignore[attr-defined]
         return
     away_sum = sum((row.runs or 0) for row in inning_rows if row.team_side == "away")
     home_sum = sum((row.runs or 0) for row in inning_rows if row.team_side == "home")
-    if (game.away_score is not None and away_sum != game.away_score) or (
-        game.home_score is not None and home_sum != game.home_score
+    if (game.away_score is not None and away_sum != game.away_score) or (  # type: ignore[attr-defined]
+        game.home_score is not None and home_sum != game.home_score  # type: ignore[attr-defined]
     ):
-        issues["inning_score_mismatch"].append(game.game_id)
+        issues["inning_score_mismatch"].append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_events_wpa(session: Session, game: object, issues: dict[str, list[str]]) -> None:
-    event_count = session.query(GameEvent.id).filter(GameEvent.game_id == game.game_id).count()
+    event_count = session.query(GameEvent.id).filter(GameEvent.game_id == game.game_id).count()  # type: ignore[attr-defined]
     if not event_count:
-        issues["missing_events"].append(game.game_id)
+        issues["missing_events"].append(game.game_id)  # type: ignore[attr-defined]
     elif (
-        session.query(GameEvent.id).filter(GameEvent.game_id == game.game_id, GameEvent.wpa.isnot(None)).first() is None
+        session.query(GameEvent.id).filter(GameEvent.game_id == game.game_id, GameEvent.wpa.isnot(None)).first() is None  # type: ignore[attr-defined]
     ):
-        issues["missing_wpa"].append(game.game_id)
+        issues["missing_wpa"].append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_starting_pitchers(game: object, issues: dict[str, list[str]]) -> None:
-    if not (game.away_pitcher and str(game.away_pitcher).strip()) or not (
-        game.home_pitcher and str(game.home_pitcher).strip()
+    if not (game.away_pitcher and str(game.away_pitcher).strip()) or not (  # type: ignore[attr-defined]
+        game.home_pitcher and str(game.home_pitcher).strip()  # type: ignore[attr-defined]
     ):
-        issues["missing_starting_pitchers"].append(game.game_id)
+        issues["missing_starting_pitchers"].append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_pitching_stats(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     pitching_rows = (
         session.query(GamePitchingStat.team_side, GamePitchingStat.is_starting)
-        .filter(GamePitchingStat.game_id == game.game_id)
+        .filter(GamePitchingStat.game_id == game.game_id)  # type: ignore[attr-defined]
         .all()
     )
     if not pitching_rows:
-        issues["missing_pitching_stats"].append(game.game_id)
+        issues["missing_pitching_stats"].append(game.game_id)  # type: ignore[attr-defined]
         return
     starter_sides = {row.team_side for row in pitching_rows if row.is_starting and row.team_side in {"away", "home"}}
     if starter_sides != {"away", "home"}:
-        issues["missing_pitching_starters"].append(game.game_id)
+        issues["missing_pitching_starters"].append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_review_summary(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     review = (
         session.query(GameSummary.detail_text)
-        .filter(GameSummary.game_id == game.game_id, GameSummary.summary_type == "리뷰_WPA")
+        .filter(GameSummary.game_id == game.game_id, GameSummary.summary_type == "리뷰_WPA")  # type: ignore[attr-defined]
         .first()
     )
     if review is None:
-        issues["missing_review_wpa"].append(game.game_id)
+        issues["missing_review_wpa"].append(game.game_id)  # type: ignore[attr-defined]
     elif not _has_review_moments(review.detail_text):
-        issues["missing_review_moments"].append(game.game_id)
+        issues["missing_review_moments"].append(game.game_id)  # type: ignore[attr-defined]
     elif _review_moments_have_noise(review.detail_text):
-        issues["review_moment_noise"].append(game.game_id)
+        issues["review_moment_noise"].append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_freshness_game(session: Session, game: object, issues: dict[str, list[str]]) -> None:

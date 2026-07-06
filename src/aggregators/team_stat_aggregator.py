@@ -132,8 +132,8 @@ class TeamStatAggregator:
             }
         return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
 
+    @staticmethod
     def _build_aggregation_query(
-        self,
         query: TeamAggregationQuery | int | Iterable[Any],
         *,
         team_id: str | None = None,
@@ -562,8 +562,8 @@ class TeamStatAggregator:
             if db_type == "sqlite":
                 session.execute(text("PRAGMA foreign_keys = ON"))
 
+    @staticmethod
     def _aggregate_batting_mem(
-        self,
         rows: Iterable[PlayerSeasonBatting],
         team_names: dict[str, str] | None = None,
         team_games_map: dict[tuple[int, str], int] | None = None,
@@ -664,8 +664,8 @@ class TeamStatAggregator:
 
         return results
 
+    @staticmethod
     def _aggregate_pitching_mem(
-        self,
         rows: Iterable[PlayerSeasonPitching],
         team_names: dict[str, str] | None = None,
         team_games_map: dict[tuple[int, str], int] | None = None,

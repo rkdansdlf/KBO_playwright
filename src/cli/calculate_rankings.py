@@ -47,7 +47,7 @@ def _dictify_rows(rows: Sequence[object], label_lookup: dict[int, str]) -> list[
         for k, v in d.items():
             if isinstance(v, (datetime, date)):
                 d[k] = v.isoformat()
-        d["player_name"] = label_lookup.get(row.player_id, str(row.player_id))
+        d["player_name"] = label_lookup.get(row.player_id, str(row.player_id))  # type: ignore[attr-defined]
         result.append(d)
     return result
 

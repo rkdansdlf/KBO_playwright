@@ -102,7 +102,7 @@ async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, 
     logger.info("Gathering active player list for %s...", season_year)
 
     crawler = PlayerListCrawler(request_delay=delay)
-    result = await crawler.crawl_all_players(season_year=season_year)
+    result = await crawler.crawl_all_players(_season_year=season_year)
 
     player_positions: dict[str, dict[str, str]] = {}
     for player in result.get("hitters", []):
@@ -260,7 +260,7 @@ async def _save_futures_player_stats(
 
     if batting_rows:
         try:
-            saved_batting = await asyncio.to_thread(save_futures_batting, player_id, batting_rows)
+            saved_batting = await asyncio.to_thread(save_futures_batting, player_id, batting_rows)  # type: ignore[arg-type]
             saved += saved_batting
             if saved_batting == 0:
                 save_failures.append("batting_save_zero")
