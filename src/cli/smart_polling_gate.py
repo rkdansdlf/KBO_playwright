@@ -48,7 +48,7 @@ def get_kst_today_str() -> str:
     return datetime.now(KST).strftime("%Y%m%d")
 
 
-def get_kst_today_date() -> datetime.date:
+def get_kst_today_date() -> date:
     """Return today's date in KST."""
     return datetime.now(KST).date()
 

@@ -15,6 +15,9 @@ services:
       OCI_DB_URL: ${OCI_DB_URL:-}
       TARGET_DATABASE_URL: ${TARGET_DATABASE_URL:-}
       SOURCE_DATABASE_URL: sqlite:////app/data/kbo_dev.db
+      SQLITE_STARTUP_GUARD: ${SQLITE_STARTUP_GUARD:-1}
+      SQLITE_CORRUPT_ACTION: ${SQLITE_CORRUPT_ACTION:-quarantine}
+      SQLITE_SYNCHRONOUS: ${SQLITE_SYNCHRONOUS:-FULL}
       PLAYWRIGHT_WS_ENDPOINT: ws://browserless:3000
     depends_on:
       - browserless

@@ -59,7 +59,7 @@ def _game_ids_for_date(session: Session, target_date: str) -> list[str]:
 
 
 def _print_batting_records(records: list[dict[str, object]]) -> None:
-    for r in sorted(records, key=lambda x: x.get("plate_appearances", 0), reverse=True)[:20]:
+    for r in sorted(records, key=lambda x: x.get("plate_appearances", 0), reverse=True)[:20]:  # type: ignore[return-value, arg-type]
         logger.info(
             "  PID=%-6s %-8s PA=%-3s H=%-2s AVG=%-5s OPS=%-5s",
             r.get("player_id", ""),
@@ -72,8 +72,8 @@ def _print_batting_records(records: list[dict[str, object]]) -> None:
 
 
 def _print_pitching_records(records: list[dict[str, object]]) -> None:
-    for r in sorted(records, key=lambda x: x.get("innings_outs", 0), reverse=True)[:20]:
-        ip = r.get("innings_outs", 0) / 3.0
+    for r in sorted(records, key=lambda x: x.get("innings_outs", 0), reverse=True)[:20]:  # type: ignore[return-value, arg-type]
+        ip = r.get("innings_outs", 0) / 3.0  # type: ignore[operator]
         logger.info(
             "  PID=%-6s %-8s IP=%-5.1f ERA=%-5s WHIP=%-5s",
             r.get("player_id", ""),

@@ -27,7 +27,7 @@ class TestMonthlyUnifiedAudit:
             mock_fix.return_value = {"ok": True, "fixed_rows": 0}
             mock_pa.return_value = {"ok": True, "violation_count": 0, "violations": []}
             result = self._run_main()
-            assert result is None
+            assert result == 0
 
     def test_dry_run(self):
         with (
@@ -41,7 +41,7 @@ class TestMonthlyUnifiedAudit:
                 "pitching": {"ok": True, "checked_teams": 10, "mismatches": []},
             }
             result = self._run_main(dry_run=True)
-            assert result is None
+            assert result == 0
 
     def test_pa_only(self):
         with (
@@ -51,7 +51,7 @@ class TestMonthlyUnifiedAudit:
             mock_fix.return_value = {"ok": True, "fixed_rows": 0}
             mock_pa.return_value = {"ok": True, "violation_count": 0, "violations": []}
             result = self._run_main(pa_only=True)
-            assert result is None
+            assert result == 0
 
     def test_team_only(self):
         with patch("src.cli.monthly_unified_audit.run_monthly_team_audit") as mock_team:
@@ -61,4 +61,4 @@ class TestMonthlyUnifiedAudit:
                 "pitching": {"ok": True, "checked_teams": 10, "mismatches": []},
             }
             result = self._run_main(team_only=True)
-            assert result is None
+            assert result == 0

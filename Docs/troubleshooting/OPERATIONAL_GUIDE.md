@@ -157,6 +157,23 @@ This CLI reads `logs/daily_update_summary/YYYYMMDD.json`, retries only `retry_ca
 
 ## 5. Troubleshooting Common Issues
 
+### SQLite Database Corruption
+- **Symptom:** Scheduler crash loop with `malformed database schema`, `invalid rootpage`, or `database disk image is malformed`.
+- **Action:** Stop the scheduler, quarantine the SQLite file family, restore from a known-good backup or OCI hydration, then restart.
+
+```bash
+docker compose stop scheduler
+python -m src.cli.sqlite_integrity_guard \
+  --database-url sqlite:///data/kbo_dev.db \
+  --action quarantine \
+  --json
+cp data/kbo_dev.db.backup_before_null_player_id_20260630_030732_570584 data/kbo_dev.db
+python -m src.cli.sqlite_integrity_guard --database-url sqlite:///data/kbo_dev.db --strict --json
+docker compose up -d scheduler
+```
+
+The guard preserves `kbo_dev.db`, `kbo_dev.db-wal`, and `kbo_dev.db-shm` under `data/archive/corrupt_sqlite/<timestamp>/`. Do not delete the quarantined files until the restored scheduler has passed a full daily cycle or OCI hydration has rebuilt the local cache.
+
 ### Timeout Errors
 - **Symptom:** `❌ Basic2 크롤링 중 오류: Timeout 30000ms exceeded.`
 - **Action:** The system now includes automated retries. If persistent, check your network connection or increase `KBO_REQUEST_DELAY_MIN` to reduce load on the KBO site.

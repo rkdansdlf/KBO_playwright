@@ -180,9 +180,9 @@ def check_deep_ids(
             if len(row) == 1:
                 sample_keys.append(row[0])
             else:
-                sample_keys.append(row)
+                sample_keys.append(row)  # type: ignore[arg-type]
 
-        return int(match_rate), sample_keys
+        return int(match_rate), sample_keys  # type: ignore[return-value]
     except SYNC_VERIFY_DB_EXCEPTIONS:
         logger.exception("Error performing deep check for %s", table_name)
         return 0, []

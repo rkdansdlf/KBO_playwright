@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -205,6 +206,19 @@ class TestInitDb:
     def test_init_db_create_all_raises(self, mock_meta):
         with pytest.raises(Exception, match="create_all failed"):
             init_db()
+        mock_meta.assert_called_once()
+
+    @patch(
+        "src.models.base.Base.metadata.create_all",
+        side_effect=SQLAlchemyError("malformed database schema (crawl_runs) - invalid rootpage"),
+    )
+    def test_init_db_logs_sqlite_corruption(self, mock_meta, caplog):
+        with (
+            caplog.at_level(logging.ERROR, logger="src.db.engine"),
+            pytest.raises(SQLAlchemyError, match="invalid rootpage"),
+        ):
+            init_db()
+        assert "SQLite database appears corrupt" in caplog.text
         mock_meta.assert_called_once()
 
 

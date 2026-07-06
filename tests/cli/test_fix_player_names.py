@@ -9,7 +9,7 @@ class TestFixPlayerNamesCLI:
     def test_main_no_crawl_flag(self):
         with patch("sys.argv", ["fix_player_names"]):
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_main_crawl_no_players(self):
         with (

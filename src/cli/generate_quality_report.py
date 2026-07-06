@@ -59,7 +59,7 @@ def _player_basic_table_for_new_players(session: Session) -> Table | None:
     """
     table = PlayerBasic.__table__
 
-    table_name = table.name
+    table_name = table.name  # type: ignore[attr-defined]
     bind = session.get_bind()
 
     db_columns: set[str] | None = None
@@ -74,7 +74,7 @@ def _player_basic_table_for_new_players(session: Session) -> Table | None:
         return None
 
     if _PLAYER_BASIC_NEW_PLAYER_COLUMNS.issubset(table.c.keys()):
-        return table
+        return table  # type: ignore[return-value]
 
     if bind is None:
         _LOGGER.info("Omitting new_players metric: no database bind is available")
@@ -264,15 +264,15 @@ def _record_auto_remediation_fixed(summary: dict[str, Any], filename: str, conte
     snapshots = content if isinstance(content, list) else [content]
     summary["total_fixed"] += len(snapshots)
     for snapshot in snapshots:
-        orig = snapshot.get("original", {})
-        calc = snapshot.get("calculated", {})
-        player_name = snapshot.get("player_name") or calc.get("player_name") or orig.get("player_name")
+        orig = snapshot.get("original", {})  # type: ignore[union-attr]
+        calc = snapshot.get("calculated", {})  # type: ignore[union-attr]
+        player_name = snapshot.get("player_name") or calc.get("player_name") or orig.get("player_name")  # type: ignore[union-attr]
         summary["players_fixed"].append(
             {
                 "name": player_name,
-                "player_id": snapshot.get("player_id"),
+                "player_id": snapshot.get("player_id"),  # type: ignore[union-attr]
                 "category": category,
-                "diffs": _fixed_snapshot_diffs(snapshot),
+                "diffs": _fixed_snapshot_diffs(snapshot),  # type: ignore[arg-type]
             },
         )
 
@@ -484,9 +484,9 @@ def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
     if len(trend) >= 2:
         recent = trend[-1]["violation_count"]
         prev = trend[-2]["violation_count"]
-        if recent > prev:
+        if recent > prev:  # type: ignore[operator]
             direction = "worsening"
-        elif recent < prev:
+        elif recent < prev:  # type: ignore[operator]
             direction = "improving"
 
     return {
@@ -585,7 +585,7 @@ def get_daily_metrics(
         .group_by(Game.game_status)
         .all()
     )
-    status_map = dict(status_counts)
+    status_map: dict[str, int] = dict(status_counts)  # type: ignore[arg-type]
 
     # 2. Detail Completion Analysis
     completed_games = (
@@ -646,13 +646,13 @@ def get_daily_metrics(
             oci_engine = create_engine(target_url)
             with oci_engine.connect() as conn:
                 oci_count = conn.execute(text("SELECT count(*) FROM game")).scalar()
-                parity_info["oci_count"] = oci_count
+                parity_info["oci_count"] = oci_count  # type: ignore[assignment]
                 parity_info["diff"] = oci_count - local_count
                 parity_info["ok"] = parity_info["diff"] == 0
     except SQLAlchemyError as e:
         _LOGGER.exception("Parity check failed")
         parity_info["ok"] = False
-        parity_info["error"] = str(e)
+        parity_info["error"] = str(e)  # type: ignore[assignment]
 
     # 6. Auto-Remediation Summary
     auto_remediation = get_auto_remediation_summary(target_date_str)
@@ -756,7 +756,7 @@ def _append_standings_integrity_section(lines: list[str], metrics: dict[str, Any
 
 
 def _category_counts(items: list[dict[str, Any]]) -> dict[str, int]:
-    cat_counts = {}
+    cat_counts: dict[str, int] = {}
     for item in items:
         cat = item.get("category", "UNKNOWN").lower()
         cat_counts[cat] = cat_counts.get(cat, 0) + 1

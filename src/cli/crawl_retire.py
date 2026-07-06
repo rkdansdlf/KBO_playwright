@@ -125,7 +125,7 @@ async def process_player(
     if hitter_payload:
         batting_records = parse_retired_hitter_tables(hitter_payload.get("tables", []))
         for record in batting_records:
-            await asyncio.to_thread(repository.upsert_season_batting, player.player_basic_id, record)
+            await asyncio.to_thread(repository.upsert_season_batting, player.player_basic_id, record)  # type: ignore[arg-type]
 
     # 투수 기록이 있으면 파싱하여 저장합니다.
     if pitcher_payload:
@@ -133,7 +133,7 @@ async def process_player(
         if tables:
             pitching_records = parse_retired_pitcher_table(tables[0])
             for record in pitching_records:
-                await asyncio.to_thread(repository.upsert_season_pitching, player.player_basic_id, record)
+                await asyncio.to_thread(repository.upsert_season_pitching, player.player_basic_id, record)  # type: ignore[arg-type]
 
 
 async def crawl_retired_players(args: argparse.Namespace) -> None:

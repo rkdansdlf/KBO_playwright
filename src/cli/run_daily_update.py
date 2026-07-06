@@ -56,6 +56,7 @@ from src.services.game_write_contract import GameWriteContract
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.postgame_reconciliation_service import (
+    ReconciliationRequest,
     format_reconciliation_report,
     reconcile_postgame_range,
 )
@@ -180,7 +181,7 @@ def _format_counts(counts: dict[str, int]) -> str:
 
 
 def _failure_reason_summary(items: Mapping[str, object]) -> tuple[dict[str, int], dict[str, list[str]]]:
-    counter = Counter()
+    counter: Counter = Counter()
     game_ids_by_reason: dict[str, list[str]] = {}
     for game_id, item in items.items():
         reason = getattr(item, "failure_reason", None)
@@ -580,20 +581,20 @@ def _process_detail_results(
         reason = item.failure_reason if item else None
         if item.detail_saved:
             processed_game_ids_set.add(game_id)
-            ctx.detail_recovery_queue.mark_detail_recovery_success(ctx.target_date, game_id)
+            ctx.detail_recovery_queue.mark_detail_recovery_success(ctx.target_date, game_id)  # type: ignore[union-attr]
         elif _is_recoverable_detail_reason(reason):
-            ctx.detail_recovery_queue.mark_detail_recovery_failure(
+            ctx.detail_recovery_queue.mark_detail_recovery_failure(  # type: ignore[union-attr]
                 ctx.target_date,
                 game_id,
                 failure_reason=reason,
             )
         else:
-            ctx.detail_recovery_queue.mark_detail_recovery_success(ctx.target_date, game_id)
+            ctx.detail_recovery_queue.mark_detail_recovery_success(ctx.target_date, game_id)  # type: ignore[union-attr]
 
 
 def _prepare_detail_targets(ctx: _RunContext) -> None:
     for game in ctx.detail_games:
-        game_id = normalize_kbo_game_id(game.get("game_id"))
+        game_id = normalize_kbo_game_id(game.get("game_id"))  # type: ignore[arg-type]
         if not game_id:
             continue
         ctx.detail_games_by_id[game_id] = {
@@ -752,13 +753,15 @@ async def _run_postgame_reconciliation(ctx: _RunContext, g_crawler: GameDetailCr
     ).strftime("%Y%m%d")
     logger.info("\n🧩 Step 2.5: Reconciling recently started games (%s~%s)...", reconcile_start, ctx.target_date)
     reconciliation_result = await reconcile_postgame_range(
-        reconcile_start,
-        ctx.target_date,
-        detail_crawler=g_crawler,
-        concurrency=1,
-        log=logger.info,
-        write_contract=ctx.write_contract,
-        source_reason=f"postgame_reconciliation:{reconcile_start}-{ctx.target_date}",
+        ReconciliationRequest(
+            start_date=reconcile_start,
+            end_date=ctx.target_date,
+            detail_crawler=g_crawler,
+            concurrency=1,
+            log=logger.info,
+            write_contract=ctx.write_contract,
+            source_reason=f"postgame_reconciliation:{reconcile_start}-{ctx.target_date}",
+        ),
     )
     ctx.reconciliation_changed_ids = reconciliation_result.changed_game_ids
     ctx.reconciliation_dates = sorted({change.game_date for change in reconciliation_result.changes})
@@ -776,7 +779,7 @@ def _handle_detail_step_exception(ctx: _RunContext) -> None:
     target_game_ids = sorted(ctx.detail_games_by_id)
     if not target_game_ids:
         target_game_ids = sorted(
-            {normalized for game in ctx.detail_games if (normalized := normalize_kbo_game_id(game.get("game_id")))},
+            {normalized for game in ctx.detail_games if (normalized := normalize_kbo_game_id(game.get("game_id")))},  # type: ignore[arg-type]
         )
     if not target_game_ids:
         return
@@ -1645,9 +1648,9 @@ async def run_update(
         limit=limit,
         detail_recovery_queue=RecoveryManager(checkpoint_path=DETAIL_RECOVERY_QUEUE_PATH),
     )
-    ctx.detail_recovery_queue.purge_detail_recovery_queue()
+    ctx.detail_recovery_queue.purge_detail_recovery_queue()  # type: ignore[union-attr]
     ctx.queued_recovery_game_ids = set(
-        ctx.detail_recovery_queue.get_due_detail_recovery_targets(
+        ctx.detail_recovery_queue.get_due_detail_recovery_targets(  # type: ignore[union-attr]
             target_date,
             cooldown_minutes=DETAIL_RECOVERY_COOLDOWN_MINUTES,
         ),
@@ -1809,7 +1812,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     finally:
         lock.release()
-    return res
+    return res  # type: ignore[return-value]
 
 
 if __name__ == "__main__":

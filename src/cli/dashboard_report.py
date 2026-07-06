@@ -53,7 +53,7 @@ def _r2dict(obj: object, model: type[object]) -> dict[str, Any]:
         model: Model.
 
     """
-    return {c.name: getattr(obj, c.name) for c in model.__table__.columns}
+    return {c.name: getattr(obj, c.name) for c in model.__table__.columns}  # type: ignore[attr-defined]
 
 
 def _date_or_today(date_str: str | None) -> str:
@@ -96,7 +96,7 @@ def _build_rankings(session: Session, year: int) -> dict[str, Any]:
     from src.aggregators.ranking_aggregator import RankingAggregator
     from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
-    agg = RankingAggregator(session)
+    agg = RankingAggregator()
     # Load player stats
     batting = [
         {c.name: getattr(r, c.name) for c in PlayerSeasonBatting.__table__.columns}
@@ -159,7 +159,7 @@ def _build_quality(session: Session, date_str: str, year: int) -> dict[str, Any]
 def _build_freshness(session: Session, date_str: str) -> dict[str, Any]:
     from src.cli.freshness_gate import collect_freshness_issues
 
-    issues = collect_freshness_issues(session, date_str)
+    issues = collect_freshness_issues(session, target_date=date_str)
     return {"date": date_str, "issues": issues, "total_issues": sum(len(v) for v in issues.values())}
 
 
@@ -215,7 +215,7 @@ def _format_standings_terminal(standings: dict[str, Any], year: int) -> None:
     for row in standings.get("rows", []):
         top5 = "★" if _row_value(row, "top_5") else " "
         current_streak = _row_value(row, "current_streak", 0)
-        streak_str = f"{abs(current_streak)}연{'승' if current_streak >= 0 else '패'}" if current_streak else "-"
+        streak_str = f"{abs(current_streak)}연{'승' if current_streak >= 0 else '패'}" if current_streak else "-"  # type: ignore[arg-type, operator]
         recent = f"{_row_value(row, 'recent_10_wins', 0)}승{_row_value(row, 'recent_10_losses', 0)}패"
         home = f"{_row_value(row, 'home_wins', 0)}승{_row_value(row, 'home_losses', 0)}패"
         away = f"{_row_value(row, 'away_wins', 0)}승{_row_value(row, 'away_losses', 0)}패"
@@ -556,6 +556,7 @@ def main() -> int:
 
     if args.notify:
         _send_dashboard_notification(data, date_str)
+    return 0
 
 
 if __name__ == "__main__":

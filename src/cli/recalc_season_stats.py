@@ -69,6 +69,7 @@ def main() -> int:
             _process_pitching(args.year, series, save=args.save)
 
     logger.info("\n✅ Recalculation task finished.")
+    return 0
 
 
 if __name__ == "__main__":

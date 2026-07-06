@@ -20,7 +20,7 @@ class TestRunAllCrawlers:
             mock_parse.return_value = Namespace(type="static", pdf=None, daemon=False)
             mock.return_value = None
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_dynamic_pipeline(self):
         with (
@@ -30,7 +30,7 @@ class TestRunAllCrawlers:
             mock_parse.return_value = Namespace(type="dynamic", pdf=None, daemon=False)
             mock.return_value = None
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_realtime_pipeline(self):
         with (
@@ -40,4 +40,4 @@ class TestRunAllCrawlers:
             mock_parse.return_value = Namespace(type="realtime", pdf=None, daemon=False)
             mock.return_value = None
             result = main()
-            assert result is None
+            assert result == 0

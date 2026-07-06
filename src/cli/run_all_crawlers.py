@@ -480,6 +480,7 @@ def main() -> int:
         run_pipeline_sync(args.type, args.pdf)
     elif args.daemon:
         start_scheduler()
+    return 0
 
 
 if __name__ == "__main__":

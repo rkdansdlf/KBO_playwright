@@ -169,15 +169,15 @@ class TestMonthlyTeamAuditCLI:
 
     def test_default_year(self):
         result = self._run_main(Namespace(year=None, json=False))
-        assert result is None
+        assert result == 0
 
     def test_specific_year(self):
         result = self._run_main(Namespace(year=2025, json=False))
-        assert result is None
+        assert result == 0
 
     def test_json_output(self):
         result = self._run_main(Namespace(year=None, json=True))
-        assert result is None
+        assert result == 0
 
     def test_year_before_2020_skipped(self, caplog):
         with (
@@ -190,7 +190,7 @@ class TestMonthlyTeamAuditCLI:
             with caplog.at_level(logging.INFO):
                 result = main()
 
-            assert result is None
+            assert result == 0
             assert "Skipping team audit" in caplog.text
 
     def test_failure_exits_1(self):

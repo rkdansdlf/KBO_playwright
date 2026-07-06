@@ -214,9 +214,9 @@ class TeamState:
 
 
 def _group_games_by_date(games: list[Game]) -> dict[date, list[Game]]:
-    games_by_date = defaultdict(list)
+    games_by_date: dict[date, list[Game]] = defaultdict(list)
     for game in games:
-        games_by_date[game.game_date].append(game)
+        games_by_date[game.game_date].append(game)  # type: ignore[index]
     return games_by_date
 
 
@@ -232,8 +232,8 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
     home_score = game.home_score if game.home_score is not None else 0
     away_score = game.away_score if game.away_score is not None else 0
 
-    home_state = _team_state_for(teams, home)
-    away_state = _team_state_for(teams, away)
+    home_state = _team_state_for(teams, home)  # type: ignore[arg-type]
+    away_state = _team_state_for(teams, away)  # type: ignore[arg-type]
 
     if home_score > away_score:
         home_state.add_game(
@@ -241,8 +241,8 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 is_win=True,
                 is_loss=False,
                 is_draw=False,
-                runs_for=home_score,
-                runs_against=away_score,
+                runs_for=home_score,  # type: ignore[arg-type]
+                runs_against=away_score,  # type: ignore[arg-type]
                 is_home=True,
                 game_date=game_date,
             ),
@@ -252,8 +252,8 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 is_win=False,
                 is_loss=True,
                 is_draw=False,
-                runs_for=away_score,
-                runs_against=home_score,
+                runs_for=away_score,  # type: ignore[arg-type]
+                runs_against=home_score,  # type: ignore[arg-type]
                 is_home=False,
                 game_date=game_date,
             ),
@@ -264,8 +264,8 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 is_win=False,
                 is_loss=True,
                 is_draw=False,
-                runs_for=home_score,
-                runs_against=away_score,
+                runs_for=home_score,  # type: ignore[arg-type]
+                runs_against=away_score,  # type: ignore[arg-type]
                 is_home=True,
                 game_date=game_date,
             ),
@@ -275,8 +275,8 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 is_win=True,
                 is_loss=False,
                 is_draw=False,
-                runs_for=away_score,
-                runs_against=home_score,
+                runs_for=away_score,  # type: ignore[arg-type]
+                runs_against=home_score,  # type: ignore[arg-type]
                 is_home=False,
                 game_date=game_date,
             ),
@@ -287,8 +287,8 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 is_win=False,
                 is_loss=False,
                 is_draw=True,
-                runs_for=home_score,
-                runs_against=away_score,
+                runs_for=home_score,  # type: ignore[arg-type]
+                runs_against=away_score,  # type: ignore[arg-type]
                 is_home=True,
                 game_date=game_date,
             ),
@@ -298,8 +298,8 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
                 is_win=False,
                 is_loss=False,
                 is_draw=True,
-                runs_for=away_score,
-                runs_against=home_score,
+                runs_for=away_score,  # type: ignore[arg-type]
+                runs_against=home_score,  # type: ignore[arg-type]
                 is_home=False,
                 game_date=game_date,
             ),
@@ -613,6 +613,8 @@ def main() -> int:
         session.rollback()
     finally:
         session.close()
+
+    return 0
 
 
 if __name__ == "__main__":

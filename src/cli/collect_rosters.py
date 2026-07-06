@@ -82,6 +82,7 @@ def main() -> int:
     args = parser.parse_args()
 
     asyncio.run(collect_rosters(args.year, args.month))
+    return 0
 
 
 if __name__ == "__main__":

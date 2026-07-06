@@ -92,7 +92,7 @@ def retry_candidates(summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
 
     detail_ids = retry.get("detail") if isinstance(retry.get("detail"), list) else []
     relay_ids = retry.get("relay") if isinstance(retry.get("relay"), list) else []
-    return _dedupe_game_ids(detail_ids), _dedupe_game_ids(relay_ids)
+    return _dedupe_game_ids(detail_ids), _dedupe_game_ids(relay_ids)  # type: ignore[arg-type]
 
 
 def _detail_groups(game_ids: Sequence[str]) -> dict[tuple[int, int], list[str]]:

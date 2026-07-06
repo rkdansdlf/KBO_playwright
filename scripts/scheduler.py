@@ -48,7 +48,8 @@ import logging
 import os
 import signal
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -78,7 +79,7 @@ from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job
 from src.cli.run_daily_update import format_stability_alert_summary
 from src.cli.run_daily_update import main as run_daily_update_main
-from src.db.engine import SessionLocal
+from src.db.engine import DATABASE_URL, SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
 from src.utils.lock import ForceProcessLock, ProcessLock
@@ -126,11 +127,33 @@ LIVE_LOCK = ProcessLock("live_refresh")
 DAILY_LOCK = ProcessLock("daily_update")
 MAINTENANCE_LOCK = ForceProcessLock("maintenance")
 REALTIME_OCI_SYNC_LOCK = ProcessLock("realtime_oci_sync")
+SQLITE_WRITE_LOCK = ProcessLock("sqlite_writer")
 
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
 LAST_LIVE_RUN_TIME: datetime | None = None
 LAST_LIVE_POLL_INTERVAL: int | None = None
 LAST_PREGAME_RUN_TIME: datetime | None = None
+
+
+def _scheduler_uses_sqlite_database() -> bool:
+    database_url = os.getenv("DATABASE_URL", DATABASE_URL)
+    return database_url.startswith("sqlite:")
+
+
+@contextmanager
+def _sqlite_writer_lock() -> Iterator[None]:
+    if not _scheduler_uses_sqlite_database():
+        yield
+        return
+
+    with SQLITE_WRITE_LOCK:
+        yield
+
+
+@contextmanager
+def _scheduler_job_lock(lock: ProcessLock) -> Iterator[None]:
+    with lock, _sqlite_writer_lock():
+        yield
 
 
 def _live_refresh_max_games_per_cycle() -> int | None:
@@ -460,7 +483,7 @@ def crawl_daily_games():
     Runs at 03:00 KST daily to collect previous KST day's schedule+details.
     Uses exponential backoff retry on failures (3 attempts max).
     """
-    with DAILY_LOCK:
+    with _scheduler_job_lock(DAILY_LOCK):
         logger.info("=== Starting Daily Games Crawl ===")
 
         try:
@@ -780,7 +803,8 @@ def crawl_pregame_refresh():
                 starters_missing,
                 preview_missing,
             )
-            saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=False))
+            with _sqlite_writer_lock():
+                saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=False))
             if saved_ids and sync_to_oci:
                 pregame_sync_game_ids.extend(saved_ids)
                 logger.info("Pregame OCI sync queued for target_date=%s games=%s", target_date, len(saved_ids))
@@ -974,13 +998,14 @@ def crawl_live_refresh():
     LAST_LIVE_RUN_TIME = now
     try:
         logger.info("Running live refresh cycle")
-        result = asyncio.run(
-            run_live_crawler_cycle(
-                sync_to_oci=False,
-                max_active_games=_live_refresh_max_games_per_cycle(),
-                detail_snapshot_background=True,
-            ),
-        )
+        with _sqlite_writer_lock():
+            result = asyncio.run(
+                run_live_crawler_cycle(
+                    sync_to_oci=False,
+                    max_active_games=_live_refresh_max_games_per_cycle(),
+                    detail_snapshot_background=True,
+                ),
+            )
 
         if isinstance(result, dict):
             live_sync_game_ids.extend(str(game_id) for game_id in result.get("game_ids_playing") or [] if game_id)
@@ -1013,7 +1038,7 @@ def crawl_retired_players_job(limit: int | None = None):
     Runs on the 1st of every month at 02:00 KST.
     Uses exponential backoff retry on failures (3 attempts max).
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Monthly Retired Player Crawl ===")
         try:
             current_year = datetime.now(KST).year
@@ -1055,7 +1080,7 @@ def crawl_p1p2_data_job():
     """P1/P2 Crawlers: seat sections, parking, stadium food.
     Runs daily at 06:30 KST (after Phase 1 extra crawlers).
     """
-    with DAILY_LOCK:
+    with _scheduler_job_lock(DAILY_LOCK):
         logger.info("=== Starting P1/P2 Data Crawlers ===")
         try:
             from src.cli.crawl_parking import main as parking_main
@@ -1109,7 +1134,7 @@ def sync_from_oci_job():
     """Sync job: Hydrate local DB from OCI after GitHub Actions run window.
     Runs daily at 05:00 KST.
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting OCI to Local Sync (Hydration) ===")
         current_year = datetime.now(KST).year
         # Hydrate for the current year
@@ -1124,7 +1149,7 @@ def sync_from_oci_job():
 )
 def _crawl_team_info_history():
     """Weekly job: Refresh team info and team history data."""
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Team Info/History Refresh ===")
         try:
             from src.crawlers.team_history_crawler import TeamHistoryCrawler
@@ -1143,7 +1168,7 @@ def weekly_sla_report_job():
     """
     from src.monitoring.sla_tracker import SlaTracker
 
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Weekly SLA Report Generation ===")
         with SessionLocal() as session:
             tracker = SlaTracker(session)
@@ -1155,7 +1180,7 @@ def crawl_phase1_extra_job():
     """Phase 1: Supplementary crawlers (broadcast, MVP, injury, foreign players, manager changes).
     Runs daily at 06:00 KST (after daily game crawl and standings compute).
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Phase 1 Extra Crawlers ===")
         try:
             from src.cli.crawl_phase1_extra import run_all_crawlers
@@ -1170,7 +1195,7 @@ def compute_standings_job():
     """Compute daily standings with home/away splits, recent 10, weekly trends.
     Runs daily at 03:30 KST (after game crawl at 03:00).
     """
-    with DAILY_LOCK:
+    with _scheduler_job_lock(DAILY_LOCK):
         logger.info("=== Starting Standings Computation ===")
         try:
             from src.cli.calculate_standings import main as standings_main
@@ -1186,7 +1211,7 @@ def aggregate_team_defense_job():
     """Aggregate team-level fielding and baserunning stats.
     Runs daily at 03:45 KST (after standings).
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Team Defense Aggregation ===")
         try:
             from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
@@ -1207,7 +1232,7 @@ def compute_rankings_job():
     """Compute sabermetric rankings (wOBA, wRC+, WAR, OPS+).
     Runs daily at 04:00 KST.
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Rankings Computation ===")
         try:
             from src.cli.calculate_rankings import rebuild_rankings
@@ -1224,7 +1249,7 @@ def heal_unverified_pbp_job():
     Runs daily at 04:30 KST (after rankings, before OCI sync).
     Uses MAINTENANCE_LOCK to avoid overlapping with other heavy jobs.
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting PBP Auto-Healer ===")
         try:
             import os
@@ -1245,7 +1270,7 @@ def compute_park_factor_job():
     """Compute park factor for all stadiums.
     Runs weekly Sunday at 05:30 KST.
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Park Factor Computation ===")
         try:
             from src.aggregators.park_factor_calculator import ParkFactorCalculator
@@ -1287,7 +1312,8 @@ def crawl_transit_time_job():
         logger.info("[Transit] Starting transit time measurement")
         from src.crawlers.transit_time_crawler import TransitTimeCrawler
 
-        asyncio.run(TransitTimeCrawler().run(save=True))
+        with _sqlite_writer_lock():
+            asyncio.run(TransitTimeCrawler().run(save=True))
         logger.info("[Transit] Transit time measurement completed")
     except SCHEDULER_JOB_EXCEPTIONS:
         logger.exception("Transit time job failed")
@@ -1307,7 +1333,8 @@ def crawl_congestion_job():
         logger.info("[Congestion] Starting congestion data collection")
         from src.crawlers.congestion_crawler import CongestionCrawler
 
-        asyncio.run(CongestionCrawler().run(save=True))
+        with _sqlite_writer_lock():
+            asyncio.run(CongestionCrawler().run(save=True))
         logger.info("[Congestion] Congestion data collection completed")
     except SCHEDULER_JOB_EXCEPTIONS:
         logger.exception("Congestion job failed")
@@ -1321,7 +1348,7 @@ def crawl_operation_notices_job():
     Also triggered at 11:30 KST for day-of-game notices.
     Uses DAILY_LOCK.
     """
-    with DAILY_LOCK:
+    with _scheduler_job_lock(DAILY_LOCK):
         logger.info("[Notice] Starting operation notice crawl")
         try:
             from src.cli.crawl_operation_notices import main as notices_main
@@ -1337,7 +1364,7 @@ def crawl_operation_notices_naver_job():
     Queries Naver News API for real-time KBO/stadium notices.
     Runs at 09:30 and 13:00 KST. Uses DAILY_LOCK.
     """
-    with DAILY_LOCK:
+    with _scheduler_job_lock(DAILY_LOCK):
         logger.info("[NaverNotice] Starting Naver search notice crawl")
         try:
             from src.cli.crawl_operation_notices import main as notices_main
@@ -1352,7 +1379,7 @@ def crawl_fan_culture_job():
     """Fan culture data job: crawl cheer songs, chants, and rivalries from
     Namuwiki. Runs weekly on Saturday 04:00 KST. Uses MAINTENANCE_LOCK.
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("[FanCulture] Starting fan culture data crawl")
         try:
             from src.crawlers.fan_culture_crawler import FanCultureCrawler
@@ -1367,7 +1394,7 @@ def crawl_p0_non_game_job():
     """P0 non-game job: crawl team events, roster transactions, and ticket info.
     Runs daily before the freshness monitor. Uses MAINTENANCE_LOCK.
     """
-    with MAINTENANCE_LOCK:
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("[P0NonGame] Starting P0 non-game crawl")
         try:
             from src.cli.crawl_p0_data import main as crawl_p0_data_main
@@ -1809,7 +1836,7 @@ def main(argv: Sequence[str] | None = None):
             logger.warning("Error during scheduler shutdown: %s", e)
 
         logger.info("Releasing active process locks...")
-        for lock in [LIVE_LOCK, DAILY_LOCK, MAINTENANCE_LOCK, REALTIME_OCI_SYNC_LOCK]:
+        for lock in [LIVE_LOCK, DAILY_LOCK, MAINTENANCE_LOCK, REALTIME_OCI_SYNC_LOCK, SQLITE_WRITE_LOCK]:
             try:
                 lock.release()
             except Exception as e:

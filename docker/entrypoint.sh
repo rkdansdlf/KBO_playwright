@@ -67,9 +67,44 @@ for dir in "/app/data" "/app/logs"; do
     fi
 done
 
+run_sqlite_startup_guard() {
+    if [[ "${SQLITE_STARTUP_GUARD:-1}" != "1" ]]; then
+        return
+    fi
+    if [[ "${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}" != sqlite* ]]; then
+        return
+    fi
+
+    GUARD_OUT="/tmp/sqlite_integrity_guard.json"
+    echo "🔎 Checking SQLite integrity before startup..."
+    if python -m src.cli.sqlite_integrity_guard \
+        --database-url "${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}" \
+        --action "${SQLITE_CORRUPT_ACTION:-quarantine}" \
+        --json > "$GUARD_OUT"; then
+        cat "$GUARD_OUT"
+    else
+        GUARD_CODE=$?
+        cat "$GUARD_OUT" || true
+        echo "❌ SQLite integrity guard failed with exit code $GUARD_CODE"
+        exit "$GUARD_CODE"
+    fi
+
+    if grep -q '"status": "quarantined"' "$GUARD_OUT"; then
+        export SQLITE_GUARD_QUARANTINED=1
+        echo "⚠️ Corrupt SQLite database was quarantined before startup."
+    fi
+}
+
+run_sqlite_startup_guard
+
 # Optional automatic init_db (기존 설정 유지)
 if [[ "${RUN_INIT_DB:-0}" == "1" ]]; then
   echo "🔧 Initializing database..."
+  python -c "from src.db.engine import init_db; init_db()"
+fi
+
+if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" && -z "${OCI_DB_URL:-}" && "${RUN_INIT_DB:-0}" != "1" ]]; then
+  echo "🔧 No OCI_DB_URL configured after quarantine. Recreating empty SQLite schema..."
   python -c "from src.db.engine import init_db; init_db()"
 fi
 
@@ -92,7 +127,10 @@ if [[ -n "${OCI_DB_URL:-}" ]]; then
   if [[ "${DATABASE_URL:-}" == *"sqlite"* ]] || [[ -z "${DATABASE_URL:-}" ]]; then
       HYDRATE_REQUIRED=0
 
-      if [ ! -f "$DB_PATH" ] || [ ! -s "$DB_PATH" ]; then
+      if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" ]]; then
+          echo "⚠️ SQLite database was quarantined. Recovery hydration needed."
+          HYDRATE_REQUIRED=1
+      elif [ ! -f "$DB_PATH" ] || [ ! -s "$DB_PATH" ]; then
           echo "⚠️ SQLite database file not found or empty at: $DB_PATH. Recovery needed."
           HYDRATE_REQUIRED=1
       else
@@ -131,7 +169,9 @@ else:
                   echo "🔑 Lock acquired. Double-checking hydration requirement..."
 
                   RE_CHECK_REQUIRED=0
-                  if [ ! -f "$DB_PATH" ] || [ ! -s "$DB_PATH" ]; then
+                  if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" ]]; then
+                      RE_CHECK_REQUIRED=1
+                  elif [ ! -f "$DB_PATH" ] || [ ! -s "$DB_PATH" ]; then
                       RE_CHECK_REQUIRED=1
                   else
                       MTIME_DIFF=$(python -c "

@@ -108,12 +108,12 @@ def seed_relay_validation_metrics(
                 session.add(metrics)
             elif metrics.validation_status != status:
                 metrics.previous_status = metrics.validation_status
-            metrics.validation_status = status
-            metrics.source_used = metrics.source_used or "seed"
+            metrics.validation_status = status  # type: ignore[assignment]
+            metrics.source_used = metrics.source_used or "seed"  # type: ignore[assignment]
             metrics.last_successful_event_at = (
-                now if status == VALIDATION_VERIFIED else metrics.last_successful_event_at
+                now if status == VALIDATION_VERIFIED else metrics.last_successful_event_at  # type: ignore[assignment]
             )
-            metrics.evidence_json = {
+            metrics.evidence_json = {  # type: ignore[assignment]
                 "reason": reason,
                 "has_pbp": has_pbp,
                 "has_events": has_events,

@@ -11,7 +11,7 @@ import argparse
 import asyncio
 import logging
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -35,7 +35,7 @@ PREVIEW_CONTEXT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeErr
 
 
 def _write_pregame_manifest(target_date: str, game_ids: list[str]) -> str:
-    return write_refresh_manifest(
+    return write_refresh_manifest(  # type: ignore[return-value]
         phase="pregame",
         target_date=target_date,
         game_ids=game_ids,
@@ -47,11 +47,11 @@ def _add_team_context(
     preview: dict[str, object],
     agg: ContextAggregator,
     season_year: int,
-    target_dt_obj: datetime.date,
+    target_dt_obj: date,
 ) -> None:
     game_id = preview.get("game_id")
-    away_code = resolve_team_code(preview.get("away_team_name"), season_year)
-    home_code = resolve_team_code(preview.get("home_team_name"), season_year)
+    away_code = resolve_team_code(preview.get("away_team_name"), season_year)  # type: ignore[arg-type]
+    home_code = resolve_team_code(preview.get("home_team_name"), season_year)  # type: ignore[arg-type]
     if not away_code or not home_code:
         return
 
@@ -85,9 +85,9 @@ def _add_pitcher_context(preview: dict[str, object], agg: ContextAggregator, sea
         away_starter_id = preview.get("away_starter_id")
         home_starter_id = preview.get("home_starter_id")
         if away_starter_id:
-            preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)
+            preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)  # type: ignore[arg-type]
         if home_starter_id:
-            preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
+            preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)  # type: ignore[arg-type]
     except PREVIEW_CONTEXT_EXCEPTIONS:
         logger.exception("⚠️ Pitcher stats aggregation failed for %s", game_id)
 

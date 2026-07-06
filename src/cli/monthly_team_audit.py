@@ -108,14 +108,14 @@ def main() -> int:
 
     if target_year < 2020:
         logger.info("Skipping team audit for year %s (before 2020)", target_year)
-        return
+        return 0
 
     logger.info("Running team stats audit for year %s...", target_year)
     result = run_monthly_team_audit(target_year)
 
     if args.json:
         logger.info(json.dumps(result, indent=2, ensure_ascii=False))
-        return
+        return 0
 
     bat_ok = result["batting"]["ok"]
     pit_ok = result["pitching"]["ok"]
@@ -136,6 +136,8 @@ def main() -> int:
 
     if not bat_ok or not pit_ok:
         sys.exit(1)
+
+    return 0
 
 
 if __name__ == "__main__":

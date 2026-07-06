@@ -59,7 +59,7 @@ def _process_highlight_games(
     aggregator = HighlightAggregator(session)
 
     for game in games:
-        game_id = game.game_id
+        game_id = str(game.game_id)
         game_map[game_id] = game
         if not force and not dry_run:
             existing = session.query(GameHighlight).filter(GameHighlight.game_id == game_id).all()
@@ -154,7 +154,7 @@ def _format_top_highlight_plays(top_3_plays: list[GameHighlight], game_map: dict
         return "- 없음 (이벤트 WPA 데이터 불충분)\n"
     message = ""
     for rank, highlight in enumerate(top_3_plays, start=1):
-        game = game_map[highlight.game_id]
+        game = game_map[highlight.game_id]  # type: ignore[index]
         half_str = "초" if highlight.inning_half == "top" else "말"
         message += f"{rank}. <b>{game.away_team} {game.away_score} : {game.home_score} {game.home_team}</b> ({highlight.inning}회{half_str})\n"
         message += f"   👉 {highlight.description} (WPA {highlight.wpa:+.3f})\n"

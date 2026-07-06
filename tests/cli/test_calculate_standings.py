@@ -537,7 +537,7 @@ class TestMain:
             mock_query.order_by.return_value = mock_query
             mock_query.all.return_value = []
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_specific_year(self):
         with (
@@ -553,7 +553,7 @@ class TestMain:
             mock_query.order_by.return_value = mock_query
             mock_query.all.return_value = []
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_report_mode(self):
         with (
@@ -567,7 +567,7 @@ class TestMain:
             mock_query.filter.return_value = mock_query
             mock_query.order_by.return_value.return_value.first.return_value = None
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_report_mode_with_date(self):
         with (
@@ -581,7 +581,7 @@ class TestMain:
             mock_query.filter.return_value = mock_query
             mock_query.order_by.return_value.return_value.first.return_value = None
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_trend_mode_all(self):
         with (
@@ -595,7 +595,7 @@ class TestMain:
             mock_query.filter.return_value = mock_query
             mock_query.order_by.return_value.return_value.all.return_value = []
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_trend_mode_specific_team(self):
         with (
@@ -609,7 +609,7 @@ class TestMain:
             mock_query.filter.return_value = mock_query
             mock_query.order_by.return_value.return_value.all.return_value = []
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_all_years(self):
         with (
@@ -627,7 +627,7 @@ class TestMain:
             mock_query.order_by.return_value = mock_query
             mock_query.all.return_value = []
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_exception_handling(self):
         with patch("sys.argv", ["calculate_standings"]), patch("src.cli.calculate_standings.SessionLocal") as mock_sf:
@@ -635,6 +635,6 @@ class TestMain:
             mock_sf.return_value = mock_session
             mock_session.query.side_effect = RuntimeError("DB error")
             result = main()
-            assert result is None
+            assert result == 0
             mock_session.rollback.assert_called_once()
             mock_session.close.assert_called_once()

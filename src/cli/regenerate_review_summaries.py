@@ -244,7 +244,7 @@ def _append_missing_review_rows(
 
 def _skipped_review_row(game: Game) -> ReviewRegenReportRow:
     return ReviewRegenReportRow(
-        game_id=game.game_id,
+        game_id=game.game_id,  # type: ignore[arg-type]
         game_date=game.game_date.strftime("%Y%m%d") if game.game_date else "",
         status="SKIPPED_NOT_COMPLETED",
         message=f"status={game.game_status}",
@@ -258,7 +258,7 @@ def _existing_review_json(session: Session, game_id: str) -> str | None:
         .order_by(GameSummary.id.asc())
         .first()
     )
-    return existing.detail_text if existing else None
+    return existing.detail_text if existing else None  # type: ignore[return-value]
 
 
 def _build_review_report_row(
@@ -269,7 +269,7 @@ def _build_review_report_row(
     noise_moments: int,
 ) -> ReviewRegenReportRow:
     return ReviewRegenReportRow(
-        game_id=game.game_id,
+        game_id=game.game_id,  # type: ignore[arg-type]
         game_date=game.game_date.strftime("%Y%m%d") if game.game_date else "",
         status="",
         old_hash=_short_hash(old_json),
@@ -290,7 +290,7 @@ def _process_review_game(
     if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
         return _skipped_review_row(game), False
 
-    old_json = _existing_review_json(session, game.game_id)
+    old_json = _existing_review_json(session, game.game_id)  # type: ignore[arg-type]
     review_data = _build_review_data(agg, game)
     new_json = json.dumps(review_data, ensure_ascii=False)
     noise_moments = _count_noise_moments(review_data)
@@ -304,7 +304,7 @@ def _process_review_game(
         row.status = "DRY_RUN_READY" if row.changed else "DRY_RUN_UNCHANGED"
         return row, False
     if row.changed:
-        _upsert_review_summary(session, game.game_id, new_json)
+        _upsert_review_summary(session, game.game_id, new_json)  # type: ignore[arg-type]
         row.status = "APPLIED"
     else:
         row.status = "UNCHANGED"
@@ -325,7 +325,7 @@ def _process_review_games(
         rows.append(row)
         if should_sync:
             sync_game_ids.append(game.game_id)
-    return rows, sync_game_ids
+    return rows, sync_game_ids  # type: ignore[return-value]
 
 
 def _mark_review_oci_status(rows: Sequence[ReviewRegenReportRow], *, apply: bool, oci_url: str | None) -> None:
@@ -387,10 +387,10 @@ def regenerate_review_summaries(
 
         if apply:
             backup_path = backup_out or _default_backup_path()
-            _write_backup(session, [game.game_id for game in games], backup_path)
+            _write_backup(session, [game.game_id for game in games], backup_path)  # type: ignore[misc]
             log(f"Backed up existing review summaries: {backup_path}")
 
-        _append_missing_review_rows(rows, target_game_ids, games_by_id)
+        _append_missing_review_rows(rows, target_game_ids, games_by_id)  # type: ignore[arg-type]
         processed_rows, sync_game_ids = _process_review_games(session, games, agg, apply=apply)
         rows.extend(processed_rows)
 
@@ -457,7 +457,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report_out=args.report_out,
         backup_out=args.backup_out,
     )
-    status_counts = {}
+    status_counts: dict[str, int] = {}
     for row in rows:
         status_counts[row.status] = status_counts.get(row.status, 0) + 1
     logger.info("Done. apply=%s total=%s statuses=%s", args.apply, len(rows), status_counts)

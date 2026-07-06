@@ -22,7 +22,7 @@ class TestRecalcSeasonStats:
             mock_bat.return_value = []
             mock_pit.return_value = []
             result = main()
-            assert result is None
+            assert result == 0
 
     def test_batting_only(self):
         with (
@@ -34,4 +34,4 @@ class TestRecalcSeasonStats:
             mock_bat.return_value = []
             mock_pit.return_value = []
             result = main()
-            assert result is None
+            assert result == 0
