@@ -1,4 +1,3 @@
-import urllib.error
 from unittest.mock import MagicMock, patch
 
 from src.utils.alerting import (
@@ -11,16 +10,16 @@ from src.utils.alerting import (
 
 class TestTelegramBotClient:
     @patch("src.utils.alerting.os.getenv")
-    @patch("src.utils.alerting.urllib.request.urlopen")
-    def test_send_message_success(self, mock_urlopen, mock_getenv):
+    @patch("src.utils.alerting.httpx.post")
+    def test_send_message_success(self, mock_post, mock_getenv):
         mock_getenv.side_effect = lambda k, d=None: {
             "TELEGRAM_BOT_TOKEN": "bot123",
             "TELEGRAM_CHAT_ID": "chat456",
         }.get(k, d)
 
         mock_response = MagicMock()
-        mock_response.status = 200
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
 
         assert TelegramBotClient.send_message("Hello") is True
 
@@ -30,14 +29,14 @@ class TestTelegramBotClient:
         assert TelegramBotClient.send_message("Hello") is False
 
     @patch("src.utils.alerting.os.getenv")
-    @patch("src.utils.alerting.urllib.request.urlopen")
-    def test_send_message_error_returns_false(self, mock_urlopen, mock_getenv):
+    @patch("src.utils.alerting.httpx.post")
+    def test_send_message_error_returns_false(self, mock_post, mock_getenv):
         mock_getenv.side_effect = lambda k, d=None: {
             "TELEGRAM_BOT_TOKEN": "bot123",
             "TELEGRAM_CHAT_ID": "chat456",
         }.get(k, d)
 
-        mock_urlopen.side_effect = urllib.error.URLError("Network error")
+        mock_post.side_effect = OSError("Network error")
         assert TelegramBotClient.send_message("Hello") is False
 
 
@@ -104,13 +103,12 @@ class TestSlackFallback:
 
     def test_slack_http_error_returns_false(self, monkeypatch):
         from src.utils.alerting import SlackWebhookClient
-        import urllib.error
 
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
         monkeypatch.setenv("SLACK_WEBHOOK_URL", "http://fake-webhook.test/hook")
         monkeypatch.setattr(
-            "urllib.request.urlopen",
-            lambda *a, **kw: (_ for _ in ()).throw(urllib.error.URLError("fail")),
+            "src.utils.alerting.httpx.post",
+            lambda *a, **kw: (_ for _ in ()).throw(OSError("fail")),
         )
         result = SlackWebhookClient.send_alert("test")
         assert result is False

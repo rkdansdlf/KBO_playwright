@@ -1,5 +1,6 @@
 """
-KBO PBP (Relay) Crawler - Powered by Naver Sports API
+KBO PBP (Relay) Crawler - Powered by Naver Sports API.
+
 Fetch play-by-play data from Naver Sports API instead of KBO website due to access restrictions.
 
 """
@@ -850,7 +851,7 @@ class RelayCrawler:
     def _provider_log_id(
         identity: NaverSegmentIdentity,
     ) -> str:
-        text_hash = hashlib.sha1(str(identity.text or "").encode("utf-8")).hexdigest()[:10]
+        text_hash = hashlib.sha256(str(identity.text or "").encode("utf-8")).hexdigest()[:10]
         half_token = (identity.half or "x")[:1]
         inning_token = identity.inning if identity.inning is not None else "x"
         return f"naver:{identity.payload_hash}:{inning_token}{half_token}:{identity.segment_index}:{identity.log_index}:{text_hash}"

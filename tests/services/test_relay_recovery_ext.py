@@ -27,6 +27,9 @@ from src.services.relay_recovery_service import (
     _normalize_valid_pbp_row,
     _relay_validator,
     _sanitize_relay_result,
+    _log_relay_save,
+    _mark_unavailable_relay_source,
+    _save_relay_result,
     _save_or_count_rows,
     _should_mark_source_unavailable,
     _validate_relay_final_score,
@@ -35,6 +38,7 @@ from src.services.relay_recovery_service import (
     build_relay_recovery_orchestrator,
     load_relay_recovery_targets,
     parse_source_order,
+    recover_relay_data,
 )
 
 
@@ -232,6 +236,30 @@ class TestSanitizeRelayResult:
                     assert len(sanitized.events) == 1
                     assert filtered == 1
 
+    def test_filters_invalid_pbp_rows(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        result = NormalizedRelayResult(
+            game_id="g1",
+            source_name="naver",
+            events=[{"inning": 1, "inning_half": "top", "play_description": "hit"}],
+            raw_pbp_rows=[{"bad": "row"}, {"inning": 1, "inning_half": "top", "play_description": "hit"}],
+        )
+        with patch("src.services.relay_recovery_service.apply_wpa_transitions"):
+            with patch("src.services.relay_recovery_service.event_has_minimum_state", return_value=True):
+                with patch(
+                    "src.services.relay_recovery_service.normalize_pbp_row",
+                    side_effect=[
+                        {"inning": None, "inning_half": "top", "play_description": "bad"},
+                        {"inning": 1, "inning_half": "top", "play_description": "hit"},
+                    ],
+                ):
+                    sanitized, notes, filtered = _sanitize_relay_result(result)
+
+        assert len(sanitized.raw_pbp_rows) == 1
+        assert notes == ["filtered_pbp_rows:1"]
+        assert filtered == 1
+
 
 class TestNormalizeValidPbpRow:
     def test_valid_row(self):
@@ -355,6 +383,245 @@ class TestSaveOrCountRows:
             assert result.saved_rows == 0
 
 
+class TestSaveRelayResult:
+    def test_updates_run_result_and_report_rows(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        run_result = RelayRecoveryResult()
+        ctx = RecoveryLoopContext(
+            target=RelayRecoveryTarget(game_id="g1"),
+            bucket_id="2024_regular",
+            source_order=["naver"],
+            run_result=run_result,
+            dry_run=False,
+            log=MagicMock(),
+        )
+        relay_result = NormalizedRelayResult(
+            game_id="g1",
+            source_name="naver",
+            events=[{"inning": 1}],
+            raw_pbp_rows=[{"inning": 1}],
+            has_event_state=True,
+            has_raw_pbp=True,
+            notes="ok",
+        )
+        with patch(
+            "src.services.relay_recovery_service._save_or_count_rows",
+            return_value=RelaySaveCounts(saved_rows=2, saved_event_rows=1, saved_pbp_rows=1),
+        ):
+            _save_relay_result(ctx, RelayRecoveryConfig(), relay_result, ["filtered_event_rows:1"], filtered_rows=1)
+
+        assert run_result.saved_games == 1
+        assert run_result.saved_rows == 2
+        assert run_result.report_rows[0]["status"] == "partial_relay"
+        assert run_result.report_rows[0]["notes"] == "ok;filtered_event_rows:1"
+
+    def test_dry_run_status(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        run_result = RelayRecoveryResult()
+        ctx = RecoveryLoopContext(
+            target=RelayRecoveryTarget(game_id="g1"),
+            bucket_id="2024_regular",
+            source_order=["naver"],
+            run_result=run_result,
+            dry_run=True,
+            log=MagicMock(),
+        )
+        relay_result = NormalizedRelayResult(game_id="g1", source_name="naver", events=[{"inning": 1}])
+        with patch(
+            "src.services.relay_recovery_service._save_or_count_rows",
+            return_value=RelaySaveCounts(saved_rows=1, saved_event_rows=1),
+        ):
+            _save_relay_result(ctx, RelayRecoveryConfig(dry_run=True), relay_result, [], filtered_rows=0)
+
+        assert run_result.report_rows[0]["status"] == "dry_run"
+
+
+class TestLogRelaySave:
+    def test_non_dry_run_log_message(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        log = MagicMock()
+        _log_relay_save(
+            RelayRecoveryTarget(game_id="g1"),
+            NormalizedRelayResult(game_id="g1", source_name="naver"),
+            RelaySaveCounts(saved_rows=2, saved_event_rows=1, saved_pbp_rows=1),
+            dry_run=False,
+            log=log,
+        )
+        assert "[SUCCESS]" in log.call_args.args[0]
+
+    def test_dry_run_log_message(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        log = MagicMock()
+        _log_relay_save(
+            RelayRecoveryTarget(game_id="g1"),
+            NormalizedRelayResult(game_id="g1", source_name="naver"),
+            RelaySaveCounts(saved_rows=2, saved_event_rows=1, saved_pbp_rows=1),
+            dry_run=True,
+            log=log,
+        )
+        assert "[DRY-RUN]" in log.call_args.args[0]
+
+
+class TestMarkUnavailableRelaySource:
+    def test_non_dry_run_marks_source_unavailable(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        ctx = RecoveryLoopContext(
+            target=RelayRecoveryTarget(game_id="g1"),
+            bucket_id="2009_legacy",
+            source_order=["naver"],
+            run_result=RelayRecoveryResult(),
+            dry_run=False,
+            log=MagicMock(),
+        )
+        relay_result = NormalizedRelayResult(game_id="g1", source_name="naver", notes="no data")
+        with patch("src.services.relay_recovery_service.mark_relay_source_unavailable") as mock_mark:
+            _mark_unavailable_relay_source(ctx, [{"source": "naver"}], relay_result)
+
+        mock_mark.assert_called_once()
+        assert ctx.run_result.report_rows[0]["status"] == "source_unavailable"
+
+
+class TestRecoverRelayData:
+    @pytest.mark.asyncio
+    async def test_empty_targets_returns_empty_result(self):
+        result = await recover_relay_data([], RelayRecoveryConfig(log=MagicMock()))
+        assert result.total_targets == 0
+
+    @pytest.mark.asyncio
+    async def test_dry_run_success_flow(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        relay_result = NormalizedRelayResult(
+            game_id="g1",
+            source_name="naver",
+            events=[{"inning": 1}],
+            raw_pbp_rows=[],
+            has_event_state=True,
+        )
+        orchestrator = MagicMock()
+        orchestrator.source_order_for_bucket.return_value = ["naver"]
+        orchestrator.probe_bucket = AsyncMock()
+        orchestrator.fetch_game = AsyncMock(return_value=(relay_result, [{"game_id": "g1", "status": "attempt"}]))
+
+        config = RelayRecoveryConfig(dry_run=True, validate_final_score=False, sleep_seconds=0, log=MagicMock())
+        with (
+            patch("src.services.relay_recovery_service._sanitize_relay_result", return_value=(relay_result, [], 0)),
+            patch("src.services.relay_recovery_service.write_relay_recovery_report") as mock_write,
+        ):
+            result = await recover_relay_data(
+                [RelayRecoveryTarget(game_id="g1", bucket_id="2024_regular")], config, orchestrator
+            )
+
+        assert result.total_targets == 1
+        assert result.saved_games == 1
+        assert result.report_rows[-1]["status"] == "dry_run"
+        orchestrator.probe_bucket.assert_awaited_once()
+        orchestrator.fetch_game.assert_awaited_once()
+        mock_write.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_relay_result_flow(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        relay_result = NormalizedRelayResult(game_id="g1", source_name="naver", notes="no data")
+        orchestrator = MagicMock()
+        orchestrator.source_order_for_bucket.return_value = ["naver"]
+        orchestrator.probe_bucket = AsyncMock()
+        orchestrator.fetch_game = AsyncMock(return_value=(relay_result, []))
+
+        config = RelayRecoveryConfig(validate_final_score=False, sleep_seconds=0, log=MagicMock())
+        with patch("src.services.relay_recovery_service.write_relay_recovery_report"):
+            result = await recover_relay_data(
+                [RelayRecoveryTarget(game_id="g1", bucket_id="2024_regular")], config, orchestrator
+            )
+
+        assert result.empty_games == 1
+        assert result.saved_games == 0
+
+    @pytest.mark.asyncio
+    async def test_derive_pbp_short_circuits_fetch(self):
+        orchestrator = MagicMock()
+        orchestrator.source_order_for_bucket.return_value = ["naver"]
+        orchestrator.probe_bucket = AsyncMock()
+        orchestrator.fetch_game = AsyncMock()
+
+        config = RelayRecoveryConfig(validate_final_score=False, sleep_seconds=0, log=MagicMock())
+        with (
+            patch("src.services.relay_recovery_service._maybe_derive_pbp", return_value=True),
+            patch("src.services.relay_recovery_service.write_relay_recovery_report"),
+        ):
+            result = await recover_relay_data(
+                [RelayRecoveryTarget(game_id="g1", bucket_id="2024_regular")], config, orchestrator
+            )
+
+        assert result.total_targets == 1
+        orchestrator.fetch_game.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_filtered_empty_result_flow(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        fetched = NormalizedRelayResult(
+            game_id="g1",
+            source_name="naver",
+            events=[{"inning": None}],
+            raw_pbp_rows=[],
+        )
+        filtered = NormalizedRelayResult(game_id="g1", source_name="naver", events=[], raw_pbp_rows=[])
+        orchestrator = MagicMock()
+        orchestrator.source_order_for_bucket.return_value = ["naver"]
+        orchestrator.probe_bucket = AsyncMock()
+        orchestrator.fetch_game = AsyncMock(return_value=(fetched, []))
+
+        config = RelayRecoveryConfig(validate_final_score=False, sleep_seconds=0, log=MagicMock())
+        with (
+            patch(
+                "src.services.relay_recovery_service._sanitize_relay_result",
+                return_value=(filtered, ["filtered_event_rows:1"], 1),
+            ),
+            patch("src.services.relay_recovery_service.write_relay_recovery_report"),
+        ):
+            result = await recover_relay_data(
+                [RelayRecoveryTarget(game_id="g1", bucket_id="2024_regular")], config, orchestrator
+            )
+
+        assert result.filtered_games == 1
+        assert result.report_rows[-1]["status"] == "skipped_filtered"
+
+    @pytest.mark.asyncio
+    async def test_success_flow_sleeps_when_configured(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        relay_result = NormalizedRelayResult(
+            game_id="g1",
+            source_name="naver",
+            events=[{"inning": 1}],
+            raw_pbp_rows=[],
+            has_event_state=True,
+        )
+        orchestrator = MagicMock()
+        orchestrator.source_order_for_bucket.return_value = ["naver"]
+        orchestrator.probe_bucket = AsyncMock()
+        orchestrator.fetch_game = AsyncMock(return_value=(relay_result, []))
+        config = RelayRecoveryConfig(dry_run=True, validate_final_score=False, sleep_seconds=0.1, log=MagicMock())
+
+        with (
+            patch("src.services.relay_recovery_service._sanitize_relay_result", return_value=(relay_result, [], 0)),
+            patch("src.services.relay_recovery_service.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch("src.services.relay_recovery_service.write_relay_recovery_report"),
+        ):
+            await recover_relay_data(
+                [RelayRecoveryTarget(game_id="g1", bucket_id="2024_regular")], config, orchestrator
+            )
+
+        mock_sleep.assert_awaited_once_with(0.1)
+
+
 class TestLoadTargetRows:
     def test_with_requested_ids(self):
         mock_session = MagicMock()
@@ -370,6 +637,19 @@ class TestLoadTargetRows:
         criteria = RecoveryTargetCriteria(date="invalid")
         with pytest.raises(ValueError, match="Invalid date format"):
             _load_target_rows(mock_session, criteria)
+
+    def test_season_month_filter(self):
+        mock_session = MagicMock()
+        criteria = RecoveryTargetCriteria(season=2024, month=6)
+        rows = [("20240601LGSS0", "Regular")]
+        query = mock_session.query.return_value.outerjoin.return_value.filter.return_value
+        query.filter.return_value = query
+        query.order_by.return_value.all.return_value = rows
+
+        result = _load_target_rows(mock_session, criteria)
+
+        assert result == rows
+        assert query.filter.called
 
 
 class TestLoadFinalScores:
@@ -429,6 +709,23 @@ class TestLoadRelayRecoveryTargets:
             criteria = RecoveryTargetCriteria(season=2024, missing_only=True)
             result = load_relay_recovery_targets(criteria)
             assert len(result) == 0
+
+    def test_include_incomplete_extends_allowed_statuses(self):
+        from src.utils.game_status import GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
+
+        with (
+            patch("src.services.relay_recovery_service.SessionLocal") as mock_sl,
+            patch("src.services.relay_recovery_service._load_target_rows", return_value=[]) as mock_load,
+        ):
+            mock_session = MagicMock()
+            mock_sl.return_value.__enter__.return_value = mock_session
+            criteria = RecoveryTargetCriteria(season=2024, include_incomplete=True)
+            result = load_relay_recovery_targets(criteria)
+
+        assert result == []
+        allowed_statuses = mock_load.call_args.kwargs["allowed_statuses"]
+        assert GAME_STATUS_SCHEDULED in allowed_statuses
+        assert GAME_STATUS_UNRESOLVED in allowed_statuses
 
 
 class TestWriteRelayRecoveryReport:

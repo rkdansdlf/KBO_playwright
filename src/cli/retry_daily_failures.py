@@ -180,7 +180,7 @@ def build_retry_commands(
 
 
 def _default_runner(command: Sequence[str]) -> None:
-    subprocess.run(list(command), check=True)
+    subprocess.run(list(command), check=True)  # noqa: S603 - commands are built as fixed argv lists.
 
 
 def run_retry(

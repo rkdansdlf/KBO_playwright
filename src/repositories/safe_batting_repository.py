@@ -1,5 +1,6 @@
 """
-Safe batting data repository with foreign key constraint bypass
+Safe batting data repository with foreign key constraint bypass.
+
 타자 데이터를 외래키 제약조건 우회하여 안전하게 저장.
 
 """
@@ -213,7 +214,8 @@ def _save_rows_by_database_type(session: Session, rows: list[dict[str, Any]], db
 
 def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
     """
-    타자 시즌 통계를 player_season_batting 테이블에 안전하게 UPSERT 저장
+    타자 시즌 통계를 player_season_batting 테이블에 안전하게 UPSERT 저장.
+
     외래키 제약조건을 임시로 비활성화하여 데이터 저장.
 
     Args:

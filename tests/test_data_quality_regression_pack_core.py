@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, text
 
-from src.validators.data_quality_regression_pack import run_regression_pack
-
-ROOT = Path(__file__).resolve().parents[1]
+from src.cli.data_quality_regression_pack import main as data_quality_regression_pack_main
+from src.validators.data_quality_regression_pack import (
+    QualityRegressionReport,
+    QualityRegressionResult,
+    render_regression_report,
+    run_regression_pack,
+)
 
 
 def _create_quality_tables(conn) -> None:
@@ -147,7 +150,7 @@ def test_regression_pack_skips_missing_optional_tables() -> None:
     assert all("missing table" in result.message for result in report.results)
 
 
-def test_data_quality_regression_pack_cli_emits_json(tmp_path: Path) -> None:
+def test_data_quality_regression_pack_cli_emits_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "quality.db"
     engine = create_engine(f"sqlite:///{db_path}")
     with engine.begin() as conn:
@@ -162,21 +165,68 @@ def test_data_quality_regression_pack_cli_emits_json(tmp_path: Path) -> None:
             ),
         )
 
-    result = subprocess.run(
+    exit_code = data_quality_regression_pack_main(
         [
-            sys.executable,
-            "-m",
-            "src.cli.data_quality_regression_pack",
             "--database-url",
             f"sqlite:///{db_path}",
             "--json",
         ],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
     )
 
-    payload = json.loads(result.stdout)
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
     assert payload["ok"] is True
     assert payload["check_count"] >= 4
+
+
+def test_quality_regression_report_serializes_counts_and_samples() -> None:
+    report = QualityRegressionReport(
+        results=(
+            QualityRegressionResult(
+                check_id="ok_check",
+                description="passing check",
+                status="pass",
+                violation_count=0,
+                message="ok",
+            ),
+            QualityRegressionResult(
+                check_id="fail_check",
+                description="failing check",
+                status="fail",
+                violation_count=2,
+                message="2 violation(s) found",
+                sample_ids=("G1", "G2"),
+            ),
+        ),
+    )
+
+    payload = report.to_dict()
+
+    assert payload["ok"] is False
+    assert payload["check_count"] == 2
+    assert payload["failure_count"] == 1
+    assert payload["results"][1]["sample_ids"] == ["G1", "G2"]
+
+
+def test_render_regression_report_includes_messages_and_samples() -> None:
+    report = QualityRegressionReport(
+        results=(
+            QualityRegressionResult(
+                check_id="sample_check",
+                description="sample check",
+                status="fail",
+                violation_count=2,
+                message="sample message",
+                sample_ids=("A", "B"),
+            ),
+        ),
+    )
+
+    rendered = render_regression_report(report)
+
+    assert "Data quality regression pack: FAIL" in rendered
+    assert "Checks: 1" in rendered
+    assert "Failures: 1" in rendered
+    assert "- sample_check: fail (2 violation(s))" in rendered
+    assert "  sample message" in rendered
+    assert "  Samples: A, B" in rendered

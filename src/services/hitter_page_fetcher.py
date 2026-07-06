@@ -285,7 +285,7 @@ def derive_sh_sf_from_hitter_page(
             SET {set_clause}
             WHERE game_id = :game_id
               AND {where_clause}
-        """)
+        """)  # noqa: S608
         result = session.execute(sql, params)
         updated += result.rowcount or 0  # type: ignore[attr-defined]
 

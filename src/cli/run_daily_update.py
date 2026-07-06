@@ -383,7 +383,7 @@ def _failure_status(target_date: str, failure_reason: str | None, today: date) -
 def _run_python_step(argv: Sequence[str]) -> None:
     import subprocess
 
-    subprocess.run([sys.executable, *argv], check=True)
+    subprocess.run([sys.executable, *argv], check=True)  # noqa: S603 - internal Python module step argv.
 
 
 def _run_game_status_integrity_audit() -> None:

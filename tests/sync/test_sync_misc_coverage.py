@@ -4,6 +4,7 @@ from datetime import date, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.sync.sync_misc import (
     MiscSyncMixin,
@@ -161,6 +162,28 @@ class TestMiscSyncMixinExtended:
         result = mixin.sync_teams()
         assert result == 1
 
+    def test_sync_teams_with_unexpected_alias_type(self, mixin):
+        class FakeTeam:
+            team_id = 1
+            team_name = "Test Team"
+            team_short_name = "TST"
+            city = "Seoul"
+            founded_year = 1982
+            stadium_name = "Test Stadium"
+            franchise_id = None
+            aliases = {"unexpected": "mapping"}
+            is_active = True
+            created_at = None
+            updated_at = None
+
+        mixin.sqlite_session.query.return_value.all.return_value = [FakeTeam()]
+
+        result = mixin.sync_teams()
+
+        assert result == 1
+        records = mixin._bulk_copy_upsert.call_args.args[1]
+        assert records[0]["aliases"] == "{}"
+
     def test_sync_teams_without_franchise_id(self, mixin):
         mixin._get_franchise_id_mapping.return_value = {}
 
@@ -206,14 +229,52 @@ class TestMiscSyncMixinExtended:
         assert result == 5
 
     def test_sync_rag_chunks_metadata_error(self, mixin):
-        mixin.oci_engine = MagicMock()
-        mixin.oci_engine.connect.return_value.__enter__ = MagicMock(
-            side_effect=__import__("sqlalchemy.exc", fromlist=["SQLAlchemyError"]).SQLAlchemyError("fail"),
-        )
-        mixin.oci_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
         mixin.sync_simple_table.return_value = 0
-        result = mixin.sync_rag_chunks()
+        with patch("src.sync.sync_misc.Base.metadata.create_all", side_effect=SQLAlchemyError("fail")):
+            result = mixin.sync_rag_chunks()
         assert result == 0
+
+    def test_sync_rag_chunks_transform_pads_short_embedding(self, mixin):
+        mixin.sync_simple_table.return_value = 1
+        mixin.sync_rag_chunks()
+        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+
+        result = transform_fn({"embedding": "[1.0, 2.0]"})
+
+        assert len(result["embedding"]) == 256
+        assert result["embedding"][:2] == [1.0, 2.0]
+        assert result["embedding"][-1] == 0.0
+
+    def test_sync_rag_chunks_transform_truncates_and_normalizes_long_embedding(self, mixin):
+        mixin.sync_simple_table.return_value = 1
+        mixin.sync_rag_chunks()
+        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+
+        result = transform_fn({"embedding": [1.0] * 300})
+
+        assert len(result["embedding"]) == 256
+        assert round(sum(value * value for value in result["embedding"]), 6) == 1.0
+
+    def test_sync_rag_chunks_transform_ignores_invalid_embedding_json(self, mixin):
+        mixin.sync_simple_table.return_value = 1
+        mixin.sync_rag_chunks()
+        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+
+        result = transform_fn({"embedding": "not-json"})
+
+        assert result["embedding"] == "not-json"
+
+    @pytest.mark.parametrize(
+        ("method_name", "expected"),
+        [("sync_ticket_schedules", 7), ("sync_stadium_foods", 8)],
+    )
+    def test_metadata_create_all_error_handlers(self, mixin, method_name, expected):
+        mixin.sync_simple_table.return_value = expected
+
+        with patch("src.sync.sync_misc.Base.metadata.create_all", side_effect=SQLAlchemyError("fail")):
+            result = getattr(mixin, method_name)()
+
+        assert result == expected
 
     def test_sync_transit_times_with_date(self, mixin):
         mixin.sync_simple_table.return_value = 3
@@ -308,6 +369,16 @@ class TestMiscSyncMixinExtended:
         mixin.sync_simple_table.return_value = 4
         result = mixin.sync_team_code_map()
         assert result == 4
+
+    def test_sync_team_code_map_transform_keeps_missing_franchise_id(self, mixin):
+        mixin._get_franchise_id_mapping.return_value = {1: 100}
+        mixin.sync_simple_table.return_value = 4
+        mixin.sync_team_code_map()
+        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+
+        result = transform_fn({"franchise_id": None, "curr_code": "LG"})
+
+        assert result == {"franchise_id": None, "curr_code": "LG"}
 
     def test_sync_matchups_no_year(self, mixin):
         mixin.sync_simple_table.return_value = 0

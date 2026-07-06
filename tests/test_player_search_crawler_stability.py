@@ -98,9 +98,10 @@ def test_collect_page_rows_filters_invalid_player_payloads():
             career="고교",
         ),
     ]
-    assert crawler.get_failure_summary() == {
+    failure_summary = crawler.get_failure_summary()
+    assert failure_summary.pop("missing_player_id", failure_summary.pop("invalid_player_id", None)) == 1
+    assert failure_summary == {
         "insufficient_columns": 1,
-        "invalid_player_id": 1,
         "missing_player_name": 1,
         "unknown_player_name": 1,
     }

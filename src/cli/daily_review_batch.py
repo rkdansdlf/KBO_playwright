@@ -1,5 +1,6 @@
 """
-Daily Review Batch Script
+Daily Review Batch Script.
+
 Generate post-game review context from game_events/WPA and persists it locally.
 
 """
