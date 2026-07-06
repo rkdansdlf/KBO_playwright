@@ -1,5 +1,6 @@
 """
-KBO Player Profile Crawler (Enhanced)
+KBO Player Profile Crawler (Enhanced).
+
 Collects extended player profile: photo_url, bats, throws, salary, draft info, debut_year.
 
 Source: KBO HitterDetail/PitcherDetail Basic.aspx.

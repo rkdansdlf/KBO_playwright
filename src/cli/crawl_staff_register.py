@@ -1,5 +1,6 @@
 """
-KBO Staff Register CLI
+KBO Staff Register CLI.
+
 Crawl the current day's manager and coaching staff registered on KBO Register.aspx,
 upserts them to the local SQLite DB (player_basic table), and optionally synchronizes to OCI.
 

@@ -221,7 +221,8 @@ class TrendTracker:
 
     def send_degradation_alert(self, days: int = 14) -> None:
         """
-        Detect metric degradations over the last `days` days and send an alert
+        Detect metric degradations over the last `days` days and send an alert.
+
         via Telegram/Slack if any are found. Stays quiet when everything is healthy.
 
         Args:

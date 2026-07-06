@@ -105,18 +105,15 @@ def test_send_gap_alert_fallback_to_slack(monkeypatch):
 
     sent_slack: list[str] = []
 
-    from contextlib import contextmanager
-
-    @contextmanager
-    def fake_urlopen(req, timeout=5):
-        sent_slack.append(req.data.decode())
+    def fake_post(url, json=None, timeout=5):
+        sent_slack.append(str(json))
 
         class FakeResp:
-            status = 200
+            status_code = 200
 
-        yield FakeResp()
+        return FakeResp()
 
-    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("src.utils.alerting.httpx.post", fake_post)
 
     result = SlackWebhookClient.send_gap_alert("FRESHNESS", "6 issues")
     assert result is True

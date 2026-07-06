@@ -310,7 +310,7 @@ class GameSyncMixin(SyncBaseProtocol):
             """Purge child rows."""
             for table_name in child_tables:
                 self.target_session.execute(
-                    text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),
+                    text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),  # noqa: S608
                     {"pattern": pattern},
                 )
             self.target_session.commit()

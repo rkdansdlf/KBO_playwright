@@ -1,5 +1,6 @@
 """
-CLI entrypoint to execute Phase 1 supplementary crawlers:
+CLI entrypoint to execute Phase 1 supplementary crawlers.
+
 broadcast, game MVP, injury/IL, foreign player, manager change, fan culture.
 
 """

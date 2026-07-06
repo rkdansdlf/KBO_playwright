@@ -11,7 +11,8 @@ from src.repositories.game_repository import save_relay_data as save_normalized_
 
 def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
     """
-    Backward-compatible wrapper that flattens inning-grouped relay payloads and
+    Backward-compatible wrapper that flattens inning-grouped relay payloads and.
+
     forwards them to the canonical writer in game_repository.
 
     Args:

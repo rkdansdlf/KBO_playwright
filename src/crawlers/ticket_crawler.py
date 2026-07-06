@@ -75,8 +75,6 @@ TEAM_TICKET_INFO: dict[str, dict[str, Any]] = {
         "ticket_url": None,
         "open_offset_days": 7,
         "open_time": time(11, 0),
-        # Doosan's ticket platform (Interpark) serves an incomplete TLS chain for Python's cert store.
-        "verify_ssl": False,
     },
     "WO": {
         "stadium_id": "GOCHEOK",
@@ -98,8 +96,6 @@ TEAM_TICKET_INFO: dict[str, dict[str, Any]] = {
         "ticket_url": "https://www.giantsclub.com/ticket",
         "open_offset_days": 7,
         "open_time": time(11, 0),
-        # Lotte's ticket page occasionally serves certificate chain issues with httpx.
-        "verify_ssl": False,
     },
     "NC": {
         "stadium_id": "CHANGWON",
@@ -235,12 +231,10 @@ class TicketCrawler:
             if not url:
                 continue
             try:
-                verify_ssl = info.get("verify_ssl", True)
                 async with httpx.AsyncClient(
                     headers=HEADERS,
                     timeout=15,
                     follow_redirects=True,
-                    verify=verify_ssl,
                 ) as c:
                     host = urlparse(url).hostname or "koreabaseball.com"
                     await throttle.wait(host)

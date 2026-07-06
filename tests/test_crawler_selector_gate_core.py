@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
+import pytest
+
+from src.cli.crawler_selector_gate import main as crawler_selector_gate_main
 from src.monitoring.crawler_selector_gate import (
     SelectorCheck,
     SelectorTarget,
@@ -12,8 +13,6 @@ from src.monitoring.crawler_selector_gate import (
     load_selector_config,
     run_selector_gate,
 )
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_evaluate_html_target_passes_when_required_selectors_match() -> None:
@@ -101,7 +100,7 @@ def test_run_selector_gate_loads_file_config_and_writes_json_report(tmp_path: Pa
     assert payload["targets"][0]["target"] == "schedule"
 
 
-def test_crawler_selector_gate_cli_emits_json(tmp_path: Path) -> None:
+def test_crawler_selector_gate_cli_emits_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     html_path = tmp_path / "fixture.html"
     html_path.write_text("<main><span class='score'>3:2</span></main>", encoding="utf-8")
     config_path = tmp_path / "selector_gate.json"
@@ -121,21 +120,15 @@ def test_crawler_selector_gate_cli_emits_json(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    result = subprocess.run(
+    exit_code = crawler_selector_gate_main(
         [
-            sys.executable,
-            "-m",
-            "src.cli.crawler_selector_gate",
             "--config",
             str(config_path),
             "--json",
         ],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
     )
 
-    payload = json.loads(result.stdout)
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
     assert payload["ok"] is True
     assert payload["target_count"] == 1

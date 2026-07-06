@@ -1,5 +1,6 @@
 """
-KBO Staff Register Crawler
+KBO Staff Register Crawler.
+
 Collects manager (감독) and coach (코치) data from
 https://www.koreabaseball.com/Player/Register.aspx.
 

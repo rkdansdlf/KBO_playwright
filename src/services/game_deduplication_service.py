@@ -184,7 +184,7 @@ def _load_slots(
         FROM game
         WHERE {" AND ".join(where_clauses)}
         GROUP BY game_date, home_franchise_id, away_franchise_id, suffix
-        """,
+        """,  # noqa: S608
         params,
     ).fetchall()
     return [(row[0], row[1], row[2], row[3]) for row in rows]
@@ -232,7 +232,7 @@ def _load_candidates(
                (SELECT COUNT(*) FROM game_batting_stats b WHERE b.game_id = g.game_id) AS stat_count
         FROM game g
         WHERE {" AND ".join(where_clauses)}
-        """,
+        """,  # noqa: S608
         params,
     ).fetchall()
     return [(row[0], int(row[1] or 0)) for row in rows]

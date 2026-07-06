@@ -14,7 +14,8 @@ if TYPE_CHECKING:
 
 class SabermetricsCalculator:
     """
-    Service to calculate advanced Sabermetrics (wOBA, wRC+, WAR)
+    Service to calculate advanced Sabermetrics (wOBA, wRC+, WAR).
+
     using league-specific constants per season.
 
     """

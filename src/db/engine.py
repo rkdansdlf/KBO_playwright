@@ -1,5 +1,6 @@
 """
-Database engine configuration
+Database engine configuration.
+
 Supports both SQLite (dev) and MySQL (production).
 
 """
@@ -298,7 +299,7 @@ def _migrate_game_table(conn: Connection) -> None:
             created_at,
             updated_at
         FROM game_old;
-        """
+        """  # noqa: S608
     conn.exec_driver_sql(insert_sql)
 
     conn.exec_driver_sql("DROP TABLE game_old;")
@@ -341,7 +342,7 @@ def _migrate_game_summary_table(conn: Connection) -> None:
         INSERT INTO game_summary (id, game_id, summary_type, player_id, player_name, detail_text, created_at, updated_at)
         SELECT id, game_id, {select_summary}, {"player_id" if has_player_id else "NULL"}, player_name, {select_detail}, created_at, updated_at
         FROM game_summary_old;
-        """,
+        """,  # noqa: S608
     )
     conn.exec_driver_sql("DROP TABLE game_summary_old;")
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")

@@ -1,5 +1,6 @@
 """
-Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
+Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL.
+
 Dual-repository pattern: SQLite (dev/validation) → OCI (production).
 """
 
@@ -70,7 +71,9 @@ class SyncBaseProtocol(Protocol):
         *,
         update_timestamp: bool | None = ...,
         dedupe_keys: list[str] | None = ...,
-    ) -> int: ...
+    ) -> int:
+        """Sync a simple table with upsert semantics."""
+        ...
 
     def _bulk_copy_upsert(
         self,
@@ -87,13 +90,34 @@ class SyncBaseProtocol(Protocol):
     def _get_season_map(self) -> dict[tuple[Any, ...], int]: ...
     def _reset_target_sequence_for_table(self, table_name: str, column_name: str = ...) -> bool: ...
     def _run_target_session_with_retries(self, *args: Any, **kwargs: Any) -> Any: ...
-    def test_connection(self) -> bool: ...
-    def close(self) -> None: ...
-    def sync_batting_data(self, *args: Any, **kwargs: Any) -> int: ...
-    def sync_pitcher_data(self, *args: Any, **kwargs: Any) -> int: ...
-    def sync_players(self) -> int: ...
-    def sync_player_identities(self) -> int: ...
-    def sync_game_schedules(self, limit: int | None = ...) -> int: ...
+    def test_connection(self) -> bool:
+        """Test source and target database connectivity."""
+        ...
+
+    def close(self) -> None:
+        """Close sync resources."""
+        ...
+
+    def sync_batting_data(self, *args: Any, **kwargs: Any) -> int:
+        """Sync batting data."""
+        ...
+
+    def sync_pitcher_data(self, *args: Any, **kwargs: Any) -> int:
+        """Sync pitcher data."""
+        ...
+
+    def sync_players(self) -> int:
+        """Sync player records."""
+        ...
+
+    def sync_player_identities(self) -> int:
+        """Sync player identity records."""
+        ...
+
+    def sync_game_schedules(self, limit: int | None = ...) -> int:
+        """Sync game schedule records."""
+        ...
+
     def _chunked(self, items: list[str], size: int) -> list[list[str]]: ...
     def _sync_referenced_player_basic_for_games(self, *args: Any, **kwargs: Any) -> Any: ...
 
@@ -248,13 +272,13 @@ def _build_composite_signature_query(game_ids: list[str] | None) -> str:
         alias = f"t{i}"
         if table_name == "game_metadata":
             child_subqueries.append(
-                f"(SELECT COUNT(*) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_count,\n"
+                f"(SELECT COUNT(*) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_count,\n"  # noqa: S608
                 f"            (SELECT MAX({alias}.updated_at) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_max_updated,\n"
                 f"            (SELECT MAX({alias}.start_time) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_start_time",
             )
         else:
             child_subqueries.append(
-                f"(SELECT COUNT(*) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_count,\n"
+                f"(SELECT COUNT(*) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_count,\n"  # noqa: S608
                 f"            (SELECT MAX({alias}.updated_at) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_max_updated",
             )
 
@@ -274,7 +298,7 @@ def _build_composite_signature_query(game_ids: list[str] | None) -> str:
             {children_sql}
         FROM game g
         {filter_clause}
-    """
+    """  # noqa: S608
 
 
 def load_game_sync_signatures(
@@ -667,7 +691,7 @@ class OCISyncBase:
                     COALESCE(MAX({quoted_column}), 0) > 0
                 )
                 FROM {quoted_table}
-                """,
+                """,  # noqa: S608
             ),
             {"sequence_name": sequence_name},
         )
@@ -1136,7 +1160,7 @@ class OCISyncBase:
                 INSERT INTO {table_name} ({cols_list})
                 SELECT {cols_list} FROM {temp_table}
                 {conflict_action}
-            """
+            """  # noqa: S608
             cursor.execute(insert_sql)
 
             cursor.execute(f"DROP TABLE {temp_table}")
@@ -1180,7 +1204,7 @@ class OCISyncBase:
                 conflict_target = ", ".join([f'"{k}"' for k in conflict_keys])
                 conflict_action = f"ON CONFLICT ({conflict_target}) DO UPDATE SET {set_clause}"
 
-            sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) {conflict_action}"
+            sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) {conflict_action}"  # noqa: S608
             cursor.execute(sql, record)
             connection.commit()
         except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):

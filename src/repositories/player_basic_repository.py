@@ -1,5 +1,6 @@
 """
-Player Basic Repository
+Player Basic Repository.
+
 UPSERT operations for player_basic table.
 
 """

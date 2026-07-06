@@ -41,7 +41,8 @@ class RealtimeIssueCrawler:
 
     def fetch_naver_news_headlines(self, *, save: bool = False) -> list[dict[str, Any]]:
         """
-        Fetch latest baseball news headlines from Naver Sports GW API (JSON)
+        Fetch latest baseball news headlines from Naver Sports GW API (JSON).
+
         with fallback to web scraping if API is down.
 
         Args:

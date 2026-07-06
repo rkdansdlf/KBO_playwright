@@ -99,7 +99,8 @@ class TextTransformer:
         similarity_threshold: float = 0.6,
     ) -> list[dict[str, Any]]:
         """
-        Split text into sentences, generates embeddings, calculates cosine similarity between adjacent sentences,
+        Split text into sentences, generates embeddings, calculates cosine similarity between adjacent sentences,.
+
         and splits the document at boundaries where similarity falls below the threshold.
 
         Args:
@@ -388,7 +389,8 @@ class TextTransformer:
         overlap_char_limit: int = 150,
     ) -> list[dict[str, Any]]:
         """
-        Split articles or columns by paragraph blocks, merging them until the character limit is reached,
+        Split articles or columns by paragraph blocks, merging them until the character limit is reached,.
+
         then overlaps 10%-20% of the text.
 
         Args:

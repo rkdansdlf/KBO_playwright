@@ -1,5 +1,6 @@
 """
-KBO Authentication Utility
+KBO Authentication Utility.
+
 Handle automated login and session persistence.
 
 """

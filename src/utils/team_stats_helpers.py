@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from bs4 import BeautifulSoup
 
 if TYPE_CHECKING:
     from bs4.element import Tag
+
+ValueParser = Callable[[str, str], object | None]
 
 
 def get_cell_value(cells: list[Any], index: int) -> str | None:
@@ -142,7 +145,7 @@ def parse_team_stats_html(
     stat_fields: set[str],
     float_fields: set[str],
     *,
-    value_parser: Any = None,
+    value_parser: ValueParser | None = None,
 ) -> list[dict[str, Any]]:
     """
     Parse team stats html.
@@ -214,7 +217,7 @@ def _parse_one_team_row(
     team_mapping: dict[str, str],
     stat_fields: set[str],
     float_fields: set[str],
-    value_parser: Any,
+    value_parser: ValueParser | None,
 ) -> dict[str, Any] | None:
     """
     Parse one team row.
