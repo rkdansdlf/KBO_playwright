@@ -53,7 +53,7 @@ def _upsert_review_summary(session: Session, game_id: str, review_json: str) -> 
     )
     if existing_summaries:
         for summary in existing_summaries:
-            summary.detail_text = review_json
+            summary.detail_text = review_json  # type: ignore[assignment]
         return
 
     session.add(
@@ -68,24 +68,24 @@ def _upsert_review_summary(session: Session, game_id: str, review_json: str) -> 
 def _build_review_data(agg: ContextAggregator, game: Game) -> dict[str, Any]:
     target_date = game.game_date.strftime("%Y%m%d")
     season_year = game.game_date.year
-    away_code = team_code_from_game_id_segment(game.away_team, season_year)
-    home_code = team_code_from_game_id_segment(game.home_team, season_year)
+    away_code = team_code_from_game_id_segment(game.away_team, season_year)  # type: ignore[arg-type]
+    home_code = team_code_from_game_id_segment(game.home_team, season_year)  # type: ignore[arg-type]
 
     review_data = {
         "game_id": game.game_id,
         "game_date": target_date,
         "final_score": f"{game.away_team} {game.away_score} : {game.home_score} {game.home_team}",
-        "crucial_moments": agg.get_crucial_moments(game.game_id, limit=5),
+        "crucial_moments": agg.get_crucial_moments(game.game_id, limit=5),  # type: ignore[arg-type]
         "pitching_breakdown": agg.get_completed_game_pitching_breakdown(
-            game.game_id,
+            game.game_id,  # type: ignore[arg-type]
             season_year=season_year,
         ),
     }
     if away_code and home_code:
-        review_data["away_movements"] = agg.get_recent_player_movements(away_code, game.game_date)
-        review_data["home_movements"] = agg.get_recent_player_movements(home_code, game.game_date)
-        review_data["away_roster_changes"] = agg.get_daily_roster_changes(away_code, game.game_date)
-        review_data["home_roster_changes"] = agg.get_daily_roster_changes(home_code, game.game_date)
+        review_data["away_movements"] = agg.get_recent_player_movements(away_code, game.game_date)  # type: ignore[arg-type]
+        review_data["home_movements"] = agg.get_recent_player_movements(home_code, game.game_date)  # type: ignore[arg-type]
+        review_data["away_roster_changes"] = agg.get_daily_roster_changes(away_code, game.game_date)  # type: ignore[arg-type]
+        review_data["home_roster_changes"] = agg.get_daily_roster_changes(home_code, game.game_date)  # type: ignore[arg-type]
 
     return review_data
 
@@ -167,10 +167,10 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
             logger.info("ℹ️ No completed games found for %s. manifest=%s", target_date, manifest_path)
             return []
 
-        trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])
+        trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])  # type: ignore[misc]
 
         for game in games:
-            game_id = game.game_id
+            game_id = str(game.game_id)
             if game_id not in trusted_game_ids:
                 logger.warning("  ⚠️ Skipping review for %s: relay validation is not trusted", game_id)
                 continue
@@ -202,8 +202,8 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
             with SessionLocal() as sync_session:
                 syncer = OCISync(oci_url, sync_session)
                 try:
-                    for game_id in sorted(set(saved_ids)):
-                        syncer.sync_specific_game(game_id)
+                    for sync_id in sorted(set(saved_ids)):
+                        syncer.sync_specific_game(sync_id)
                 finally:
                     syncer.close()
 

@@ -147,7 +147,7 @@ def main() -> int:
     if not args.crawl:
         logger.info("Use --crawl flag to start crawling")
         logger.info("  Example: python3 -m src.cli.fix_player_names --crawl --save")
-        return
+        return 0
 
     asyncio.run(
         fix_player_names(
@@ -156,6 +156,7 @@ def main() -> int:
             sync_oci=args.sync_oci,
         ),
     )
+    return 0
 
 
 if __name__ == "__main__":

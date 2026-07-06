@@ -12,6 +12,7 @@ from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.postgame_reconciliation_service import (
+    ReconciliationRequest,
     format_reconciliation_report,
     reconcile_postgame_range,
     write_reconciliation_csv,
@@ -52,12 +53,14 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
 
         crawler = GameDetailCrawler(request_delay=args.delay, resolver=resolver)
         result = await reconcile_postgame_range(
-            start_date,
-            end_date,
-            detail_crawler=crawler,
-            concurrency=args.concurrency,
-            extra_game_ids=args.game_id,
-            log=logger.info,
+            ReconciliationRequest(
+                start_date=start_date,
+                end_date=end_date,
+                detail_crawler=crawler,
+                concurrency=args.concurrency,
+                extra_game_ids=args.game_id,
+                log=logger.info,
+            ),
         )
     finally:
         session.close()

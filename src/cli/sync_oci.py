@@ -447,7 +447,7 @@ def _run_sync(
             with SessionLocal() as session:
                 target_years = config.years_getter(session)
         run_parallel_sync(
-            sync_fn,
+            sync_fn,  # type: ignore[arg-type]
             args.target_url,
             target_years,
             args.workers,
@@ -506,15 +506,7 @@ def _build_sync_dispatch() -> dict[str, tuple]:
                            "🚀 Syncing game table only using specialized OCISync...", True,
                            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
                            "✅ Game Table Sync Finished"),
-        "season_stats":   (lambda s, y, **kw: (_maybe_purge(s, y, kw.get("truncate")),
-                           logger.info("  - [%s] Syncing Player Batting stats...", y), s.sync_player_season_batting(year=y, batch_size=kw.get("batch_size")),
-                           logger.info("  - [%s] Syncing Player Pitching stats...", y), s.sync_player_season_pitching(year=y, batch_size=kw.get("batch_size")),
-                           logger.info("  - [%s] Syncing Team Batting stats...", y), s.sync_team_season_batting(year=y, batch_size=kw.get("batch_size")),
-                           logger.info("  - [%s] Syncing Team Pitching stats...", y), s.sync_team_season_pitching(year=y, batch_size=kw.get("batch_size")),
-                           logger.info("  - [%s] Syncing Fielding stats...", y), s.sync_fielding_stats(year=y, batch_size=kw.get("copy_batch_size")),
-                           logger.info("  - [%s] Syncing Baserunning stats...", y), s.sync_baserunning_stats(year=y, batch_size=kw.get("copy_batch_size")),
-                           logger.info("  - [%s] Syncing Team Fielding stats...", y), s.sync_team_season_fielding(year=y, batch_size=kw.get("batch_size")),
-                           logger.info("  - [%s] Syncing Team Baserunning stats...", y), s.sync_team_season_baserunning(year=y, batch_size=kw.get("batch_size")))[-1],
+        "season_stats":   (_sync_season_stats,
                            "🚀 Syncing Season Stats using specialized OCISync...", True,
                            lambda sess: get_available_years(sess, PlayerSeasonBatting, "season"),
                            "✅ Season Stats Sync Finished"),
@@ -530,7 +522,7 @@ def _build_sync_dispatch() -> dict[str, tuple]:
                             "🚀 Syncing Stat Rankings using specialized OCISync...", True,
                             lambda sess: get_available_years(sess, StatRanking, "season"),
                             "✅ Stat Rankings Sync Finished"),
-        "player_game_stats": (lambda s, y, **kw: (logger.info("  - [%s] Syncing Player Game Batting...", y), s.sync_player_game_batting(year=y, batch_size=kw.get("copy_batch_size", 5000)), logger.info("  - [%s] Syncing Player Game Pitching...", y), s.sync_player_game_pitching(year=y, batch_size=kw.get("copy_batch_size", 5000)))[-1],
+        "player_game_stats": (_sync_player_game_stats,
                             "🚀 Syncing Player Game Stats...", True,
                             lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
                             "✅ Player Game Stats Sync Finished"),
@@ -660,7 +652,7 @@ def _reset_sequences_if_requested(args: argparse.Namespace) -> None:
         from scripts.maintenance.reset_oci_sequences import reset_sequences
 
         reset_sequences(args.target_url)
-    except (ImportError, OCI_CLI_EXCEPTIONS):
+    except (ImportError, *OCI_CLI_EXCEPTIONS):
         logger.exception("⚠️ Failed to call reset_sequences")
 
 
@@ -756,6 +748,33 @@ def _detect_active_flag(args: argparse.Namespace, all_flags: list[str]) -> str |
 def _maybe_purge(syncer: OCISync, year: int | None, truncate: object) -> None:
     if truncate and year:
         syncer.purge_season_stats(year)
+
+
+def _sync_season_stats(syncer: OCISync, year: int | None, **kw: object) -> object:
+    _maybe_purge(syncer, year, kw.get("truncate"))
+    logger.info("  - [%s] Syncing Player Batting stats...", year)
+    syncer.sync_player_season_batting(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    logger.info("  - [%s] Syncing Player Pitching stats...", year)
+    syncer.sync_player_season_pitching(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    logger.info("  - [%s] Syncing Team Batting stats...", year)
+    syncer.sync_team_season_batting(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    logger.info("  - [%s] Syncing Team Pitching stats...", year)
+    syncer.sync_team_season_pitching(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    logger.info("  - [%s] Syncing Fielding stats...", year)
+    syncer.sync_fielding_stats(year=year, batch_size=kw.get("copy_batch_size"))  # type: ignore[arg-type]
+    logger.info("  - [%s] Syncing Baserunning stats...", year)
+    syncer.sync_baserunning_stats(year=year, batch_size=kw.get("copy_batch_size"))  # type: ignore[arg-type]
+    logger.info("  - [%s] Syncing Team Fielding stats...", year)
+    syncer.sync_team_season_fielding(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    logger.info("  - [%s] Syncing Team Baserunning stats...", year)
+    return syncer.sync_team_season_baserunning(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+
+
+def _sync_player_game_stats(syncer: OCISync, year: int | None, **kw: object) -> object:
+    logger.info("  - [%s] Syncing Player Game Batting...", year)
+    syncer.sync_player_game_batting(year=year, batch_size=kw.get("copy_batch_size", 5000))  # type: ignore[arg-type]
+    logger.info("  - [%s] Syncing Player Game Pitching...", year)
+    return syncer.sync_player_game_pitching(year=year, batch_size=kw.get("copy_batch_size", 5000))  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":  # pragma: no cover

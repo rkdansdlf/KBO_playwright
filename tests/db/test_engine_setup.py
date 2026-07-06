@@ -49,6 +49,13 @@ class TestCreateEngineForUrl:
             assert result == 1
         engine.dispose()
 
+    def test_sqlite_synchronous_full(self):
+        engine = create_engine_for_url("sqlite:///:memory:", disable_sqlite_wal=True, sqlite_synchronous="FULL")
+        with engine.connect() as conn:
+            result = conn.execute(text("PRAGMA synchronous")).scalar()
+            assert result == 2
+        engine.dispose()
+
     def test_sqlite_wal_disabled(self):
         engine = create_engine_for_url("sqlite:///:memory:", disable_sqlite_wal=True)
         engine.dispose()

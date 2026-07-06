@@ -25,7 +25,7 @@ class PitchingCumulativeRow(Protocol):
     """Minimal row shape needed to resolve cumulative pitching outs."""
 
     innings_outs: int | None
-    extra_stats: dict[str, object] | None
+    extra_stats: dict[str, Any] | None
     innings_pitched: float | str | None
 
 

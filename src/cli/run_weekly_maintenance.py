@@ -178,6 +178,7 @@ def main() -> int:
 
     args = parser.parse_args()
     asyncio.run(run_weekly_maintenance(profile_limit=args.profile_limit, sync=args.sync))
+    return 0
 
 
 if __name__ == "__main__":

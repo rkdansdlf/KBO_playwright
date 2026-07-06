@@ -61,7 +61,7 @@ async def _run_official_crawlers(args: argparse.Namespace) -> None:
                     logger.info("[%s] Incremental mode: stopping at external_id=%s", team_code, stop_id)
 
         crawler = crawler_cls(max_pages=args.pages)
-        await crawler.run(save=args.save, stop_at_external_id=stop_id)
+        await crawler.run(save=args.save, stop_at_external_id=stop_id)  # type: ignore[attr-defined]
 
 
 async def _run_naver_crawler(args: argparse.Namespace) -> None:

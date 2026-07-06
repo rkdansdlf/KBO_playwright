@@ -58,7 +58,7 @@ def _upsert_story_summary(session: Session, game_id: str, story_json: str) -> No
     )
     if existing_summaries:
         for summary in existing_summaries:
-            summary.detail_text = story_json
+            summary.detail_text = story_json  # type: ignore[assignment]
         return
 
     session.add(
@@ -167,7 +167,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
             logger.info("ℹ️ No completed games found for %s. manifest=%s", target_date, manifest_path)
             return []
 
-        trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])
+        trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])  # type: ignore[misc]
 
         for game in games:
             if game.game_id not in trusted_game_ids:
@@ -181,8 +181,8 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
                     game.game_id,
                     story_data["source"].get("warnings", []),
                 )
-            _upsert_story_summary(session, game.game_id, dump_story_json(story_data))
-            saved_ids.append(game.game_id)
+            _upsert_story_summary(session, game.game_id, dump_story_json(story_data))  # type: ignore[arg-type]
+            saved_ids.append(game.game_id)  # type: ignore[arg-type]
 
         try:
             session.commit()

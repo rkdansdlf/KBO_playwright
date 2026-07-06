@@ -37,6 +37,14 @@ def test_render_diagnosis_text_includes_evidence_and_commands() -> None:
     assert "Suggested commands" in output
 
 
+def test_diagnose_text_classifies_sqlite_corruption() -> None:
+    report = diagnose_text("sqlite3.DatabaseError: malformed database schema (crawl_runs) - invalid rootpage")
+    categories = {finding.category for finding in report.findings}
+
+    assert "sqlite_corruption" in categories
+    assert any("sqlite_integrity_guard" in command for command in report.suggested_commands)
+
+
 def test_diagnose_crawler_failure_cli_reads_logs_and_emits_json(tmp_path: Path) -> None:
     log_path = tmp_path / "crawler.log"
     log_path.write_text(

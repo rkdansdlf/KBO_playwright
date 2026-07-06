@@ -135,7 +135,7 @@ def check_all_terminal_status(session: Session, target: date) -> CheckResult:
     non_terminal = []
     for game in games:
         status = game.game_status
-        if not is_terminal_status(status) and status != GAME_STATUS_UNRESOLVED:
+        if not is_terminal_status(status) and status != GAME_STATUS_UNRESOLVED:  # type: ignore[arg-type]
             non_terminal.append(
                 {
                     "game_id": game.game_id,
@@ -266,8 +266,8 @@ def check_no_null_player_ids(session: Session, target: date) -> CheckResult:
         null_count = (
             session.query(func.count())
             .filter(
-                model_class.game_id.in_(game_ids),
-                model_class.player_id.is_(None),
+                model_class.game_id.in_(game_ids),  # type: ignore[attr-defined]
+                model_class.player_id.is_(None),  # type: ignore[attr-defined]
             )
             .scalar()
             or 0
@@ -499,7 +499,7 @@ def check_season_stat_team_code(session: Session) -> CheckResult:
     pitching_null = session.execute(
         text("SELECT COUNT(*) FROM player_season_pitching WHERE team_code IS NULL OR team_code = ''"),
     ).scalar()
-    total_null = batting_null + pitching_null
+    total_null = batting_null + pitching_null  # type: ignore[operator]
     passed = total_null == 0
     return CheckResult(
         name="season_stat_team_code",

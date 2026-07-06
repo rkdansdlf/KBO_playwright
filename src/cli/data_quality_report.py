@@ -12,7 +12,7 @@ import csv
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, sessionmaker
@@ -42,7 +42,7 @@ def _empty_year_data() -> dict:
 
 
 def _source_counts(session: Session, model: type[object], year_field: object, year: int) -> tuple[int, dict]:
-    rows = session.query(model.source, func.count(model.id)).filter(year_field == year).group_by(model.source).all()
+    rows = session.query(model.source, func.count(model.id)).filter(year_field == year).group_by(model.source).all()  # type: ignore[attr-defined, arg-type]
     sources = {source or "UNKNOWN": count for source, count in rows}
     return sum(sources.values()), sources
 
@@ -91,7 +91,7 @@ def _append_batting_discrepancy(session: Session, year_data: dict, official: Pla
 
 
 def _build_report_data(years: list[int], db_url: str | None) -> dict:
-    report_data = {
+    report_data: dict[str, Any] = {
         "generated_at": datetime.now(KST).isoformat(),
         "db_target": "LOCAL" if not db_url else "REMOTE",
         "years": {},

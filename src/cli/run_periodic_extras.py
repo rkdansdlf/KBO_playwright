@@ -108,6 +108,7 @@ def main() -> int:
 
     year = args.year or datetime.now(KST).year
     asyncio.run(run_periodic_extras(year, sync=args.sync))
+    return 0
 
 
 if __name__ == "__main__":

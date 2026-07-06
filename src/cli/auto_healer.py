@@ -132,7 +132,7 @@ def _find_recovery_targets(target_game_ids: list[str] | None) -> tuple[list[Game
 
 
 def _pending_recovery_candidates(recovery_mgr: RecoveryManager, all_found: list[Game]) -> tuple[set[str], list[Game]]:
-    recovery_mgr.initialize_run("default_healer_run", [game.game_id for game in all_found])
+    recovery_mgr.initialize_run("default_healer_run", [game.game_id for game in all_found])  # type: ignore[misc]
     pending_ids = set(recovery_mgr.get_pending_targets())
     return pending_ids, [game for game in all_found if game.game_id in pending_ids]
 
@@ -221,13 +221,13 @@ async def _run_recovery(
             ),
         )
         for game in recovery_candidates:
-            item = collection_result.items.get(game.game_id)
-            outcome = _apply_heal_outcome(game.game_id, item)
+            item = collection_result.items.get(game.game_id)  # type: ignore[call-overload]
+            outcome = _apply_heal_outcome(game.game_id, item)  # type: ignore[arg-type]
             results[outcome] = results.get(outcome, 0) + 1
             if outcome == "completed":
-                recovery_mgr.mark_completed(game.game_id)
+                recovery_mgr.mark_completed(game.game_id)  # type: ignore[arg-type]
             elif outcome == "unresolved":
-                recovery_mgr.mark_failed(game.game_id, item.failure_reason if item else "unknown")
+                recovery_mgr.mark_failed(game.game_id, item.failure_reason if item else "unknown")  # type: ignore[arg-type]
 
         logger.info(write_contract.summary())
         return results

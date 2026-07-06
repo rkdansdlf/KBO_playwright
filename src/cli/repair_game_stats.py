@@ -52,17 +52,17 @@ def _repair_batting() -> None:
                 "sacrifice_hits": stat.sacrifice_hits,
             }
             ratios = BattingStatCalculator.calculate_ratios(raw)
-            stat.avg = ratios["avg"]
-            stat.obp = ratios["obp"]
-            stat.slg = ratios["slg"]
-            stat.ops = ratios["ops"]
-            stat.iso = ratios["iso"]
-            stat.babip = ratios["babip"]
+            stat.avg = ratios["avg"]  # type: ignore[assignment]
+            stat.obp = ratios["obp"]  # type: ignore[assignment]
+            stat.slg = ratios["slg"]  # type: ignore[assignment]
+            stat.ops = ratios["ops"]  # type: ignore[assignment]
+            stat.iso = ratios["iso"]  # type: ignore[assignment]
+            stat.babip = ratios["babip"]  # type: ignore[assignment]
             if stat.extra_stats is None:
                 stat.extra_stats = {}
             extras = dict(stat.extra_stats)
             extras["xr"] = ratios["xr"]
-            stat.extra_stats = extras
+            stat.extra_stats = extras  # type: ignore[assignment]
             updated += 1
             if idx % 500 == 0:
                 session.commit()
@@ -92,11 +92,11 @@ def _repair_pitching() -> None:
                 "batters_faced": stat.batters_faced,
             }
             ratios = PitchingStatCalculator.calculate_ratios(raw)
-            stat.era = ratios["era"]
-            stat.whip = ratios["whip"]
-            stat.k_per_nine = ratios["k_per_nine"]
-            stat.bb_per_nine = ratios["bb_per_nine"]
-            stat.kbb = ratios["kbb"]
+            stat.era = ratios["era"]  # type: ignore[assignment]
+            stat.whip = ratios["whip"]  # type: ignore[assignment]
+            stat.k_per_nine = ratios["k_per_nine"]  # type: ignore[assignment]
+            stat.bb_per_nine = ratios["bb_per_nine"]  # type: ignore[assignment]
+            stat.kbb = ratios["kbb"]  # type: ignore[assignment]
             if hasattr(stat, "fip"):
                 stat.fip = ratios["fip"]
             elif hasattr(stat, "extra_stats"):
@@ -104,7 +104,7 @@ def _repair_pitching() -> None:
                     stat.extra_stats = {}
                 extras = dict(stat.extra_stats)
                 extras["fip"] = ratios["fip"]
-                stat.extra_stats = extras
+                stat.extra_stats = extras  # type: ignore[assignment]
             updated += 1
             if idx % 500 == 0:
                 session.commit()
