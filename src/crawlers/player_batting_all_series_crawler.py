@@ -1,5 +1,6 @@
 """
-KBO 전체 시리즈 타자 기록 크롤러
+KBO 전체 시리즈 타자 기록 크롤러.
+
 - 정규시즌, 시범경기, 와일드카드, 준플레이오프, 플레이오프, 한국시리즈.
 
 Usage:
@@ -727,7 +728,8 @@ def _parse_basic2_header_data_legacy(
     year: int | None = None,
 ) -> dict[int, dict]:
     """
-    Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
+    Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱.
+
     각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집.
 
     Args:

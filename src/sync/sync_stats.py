@@ -214,7 +214,7 @@ class StatsSyncMixin(SyncBaseProtocol):
                 where_clause = f'WHERE "{col}" = :year'
                 params = {"year": year}
 
-            sql = f'SELECT COUNT(*), MAX("updated_at") FROM "{table_name}" {where_clause}'
+            sql = f'SELECT COUNT(*), MAX("updated_at") FROM "{table_name}" {where_clause}'  # noqa: S608
             try:
                 row = session.execute(text(sql), params).fetchone()
                 if row is None:
@@ -610,6 +610,6 @@ class StatsSyncMixin(SyncBaseProtocol):
             # player-level fielding/baserunning use 'year'; team-level and others use 'season'
             use_year_col = table_name in ("player_season_fielding", "player_season_baserunning")
             year_col = "year" if use_year_col else "season"
-            self.target_session.execute(text(f'DELETE FROM "{table_name}" WHERE "{year_col}" = :year'), {"year": year})
+            self.target_session.execute(text(f'DELETE FROM "{table_name}" WHERE "{year_col}" = :year'), {"year": year})  # noqa: S608
         self.target_session.commit()
         logger.info("🧹 Purged OCI season stats for %s (type=%s)", year, type)

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.models.player import Player, PlayerBasic, PlayerIdentity, PlayerSeasonBatting
+from src.models.player import Player, PlayerBasic, PlayerIdentity, PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.team import Team, TeamDailyRoster
 from src.parsers.player_profile_parser import PlayerProfileParsed
 from src.repositories.player_repository import PlayerRepository
 
@@ -22,6 +24,23 @@ def inmemory_session():
     Player.__table__.create(engine)
     PlayerBasic.__table__.create(engine)
     PlayerIdentity.__table__.create(engine)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        yield session
+
+
+@pytest.fixture
+def movement_session():
+    engine = create_engine("sqlite:///:memory:")
+    for table in (
+        Team.__table__,
+        PlayerBasic.__table__,
+        Player.__table__,
+        TeamDailyRoster.__table__,
+        PlayerSeasonBatting.__table__,
+        PlayerSeasonPitching.__table__,
+    ):
+        table.create(engine)
     Session = sessionmaker(bind=engine)
     with Session() as session:
         yield session
@@ -359,6 +378,63 @@ class TestApplyProfileFieldsEntryYear:
         profile = PlayerProfileParsed(entry_year=2020)
         repo._apply_profile_fields(player, profile)
         assert player.debut_year == 2020
+
+
+class TestMovementTeamHelpers:
+    def test_resolve_movement_team_id_from_alias(self, movement_session, repo):
+        movement_session.add(Team(team_id="DB", team_name="두산 베어스", team_short_name="두산", city="서울"))
+        movement_session.commit()
+
+        assert repo._resolve_movement_team_id(movement_session, "두산") == "DB"
+
+    def test_resolve_movement_team_id_missing(self, movement_session, repo):
+        assert repo._resolve_movement_team_id(movement_session, "없는팀") is None
+
+    def test_infer_movement_team_from_history_single_team(self, movement_session, repo):
+        movement_session.add(Team(team_id="LG", team_name="LG 트윈스", team_short_name="LG", city="서울"))
+        movement_session.add(PlayerBasic(player_id=1001, name="홍길동"))
+        movement_session.add(
+            PlayerSeasonBatting(player_id=1001, season=2024, league="REGULAR", level="KBO1", team_code="LG")
+        )
+        movement_session.commit()
+
+        assert repo._infer_movement_team_from_history(movement_session, "홍길동(내야수)", 2025) == "LG"
+
+    def test_infer_movement_team_from_history_no_candidates(self, movement_session, repo):
+        assert repo._infer_movement_team_from_history(movement_session, "없는선수", 2025) is None
+
+    def test_unique_roster_movement_player_id(self, movement_session, repo):
+        movement_session.add(Team(team_id="LG", team_name="LG 트윈스", team_short_name="LG", city="서울"))
+        movement_session.add(
+            TeamDailyRoster(
+                roster_date=date(2025, 4, 1),
+                team_code="LG",
+                player_id=1001,
+                player_basic_id=1001,
+                person_type="player",
+                player_name="홍길동",
+                position="내야수",
+            ),
+        )
+        movement_session.commit()
+
+        result = repo._unique_roster_movement_player_id(movement_session, "홍길동", "LG", 2025, {1001, 2002})
+        assert result == 1001
+
+    def test_unique_franchise_season_player_id(self, movement_session, repo):
+        movement_session.add_all(
+            [
+                Team(team_id="HT", team_name="해태 타이거즈", team_short_name="해태", city="광주", franchise_id=5),
+                Team(team_id="KIA", team_name="KIA 타이거즈", team_short_name="KIA", city="광주", franchise_id=5),
+            ],
+        )
+        movement_session.add(
+            PlayerSeasonPitching(player_id=2001, season=2024, league="REGULAR", level="KBO1", team_code="KIA")
+        )
+        movement_session.commit()
+
+        result = repo._unique_franchise_season_player_id(movement_session, "HT", 2025, {2001, 2002})
+        assert result == 2001
 
 
 class TestUpsertPlayerProfile:

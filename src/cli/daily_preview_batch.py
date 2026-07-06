@@ -1,5 +1,6 @@
 """
-Daily Preview Batch Script
+Daily Preview Batch Script.
+
 Fetch pre-game context and persists both preview JSON and core pregame tables.
 
 """

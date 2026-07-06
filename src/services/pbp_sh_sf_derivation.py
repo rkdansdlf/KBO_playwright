@@ -187,7 +187,7 @@ def apply_sh_sf_to_batting_stats(session: Session, game_id: str) -> int:
             SET {set_clause}
             WHERE game_id = :game_id
               AND {where_clause}
-        """)
+        """)  # noqa: S608
         exec_result: Any = session.execute(sql, params)
         updated += cast("int", exec_result.rowcount) or 0
 
@@ -198,7 +198,7 @@ def apply_sh_sf_to_batting_stats(session: Session, game_id: str) -> int:
                 SET {set_clause}
                 WHERE game_id = :game_id
                   AND {where_clause}
-            """)
+            """)  # noqa: S608
             session.execute(sql2, params)
         except (SQLAlchemyError, RuntimeError):
             pass  # player_game_batting may not exist in all environments

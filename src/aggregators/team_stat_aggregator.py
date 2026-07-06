@@ -174,7 +174,8 @@ class TeamStatAggregator:
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         """
-        Dispatch to database-driven aggregation if an integer season is passed,
+        Dispatch to database-driven aggregation if an integer season is passed,.
+
         or pure in-memory aggregation if an iterable of rows is passed.
 
         Args:
@@ -225,7 +226,8 @@ class TeamStatAggregator:
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         """
-        Dispatch to database-driven aggregation if an integer season is passed,
+        Dispatch to database-driven aggregation if an integer season is passed,.
+
         or pure in-memory aggregation if an iterable of rows is passed.
 
         Args:

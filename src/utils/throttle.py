@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import random
+import secrets
 import threading
 import time
 
 logger = logging.getLogger(__name__)
+_SYSTEM_RANDOM = secrets.SystemRandom()
 
 
 class AsyncThrottle:
@@ -91,7 +92,7 @@ class AsyncThrottle:
             float instance.
 
         """
-        current_jitter = random.uniform(-self.jitter / 2, self.jitter)
+        current_jitter = _SYSTEM_RANDOM.uniform(-self.jitter / 2, self.jitter)
 
         return max(0.0, self._default_delay + current_jitter)
 

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-import random
+import secrets
 import time
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ from src.utils.throttle import throttle
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 R = TypeVar("R")
+_SYSTEM_RANDOM = secrets.SystemRandom()
 
 DEFAULT_USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -117,7 +118,7 @@ class RequestPolicy:
             String result.
 
         """
-        return random.choice(self.user_agents)
+        return secrets.choice(self.user_agents)
 
     def build_context_kwargs(self, **overrides: object) -> dict[str, Any]:
         """
@@ -144,7 +145,7 @@ class RequestPolicy:
             float instance.
 
         """
-        return random.uniform(self.min_delay, self.max_delay)
+        return _SYSTEM_RANDOM.uniform(self.min_delay, self.max_delay)
 
     def delay(self, host: str = "koreabaseball.com") -> None:
         """

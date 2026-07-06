@@ -76,7 +76,8 @@ def _extract_article_id(href: str) -> str | None:
 
 class OperationNoticeDoosanCrawler:
     """
-    Doosan Bears official announcements and maps them to
+    Doosan Bears official announcements and maps them to.
+
     StadiumOperationNotice records for JAMSIL stadium.
 
     """

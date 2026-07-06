@@ -197,3 +197,74 @@ class TestIsTeamInId:
 
     def test_wo_legacy(self) -> None:
         assert RelayCrawler._is_team_in_id("WO", "20260412KHLG0") is True
+
+
+class TestParseNaverPayloadFixture:
+    def test_parses_naver_relay_fixture_payload(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        crawler = RelayCrawler()
+        monkeypatch.setattr(crawler, "_apply_wpa_transitions", lambda events: None)
+        payload = [
+            {
+                "title": "1회초 SSG 공격",
+                "textOptions": [
+                    {
+                        "text": "최정 : 스트라이크",
+                        "batterRecord": {"name": "최정"},
+                        "pitcherName": "임찬규",
+                        "currentGameState": {
+                            "homeScore": 0,
+                            "awayScore": 0,
+                            "out": 0,
+                            "base1": 0,
+                            "base2": 0,
+                            "base3": 0,
+                        },
+                    },
+                    {
+                        "text": "최정 : 좌익수 앞 안타",
+                        "batterRecord": {"name": "최정"},
+                        "pitcherName": "임찬규",
+                        "currentGameState": {
+                            "homeScore": 0,
+                            "awayScore": 0,
+                            "out": 0,
+                            "base1": 1,
+                            "base2": 0,
+                            "base3": 0,
+                        },
+                    },
+                ],
+            },
+            {
+                "title": "1회말 LG 공격",
+                "textOptions": [
+                    {
+                        "text": "홍창기 : 삼진 아웃",
+                        "batterRecord": {"name": "홍창기"},
+                        "pitcherName": "김광현",
+                        "currentGameState": {
+                            "homeScore": 0,
+                            "awayScore": 0,
+                            "out": 1,
+                            "base1": 0,
+                            "base2": 0,
+                            "base3": 0,
+                        },
+                    },
+                ],
+            },
+        ]
+
+        result = crawler._parse_naver_payload(payload)
+
+        assert result["parser_version"]
+        assert result["source_schema_version"]
+        assert result["payload_hash"]
+        assert len(result["raw_pbp_rows"]) == 5
+        assert [event["batter_name"] for event in result["events"]] == ["최정", "홍창기"]
+        assert result["events"][0]["inning"] == 1
+        assert result["events"][0]["inning_half"] == "top"
+        assert result["events"][0]["result"] == "좌익수 앞 안타"
+        assert result["events"][0]["base_state"] == 1
+        assert result["events"][1]["inning_half"] == "bottom"
+        assert result["events"][1]["outs"] == 1

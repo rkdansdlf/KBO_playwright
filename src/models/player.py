@@ -1,5 +1,6 @@
 """
-Player-related ORM models
+Player-related ORM models.
+
 Aligns with Docs/schema/playerProfileSchemaGuide.md design.
 
 PlayerBasic: Simple table from player search crawler (Docs/PLAYERID_CRAWLING.md)

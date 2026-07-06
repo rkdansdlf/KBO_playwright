@@ -1,5 +1,6 @@
 """
-KBO Player Profile Parser
+KBO Player Profile Parser.
+
 Parse raw KBO profile texts and original string fields into structured attributes.
 
 """
@@ -284,7 +285,8 @@ def parse_path(s: str) -> list[str]:
 
 def parse_money(s: str) -> dict[str, Any | None]:
     """
-    Parse currency amounts:
+    Parse currency amounts.
+
     - '200000달러' -> amount=200000, currency='USD'
     - '160000만원' -> amount=1600000000, currency='KRW'.
 
@@ -416,7 +418,8 @@ def parse_profile(
     is_foreign: bool | None = None,
 ) -> PlayerProfileParsed:
     """
-    Tokenize raw profile text raw profile text and returns a structured dictionary
+    Tokenize raw profile text raw profile text and returns a structured dictionary.
+
     of all parsed values.
 
     Args:

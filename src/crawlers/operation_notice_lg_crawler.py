@@ -86,7 +86,8 @@ def _extract_article_id(href: str) -> str | None:
 
 class OperationNoticeLGCrawler:
     """
-    LG Twins official announcements and maps them to
+    LG Twins official announcements and maps them to.
+
     StadiumOperationNotice records for JAMSIL stadium.
 
     """

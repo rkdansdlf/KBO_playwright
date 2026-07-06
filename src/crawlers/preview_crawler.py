@@ -372,16 +372,7 @@ class PreviewCrawler:
                 logger.info("ℹ️ No games found or no starting pitchers announced for %s.", game_date)
                 return []
 
-            for g in games:
-                if not isinstance(g, dict):
-                    continue
-                preview_data = PreviewCrawler._build_preview_payload(g, game_date)
-                if not preview_data:
-                    continue
-                await self._enrich_preview_lineups(g, preview_data, page)
-
-                results.append(preview_data)
-                self._log_preview_result(preview_data)
+            results = await self._build_preview_results(games, game_date, page)
 
         except PREVIEW_CRAWL_EXCEPTIONS:
             logger.exception("❌ PreviewCrawler error")
@@ -399,6 +390,24 @@ class PreviewCrawler:
                     await pool.close()
                 except PLAYWRIGHT_API_EXCEPTIONS:
                     logger.exception("Pool close failed")
+
+    async def _build_preview_results(
+        self,
+        games: list[Any],
+        game_date: str,
+        page: Page | None,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for game_row in games:
+            if not isinstance(game_row, dict):
+                continue
+            preview_data = PreviewCrawler._build_preview_payload(game_row, game_date)
+            if not preview_data:
+                continue
+            await self._enrich_preview_lineups(game_row, preview_data, page)
+            results.append(preview_data)
+            self._log_preview_result(preview_data)
+        return results
 
     async def _fetch_preview_game_list(
         self,

@@ -1,5 +1,6 @@
 """
-PlayerSeasonPitching 전용 리포지토리
+PlayerSeasonPitching 전용 리포지토리.
+
 투수 시즌 데이터를 player_season_pitching 테이블에 올바르게 저장.
 
 """

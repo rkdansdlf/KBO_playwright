@@ -158,7 +158,8 @@ class HighlightAggregator:
 
     def aggregate_game_highlights(self, game_id: str, min_wpa_threshold: float = 0.05) -> list[GameHighlight]:
         """
-        Scan all play events for a given game, detects significant plays,
+        Scan all play events for a given game, detects significant plays,.
+
         tags them, and calculates an importance score for ranking.
 
         Args:

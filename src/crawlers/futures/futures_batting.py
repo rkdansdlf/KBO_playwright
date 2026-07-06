@@ -156,7 +156,8 @@ def _parse_batting_row(headers: list[str], cells: list[str]) -> dict[str, Any]:
 
 def _pick_futures_table(soup: BeautifulSoup) -> Tag | None:
     """
-    Find the Futures stats table safely:
+    Find the Futures stats table safely.
+
     1. Look for table near '퓨처스' label
     2. Fallback: find table with season, AVG, OBP, SLG headers.
 

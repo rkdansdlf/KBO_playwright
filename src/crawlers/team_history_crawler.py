@@ -27,6 +27,7 @@ TEAM_HISTORY_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeErr
 class TeamHistoryCrawler:
     """
     crawl KBO Team History page (https://www.koreabaseball.com/Kbo/League/TeamHistory.aspx).
+
     Collects: Annual Team Names, Logos, Rankings, Season Info.
 
     """

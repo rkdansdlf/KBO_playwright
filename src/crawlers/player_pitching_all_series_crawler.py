@@ -512,42 +512,40 @@ def _map_pitcher_basic1_stats(
     stats.team_name = team_name
     stats.team_code = team_code
 
-    def get_val(key: str) -> str | None:
-        """
-        Get val.
+    _apply_basic1_counting_stats(stats, raw)
+    _apply_basic1_extra_stats(stats, raw)
 
-        Args:
-            key: Key.
-            key: Key.
+    return True
 
-        Returns:
-            The result of the operation.
 
-        """
-        return raw.get(key)
-
-    stats.games = safe_int_or_none(get_val("G")) if "G" in raw else stats.games
+def _apply_basic1_counting_stats(stats: PitcherStats, raw: dict[str, str]) -> None:
+    stats.games = safe_int_or_none(raw.get("G")) if "G" in raw else stats.games
     stats.games_started = (
-        safe_int_or_none(get_val("GS") or get_val("선발")) if "GS" in raw or "선발" in raw else stats.games_started
+        safe_int_or_none(raw.get("GS") or raw.get("선발")) if "GS" in raw or "선발" in raw else stats.games_started
     )
-    stats.wins = safe_int_or_none(get_val("W")) if "W" in raw else stats.wins
-    stats.losses = safe_int_or_none(get_val("L")) if "L" in raw else stats.losses
-    stats.saves = safe_int_or_none(get_val("SV")) if "SV" in raw else stats.saves
-    stats.holds = safe_int_or_none(get_val("HLD")) if "HLD" in raw else stats.holds
+    stats.wins = safe_int_or_none(raw.get("W")) if "W" in raw else stats.wins
+    stats.losses = safe_int_or_none(raw.get("L")) if "L" in raw else stats.losses
+    stats.saves = safe_int_or_none(raw.get("SV")) if "SV" in raw else stats.saves
+    stats.holds = safe_int_or_none(raw.get("HLD")) if "HLD" in raw else stats.holds
 
     if "IP" in raw:
-        stats.innings_pitched = parse_innings(get_val("IP"))
-        stats.innings_outs = parse_innings_to_outs(get_val("IP"))
+        stats.innings_pitched = parse_innings(raw.get("IP"))
+        stats.innings_outs = parse_innings_to_outs(raw.get("IP"))
 
-    stats.hits_allowed = safe_int_or_none(get_val("H")) if "H" in raw else stats.hits_allowed
-    stats.home_runs_allowed = safe_int_or_none(get_val("HR")) if "HR" in raw else stats.home_runs_allowed
-    stats.walks_allowed = safe_int_or_none(get_val("BB")) if "BB" in raw else stats.walks_allowed
-    stats.hit_batters = safe_int_or_none(get_val("HBP")) if "HBP" in raw else stats.hit_batters
-    stats.strikeouts = safe_int_or_none(get_val("SO")) if "SO" in raw else stats.strikeouts
-    stats.runs_allowed = safe_int_or_none(get_val("R")) if "R" in raw else stats.runs_allowed
-    stats.earned_runs = safe_int_or_none(get_val("ER")) if "ER" in raw else stats.earned_runs
-    stats.era = safe_float_or_none(get_val("ERA")) if "ERA" in raw else stats.era
-    stats.whip = safe_float_or_none(get_val("WHIP")) if "WHIP" in raw else stats.whip
+    stats.hits_allowed = safe_int_or_none(raw.get("H")) if "H" in raw else stats.hits_allowed
+    stats.home_runs_allowed = safe_int_or_none(raw.get("HR")) if "HR" in raw else stats.home_runs_allowed
+    stats.walks_allowed = safe_int_or_none(raw.get("BB")) if "BB" in raw else stats.walks_allowed
+    stats.hit_batters = safe_int_or_none(raw.get("HBP")) if "HBP" in raw else stats.hit_batters
+    stats.strikeouts = safe_int_or_none(raw.get("SO")) if "SO" in raw else stats.strikeouts
+    stats.runs_allowed = safe_int_or_none(raw.get("R")) if "R" in raw else stats.runs_allowed
+    stats.earned_runs = safe_int_or_none(raw.get("ER")) if "ER" in raw else stats.earned_runs
+    stats.era = safe_float_or_none(raw.get("ERA")) if "ERA" in raw else stats.era
+    stats.whip = safe_float_or_none(raw.get("WHIP")) if "WHIP" in raw else stats.whip
+
+
+def _apply_basic1_extra_stats(stats: PitcherStats, raw: dict[str, str]) -> None:
+    def get_val(key: str) -> str | None:
+        return raw.get(key)
 
     if "metrics" not in stats.extra_stats:
         stats.extra_stats["metrics"] = {}
@@ -569,8 +567,6 @@ def _map_pitcher_basic1_stats(
         metrics["era"] = stats.era
     if win_pct is not None:
         metrics["win_pct"] = win_pct
-
-    return True
 
 
 def parse_basic1_page(

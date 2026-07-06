@@ -1,5 +1,6 @@
 """
-KBO Schedule Crawler POC
+KBO Schedule Crawler POC.
+
 Collects game IDs from the KBO schedule page.
 
 """

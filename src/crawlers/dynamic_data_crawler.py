@@ -84,7 +84,8 @@ class DynamicDataCrawler:
 
     def crawl_and_update_ticket_times(self, lookahead_days: int = 14) -> list[TicketSchedule]:
         """
-        Calculate upcoming game ticketing open times based on KBO team rules
+        Calculate upcoming game ticketing open times based on KBO team rules.
+
         and saves them to the ticket_schedules table.
 
         Args:

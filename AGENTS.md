@@ -183,9 +183,9 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-06-30
+Last updated: 2026-07-05
 
-### Current Sprint (2026-06-30) — Data Quality & Sync
+### Historical Sprint (2026-06-30) — Data Quality & Sync
 
 - Fix kbo_seasons duplicate/incorrect league_type_code (0-5 canonical)
 - Normalize all game legacy team codes (OB→DB, SK→SSG, etc.)
@@ -251,7 +251,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 | Redundant exception / simplification | `RSE`, `PIE`, `RUF017/022`, `YTT` | Fixed 6 violations (PIE790 3x, PIE810 2x, RUF022 1x, RSE102 1x); 0 violations after `--fix` |
 | Simplify / naming / access | `SIM105/117`, `N`, `SLF001`, `FLY002` | Enabled SIM105, SIM117 (src/ 0 violations); N pep8-naming (src/ 0); SLF001 private-member-access (14 noqa'd); FLY002 (tests/ ignore) |
 
-### Current Verification Baseline
+### Historical Verification Baseline (2026-06-24)
 
 - `ruff check src/ tests/ scripts/` = 0 errors (default select, 0 violations in tests/scripts — cleaned 2026-06-29).
 - `ruff format --check .` = 898 files already formatted
@@ -305,7 +305,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `ruff check --select PLR0915 src/` = 0 violations (too-many-statements, threshold 50).
 - `ruff check --select FURB167,RUF013,DTZ005,S608,TC001,TC002,TC003 src/` = 0 violations; these rules are now enabled for `src/`.
 - `ruff check --select RSE,PIE,RUF017,RUF022,YTT,FLY002 src/` = 0 violations; enabled 2026-06-24.
-- `ruff check --select PLR0913 src/` = 29 intentional remaining (public/crawler entrypoints with keyword compatibility).
+- `ruff check --select PLR0913 src/` = 0 violations (plan COMPLETE; public/crawler keyword compatibility handled with targeted refactors/noqa where needed).
 
 ### Phase 10 Completed (2026-06-23) — Deep Playwright-aware C901 refactoring
 
@@ -332,7 +332,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - **N naming (pep8-naming)**: 23 violations fixed (22×N806 + 1×N811), select enabled for src/, per-file-ignored for tests/scripts/.
 - **Test optimization**: 3 slow tests monkeypatched — fan_culture 5s→~0.1s, OCI pregame 3s→~0.1s, player_status_confirmer 3s→1.5s. Total pytest: 46.51s→34.06s (26.7% 단축).
 
-### Current Verification Baseline (2026-06-30)
+### Historical Verification Baseline (2026-06-30)
 
 - `ruff check src/ tests/ scripts/` = 0 errors
 - `ruff format --check .` = clean
@@ -341,7 +341,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - Coverage: ~70% (fail_under=70)
 - `# noqa: BLE001` in `src/` = 0
 
-### Current Sprint (2026-06-30) — Data Quality & Sync
+### Historical Sprint (2026-06-30) — Data Quality & Sync
 
 | Task | Result |
 |------|--------|
@@ -578,20 +578,17 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage**: 76.84% (fail_under=70).
 - **pytest**: 8,006 passed.
 
-### Current Verification Baseline (2026-06-30)
+### Current Verification Baseline (2026-07-05)
 
-- `ruff check src/ tests/ scripts/` = 0 errors (406 rules enabled, 0 warnings).
-- `ruff format --check .` = 1,029 files clean.
-- `python -m pytest` (unit mode) = **8,081 passed**, 0 failed, 25 skipped, 305 deselected, 1 xfailed; ~38s.
-- `python -m pytest` (full suite) = 8,324 passed, 0 failed, 5 skipped, 1 xfailed; ~95s.
+- `ruff check src/ tests/ scripts/` = 0 errors (expanded rules, 0 warnings).
+- `ruff format --check .` = clean.
+- `python -m pytest -m "" -p no:cacheprovider` = **8,779 passed**, 0 failed, 28 skipped, 1 xfailed; ~80s.
+- `python -m pytest --ignore=tests/validators/test_quality_gate_pure.py -p no:cacheprovider` = **8,380+ passed**, 0 failed in recent runs.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
-- `--cov=src --cov-report=term` = **75.6%** (fail_under=70, exceeded target 75%).
+- `--cov=src --cov-report=term` = **77%** (fail_under=70, exceeded target 75%).
 - `# noqa: BLE001` in `src/` = 0.
 - `pre-commit` hooks installed locally, all hooks pass.
 - COM812 removed from select (conflicts with formatter), added to global ignore.
-- 12 new ruff categories enabled: AIR, ASYNC, EM, EXE, FBT, FLY, INT, NPY, PYI, SLOT, T20, TID.
-- Fixed 12 pre-existing test failures in `test_safe_batting_coverage.py` (session.execute mocking).
-- Skipped `test_text_parser_parsed.py` (parse_play_details not yet implemented).
 - Docker workflows validated: docker_build.yml (push+path filter), text_relay_docker.yml (daily cron).
 
 ### Phase 51 Complete (2026-06-30) — Ruff rule expansion + test stabilization
@@ -603,3 +600,34 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **test_player_batting_crawler_pure.py**: Fixed syntax error (missing newline between test methods).
 - **Docker workflows validated**: Both docker_build.yml and text_relay_docker.yml structurally correct.
 - **Result**: 8,064 → 8,101 passed (+37), 0 failures, ruff 0 violations, pre-commit all green.
+
+### Phase 52 Complete (2026-07-05) — Ruff expansion + full-suite stabilization
+
+- **11 new ruff categories enabled**: AIR, ASYNC, CPY, DOC, DJ, EM, FBT, FLY, ICN, Q, SLOT.
+- **A002 cleanup**: `StatsSyncMixin.purge_season_stats` parameter renamed from `type` to `stat_type`; 8 sync-stat tests updated.
+- **Test stabilization**: `test_player_search_crawler_stability.py` no longer depends on order-sensitive internal player-id reason naming.
+- **Formatter/lint cleanup**: Fixed auto-fixable UP017, W292, RUF100, COM812 formatter-conflict issues.
+- **Result**: full suite `-m ""` now passes with 8,779 passed, 0 failed.
+
+### Phase 53 Complete (2026-07-05) — D205 + security rule enforcement
+
+- **D205 enforced in `src/`**: Fixed 49 remaining multi-line docstring summary/description spacing violations across 40 files, removed D205 from global ignore, added it to select, and kept only tests/scripts per-file ignores.
+- **Security per-file-ignore cleanup**: Removed `S310`, `S311`, `S324`, `S603`, and `S608` from `src/` per-file-ignore entries.
+- **Alerting HTTP client**: Replaced `urllib.request.urlopen` alert sends with `httpx.post`; updated alerting tests.
+- **Randomness hygiene**: Replaced crawler throttling/user-agent randomness with `secrets.choice` / `secrets.SystemRandom` for S311 compliance.
+- **Hash hygiene**: Replaced relay provider log `sha1` with `sha256` for S324 compliance.
+- **Subprocess/SQL audit scope**: Moved safe fixed-argv subprocess calls and existing dynamic SQL identifier construction from file-level ignores to line-level `noqa` annotations.
+- **Verification**: `ruff check src/ tests/ scripts/`, `ruff format --check .`, targeted alerting/request-policy/throttle tests, and unit pytest (`8524 passed, 25 skipped, 263 deselected, 1 xfailed`) all pass.
+
+### Phase 54 Complete (2026-07-06) — S501 + docstring/ANN401 cleanup
+
+- **S501 ticket crawler cleanup**: Removed per-team `verify_ssl=False` and `httpx.AsyncClient(verify=...)` from `ticket_crawler.py`; removed the `S501` per-file ignore for `src/crawlers/ticket_crawler.py`.
+- **D102/D103/D105 per-file-ignore cleanup**: Removed stale docstring ignores from `game_detail_crawler.py`, `game_collection_service.py`, and `postgame_reconciliation_service.py`; added protocol method docstrings in `sync_base.py` and removed its `D102` ignore.
+- **ANN401 cleanup**: Replaced `team_stats_helpers.value_parser` `Any` with a concrete callable alias, added `PitchingCumulativeRow` protocol for `quality_gate.py`, and removed stale ANN401 ignores from `request_policy.py`, `game_status.py`, `refresh_manifest.py`, `team_stats_helpers.py`, and `quality_gate.py`. `sync_base.py` keeps ANN401 for DB/session/raw-connection boundaries.
+- **Verification**: targeted ticket/quality/team-stats/sync tests (`257 passed`), full unit pytest (`8571 passed, 25 skipped, 263 deselected, 1 xfailed`), and `ruff check src/ tests/ scripts/` pass.
+
+### Phase 54 In Progress (2026-07-06) — Coverage and Fixture Test Expansion
+
+- **Crawler fixture tests**: Added KBO ticket-map HTML fixture coverage and Naver relay payload fixture coverage; full pytest passed with 8547 tests.
+- **`data_quality_regression_pack.py`**: Added pure serialization/rendering tests for `QualityRegressionReport`, `QualityRegressionResult`, and `render_regression_report`; module coverage improved from 82% to 96% in targeted run.
+- **PLR0913 status refresh**: Confirmed `ruff check --select PLR0913 src/` = 0 violations and updated `Docs/references/PLR0913_REFACTOR_PLAN.md` verification baseline.

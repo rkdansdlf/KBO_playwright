@@ -21,7 +21,8 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 
 class StaticTextCrawler:
     """
-    crawl and extracts static text (rules, history, terminology)
+    crawl and extracts static text (rules, history, terminology).
+
     from local/remote PDFs and wikis.
 
     """
@@ -83,7 +84,8 @@ class StaticTextCrawler:
 
     async def crawl_namuwiki(self, url: str, *, save: bool = False) -> dict[str, Any]:
         """
-        Crawl a Namuwiki page using Playwright to bypass Cloudflare protection
+        Crawl a Namuwiki page using Playwright to bypass Cloudflare protection.
+
         and extracts cleaned main content with BeautifulSoup.
 
         Args:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import func, or_, select, text
 
@@ -19,6 +19,14 @@ if TYPE_CHECKING:
 
 AGGREGATE_TEAM_CODES = ("", "합계", "TOTAL", "ALL", "-")
 INVALID_TEAM_CODES = (*AGGREGATE_TEAM_CODES, "EA", "WE")
+
+
+class PitchingCumulativeRow(Protocol):
+    """Minimal row shape needed to resolve cumulative pitching outs."""
+
+    innings_outs: int | None
+    extra_stats: dict[str, object] | None
+    innings_pitched: float | str | None
 
 
 def _batting_pa_mismatch(diff: int, cumulative_pa: int) -> bool:
@@ -205,7 +213,7 @@ class QualityGate:
         )
 
     @staticmethod
-    def _resolve_pitching_cumulative_outs(cumulative_row: Any) -> int | None:
+    def _resolve_pitching_cumulative_outs(cumulative_row: PitchingCumulativeRow) -> int | None:
         cum_outs = cumulative_row.innings_outs
         if cum_outs is not None:
             return int(cum_outs)

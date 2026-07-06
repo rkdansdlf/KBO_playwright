@@ -366,7 +366,8 @@ async def run_pbp_healer_async(
     target_game_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """
-    PBP Auto-Healer:
+    PBP Auto-Healer.
+
       1. Scan DB for unverified PBP games.
 
       2. Send Telegram notification with the list.

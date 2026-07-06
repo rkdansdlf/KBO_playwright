@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import urllib.error
-import urllib.request
 from http import HTTPStatus
 from typing import Any
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
-ALERTING_EXCEPTIONS = (urllib.error.URLError, OSError, TimeoutError, ValueError, TypeError)
+ALERTING_EXCEPTIONS = (httpx.HTTPError, OSError, TimeoutError, ValueError, TypeError)
 
 GAP_EMOJI_MAP: dict[str, str] = {
     "FRESHNESS": "\u2757",
@@ -67,12 +66,9 @@ class TelegramBotClient:
         payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-
         try:
-            with urllib.request.urlopen(req, timeout=10) as response:
-                return bool(response.status == HTTPStatus.OK)
+            response = httpx.post(url, json=payload, timeout=10)
+            return bool(response.status_code == HTTPStatus.OK)
         except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Telegram message")
             return False
@@ -111,15 +107,13 @@ class SlackWebhookClient:
         if blocks:
             payload["blocks"] = blocks
 
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(webhook_url, data=data, headers={"Content-Type": "application/json"})
-
         try:
-            with urllib.request.urlopen(req, timeout=5) as response:
-                return response.status in (200, 204)
+            response = httpx.post(webhook_url, json=payload, timeout=5)
         except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Slack webhook")
             return False
+        else:
+            return response.status_code in (HTTPStatus.OK, HTTPStatus.NO_CONTENT)
 
     @staticmethod
     def send_gap_alert(gap_type: str, summary: str, details: list[str] | None = None) -> bool:
@@ -156,14 +150,13 @@ class SlackWebhookClient:
             return True
         slack_msg = f"*{emoji} KBO {gap_type} Gap*\n{summary}"
         payload = {"text": slack_msg}
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(webhook_url, data=data, headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=5) as response:
-                return response.status in (200, 204)
+            response = httpx.post(webhook_url, json=payload, timeout=5)
         except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Slack gap alert")
             return False
+        else:
+            return response.status_code in (HTTPStatus.OK, HTTPStatus.NO_CONTENT)
 
     @staticmethod
     def send_error_alert(traceback_msg: str) -> bool:

@@ -1,8 +1,25 @@
-from unittest.mock import MagicMock, patch
+from copy import deepcopy
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.crawlers.ticket_crawler import TEAM_TICKET_INFO, TicketCrawler
+
+
+class FakeAsyncClient:
+    def __init__(self, response):
+        self.response = response
+        self.urls = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url):
+        self.urls.append(url)
+        return self.response
 
 
 class TestAltToTeamCode:
@@ -158,9 +175,46 @@ class TestSaveToDb:
 
 class TestCrawlKboTicketMap:
     @pytest.mark.asyncio
-    async def test_non_ok_response_returns_empty(self):
-        from unittest.mock import AsyncMock
+    async def test_ticket_map_html_updates_team_ticket_urls(self):
+        original_info = deepcopy(TEAM_TICKET_INFO)
+        try:
+            TEAM_TICKET_INFO["HH"]["ticket_url"] = None
+            TEAM_TICKET_INFO["SS"]["ticket_url"] = None
+            lg_url = TEAM_TICKET_INFO["LG"]["ticket_url"]
 
+            html = """
+            <html><body>
+              <ul class="teamView">
+                <li><a href="//ticket.example.com/hanwha"><img alt="한화 이글스"></a></li>
+                <li><a href="https://ticket.example.com/samsung"><img alt="삼성 라이온즈"></a></li>
+                <li><a href="https://ticket.example.com/lg"><img alt="LG 트윈스"></a></li>
+                <li><a href="https://ticket.example.com/unknown"><img alt="없는 팀"></a></li>
+              </ul>
+            </body></html>
+            """
+            response = MagicMock(status_code=200, text=html)
+            fake_client = FakeAsyncClient(response)
+            crawler = TicketCrawler()
+
+            with patch("src.crawlers.ticket_crawler.httpx.AsyncClient", return_value=fake_client):
+                with patch("src.crawlers.ticket_crawler.throttle.wait", new=AsyncMock()):
+                    with patch.object(
+                        crawler, "_crawl_team_ticket_pages", new=AsyncMock(return_value=[{"seat_type": "fixture"}])
+                    ):
+                        result = await crawler._crawl_kbo_ticket_map()
+
+            assert result == [{"seat_type": "fixture"}]
+            assert TEAM_TICKET_INFO["HH"]["ticket_url"] == "https://ticket.example.com/hanwha"
+            assert TEAM_TICKET_INFO["SS"]["ticket_url"] == "https://ticket.example.com/samsung"
+            assert TEAM_TICKET_INFO["LG"]["ticket_url"] == lg_url
+            assert crawler._raw_pages[0]["source_key"] == "kbo_ticket_map"
+            assert crawler._raw_pages[0]["html"] == html
+        finally:
+            TEAM_TICKET_INFO.clear()
+            TEAM_TICKET_INFO.update(original_info)
+
+    @pytest.mark.asyncio
+    async def test_non_ok_response_returns_empty(self):
         crawler = TicketCrawler()
 
         mock_response = MagicMock()
@@ -178,7 +232,6 @@ class TestCrawlKboTicketMap:
 
     @pytest.mark.asyncio
     async def test_http_error_returns_empty(self):
-        from unittest.mock import AsyncMock
         import httpx
 
         crawler = TicketCrawler()
