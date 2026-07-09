@@ -1027,7 +1027,7 @@ def _get_pitcher_team_options(page: Page, *, by_team: bool) -> list[dict]:
                 "options => options.map(o => ({text: o.textContent, value: o.value}))",
             )
             team_options = [opt for opt in options if opt["value"]]
-            logger.info("ℹ️ 팀별 순회 모드: %s개 팀 발견", len(team_options))
+            logger.info("[info] 팀별 순회 모드: %s개 팀 발견", len(team_options))
         else:
             logger.warning("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다. 전체 모드로 진행.")
             return [{"value": "", "text": "전체"}]
@@ -1119,7 +1119,7 @@ def _collect_pitcher_basic2_additional(ctx: Basic2AdditionalContext) -> None:
         logger.info("   ✅ Basic2 %s 정렬 처리: %s행", display_name, total_processed)
 
 
-def crawl_pitcher_series(
+def crawl_pitcher_series(  # noqa: PLR0913
     year: int,
     series_key: str,
     limit: int | None = None,
@@ -1201,7 +1201,7 @@ def crawl_pitcher_series(
                 ),
             )
         elif by_team:
-            logger.info("ℹ️ 팀별 순회 모드에서는 Basic2(상세 지표) 수집을 건너뜁니다.")
+            logger.info("[info] 팀별 순회 모드에서는 Basic2(상세 지표) 수집을 건너뜁니다.")
 
         browser.close()
 

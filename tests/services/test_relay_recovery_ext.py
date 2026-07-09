@@ -29,6 +29,7 @@ from src.services.relay_recovery_service import (
     _sanitize_relay_result,
     _log_relay_save,
     _mark_unavailable_relay_source,
+    _manifest_base_dir,
     _save_relay_result,
     _save_or_count_rows,
     _should_mark_source_unavailable,
@@ -36,6 +37,7 @@ from src.services.relay_recovery_service import (
     _validate_relay_inning_continuity,
     _validate_relay_result,
     build_relay_recovery_orchestrator,
+    load_game_ids_from_file,
     load_relay_recovery_targets,
     parse_source_order,
     recover_relay_data,
@@ -72,6 +74,32 @@ class TestRelayValidator:
         validator = _relay_validator("g1", config)
         result = validator(MagicMock(events=[{"away_score": 1, "home_score": 0}], raw_pbp_rows=[]))
         assert "too_few_result_events" in result
+
+
+class TestParseSourceOrder:
+    def test_none_returns_none(self):
+        assert parse_source_order(None) is None
+
+    def test_empty_tokens_return_none(self):
+        assert parse_source_order(" , ") is None
+
+    def test_trims_tokens(self):
+        assert parse_source_order(" naver, kbo ,, import ") == ["naver", "kbo", "import"]
+
+
+class TestLoadGameIdsFromFile:
+    def test_none_returns_empty_list(self):
+        assert load_game_ids_from_file(None) == []
+
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            load_game_ids_from_file(tmp_path / "missing.csv")
+
+    def test_skips_headers_comments_empty_and_duplicates(self, tmp_path):
+        path = tmp_path / "ids.csv"
+        path.write_text("game_id\n# comment\n\n g1,extra\ng1\ng2\n", encoding="utf-8")
+
+        assert load_game_ids_from_file(path) == ["g1", "g2"]
 
 
 class TestMaybeDerivePbp:
@@ -304,6 +332,16 @@ class TestValidateRelayResult:
         result = _validate_relay_result("g1", MagicMock(events=events), config)
         assert "missing_middle_inning" in result
 
+    def test_skips_final_score_when_disabled_after_continuity_check(self):
+        config = RelayValidationConfig(final_scores={}, validate_inning_continuity=True, validate_final_score=False)
+        events = [{"inning": 1}, {"inning": 2}]
+        assert _validate_relay_result("g1", MagicMock(events=events), config) is None
+
+    def test_skips_continuity_when_disabled(self):
+        config = RelayValidationConfig(final_scores={}, validate_inning_continuity=False, validate_final_score=False)
+        events = [{"inning": 3}]
+        assert _validate_relay_result("g1", MagicMock(events=events), config) is None
+
     def test_missing_starting_inning(self):
         config = RelayValidationConfig(final_scores={}, validate_inning_continuity=True, validate_final_score=False)
         events = [{"inning": 2}, {"inning": 3}]
@@ -437,6 +475,28 @@ class TestSaveRelayResult:
 
         assert run_result.report_rows[0]["status"] == "dry_run"
 
+    def test_zero_saved_rows_still_reports_attempt(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        run_result = RelayRecoveryResult()
+        ctx = RecoveryLoopContext(
+            target=RelayRecoveryTarget(game_id="g1"),
+            bucket_id="2024_regular",
+            source_order=["naver"],
+            run_result=run_result,
+            dry_run=False,
+            log=MagicMock(),
+        )
+        relay_result = NormalizedRelayResult(game_id="g1", source_name="naver", events=[{"inning": 1}])
+        with patch(
+            "src.services.relay_recovery_service._save_or_count_rows",
+            return_value=RelaySaveCounts(saved_rows=0, saved_event_rows=0),
+        ):
+            _save_relay_result(ctx, RelayRecoveryConfig(), relay_result, [], filtered_rows=0)
+
+        assert run_result.saved_games == 0
+        assert run_result.report_rows[0]["status"] == "saved"
+
 
 class TestLogRelaySave:
     def test_non_dry_run_log_message(self):
@@ -484,6 +544,61 @@ class TestMarkUnavailableRelaySource:
 
         mock_mark.assert_called_once()
         assert ctx.run_result.report_rows[0]["status"] == "source_unavailable"
+
+    def test_dry_run_does_not_mark_source_unavailable(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        ctx = RecoveryLoopContext(
+            target=RelayRecoveryTarget(game_id="g1"),
+            bucket_id="2009_legacy",
+            source_order=["naver"],
+            run_result=RelayRecoveryResult(),
+            dry_run=True,
+            log=MagicMock(),
+        )
+        relay_result = NormalizedRelayResult(game_id="g1", source_name="naver", notes="no data")
+        with patch("src.services.relay_recovery_service.mark_relay_source_unavailable") as mock_mark:
+            _mark_unavailable_relay_source(ctx, [], relay_result)
+
+        mock_mark.assert_not_called()
+        assert ctx.run_result.report_rows[0]["status"] == "source_unavailable_dry_run"
+
+    def test_dry_run_records_without_marking_source_unavailable(self):
+        from src.sources.relay.base import NormalizedRelayResult
+
+        ctx = RecoveryLoopContext(
+            target=RelayRecoveryTarget(game_id="g1"),
+            bucket_id="2009_legacy",
+            source_order=["naver"],
+            run_result=RelayRecoveryResult(),
+            dry_run=True,
+            log=MagicMock(),
+        )
+
+        with patch("src.services.relay_recovery_service.mark_relay_source_unavailable") as mock_mark:
+            _mark_unavailable_relay_source(ctx, [], NormalizedRelayResult(game_id="g1", source_name="naver"))
+
+        mock_mark.assert_not_called()
+        assert ctx.run_result.report_rows[0]["status"] == "source_unavailable_dry_run"
+
+
+class TestShouldMarkSourceUnavailable:
+    def test_non_legacy_bucket_returns_false(self):
+        relay_result = MagicMock(notes="no data")
+        assert _should_mark_source_unavailable("2024_regular", [], relay_result) is False
+
+    def test_modern_legacy_bucket_returns_false(self):
+        relay_result = MagicMock(notes="no data")
+        assert _should_mark_source_unavailable("2010_legacy", [], relay_result) is False
+
+    def test_malformed_legacy_bucket_can_mark_when_non_transient(self):
+        relay_result = MagicMock(notes="no data")
+        assert _should_mark_source_unavailable("old_legacy", [], relay_result) is True
+
+    def test_transient_failure_returns_false(self):
+        relay_result = MagicMock(notes="timeout")
+        attempts = [{"status": "failed", "notes": "http_500"}]
+        assert _should_mark_source_unavailable("2009_legacy", attempts, relay_result) is False
 
 
 class TestRecoverRelayData:
@@ -638,6 +753,19 @@ class TestLoadTargetRows:
         with pytest.raises(ValueError, match="Invalid date format"):
             _load_target_rows(mock_session, criteria)
 
+    def test_date_filter(self):
+        mock_session = MagicMock()
+        criteria = RecoveryTargetCriteria(date="20240601")
+        rows = [("20240601LGSS0", "Regular")]
+        query = mock_session.query.return_value.outerjoin.return_value.filter.return_value
+        query.filter.return_value = query
+        query.order_by.return_value.all.return_value = rows
+
+        result = _load_target_rows(mock_session, criteria)
+
+        assert result == rows
+        assert query.filter.called
+
     def test_season_month_filter(self):
         mock_session = MagicMock()
         criteria = RecoveryTargetCriteria(season=2024, month=6)
@@ -686,6 +814,24 @@ class TestBuildRelayRecoveryOrchestrator:
             assert orchestrator is not None
 
 
+class TestManifestBaseDir:
+    def test_path_uses_parent(self, tmp_path):
+        manifest = tmp_path / "manifest.csv"
+        assert _manifest_base_dir(manifest) == tmp_path.resolve()
+
+    def test_comma_string_uses_first_token_parent(self, tmp_path):
+        first = tmp_path / "first.csv"
+        second = tmp_path / "second.csv"
+        assert _manifest_base_dir(f" {first}, {second}") == tmp_path.resolve()
+
+    def test_iterable_uses_first_item(self, tmp_path):
+        first = tmp_path / "first.csv"
+        assert _manifest_base_dir([first]) == tmp_path.resolve()
+
+    def test_empty_iterable_uses_cwd(self):
+        assert _manifest_base_dir([]) == Path.cwd()
+
+
 class TestLoadRelayRecoveryTargets:
     def test_no_criteria_raises(self):
         criteria = RecoveryTargetCriteria()
@@ -726,6 +872,25 @@ class TestLoadRelayRecoveryTargets:
         allowed_statuses = mock_load.call_args.kwargs["allowed_statuses"]
         assert GAME_STATUS_SCHEDULED in allowed_statuses
         assert GAME_STATUS_UNRESOLVED in allowed_statuses
+
+    def test_builds_targets_when_missing_only_disabled(self):
+        with (
+            patch("src.services.relay_recovery_service.SessionLocal") as mock_sl,
+            patch("src.services.relay_recovery_service._load_target_rows", return_value=[("g1", "Regular")]),
+            patch("src.services.relay_recovery_service.derive_bucket_id", return_value="2024_regular"),
+        ):
+            mock_session = MagicMock()
+            mock_sl.return_value.__enter__.return_value = mock_session
+            event_row = MagicMock()
+            event_row.game_id = "g1"
+            mock_session.query.return_value.filter.return_value.all.return_value = [event_row]
+            mock_session.query.return_value.filter.return_value.distinct.return_value.all.return_value = [("g1",)]
+            criteria = RecoveryTargetCriteria(season=2024, missing_only=False)
+            result = load_relay_recovery_targets(criteria, log=MagicMock())
+
+        assert len(result) == 1
+        assert result[0].has_events is True
+        assert result[0].has_pbp is True
 
 
 class TestWriteRelayRecoveryReport:

@@ -369,7 +369,7 @@ class PreviewCrawler:
 
             games = PreviewCrawler._extract_list_payload(list_data)
             if not games:
-                logger.info("ℹ️ No games found or no starting pitchers announced for %s.", game_date)
+                logger.info("[info] No games found or no starting pitchers announced for %s.", game_date)
                 return []
 
             results = await self._build_preview_results(games, game_date, page)

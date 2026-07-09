@@ -48,7 +48,7 @@ class TeamEventRepository:
             existing = self.session.execute(stmt).scalar_one_or_none()
             if existing:
                 for key, value in data.items():
-                    if key not in ("source_url",) and value is not None:
+                    if key != "source_url" and value is not None:
                         setattr(existing, key, value)
                 existing.last_seen_at = datetime.now(UTC).replace(tzinfo=None)
                 return existing

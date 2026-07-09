@@ -78,7 +78,7 @@ class CrawlGate:
 
         games = self.session.query(Game).filter(Game.game_date == target_date).all()
         if not games:
-            logger.info("  ℹ️  No games on %s", target_date)
+            logger.info("  [info] No games on %s", target_date)
             return True
 
         completed = sum(1 for g in games if g.game_status in COMPLETED_LIKE_GAME_STATUSES)

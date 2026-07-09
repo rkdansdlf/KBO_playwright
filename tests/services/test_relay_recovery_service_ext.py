@@ -120,6 +120,11 @@ class TestShouldMarkSourceUnavailable:
         mock_result.notes = "timeout error"
         assert _should_mark_source_unavailable("2009_legacy", [], mock_result) is False
 
+    def test_malformed_legacy_year_uses_unavailable_path(self):
+        mock_result = MagicMock()
+        mock_result.notes = "no archived relay"
+        assert _should_mark_source_unavailable("bad_legacy", [], mock_result) is True
+
 
 class TestLastEventScore:
     def test_returns_last_score(self):

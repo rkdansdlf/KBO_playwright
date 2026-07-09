@@ -36,7 +36,7 @@ class DeduplicationResult:
     marked_primary: int
 
 
-def mark_primary_games(
+def mark_primary_games(  # noqa: PLR0913
     db_path: str | Path = DEFAULT_DB_PATH,
     *,
     windows: Iterable[DeduplicationWindow] | None = None,

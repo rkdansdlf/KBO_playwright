@@ -105,7 +105,7 @@ class RankingAggregator:
         """
         self.repository = repository or RankingRepository()
 
-    def generate_rankings(
+    def generate_rankings(  # noqa: PLR0913
         self,
         season: int,
         *,

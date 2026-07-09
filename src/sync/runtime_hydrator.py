@@ -343,7 +343,7 @@ class RuntimeHydrator:
             return 0
         keys = list(mappings[0].keys())
         stmt = sqlite_insert(GameIdAlias.__table__)  # type: ignore[arg-type]
-        update_columns = [c for c in keys if c not in ("alias_game_id",)]
+        update_columns = [c for c in keys if c != "alias_game_id"]
         if update_columns:
             stmt = stmt.on_conflict_do_update(
                 index_elements=[GameIdAlias.__table__.c.alias_game_id],

@@ -645,7 +645,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 for r in report.results
             ],
         }
-        print(json.dumps(output, ensure_ascii=False, indent=2))
+        sys.stdout.write(json.dumps(output, ensure_ascii=False, indent=2) + "\n")
 
     if not report.overall_passed:
         logger.error(

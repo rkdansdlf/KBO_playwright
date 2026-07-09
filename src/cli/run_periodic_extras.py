@@ -11,7 +11,6 @@ import argparse
 import asyncio
 import logging
 import os
-import subprocess
 import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -24,8 +23,18 @@ from src.sync.oci_sync import OCISync
 logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
-PERIODIC_SUBPROCESS_EXCEPTIONS = (subprocess.SubprocessError, OSError, RuntimeError, ValueError)
+PERIODIC_SUBPROCESS_EXCEPTIONS = (OSError, RuntimeError, ValueError)
 PERIODIC_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+
+
+async def _run_subprocess(cmd: list[str]) -> tuple[int, str, str]:
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    return process.returncode or 0, stdout.decode(), stderr.decode()
 
 
 async def run_periodic_extras(
@@ -52,11 +61,11 @@ async def run_periodic_extras(
     logger.info("\n🔮 Step 1: Crawling Futures League Batting Stats...")
     try:
         cmd = [sys.executable, "-m", "src.crawlers.futures.futures_batting", "--year", str(year), "--save"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603 - fixed argv list.
-        if result.returncode == 0:
-            logger.info("   ✅ Futures Hitter output:\n%s", result.stdout)
+        returncode, stdout, stderr = await _run_subprocess(cmd)
+        if returncode == 0:
+            logger.info("   ✅ Futures Hitter output:\n%s", stdout)
         else:
-            logger.error("   ❌ Futures Hitter failed:\n%s", result.stderr)
+            logger.error("   ❌ Futures Hitter failed:\n%s", stderr)
     except PERIODIC_SUBPROCESS_EXCEPTIONS:
         logger.exception("   ❌ Error crawling futures stats")
 
@@ -65,11 +74,11 @@ async def run_periodic_extras(
     try:
         # retired listing usually doesn't need a year, or it's for all
         cmd = [sys.executable, "-m", "src.crawlers.retire.listing", "--save"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603 - fixed argv list.
-        if result.returncode == 0:
-            logger.info("   ✅ Retired Listing output:\n%s", result.stdout)
+        returncode, stdout, stderr = await _run_subprocess(cmd)
+        if returncode == 0:
+            logger.info("   ✅ Retired Listing output:\n%s", stdout)
         else:
-            logger.error("   ❌ Retired Listing failed:\n%s", result.stderr)
+            logger.error("   ❌ Retired Listing failed:\n%s", stderr)
     except PERIODIC_SUBPROCESS_EXCEPTIONS:
         logger.exception("   ❌ Error crawling retired players")
 

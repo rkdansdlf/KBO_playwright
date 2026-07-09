@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from functools import cache
 
 logger = logging.getLogger(__name__)
 
@@ -561,18 +562,13 @@ class TeamMapper:
         return team_code in valid_codes or team_code in historical_codes
 
 
-# 전역 인스턴스
-_team_mapper = None
-
-
+@cache
 def get_team_mapper() -> TeamMapper:
     """TeamMapper 싱글톤 인스턴스 반환."""
-    global _team_mapper
-    if _team_mapper is None:
-        _team_mapper = TeamMapper()
-        # 처음 생성시 OCI 매핑 시도
-        _team_mapper.load_oci_mapping()
-    return _team_mapper
+    mapper = TeamMapper()
+    # 처음 생성시 OCI 매핑 시도
+    mapper.load_oci_mapping()
+    return mapper
 
 
 def get_team_code(team_name: str, year: int | None = None) -> str | None:

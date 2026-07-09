@@ -361,7 +361,7 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
             "timestamp_kst": datetime.now(KST).isoformat(),
             **details,
         }
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
 
     if should_proceed:
         return 0

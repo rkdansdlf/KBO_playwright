@@ -275,7 +275,8 @@ class TestCircuitBreakerPersistence:
         assert p.exists()
 
         # Read raw CSV to confirm format
-        rows = list(csv.DictReader(p.open("r", newline="")))
+        with p.open("r", newline="") as f:
+            rows = list(csv.DictReader(f))
         assert len(rows) == 2
         row_by_source = {r["source_name"]: r for r in rows}
         assert row_by_source["naver"]["bucket_id"] == "bucket1"
@@ -297,7 +298,8 @@ class TestCircuitBreakerPersistence:
         cb.record_failure("naver", "b1")
         assert cb.is_open("naver", "b1")
 
-        rows = list(csv.DictReader(p.open("r", newline="")))
+        with p.open("r", newline="") as f:
+            rows = list(csv.DictReader(f))
         assert len(rows) == 1
         epoch = rows[0]["cooldown_until_epoch"]
         assert epoch != ""
@@ -325,10 +327,12 @@ class TestCircuitBreakerPersistence:
         cb = SourceCircuitBreaker(threshold=2, persist_path=p)
         cb.record_failure("n", "b")
         cb.record_failure("n", "b")
-        assert len(list(csv.DictReader(p.open("r", newline="")))) == 1
+        with p.open("r", newline="") as f:
+            assert len(list(csv.DictReader(f))) == 1
 
         cb.record_success("n", "b")
-        rows = list(csv.DictReader(p.open("r", newline="")))
+        with p.open("r", newline="") as f:
+            rows = list(csv.DictReader(f))
         assert len(rows) == 0  # cleared from CSV
 
     def test_reset_all_clears_persisted_state(self, tmp_path: Path):
@@ -336,10 +340,12 @@ class TestCircuitBreakerPersistence:
         cb = SourceCircuitBreaker(threshold=1, persist_path=p)
         cb.record_failure("n", "b1")
         cb.record_failure("n", "b2")
-        assert len(list(csv.DictReader(p.open("r", newline="")))) == 2
+        with p.open("r", newline="") as f:
+            assert len(list(csv.DictReader(f))) == 2
 
         cb.reset_all()
-        rows = list(csv.DictReader(p.open("r", newline="")))
+        with p.open("r", newline="") as f:
+            rows = list(csv.DictReader(f))
         assert len(rows) == 0
 
     def test_corrupted_csv_falls_back_clean(self, tmp_path: Path):
@@ -360,7 +366,8 @@ class TestCircuitBreakerPersistence:
         assert cb.is_open("n", "b")
 
         # Simulate reading what was written
-        rows = list(csv.DictReader(p.open("r", newline="")))
+        with p.open("r", newline="") as f:
+            rows = list(csv.DictReader(f))
         epoch = float(rows[0]["cooldown_until_epoch"])
         assert epoch > time.time() + 8  # ~10s from now
 

@@ -4,12 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
-
-try:
-    from datetime import UTC
-except ImportError:
-    UTC = UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 

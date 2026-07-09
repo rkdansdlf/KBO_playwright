@@ -145,7 +145,7 @@ def _load_local_markdown_docs(rules_dir: str = "Docs/baseball") -> list[dict[str
 async def _crawl_static_docs(crawler: StaticTextCrawler, pdf_path: str | None) -> list[dict[str, Any]]:
     raw_docs = []
     if pdf_path:
-        if Path(pdf_path).exists():
+        if await asyncio.to_thread(Path(pdf_path).exists):
             raw_docs.extend(crawler.parse_local_pdf(pdf_path))
         else:
             logger.warning("⚠️ Specified PDF path does not exist: %s", pdf_path)
@@ -219,7 +219,7 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
 
     raw_docs = await _crawl_static_docs(crawler, pdf_path)
     if not raw_docs:
-        logger.info("ℹ️ No static documents found to process.")
+        logger.info("[info] No static documents found to process.")
         return
     _embed_and_save_static_chunks(embedding_svc, repo, _chunk_static_docs(transformer, raw_docs))
 
@@ -290,7 +290,7 @@ async def run_realtime_pipeline() -> None:
         logger.exception("⚠️ MLBPark crawler error")
 
     if not raw_docs:
-        logger.info("ℹ_ No realtime news or forum documents found to process.")
+        logger.info("[info] No realtime news or forum documents found to process.")
         return
 
     # 3. Transform & Chunk
@@ -343,7 +343,7 @@ def run_consistency_check(*, deep: bool = False) -> None:
     oci_url = get_oci_url()
 
     if not oci_url:
-        logger.info("ℹ️  OCI URL not configured — skipping consistency check.")
+        logger.info("[info] OCI URL not configured — skipping consistency check.")
         return
 
     logger.info("\n🔍 Running post-sync consistency audit...")

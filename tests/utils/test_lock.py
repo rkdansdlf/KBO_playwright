@@ -110,23 +110,23 @@ else:
 """
 
     # Start subprocess
-    p = subprocess.Popen(
+    with subprocess.Popen(
         [sys.executable, "-c", code],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-    )
+    ) as p:
+        assert p.stdout is not None
+        # Wait for the subprocess to print ACQUIRED
+        line = p.stdout.readline().strip()
+        assert line == "ACQUIRED"
 
-    # Wait for the subprocess to print ACQUIRED
-    line = p.stdout.readline().strip()
-    assert line == "ACQUIRED"
+        # Now try to acquire the lock in the main process with blocking=False
+        main_lock = ProcessLock(lock_name, lock_dir=tmp_path, blocking=False)
+        assert main_lock.acquire() is False
 
-    # Now try to acquire the lock in the main process with blocking=False
-    main_lock = ProcessLock(lock_name, lock_dir=tmp_path, blocking=False)
-    assert main_lock.acquire() is False
-
-    # Wait for the subprocess to finish
-    p.wait()
+        # Wait for the subprocess to finish and close pipes
+        p.communicate()
 
     # Now the main process should be able to acquire the lock
     assert main_lock.acquire() is True

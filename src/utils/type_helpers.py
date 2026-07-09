@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-_EMPTY_SENTINELS = frozenset({"", "-", "—", "–", "null"})
+_EMPTY_SENTINELS = frozenset({"", "-", "\u2014", "\u2013", "null"})
 
 
 def to_int(val: object, default: int = 0) -> int:

@@ -231,10 +231,11 @@ class ProcessLock:
         if HAS_FCNTL and self.file_fd:
             try:
                 fcntl.flock(self.file_fd, fcntl.LOCK_UN)
-                self.file_fd.close()
             except (OSError, ValueError) as e:
                 logger.warning("Error releasing process lock for %s: %s", self.name, e)
             finally:
+                with contextlib.suppress(OSError, ValueError):
+                    self.file_fd.close()
                 self.file_fd = None
 
         # 3. Release thread-level lock

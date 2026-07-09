@@ -267,8 +267,8 @@ class TestCollectDetailPhase:
             t.game_id: GameCollectionItemResult(game_id=t.game_date, game_date=t.game_date) for t in targets
         }
         ctx.cfg.log = MagicMock()
-        ctx.detail_crawler = AsyncMock()
-        ctx.detail_crawler.crawl_games.return_value = []
+        ctx.detail_crawler = MagicMock()
+        ctx.detail_crawler.crawl_games = AsyncMock(return_value=[])
         ctx.detail_crawler.close = AsyncMock()
         ctx.detail_crawler.get_last_failure_reason = MagicMock(return_value=None)
         await _collect_detail_phase(targets, exist_map, ctx)
@@ -284,8 +284,8 @@ class TestCollectDetailPhase:
         ctx.result = GameCollectionResult()
         ctx.result.items = {"g1": GameCollectionItemResult(game_id="g1", game_date="20240315")}
         ctx.cfg.log = MagicMock()
-        ctx.detail_crawler = AsyncMock()
-        ctx.detail_crawler.crawl_games.return_value = []
+        ctx.detail_crawler = MagicMock()
+        ctx.detail_crawler.crawl_games = AsyncMock(return_value=[])
         ctx.detail_crawler.close = AsyncMock()
         ctx.detail_crawler.get_last_failure_reason = MagicMock(return_value=None)
         await _collect_detail_phase(targets, exist_map, ctx)
@@ -302,7 +302,7 @@ class TestCollectRelayPhase:
         ctx.cfg.relay_requires_detail = True
         ctx.result = GameCollectionResult()
         ctx.result.items = {"g1": GameCollectionItemResult(game_id="g1", game_date="20240315")}
-        ctx.relay_crawler = AsyncMock()
+        ctx.relay_crawler = MagicMock()
         await _collect_relay_phase(targets, exist_map, set(), ctx)
         assert ctx.result.relay_skipped_existing == 1
 
@@ -315,7 +315,7 @@ class TestCollectRelayPhase:
         ctx.cfg.relay_requires_detail = True
         ctx.result = GameCollectionResult()
         ctx.result.items = {"g1": GameCollectionItemResult(game_id="g1", game_date="20240315")}
-        ctx.relay_crawler = AsyncMock()
+        ctx.relay_crawler = MagicMock()
         await _collect_relay_phase(targets, exist_map, set(), ctx)
         assert ctx.result.items["g1"].relay_status == "skipped_no_detail"
 
@@ -330,12 +330,14 @@ class TestCollectRelayPhase:
         ctx.result = GameCollectionResult()
         ctx.result.items = {"g1": GameCollectionItemResult(game_id="g1", game_date="20240315")}
         ctx.contract = MagicMock()
-        ctx.relay_crawler = AsyncMock()
+        ctx.relay_crawler = MagicMock()
         ctx.relay_crawler.__class__.__name__ = "TestRelayCrawler"
-        ctx.relay_crawler.crawl_game_events.return_value = {
-            "events": [{"inning": 1}],
-            "raw_pbp_rows": [],
-        }
+        ctx.relay_crawler.crawl_game_events = AsyncMock(
+            return_value={
+                "events": [{"inning": 1}],
+                "raw_pbp_rows": [],
+            },
+        )
         with patch("src.services.game_collection_service.save_relay_data", return_value=1):
             await _collect_relay_phase(targets, exist_map, set(), ctx)
             assert ctx.result.relay_saved_games == 1
@@ -351,8 +353,8 @@ class TestCollectRelayPhase:
         ctx.result = GameCollectionResult()
         ctx.result.items = {"g1": GameCollectionItemResult(game_id="g1", game_date="20240315")}
         ctx.contract = MagicMock()
-        ctx.relay_crawler = AsyncMock()
-        ctx.relay_crawler.crawl_game_events.return_value = None
+        ctx.relay_crawler = MagicMock()
+        ctx.relay_crawler.crawl_game_events = AsyncMock(return_value=None)
         await _collect_relay_phase(targets, exist_map, set(), ctx)
         assert ctx.result.relay_missing == 1
         assert ctx.result.items["g1"].relay_status == "missing"

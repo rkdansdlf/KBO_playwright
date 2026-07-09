@@ -103,6 +103,49 @@ def _compute_batting_rates(row: object) -> dict[str, Any]:
     }
 
 
+def _build_batting_payloads(
+    rows: Sequence[object],
+    season: int,
+    league: str,
+    level: str,
+    team_map: dict[int, str],
+) -> list[dict[str, Any]]:
+    results = []
+    for row in rows:
+        player_id = row.player_id  # type: ignore[attr-defined]
+        rates = _compute_batting_rates(row)
+        results.append(
+            {
+                "player_id": player_id,
+                "season": season,
+                "league": league,
+                "level": level,
+                "source": "AGGREGATED",
+                "canonical_team_code": team_map.get(player_id),
+                "games": row.games or 0,  # type: ignore[attr-defined]
+                "plate_appearances": row.plate_appearances or 0,  # type: ignore[attr-defined]
+                "at_bats": row.at_bats or 0,  # type: ignore[attr-defined]
+                "runs": row.runs or 0,  # type: ignore[attr-defined]
+                "hits": row.hits or 0,  # type: ignore[attr-defined]
+                "doubles": row.doubles or 0,  # type: ignore[attr-defined]
+                "triples": row.triples or 0,  # type: ignore[attr-defined]
+                "home_runs": row.home_runs or 0,  # type: ignore[attr-defined]
+                "rbi": row.rbi or 0,  # type: ignore[attr-defined]
+                "walks": row.walks or 0,  # type: ignore[attr-defined]
+                "intentional_walks": row.intentional_walks or 0,  # type: ignore[attr-defined]
+                "hbp": row.hbp or 0,  # type: ignore[attr-defined]
+                "strikeouts": row.strikeouts or 0,  # type: ignore[attr-defined]
+                "stolen_bases": row.stolen_bases or 0,  # type: ignore[attr-defined]
+                "caught_stealing": row.caught_stealing or 0,  # type: ignore[attr-defined]
+                "sacrifice_hits": row.sacrifice_hits or 0,  # type: ignore[attr-defined]
+                "sacrifice_flies": row.sacrifice_flies or 0,  # type: ignore[attr-defined]
+                "gdp": row.gdp or 0,  # type: ignore[attr-defined]
+                **rates,
+            },
+        )
+    return results
+
+
 def _aggregate_batting(
     session: Session,
     season_ids: list[int],
@@ -143,39 +186,7 @@ def _aggregate_batting(
     )
 
     team_map = _get_player_teams(session, season_ids, GameBattingStat)
-    results = []
-    for row in rows:
-        rates = _compute_batting_rates(row)
-        results.append(
-            {
-                "player_id": row.player_id,
-                "season": season,
-                "league": league,
-                "level": level,
-                "source": "AGGREGATED",
-                "canonical_team_code": team_map.get(row.player_id),
-                "games": row.games or 0,
-                "plate_appearances": row.plate_appearances or 0,
-                "at_bats": row.at_bats or 0,
-                "runs": row.runs or 0,
-                "hits": row.hits or 0,
-                "doubles": row.doubles or 0,
-                "triples": row.triples or 0,
-                "home_runs": row.home_runs or 0,
-                "rbi": row.rbi or 0,
-                "walks": row.walks or 0,
-                "intentional_walks": row.intentional_walks or 0,
-                "hbp": row.hbp or 0,
-                "strikeouts": row.strikeouts or 0,
-                "stolen_bases": row.stolen_bases or 0,
-                "caught_stealing": row.caught_stealing or 0,
-                "sacrifice_hits": row.sacrifice_hits or 0,
-                "sacrifice_flies": row.sacrifice_flies or 0,
-                "gdp": row.gdp or 0,
-                **rates,
-            },
-        )
-    return results
+    return _build_batting_payloads(rows, season, league, level, team_map)
 
 
 def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int) -> dict[str, Any]:
@@ -193,6 +204,56 @@ def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int
         "bb_per_nine": bb9,
         "kbb": kbb,
     }
+
+
+def _build_pitching_payloads(
+    rows: Sequence[object],
+    season: int,
+    league: str,
+    level: str,
+    team_map: dict[int, str],
+) -> list[dict[str, Any]]:
+    results = []
+    for row in rows:
+        player_id = row.player_id  # type: ignore[attr-defined]
+        total_outs = row.innings_outs or 0  # type: ignore[attr-defined]
+        rates = _compute_pitching_rates(
+            total_outs=total_outs,
+            hits=row.hits_allowed or 0,  # type: ignore[attr-defined]
+            bb=row.walks_allowed or 0,  # type: ignore[attr-defined]
+            er=row.earned_runs or 0,  # type: ignore[attr-defined]
+            k=row.strikeouts or 0,  # type: ignore[attr-defined]
+        )
+        results.append(
+            {
+                "player_id": player_id,
+                "season": season,
+                "league": league,
+                "level": level,
+                "source": "AGGREGATED",
+                "canonical_team_code": team_map.get(player_id),
+                "games": row.games or 0,  # type: ignore[attr-defined]
+                "games_started": row.games_started or 0,  # type: ignore[attr-defined]
+                "innings_outs": total_outs,
+                **rates,
+                "hits_allowed": row.hits_allowed or 0,  # type: ignore[attr-defined]
+                "runs_allowed": row.runs_allowed or 0,  # type: ignore[attr-defined]
+                "earned_runs": row.earned_runs or 0,  # type: ignore[attr-defined]
+                "home_runs_allowed": row.home_runs_allowed or 0,  # type: ignore[attr-defined]
+                "walks_allowed": row.walks_allowed or 0,  # type: ignore[attr-defined]
+                "strikeouts": row.strikeouts or 0,  # type: ignore[attr-defined]
+                "hit_batters": row.hit_batters or 0,  # type: ignore[attr-defined]
+                "wild_pitches": row.wild_pitches or 0,  # type: ignore[attr-defined]
+                "balks": row.balks or 0,  # type: ignore[attr-defined]
+                "wins": row.wins or 0,  # type: ignore[attr-defined]
+                "losses": row.losses or 0,  # type: ignore[attr-defined]
+                "saves": row.saves or 0,  # type: ignore[attr-defined]
+                "holds": row.holds or 0,  # type: ignore[attr-defined]
+                "tbf": row.batters_faced or 0,  # type: ignore[attr-defined]
+                "np": row.pitches or 0,  # type: ignore[attr-defined]
+            },
+        )
+    return results
 
 
 def _aggregate_pitching(
@@ -235,122 +296,59 @@ def _aggregate_pitching(
     )
 
     team_map = _get_player_teams(session, season_ids, GamePitchingStat)
-    results = []
-    for row in rows:
-        total_outs = row.innings_outs or 0
-        rates = _compute_pitching_rates(
-            total_outs=total_outs,
-            hits=row.hits_allowed or 0,
-            bb=row.walks_allowed or 0,
-            er=row.earned_runs or 0,
-            k=row.strikeouts or 0,
-        )
-        results.append(
-            {
-                "player_id": row.player_id,
-                "season": season,
-                "league": league,
-                "level": level,
-                "source": "AGGREGATED",
-                "canonical_team_code": team_map.get(row.player_id),
-                "games": row.games or 0,
-                "games_started": row.games_started or 0,
-                "innings_outs": total_outs,
-                **rates,
-                "hits_allowed": row.hits_allowed or 0,
-                "runs_allowed": row.runs_allowed or 0,
-                "earned_runs": row.earned_runs or 0,
-                "home_runs_allowed": row.home_runs_allowed or 0,
-                "walks_allowed": row.walks_allowed or 0,
-                "strikeouts": row.strikeouts or 0,
-                "hit_batters": row.hit_batters or 0,
-                "wild_pitches": row.wild_pitches or 0,
-                "balks": row.balks or 0,
-                "wins": row.wins or 0,
-                "losses": row.losses or 0,
-                "saves": row.saves or 0,
-                "holds": row.holds or 0,
-                "tbf": row.batters_faced or 0,
-                "np": row.pitches or 0,
-            },
-        )
-    return results
+    return _build_pitching_payloads(rows, season, league, level, team_map)
+
+
+def _upsert_player_stats(
+    session: Session,
+    model: type[object],
+    records: list[dict[str, Any]],
+    dialect: str,
+    stat_label: str,
+) -> int:
+    if not records:
+        return 0
+
+    conflict_keys = ["player_id", "season", "league", "level"]
+    saved = 0
+
+    for data in records:
+        try:
+            if dialect == "sqlite":
+                stmt = sqlite_insert(model).values(**data)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=conflict_keys,
+                    set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
+                )
+            elif dialect == "postgresql":
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+                stmt = pg_insert(model).values(**data)  # type: ignore[assignment]
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=conflict_keys,
+                    set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
+                )
+            else:
+                from sqlalchemy.dialects.mysql import insert as my_insert
+
+                stmt = my_insert(model).values(**data)  # type: ignore[assignment]
+                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})  # type: ignore[attr-defined]
+            session.execute(stmt)
+            saved += 1
+        except SQLAlchemyError as e:
+            logger.warning("%s upsert failed for player %s: %s", stat_label, data.get("player_id"), e)
+            session.rollback()
+
+    session.commit()
+    return saved
 
 
 def _upsert_batting(session: Session, records: list[dict[str, Any]], dialect: str) -> int:
-    if not records:
-        return 0
-
-    conflict_keys = ["player_id", "season", "league", "level"]
-    saved = 0
-
-    for data in records:
-        try:
-            if dialect == "sqlite":
-                stmt = sqlite_insert(PlayerSeasonBatting).values(**data)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=conflict_keys,
-                    set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
-                )
-            elif dialect == "postgresql":
-                from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-                stmt = pg_insert(PlayerSeasonBatting).values(**data)  # type: ignore[assignment]
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=conflict_keys,
-                    set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
-                )
-            else:
-                from sqlalchemy.dialects.mysql import insert as my_insert
-
-                stmt = my_insert(PlayerSeasonBatting).values(**data)  # type: ignore[assignment]
-                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})  # type: ignore[attr-defined]
-            session.execute(stmt)
-            saved += 1
-        except SQLAlchemyError as e:
-            logger.warning("Batting upsert failed for player %s: %s", data.get("player_id"), e)
-            session.rollback()
-
-    session.commit()
-    return saved
+    return _upsert_player_stats(session, PlayerSeasonBatting, records, dialect, "Batting")
 
 
 def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: str) -> int:
-    if not records:
-        return 0
-
-    conflict_keys = ["player_id", "season", "league", "level"]
-    saved = 0
-
-    for data in records:
-        try:
-            if dialect == "sqlite":
-                stmt = sqlite_insert(PlayerSeasonPitching).values(**data)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=conflict_keys,
-                    set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
-                )
-            elif dialect == "postgresql":
-                from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-                stmt = pg_insert(PlayerSeasonPitching).values(**data)  # type: ignore[assignment]
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=conflict_keys,
-                    set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
-                )
-            else:
-                from sqlalchemy.dialects.mysql import insert as my_insert
-
-                stmt = my_insert(PlayerSeasonPitching).values(**data)  # type: ignore[assignment]
-                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})  # type: ignore[attr-defined]
-            session.execute(stmt)
-            saved += 1
-        except SQLAlchemyError as e:
-            logger.warning("Pitching upsert failed for player %s: %s", data.get("player_id"), e)
-            session.rollback()
-
-    session.commit()
-    return saved
+    return _upsert_player_stats(session, PlayerSeasonPitching, records, dialect, "Pitching")
 
 
 def _print_batting_results(records: list[dict[str, Any]]) -> None:

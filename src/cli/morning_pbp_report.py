@@ -143,7 +143,7 @@ def _append_validation_section(lines: list[str], validation_counts: dict[str, in
             f"{pending} pending / {other} other",
         )
     else:
-        lines.append("ℹ️ <b>Validation</b>: No data (pipeline may not have run yet)")
+        lines.append("[info] <b>Validation</b>: No data (pipeline may not have run yet)")
 
 
 def _append_affected_games(lines: list[str], affected: list[str]) -> None:

@@ -25,6 +25,13 @@ class TestNormalizeDailyRosterDateEdgeCases:
         with pytest.raises(ValueError):
             _normalize_daily_roster_date("not a date at all")
 
+    def test_compact_date_string(self):
+        assert _normalize_daily_roster_date("20250601") == date(2025, 6, 1)
+
+    def test_date_object(self):
+        value = date(2025, 6, 1)
+        assert _normalize_daily_roster_date(value) is value
+
     def test_none_returns_none(self):
         assert _normalize_daily_roster_date(None) is None
 
@@ -101,6 +108,14 @@ class TestMiscSyncMixinExtended:
         result = mixin.sync_teams()
         assert result == 1
         mixin._bulk_copy_upsert.assert_called_once()
+
+    def test_sync_teams_no_rows(self, mixin):
+        mixin.sqlite_session.query.return_value.all.return_value = []
+
+        result = mixin.sync_teams()
+
+        assert result == 0
+        mixin._bulk_copy_upsert.assert_not_called()
 
     def test_sync_teams_with_string_aliases(self, mixin):
         mixin._get_franchise_id_mapping.return_value = {}
@@ -296,6 +311,24 @@ class TestMiscSyncMixinExtended:
         result = mixin.sync_operation_notices(game_date="20250601")
         assert result == 1
 
+    @pytest.mark.parametrize("method_name", ["sync_congestion", "sync_operation_notices"])
+    def test_stadium_realtime_without_date_uses_no_filters(self, mixin, method_name):
+        mixin.sync_simple_table.return_value = 2
+
+        result = getattr(mixin, method_name)()
+
+        assert result == 2
+        assert mixin.sync_simple_table.call_args.kwargs["filters"] is None
+
+    def test_sync_stadium_realtime_all(self, mixin):
+        mixin.sync_transit_times = MagicMock(return_value=1)
+        mixin.sync_congestion = MagicMock(return_value=2)
+        mixin.sync_operation_notices = MagicMock(return_value=3)
+
+        result = mixin.sync_stadium_realtime_all(game_date="20250601")
+
+        assert result == {"transit_times": 1, "congestion": 2, "operation_notices": 3}
+
     def test_sync_daily_rosters_no_dates(self, mixin):
         mixin.sync_simple_table.return_value = 0
         result = mixin.sync_daily_rosters()
@@ -319,6 +352,10 @@ class TestMiscSyncMixinExtended:
         )
         assert result == 0
 
+    def test_sync_daily_rosters_rejects_reversed_range(self, mixin):
+        with pytest.raises(ValueError, match="start_date"):
+            mixin.sync_daily_rosters(start_date="2025-06-30", end_date="2025-06-01")
+
     def test_sync_team_history_with_data(self, mixin):
         class FakeHistory:
             id = 1
@@ -338,6 +375,14 @@ class TestMiscSyncMixinExtended:
         mixin._get_franchise_id_mapping.return_value = {1: 100}
         result = mixin.sync_team_history()
         assert result == 1
+
+    def test_sync_team_history_skips_when_target_table_missing(self, mixin):
+        mixin._target_table_exists.return_value = False
+
+        result = mixin.sync_team_history()
+
+        assert result == 0
+        mixin.sqlite_session.query.assert_not_called()
 
     def test_sync_team_history_no_records(self, mixin):
         mixin.sqlite_session.query.return_value.all.return_value = []
@@ -379,6 +424,15 @@ class TestMiscSyncMixinExtended:
         result = transform_fn({"franchise_id": None, "curr_code": "LG"})
 
         assert result == {"franchise_id": None, "curr_code": "LG"}
+
+    def test_sync_team_code_map_transform_maps_known_franchise_id(self, mixin):
+        mixin._get_franchise_id_mapping.return_value = {1: 100}
+        mixin.sync_team_code_map()
+        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+
+        result = transform_fn({"franchise_id": 1, "curr_code": "LG"})
+
+        assert result["franchise_id"] == 100
 
     def test_sync_matchups_no_year(self, mixin):
         mixin.sync_simple_table.return_value = 0

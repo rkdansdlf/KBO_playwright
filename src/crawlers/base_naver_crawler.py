@@ -53,13 +53,12 @@ class NaverNewsCrawlerBase(ABC):
     async def _fetch_news(self) -> list[dict]:
         results: list[dict] = []
         today = datetime.now(KST)
-        client = httpx.Client(headers=HEADERS, timeout=15)
-        try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=15) as client:
             for days_ago in range(7):
                 date_str = (today - timedelta(days=days_ago)).strftime("%Y%m%d")
                 url = NAVER_API_URL.format(date=date_str)
                 try:
-                    resp = client.get(url)
+                    resp = await client.get(url)
                     if resp.status_code != HTTPStatus.OK:
                         continue
                     news_list = resp.json().get("result", {}).get("newsList", [])
@@ -72,8 +71,6 @@ class NaverNewsCrawlerBase(ABC):
                             results.append(parsed)
                 except NAVER_CRAWL_EXCEPTIONS:
                     logger.exception("%s news fetch failed for date %s", self.LABEL, date_str)
-        finally:
-            client.close()
         return results
 
     @abstractmethod

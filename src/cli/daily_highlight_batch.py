@@ -207,7 +207,7 @@ async def run_highlight_batch(
     with SessionLocal() as session:
         games = _load_completed_games(session, target_date)
         if not games:
-            logger.info("ℹ️ No completed games found for %s.", target_date_str)
+            logger.info("[info] No completed games found for %s.", target_date_str)
             return []
 
         processed_game_ids, game_highlights_map, game_map = _process_highlight_games(

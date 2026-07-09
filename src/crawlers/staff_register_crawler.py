@@ -365,7 +365,7 @@ class StaffRegisterCrawler:
             return len(valid)
 
         if not valid:
-            logger.info("  ℹ️  No valid staff records to save.")
+            logger.info("  [info] No valid staff records to save.")
             return 0
 
         repo = PlayerBasicRepository()

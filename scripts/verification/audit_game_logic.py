@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def audit_game_logic(year: int | None = None, game_id: str | None = None) -> list[dict[str, Any]]:
-    violations = []
+    violations: list[dict[str, Any]] = []
 
     with SessionLocal() as session:
         # Filter for completed games

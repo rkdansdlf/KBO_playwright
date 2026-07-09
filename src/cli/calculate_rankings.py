@@ -205,7 +205,7 @@ def rebuild_rankings(season: int) -> int:
     )
 
     if not rankings:
-        logger.info("[Rankings] ℹ️ No season stats available for %s.", season)
+        logger.info("[Rankings] [info] No season stats available for %s.", season)
         return 0
 
     logger.info("[Rankings] ✅ Rebuilt %s ranking rows for %s", len(rankings), season)

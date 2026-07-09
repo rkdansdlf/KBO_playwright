@@ -9,19 +9,12 @@ Generates daily/weekly/monthly SLA reports.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
-
-from src.utils.date_helpers import parse_datetime_str
-
-try:
-    from datetime import UTC
-except ImportError:
-    UTC = UTC
-
 
 from src.models.game import Game, GameBattingStat, GameLineup, GameMetadata, GamePitchingStat, GamePlayByPlay
 from src.utils.alerting import SlackWebhookClient
+from src.utils.date_helpers import parse_datetime_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 if TYPE_CHECKING:

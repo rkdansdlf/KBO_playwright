@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -30,10 +30,11 @@ def crawler():
 
 class TestFetchNews:
     @mark.asyncio
-    @patch("src.crawlers.base_naver_crawler.httpx.Client")
+    @patch("src.crawlers.base_naver_crawler.httpx.AsyncClient")
     async def test_returns_matching_articles(self, mock_client_cls, crawler):
-        mock_client = MagicMock()
-        mock_client_cls.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -53,10 +54,11 @@ class TestFetchNews:
         assert result[1]["title"] == "baseball KBO update"
 
     @mark.asyncio
-    @patch("src.crawlers.base_naver_crawler.httpx.Client")
+    @patch("src.crawlers.base_naver_crawler.httpx.AsyncClient")
     async def test_handles_non_200_response(self, mock_client_cls, crawler):
-        mock_client = MagicMock()
-        mock_client_cls.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_client.get.side_effect = [mock_response] + [httpx.HTTPError("stop")] * 6
@@ -65,10 +67,11 @@ class TestFetchNews:
         assert result == []
 
     @mark.asyncio
-    @patch("src.crawlers.base_naver_crawler.httpx.Client")
+    @patch("src.crawlers.base_naver_crawler.httpx.AsyncClient")
     async def test_handles_api_exception(self, mock_client_cls, crawler):
-        mock_client = MagicMock()
-        mock_client_cls.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
         mock_client.get.side_effect = httpx.TimeoutException("timeout")
 
         result = await crawler._fetch_news()

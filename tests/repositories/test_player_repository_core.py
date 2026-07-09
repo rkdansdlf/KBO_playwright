@@ -390,6 +390,9 @@ class TestMovementTeamHelpers:
     def test_resolve_movement_team_id_missing(self, movement_session, repo):
         assert repo._resolve_movement_team_id(movement_session, "없는팀") is None
 
+    def test_resolve_movement_team_id_skips_empty_candidate(self, movement_session, repo):
+        assert repo._resolve_movement_team_id(movement_session, "") is None
+
     def test_infer_movement_team_from_history_single_team(self, movement_session, repo):
         movement_session.add(Team(team_id="LG", team_name="LG 트윈스", team_short_name="LG", city="서울"))
         movement_session.add(PlayerBasic(player_id=1001, name="홍길동"))
@@ -402,6 +405,50 @@ class TestMovementTeamHelpers:
 
     def test_infer_movement_team_from_history_no_candidates(self, movement_session, repo):
         assert repo._infer_movement_team_from_history(movement_session, "없는선수", 2025) is None
+
+    def test_infer_movement_team_from_history_empty_name(self, movement_session, repo):
+        assert repo._infer_movement_team_from_history(movement_session, "", 2025) is None
+
+    def test_infer_movement_team_from_history_multiple_teams(self, movement_session, repo):
+        movement_session.add_all(
+            [
+                PlayerBasic(player_id=1001, name="홍길동"),
+                PlayerSeasonBatting(player_id=1001, season=2024, league="REGULAR", level="KBO1", team_code="LG"),
+                PlayerSeasonPitching(player_id=1001, season=2024, league="REGULAR", level="KBO1", team_code="SSG"),
+            ],
+        )
+        movement_session.commit()
+
+        assert repo._infer_movement_team_from_history(movement_session, "홍길동", 2025) is None
+
+    def test_narrow_by_debut_timeline_unique(self, repo):
+        candidates = [PlayerBasic(player_id=1, debut_year=2010), PlayerBasic(player_id=2, debut_year=2025)]
+        narrowed, player_id = repo._narrow_by_debut_timeline(candidates, 2024)
+        assert player_id == 2
+        assert narrowed == [candidates[1]]
+
+    def test_unique_contextual_movement_player_id_without_team(self, movement_session, repo):
+        assert repo._unique_contextual_movement_player_id(movement_session, [], None) is None
+
+    def test_unique_contextual_movement_player_id_uses_team_names(self, movement_session, repo):
+        movement_session.add(Team(team_id="LG", team_name="LG 트윈스", team_short_name="LG", city="서울"))
+        movement_session.commit()
+        candidates = [PlayerBasic(player_id=1001, team="LG 트윈스"), PlayerBasic(player_id=1002, team="두산")]
+
+        assert repo._unique_contextual_movement_player_id(movement_session, candidates, "LG") == 1001
+
+    def test_resolve_movement_player_id_empty_or_rookie(self, movement_session, repo):
+        assert repo._resolve_movement_player_id(movement_session, "", "LG", 2025) is None
+        assert repo._resolve_movement_player_id(movement_session, "신인", "LG", 2025) is None
+
+    def test_resolve_movement_player_id_no_candidates(self, movement_session, repo):
+        assert repo._resolve_movement_player_id(movement_session, "없는선수", "LG", 2025) is None
+
+    def test_resolve_movement_player_id_single_candidate(self, movement_session, repo):
+        movement_session.add(PlayerBasic(player_id=1001, name="홍길동"))
+        movement_session.commit()
+
+        assert repo._resolve_movement_player_id(movement_session, "홍길동", "LG", 2025) == 1001
 
     def test_unique_roster_movement_player_id(self, movement_session, repo):
         movement_session.add(Team(team_id="LG", team_name="LG 트윈스", team_short_name="LG", city="서울"))
@@ -421,6 +468,26 @@ class TestMovementTeamHelpers:
         result = repo._unique_roster_movement_player_id(movement_session, "홍길동", "LG", 2025, {1001, 2002})
         assert result == 1001
 
+    def test_unique_roster_movement_player_id_missing_inputs(self, movement_session, repo):
+        assert repo._unique_roster_movement_player_id(movement_session, "", "LG", 2025, {1001}) is None
+        assert repo._unique_roster_movement_player_id(movement_session, "홍길동", None, 2025, {1001}) is None
+
+    def test_unique_roster_movement_player_id_filters_candidate_ids(self, movement_session, repo):
+        movement_session.add(
+            TeamDailyRoster(
+                roster_date=date(2025, 4, 1),
+                team_code="LG",
+                player_id=1001,
+                player_basic_id=1001,
+                person_type="player",
+                player_name="홍길동",
+                position="내야수",
+            ),
+        )
+        movement_session.commit()
+
+        assert repo._unique_roster_movement_player_id(movement_session, "홍길동", "LG", 2025, {2002}) is None
+
     def test_unique_franchise_season_player_id(self, movement_session, repo):
         movement_session.add_all(
             [
@@ -435,6 +502,80 @@ class TestMovementTeamHelpers:
 
         result = repo._unique_franchise_season_player_id(movement_session, "HT", 2025, {2001, 2002})
         assert result == 2001
+
+    def test_unique_franchise_season_player_id_missing_inputs(self, movement_session, repo):
+        assert repo._unique_franchise_season_player_id(movement_session, None, 2025, {1001}) is None
+        assert repo._unique_franchise_season_player_id(movement_session, "LG", 0, {1001}) is None
+        assert repo._unique_franchise_season_player_id(movement_session, "LG", 2025, set()) is None
+
+    def test_unique_franchise_season_player_id_no_franchise_teams(self, movement_session, repo):
+        movement_session.add(
+            Team(team_id="LG", team_name="LG 트윈스", team_short_name="LG", city="서울", franchise_id=99)
+        )
+        movement_session.commit()
+        movement_session.query(Team).delete()
+        movement_session.commit()
+
+        assert repo._unique_franchise_season_player_id(movement_session, "LG", 2025, {1001}) is None
+
+
+class TestSavePlayerMovements:
+    def test_inserts_new_movement_with_resolved_player(self, repo):
+        with (
+            patch("src.repositories.player_repository.SessionLocal") as mock_session_local,
+            patch.object(repo, "_resolve_movement_team_id", return_value="LG"),
+            patch.object(repo, "_resolve_movement_player_id", return_value=1001),
+        ):
+            mock_session = MagicMock(spec=Session)
+            mock_session_local.return_value.__enter__.return_value = mock_session
+            mock_session.execute.return_value.scalar_one_or_none.return_value = None
+
+            saved = repo.save_player_movements(
+                [
+                    {
+                        "date": "2025-04-01",
+                        "team_code": "LG",
+                        "player_name": "홍길동",
+                        "section": "등록",
+                        "remarks": "콜업",
+                    },
+                ],
+            )
+
+        assert saved == 1
+        mock_session.add.assert_called_once()
+        new_record = mock_session.add.call_args.args[0]
+        assert new_record.resolution_status == "resolved"
+        mock_session.commit.assert_called_once()
+
+    def test_updates_existing_movement_with_inferred_team(self, repo):
+        existing = MagicMock()
+        with (
+            patch("src.repositories.player_repository.SessionLocal") as mock_session_local,
+            patch.object(repo, "_resolve_movement_team_id", return_value=None),
+            patch.object(repo, "_infer_movement_team_from_history", return_value="LG"),
+            patch.object(repo, "_resolve_movement_player_id", return_value=None),
+        ):
+            mock_session = MagicMock(spec=Session)
+            mock_session_local.return_value.__enter__.return_value = mock_session
+            mock_session.execute.return_value.scalar_one_or_none.return_value = existing
+
+            saved = repo.save_player_movements(
+                [
+                    {
+                        "date": date(2025, 4, 1),
+                        "team_code": "두산",
+                        "player_name": "홍길동",
+                        "section": "말소",
+                        "remarks": "부상",
+                    },
+                ],
+            )
+
+        assert saved == 1
+        assert existing.canonical_team_id == "LG"
+        assert existing.resolution_status == "unresolved_player"
+        mock_session.add.assert_not_called()
 
 
 class TestUpsertPlayerProfile:

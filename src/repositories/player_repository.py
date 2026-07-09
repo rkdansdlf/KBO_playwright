@@ -499,7 +499,7 @@ class PlayerRepository:
             return candidates[0].player_id
         return self._resolve_multi_candidate(candidates, session, player_name, canonical_team_id, season, raw_position)
 
-    def _resolve_multi_candidate(
+    def _resolve_multi_candidate(  # noqa: PLR0913
         self,
         candidates: list,
         session: Session,

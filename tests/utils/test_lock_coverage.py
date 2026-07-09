@@ -274,6 +274,7 @@ class TestForceProcessLock:
             result = lock.acquire()
             assert result is True
             assert call_count == 2
+            lock.release()
 
     def test_clear_stale_lock_no_file(self, tmp_path: Path) -> None:
         lock = ForceProcessLock("test_clear_no", lock_dir=str(tmp_path))
