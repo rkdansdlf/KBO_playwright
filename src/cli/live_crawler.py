@@ -170,8 +170,6 @@ def _query_enriched_game_state(
         return {}
     else:
         return state
-        logger.exception("[WARN] Failed to query enriched game state")
-        return {}
 
 
 def _compute_enriched_interval(

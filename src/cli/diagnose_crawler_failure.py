@@ -31,9 +31,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = diagnose_sources(sources)
 
     if args.json:
-        print(report_to_json(report))
+        sys.stdout.write(report_to_json(report) + "\n")
     else:
-        print(render_diagnosis_text(report))
+        sys.stdout.write(render_diagnosis_text(report) + "\n")
     return report.exit_code
 
 

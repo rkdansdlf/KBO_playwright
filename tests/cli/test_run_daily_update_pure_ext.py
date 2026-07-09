@@ -8,10 +8,16 @@ from src.cli.run_daily_update import (
     _build_pbp_failed_details,
     _build_pbp_recovery_blocks,
     _build_stability_summary,
+    _daily_summary_path,
     _failure_status,
+    _failure_reason_summary,
     _finalize_manifest_game_ids,
+    _format_counts,
+    _format_target_date,
+    _is_recoverable_detail_reason,
     _merge_oci_skip_summary,
     _normalize_pbp_attempt_notes,
+    _set_candidate_sync_game_ids,
     _summarize_pbp_failed_game,
     format_stability_alert_summary,
 )
@@ -28,6 +34,65 @@ def _ctx() -> _RunContext:
         runner=lambda *_args, **_kwargs: None,
         write_contract=GameWriteContract(run_label="test"),
     )
+
+
+class _FailureItem:
+    def __init__(self, failure_reason: str | None) -> None:
+        self.failure_reason = failure_reason
+
+
+def test_is_recoverable_detail_reason_normalizes_known_values():
+    assert _is_recoverable_detail_reason(" TIMEOUT ") is True
+    assert _is_recoverable_detail_reason("incomplete_detail") is True
+    assert _is_recoverable_detail_reason("bad_status") is False
+    assert _is_recoverable_detail_reason(None) is False
+
+
+def test_format_counts_sorts_and_skips_zero_values():
+    assert _format_counts({"timeout": 2, "bad_status": 0, "missing": 1}) == "missing=1, timeout=2"
+    assert _format_counts({"timeout": 0}) == "none"
+    assert _format_counts({}) == "none"
+
+
+def test_failure_reason_summary_counts_groups_and_deduplicates_ids():
+    counts, game_ids = _failure_reason_summary(
+        {
+            "G2": _FailureItem("timeout"),
+            "G1": _FailureItem("timeout"),
+            "G2_DUP": _FailureItem("missing"),
+            "": _FailureItem("missing"),
+            "G3": _FailureItem(None),
+        },
+    )
+
+    assert counts == {"timeout": 2, "missing": 2}
+    assert game_ids == {"missing": ["G2_DUP"], "timeout": ["G1", "G2"]}
+
+
+def test_daily_summary_path_uses_default_and_custom_directory(tmp_path: Path):
+    assert _daily_summary_path("20260402").name == "20260402.json"
+    assert _daily_summary_path("20260402", tmp_path) == tmp_path / "20260402.json"
+
+
+def test_format_target_date_accepts_date_strings_and_fallbacks():
+    assert _format_target_date(date(2026, 4, 2), fallback_game_id="20260403LGOB0") == "20260402"
+    assert _format_target_date("2026-04-02", fallback_game_id="20260403LGOB0") == "20260402"
+    assert _format_target_date("20260402", fallback_game_id="20260403LGOB0") == "20260402"
+    assert _format_target_date("bad", fallback_game_id="20260403LGOB0") == "20260403"
+
+
+def test_set_candidate_sync_game_ids_unions_all_context_sources():
+    ctx = _ctx()
+    ctx.daily_games = [{"game_id": "G3"}, {"game_id": "G1"}]
+    ctx.status_refresh_game_ids = ["G2", "G1"]
+    ctx.processed_game_ids = ["G4"]
+    ctx.reconciliation_changed_ids = ["G5", "G4"]
+    ctx.healer_recovery_targets = [{"game_id": "G6"}, {"game_id": "G1"}]
+    ctx.relay_recovery_target_ids = {"G7", "G2"}
+
+    _set_candidate_sync_game_ids(ctx)
+
+    assert ctx.candidate_sync_game_ids == ["G1", "G2", "G3", "G4", "G5", "G6", "G7"]
 
 
 def test_merge_oci_skip_summary_handles_lists_counts_and_invalid_values():

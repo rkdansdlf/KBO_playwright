@@ -227,16 +227,15 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
         저장된 레코드 수
 
     """
-    global LAST_FILTER_COUNTS
-
-    LAST_FILTER_COUNTS = Counter()
+    LAST_FILTER_COUNTS.clear()
     if not payloads:
         return 0
 
-    payloads, LAST_FILTER_COUNTS = filter_valid_season_stat_payloads(
+    payloads, filter_counts = filter_valid_season_stat_payloads(
         payloads,
         stat_type="batting",
     )
+    LAST_FILTER_COUNTS.update(filter_counts)
     if not payloads:
         return 0
 

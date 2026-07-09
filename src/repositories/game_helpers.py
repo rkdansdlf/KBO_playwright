@@ -792,7 +792,7 @@ def _upsert_metadata(
         session.add(meta)
         changed = True
         if source and write_contract:
-            write_contract.field_updated(game_id, source, "metadata.created", None, True)
+            write_contract.field_updated(game_id, source, "metadata.created", None, changed=True)
 
     _write_source = source or GameWriteSource("metadata", "unknown")
 
@@ -1159,7 +1159,7 @@ def _normalize_player_id(value: object) -> int | None:
 
 def _outs_to_decimal(outs: object) -> Decimal | None:
     if outs in (None, "", 0):
-        return Decimal(0) if outs in (0,) else None
+        return Decimal(0) if outs == 0 else None
     try:
         whole, remainder = divmod(int(outs), 3)
         return Decimal(whole) + (Decimal(remainder) / Decimal(3))

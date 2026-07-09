@@ -143,7 +143,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
     previews = await crawler.crawl_preview_for_date(target_date)
     if not previews:
         manifest_path = _write_pregame_manifest(target_date, [])
-        logger.info("ℹ️ No preview data found. manifest=%s", manifest_path)
+        logger.info("[info] No preview data found. manifest=%s", manifest_path)
         return []
 
     saved_ids = _save_preview_contexts(previews, target_date)

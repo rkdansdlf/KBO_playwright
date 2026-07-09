@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
-from src.monitoring.failure_diagnosis import diagnose_text, render_diagnosis_text
+import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+from src.cli.diagnose_crawler_failure import main as diagnose_crawler_failure_main
+from src.monitoring.failure_diagnosis import diagnose_text, render_diagnosis_text
 
 
 def test_diagnose_text_classifies_common_crawler_failures() -> None:
@@ -45,7 +44,10 @@ def test_diagnose_text_classifies_sqlite_corruption() -> None:
     assert any("sqlite_integrity_guard" in command for command in report.suggested_commands)
 
 
-def test_diagnose_crawler_failure_cli_reads_logs_and_emits_json(tmp_path: Path) -> None:
+def test_diagnose_crawler_failure_cli_reads_logs_and_emits_json(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     log_path = tmp_path / "crawler.log"
     log_path.write_text(
         "KBO authentication failed: invalid KBO_USER_ID\n"
@@ -53,21 +55,15 @@ def test_diagnose_crawler_failure_cli_reads_logs_and_emits_json(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    result = subprocess.run(
+    exit_code = diagnose_crawler_failure_main(
         [
-            sys.executable,
-            "-m",
-            "src.cli.diagnose_crawler_failure",
             "--json",
             str(log_path),
         ],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
     )
 
-    assert result.returncode == 1
-    payload = json.loads(result.stdout)
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
     categories = {finding["category"] for finding in payload["findings"]}
     assert {"auth", "selector"}.issubset(categories)
     assert payload["source_count"] == 1

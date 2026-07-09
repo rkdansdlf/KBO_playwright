@@ -41,7 +41,7 @@ def ingest_mock_html(args: argparse.Namespace) -> None:
         files = files[: args.limit]
 
     if not files:
-        logger.info("ℹ️  No HTML fixtures found. Place files like 20251001NCLG0.html in the directory.")
+        logger.info("[info] No HTML fixtures found. Place files like 20251001NCLG0.html in the directory.")
         return
 
     for html_file in files:

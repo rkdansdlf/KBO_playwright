@@ -7,32 +7,98 @@ from types import SimpleNamespace
 import pytest
 
 from src.cli.recalc_player_stats import (
+    _build_batting_payloads,
+    _build_pitching_payloads,
     _compute_batting_rates,
     _compute_pitching_rates,
 )
 
 
 def _batting_row(
+    player_id: int = 1001,
+    games: int | None = 10,
+    plate_appearances: int | None = 458,
     at_bats: int = 400,
+    runs: int | None = 70,
     hits: int = 120,
     doubles: int = 20,
     triples: int = 5,
     home_runs: int = 15,
+    rbi: int | None = 80,
     walks: int = 50,
+    intentional_walks: int | None = 2,
     hbp: int = 5,
     sacrifice_flies: int = 3,
+    sacrifice_hits: int | None = 1,
     strikeouts: int = 100,
+    stolen_bases: int | None = 10,
+    caught_stealing: int | None = 3,
+    gdp: int | None = 6,
 ) -> object:
     return SimpleNamespace(
+        player_id=player_id,
+        games=games,
+        plate_appearances=plate_appearances,
         at_bats=at_bats,
+        runs=runs,
         hits=hits,
         doubles=doubles,
         triples=triples,
         home_runs=home_runs,
+        rbi=rbi,
         walks=walks,
+        intentional_walks=intentional_walks,
         hbp=hbp,
         sacrifice_flies=sacrifice_flies,
+        sacrifice_hits=sacrifice_hits,
         strikeouts=strikeouts,
+        stolen_bases=stolen_bases,
+        caught_stealing=caught_stealing,
+        gdp=gdp,
+    )
+
+
+def _pitching_row(
+    player_id: int = 2001,
+    games: int | None = 20,
+    games_started: int | None = 10,
+    innings_outs: int | None = 180,
+    hits_allowed: int | None = 50,
+    runs_allowed: int | None = 25,
+    earned_runs: int | None = 20,
+    home_runs_allowed: int | None = 5,
+    walks_allowed: int | None = 15,
+    strikeouts: int | None = 70,
+    hit_batters: int | None = 2,
+    wild_pitches: int | None = 1,
+    balks: int | None = 0,
+    wins: int | None = 8,
+    losses: int | None = 3,
+    saves: int | None = 1,
+    holds: int | None = 4,
+    batters_faced: int | None = 250,
+    pitches: int | None = 900,
+) -> object:
+    return SimpleNamespace(
+        player_id=player_id,
+        games=games,
+        games_started=games_started,
+        innings_outs=innings_outs,
+        hits_allowed=hits_allowed,
+        runs_allowed=runs_allowed,
+        earned_runs=earned_runs,
+        home_runs_allowed=home_runs_allowed,
+        walks_allowed=walks_allowed,
+        strikeouts=strikeouts,
+        hit_batters=hit_batters,
+        wild_pitches=wild_pitches,
+        balks=balks,
+        wins=wins,
+        losses=losses,
+        saves=saves,
+        holds=holds,
+        batters_faced=batters_faced,
+        pitches=pitches,
     )
 
 
@@ -123,3 +189,148 @@ class TestComputePitchingRates:
         result = _compute_pitching_rates(720, 100, 20, 25, 250)
         assert result["era"] < 3.0
         assert result["k_per_nine"] > 9.0
+
+
+class TestBuildBattingPayloads:
+    def test_builds_payload_with_team_and_rates(self) -> None:
+        payload = _build_batting_payloads([_batting_row()], 2025, "REGULAR", "KBO1", {1001: "LG"})[0]
+
+        assert payload["player_id"] == 1001
+        assert payload["season"] == 2025
+        assert payload["league"] == "REGULAR"
+        assert payload["level"] == "KBO1"
+        assert payload["source"] == "AGGREGATED"
+        assert payload["canonical_team_code"] == "LG"
+        assert payload["plate_appearances"] == 458
+        assert payload["avg"] == pytest.approx(0.300, abs=0.001)
+        assert payload["ops"] == pytest.approx(0.869, abs=0.001)
+
+    def test_missing_team_maps_to_none(self) -> None:
+        payload = _build_batting_payloads([_batting_row(player_id=9999)], 2025, "REGULAR", "KBO1", {})[0]
+        assert payload["canonical_team_code"] is None
+
+    def test_none_aggregates_become_zero(self) -> None:
+        row = _batting_row(
+            games=None,
+            plate_appearances=None,
+            at_bats=None,
+            runs=None,
+            hits=None,
+            doubles=None,
+            triples=None,
+            home_runs=None,
+            rbi=None,
+            walks=None,
+            intentional_walks=None,
+            hbp=None,
+            sacrifice_flies=None,
+            sacrifice_hits=None,
+            strikeouts=None,
+            stolen_bases=None,
+            caught_stealing=None,
+            gdp=None,
+        )
+        payload = _build_batting_payloads([row], 2025, "REGULAR", "KBO1", {1001: "LG"})[0]
+
+        for key in (
+            "games",
+            "plate_appearances",
+            "at_bats",
+            "runs",
+            "hits",
+            "doubles",
+            "triples",
+            "home_runs",
+            "rbi",
+            "walks",
+            "intentional_walks",
+            "hbp",
+            "strikeouts",
+            "stolen_bases",
+            "caught_stealing",
+            "sacrifice_hits",
+            "sacrifice_flies",
+            "gdp",
+        ):
+            assert payload[key] == 0
+
+    def test_empty_rows_returns_empty_list(self) -> None:
+        assert _build_batting_payloads([], 2025, "REGULAR", "KBO1", {}) == []
+
+
+class TestBuildPitchingPayloads:
+    def test_builds_payload_with_team_and_rates(self) -> None:
+        payload = _build_pitching_payloads([_pitching_row()], 2025, "REGULAR", "KBO1", {2001: "SSG"})[0]
+
+        assert payload["player_id"] == 2001
+        assert payload["canonical_team_code"] == "SSG"
+        assert payload["innings_outs"] == 180
+        assert payload["innings_pitched"] == 60.0
+        assert payload["era"] == pytest.approx(3.0, abs=0.01)
+        assert payload["tbf"] == 250
+        assert payload["np"] == 900
+
+    def test_zero_outs_keeps_rates_zero(self) -> None:
+        payload = _build_pitching_payloads(
+            [_pitching_row(innings_outs=0, hits_allowed=10, earned_runs=5, walks_allowed=2, strikeouts=8)],
+            2025,
+            "REGULAR",
+            "KBO1",
+            {2001: "SSG"},
+        )[0]
+
+        assert payload["innings_pitched"] == 0.0
+        assert payload["era"] == 0.0
+        assert payload["whip"] == 0.0
+
+    def test_missing_team_maps_to_none(self) -> None:
+        payload = _build_pitching_payloads([_pitching_row(player_id=9999)], 2025, "REGULAR", "KBO1", {})[0]
+        assert payload["canonical_team_code"] is None
+
+    def test_none_aggregates_become_zero(self) -> None:
+        row = _pitching_row(
+            games=None,
+            games_started=None,
+            innings_outs=None,
+            hits_allowed=None,
+            runs_allowed=None,
+            earned_runs=None,
+            home_runs_allowed=None,
+            walks_allowed=None,
+            strikeouts=None,
+            hit_batters=None,
+            wild_pitches=None,
+            balks=None,
+            wins=None,
+            losses=None,
+            saves=None,
+            holds=None,
+            batters_faced=None,
+            pitches=None,
+        )
+        payload = _build_pitching_payloads([row], 2025, "REGULAR", "KBO1", {2001: "SSG"})[0]
+
+        for key in (
+            "games",
+            "games_started",
+            "innings_outs",
+            "hits_allowed",
+            "runs_allowed",
+            "earned_runs",
+            "home_runs_allowed",
+            "walks_allowed",
+            "strikeouts",
+            "hit_batters",
+            "wild_pitches",
+            "balks",
+            "wins",
+            "losses",
+            "saves",
+            "holds",
+            "tbf",
+            "np",
+        ):
+            assert payload[key] == 0
+
+    def test_empty_rows_returns_empty_list(self) -> None:
+        assert _build_pitching_payloads([], 2025, "REGULAR", "KBO1", {}) == []

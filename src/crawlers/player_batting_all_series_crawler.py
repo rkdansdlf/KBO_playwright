@@ -994,7 +994,7 @@ def _get_team_options(page: Page, *, by_team: bool) -> list[dict]:
             "options => options.map(o => ({text: o.textContent, value: o.value}))",
         )
         team_options = [opt for opt in options if opt["value"]]  # Empty value is "Team Selection"
-        logger.info("ℹ️ 팀별 순회 모드: %s개 팀 발견", len(team_options))
+        logger.info("[info] 팀별 순회 모드: %s개 팀 발견", len(team_options))
     except CRAWLER_EXCEPTIONS:
         logger.exception("⚠️ 팀 목록 추출 실패, 전체 모드로 진행")
         return [{"value": "", "text": "전체"}]
@@ -1147,7 +1147,7 @@ def _handle_batting_fallback(
     return all_players_data
 
 
-def crawl_series_batting_stats(
+def crawl_series_batting_stats(  # noqa: PLR0913
     year: int | None = None,
     series_key: str = "regular",
     limit: int | None = None,

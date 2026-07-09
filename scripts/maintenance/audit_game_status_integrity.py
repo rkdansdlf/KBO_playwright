@@ -40,7 +40,7 @@ from src.utils.game_status import (
 def audit_game_status() -> list[dict[str, Any]]:
     today = date.today()
     current_year_start = date(today.year, 1, 1)
-    violations = []
+    violations: list[dict[str, Any]] = []
 
     with SessionLocal() as session:
         # 1. Future games check

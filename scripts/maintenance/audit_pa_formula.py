@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
-_GLOBAL_AUDIT_CACHE = None
+_GLOBAL_AUDIT_CACHE: dict[str, Any] | None = None
 
 
 def _populate_audit_cache():
@@ -87,12 +87,13 @@ def _populate_audit_cache():
 def audit_year(year: int) -> dict[str, Any]:
     t_start = time.time()
     _populate_audit_cache()
+    assert _GLOBAL_AUDIT_CACHE is not None
 
     total_games = _GLOBAL_AUDIT_CACHE["total_games_map"].get(year, 0)
     total_rows = _GLOBAL_AUDIT_CACHE["total_rows_map"].get(year, 0)
     rows = _GLOBAL_AUDIT_CACHE["violations_map"].get(year, [])
 
-    categories = Counter()
+    categories: Counter[str] = Counter()
     if rows:
         logger.info(f"  [Year {year}] Verifying PBP sacrifice counts for {len(rows)} violation rows...")
         with SessionLocal() as session:
@@ -228,7 +229,7 @@ def fix_year_formula(year: int, dry_run: bool = False) -> int:
             {"year": year},
         )
         session.commit()
-        count = fixed.rowcount
+        count = fixed.rowcount  # type: ignore[attr-defined]
 
     game_ids = {c["game_id"] for c in candidates}
     player_ids = {c["player_id"] for c in candidates}

@@ -920,7 +920,7 @@ class GameDetailCrawler:
                 self._last_failure_reason[ctx.game_id] = "incomplete_detail"
                 return None
             logger.info(
-                "ℹ️  No box scores found for %s, but scoreboard/metadata available. Proceeding with partial recovery.",
+                "[info] No box scores found for %s, but scoreboard/metadata available. Proceeding with partial recovery.",
                 ctx.game_id,
             )
         await self._validate_hitter_totals(ctx.page, ctx.game_id, hitters, hitter_totals)
@@ -947,7 +947,7 @@ class GameDetailCrawler:
             except PlaywrightError:
                 continue
             if any(cancel_word in txt for cancel_word in ["경기취소", "취소", "우천취소"]):
-                logger.info("ℹ️ Game %s is marked as CANCELLED in UI: '%s'", page.url, txt)
+                logger.info("[info] Game %s is marked as CANCELLED in UI: '%s'", page.url, txt)
                 return True
         try:
             content_area = await page.query_selector(GAME_DETAIL.content_boxscore_area)
@@ -987,7 +987,7 @@ class GameDetailCrawler:
             debug_path: Debug file path.
 
         """
-        Path("data").mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(Path("data").mkdir, parents=True, exist_ok=True)
 
         try:
             await page.screenshot(path=debug_path)
@@ -1045,20 +1045,20 @@ class GameDetailCrawler:
             text: Input text content.
 
         """
-        stadium_match = re.search(r"구장\s*[:：]\s*([^\s]+)", text)
+        stadium_match = re.search(r"구장\s*[:\uff1a]\s*([^\s]+)", text)
 
         if stadium_match:
             metadata["stadium"] = stadium_match.group(1).strip()
 
-        attendance_match = re.search(r"관중\s*[:：]\s*([\d,]+)", text)
+        attendance_match = re.search(r"관중\s*[:\uff1a]\s*([\d,]+)", text)
         if attendance_match:
             with contextlib.suppress(ValueError):
                 metadata["attendance"] = int(attendance_match.group(1).replace(",", "").strip())
 
         for key, pattern in (
-            ("start_time", r"개시\s*[:：]\s*([\d:]+)"),
-            ("end_time", r"종료\s*[:：]\s*([\d:]+)"),
-            ("game_time", r"경기시간\s*[:：]\s*([\d:]+)"),
+            ("start_time", r"개시\s*[:\uff1a]\s*([\d:]+)"),
+            ("end_time", r"종료\s*[:\uff1a]\s*([\d:]+)"),
+            ("game_time", r"경기시간\s*[:\uff1a]\s*([\d:]+)"),
         ):
             match = re.search(pattern, text)
             if match:
@@ -1346,7 +1346,7 @@ class GameDetailCrawler:
             for (const table of tables) {
                 const headers = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').replace(/\u00a0/g, ' ').trim().toUpperCase());
 
-                if (!teamTable && (headers.some(h => h.includes('TEAM')) || headers.includes('팀') || headers.includes(' '))) {
+                if (!teamTable && (headers.some(h => h.includes('TEAM')) || headers.includes('팀') || headers.includes('\u00a0'))) {
                     if (headers.length <= 4) teamTable = table;
                 }
                 if (!inningTable && headers.includes('1') && headers.includes('2') && headers.includes('3')) inningTable = table;

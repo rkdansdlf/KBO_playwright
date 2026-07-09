@@ -277,7 +277,7 @@ def _rows_by_date(session: Session, _model: type[Any], date_column: object, date
     return {_date_key(row_date): int(count or 0) for row_date, count in rows}
 
 
-def _add_failure(
+def _add_failure(  # noqa: PLR0913
     failures: list[dict[str, Any]],
     *,
     dataset: str,
@@ -618,7 +618,7 @@ def _check_broadcast_completeness(
     return {"broadcast_ok": broadcast_ok, "skip_counts": skip_counts, "skip_game_ids": skip_game_ids}
 
 
-def build_p0_readiness(
+def build_p0_readiness(  # noqa: PLR0913
     session: Session,
     *,
     target_date: str | date | datetime | None = None,

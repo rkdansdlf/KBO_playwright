@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from typing import Any
+
 from src.db.engine import SessionLocal
 from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository
 
-PARKING_DATA = [
+PARKING_DATA: list[dict[str, Any]] = [
     {
         "stadium_id": "JAMSIL",
         "name": "잠실종합운동장 주차장",

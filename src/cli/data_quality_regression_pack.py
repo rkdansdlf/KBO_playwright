@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from typing import TYPE_CHECKING
 
 from sqlalchemy import create_engine
@@ -46,9 +47,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = run_regression_pack(conn)
 
     if args.json:
-        print(report_to_json(report))
+        sys.stdout.write(report_to_json(report) + "\n")
     else:
-        print(render_regression_report(report))
+        sys.stdout.write(render_regression_report(report) + "\n")
     return 0 if report.ok else 1
 
 

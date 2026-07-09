@@ -69,7 +69,7 @@ class ManagerChangeCrawler(NaverNewsCrawlerBase):
     def _extract_manager_name(self, text: str) -> str | None:
         name_match = re.search(r"([가-힣]{2,4})\s*(?:감독|대행)", text)
         if not name_match:
-            name_match = re.search(r"(?:감독|새\s*감독)[:：\s]*([가-힣]{2,4})", text)
+            name_match = re.search(r"(?:감독|새\s*감독)[:\uff1a\s]*([가-힣]{2,4})", text)
         if not name_match:
             return None
         name = name_match.group(1)

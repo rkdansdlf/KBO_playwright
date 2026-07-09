@@ -28,7 +28,7 @@ def _process_batting(year: int, series: str, *, save: bool) -> None:
     if save and batting_data:
         save_batting_stats_safe(batting_data)
     elif not batting_data:
-        logger.info("   ℹ️ No batting transactional data found for %s %s.", year, series)
+        logger.info("   [info] No batting transactional data found for %s %s.", year, series)
 
 
 def _process_pitching(year: int, series: str, *, save: bool) -> None:
@@ -40,7 +40,7 @@ def _process_pitching(year: int, series: str, *, save: bool) -> None:
     if save and pitching_data:
         save_pitching_stats_to_db([stat.to_repository_payload() for stat in pitching_data])
     elif not pitching_data:
-        logger.info("   ℹ️ No pitching transactional data found for %s %s.", year, series)
+        logger.info("   [info] No pitching transactional data found for %s %s.", year, series)
 
 
 def main() -> int:

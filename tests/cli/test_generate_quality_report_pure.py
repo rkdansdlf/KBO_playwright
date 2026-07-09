@@ -5,9 +5,27 @@ from __future__ import annotations
 import pytest
 
 from src.cli.generate_quality_report import (
+    _add_unique_category,
+    _append_auto_remediation_section,
+    _append_detail_integrity_section,
+    _append_new_players_section,
+    _append_pa_formula_section,
+    _append_pa_formula_trend_section,
+    _append_player_stats_section,
+    _append_relay_integrity_section,
+    _append_standings_integrity_section,
+    _append_team_stats_section,
+    _append_team_stats_trend_section,
+    _append_top_performer_section,
     _audit_category_from_filename,
     _auto_remediation_status,
     _category_counts,
+    _empty_auto_remediation_summary,
+    _record_auto_remediation_abort,
+    _record_auto_remediation_fixed,
+    _record_auto_remediation_warning,
+    format_telegram_report,
+    get_team_stats_integrity,
     _has_report_issues,
 )
 
@@ -38,6 +56,61 @@ class TestAutoRemediationStatus:
 
     def test_no_issues(self) -> None:
         assert _auto_remediation_status(has_abort=False, has_warning=False, has_fixed=False) == "no_issues"
+
+
+class TestAutoRemediationSummaryHelpers:
+    def test_empty_summary_shape(self) -> None:
+        summary = _empty_auto_remediation_summary()
+        assert summary["status"] == "no_issues"
+        assert summary["total_fixed"] == 0
+        assert summary["players_fixed"] == []
+
+    def test_add_unique_category_appends_once(self) -> None:
+        summary = {"categories_fixed": ["BATTING"]}
+        _add_unique_category(summary, "categories_fixed", "BATTING")
+        _add_unique_category(summary, "categories_fixed", "PITCHING")
+        assert summary["categories_fixed"] == ["BATTING", "PITCHING"]
+
+    def test_record_abort(self) -> None:
+        summary = _empty_auto_remediation_summary()
+        _record_auto_remediation_abort(summary, "20260402_abort_batting.json", {"reason": "unsafe"})
+        assert summary["categories_aborted"] == ["BATTING"]
+        assert summary["abort_reasons"] == ["BATTING: unsafe"]
+
+    def test_record_warning(self) -> None:
+        summary = _empty_auto_remediation_summary()
+        _record_auto_remediation_warning(
+            summary,
+            "20260402_warning_pitching.json",
+            {"mismatches": [{"name": "A", "player_id": 1, "diffs": ["era"]}]},
+        )
+        assert summary["categories_warning"] == ["PITCHING"]
+        assert summary["total_warning"] == 1
+        assert summary["players_warning"][0]["name"] == "A"
+
+    def test_record_fixed_from_list_and_single_snapshot(self) -> None:
+        summary = _empty_auto_remediation_summary()
+        _record_auto_remediation_fixed(
+            summary,
+            "20260402_100_batting.json",
+            [
+                {
+                    "player_id": 1,
+                    "player_name": "A",
+                    "original": {"games": 10},
+                    "calculated": {"games": 11},
+                },
+            ],
+        )
+        _record_auto_remediation_fixed(
+            summary,
+            "bad.json",
+            {"player_id": 2, "calculated": {"player_name": "B"}, "original": {}},
+        )
+        assert summary["categories_fixed"] == ["BATTING", "UNKNOWN"]
+        assert summary["total_fixed"] == 2
+        assert summary["players_fixed"][0]["diffs"] == ["games: 10→11"]
+        assert summary["players_fixed"][1]["name"] == "B"
 
 
 class TestCategoryCounts:
@@ -282,3 +355,168 @@ class TestAppendSections:
         _append_parity_section(lines, parity)
         assert len(lines) == 1
         assert "Parity" in lines[0]
+
+    def test_detail_integrity_section_ok_and_missing(self) -> None:
+        lines: list[str] = []
+        _append_detail_integrity_section(lines, {"detail_integrity": [{"game_id": "G1", "is_complete": True}]})
+        assert "100%" in lines[0]
+
+        lines = []
+        _append_detail_integrity_section(
+            lines,
+            {"detail_integrity": [{"game_id": "G1", "is_complete": False}, {"game_id": "G2", "is_complete": False}]},
+        )
+        assert "2 games" in lines[0]
+        assert "G1" in lines[1]
+
+    def test_player_stats_section_ok_and_mismatch(self) -> None:
+        lines: list[str] = []
+        _append_player_stats_section(lines, {"batting": {"ok": True}, "pitching": {"ok": True}})
+        assert "Consistent" in lines[0]
+
+        lines = []
+        _append_player_stats_section(
+            lines,
+            {"batting": {"ok": False, "mismatches": [1, 2]}, "pitching": {"ok": False, "mismatches": [3]}},
+        )
+        assert "3 mismatches" in lines[0]
+        assert "Batting" in lines[1]
+        assert "Pitching" in lines[2]
+
+    def test_top_performer_and_new_players_sections(self) -> None:
+        lines: list[str] = []
+        _append_top_performer_section(lines, {"top_performer": {"name": "Kim", "war": 6.5}})
+        _append_new_players_section(lines, {"new_players": [{"name": "A"}, {"name": "B"}]})
+        assert "Kim" in lines[0]
+        assert "A, B" in lines[1]
+
+    def test_relay_and_standings_integrity_sections(self) -> None:
+        lines: list[str] = []
+        _append_relay_integrity_section(
+            lines,
+            {
+                "relay_integrity": {
+                    "ok": False,
+                    "recent_missing_count": 1,
+                    "current_season_missing_count": 2,
+                    "missing_game_ids": ["G1"],
+                }
+            },
+        )
+        _append_standings_integrity_section(
+            lines,
+            {
+                "standings_integrity": {
+                    "ok": False,
+                    "mismatches": [{"team_code": "LG", "issue": "wins"}],
+                    "missing_score_games": ["G2"],
+                }
+            },
+        )
+        assert "1 recent / 2" in lines[0]
+        assert "LG" in "\n".join(lines)
+
+    @pytest.mark.parametrize("status", ["fixed", "warning", "aborted", "no_issues"])
+    def test_auto_remediation_section_statuses(self, status: str) -> None:
+        lines: list[str] = []
+        payload = {
+            "status": status,
+            "total_fixed": 4,
+            "players_fixed": [{"name": "A", "category": "BATTING", "diffs": ["games"]}] * 4,
+            "total_warning": 1,
+            "players_warning": [{"name": "B", "category": "PITCHING", "diffs": ["era"]}],
+            "categories_aborted": ["BATTING"],
+            "abort_reasons": ["BATTING: unsafe"],
+        }
+        _append_auto_remediation_section(lines, {"auto_remediation": payload})
+        assert lines
+
+    def test_pa_formula_sections(self) -> None:
+        lines: list[str] = []
+        _append_pa_formula_section(
+            lines,
+            {
+                "pa_formula_integrity": {
+                    "ok": False,
+                    "violation_count": 1,
+                    "violations": [{"game_date": "20260402", "player_name": "A", "pa": 4}],
+                }
+            },
+        )
+        _append_pa_formula_trend_section(
+            lines,
+            {
+                "pa_formula_trend": {
+                    "direction": "worsening",
+                    "months": [{"month": "2026-04", "violation_count": 1, "total_checked": 10, "violation_pct": 10.0}],
+                }
+            },
+        )
+        assert "1 violations" in lines[0]
+        assert "worsening" in lines[2]
+
+    def test_team_stats_sections(self) -> None:
+        lines: list[str] = []
+        gate_result = {
+            "team_batting": {
+                "ok": False,
+                "checked_players": 10,
+                "mismatches": [{"team_id": "LG", "issue": "hits", "diffs": ["H"]}],
+            },
+            "team_pitching": {"ok": True, "checked_players": 10, "mismatches": []},
+        }
+        _append_team_stats_section(lines, gate_result)
+        _append_team_stats_trend_section(
+            lines,
+            {
+                "team_stats_trend": {
+                    "direction": "stable",
+                    "months": [{"month": "2026-04", "total_violations": 0, "teams_checked": 10}],
+                }
+            },
+        )
+        assert "1 mismatches" in lines[0]
+        assert "Team Stats Trend" in "\n".join(lines)
+
+
+class TestTeamStatsIntegrityAndTelegramReport:
+    def test_get_team_stats_integrity(self) -> None:
+        result = get_team_stats_integrity(
+            {
+                "team_batting": {"ok": False, "checked_players": 8, "mismatches": [{"team_id": "LG"}]},
+                "team_pitching": {"ok": True, "checked_players": 9, "mismatches": []},
+            },
+        )
+        assert result["ok"] is False
+        assert result["total_mismatches"] == 1
+        assert result["batting_checked"] == 8
+
+    def test_format_telegram_report_includes_key_sections(self) -> None:
+        metrics = {
+            "date": "20260402",
+            "total_games": 2,
+            "completed_count": 2,
+            "status_counts": {"completed": 2},
+            "parity": {"ok": True},
+            "detail_integrity": [{"game_id": "G1", "is_complete": True}],
+            "top_performer": {"name": "Kim", "war": 6.5},
+            "relay_integrity": {"ok": True},
+            "standings_integrity": {"ok": True},
+            "auto_remediation": {"status": "no_issues"},
+            "pa_formula_integrity": {"ok": True},
+            "pa_formula_trend": {"direction": "stable", "months": []},
+            "team_stats_trend": {"direction": "stable", "months": []},
+            "new_players": [{"name": "Rookie"}],
+        }
+        report = format_telegram_report(
+            metrics,
+            {
+                "batting": {"ok": True},
+                "pitching": {"ok": True},
+                "team_batting": {"ok": True},
+                "team_pitching": {"ok": True},
+            },
+        )
+        assert "KBO Quality Report" in report
+        assert "Top Performer" in report
+        assert "Rookie" in report

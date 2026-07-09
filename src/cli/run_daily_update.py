@@ -675,7 +675,7 @@ def _apply_detail_failure_fallback(ctx: _RunContext, game_id: str, reason: str |
             and fallback != GAME_STATUS_CANCELLED
         ):
             logger.info(
-                "   ℹ️ Preservation: Keeping terminal status '%s' for %s",
+                "   [info] Preservation: Keeping terminal status '%s' for %s",
                 current_game.game_status,
                 game_id,
             )
@@ -732,10 +732,10 @@ def _finalize_detail_results(
         ctx.detail_recovery_passes,
     )
     if ctx.detail_failure_counts:
-        logger.info("   ℹ️ Detail failure reasons: %s", _format_counts(ctx.detail_failure_counts))
+        logger.info("   [info] Detail failure reasons: %s", _format_counts(ctx.detail_failure_counts))
     if ctx.detail_recovery_passes:
         logger.info(
-            "   ℹ️ Detail recovery recovered_after_retry=%s, still_missing=%s, escalated=%s",
+            "   [info] Detail recovery recovered_after_retry=%s, still_missing=%s, escalated=%s",
             ctx.detail_recovered_after_retry,
             len(ctx.detail_still_missing),
             len(ctx.detail_retry_escalation_game_ids),
@@ -1590,7 +1590,7 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
     }
 
 
-async def run_update(
+async def run_update(  # noqa: PLR0913
     target_date: str,
     *,
     sync: bool = False,

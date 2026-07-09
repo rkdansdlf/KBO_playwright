@@ -42,7 +42,7 @@ class InjuryCrawler(NaverNewsCrawlerBase):
 
         player_match = re.search(r"([가-힣]{2,4})(?:선수|투수|타자|내야수|외야수|포수)", text)
         if not player_match:
-            player_match = re.search(r"(?:부상|이탈)[:：\s]*([가-힣]{2,4})", text)
+            player_match = re.search(r"(?:부상|이탈)[:\uff1a\s]*([가-힣]{2,4})", text)
         if not player_match:
             player_match = re.search(r"([가-힣]{2,4})\s*(?:부상|이탈|복귀)", text)
         if not player_match:

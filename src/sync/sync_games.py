@@ -333,14 +333,14 @@ class GameSyncMixin(SyncBaseProtocol):
             return
 
         if getattr(self, "target_session", None) is None:
-            logger.info("ℹ️ Skipping OCI %s child row replacement: no target session", label)
+            logger.info("[info] Skipping OCI %s child row replacement: no target session", label)
             return
 
         def replace_child_rows() -> None:
             """Handle the replace child rows operation."""
             for child_model in child_models:
                 if not self._target_table_exists(child_model):
-                    logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)  # type: ignore[attr-defined]
+                    logger.info("[info] Skipping delete for missing OCI table: %s", child_model.__tablename__)  # type: ignore[attr-defined]
                     continue
                 self.target_session.query(child_model).filter(child_model.game_id.in_(target_game_ids)).delete(  # type: ignore[attr-defined]
                     synchronize_session=False,
@@ -408,7 +408,7 @@ class GameSyncMixin(SyncBaseProtocol):
                 )
             else:
                 results["games"] = 0
-                logger.info("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
+                logger.info("[info] No publishable parent game rows beyond schedule-only stubs.")
         else:
             results["games"] = self.sync_games(filters=chunk_parent_filters or None, batch_size=batch_size)
 
@@ -442,7 +442,7 @@ class GameSyncMixin(SyncBaseProtocol):
         elif days:
             game_ids = [game.game_id for game in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
             if not game_ids:
-                logger.info("ℹ️ No games found for the specified period.")
+                logger.info("[info] No games found for the specified period.")
                 return []
             child_filters.append(GameMetadata.game_id.in_(game_ids))
         return child_filters or None
@@ -867,7 +867,7 @@ class GameSyncMixin(SyncBaseProtocol):
                 filters=[GameValidationMetrics.game_id == game_id],
             )
         else:
-            logger.info("ℹ️ Skipping missing OCI table: %s", GameValidationMetrics.__tablename__)
+            logger.info("[info] Skipping missing OCI table: %s", GameValidationMetrics.__tablename__)
             results["validation_metrics"] = 0
         results["summary"] = self._sync_game_summary_rows(
             filters=[GameSummary.game_id.in_(eligibility.detail_game_ids)],
@@ -1008,7 +1008,7 @@ class GameSyncMixin(SyncBaseProtocol):
 
         rows = query.all()
         if not rows:
-            logger.info("ℹ️  No records for game_summary")
+            logger.info("[info] No records for game_summary")
             return 0
 
         game_ids = sorted(set(replace_game_ids or [row.game_id for row in rows if row.game_id]))

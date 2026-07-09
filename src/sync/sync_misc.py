@@ -97,7 +97,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         franchise_mapping = self._get_franchise_id_mapping()
         teams = self.sqlite_session.query(Team).all()
         if not teams:
-            logger.info("ℹ️ No teams to sync.")
+            logger.info("[info] No teams to sync.")
             return 0
 
         records = []
@@ -599,7 +599,7 @@ class MiscSyncMixin(SyncBaseProtocol):
             )
 
         if not records:
-            logger.info("ℹ️ No team history to sync.")
+            logger.info("[info] No team history to sync.")
             return 0
 
         self._bulk_copy_upsert(TeamHistory.__tablename__, records, ["id"])
