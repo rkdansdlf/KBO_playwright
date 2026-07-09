@@ -308,7 +308,7 @@ class TextTransformer:
             line = raw_line.strip().lstrip("-").strip()
             if not line:
                 continue
-            keywords.extend(kw.strip() for kw in re.split(r"[,，]", line) if kw.strip())
+            keywords.extend(kw.strip() for kw in re.split(r"[,\uff0c]", line) if kw.strip())
         return keyword_pattern.sub("", text).strip(), keywords
 
     def _heading_sections(self, text: str) -> list[str]:

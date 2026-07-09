@@ -89,7 +89,7 @@ async def run_crawler(args: argparse.Namespace) -> int:
                     finally:
                         syncer.close()
             else:
-                logger.info("ℹ️ No valid player IDs found to sync to OCI.")
+                logger.info("[info] No valid player IDs found to sync to OCI.")
 
     logger.info("🏁 Roster crawling completed.")
     return 0

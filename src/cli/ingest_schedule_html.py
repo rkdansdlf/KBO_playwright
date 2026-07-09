@@ -40,7 +40,7 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
 
     files = sorted(fixtures_dir.glob("*.html"))
     if not files:
-        logger.info("ℹ️  No HTML files found. Save schedule pages as *.html first.")
+        logger.info("[info] No HTML files found. Save schedule pages as *.html first.")
         return
 
     for html_file in files:
@@ -55,7 +55,7 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
         logger.info("📄 Parsed %s games from %s", len(games), html_file.name)
 
     if not all_games:
-        logger.info("ℹ️  No games parsed from fixtures.")
+        logger.info("[info] No games parsed from fixtures.")
         return
 
     # 파싱된 모든 경기 일정을 데이터베이스에 저장합니다.

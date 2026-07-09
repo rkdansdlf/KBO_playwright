@@ -578,14 +578,14 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage**: 76.84% (fail_under=70).
 - **pytest**: 8,006 passed.
 
-### Current Verification Baseline (2026-07-05)
+### Current Verification Baseline (2026-07-08)
 
 - `ruff check src/ tests/ scripts/` = 0 errors (expanded rules, 0 warnings).
 - `ruff format --check .` = clean.
-- `python -m pytest -m "" -p no:cacheprovider` = **8,779 passed**, 0 failed, 28 skipped, 1 xfailed; ~80s.
-- `python -m pytest --ignore=tests/validators/test_quality_gate_pure.py -p no:cacheprovider` = **8,380+ passed**, 0 failed in recent runs.
+- `python -m pytest --tb=line -q --no-header` = **8,709 passed**, 0 failed, 25 skipped, 263 deselected, 1 xfailed; 42.83s.
+- Targeted coverage/branch expansion tests: `tests/test_data_quality_regression_pack_core.py`, `tests/sync/test_sync_misc_coverage.py`, `tests/services/test_relay_recovery_ext.py`, `tests/test_crawler_selector_gate_core.py`, `tests/test_failure_diagnosis.py` pass.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
-- `--cov=src --cov-report=term` = **77%** (fail_under=70, exceeded target 75%).
+- `--cov=src --cov-report=term` = **76-77%** in recent full runs (fail_under=70, exceeded target 75%).
 - `# noqa: BLE001` in `src/` = 0.
 - `pre-commit` hooks installed locally, all hooks pass.
 - COM812 removed from select (conflicts with formatter), added to global ignore.
@@ -626,8 +626,21 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **ANN401 cleanup**: Replaced `team_stats_helpers.value_parser` `Any` with a concrete callable alias, added `PitchingCumulativeRow` protocol for `quality_gate.py`, and removed stale ANN401 ignores from `request_policy.py`, `game_status.py`, `refresh_manifest.py`, `team_stats_helpers.py`, and `quality_gate.py`. `sync_base.py` keeps ANN401 for DB/session/raw-connection boundaries.
 - **Verification**: targeted ticket/quality/team-stats/sync tests (`257 passed`), full unit pytest (`8571 passed, 25 skipped, 263 deselected, 1 xfailed`), and `ruff check src/ tests/ scripts/` pass.
 
-### Phase 54 In Progress (2026-07-06) — Coverage and Fixture Test Expansion
+### Phase 55 Complete (2026-07-08) — Coverage and CLI Smoke Speed Expansion
 
-- **Crawler fixture tests**: Added KBO ticket-map HTML fixture coverage and Naver relay payload fixture coverage; full pytest passed with 8547 tests.
+- **Crawler fixture tests**: Added KBO ticket-map HTML fixture coverage and Naver relay payload fixture coverage.
 - **`data_quality_regression_pack.py`**: Added pure serialization/rendering tests for `QualityRegressionReport`, `QualityRegressionResult`, and `render_regression_report`; module coverage improved from 82% to 96% in targeted run.
+- **`sync_misc.py`**: Added branch coverage for daily roster date normalization/range validation, empty team sync, stadium realtime wrappers, team history table-missing path, and team-code-map franchise transforms.
+- **`relay_recovery_service.py`**: Added pure tests for source-order parsing, game-id file loading, legacy source-unavailable classification, dry-run source-unavailable reporting, and manifest base-dir resolution.
+- **CLI smoke speed**: Converted `data_quality_regression_pack`, `crawler_selector_gate`, and `diagnose_crawler_failure` CLI smoke tests from subprocess launches to in-process `main(argv)` calls with `capsys` output checks.
 - **PLR0913 status refresh**: Confirmed `ruff check --select PLR0913 src/` = 0 violations and updated `Docs/references/PLR0913_REFACTOR_PLAN.md` verification baseline.
+- **Verification**: `ruff check src/ tests/ scripts/` passes; full pytest passes with 8,709 tests in 42.83s.
+
+### Phase 56 Complete (2026-07-09) — RUF001/F821/T201/ASYNC ignore cleanup
+
+- **RUF001 cleanup**: Removed all `src/` ambiguous-unicode ignores by replacing log `ℹ️` markers with `[info]` and escaping intentional fullwidth punctuation/dash regex tokens (`\uff1a`, `\uff0c`, `\u2013`, `\u2014`, `\u2192`).
+- **F821 cleanup**: Confirmed stale `src/` undefined-name ignores now pass without suppression and removed those per-file ignores.
+- **T201 cleanup**: Preserved CLI/stdout behavior while replacing intentional `print()` calls with `sys.stdout.write(... + "\n")`; removed `src/` T201 ignores.
+- **ASYNC cleanup**: Converted blocking `httpx.Client` usage in async crawlers to `httpx.AsyncClient`, replaced blocking subprocess calls with `asyncio.create_subprocess_exec`, and moved blocking Path/file snapshot operations behind `asyncio.to_thread`. Remaining ASYNC ignores are compatibility-sensitive `timeout` parameter names.
+- **PLR0913 assessment**: Confirmed 20 remaining violations are real public/crawler/CLI API signatures requiring options-object/dataclass refactors; left unchanged.
+- **Verification**: `ruff check src/ tests/ scripts/` passes; `ruff check --select RUF001,F821,T201 src/ --config 'lint.per-file-ignores={}'` passes; `ruff check --select ASYNC src/` passes; targeted tests (`248 passed`, plus async crawler/compliance/periodic tests `39 passed, 1 xfailed`) pass; unit pytest passes with `8745 passed, 26 skipped, 263 deselected, 1 xfailed`.

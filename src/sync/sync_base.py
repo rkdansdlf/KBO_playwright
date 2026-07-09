@@ -60,7 +60,7 @@ class SyncBaseProtocol(Protocol):
     target_session: Any
     oci_engine: Any
 
-    def sync_simple_table(
+    def sync_simple_table(  # noqa: PLR0913
         self,
         model: type[Base],
         conflict_keys: list[str],
@@ -990,10 +990,10 @@ class OCISyncBase:
             source_payload_length = getattr(source_payload_type, "length", None)
             if source_payload_length and source_payload_length <= 255:
                 columns.remove("source_payload")
-                logger.info("ℹ️ Skipping game_metadata.source_payload for legacy OCI varchar column")
+                logger.info("[info] Skipping game_metadata.source_payload for legacy OCI varchar column")
         return columns
 
-    def sync_simple_table(
+    def sync_simple_table(  # noqa: PLR0913
         self,
         model: type[Base],
         conflict_keys: list[str],
@@ -1016,12 +1016,12 @@ class OCISyncBase:
             exclude_cols.append("id")
 
         if not self._target_table_exists(model):
-            logger.info("ℹ️ Skipping missing OCI table: %s", model.__tablename__)
+            logger.info("[info] Skipping missing OCI table: %s", model.__tablename__)
             return 0
 
         columns = self._resolve_sync_columns(model, exclude_cols)
         if not columns:
-            logger.info("ℹ️ No compatible columns for %s", model.__tablename__)
+            logger.info("[info] No compatible columns for %s", model.__tablename__)
             return 0
 
         query = self.sqlite_session.query(*[getattr(model, column) for column in columns])
@@ -1030,7 +1030,7 @@ class OCISyncBase:
 
         total_count = query.count()
         if total_count == 0:
-            logger.info("ℹ️  No records for %s", model.__tablename__)
+            logger.info("[info] No records for %s", model.__tablename__)
             return 0
 
         logger.info("🚚 Syncing %s (%s rows, batch=%s)...", model.__tablename__, total_count, batch_size)

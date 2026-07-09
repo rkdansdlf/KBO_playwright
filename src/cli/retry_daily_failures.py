@@ -27,6 +27,16 @@ def _summary_path(target_date: str, summary_dir: str | Path | None = None) -> Pa
     return output_dir / f"{target_date}.json"
 
 
+def _validate_summary_payload(payload: object, summary_path: Path) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        msg = f"Daily summary must be a JSON object: {summary_path}"
+        raise TypeError(msg)
+    if not isinstance(payload.get("stability"), dict):
+        msg = f"Daily summary missing stability payload: {summary_path}"
+        raise TypeError(msg)
+    return payload
+
+
 def load_daily_summary(path: str | Path) -> dict[str, Any]:
     """
     Load daily summary.
@@ -51,13 +61,7 @@ def load_daily_summary(path: str | Path) -> dict[str, Any]:
         msg = f"Malformed daily summary JSON: {summary_path}"
         raise ValueError(msg) from exc
 
-    if not isinstance(payload, dict):
-        msg = f"Daily summary must be a JSON object: {summary_path}"
-        raise TypeError(msg)
-    if not isinstance(payload.get("stability"), dict):
-        msg = f"Daily summary missing stability payload: {summary_path}"
-        raise TypeError(msg)
-    return payload
+    return _validate_summary_payload(payload, summary_path)
 
 
 def _dedupe_game_ids(values: Iterable[object]) -> list[str]:
@@ -183,7 +187,7 @@ def _default_runner(command: Sequence[str]) -> None:
     subprocess.run(list(command), check=True)  # noqa: S603 - commands are built as fixed argv lists.
 
 
-def run_retry(
+def run_retry(  # noqa: PLR0913
     *,
     target_date: str,
     summary_dir: str | Path | None = None,

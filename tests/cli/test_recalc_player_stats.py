@@ -3,13 +3,17 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.recalc_player_stats import (
     _get_player_teams,
     _get_regular_season_ids,
+    _upsert_batting,
+    _upsert_player_stats,
     main,
     run_recalc,
 )
+from src.models.player import PlayerSeasonBatting
 
 
 class TestRecalcPlayerStats:
@@ -107,6 +111,52 @@ class TestRunRecalc:
 
             result = run_recalc(2025, dry_run=True)
             assert result == 0
+
+
+class TestUpsertPlayerStats:
+    def test_empty_records_returns_zero_without_commit(self):
+        mock_session = MagicMock()
+        result = _upsert_player_stats(mock_session, PlayerSeasonBatting, [], "sqlite", "Batting")
+        assert result == 0
+        mock_session.commit.assert_not_called()
+
+    def test_sqlite_success_executes_and_commits(self):
+        mock_session = MagicMock()
+        result = _upsert_batting(
+            mock_session,
+            [
+                {
+                    "player_id": 1,
+                    "season": 2025,
+                    "league": "REGULAR",
+                    "level": "KBO1",
+                    "games": 10,
+                },
+            ],
+            "sqlite",
+        )
+
+        assert result == 1
+        mock_session.execute.assert_called_once()
+        mock_session.commit.assert_called_once()
+
+    def test_execute_error_rolls_back_and_continues(self):
+        mock_session = MagicMock()
+        mock_session.execute.side_effect = [SQLAlchemyError("boom"), None]
+        result = _upsert_player_stats(
+            mock_session,
+            PlayerSeasonBatting,
+            [
+                {"player_id": 1, "season": 2025, "league": "REGULAR", "level": "KBO1", "games": 10},
+                {"player_id": 2, "season": 2025, "league": "REGULAR", "level": "KBO1", "games": 20},
+            ],
+            "sqlite",
+            "Batting",
+        )
+
+        assert result == 1
+        mock_session.rollback.assert_called_once()
+        mock_session.commit.assert_called_once()
 
 
 class TestRecalcPlayerStatsEdgeCases:

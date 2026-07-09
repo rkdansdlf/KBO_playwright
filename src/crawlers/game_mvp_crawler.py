@@ -65,9 +65,9 @@ class GameMvpCrawler:
     async def _search_mvp_for_game(self, game_id: str) -> dict[str, Any] | None:
         date_str = game_id[:8]
         url = NAVER_API_URL.format(date=date_str)
-        client = httpx.Client(headers=HEADERS, timeout=15)
         try:
-            resp = client.get(url)
+            async with httpx.AsyncClient(headers=HEADERS, timeout=15) as client:
+                resp = await client.get(url)
             if resp.status_code != HTTPStatus.OK:
                 return None
             news_list = resp.json().get("result", {}).get("newsList", [])
@@ -88,46 +88,41 @@ class GameMvpCrawler:
                     }
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("Error searching MVP for game %s: %s", game_id, e, exc_info=True)
-        finally:
-            client.close()
         return None
 
     async def _fetch_recent_mvp_news(self) -> list[dict]:
         results = []
         today = datetime.now(KST)
-        client = httpx.Client(headers=HEADERS, timeout=15)
-
-        for days_ago in range(7):
-            date_str = (today - timedelta(days=days_ago)).strftime("%Y%m%d")
-            url = NAVER_API_URL.format(date=date_str)
-            try:
-                resp = client.get(url)
-                if resp.status_code != HTTPStatus.OK:
-                    continue
-                news_list = resp.json().get("result", {}).get("newsList", [])
-                for article in news_list:
-                    title = article.get("title", "")
-                    if "MVP" not in title:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=15) as client:
+            for days_ago in range(7):
+                date_str = (today - timedelta(days=days_ago)).strftime("%Y%m%d")
+                url = NAVER_API_URL.format(date=date_str)
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code != HTTPStatus.OK:
                         continue
-                    player_name = GameMvpCrawler._parse_mvp_player(title)
-                    if not player_name:
-                        continue
-                    game_id_match = re.search(r"(\d{8})", title)
-                    game_id = game_id_match.group(1) if game_id_match else date_str + "0000"
-                    results.append(
-                        {
-                            "game_id": game_id,
-                            "player_name": player_name,
-                            "team_id": GameMvpCrawler._parse_mvp_team(title),
-                            "mvp_type": "GAME",
-                            "reason": title[:300],
-                            "award_source": "NAVER",
-                        },
-                    )
-            except (httpx.HTTPError, ValueError) as e:
-                logger.warning("Game MVP news fetch failed: %s", e)
-
-        client.close()
+                    news_list = resp.json().get("result", {}).get("newsList", [])
+                    for article in news_list:
+                        title = article.get("title", "")
+                        if "MVP" not in title:
+                            continue
+                        player_name = GameMvpCrawler._parse_mvp_player(title)
+                        if not player_name:
+                            continue
+                        game_id_match = re.search(r"(\d{8})", title)
+                        game_id = game_id_match.group(1) if game_id_match else date_str + "0000"
+                        results.append(
+                            {
+                                "game_id": game_id,
+                                "player_name": player_name,
+                                "team_id": GameMvpCrawler._parse_mvp_team(title),
+                                "mvp_type": "GAME",
+                                "reason": title[:300],
+                                "award_source": "NAVER",
+                            },
+                        )
+                except (httpx.HTTPError, ValueError) as e:
+                    logger.warning("Game MVP news fetch failed: %s", e)
         return results
 
     @staticmethod

@@ -9,10 +9,40 @@ import pytest
 from src.cli.retry_daily_failures import (
     _dedupe_game_ids,
     _detail_groups,
+    _summary_path,
+    _validate_summary_payload,
     build_retry_commands,
     load_daily_summary,
     retry_candidates,
 )
+
+
+class TestSummaryPath:
+    def test_uses_default_summary_dir(self) -> None:
+        result = _summary_path("20250401")
+        assert result.name == "20250401.json"
+
+    def test_accepts_string_summary_dir(self, tmp_path: Path) -> None:
+        result = _summary_path("20250401", str(tmp_path))
+        assert result == tmp_path / "20250401.json"
+
+    def test_accepts_path_summary_dir(self, tmp_path: Path) -> None:
+        result = _summary_path("20250401", tmp_path)
+        assert result == tmp_path / "20250401.json"
+
+
+class TestValidateSummaryPayload:
+    def test_returns_valid_dict(self, tmp_path: Path) -> None:
+        payload = {"stability": {"retry_candidates": {}}}
+        assert _validate_summary_payload(payload, tmp_path / "summary.json") == payload
+
+    def test_rejects_non_mapping_payload(self, tmp_path: Path) -> None:
+        with pytest.raises(TypeError, match="must be a JSON object"):
+            _validate_summary_payload([], tmp_path / "summary.json")
+
+    def test_rejects_missing_stability_mapping(self, tmp_path: Path) -> None:
+        with pytest.raises(TypeError, match="missing stability payload"):
+            _validate_summary_payload({"stability": None}, tmp_path / "summary.json")
 
 
 class TestLoadDailySummary:
@@ -91,6 +121,9 @@ class TestRetryCandidates:
 
 
 class TestDetailGroups:
+    def test_empty_input_returns_empty_dict(self) -> None:
+        assert _detail_groups([]) == {}
+
     def test_invalid_game_id_short(self) -> None:
         with pytest.raises(ValueError, match="Invalid KBO game_id date prefix"):
             _detail_groups(["short"])
@@ -146,3 +179,34 @@ class TestBuildRetryCommands:
         commands = build_retry_commands(summary)
         assert len(commands) == 1
         assert "fetch_kbo_pbp.py" in commands[0][1]
+
+    def test_detail_and_relay_commands_without_sync(self) -> None:
+        summary = {
+            "stability": {
+                "retry_candidates": {
+                    "detail": ["20250401LGSS0", "20250501LGHH0"],
+                    "relay": ["20250401LGSS0"],
+                },
+            },
+        }
+        commands = build_retry_commands(summary, python_bin="python3")
+
+        assert len(commands) == 3
+        assert commands[0][:3] == ["python3", "-m", "src.cli.collect_games"]
+        assert commands[1][:3] == ["python3", "-m", "src.cli.collect_games"]
+        assert commands[2][:2] == ["python3", "scripts/fetch_kbo_pbp.py"]
+
+    def test_sync_deduplicates_detail_and_relay_ids(self) -> None:
+        summary = {
+            "stability": {
+                "retry_candidates": {
+                    "detail": ["20250401LGSS0"],
+                    "relay": ["20250401LGSS0", "20250402LGHH0"],
+                },
+            },
+        }
+        commands = build_retry_commands(summary, sync=True, python_bin="python3")
+
+        sync_command = commands[-1]
+        assert sync_command[:3] == ["python3", "-m", "src.cli.sync_oci"]
+        assert sync_command[-1] == "20250401LGSS0,20250402LGHH0"

@@ -91,27 +91,32 @@ def _compute_missing(row: dict) -> dict[str, Any]:
         row: Row.
 
     """
-    H = row.get("H")
+    hits = row.get("H")
 
-    _2B = row.get("2B")
-    _3B = row.get("3B")
-    HR = row.get("HR")
-    AB = row.get("AB")
-    BB = row.get("BB")
-    HBP = row.get("HBP")
-    SF = row.get("SF")
+    doubles = row.get("2B")
+    triples = row.get("3B")
+    home_runs = row.get("HR")
+    at_bats = row.get("AB")
+    walks = row.get("BB")
+    hit_by_pitch = row.get("HBP")
+    sacrifice_flies = row.get("SF")
 
     # Compute SLG if missing
-    if ("SLG" not in row or row.get("SLG") is None) and None not in (H, _2B, _3B, HR, AB) and AB and AB > 0:
-        _1B = (H or 0) - sum(v or 0 for v in [_2B, _3B, HR])
-        tb = (_1B or 0) + 2 * (_2B or 0) + 3 * (_3B or 0) + 4 * (HR or 0)
-        row["SLG"] = round(tb / AB, 3)
+    if (
+        ("SLG" not in row or row.get("SLG") is None)
+        and None not in (hits, doubles, triples, home_runs, at_bats)
+        and at_bats
+        and at_bats > 0
+    ):
+        singles = (hits or 0) - sum(v or 0 for v in [doubles, triples, home_runs])
+        total_bases = (singles or 0) + 2 * (doubles or 0) + 3 * (triples or 0) + 4 * (home_runs or 0)
+        row["SLG"] = round(total_bases / at_bats, 3)
 
     # Compute OBP if missing
     if "OBP" not in row or row.get("OBP") is None:
-        denom = (AB or 0) + (BB or 0) + (HBP or 0) + (SF or 0)
+        denom = (at_bats or 0) + (walks or 0) + (hit_by_pitch or 0) + (sacrifice_flies or 0)
         if denom > 0:
-            row["OBP"] = round(((H or 0) + (BB or 0) + (HBP or 0)) / denom, 3)
+            row["OBP"] = round(((hits or 0) + (walks or 0) + (hit_by_pitch or 0)) / denom, 3)
 
     return row
 

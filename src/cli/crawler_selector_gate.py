@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,9 +37,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = run_selector_gate(targets, output_dir=Path(args.output_dir) if args.output_dir else None)
 
     if args.json:
-        print(json.dumps(summary.to_dict(), ensure_ascii=False))
+        sys.stdout.write(json.dumps(summary.to_dict(), ensure_ascii=False) + "\n")
     else:
-        print(render_selector_summary(summary))
+        sys.stdout.write(render_selector_summary(summary) + "\n")
     return 0 if summary.ok else 1
 
 

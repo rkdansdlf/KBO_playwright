@@ -13,8 +13,20 @@ from src.cli.dashboard_report import (
     _append_quality_violation_lines,
     _date_or_today,
     _emit_dashboard,
+    _format_freshness_terminal,
     _format_json,
+    _format_park_factor_terminal,
+    _format_pa_trend_terminal,
+    _format_quality_terminal,
+    _format_rankings_terminal,
+    _format_standings_terminal,
+    _format_sync_terminal,
+    _format_team_defense_terminal,
+    _format_team_gate_terminal,
+    _format_terminal,
+    _format_unified_audit_terminal,
     _normalize_sections,
+    _parse_args,
     _row_value,
     _r2dict,
     _send_dashboard_notification,
@@ -123,6 +135,146 @@ class TestDashboardFormatting:
             _emit_dashboard({"sync": {"status": "ok"}}, ["sync"], "terminal")
 
         mock_format.assert_called_once_with({"sync": {"status": "ok"}}, ["sync"])
+
+
+class TestDashboardTerminalFormatters:
+    def test_parse_args(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "dashboard_report",
+                "--date",
+                "20260402",
+                "--year",
+                "2026",
+                "--sections",
+                "quality",
+                "sync",
+                "--format",
+                "json",
+                "--notify",
+            ],
+        )
+
+        args = _parse_args()
+
+        assert args.date == "20260402"
+        assert args.year == 2026
+        assert args.sections == ["quality", "sync"]
+        assert args.format == "json"
+        assert args.notify is True
+
+    def test_standings_terminal_logs_rows(self) -> None:
+        with patch("src.cli.dashboard_report.logger") as mock_logger:
+            _format_standings_terminal(
+                {
+                    "date": "20260402",
+                    "rows": [
+                        {
+                            "rank": 1,
+                            "team_code": "LG",
+                            "wins": 10,
+                            "losses": 2,
+                            "draws": 1,
+                            "win_pct": 0.833,
+                            "top_5": True,
+                            "current_streak": -2,
+                        },
+                    ],
+                },
+                2026,
+            )
+        rendered = "\n".join(str(call.args) for call in mock_logger.info.call_args_list)
+        assert "순위표" in rendered
+        assert "LG" in rendered
+
+    def test_park_factor_rankings_and_team_defense_terminal(self) -> None:
+        with patch("src.cli.dashboard_report.logger") as mock_logger:
+            _format_park_factor_terminal(
+                {
+                    "year": 2026,
+                    "results": [
+                        {
+                            "stadium": "잠실",
+                            "games": 10,
+                            "runs_per_game": 8.5,
+                            "park_factor": 1.1,
+                            "park_factor_label": "타자",
+                        }
+                    ],
+                },
+            )
+            _format_rankings_terminal({"year": 2026, "top5": {"WAR": [{"player_name": "Kim", "value": 5.5}]}})
+            _format_team_defense_terminal(
+                {
+                    "year": 2026,
+                    "fielding": [{"team_code": "LG", "fielding_pct": 0.99, "errors": 1}],
+                    "baserunning": [
+                        {"team_code": "LG", "stolen_bases": 10, "caught_stealing": 2, "sb_success_rate": 0.833}
+                    ],
+                },
+            )
+        rendered = "\n".join(str(call.args) for call in mock_logger.info.call_args_list)
+        assert "잠실" in rendered
+        assert "Kim" in rendered
+        assert "LG" in rendered
+
+    def test_team_gate_and_quality_terminal(self) -> None:
+        quality = {
+            "date": "20260402",
+            "completed_count": 2,
+            "total_games": 3,
+            "relay_integrity": {"recent_missing_count": 1},
+            "standings_integrity": {"ok": False},
+            "pa_formula_integrity": {"ok": False, "violation_count": 2},
+            "quality_gate": {
+                "team_batting": {
+                    "ok": False,
+                    "checked_players": 10,
+                    "mismatches": [{"team_id": "LG", "issue": "hits", "diffs": ["H", "R"]}],
+                },
+                "team_pitching": {"ok": True, "checked_players": 10, "mismatches": []},
+            },
+            "pa_formula_trend": {
+                "direction": "improving",
+                "months": [{"month": "2026-04", "violation_count": 0, "total_checked": 10}],
+            },
+        }
+        with patch("src.cli.dashboard_report.logger") as mock_logger:
+            _format_team_gate_terminal("팀 타격", quality["quality_gate"]["team_batting"])
+            _format_quality_terminal(quality)
+        info_text = "\n".join(str(call.args) for call in mock_logger.info.call_args_list)
+        error_text = "\n".join(str(call.args) for call in mock_logger.error.call_args_list)
+        assert "팀 타격" in info_text
+        assert "Quality Report" in info_text
+        assert "PA 공식" in error_text
+
+    def test_pa_trend_unified_freshness_sync_and_dispatch(self) -> None:
+        with patch("src.cli.dashboard_report.logger") as mock_logger:
+            _format_pa_trend_terminal(
+                {
+                    "pa_formula_trend": {
+                        "direction": "worsening",
+                        "months": [{"month": "2026-04", "violation_count": 2, "total_checked": 10}],
+                    }
+                },
+            )
+            _format_unified_audit_terminal(
+                {
+                    "pa_formula_integrity": {"ok": True},
+                    "quality_gate": {"team_batting": {"ok": True}, "team_pitching": {"ok": True}},
+                },
+            )
+            _format_freshness_terminal({"date": "20260402", "total_issues": 1, "issues": {"G1": ["missing"]}})
+            _format_sync_terminal({"status": "failed", "reason": "diff"})
+            _format_terminal({"sync": {"status": "ok", "ok_count": 1, "table_count": 1}}, ["sync"])
+        rendered = "\n".join(
+            str(call.args) for call in mock_logger.info.call_args_list + mock_logger.warning.call_args_list
+        )
+        assert "PA 추세" in rendered
+        assert "전체 통과" in rendered
+        assert "Freshness" in rendered
+        assert "diff" in rendered
 
 
 class TestDashboardNotificationHelpers:

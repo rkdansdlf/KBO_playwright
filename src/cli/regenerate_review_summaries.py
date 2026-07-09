@@ -338,7 +338,7 @@ def _mark_review_oci_status(rows: Sequence[ReviewRegenReportRow], *, apply: bool
                 row.oci_status = "skipped_missing_oci_url"
 
 
-def regenerate_review_summaries(
+def regenerate_review_summaries(  # noqa: PLR0913
     *,
     game_ids: Sequence[str] | None = None,
     dates: Sequence[str] | None = None,

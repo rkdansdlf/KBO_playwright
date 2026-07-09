@@ -53,7 +53,7 @@ class RebuildReportRow:
     oci_status: str = "not_requested"
 
 
-def rebuild_relay_events(
+def rebuild_relay_events(  # noqa: PLR0913
     *,
     seasons: Sequence[int] = DEFAULT_SEASONS,
     game_ids: Sequence[str] | None = None,
@@ -193,15 +193,29 @@ def _rebuild_events_for_game(
     calculator: WPACalculator | None = None,
 ) -> list[dict[str, Any]]:
     kept = [_event_to_payload(event) for event in events if _should_keep_event(event)]
-    for index, event in enumerate(kept, start=1):
+    _resequence_events(kept)
+    _enrich_event_types(kept)
+    _enrich_result_codes(kept)
+    _apply_wpa_transitions(kept, calculator=calculator)
+    return kept
+
+
+def _resequence_events(events: list[dict[str, Any]]) -> None:
+    for index, event in enumerate(events, start=1):
         event["event_seq"] = index
+
+
+def _enrich_event_types(events: list[dict[str, Any]]) -> None:
+    for event in events:
         event_type = str(event.get("event_type") or "").strip().lower()
         if not event_type or event_type in {"unknown", "other", "substitution"}:
             event["event_type"] = detect_relay_event_type(event.get("description"))
+
+
+def _enrich_result_codes(events: list[dict[str, Any]]) -> None:
+    for event in events:
         if not event.get("result_code"):
             event["result_code"] = _result_from_description(event.get("description"))
-    _apply_wpa_transitions(kept, calculator=calculator)
-    return kept
 
 
 def _should_keep_event(event: GameEvent) -> bool:
@@ -315,8 +329,8 @@ def _sync_changed_games(
     oci_url: str | None,
     log: Callable[..., Any],
 ) -> None:
-    target_url = oci_url or os.getenv("OCI_DB_URL")
-    report_by_game_id = {row.game_id: row for row in report_rows}
+    target_url = _resolve_oci_url(oci_url)
+    report_by_game_id = _build_report_index(report_rows)
     if not target_url:
         for game_id in game_ids:
             report_by_game_id[game_id].oci_status = "skipped_missing_oci_url"
@@ -344,8 +358,8 @@ def _sync_changed_events(
     oci_url: str | None,
     log: Callable[..., Any],
 ) -> None:
-    target_url = oci_url or os.getenv("OCI_DB_URL")
-    report_by_game_id = {row.game_id: row for row in report_rows}
+    target_url = _resolve_oci_url(oci_url)
+    report_by_game_id = _build_report_index(report_rows)
     if not target_url:
         for game_id in game_ids:
             report_by_game_id[game_id].oci_status = "skipped_missing_oci_url"
@@ -383,17 +397,27 @@ def _write_report(report_path: Path, rows: Sequence[RebuildReportRow]) -> None:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
-            writer.writerow(
-                {
-                    "game_id": row.game_id,
-                    "status": row.status,
-                    "old_rows": row.old_rows,
-                    "new_rows": row.new_rows,
-                    "notes": row.notes,
-                    "backup_path": row.backup_path,
-                    "oci_status": row.oci_status,
-                },
-            )
+            writer.writerow(_report_row_to_dict(row))
+
+
+def _resolve_oci_url(oci_url: str | None) -> str | None:
+    return oci_url or os.getenv("OCI_DB_URL")
+
+
+def _build_report_index(report_rows: Sequence[RebuildReportRow]) -> dict[str, RebuildReportRow]:
+    return {row.game_id: row for row in report_rows}
+
+
+def _report_row_to_dict(row: RebuildReportRow) -> dict[str, object]:
+    return {
+        "game_id": row.game_id,
+        "status": row.status,
+        "old_rows": row.old_rows,
+        "new_rows": row.new_rows,
+        "notes": row.notes,
+        "backup_path": row.backup_path,
+        "oci_status": row.oci_status,
+    }
 
 
 def _batter_from_description(description: object) -> str | None:
@@ -432,11 +456,17 @@ def _load_game_ids_from_file(path: str | Path | None) -> list[str]:
     values: list[str] = []
     with Path(path).open(encoding="utf-8") as handle:
         for line in handle:
-            token = line.strip().split(",", 1)[0].strip()
-            if not token or token.lower() == "game_id":
-                continue
-            values.append(token)
+            token = _parse_game_id_line(line)
+            if token:
+                values.append(token)
     return _dedupe_game_ids(values)
+
+
+def _parse_game_id_line(line: str) -> str | None:
+    token = line.strip().split(",", 1)[0].strip()
+    if not token or token.lower() == "game_id":
+        return None
+    return token
 
 
 def _chunked(values: Sequence[str], size: int) -> Iterable[Sequence[str]]:

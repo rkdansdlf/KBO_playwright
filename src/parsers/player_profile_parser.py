@@ -279,7 +279,7 @@ def parse_path(s: str) -> list[str]:
     if not s:
         return []
     # Support hyphens, arrows, slashes, or commas as dividers
-    parts = re.split(r"\s*[-–—→,>]\s*", s.strip())
+    parts = re.split(r"\s*[-\u2013\u2014\u2192,>]\s*", s.strip())
     return [p for p in (i.strip() for i in parts) if p]
 
 

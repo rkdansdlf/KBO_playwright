@@ -466,8 +466,6 @@ class PlayerSearchCrawler:
                     return False
                 else:
                     return True
-                    logger.exception("Manual postback evaluate failed")
-                    return False
 
         # Normal (non-JS) links: use click()
         try:

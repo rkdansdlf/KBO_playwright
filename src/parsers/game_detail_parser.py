@@ -305,23 +305,23 @@ def _parse_metadata(soup: BeautifulSoup) -> dict[str, Any]:
     }
 
     if info_text:
-        stadium_match = re.search(r"구장\s*[:：]\s*([^\s]+)", info_text)
+        stadium_match = re.search(r"구장\s*[:\uff1a]\s*([^\s]+)", info_text)
         if stadium_match:
             metadata["stadium"] = stadium_match.group(1)
 
-        attendance_match = re.search(r"관중\s*[:：]\s*([\d,]+)", info_text)
+        attendance_match = re.search(r"관중\s*[:\uff1a]\s*([\d,]+)", info_text)
         if attendance_match:
             metadata["attendance"] = safe_int_or_none(attendance_match.group(1))
 
-        time_match = re.search(r"개시\s*[:：]\s*([\d:]+)", info_text)
+        time_match = re.search(r"개시\s*[:\uff1a]\s*([\d:]+)", info_text)
         if time_match:
             metadata["start_time"] = time_match.group(1)
 
-        end_match = re.search(r"종료\s*[:：]\s*([\d:]+)", info_text)
+        end_match = re.search(r"종료\s*[:\uff1a]\s*([\d:]+)", info_text)
         if end_match:
             metadata["end_time"] = end_match.group(1)
 
-        duration_match = re.search(r"경기시간\s*[:：]\s*([\d:]+)", info_text)
+        duration_match = re.search(r"경기시간\s*[:\uff1a]\s*([\d:]+)", info_text)
         if duration_match:
             metadata["game_time"] = duration_match.group(1)
             metadata["duration_minutes"] = _parse_duration_minutes(metadata["game_time"])

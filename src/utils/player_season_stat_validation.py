@@ -99,7 +99,7 @@ def _is_number_like(value: object) -> bool:
         return True
     if isinstance(value, str):
         cleaned = value.strip().replace(",", "")
-        if cleaned in {"", "-", "–", "—"}:
+        if cleaned in {"", "-", "\u2013", "\u2014"}:
             return True
         try:
             float(cleaned)
@@ -129,7 +129,7 @@ def _number_or_none(value: object) -> float | None:
         return float(value)
     if isinstance(value, str):
         cleaned = value.strip().replace(",", "")
-        if cleaned in {"", "-", "–", "—"}:
+        if cleaned in {"", "-", "\u2013", "\u2014"}:
             return None
         try:
             return float(cleaned)

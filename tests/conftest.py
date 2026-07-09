@@ -4,6 +4,8 @@ Ensures the repository root is importable so `import src` works consistently.
 
 from __future__ import annotations
 
+import sqlite3
+from datetime import date, datetime
 import os
 import sys
 from pathlib import Path
@@ -13,6 +15,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+sqlite3.register_adapter(date, lambda value: value.isoformat())
+sqlite3.register_adapter(datetime, lambda value: value.isoformat())
 
 # Use a separate test database to avoid corrupting the production DB
 TEST_DB_PATH = ROOT / "data" / "test_runtime.db"

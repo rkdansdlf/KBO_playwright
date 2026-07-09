@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from typing import Any
+
 from src.db.engine import SessionLocal
 from src.repositories.stadium_seat_section_repository import StadiumSeatSectionRepository
 
-SEAT_DATA = [
+SEAT_DATA: list[dict[str, Any]] = [
     # === 잠실 (LG / 두산 공동 사용) ===
     {
         "stadium_id": "JAMSIL",

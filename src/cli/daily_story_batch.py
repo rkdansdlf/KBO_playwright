@@ -164,7 +164,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
                 game_ids=[],
                 datasets=["game", "game_events", "game_summary"],
             )
-            logger.info("ℹ️ No completed games found for %s. manifest=%s", target_date, manifest_path)
+            logger.info("[info] No completed games found for %s. manifest=%s", target_date, manifest_path)
             return []
 
         trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])  # type: ignore[misc]

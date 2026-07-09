@@ -37,6 +37,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _load_seed_ids(seed_file: str) -> set[str]:
+    with Path(seed_file).open() as f:
+        return {line.strip() for line in f if line.strip()}
+
+
 RETIRED_PLAYER_PROCESS_EXCEPTIONS = (
     PlaywrightError,
     SQLAlchemyError,
@@ -148,8 +154,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
 
     if args.seed_file:
         logger.info("📂 Loading seed IDs from %s...", args.seed_file)
-        with Path(args.seed_file).open() as f:
-            inactive_ids = {line.strip() for line in f if line.strip()}
+        inactive_ids = await asyncio.to_thread(_load_seed_ids, args.seed_file)
     else:
         inactive_ids = await determine_inactive_ids(
             start_year=args.start_year,

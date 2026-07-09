@@ -27,6 +27,18 @@ from src.constants import KST
 logger = logging.getLogger(__name__)
 
 
+def _save_robots_snapshot(robots_url: str, content: str) -> Path:
+    snapshot_dir = Path("docs/robots")
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
+    snapshot_path = snapshot_dir / f"robots_{timestamp}.txt"
+    with snapshot_path.open("w", encoding="utf-8") as f:
+        f.write(f"# Source: {robots_url}\n")
+        f.write(f"# Fetched at: {datetime.now(KST).isoformat()}\n\n")
+        f.write(content)
+    return snapshot_path
+
+
 class ComplianceChecker:
     """Fetch and parses robots.txt to check crawling permissions."""
 
@@ -79,14 +91,9 @@ class ComplianceChecker:
 
                                 # Save snapshot
                                 try:
-                                    snapshot_dir = Path("docs/robots")
-                                    snapshot_dir.mkdir(parents=True, exist_ok=True)
-                                    timestamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
-                                    snapshot_path = snapshot_dir / f"robots_{timestamp}.txt"
-                                    with snapshot_path.open("w", encoding="utf-8") as f:
-                                        f.write(f"# Source: {self.robots_url}\n")
-                                        f.write(f"# Fetched at: {datetime.now(KST).isoformat()}\n\n")
-                                        f.write(content)
+                                    snapshot_path = await asyncio.to_thread(
+                                        _save_robots_snapshot, self.robots_url, content
+                                    )
                                     logger.info("[COMPLIANCE] robots.txt snapshot saved to %s", snapshot_path)
                                 except OSError:
                                     logger.exception("[COMPLIANCE] Failed to save snapshot")

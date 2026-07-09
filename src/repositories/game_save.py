@@ -269,7 +269,7 @@ def save_schedule_game(
                 session.add(game)
                 changed = True
                 if write_contract:
-                    write_contract.field_updated(game_id, source, "game.created", None, True)
+                    write_contract.field_updated(game_id, source, "game.created", None, changed=True)
 
             changed |= _assign_field_if_changed(
                 game,
@@ -382,7 +382,7 @@ def _get_or_create_game(
     session.add(game)
     session.flush()
     if write_contract:
-        write_contract.field_updated(game_id, source, "game.created", None, True)
+        write_contract.field_updated(game_id, source, "game.created", None, changed=True)
     return game, True
 
 
