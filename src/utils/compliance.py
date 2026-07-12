@@ -1,5 +1,4 @@
-"""
-Robots.txt compliance checker for KBO Data Crawler.
+"""Robots.txt compliance checker for KBO Data Crawler.
 
 Ensure that we follow Disallow rules from koreabaseball.com.
 
@@ -45,8 +44,7 @@ class ComplianceChecker:
     _instance: ComplianceChecker | None = None
 
     def __init__(self, robots_url: str = "https://www.koreabaseball.com/robots.txt") -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             robots_url: Robots URL.
@@ -62,8 +60,7 @@ class ComplianceChecker:
 
     @classmethod
     def get_instance(cls) -> ComplianceChecker:
-        """
-        Get instance.
+        """Get instance.
 
         Returns:
             ComplianceChecker instance.
@@ -114,8 +111,7 @@ class ComplianceChecker:
                         self.last_fetch_time = now
 
     async def is_allowed(self, url: str, user_agent: str = "*") -> bool:
-        """
-        Check if the given URL is allowed for crawling.
+        """Check if the given URL is allowed for crawling.
 
         Args:
             url: Url.
@@ -132,8 +128,7 @@ class ComplianceChecker:
         return allowed
 
     def is_allowed_sync(self, url: str, user_agent: str = "*") -> bool:
-        """
-        Provide synchronous version of is_allowed (Wait if not loaded).
+        """Provide synchronous version of is_allowed (Wait if not loaded).
 
         Args:
             url: Url.

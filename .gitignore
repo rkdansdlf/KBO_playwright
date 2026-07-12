@@ -97,3 +97,8 @@ data/kbo_auth_state.json
 data/archive/
 *,cover
 /venv_new
+
+# Coverage reports
+coverage.xml
+coverage.json
+coverage_report.txt

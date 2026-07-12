@@ -1,5 +1,4 @@
-"""
-Database engine configuration.
+"""Database engine configuration.
 
 Supports both SQLite (dev) and MySQL (production).
 
@@ -68,13 +67,13 @@ def create_engine_for_url(
     disable_sqlite_wal: bool = False,
     sqlite_synchronous: str | None = None,
 ) -> SQLAlchemyEngine:
-    """
-    Create engine for url.
+    """Create engine for url.
 
-    Args:
-        url: Url.
-        disable_sqlite_wal: Disable Sqlite Wal.
-        url: Url.
+        Args:
+            url: Url.
+            disable_sqlite_wal: Disable Sqlite Wal.
+            sqlite_synchronous: SQLite durability mode (``FULL`` or ``NORMAL``).
+            url: Url.
         disable_sqlite_wal: Disable Sqlite Wal.
         url: Url.
 
@@ -121,8 +120,7 @@ SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expi
 
 @contextmanager
 def get_db_session() -> Iterator[Session]:
-    """
-    Get db session.
+    """Get db session.
 
     Returns:
         The result of the operation.
@@ -337,8 +335,9 @@ def _migrate_game_summary_table(conn: Connection) -> None:
     column_names = {row[1] for row in info_rows}
     fk_rows = conn.exec_driver_sql("PRAGMA foreign_key_list(game_summary);").fetchall()
     needs_column_fix = "summary_type" not in column_names or "detail_text" not in column_names
-    needs_fk_fix = any(row[2] != "game" for row in fk_rows)
-    if not needs_column_fix and not needs_fk_fix:
+    needs_fk_fix = not fk_rows or any(row[2] != "game" for row in fk_rows)
+    needs_cascade_fix = not fk_rows or any(row[6] != "CASCADE" for row in fk_rows)
+    if not needs_column_fix and not needs_fk_fix and not needs_cascade_fix:
         return
 
     select_summary = "summary_type" if "summary_type" in column_names else "category"
@@ -358,15 +357,17 @@ def _migrate_game_summary_table(conn: Connection) -> None:
             detail_text TEXT,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
-            FOREIGN KEY(game_id) REFERENCES game (game_id)
+            FOREIGN KEY(game_id) REFERENCES game (game_id) ON DELETE CASCADE
         );
         """,
     )
     has_player_id = "player_id" in column_names
     conn.exec_driver_sql(
         f"""
-        INSERT INTO game_summary (id, game_id, summary_type, player_id, player_name, detail_text, created_at, updated_at)
-        SELECT id, game_id, {select_summary}, {"player_id" if has_player_id else "NULL"}, player_name, {select_detail}, created_at, updated_at
+        INSERT INTO game_summary
+            (id, game_id, summary_type, player_id, player_name, detail_text, created_at, updated_at)
+        SELECT id, game_id, {select_summary}, {"player_id" if has_player_id else "NULL"},
+            player_name, {select_detail}, created_at, updated_at
         FROM game_summary_old;
         """,  # noqa: S608
     )
@@ -377,6 +378,7 @@ def _migrate_game_summary_table(conn: Connection) -> None:
 def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
     """Initialize db."""
+    import src.models  # noqa: F401
     from src.models.base import Base
 
     try:

@@ -27,8 +27,7 @@ class QualityRegressionResult:
     sample_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Handle the to dict operation.
+        """Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -52,8 +51,7 @@ class QualityRegressionReport:
 
     @property
     def ok(self) -> bool:
-        """
-        Handle the ok operation.
+        """Handle the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -63,8 +61,7 @@ class QualityRegressionReport:
 
     @property
     def check_count(self) -> int:
-        """
-        Check count.
+        """Check count.
 
         Returns:
             Integer result.
@@ -74,8 +71,7 @@ class QualityRegressionReport:
 
     @property
     def failure_count(self) -> int:
-        """
-        Handle the failure count operation.
+        """Handle the failure count operation.
 
         Returns:
             Integer result.
@@ -84,8 +80,7 @@ class QualityRegressionReport:
         return sum(1 for result in self.results if result.status == "fail")
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Handle the to dict operation.
+        """Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -289,8 +284,7 @@ _CHECKS: tuple[_SqlCheck, ...] = (
 
 
 def run_regression_pack(conn: Connection, checks: Sequence[_SqlCheck] = _CHECKS) -> QualityRegressionReport:
-    """
-    Run data quality invariants against a SQLAlchemy connection.
+    """Run data quality invariants against a SQLAlchemy connection.
 
     Args:
         conn: Conn.
@@ -307,8 +301,7 @@ def run_regression_pack(conn: Connection, checks: Sequence[_SqlCheck] = _CHECKS)
 
 
 def render_regression_report(report: QualityRegressionReport) -> str:
-    """
-    Report render regression.
+    """Report render regression.
 
     Args:
         report: Report.
@@ -334,8 +327,7 @@ def render_regression_report(report: QualityRegressionReport) -> str:
 
 
 def report_to_json(report: QualityRegressionReport) -> str:
-    """
-    Report to json.
+    """Report to json.
 
     Args:
         report: Report.

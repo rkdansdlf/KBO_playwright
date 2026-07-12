@@ -1,5 +1,4 @@
-"""
-verify_sync_consistency.py.
+"""verify_sync_consistency.py.
 
 CLI tool to verify data consistency between the local SQLite database
 and the remote OCI PostgreSQL database.
@@ -32,6 +31,7 @@ if TYPE_CHECKING:
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+FULL_ID_MATCH_RATE = 100.0
 
 SYNC_VERIFY_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
@@ -50,8 +50,7 @@ TABLES_TO_VERIFY = [
 
 
 def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[dict[str, Any]]:
-    """
-    Compare row counts for verified tables between SQLite and OCI.
+    """Compare row counts for verified tables between SQLite and OCI.
 
     Args:
         sqlite_conn: Sqlite Conn.
@@ -84,12 +83,6 @@ def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[di
         sqlite_count = get_row_count(sqlite_conn, table_name)
         oci_count = get_row_count(oci_conn, table_name)
         delta = sqlite_count - oci_count
-        if delta == 0:
-            status = "OK"
-        elif delta < 0:
-            status = "OK (OCI+)"
-        else:
-            status = "MISMATCH"
 
         results.append(
             {
@@ -97,7 +90,7 @@ def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[di
                 "sqlite_count": sqlite_count,
                 "oci_count": oci_count,
                 "delta": delta,
-                "status": status,
+                "status": _compute_count_status(delta),
                 "pk_cols": pk_cols,
             },
         )
@@ -106,8 +99,7 @@ def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[di
 
 
 def get_row_count(conn: Connection, table_name: str) -> int:
-    """
-    Get row count.
+    """Get row count.
 
     Args:
         conn: Conn.
@@ -127,14 +119,39 @@ def get_row_count(conn: Connection, table_name: str) -> int:
         return 0
 
 
+def _compute_count_status(delta: int) -> str:
+    if delta == 0:
+        return "OK"
+    if delta < 0:
+        return "OK (OCI+)"
+    return "MISMATCH"
+
+
+def _stringify_row(row: Sequence[object]) -> tuple[str, ...]:
+    return tuple(val.isoformat() if hasattr(val, "isoformat") else str(val) for val in row)
+
+
+def _compute_match_rate(missing_count: int, total_count: int) -> float:
+    return (1.0 - (missing_count / total_count)) * 100 if total_count else 100.0
+
+
+def _format_missing_keys(missing_rows: set[tuple[str, ...]], *, limit: int = 10) -> list[object]:
+    sample_keys: list[object] = []
+    for row in list(missing_rows)[:limit]:
+        if len(row) == 1:
+            sample_keys.append(row[0])
+        else:
+            sample_keys.append(row)
+    return sample_keys
+
+
 def check_deep_ids(
     sqlite_conn: Connection,
     oci_conn: Connection,
     table_name: str,
     pk_cols: list[str],
 ) -> tuple[int, list[object]]:
-    """
-    Perform deep ID-level matching to identify SQLite rows missing in OCI.
+    """Perform deep ID-level matching to identify SQLite rows missing in OCI.
 
     Args:
         sqlite_conn: Sqlite Conn.
@@ -154,35 +171,14 @@ def check_deep_ids(
         res_oci = oci_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))  # noqa: S608
         oci_rows = res_oci.fetchall()
 
-        def stringify_row(row: Sequence[object]) -> tuple[str, ...]:
-            """
-            Handle the stringify row operation.
-
-            Args:
-                row: Row.
-                row: Row.
-
-            Returns:
-                Tuple result.
-
-            """
-            return tuple(val.isoformat() if hasattr(val, "isoformat") else str(val) for val in row)
-
-        sqlite_ids = {stringify_row(row) for row in sqlite_rows}
-        oci_ids = {stringify_row(row) for row in oci_rows}
+        sqlite_ids = {_stringify_row(row) for row in sqlite_rows}
+        oci_ids = {_stringify_row(row) for row in oci_rows}
 
         missing_in_oci = sqlite_ids - oci_ids
-        match_rate = (1.0 - (len(missing_in_oci) / len(sqlite_ids))) * 100 if sqlite_ids else 100.0
+        match_rate = _compute_match_rate(len(missing_in_oci), len(sqlite_ids))
+        sample_keys = _format_missing_keys(missing_in_oci)
 
-        # Un-tuple single keys for cleaner printing in sample
-        sample_keys = []
-        for row in list(missing_in_oci)[:10]:
-            if len(row) == 1:
-                sample_keys.append(row[0])
-            else:
-                sample_keys.append(row)  # type: ignore[arg-type]
-
-        return int(match_rate), sample_keys  # type: ignore[return-value]
+        return int(match_rate), sample_keys
     except SYNC_VERIFY_DB_EXCEPTIONS:
         logger.exception("Error performing deep check for %s", table_name)
         return 0, []
@@ -210,10 +206,18 @@ def _collect_count_mismatches(count_results: list[dict[str, Any]]) -> tuple[list
     for res in count_results:
         if res["status"] in ("MISMATCH", "MISSING_ON_OCI"):
             mismatches.append(res)
-            alert_lines.append(
-                f"• <b>{res['table_name']}</b>: SQLite={res['sqlite_count']} vs OCI={res['oci_count']} (Delta={res['delta']})",
-            )
+            alert_lines.append(_format_count_alert_line(res))
     return mismatches, alert_lines
+
+
+def _format_count_alert_line(res: dict[str, Any]) -> str:
+    return (
+        f"• <b>{res['table_name']}</b>: SQLite={res['sqlite_count']} vs OCI={res['oci_count']} (Delta={res['delta']})"
+    )
+
+
+def _format_deep_alert_line(table_name: str, match_rate: int, sample_str: str) -> str:
+    return f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})"
 
 
 def _collect_deep_mismatches(
@@ -232,13 +236,11 @@ def _collect_deep_mismatches(
         table_name = res["table_name"]
         match_rate, missing_sample = check_deep_ids(sqlite_conn, oci_conn, table_name, res["pk_cols"])
         logger.info("  - %s: Match Rate = %s%%", table_name, match_rate)
-        if match_rate < 100.0:
+        if match_rate < FULL_ID_MATCH_RATE:
             sample_str = ", ".join(str(key) for key in missing_sample)
             logger.warning("    ⚠️  Missing sample IDs in OCI: %s", sample_str)
             mismatches.append(res)
-            alert_lines.append(
-                f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})",
-            )
+            alert_lines.append(_format_deep_alert_line(table_name, match_rate, sample_str))
     return mismatches, alert_lines
 
 
@@ -251,8 +253,7 @@ def _send_consistency_mismatch_alert(alert_lines: list[str], *, trigger_alert: b
 
 
 def check_game_season_fk(sqlite_conn: Connection, oci_conn: Connection) -> list[dict[str, Any]]:
-    """
-    Check that game.season_id values reference existing kbo_seasons rows.
+    """Check that game.season_id values reference existing kbo_seasons rows.
 
     Args:
         sqlite_conn: Sqlite Conn.
@@ -281,8 +282,7 @@ def check_game_season_fk(sqlite_conn: Connection, oci_conn: Connection) -> list[
 
 
 def _log_game_season_fk_results(fk_results: list[dict[str, Any]]) -> list[str]:
-    """
-    Log FK check results and return alert messages for mismatches.
+    """Log FK check results and return alert messages for mismatches.
 
     Args:
         fk_results: Fk Results.
@@ -298,13 +298,16 @@ def _log_game_season_fk_results(fk_results: list[dict[str, Any]]) -> list[str]:
             logger.info("  - %s: game → kbo_seasons FK integrity OK", res["db"])
         else:
             logger.warning("  - %s: %d orphan game rows (season_id not in kbo_seasons)", res["db"], cnt)
-            alerts.append(f"• {res['db']}: {cnt} game rows with invalid season_id (not in kbo_seasons)")
+            alerts.append(_format_game_season_fk_alert(res["db"], cnt))
     return alerts
 
 
+def _format_game_season_fk_alert(db_label: str, orphan_count: int) -> str:
+    return f"• {db_label}: {orphan_count} game rows with invalid season_id (not in kbo_seasons)"
+
+
 def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> bool:
-    """
-    Run consistency audit.
+    """Run consistency audit.
 
     Args:
         deep: Deep.

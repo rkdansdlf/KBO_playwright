@@ -1,5 +1,4 @@
-"""
-PBP Crawler - Historical Play-by-play data collection (`LiveTextView2.aspx`).
+"""PBP Crawler - Historical Play-by-play data collection (`LiveTextView2.aspx`).
 
 Navigaes directly to the Live Text View page to collect events.
 Computes WPA transitions based on the events.
@@ -25,6 +24,7 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.text_parser import KBOTextParser
 
 logger = logging.getLogger(__name__)
+LEGACY_SEPARATOR_MIN_TEXT_LENGTH = 10
 
 
 @dataclass
@@ -72,8 +72,7 @@ class PBPCrawler:
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
         # Using the older but more robust LiveText.aspx which behaves better with Referer checks
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -217,8 +216,7 @@ class PBPCrawler:
         }
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """
-        Load the LiveText page for a specific game and extracts PBP data.
+        """Load the LiveText page for a specific game and extracts PBP data.
 
         Args:
             game_id: Game ID.
@@ -300,8 +298,7 @@ class PBPCrawler:
         return await self._crawl_game_events_with_pool(ctx.pool, ctx.game_id, ctx.game_date, ctx.url, retry_count=1)
 
     async def _extract_flat_events_legacy(self, page: Page) -> list[dict[str, Any]]:
-        """
-        Extract events from LiveText.aspx which are in reverse chronological order.
+        """Extract events from LiveText.aspx which are in reverse chronological order.
 
         Args:
             page: Page.
@@ -353,7 +350,7 @@ class PBPCrawler:
                 if self._apply_inning_header(state, text, cls):
                     continue
 
-                if "---" in text and len(text) > 10:
+                if "---" in text and len(text) > LEGACY_SEPARATOR_MIN_TEXT_LENGTH:
                     continue
 
                 if not self._is_legacy_event_text(text, cls):

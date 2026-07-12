@@ -73,7 +73,7 @@ class TestBatterFromDescription:
 
 class TestResultFromDescription:
     def test_with_colon(self):
-        assert _result_from_description("김타자: 안타") == "안타"
+        assert _result_from_description("김타자: 안타") == "H1"
 
     def test_without_colon(self):
         assert _result_from_description("안타 처리") is None
@@ -224,7 +224,7 @@ class TestRebuildPureTransforms:
         ]
         _enrich_result_codes(events)
 
-        assert events[0]["result_code"] == "안타"
+        assert events[0]["result_code"] == "H1"
         assert events[1]["result_code"] == "홈런"
 
     def test_rebuild_events_for_game_filters_and_enriches(self):
@@ -263,7 +263,7 @@ class TestRebuildPureTransforms:
         assert len(rebuilt) == 1
         assert rebuilt[0]["event_seq"] == 1
         assert rebuilt[0]["event_type"] == "hit"
-        assert rebuilt[0]["result_code"] == "안타"
+        assert rebuilt[0]["result_code"] == "H1"
         mock_wpa.assert_called_once()
 
 
@@ -336,6 +336,17 @@ class TestLoadCandidateGameIds:
         result = _load_candidate_game_ids(mock_session, [2023], game_ids=["g1", "missing", "g2"])
 
         assert result == ["g1", "g2"]
+
+    def test_empty_requested_ids(self):
+        mock_session = MagicMock()
+        rows = [("g2",), ("g1",)]
+        query = mock_session.query.return_value.filter.return_value
+        query.filter.return_value = query
+        query.distinct.return_value.order_by.return_value.all.return_value = rows
+
+        result = _load_candidate_game_ids(mock_session, [2023], game_ids=None)
+
+        assert result == ["g2", "g1"]
 
 
 class TestBuildOrmEvents:
@@ -537,3 +548,279 @@ class TestFormatBaseString:
     def test_calls_shared(self):
         assert _format_base_string(1) == "1--"
         assert _format_base_string(7) == "123"
+
+
+class TestBackupExistingEvents:
+    def test_backup_writes_csv(self, tmp_path):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from src.models.game import GameEvent
+        from src.cli.rebuild_relay_events import _backup_existing_events
+
+        engine = create_engine("sqlite:///:memory:")
+        GameEvent.__table__.create(bind=engine)
+        session = sessionmaker(bind=engine)()
+
+        event = GameEvent(
+            game_id="20230625LGSS0",
+            event_seq=1,
+            inning=1,
+            inning_half="top",
+            outs=0,
+            description="Play ball",
+        )
+        session.add(event)
+        session.commit()
+
+        backup_file = tmp_path / "backup.csv"
+        _backup_existing_events(session, ["20230625LGSS0"], backup_file)
+
+        assert backup_file.exists()
+        content = backup_file.read_text(encoding="utf-8")
+        assert "game_id" in content
+        assert "20230625LGSS0" in content
+        assert "Play ball" in content
+
+
+class TestSyncChangedOci:
+    @patch("src.cli.rebuild_relay_events.OCISync")
+    @patch("src.cli.rebuild_relay_events.SessionLocal")
+    def test_sync_changed_games_success(self, mock_session_local, mock_oci_sync_cls):
+        from src.cli.rebuild_relay_events import _sync_changed_games
+
+        mock_syncer = mock_oci_sync_cls.return_value
+        row = RebuildReportRow("g1", "APPLIED", 1, 1)
+
+        _sync_changed_games(["g1"], [row], oci_url="postgresql://test", log=MagicMock())
+
+        mock_syncer.sync_specific_game.assert_called_once_with("g1")
+        assert row.oci_status == "synced"
+
+    @patch("src.cli.rebuild_relay_events.OCISync")
+    @patch("src.cli.rebuild_relay_events.SessionLocal")
+    def test_sync_changed_games_sqlalchemy_error(self, mock_session_local, mock_oci_sync_cls):
+        from src.cli.rebuild_relay_events import _sync_changed_games
+        from sqlalchemy.exc import SQLAlchemyError
+
+        mock_syncer = mock_oci_sync_cls.return_value
+        mock_syncer.sync_specific_game.side_effect = SQLAlchemyError("DB error")
+        row = RebuildReportRow("g1", "APPLIED", 1, 1)
+
+        _sync_changed_games(["g1"], [row], oci_url="postgresql://test", log=MagicMock())
+
+        assert "failed" in row.oci_status
+
+    @patch("src.cli.rebuild_relay_events.OCISync")
+    @patch("src.cli.rebuild_relay_events.SessionLocal")
+    def test_sync_changed_events_success(self, mock_session_local, mock_oci_sync_cls):
+        from src.cli.rebuild_relay_events import _sync_changed_events
+
+        mock_syncer = mock_oci_sync_cls.return_value
+        mock_syncer.sync_simple_table.return_value = 5
+        row = RebuildReportRow("g1", "APPLIED", 1, 1)
+
+        _sync_changed_events(["g1"], [row], oci_url="postgresql://test", log=MagicMock())
+
+        assert row.oci_status == "synced_events:5"
+
+    @patch("src.cli.rebuild_relay_events.OCISync")
+    @patch("src.cli.rebuild_relay_events.SessionLocal")
+    def test_sync_changed_events_sqlalchemy_error(self, mock_session_local, mock_oci_sync_cls):
+        from src.cli.rebuild_relay_events import _sync_changed_events
+        from sqlalchemy.exc import SQLAlchemyError
+
+        mock_syncer = mock_oci_sync_cls.return_value
+        mock_syncer.sync_simple_table.side_effect = SQLAlchemyError("DB error")
+        row = RebuildReportRow("g1", "APPLIED", 1, 1)
+
+        _sync_changed_events(["g1"], [row], oci_url="postgresql://test", log=MagicMock())
+
+        assert "failed" in row.oci_status
+
+
+class TestRebuildRelayEventsApply:
+    @patch("src.cli.rebuild_relay_events.SessionLocal")
+    @patch("src.cli.rebuild_relay_events._load_candidate_game_ids")
+    @patch("src.cli.rebuild_relay_events._backup_existing_events")
+    @patch("src.cli.rebuild_relay_events._rebuild_events_for_game")
+    @patch("src.cli.rebuild_relay_events._validate_rebuilt_events")
+    @patch("src.cli.rebuild_relay_events._write_report")
+    def test_apply_success(
+        self,
+        mock_write_report,
+        mock_validate,
+        mock_rebuild,
+        mock_backup,
+        mock_load,
+        mock_session_factory,
+        tmp_path,
+    ):
+        mock_session = MagicMock()
+        mock_session_factory.return_value.__enter__.return_value = mock_session
+        mock_load.return_value = ["g1"]
+        mock_rebuild.return_value = [{"event_seq": 1}]
+        mock_validate.return_value = ("READY", "")
+
+        from src.cli.rebuild_relay_events import rebuild_relay_events
+
+        rows = rebuild_relay_events(
+            seasons=[2026],
+            game_ids=["g1"],
+            apply=True,
+            sync_oci=False,
+            report_out=tmp_path / "report.csv",
+            backup_out=tmp_path / "backup.csv",
+        )
+
+        assert len(rows) == 1
+        assert rows[0].status == "APPLIED"
+        mock_session.commit.assert_called()
+        mock_backup.assert_called_once()
+
+    @patch("src.cli.rebuild_relay_events.SessionLocal")
+    @patch("src.cli.rebuild_relay_events._load_candidate_game_ids")
+    @patch("src.cli.rebuild_relay_events._rebuild_events_for_game")
+    @patch("src.cli.rebuild_relay_events._validate_rebuilt_events")
+    @patch("src.cli.rebuild_relay_events._write_report")
+    def test_apply_validation_failure_rolls_back(
+        self,
+        mock_write_report,
+        mock_validate,
+        mock_rebuild,
+        mock_load,
+        mock_session_factory,
+        tmp_path,
+    ):
+        mock_session = MagicMock()
+        mock_session_factory.return_value.__enter__.return_value = mock_session
+        mock_load.return_value = ["g1"]
+        mock_rebuild.return_value = [{"event_seq": 1}]
+        mock_validate.return_value = ("SKIPPED_SCORE_MISMATCH", "Mismatch")
+
+        from src.cli.rebuild_relay_events import rebuild_relay_events
+
+        rows = rebuild_relay_events(
+            seasons=[2026],
+            game_ids=["g1"],
+            apply=True,
+            sync_oci=False,
+            report_out=tmp_path / "report.csv",
+            backup_out=tmp_path / "backup.csv",
+        )
+
+        assert len(rows) == 1
+        assert rows[0].status == "SKIPPED_SCORE_MISMATCH"
+        mock_session.rollback.assert_called()
+
+    @patch("src.cli.rebuild_relay_events.SessionLocal")
+    @patch("src.cli.rebuild_relay_events._load_candidate_game_ids")
+    @patch("src.cli.rebuild_relay_events._backup_existing_events")
+    @patch("src.cli.rebuild_relay_events._rebuild_events_for_game")
+    @patch("src.cli.rebuild_relay_events._validate_rebuilt_events")
+    @patch("src.cli.rebuild_relay_events._sync_changed_games")
+    @patch("src.cli.rebuild_relay_events._sync_changed_events")
+    @patch("src.cli.rebuild_relay_events._write_report")
+    def test_apply_with_sync_oci_specific_game(
+        self,
+        mock_write_report,
+        mock_sync_events,
+        mock_sync_games,
+        mock_validate,
+        mock_rebuild,
+        mock_backup,
+        mock_load,
+        mock_session_factory,
+        tmp_path,
+    ):
+        mock_session = MagicMock()
+        mock_session_factory.return_value.__enter__.return_value = mock_session
+        mock_load.return_value = ["g1"]
+        mock_rebuild.return_value = [{"event_seq": 1}]
+        mock_validate.return_value = ("READY", "")
+
+        from src.cli.rebuild_relay_events import rebuild_relay_events
+
+        rebuild_relay_events(
+            seasons=[2026],
+            game_ids=["g1"],
+            apply=True,
+            sync_oci=True,
+            oci_sync_mode="specific-game",
+            report_out=tmp_path / "report.csv",
+            backup_out=tmp_path / "backup.csv",
+        )
+        mock_sync_games.assert_called_once()
+        mock_sync_events.assert_not_called()
+
+    @patch("src.cli.rebuild_relay_events.SessionLocal")
+    @patch("src.cli.rebuild_relay_events._load_candidate_game_ids")
+    @patch("src.cli.rebuild_relay_events._backup_existing_events")
+    @patch("src.cli.rebuild_relay_events._rebuild_events_for_game")
+    @patch("src.cli.rebuild_relay_events._validate_rebuilt_events")
+    @patch("src.cli.rebuild_relay_events._sync_changed_games")
+    @patch("src.cli.rebuild_relay_events._sync_changed_events")
+    @patch("src.cli.rebuild_relay_events._write_report")
+    def test_apply_with_sync_oci_events(
+        self,
+        mock_write_report,
+        mock_sync_events,
+        mock_sync_games,
+        mock_validate,
+        mock_rebuild,
+        mock_backup,
+        mock_load,
+        mock_session_factory,
+        tmp_path,
+    ):
+        mock_session = MagicMock()
+        mock_session_factory.return_value.__enter__.return_value = mock_session
+        mock_load.return_value = ["g1"]
+        mock_rebuild.return_value = [{"event_seq": 1}]
+        mock_validate.return_value = ("READY", "")
+
+        from src.cli.rebuild_relay_events import rebuild_relay_events
+
+        rebuild_relay_events(
+            seasons=[2026],
+            game_ids=["g1"],
+            apply=True,
+            sync_oci=True,
+            oci_sync_mode="events",
+            report_out=tmp_path / "report.csv",
+            backup_out=tmp_path / "backup.csv",
+        )
+        mock_sync_games.assert_not_called()
+        mock_sync_events.assert_called_once()
+
+
+class TestRebuildRelayEventsCli:
+    @patch("src.cli.rebuild_relay_events.rebuild_relay_events")
+    def test_run_cli(self, mock_rebuild):
+        from src.cli.rebuild_relay_events import run
+
+        run(["--season", "2026", "--game-id", "2026LGSS0", "--apply", "--sync-oci", "--oci-sync-mode", "specific-game"])
+
+        mock_rebuild.assert_called_once()
+        kwargs = mock_rebuild.call_args.kwargs
+        assert kwargs["seasons"] == [2026]
+        assert kwargs["game_ids"] == ["2026LGSS0"]
+        assert kwargs["apply"] is True
+        assert kwargs["sync_oci"] is True
+        assert kwargs["oci_sync_mode"] == "specific-game"
+
+    @patch("src.cli.rebuild_relay_events.run")
+    def test_main(self, mock_run):
+        from src.cli.rebuild_relay_events import main
+
+        main()
+        mock_run.assert_called_once()
+
+
+class TestApplyWpaTransitions:
+    def test_apply_wpa_transitions_calls_underlying(self):
+        from src.cli.rebuild_relay_events import _apply_wpa_transitions
+
+        events = [{"outs": 0, "home_score": 0, "away_score": 0, "inning": 1, "inning_half": "top"}]
+        # This will call the real apply_wpa_transitions, which is fine
+        # We can just verify it runs without error
+        _apply_wpa_transitions(events)

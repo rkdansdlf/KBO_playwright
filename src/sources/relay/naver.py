@@ -11,8 +11,7 @@ class NaverRelayAdapter(RelaySourceAdapter):
     """NaverRelayAdapter class."""
 
     def __init__(self, crawler: RelayCrawler | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             crawler: Crawler.
@@ -23,28 +22,37 @@ class NaverRelayAdapter(RelaySourceAdapter):
 
         self.crawler = crawler or RelayCrawler()
 
-    async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
-        """
-        Fetch game.
+    async def fetch_game(
+        self,
+        game_id: str,
+        last_payload_hash: str | None = None,
+    ) -> NormalizedRelayResult:
+        """Fetch game.
 
         Args:
             game_id: Game ID.
-            game_id: Game ID.
-            game_id: Game ID.
+            last_payload_hash: Last seen payload hash.
 
         Returns:
             NormalizedRelayResult instance.
 
         """
-        result = await self.crawler.crawl_game_relay(game_id)
+        result = await self.crawler.crawl_game_relay(game_id, last_payload_hash=last_payload_hash)
 
         events = list((result or {}).get("events") or [])
         raw_pbp_rows = list((result or {}).get("raw_pbp_rows") or [])
+        status = (result or {}).get("status")
         failure_reason = None
         getter = getattr(self.crawler, "get_last_failure_reason", None)
         if callable(getter):
             failure_reason = getter(game_id)
-        notes = None if events or raw_pbp_rows else failure_reason or "No events extracted from Naver relay"
+
+        notes: str | None
+        if status == "not_modified":
+            notes = "not_modified"
+        else:
+            notes = None if events or raw_pbp_rows else failure_reason or "No events extracted from Naver relay"
+
         return NormalizedRelayResult(
             game_id=game_id,
             source_name=self.source_name,

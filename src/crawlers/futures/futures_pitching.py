@@ -102,8 +102,7 @@ HEADER_MAP = {
 
 
 def _norm_header(txt: str) -> str:
-    """
-    Normalize header text to standard key.
+    """Normalize header text to standard key.
 
     Args:
         txt: Txt.
@@ -175,8 +174,7 @@ def _parse_pitching_cell_row(headers: list[str], cells: list[str]) -> dict[str, 
 
 
 def _pick_futures_pitching_table(soup: BeautifulSoup) -> Tag | None:
-    """
-    Find the Futures pitching record table.
+    """Find the Futures pitching record table.
 
     Args:
         soup: Soup.
@@ -204,8 +202,7 @@ async def fetch_and_parse_futures_pitching(
     profile_url: str,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[dict]:
-    """
-    Fetch Futures pitching stats from player profile page.
+    """Fetch Futures pitching stats from player profile page.
 
     Args:
         _player_id: Player ID.

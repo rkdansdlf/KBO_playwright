@@ -10,7 +10,7 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from src.constants import KST
+from src.constants import KST, MAX_INNINGS
 from src.utils.date_helpers import parse_date_str
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,10 @@ SEASON_TYPE_TO_LEAGUE_CODE = {
     "playoff": 4,
     "korean_series": 5,
 }
+
+MIN_TIME_COMPONENTS = 2
+MIN_PLAYER_NAME_LENGTH = 2
+MAX_PLAYER_NAME_LENGTH = 5
 
 SEASON_DATE_RULES: dict[int, list[tuple[str, str, str]]] = {
     2023: [
@@ -332,8 +336,7 @@ def _ensure_season_exists(
     season_year: int,
     league_type_code: int,
 ) -> int:
-    """
-    Auto-create a kbo_seasons row if missing; return its season_id.
+    """Auto-create a kbo_seasons row if missing; return its season_id.
 
     Args:
         session: Session.
@@ -385,8 +388,7 @@ def _resolve_game_season_id(
     game_date: date,
     existing_season_id: int | None,
 ) -> int | None:
-    """
-    Resolve season_id for non-schedule write paths that only know game_date.
+    """Resolve season_id for non-schedule write paths that only know game_date.
 
     Args:
         session: Session.
@@ -410,8 +412,7 @@ def _resolve_game_season_id(
 
 
 def _canonicalize_game_id(game_id: object) -> tuple[str | None, str | None]:
-    """
-    Return (canonical legacy game_id, original game_id).
+    """Return (canonical legacy game_id, original game_id).
 
     Args:
         game_id: Game ID.
@@ -430,8 +431,7 @@ def _canonicalize_game_id_for_payload(
     payload: CanonicalGameIdPayload | None = None,
     **kwargs: object,
 ) -> tuple[str | None, str | None]:
-    """
-    Return a canonical game_id, preferring explicit payload teams when available.
+    """Return a canonical game_id, preferring explicit payload teams when available.
 
     Args:
         game_id: Game ID.
@@ -617,8 +617,7 @@ def _infer_score_from_children(session: Session, game_id: str, team_side: str) -
 
 
 def _infer_pitcher_from_children(session: Session, game_id: str, team_side: str) -> str | None:
-    """
-    Find starting pitcher name from game_pitching_stats.
+    """Find starting pitcher name from game_pitching_stats.
 
     Args:
         session: Session.
@@ -792,7 +791,7 @@ def _upsert_metadata(
         session.add(meta)
         changed = True
         if source and write_contract:
-            write_contract.field_updated(game_id, source, "metadata.created", None, changed=True)
+            write_contract.field_updated(game_id, source, "metadata.created", old=None, new=True)
 
     _write_source = source or GameWriteSource("metadata", "unknown")
 
@@ -1174,8 +1173,8 @@ def _safe_time(value: object) -> time | None:
         return value.time()
     try:
         parts = str(value).split(":")
-        if len(parts) >= 2:
-            return datetime.strptime(":".join(parts[:2]), "%H:%M").replace(tzinfo=KST).time()
+        if len(parts) >= MIN_TIME_COMPONENTS:
+            return datetime.strptime(":".join(parts[:MIN_TIME_COMPONENTS]), "%H:%M").replace(tzinfo=KST).time()
     except ValueError:
         logger.info("Failed to parse start_time value")
         return None
@@ -1183,8 +1182,7 @@ def _safe_time(value: object) -> time | None:
 
 
 def _resolve_winner(home: dict[str, Any], away: dict[str, Any]) -> tuple[str | None, int | None]:
-    """
-    Determine winning team code and score based on box score.
+    """Determine winning team code and score based on box score.
 
     Args:
         home: Home.
@@ -1285,7 +1283,7 @@ def _build_inning_scores(
                     "team_code": team_code,
                     "inning": idx,
                     "runs": runs,
-                    "is_extra": idx > 9,
+                    "is_extra": idx > MAX_INNINGS,
                 },
             )
     _apply_team_identity_to_mappings(records, season_year)
@@ -1520,8 +1518,7 @@ def _json_dumps(payload: dict[str, Any]) -> str:
 
 
 def _extract_players_from_text(category: str, text: str) -> list[tuple[str, str | None]]:
-    """
-    Extract (player_name, detail) from summary text blocks.
+    """Extract (player_name, detail) from summary text blocks.
 
     Example: '강민호1호(2회1점 쿠에바스) 로하스1호(4회1점 코너)'
              -> [('강민호', '강민호1호(...)'), ('로하스', '로하스1호(...)')].
@@ -1562,11 +1559,11 @@ def _extract_players_from_text(category: str, text: str) -> list[tuple[str, str 
         if ":" in text:
             parts = text.split(":", 1)
             name = parts[0].strip()
-            if 2 <= len(name) <= 5:
+            if MIN_PLAYER_NAME_LENGTH <= len(name) <= MAX_PLAYER_NAME_LENGTH:
                 return [(name, text)]
 
         # Check if it's a single name
-        if 2 <= len(text.strip()) <= 5 and " " not in text.strip():
+        if MIN_PLAYER_NAME_LENGTH <= len(text.strip()) <= MAX_PLAYER_NAME_LENGTH and " " not in text.strip():
             return [(text.strip(), None)]
 
     return entries
@@ -1581,8 +1578,7 @@ def _clean_extras(extras: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _auto_sync_to_oci(game_id: str) -> None:
-    """
-    Trigger OCI synchronization if enabled.
+    """Trigger OCI synchronization if enabled.
 
     Args:
         game_id: Game ID.

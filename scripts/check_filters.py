@@ -51,9 +51,9 @@ async def check_filters():
             for i in range(min(radio_count, 10)):
                 rad = radios.nth(i)
                 name = await rad.get_attribute("name")
-                value = await rad.get_attribute("value")
+                rad_value = await rad.get_attribute("value")
                 checked = await rad.is_checked()
-                print(f"Radio {i}: name={name}, value={value}, checked={checked}")
+                print(f"Radio {i}: name={name}, value={rad_value}, checked={checked}")
 
             # Check the search result count text
             print("\n\n=== Search result count ===")

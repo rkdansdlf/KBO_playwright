@@ -1,5 +1,4 @@
-"""
-KBO 리그의 시즌 경기 일정을 수집하여 데이터베이스에 저장하는 CLI 스크립트.
+"""KBO 리그의 시즌 경기 일정을 수집하여 데이터베이스에 저장하는 CLI 스크립트.
 
 지정된 연도와 월에 해당하는 경기 일정 정보를 KBO 공식 사이트에서 크롤링하고,
 이를 `game_schedules` 테이블에 저장(UPSERT)합니다.
@@ -27,8 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 async def crawl_schedule(args: argparse.Namespace) -> None:
-    """
-    경기 일정 크롤링 및 저장 로직을 수행합니다.
+    """경기 일정 크롤링 및 저장 로직을 수행합니다.
 
     Args:
         args: Positional arguments to pass through.
@@ -50,8 +48,7 @@ async def crawl_schedule(args: argparse.Namespace) -> None:
 
 
 async def _crawl_upcoming_months(args: argparse.Namespace) -> None:
-    """
-    현재월 + 다음월 일정을 크롤링합니다.
+    """현재월 + 다음월 일정을 크롤링합니다.
 
     Args:
         args: Positional arguments to pass through.
@@ -78,8 +75,7 @@ async def _crawl_upcoming_months(args: argparse.Namespace) -> None:
 
 
 def parse_months(months_arg: str | None) -> list[int]:
-    """
-    월 인자(e.g., "3-5,8")를 파싱하여 월 리스트(e.g., [3, 4, 5, 8])를 생성합니다.
+    """월 인자(e.g., "3-5,8")를 파싱하여 월 리스트(e.g., [3, 4, 5, 8])를 생성합니다.
 
     Args:
         months_arg: Months Arg.
@@ -121,8 +117,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

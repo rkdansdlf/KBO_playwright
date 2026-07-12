@@ -98,30 +98,25 @@ def _resolve_db_url(raw: str | None) -> str:
     return os.getenv("DATABASE_URL") or _ENGINE_DB_URL
 
 
-def audit_completeness(
-    db_url: str,
+def _build_query_params(
+    target_date: date | None,
     lookback_days: int,
-    *,
-    target_date: date | None = None,
-    statuses: Sequence[str],
-    strict: bool = False,
-) -> int:
-    engine = create_engine(db_url)
-
+) -> tuple[dict[str, str], str]:
     today = date.today()
     if target_date:
         params = {"target_date": target_date.isoformat()}
         where_clause = "g.game_date = :target_date"
-        logger.info("🔍 Auditing games for %s", _format_scope(target_date, lookback_days, statuses, strict))
     else:
         start_date = (today - timedelta(days=lookback_days)).isoformat()
         end_date = today.isoformat()
         params = {"start_date": start_date, "end_date": end_date}
         where_clause = "g.game_date >= :start_date AND g.game_date < :end_date"
-        logger.info("🔍 Auditing games for %s", _format_scope(None, lookback_days, statuses, strict))
+    return params, where_clause
 
+
+def _build_template_query(strict: bool) -> str:
     if strict:
-        template_query = """
+        return """
             SELECT
                 g.game_id,
                 CAST(g.game_date AS TEXT) AS game_date,
@@ -143,20 +138,117 @@ def audit_completeness(
               AND g.game_status IN :status_list
             ORDER BY g.game_date DESC, g.game_id;
         """
-    else:
-        template_query = """
-            SELECT
-                CAST(g.game_date AS TEXT) AS game_date,
-                g.game_id,
-                (SELECT COUNT(*) FROM game_batting_stats b WHERE b.game_id = g.game_id) AS hitter_cnt,
-                (SELECT COUNT(*) FROM game_pitching_stats p WHERE p.game_id = g.game_id) AS pitcher_cnt,
-                (SELECT COUNT(*) FROM game_play_by_play p WHERE p.game_id = g.game_id) AS relay_cnt
-            FROM game g
-            WHERE {where_clause}
-              AND g.game_status IN :status_list
-            ORDER BY g.game_date DESC, g.game_id;
-        """
+    return """
+        SELECT
+            CAST(g.game_date AS TEXT) AS game_date,
+            g.game_id,
+            (SELECT COUNT(*) FROM game_batting_stats b WHERE b.game_id = g.game_id) AS hitter_cnt,
+            (SELECT COUNT(*) FROM game_pitching_stats p WHERE p.game_id = g.game_id) AS pitcher_cnt,
+            (SELECT COUNT(*) FROM game_play_by_play p WHERE p.game_id = g.game_id) AS relay_cnt
+        FROM game g
+        WHERE {where_clause}
+          AND g.game_status IN :status_list
+        ORDER BY g.game_date DESC, g.game_id;
+    """
 
+
+def _check_strict_row(row) -> list[str]:
+    (
+        _g_id,
+        _g_date,
+        home_score,
+        away_score,
+        metadata_cnt,
+        inning_away_cnt,
+        inning_home_cnt,
+        lineup_away_cnt,
+        lineup_home_cnt,
+        batting_away_cnt,
+        batting_home_cnt,
+        pitching_away_cnt,
+        pitching_home_cnt,
+        event_cnt,
+        pbp_cnt,
+    ) = row
+    checks: list[tuple[bool, str]] = [
+        (home_score is None or away_score is None, "scores"),
+        (metadata_cnt == 0, "metadata"),
+        (inning_away_cnt < _REQUIRED_INNINGS, "away_inning_scores"),
+        (not _has_required_home_innings(home_score, away_score, inning_home_cnt), "home_inning_scores"),
+        (lineup_away_cnt == 0, "away_lineups"),
+        (lineup_home_cnt == 0, "home_lineups"),
+        (batting_away_cnt == 0, "away_batting_stats"),
+        (batting_home_cnt == 0, "home_batting_stats"),
+        (pitching_away_cnt == 0, "away_pitching_stats"),
+        (pitching_home_cnt == 0, "home_pitching_stats"),
+        (event_cnt == 0 and pbp_cnt == 0, "relay_or_event"),
+    ]
+    return [label for triggered, label in checks if triggered]
+
+
+def _check_basic_row(row) -> list[str]:
+    g_date, g_id, h_cnt, p_cnt, r_cnt = row
+    missing: list[str] = []
+    if h_cnt == 0:
+        missing.append("batting_stats")
+    if p_cnt == 0:
+        missing.append("pitching_stats")
+    if r_cnt == 0:
+        missing.append("play_by_play")
+    return missing
+
+
+def _report_failures(failures: list[str], game_count: int) -> int:
+    if not failures:
+        return 0
+    logger.info("❌ Found %s incomplete games out of %s checked:", len(failures), game_count)
+    for f in failures:
+        logger.info("%s", f)
+    logger.info("\nPossible causes: crawler timeout, site structure change, or database connection issues.")
+    logger.info("Action: run backfill for the missing game IDs.")
+    return 1
+
+
+def _report_empty_scope(
+    target_date: date | None,
+    lookback_days: int,
+    statuses: Sequence[str],
+    strict: bool,
+) -> int:
+    if target_date and target_date.weekday() == 0:
+        logger.info(
+            "ℹ️  No matching games found for target Monday %s; treating as KBO rest day.",
+            target_date.isoformat(),
+        )
+        return 0
+    if target_date:
+        logger.info(
+            "❌ No matching games found for target date %s with scope: %s",
+            target_date.isoformat(),
+            _format_scope(target_date, lookback_days, statuses, strict),
+        )
+        return 1
+    logger.info(
+        "ℹ️  No matching games found for scope: %s",
+        _format_scope(target_date, lookback_days, statuses, strict),
+    )
+    return 0
+
+
+def audit_completeness(
+    db_url: str,
+    lookback_days: int,
+    *,
+    target_date: date | None = None,
+    statuses: Sequence[str],
+    strict: bool = False,
+) -> int:
+    engine = create_engine(db_url)
+
+    params, where_clause = _build_query_params(target_date, lookback_days)
+    logger.info("🔍 Auditing games for %s", _format_scope(target_date, lookback_days, statuses, strict))
+
+    template_query = _build_template_query(strict)
     query = text(template_query.format(where_clause=where_clause)).bindparams(
         bindparam("status_list", expanding=True),
     )
@@ -170,58 +262,10 @@ def audit_completeness(
             game_count = len(rows)
 
             for row in rows:
-                missing = []
-                if strict:
-                    (
-                        g_id,
-                        g_date,
-                        home_score,
-                        away_score,
-                        metadata_cnt,
-                        inning_away_cnt,
-                        inning_home_cnt,
-                        lineup_away_cnt,
-                        lineup_home_cnt,
-                        batting_away_cnt,
-                        batting_home_cnt,
-                        pitching_away_cnt,
-                        pitching_home_cnt,
-                        event_cnt,
-                        pbp_cnt,
-                    ) = row
-
-                    if home_score is None or away_score is None:
-                        missing.append("scores")
-                    if metadata_cnt == 0:
-                        missing.append("metadata")
-                    if inning_away_cnt < _REQUIRED_INNINGS:
-                        missing.append("away_inning_scores")
-                    if not _has_required_home_innings(home_score, away_score, inning_home_cnt):
-                        missing.append("home_inning_scores")
-                    if lineup_away_cnt == 0:
-                        missing.append("away_lineups")
-                    if lineup_home_cnt == 0:
-                        missing.append("home_lineups")
-                    if batting_away_cnt == 0:
-                        missing.append("away_batting_stats")
-                    if batting_home_cnt == 0:
-                        missing.append("home_batting_stats")
-                    if pitching_away_cnt == 0:
-                        missing.append("away_pitching_stats")
-                    if pitching_home_cnt == 0:
-                        missing.append("home_pitching_stats")
-                    if event_cnt == 0 and pbp_cnt == 0:
-                        missing.append("relay_or_event")
-                else:
-                    g_date, g_id, h_cnt, p_cnt, r_cnt = row
-                    if h_cnt == 0:
-                        missing.append("batting_stats")
-                    if p_cnt == 0:
-                        missing.append("pitching_stats")
-                    if r_cnt == 0:
-                        missing.append("play_by_play")
-
+                missing = _check_strict_row(row) if strict else _check_basic_row(row)
                 if missing:
+                    g_date = row[0]
+                    g_id = row[1]
                     failures.append(f"  - [{g_date}] {g_id}: missing {', '.join(missing)}")
 
     except SQLAlchemyError as e:
@@ -229,34 +273,12 @@ def audit_completeness(
         return 2
 
     if failures:
-        logger.info("❌ Found %s incomplete games out of %s checked:", len(failures), game_count)
-        for f in failures:
-            logger.info("%s", f)
-        logger.info("\nPossible causes: crawler timeout, site structure change, or database connection issues.")
-        logger.info("Action: run backfill for the missing game IDs.")
-        return 1
+        return _report_failures(failures, game_count)
 
     if game_count == 0:
-        if target_date and target_date.weekday() == 0:
-            logger.info(
-                "ℹ️  No matching games found for target Monday %s; treating as KBO rest day.",
-                target_date.isoformat(),
-            )
-            return 0
-        if target_date:
-            logger.info(
-                "❌ No matching games found for target date %s with scope: %s",
-                target_date.isoformat(),
-                _format_scope(target_date, lookback_days, statuses, strict),
-            )
-            return 1
-        logger.info(
-            "ℹ️  No matching games found for scope: %s",
-            _format_scope(target_date, lookback_days, statuses, strict),
-        )
-    else:
-        logger.info("✅ All %s matching games have sufficient detail data.", game_count)
+        return _report_empty_scope(target_date, lookback_days, statuses, strict)
 
+    logger.info("✅ All %s matching games have sufficient detail data.", game_count)
     return 0
 
 

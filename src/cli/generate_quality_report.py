@@ -1,5 +1,4 @@
-"""
-KBO Daily Data Quality Report Generator.
+"""KBO Daily Data Quality Report Generator.
 
 Analyzes daily data integrity and statistical consistency.
 
@@ -42,6 +41,9 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+AUTO_REMEDIATION_FILENAME_PARTS = 3
+TREND_COMPARISON_MIN_MONTHS = 2
+AUTO_REMEDIATION_PLAYER_PREVIEW_LIMIT = 3
 
 _KST = ZoneInfo("Asia/Seoul")
 _LOGGER = logging.getLogger(__name__)
@@ -50,8 +52,7 @@ _REGULAR_SEASON_NAMES = ("정규시즌", "Regular Season", "regular")
 
 
 def _player_basic_table_for_new_players(session: Session) -> Table | None:
-    """
-    Return a player_basic table object when new-player dates are queryable.
+    """Return a player_basic table object when new-player dates are queryable.
 
     Args:
         session: Session.
@@ -114,8 +115,7 @@ def get_relay_integrity_metrics(
     target_date: date,
     recent_days: int = 14,
 ) -> dict[str, Any]:
-    """
-    Return completed games missing game_play_by_play rows.
+    """Return completed games missing game_play_by_play rows.
 
     Args:
         session: Session.
@@ -258,7 +258,7 @@ def _fixed_snapshot_diffs(snapshot: dict[str, Any]) -> list[str]:
 
 def _record_auto_remediation_fixed(summary: dict[str, Any], filename: str, content: object) -> None:
     parts = filename.replace(".json", "").split("_")
-    category = parts[-1].upper() if len(parts) >= 3 else "UNKNOWN"
+    category = parts[-1].upper() if len(parts) >= AUTO_REMEDIATION_FILENAME_PARTS else "UNKNOWN"
     _add_unique_category(summary, "categories_fixed", category)
 
     snapshots = content if isinstance(content, list) else [content]
@@ -288,8 +288,7 @@ def _auto_remediation_status(*, has_abort: bool, has_warning: bool, has_fixed: b
 
 
 def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = None) -> dict[str, Any]:
-    """
-    Scan logs/audit_fixes/ for files starting with target_date_str.
+    """Scan logs/audit_fixes/ for files starting with target_date_str.
 
     Parse warning, abort, and fixed player details to return a status summary.
 
@@ -340,8 +339,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
 
 
 def get_pa_formula_integrity(session: Session, year: int) -> dict[str, Any]:
-    """
-    Check PA = AB + BB + HBP + SH + SF consistency for the current season.
+    """Check PA = AB + BB + HBP + SH + SF consistency for the current season.
 
     Args:
         session: Session.
@@ -415,8 +413,7 @@ def get_pa_formula_integrity(session: Session, year: int) -> dict[str, Any]:
 
 
 def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
-    """
-    Get PA formula violation trend for the last N months.
+    """Get PA formula violation trend for the last N months.
 
     Args:
         session: Session.
@@ -481,7 +478,7 @@ def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
     ]
 
     direction = "stable"
-    if len(trend) >= 2:
+    if len(trend) >= TREND_COMPARISON_MIN_MONTHS:
         recent = trend[-1]["violation_count"]
         prev = trend[-2]["violation_count"]
         if recent > prev:  # type: ignore[operator]
@@ -497,8 +494,7 @@ def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
 
 
 def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
-    """
-    Get team stats integrity.
+    """Get team stats integrity.
 
     Args:
         gate_result: Gate Result.
@@ -528,8 +524,7 @@ def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_team_stats_trend(session: Session, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
-    """
-    현재 시즌 team stats 정합성 스냅샷.
+    """현재 시즌 team stats 정합성 스냅샷.
 
     TeamSeason*은 시즌 단위 aggregate라 월별 추세 산출 불가.
     run_quality_gate()를 호출하여 현재 상태만 반환.
@@ -567,8 +562,7 @@ def get_daily_metrics(
     target_date_str: str,
     gate_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """
-    Calculate core collection metrics for a specific date.
+    """Calculate core collection metrics for a specific date.
 
     Args:
         session: Session.
@@ -695,7 +689,8 @@ def _append_collection_section(lines: list[str], metrics: dict[str, Any]) -> Non
 def _append_parity_section(lines: list[str], parity: dict[str, Any]) -> None:
     if not parity.get("ok", True):
         lines.append(
-            f"❓ <b>Parity</b>: Local {parity.get('local_count')} / OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})",
+            f"❓ <b>Parity</b>: Local {parity.get('local_count')} / "
+            f"OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})",
         )
 
 
@@ -773,8 +768,8 @@ def _append_auto_remediation_section(lines: list[str], metrics: dict[str, Any]) 
         for p in auto_rem.get("players_fixed", [])[:3]:
             diffs_str = ", ".join(p.get("diffs", [])[:2])
             lines.append(f"   - {p['name']} ({p['category']}): {diffs_str}")
-        if len(auto_rem.get("players_fixed", [])) > 3:
-            lines.append(f"   - ... 외 {len(auto_rem['players_fixed']) - 3}명")
+        if len(auto_rem.get("players_fixed", [])) > AUTO_REMEDIATION_PLAYER_PREVIEW_LIMIT:
+            lines.append(f"   - ... 외 {len(auto_rem['players_fixed']) - AUTO_REMEDIATION_PLAYER_PREVIEW_LIMIT}명")
     elif status == "warning":
         cat_counts = _category_counts(auto_rem.get("players_warning", []))
         cat_str = ", ".join([f"{k} {v}" for k, v in cat_counts.items()])
@@ -784,8 +779,8 @@ def _append_auto_remediation_section(lines: list[str], metrics: dict[str, Any]) 
         for p in auto_rem.get("players_warning", [])[:3]:
             diffs_str = ", ".join(p.get("diffs", [])[:2])
             lines.append(f"   - {p['name']} ({p['category']}): {diffs_str}")
-        if len(auto_rem.get("players_warning", [])) > 3:
-            lines.append(f"   - ... 외 {len(auto_rem['players_warning']) - 3}명")
+        if len(auto_rem.get("players_warning", [])) > AUTO_REMEDIATION_PLAYER_PREVIEW_LIMIT:
+            lines.append(f"   - ... 외 {len(auto_rem['players_warning']) - AUTO_REMEDIATION_PLAYER_PREVIEW_LIMIT}명")
     elif status == "aborted":
         cats_str = ", ".join(auto_rem.get("categories_aborted", []))
         lines.append(f"🛑 <b>Auto-Remediation</b>: 작업 중단 ({cats_str})")
@@ -852,8 +847,7 @@ def _append_new_players_section(lines: list[str], metrics: dict[str, Any]) -> No
 
 
 def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any]) -> str:
-    """
-    Format the metrics and gate results into a readable Telegram message.
+    """Format the metrics and gate results into a readable Telegram message.
 
     Args:
         metrics: Metrics.
@@ -900,8 +894,7 @@ def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> 
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

@@ -50,8 +50,7 @@ class DetailCrawler(Protocol):
         *,
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Crawl game details for the given game list.
+        """Crawl game details for the given game list.
 
         Args:
             games: Games.
@@ -77,8 +76,7 @@ class GameScoreStatusSnapshot:
 
     @property
     def score_tuple(self) -> tuple[int | None, int | None]:
-        """
-        Handle the score tuple operation.
+        """Handle the score tuple operation.
 
         Returns:
             Tuple result.
@@ -104,8 +102,7 @@ class PostgameReconciliationChange:
 
     @property
     def status_changed(self) -> bool:
-        """
-        Handle the status changed operation.
+        """Handle the status changed operation.
 
         Returns:
             True if successful, False otherwise.
@@ -115,8 +112,7 @@ class PostgameReconciliationChange:
 
     @property
     def score_changed(self) -> bool:
-        """
-        Handle the score changed operation.
+        """Handle the score changed operation.
 
         Returns:
             True if successful, False otherwise.
@@ -140,8 +136,7 @@ class PostgameReconciliationResult:
 
     @property
     def changed_game_ids(self) -> list[str]:
-        """
-        Handle the changed game ids operation.
+        """Handle the changed game ids operation.
 
         Returns:
             List of results.
@@ -156,8 +151,7 @@ def find_postgame_reconciliation_targets(
     *,
     extra_game_ids: Iterable[str] | None = None,
 ) -> list[GameCollectionTarget]:
-    """
-    Find recent games worth revisiting after a live/detail miss.
+    """Find recent games worth revisiting after a live/detail miss.
 
     Args:
         start_date: Start Date.
@@ -233,8 +227,7 @@ class ReconciliationRequest:
 async def reconcile_postgame_range(
     req: ReconciliationRequest,
 ) -> PostgameReconciliationResult:
-    """
-    Re-crawl started-like games and return status/score changes.
+    """Re-crawl started-like games and return status/score changes.
 
     Args:
         req: Req.
@@ -311,8 +304,7 @@ async def reconcile_postgame_range(
 
 
 def format_reconciliation_report(changes: Iterable[PostgameReconciliationChange]) -> str:
-    """
-    Return a compact text report containing only games that changed.
+    """Return a compact text report containing only games that changed.
 
     Args:
         changes: Changes.
@@ -349,8 +341,7 @@ def write_reconciliation_csv(
     changes: Iterable[PostgameReconciliationChange],
     output_path: str | Path,
 ) -> Path:
-    """
-    Write reconciliation csv.
+    """Write reconciliation csv.
 
     Args:
         changes: Changes.

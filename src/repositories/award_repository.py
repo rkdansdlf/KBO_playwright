@@ -16,8 +16,7 @@ class AwardRepository:
     """AwardRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -27,8 +26,7 @@ class AwardRepository:
         self.session = session
 
     def save_award(self, award_data: dict) -> Award:
-        """
-        Insert or update an award record.
+        """Insert or update an award record.
 
         Uses unique constraints to detect duplicates.
         For now, we'll strive for upsert-like behavior or just ignore if exists.
@@ -74,8 +72,7 @@ class AwardRepository:
         return new_award
 
     def get_awards_by_year(self, year: int) -> list[Award]:
-        """
-        Get awards by year.
+        """Get awards by year.
 
         Args:
             year: Season year.
@@ -91,8 +88,7 @@ class AwardRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def clear_awards_by_year(self, year: int) -> None:
-        """
-        Clear awards by year.
+        """Clear awards by year.
 
         Args:
             year: Season year.

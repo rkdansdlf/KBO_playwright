@@ -31,8 +31,7 @@ class StatsSyncMixin(SyncBaseProtocol):
     """Mixin for season stats sync operations."""
 
     def _add_existing_player_basic_filter(self, model: type[Base], filters: list[Any]) -> list[Any]:
-        """
-        Avoid FK failures when local season stats contain orphan player IDs.
+        """Avoid FK failures when local season stats contain orphan player IDs.
 
         Args:
             model: Model.
@@ -70,8 +69,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         )
 
     def verify_pitcher_sync(self, expected_count: int) -> None:
-        """
-        투수 데이터 동기화 결과 검증.
+        """투수 데이터 동기화 결과 검증.
 
         Args:
             expected_count: Expected Count.
@@ -98,8 +96,7 @@ class StatsSyncMixin(SyncBaseProtocol):
             logger.exception("⚠️ 투수 데이터 동기화 검증 실패")
 
     def verify_batting_sync(self, expected_count: int) -> None:
-        """
-        타자 데이터 동기화 결과 검증.
+        """타자 데이터 동기화 결과 검증.
 
         Args:
             expected_count: Expected Count.
@@ -176,8 +173,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         year: int | None = None,
         year_col: str = "season",
     ) -> dict[str, Any]:
-        """
-        Calculate a unique signature for a table/year combination to detect changes.
+        """Calculate a unique signature for a table/year combination to detect changes.
 
         Signature includes ROW COUNT and MAX(updated_at).
 
@@ -192,8 +188,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         """
 
         def get_sig(session: Session) -> dict[str, Any]:
-            """
-            Get sig.
+            """Get sig.
 
             Args:
                 session: Session.
@@ -245,8 +240,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         *,
         force: bool = False,
     ) -> int:
-        """
-        Sync player_season_batting data from SQLite to OCI using fast bulk COPY.
+        """Sync player_season_batting data from SQLite to OCI using fast bulk COPY.
 
         Args:
             year: Season year.
@@ -285,8 +279,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         *,
         force: bool = False,
     ) -> int:
-        """
-        Sync player_season_pitching data from SQLite to OCI using fast bulk COPY.
+        """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY.
 
         Args:
             year: Season year.
@@ -330,8 +323,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         }
 
     def sync_team_season_batting(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
-        """
-        Sync team_season_batting data from SQLite to OCI.
+        """Sync team_season_batting data from SQLite to OCI.
 
         Args:
             year: Season year.
@@ -361,8 +353,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         )
 
     def sync_team_season_pitching(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
-        """
-        Sync team_season_pitching data from SQLite to OCI.
+        """Sync team_season_pitching data from SQLite to OCI.
 
         Args:
             year: Season year.
@@ -392,8 +383,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         )
 
     def sync_standings(self, year: int | None = None, days: int | None = None, batch_size: int = 10000) -> int:
-        """
-        Sync calculated daily standings snapshots to OCI.
+        """Sync calculated daily standings snapshots to OCI.
 
         Args:
             year: Season year.
@@ -436,8 +426,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         *,
         filters: list[Any] | None = None,
     ) -> int:
-        """
-        Sync derived stat_rankings rows to OCI.
+        """Sync derived stat_rankings rows to OCI.
 
         Args:
             year: Season year.
@@ -457,8 +446,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         )
 
     def sync_fielding_stats(self, year: int | None = None, batch_size: int = 10000, *, force: bool = False) -> int:
-        """
-        Sync player fielding stats to OCI.
+        """Sync player fielding stats to OCI.
 
         Args:
             year: Season year.
@@ -486,8 +474,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         )
 
     def sync_baserunning_stats(self, year: int | None = None, batch_size: int = 10000, *, force: bool = False) -> int:
-        """
-        Sync player baserunning stats to OCI.
+        """Sync player baserunning stats to OCI.
 
         Args:
             year: Season year.
@@ -515,8 +502,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         )
 
     def sync_team_season_fielding(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
-        """
-        Sync team_season_fielding aggregates from SQLite to OCI.
+        """Sync team_season_fielding aggregates from SQLite to OCI.
 
         Args:
             year: Season year.
@@ -551,8 +537,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         *,
         force: bool = False,
     ) -> int:
-        """
-        Sync team_season_baserunning aggregates from SQLite to OCI.
+        """Sync team_season_baserunning aggregates from SQLite to OCI.
 
         Args:
             year: Season year.
@@ -581,8 +566,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         )
 
     def purge_season_stats(self, year: int, type: str = "all") -> None:
-        """
-        Delete year-scoped stats from OCI to prepare for a clean sync.
+        """Delete year-scoped stats from OCI to prepare for a clean sync.
 
         Args:
             year: Season year.

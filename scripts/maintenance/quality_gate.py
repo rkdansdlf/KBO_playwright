@@ -160,17 +160,9 @@ def fetch_past_missing_game_ids(session_or_conn) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
-def evaluate_quality_gate(
-    *,
-    local_metrics: dict[str, int],
-    oci_metrics: dict[str, int],
-    baseline: dict[str, int],
-    local_missing_ids: set[str],
-    oci_missing_ids: set[str],
-    strict_zero: bool = False,
-) -> list[str]:
-    failures: list[str] = []
-
+def _check_thresholds(
+    failures: list[str], local: dict[str, int], oci: dict[str, int], baseline: dict[str, int]
+) -> None:
     threshold_map = {
         "past_missing_runs_max": "past_missing_runs",
         "batting_null_player_id_max": "batting_null_player_id",
@@ -192,16 +184,15 @@ def evaluate_quality_gate(
         "pitching_earned_runs_gt_runs_allowed_max": "pitching_earned_runs_gt_runs_allowed",
         "pseudo_player_profiles_max": "pseudo_player_profiles",
     }
+    for bk, mk in threshold_map.items():
+        limit = int(baseline[bk])
+        for label, metrics in (("local", local), ("oci", oci)):
+            val = int(metrics.get(mk, 0))
+            if val > limit:
+                failures.append(f"{label} {mk}={val} exceeds baseline {limit}")
 
-    for baseline_key, metric_key in threshold_map.items():
-        limit = int(baseline[baseline_key])
-        local_val = int(local_metrics.get(metric_key, 0))
-        oci_val = int(oci_metrics.get(metric_key, 0))
-        if local_val > limit:
-            failures.append(f"local {metric_key}={local_val} exceeds baseline {limit}")
-        if oci_val > limit:
-            failures.append(f"oci {metric_key}={oci_val} exceeds baseline {limit}")
 
+def _check_parity(failures: list[str], local: dict[str, int], oci: dict[str, int]) -> None:
     parity_keys = (
         "past_missing_runs",
         "batting_null_player_id",
@@ -225,41 +216,51 @@ def evaluate_quality_gate(
         "pseudo_player_profiles",
     )
     failures.extend(
-        f"metric mismatch for {key}: local={local_metrics.get(key, 0)} oci={oci_metrics.get(key, 0)}"
+        f"metric mismatch for {key}: local={local.get(key, 0)} oci={oci.get(key, 0)}"
         for key in parity_keys
-        if int(local_metrics.get(key, 0)) != int(oci_metrics.get(key, 0))
+        if int(local.get(key, 0)) != int(oci.get(key, 0))
     )
 
-    if int(local_metrics.get("game_status_column_present", 1)) == 0:
-        failures.append("local game_status column is missing")
-    if int(oci_metrics.get("game_status_column_present", 1)) == 0:
-        failures.append("oci game_status column is missing")
 
-    if int(local_metrics.get("past_scheduled", 0)) > 0:
-        failures.append(f"local past_scheduled={local_metrics['past_scheduled']} must be 0")
-    if int(oci_metrics.get("past_scheduled", 0)) > 0:
-        failures.append(f"oci past_scheduled={oci_metrics['past_scheduled']} must be 0")
+def _check_required_zero(failures: list[str], local: dict[str, int], oci: dict[str, int]) -> None:
+    for label, metrics in (("local", local), ("oci", oci)):
+        if int(metrics.get("game_status_column_present", 1)) == 0:
+            failures.append(f"{label} game_status column is missing")
+        if int(metrics.get("past_scheduled", 0)) > 0:
+            failures.append(f"{label} past_scheduled={metrics['past_scheduled']} must be 0")
+        if int(metrics.get("live_no_evidence", 0)) > 0:
+            failures.append(f"{label} live_no_evidence={metrics['live_no_evidence']} must be 0")
 
-    if int(local_metrics.get("live_no_evidence", 0)) > 0:
-        failures.append(f"local live_no_evidence={local_metrics['live_no_evidence']} must be 0")
-    if int(oci_metrics.get("live_no_evidence", 0)) > 0:
-        failures.append(f"oci live_no_evidence={oci_metrics['live_no_evidence']} must be 0")
 
+def _check_strict_zero(failures: list[str], local: dict[str, int], oci: dict[str, int], strict_zero: bool) -> None:
+    if not strict_zero:
+        return
+    for key in STRICT_ZERO_KEYS:
+        for label, metrics in (("local", local), ("oci", oci)):
+            val = int(metrics.get(key, 0))
+            if val > 0:
+                failures.append(f"{label} {key}={val} must be 0 in strict-zero mode")
+
+
+def evaluate_quality_gate(
+    *,
+    local_metrics: dict[str, int],
+    oci_metrics: dict[str, int],
+    baseline: dict[str, int],
+    local_missing_ids: set[str],
+    oci_missing_ids: set[str],
+    strict_zero: bool = False,
+) -> list[str]:
+    failures: list[str] = []
+    _check_thresholds(failures, local_metrics, oci_metrics, baseline)
+    _check_parity(failures, local_metrics, oci_metrics)
+    _check_required_zero(failures, local_metrics, oci_metrics)
+    _check_strict_zero(failures, local_metrics, oci_metrics, strict_zero)
     if local_missing_ids != oci_missing_ids:
         failures.append(
             f"past missing game-id set mismatch: local_only={len(local_missing_ids - oci_missing_ids)} "
             f"oci_only={len(oci_missing_ids - local_missing_ids)}",
         )
-
-    if strict_zero:
-        for key in STRICT_ZERO_KEYS:
-            local_val = int(local_metrics.get(key, 0))
-            oci_val = int(oci_metrics.get(key, 0))
-            if local_val > 0:
-                failures.append(f"local {key}={local_val} must be 0 in strict-zero mode")
-            if oci_val > 0:
-                failures.append(f"oci {key}={oci_val} must be 0 in strict-zero mode")
-
     return failures
 
 

@@ -21,8 +21,7 @@ URGENT_KEYWORDS = re.compile(
 
 
 def classify_notice(title: str) -> str:
-    """
-    Classifies notice.
+    """Classifies notice.
 
     Args:
         title: Title.
@@ -39,8 +38,7 @@ def classify_notice(title: str) -> str:
 
 
 def is_urgent(title: str) -> bool:
-    """
-    Return whether the urgent.
+    """Return whether the urgent.
 
     Args:
         title: Title.

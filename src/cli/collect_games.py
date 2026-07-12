@@ -38,8 +38,7 @@ async def collect_games(
     force: bool = False,
     concurrency: int | None = None,
 ) -> None:
-    """
-    Handle the collect games operation.
+    """Handle the collect games operation.
 
     Args:
         year: Season year.
@@ -100,8 +99,7 @@ async def collect_games(
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

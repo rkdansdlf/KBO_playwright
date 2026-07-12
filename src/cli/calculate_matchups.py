@@ -20,8 +20,7 @@ MATCHUP_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError,
 
 
 def batch_calculate_matchups(years: list[int], *, sync_oci: bool = False) -> None:
-    """
-    Run the MatchupEngine for a range of years to compute BvP and Splits.
+    """Run the MatchupEngine for a range of years to compute BvP and Splits.
 
     Args:
         years: Years.
@@ -53,8 +52,7 @@ def batch_calculate_matchups(years: list[int], *, sync_oci: bool = False) -> Non
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

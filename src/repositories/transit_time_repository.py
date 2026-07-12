@@ -21,8 +21,7 @@ class TransitTimeRepository:
     """TransitTimeRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -36,8 +35,7 @@ class TransitTimeRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumTransitTime, bool]:
-        """
-        Insert or update a transit time measurement.
+        """Insert or update a transit time measurement.
 
         Dedup key: (stadium_code, origin_label, transport_mode, measured_at).
 
@@ -71,8 +69,7 @@ class TransitTimeRepository:
         return record, True
 
     def bulk_upsert(self, records: list[dict]) -> tuple[int, int]:
-        """
-        Upsert multiple records.
+        """Upsert multiple records.
 
             Returns (created, updated).
 
@@ -110,8 +107,7 @@ class TransitTimeRepository:
         origin_label: str | None = None,
         transport_mode: str | None = None,
     ) -> list[StadiumTransitTime]:
-        """
-        Get by game date.
+        """Get by game date.
 
         Args:
             stadium_code: Stadium Code.
@@ -148,8 +144,7 @@ class TransitTimeRepository:
         origin_label: str,
         transport_mode: str,
     ) -> StadiumTransitTime | None:
-        """
-        Get latest.
+        """Get latest.
 
         Args:
             stadium_code: Stadium Code.
@@ -187,8 +182,7 @@ class TransitTimeRepository:
         game_date: date,
         transport_mode: str | None = None,
     ) -> float | None:
-        """
-        Return average measured duration for a given origin+game_date.
+        """Return average measured duration for a given origin+game_date.
 
         Args:
             stadium_code: Stadium Code.

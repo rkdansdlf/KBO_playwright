@@ -1,5 +1,4 @@
-"""
-Game lifecycle state machine for live relay crawling.
+"""Game lifecycle state machine for live relay crawling.
 
 Tracks the progression of a game through its lifecycle stages,
 enabling precise detection of game end, suspension, cancellation,
@@ -61,8 +60,7 @@ ALLOWED_TRANSITIONS: set[tuple[str, str]] = {
 
 
 def is_terminal(state: str) -> bool:
-    """
-    Return whether the terminal.
+    """Return whether the terminal.
 
     Args:
         state: State.
@@ -77,8 +75,7 @@ def is_terminal(state: str) -> bool:
 
 
 def validate_transition(current: str | None, next_state: str) -> tuple[bool, str | None]:
-    """
-    Check if a lifecycle state transition is valid.
+    """Check if a lifecycle state transition is valid.
 
     Return (is_valid, error_reason).
 
@@ -108,8 +105,7 @@ def validate_transition(current: str | None, next_state: str) -> tuple[bool, str
 
 
 def derive_lifecycle_from_naver_status(nav_status: str | None) -> str | None:
-    """
-    Map a Naver schedule API status to a GameLifecycleState.
+    """Map a Naver schedule API status to a GameLifecycleState.
 
     Args:
         nav_status: Nav Status.

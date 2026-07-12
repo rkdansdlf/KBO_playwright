@@ -56,8 +56,7 @@ class ReviewRegenReportRow:
     message: str = ""
 
     def as_csv_row(self) -> dict[str, Any]:
-        """
-        Handle the as csv row operation.
+        """Handle the as csv row operation.
 
         Returns:
             Dictionary result.
@@ -350,8 +349,7 @@ def regenerate_review_summaries(  # noqa: PLR0913
     backup_out: Path | None = None,
     log: Callable[[str], object] = logger.info,
 ) -> list[ReviewRegenReportRow]:
-    """
-    Handle the regenerate review summaries operation.
+    """Handle the regenerate review summaries operation.
 
     Args:
         game_ids: Game Ids.
@@ -419,8 +417,7 @@ def _collect_game_ids(args: argparse.Namespace) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

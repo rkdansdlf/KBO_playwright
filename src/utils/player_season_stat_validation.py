@@ -4,6 +4,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from src.constants import KBO_FOUNDING_YEAR
 from src.utils.player_validation import normalize_player_id, normalize_player_name, validate_player_payload
 
 BATTING_CORE_STATS = ("games", "plate_appearances", "at_bats", "hits")
@@ -81,8 +82,7 @@ NUMERIC_FIELDS = {
 
 
 def _is_number_like(value: object) -> bool:
-    """
-    Handle the is number like operation.
+    """Handle the is number like operation.
 
     Args:
         value: Value.
@@ -111,8 +111,7 @@ def _is_number_like(value: object) -> bool:
 
 
 def _number_or_none(value: object) -> float | None:
-    """
-    Handle the number or none operation.
+    """Handle the number or none operation.
 
     Args:
         value: Value.
@@ -139,8 +138,7 @@ def _number_or_none(value: object) -> float | None:
 
 
 def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
-    """
-    Handle the has core stats operation.
+    """Handle the has core stats operation.
 
     Args:
         payload: Payload.
@@ -166,8 +164,7 @@ def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
 
 
 def _validate_player_identity(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
-    """
-    Validate player identity.
+    """Validate player identity.
 
     Args:
         payload: Payload.
@@ -191,8 +188,7 @@ def _validate_player_identity(payload: Mapping[str, Any], stat_type: str) -> tup
 
 
 def _validate_season_key(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
-    """
-    Validate season key.
+    """Validate season key.
 
     Args:
         payload: Payload.
@@ -211,14 +207,13 @@ def _validate_season_key(payload: Mapping[str, Any], stat_type: str) -> tuple[bo
         season = int(str(payload.get(season_key)).strip())
     except (TypeError, ValueError):
         return False, "missing_year" if stat_type == "fielding" else "missing_season"
-    if season < 1982:
+    if season < KBO_FOUNDING_YEAR:
         return False, "missing_year" if stat_type == "fielding" else "missing_season"
     return True, None
 
 
 def _validate_team_fields(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
-    """
-    Validate team fields.
+    """Validate team fields.
 
     Args:
         payload: Payload.
@@ -243,8 +238,7 @@ def _validate_team_fields(payload: Mapping[str, Any], stat_type: str) -> tuple[b
 
 
 def _validate_numeric_fields(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
-    """
-    Validate numeric fields.
+    """Validate numeric fields.
 
     Args:
         payload: Payload.
@@ -262,8 +256,7 @@ def _validate_numeric_fields(payload: Mapping[str, Any]) -> tuple[bool, str | No
 
 
 def _validate_batting_consistency(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
-    """
-    Validate batting consistency.
+    """Validate batting consistency.
 
     Args:
         payload: Payload.
@@ -286,8 +279,7 @@ def _validate_batting_consistency(payload: Mapping[str, Any]) -> tuple[bool, str
 
 
 def _validate_pitching_consistency(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
-    """
-    Validate pitching consistency.
+    """Validate pitching consistency.
 
     Args:
         payload: Payload.
@@ -311,8 +303,7 @@ def validate_season_stat_payload(
     *,
     stat_type: str,
 ) -> tuple[bool, str | None]:
-    """
-    Validate season stat payload.
+    """Validate season stat payload.
 
     Args:
         payload: Payload.
@@ -345,8 +336,7 @@ def validate_season_stat_payload(
 
 
 def normalize_season_stat_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """
-    Normalize season stat payload.
+    """Normalize season stat payload.
 
     Args:
         payload: Payload.
@@ -374,8 +364,7 @@ def filter_valid_season_stat_payloads(
     *,
     stat_type: str,
 ) -> tuple[list[dict[str, Any]], Counter[str]]:
-    """
-    Filter valid season stat payloads.
+    """Filter valid season stat payloads.
 
     Args:
         payloads: Payloads.

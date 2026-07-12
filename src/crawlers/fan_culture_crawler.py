@@ -1,5 +1,4 @@
-"""
-YouTube Data API-based KBO cheer song crawler.
+"""YouTube Data API-based KBO cheer song crawler.
 
 Replaces the Namu Wiki crawler (which was blocked) by fetching
 cheer song metadata from official KBO team YouTube channels.
@@ -40,6 +39,7 @@ from src.utils.youtube_api_client import (
 )
 
 logger = logging.getLogger(__name__)
+SONG_LOG_PREVIEW_LIMIT = 5
 
 YOUTUBE_VIDEO_BASE = "https://www.youtube.com/watch?v="
 FAN_CULTURE_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
@@ -66,8 +66,7 @@ def _extract_season(title: str, fallback: int | None = None) -> int | None:
 
 
 def _video_to_song(item: YouTubeVideoItem, team_id: str, current_season: int) -> dict[str, Any] | None:
-    """
-    Convert a YouTube video item to a cheer_song dict.
+    """Convert a YouTube video item to a cheer_song dict.
 
     Args:
         item: Item.
@@ -103,8 +102,7 @@ def _video_to_song(item: YouTubeVideoItem, team_id: str, current_season: int) ->
 
 
 class FanCultureCrawler:
-    """
-    crawl KBO cheer song metadata from official team YouTube channels.
+    """crawl KBO cheer song metadata from official team YouTube channels.
 
     Replaces the previous Namu Wiki-based implementation.
     Requires YOUTUBE_API_KEY environment variable.
@@ -112,8 +110,7 @@ class FanCultureCrawler:
     """
 
     def __init__(self, season: int | None = None, max_results_per_team: int = 50) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             season: Season year.
@@ -132,8 +129,7 @@ class FanCultureCrawler:
         team_filter: str | None = None,
         dry_run: bool = False,
     ) -> list[dict]:
-        """
-        Crawl cheer songs from YouTube for all (or one) KBO team.
+        """Crawl cheer songs from YouTube for all (or one) KBO team.
 
         Args:
             save: Whether to persist the results.
@@ -172,7 +168,7 @@ class FanCultureCrawler:
         logger.info("[FanCulture] Total: %s songs across %s teams", len(all_songs), len(teams))
 
         if dry_run or not save:
-            for s in all_songs[:5]:
+            for s in all_songs[:SONG_LOG_PREVIEW_LIMIT]:
                 logger.info(
                     "  [%s] %s | type=%s | player=%s",
                     s["team_id"],
@@ -180,9 +176,9 @@ class FanCultureCrawler:
                     s["song_type"],
                     s.get("player_name"),
                 )
-            if len(all_songs) > 5:
-                logger.info("  ... and %s more", len(all_songs) - 5)
-        elif save:
+            if len(all_songs) > SONG_LOG_PREVIEW_LIMIT:
+                logger.info("  ... and %s more", len(all_songs) - SONG_LOG_PREVIEW_LIMIT)
+        else:
             self._save_to_db(all_songs)
 
         return all_songs
@@ -193,8 +189,7 @@ class FanCultureCrawler:
         channel_id: str,
         search_queries: list[str],
     ) -> list[dict]:
-        """
-        Crawl cheer songs for a single team via YouTube search.
+        """Crawl cheer songs for a single team via YouTube search.
 
         Args:
             team_id: Team ID.

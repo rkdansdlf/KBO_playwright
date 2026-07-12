@@ -25,8 +25,7 @@ class PlayerStatusConfirmer:
         headless: bool = True,
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -47,8 +46,7 @@ class PlayerStatusConfirmer:
         self.pool = pool
 
     async def confirm_entries(self, entries: list[dict[str, object]]) -> dict[str, int]:
-        """
-        Mutates entries in-place when profile confirmation succeeds.
+        """Mutates entries in-place when profile confirmation succeeds.
 
         Args:
             entries: Entries.

@@ -14,12 +14,14 @@ from pathlib import Path
 from typing import Any
 
 from src.cli.run_daily_update import DEFAULT_DAILY_SUMMARY_DIR
+from src.constants import DATE_STR_LEN
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
 
 Command = list[str]
 Runner = Callable[[Sequence[str]], None]
+MAX_MONTH = 12
 
 
 def _summary_path(target_date: str, summary_dir: str | Path | None = None) -> Path:
@@ -38,8 +40,7 @@ def _validate_summary_payload(payload: object, summary_path: Path) -> dict[str, 
 
 
 def load_daily_summary(path: str | Path) -> dict[str, Any]:
-    """
-    Load daily summary.
+    """Load daily summary.
 
     Args:
         path: Path.
@@ -74,8 +75,7 @@ def _dedupe_game_ids(values: Iterable[object]) -> list[str]:
 
 
 def retry_candidates(summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
-    """
-    Handle the retry candidates operation.
+    """Handle the retry candidates operation.
 
     Args:
         summary: Summary.
@@ -102,12 +102,12 @@ def retry_candidates(summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
 def _detail_groups(game_ids: Sequence[str]) -> dict[tuple[int, int], list[str]]:
     groups: dict[tuple[int, int], list[str]] = defaultdict(list)
     for game_id in game_ids:
-        if len(game_id) < 8 or not game_id[:8].isdigit():
+        if len(game_id) < DATE_STR_LEN or not game_id[:DATE_STR_LEN].isdigit():
             msg = f"Invalid KBO game_id date prefix: {game_id}"
             raise ValueError(msg)
         year = int(game_id[:4])
         month = int(game_id[4:6])
-        if not 1 <= month <= 12:
+        if not 1 <= month <= MAX_MONTH:
             msg = f"Invalid KBO game_id month: {game_id}"
             raise ValueError(msg)
         groups[(year, month)].append(game_id)
@@ -120,8 +120,7 @@ def build_retry_commands(
     sync: bool = False,
     python_bin: str = sys.executable,
 ) -> list[Command]:
-    """
-    Build retry commands.
+    """Build retry commands.
 
     Args:
         summary: Summary.
@@ -184,7 +183,7 @@ def build_retry_commands(
 
 
 def _default_runner(command: Sequence[str]) -> None:
-    subprocess.run(list(command), check=True)  # noqa: S603 - commands are built as fixed argv lists.
+    subprocess.run(list(command), check=True)
 
 
 def run_retry(  # noqa: PLR0913
@@ -196,8 +195,7 @@ def run_retry(  # noqa: PLR0913
     runner: Runner | None = None,
     python_bin: str = sys.executable,
 ) -> int:
-    """
-    Run retry.
+    """Run retry.
 
     Args:
         target_date: Target date for the operation.
@@ -237,8 +235,7 @@ def run_retry(  # noqa: PLR0913
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -260,8 +257,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
@@ -271,7 +267,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
     parser = build_arg_parser()
 
     args = parser.parse_args(argv)
-    if len(args.date) != 8 or not args.date.isdigit():
+    if len(args.date) != DATE_STR_LEN or not args.date.isdigit():
         parser.error("--date must be YYYYMMDD")
 
     try:

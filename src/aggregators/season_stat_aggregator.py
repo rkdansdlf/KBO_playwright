@@ -20,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class SeasonStatAggregator:
-    """
-    Service to aggregate transactional game stats into season-level cumulative stats.
+    """Service to aggregate transactional game stats into season-level cumulative stats.
 
     Acts as a fallback when KBO's cumulative record pages are unavailable.
 
@@ -46,8 +45,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
-        """
-        Aggregate batting season.
+        """Aggregate batting season.
 
         Args:
             session: Session.
@@ -117,8 +115,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate batting stats for all players in a season/series in a single query.
+        """Aggregate batting stats for all players in a season/series in a single query.
 
         Args:
             session: Session.
@@ -181,8 +178,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
-        """
-        Aggregate pitching season.
+        """Aggregate pitching season.
 
         Args:
             session: Session.
@@ -255,8 +251,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate pitching stats for all players in a season/series in a single query.
+        """Aggregate pitching stats for all players in a season/series in a single query.
 
         Args:
             session: Session.
@@ -320,8 +315,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
-        """
-        Aggregate cumulative baserunning stats from game batting stats.
+        """Aggregate cumulative baserunning stats from game batting stats.
 
         Args:
             session: Session.
@@ -367,8 +361,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate baserunning stats for all players in bulk.
+        """Aggregate baserunning stats for all players in bulk.
 
         Args:
             session: Session.
@@ -416,8 +409,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate fielding stats for all players and positions in bulk.
+        """Aggregate fielding stats for all players and positions in bulk.
 
         Args:
             session: Session.
@@ -458,21 +450,33 @@ class SeasonStatAggregator:
         pid_to_name = {p.player_id: p.name for p in players}
 
         error_map: dict[tuple[int, str], int] = {}
-        for event_game_id, desc in error_events:
-            game_lineups = (
-                session.query(GameLineup.player_id, GameLineup.standard_position)
-                .filter(GameLineup.game_id == event_game_id)
-                .all()
-            )
+        if error_events:
+            # Collect unique game_ids that have error events — avoids N+1 query
+            error_game_ids = list({gid for gid, _ in error_events})
 
-            for pid, pos in game_lineups:
-                if not pid or not pos:
-                    continue
-                name = pid_to_name.get(pid, "")
-                if (name and name in desc) or (pos and pos in desc):
-                    key = (pid, pos)
-                    error_map[key] = error_map.get(key, 0) + 1
-                    break
+            # Bulk-load all GameLineup rows for those games in chunks of 500
+            # (SQLite SQLITE_MAX_VARIABLE_NUMBER default is 999)
+            chunk_size = 500
+            game_lineups_map: dict[str, list[tuple[int | None, str | None]]] = {}
+            for offset in range(0, len(error_game_ids), chunk_size):
+                chunk = error_game_ids[offset : offset + chunk_size]
+                rows = (
+                    session.query(GameLineup.game_id, GameLineup.player_id, GameLineup.standard_position)
+                    .filter(GameLineup.game_id.in_(chunk))
+                    .all()
+                )
+                for gid, pid, pos in rows:
+                    game_lineups_map.setdefault(gid, []).append((pid, pos))
+
+            for event_game_id, desc in error_events:
+                for pid, pos in game_lineups_map.get(event_game_id, []):
+                    if not pid or not pos:
+                        continue
+                    name = pid_to_name.get(pid, "")
+                    if (name and name in desc) or (pos and pos in desc):
+                        key = (pid, pos)
+                        error_map[key] = error_map.get(key, 0) + 1
+                        break
 
         results = []
         for pid, pos, game_count in counts:
@@ -498,8 +502,7 @@ class SeasonStatAggregator:
         series: str,
         source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
-        """
-        Aggregate fielding stats (primarily errors) by parsing GameEvents for a single player.
+        """Aggregate fielding stats (primarily errors) by parsing GameEvents for a single player.
 
         Return a list of dicts, one per position played.
 

@@ -30,8 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def update_game_status(game_id: str, status: str) -> bool:
-    """
-    Update one game's status.
+    """Update one game's status.
 
     Args:
         game_id: Game ID.
@@ -60,8 +59,7 @@ def update_game_status(game_id: str, status: str) -> bool:
 
 
 def refresh_game_status_for_date(target_date: str, today: date | None = None) -> dict[str, Any]:
-    """
-    Recompute game_status only for one target date (YYYYMMDD).
+    """Recompute game_status only for one target date (YYYYMMDD).
 
     Args:
         target_date: Target date for the operation.

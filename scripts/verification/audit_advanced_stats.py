@@ -45,7 +45,10 @@ def audit_batting_stats(session: Session, limit: int = 5000):
         for key, stored_val in checks:
             if stored_val is None:
                 continue
-            if abs(recalc[key] - stored_val) > 0.002:
+            recalc_val = recalc.get(key)
+            if recalc_val is None:
+                continue
+            if abs(recalc_val - stored_val) > 0.002:
                 logger.info(
                     f"❌ Batting Mismatch [ID:{rec.id}, S:{rec.season}, P:{rec.player_id}]: {key} Stored={stored_val}, Recalc={recalc[key]}",
                 )
@@ -58,58 +61,62 @@ def audit_batting_stats(session: Session, limit: int = 5000):
     logger.info(f"Batting Audit Complete. Passed: {passed}, Fails: {errors}")
 
 
+def _resolve_innings_outs(rec) -> int | None:
+    innings_outs = rec.innings_outs
+    if innings_outs is None and rec.extra_stats and "innings_outs" in rec.extra_stats:
+        innings_outs = int(rec.extra_stats["innings_outs"])
+    if innings_outs is None and rec.innings_pitched is not None:
+        ip = float(rec.innings_pitched)
+        whole, frac = f"{ip:.2f}".split(".")
+        if frac in ("10", "20"):
+            innings_outs = int(whole) * 3 + int(frac[0])
+        else:
+            innings_outs = round(ip * 3)
+    return innings_outs
+
+
+def _check_pitching_record(rec, innings_outs: int) -> bool:
+    data = {
+        "innings_outs": innings_outs,
+        "earned_runs": rec.earned_runs,
+        "hits_allowed": rec.hits_allowed,
+        "walks_allowed": rec.walks_allowed,
+        "strikeouts": rec.strikeouts,
+        "home_runs_allowed": rec.home_runs_allowed,
+        "hit_batters": rec.hit_batters,
+    }
+    recalc = PitchingStatCalculator.calculate_ratios(data)
+    checks = [("era", rec.era), ("whip", rec.whip)]
+    for key, stored_val in checks:
+        if stored_val is not None and recalc.get(key) is not None and abs(recalc[key] - stored_val) > 0.02:
+            logger.info(
+                "Pitching Mismatch [ID:%s, S:%s, P:%s]: %s Stored=%s, Recalc=%s (Outs=%s)",
+                rec.id,
+                rec.season,
+                rec.player_id,
+                key,
+                stored_val,
+                recalc[key],
+                innings_outs,
+            )
+            return False
+    return True
+
+
 def audit_pitching_stats(session: Session, limit: int = 5000):
-    logger.info(f"\n--- Auditing Pitching Stats (Seasons >= 2024, Sample: {limit}) ---")
+    logger.info("Auditing Pitching Stats (Seasons >= 2024, Sample: %s)", limit)
     records = session.query(PlayerSeasonPitching).filter(PlayerSeasonPitching.season >= 2024).limit(limit).all()
     errors = 0
     passed = 0
-
     for rec in records:
-        innings_outs = rec.innings_outs
-        if innings_outs is None and rec.extra_stats and "innings_outs" in rec.extra_stats:
-            innings_outs = int(rec.extra_stats["innings_outs"])
-
-        if innings_outs is None and rec.innings_pitched is not None:
-            ip = float(rec.innings_pitched)
-            ip_str = f"{ip:.2f}"
-            whole, frac = ip_str.split(".")
-            if frac in ["10", "20"]:
-                innings_outs = int(whole) * 3 + int(frac[0])
-            else:
-                innings_outs = round(ip * 3)
-
+        innings_outs = _resolve_innings_outs(rec)
         if not innings_outs:
             continue
-
-        data = {
-            "innings_outs": innings_outs,
-            "earned_runs": rec.earned_runs,
-            "hits_allowed": rec.hits_allowed,
-            "walks_allowed": rec.walks_allowed,
-            "strikeouts": rec.strikeouts,
-            "home_runs_allowed": rec.home_runs_allowed,
-            "hit_batters": rec.hit_batters,
-        }
-
-        recalc = PitchingStatCalculator.calculate_ratios(data)
-
-        checks = [("era", rec.era), ("whip", rec.whip)]
-
-        is_rec_valid = True
-        for key, stored_val in checks:
-            if stored_val is None:
-                continue
-            if abs(recalc[key] - stored_val) > 0.02:
-                logger.info(
-                    f"❌ Pitching Mismatch [ID:{rec.id}, S:{rec.season}, P:{rec.player_id}]: {key} Stored={stored_val}, Recalc={recalc[key]} (Outs={innings_outs})",
-                )
-                errors += 1
-                is_rec_valid = False
-
-        if is_rec_valid:
+        if _check_pitching_record(rec, innings_outs):
             passed += 1
-
-    logger.info(f"Pitching Audit Complete. Passed: {passed}, Fails: {errors}")
+        else:
+            errors += 1
+    logger.info("Pitching Audit Complete. Passed: %s, Fails: %s", passed, errors)
 
 
 if __name__ == "__main__":

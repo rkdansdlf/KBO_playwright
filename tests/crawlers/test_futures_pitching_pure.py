@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from bs4 import BeautifulSoup
+import pytest
 
 from src.crawlers.futures.futures_pitching import (
     _norm_header,
     _parse_pitching_cell_row,
     _parse_table,
     _pick_futures_pitching_table,
+    fetch_and_parse_futures_pitching,
 )
 
 
@@ -211,3 +215,72 @@ class TestPickFuturesPitchingTable:
         soup = BeautifulSoup(html, "lxml")
         table = _pick_futures_pitching_table(soup)
         assert table is None
+
+
+@pytest.mark.asyncio
+class TestFetchAndParseFuturesPitching:
+    async def test_returns_empty_without_fetching_when_compliance_blocks(self):
+        page = AsyncMock()
+        pool = MagicMock()
+        pool.start = AsyncMock()
+        pool.acquire = AsyncMock(return_value=page)
+        pool.release = AsyncMock()
+        pool.close = AsyncMock()
+
+        with patch("src.crawlers.futures.futures_pitching.compliance.is_allowed", new=AsyncMock(return_value=False)):
+            records = await fetch_and_parse_futures_pitching("123", "https://example.test/profile", pool)
+
+        assert records == []
+        page.goto.assert_not_awaited()
+        pool.release.assert_awaited_once_with(page)
+        pool.close.assert_not_awaited()
+
+    async def test_fetches_profile_and_trims_pitching_rows(self):
+        page = AsyncMock()
+        tab = MagicMock()
+        tab.click = AsyncMock()
+        page.wait_for_selector = AsyncMock(return_value=tab)
+        page.content.return_value = """
+            <table id="tblPitcherRecord">
+              <thead><tr><th>연도</th><th>팀명</th><th>평균자책</th><th>경기</th><th>승</th><th>패</th><th>이닝</th></tr></thead>
+              <tbody><tr><td>2025</td><td>LG</td><td>2.50</td><td>10</td><td>5</td><td>2</td><td>30.1</td></tr></tbody>
+            </table>
+        """
+        pool = MagicMock()
+        pool.start = AsyncMock()
+        pool.acquire = AsyncMock(return_value=page)
+        pool.release = AsyncMock()
+        pool.close = AsyncMock()
+
+        with (
+            patch("src.crawlers.futures.futures_pitching.compliance.is_allowed", new=AsyncMock(return_value=True)),
+            patch("src.crawlers.futures.futures_pitching.throttle.wait", new=AsyncMock()),
+        ):
+            records = await fetch_and_parse_futures_pitching("123", "https://example.test/profile", pool)
+
+        assert records == [
+            {
+                "season": 2025,
+                "era": 2.5,
+                "games": 10,
+                "complete_games": None,
+                "shutouts": None,
+                "wins": 5,
+                "losses": 2,
+                "saves": None,
+                "holds": None,
+                "tbf": None,
+                "innings_pitched": None,
+                "innings_outs": 91,
+                "hits_allowed": None,
+                "home_runs_allowed": None,
+                "walks_allowed": None,
+                "hit_batters": None,
+                "strikeouts": None,
+                "runs_allowed": None,
+                "earned_runs": None,
+                "team_code": "LG",
+            },
+        ]
+        tab.click.assert_awaited_once()
+        pool.release.assert_awaited_once_with(page)

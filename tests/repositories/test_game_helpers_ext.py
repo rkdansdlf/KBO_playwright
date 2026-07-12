@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+from src.constants import MAX_INNINGS
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -541,11 +542,11 @@ class TestBuildInningScores:
         with patch("src.repositories.game_helpers._apply_team_identity_to_mappings"):
             records = _build_inning_scores(
                 "g1",
-                {"away": {"line_score": [1] * 10, "code": "LG"}},
+                {"away": {"line_score": [1] * (MAX_INNINGS + 1), "code": "LG"}},
                 season_year=2024,
             )
-            assert records[9]["is_extra"] is True
-            assert records[8]["is_extra"] is False
+            assert records[MAX_INNINGS]["is_extra"] is True
+            assert records[MAX_INNINGS - 1]["is_extra"] is False
 
     def test_none_runs_skipped(self):
         with patch("src.repositories.game_helpers._apply_team_identity_to_mappings"):
@@ -696,6 +697,14 @@ class TestExtractPlayersFromText:
         result = _extract_players_from_text("homerun", "강민호")
         assert len(result) == 1
         assert result[0][0] == "강민호"
+
+    @pytest.mark.parametrize("name", ["가나", "가나다라마"])
+    def test_name_length_boundaries_are_accepted(self, name):
+        assert _extract_players_from_text("homerun", name) == [(name, None)]
+
+    @pytest.mark.parametrize("name", ["가", "가나다라마바사"])
+    def test_name_length_outside_boundaries_is_rejected(self, name):
+        assert _extract_players_from_text("homerun", name) == []
 
 
 class TestFormatNotes:

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from src.repositories.ranking_repository import RankingRepository
 
+SABER_EXTRA_CONFIG_PARTS = 2
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -95,8 +97,7 @@ class RankingAggregator:
     """Aggregate per-metric rankings across stat categories."""
 
     def __init__(self, repository: RankingRepository | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             repository: Repository.
@@ -117,8 +118,7 @@ class RankingAggregator:
         min_pa: int | None = None,
         min_ip_outs: int | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Generate rankings.
+        """Generate rankings.
 
         Args:
             season: Season year.
@@ -257,7 +257,7 @@ class RankingAggregator:
     def _resolve_value(self, row: dict[str, Any], config: MetricConfig) -> float | None:
         value_key = config.value_key
         saber_config = SABER_EXTRA_KEY_MAP.get(value_key)
-        if saber_config and len(saber_config) == 2:
+        if saber_config and len(saber_config) == SABER_EXTRA_CONFIG_PARTS:
             extra = row.get(saber_config[0])
             if isinstance(extra, dict):
                 return extra.get(saber_config[1])

@@ -8,8 +8,7 @@ _EMPTY_SENTINELS = frozenset({"", "-", "\u2014", "\u2013", "null"})
 
 
 def to_int(val: object, default: int = 0) -> int:
-    """
-    Convert value to int, returning default on failure.
+    """Convert value to int, returning default on failure.
 
     Args:
         val: Val.
@@ -25,8 +24,7 @@ def to_int(val: object, default: int = 0) -> int:
 
 
 def safe_int(value: object) -> int:
-    """
-    Convert cell text to int, returning 0 on failure.
+    """Convert cell text to int, returning 0 on failure.
 
     Args:
         value: Value.
@@ -40,8 +38,7 @@ def safe_int(value: object) -> int:
 
 
 def safe_int_or_none(value: object) -> int | None:
-    """
-    Convert cell text to int, returning None for empty/invalid values.
+    """Convert cell text to int, returning None for empty/invalid values.
 
     Args:
         value: Value.
@@ -60,8 +57,7 @@ def safe_int_or_none(value: object) -> int | None:
 
 
 def safe_float(value: object) -> float:
-    """
-    Convert cell text to float, returning 0.0 on failure.
+    """Convert cell text to float, returning 0.0 on failure.
 
     Args:
         value: Value.
@@ -75,8 +71,7 @@ def safe_float(value: object) -> float:
 
 
 def safe_float_or_none(value: object) -> float | None:
-    """
-    Convert cell text to float, returning None for empty/invalid values.
+    """Convert cell text to float, returning None for empty/invalid values.
 
     Args:
         value: Value.
@@ -95,8 +90,7 @@ def safe_float_or_none(value: object) -> float | None:
 
 
 def parse_innings(value: str | None) -> float:
-    """
-    Parse inning string like '112 1/3' to float 112.333...
+    """Parse inning string like '112 1/3' to float 112.333...
 
     Args:
         value: Value.
@@ -122,8 +116,7 @@ def parse_innings(value: str | None) -> float:
 
 
 def _parse_fraction_innings(cleaned: str) -> int | None:
-    """
-    Parse fraction innings.
+    """Parse fraction innings.
 
     Args:
         cleaned: Cleaned.
@@ -150,8 +143,7 @@ def _parse_fraction_innings(cleaned: str) -> int | None:
 
 
 def _parse_decimal_innings(cleaned: str) -> int | None:
-    """
-    Parse decimal innings.
+    """Parse decimal innings.
 
     Args:
         cleaned: Cleaned.
@@ -174,8 +166,7 @@ def _parse_decimal_innings(cleaned: str) -> int | None:
 
 
 def parse_innings_to_outs(text: str | None) -> int | None:
-    """
-    Convert innings string to total outs.
+    """Convert innings string to total outs.
 
     Supports:
       - 'X Y/3'   (e.g. '5 1/3' -> 16)
@@ -210,8 +201,7 @@ def parse_innings_to_outs(text: str | None) -> int | None:
 
 
 def _clean_innings_text(text: str | None) -> str | None:
-    """
-    Handle the clean innings text operation.
+    """Handle the clean innings text operation.
 
     Args:
         text: Text.
@@ -231,8 +221,7 @@ def _clean_innings_text(text: str | None) -> str | None:
 
 
 def _parse_colon_innings(cleaned: str) -> int:
-    """
-    Parse colon innings.
+    """Parse colon innings.
 
     Args:
         cleaned: Cleaned.

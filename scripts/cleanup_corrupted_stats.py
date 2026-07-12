@@ -33,8 +33,8 @@ def cleanup_corrupted_stats():
         )
 
         logger.info("   Found %s corrupted batting records.", len(b_corrupted))
-        for rec in b_corrupted:
-            session.delete(rec)
+        for b_rec in b_corrupted:
+            session.delete(b_rec)
 
         session.commit()
         logger.info("✅ Cleanup complete. Database is now purged of unrealistic outliers.")

@@ -258,7 +258,7 @@ def main():
 
     logger.info(f"❌ Found {len(violations)} logical inconsistencies:")
     # Group by Game ID for better readability
-    grouped = {}
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for v in violations:
         grouped.setdefault(v["game_id"], []).append(v)
 

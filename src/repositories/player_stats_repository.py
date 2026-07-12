@@ -20,8 +20,7 @@ class PlayerSeasonFieldingRepository(BaseStatsUpsertRepository):
         self.last_filter_counts: Counter = Counter()
 
     def upsert_many(self, records: list[dict[str, Any]]) -> int:
-        """
-        Insert or update many.
+        """Insert or update many.
 
         Args:
             records: Records.

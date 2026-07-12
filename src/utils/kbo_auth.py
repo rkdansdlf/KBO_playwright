@@ -1,5 +1,4 @@
-"""
-KBO Authentication Utility.
+"""KBO Authentication Utility.
 
 Handle automated login and session persistence.
 
@@ -30,8 +29,7 @@ class KboAuthenticator:
     AUTH_STATE_PATH = "data/kbo_auth_state.json"
 
     def __init__(self, user_id: str | None = None, user_pwd: str | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             user_id: User ID.
@@ -45,8 +43,7 @@ class KboAuthenticator:
         self.user_pwd = user_pwd or os.getenv("KBO_USER_PWD")
 
     async def login(self, *, headless: bool = True) -> bool:
-        """
-        Perform login and save state to file.
+        """Perform login and save state to file.
 
         Args:
             headless: Whether to run the browser in headless mode.
@@ -132,8 +129,7 @@ class KboAuthenticator:
 
     @classmethod
     def get_auth_state_path(cls) -> str:
-        """
-        Get auth state path.
+        """Get auth state path.
 
         Returns:
             String result.

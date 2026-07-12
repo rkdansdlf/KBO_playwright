@@ -125,90 +125,86 @@ def _strip_self(args: list[str]) -> list[str]:
     return args
 
 
+_PARAM_DESCRIPTIONS: dict[str, str] = {
+    "db": "Database session.",
+    "db session": "Database session.",
+    "save": "Whether to persist the results.",
+    "headless": "Whether to run the browser in headless mode.",
+    "dry run": "If True, performs a dry run without persisting changes.",
+    "force": "If True, forces the operation even if data already exists.",
+    "verbose": "If True, enables verbose logging output.",
+    "year": "Season year.",
+    "month": "Month number (1-12).",
+    "date": "Target date in YYYYMMDD format.",
+    "season": "Season year.",
+    "concurrency": "Maximum number of concurrent requests.",
+    "timeout": "Timeout in seconds.",
+    "output": "Output file path.",
+    "input": "Input file or directory path.",
+}
+
+
+def _suffix_desc(readable: str) -> str | None:
+    suffixes = [
+        (" id", " ID."),
+        (" url", " URL."),
+        (" dir", " directory path."),
+        (" path", " file path."),
+    ]
+    for suffix, template in suffixes:
+        if readable.endswith(suffix):
+            base = readable[: -len(suffix)].replace("_", " ").title()
+            return f"{base}{template}"
+    return None
+
+
 def _param_desc(name: str) -> str:
     readable = name.replace("_", " ").strip()
-    if readable == "db":
-        return "Database session."
-    if readable == "db session":
-        return "Database session."
-    if readable.endswith(" id"):
-        return f"{readable.replace(' id', '').replace('_', ' ').title()} ID."
-    if readable.endswith(" url"):
-        return f"{readable.replace(' url', '').replace('_', ' ').title()} URL."
-    if readable.endswith(" dir"):
-        return f"{readable.replace(' dir', '').replace('_', ' ').title()} directory path."
-    if readable.endswith(" path"):
-        return f"{readable.replace(' path', '').replace('_', ' ').title()} file path."
-    if readable == "save":
-        return "Whether to persist the results."
-    if readable == "headless":
-        return "Whether to run the browser in headless mode."
-    if readable == "dry run":
-        return "If True, performs a dry run without persisting changes."
-    if readable == "force":
-        return "If True, forces the operation even if data already exists."
-    if readable == "verbose":
-        return "If True, enables verbose logging output."
-    if readable == "year":
-        return "Season year."
-    if readable == "month":
-        return "Month number (1-12)."
-    if readable == "date":
-        return "Target date in YYYYMMDD format."
-    if readable == "season":
-        return "Season year."
-    if readable == "concurrency":
-        return "Maximum number of concurrent requests."
-    if readable == "timeout":
-        return "Timeout in seconds."
-    if readable == "output":
-        return "Output file path."
-    if readable == "input":
-        return "Input file or directory path."
+    if readable in _PARAM_DESCRIPTIONS:
+        return _PARAM_DESCRIPTIONS[readable]
+    suffix = _suffix_desc(readable)
+    if suffix:
+        return suffix
     return f"{readable.replace('_', ' ').title()}."
+
+
+_NAME_RETURN_DESC: dict[str, str | None] = {
+    "None": None,
+    "bool": "True if successful, False otherwise.",
+    "int": "Integer result.",
+    "str": "String result.",
+    "dict": "Dictionary result.",
+    "list": "List of results.",
+    "tuple": "Tuple result.",
+    "Path": "Path object.",
+}
+
+_SUB_RETURN_DESC: dict[str, str] = {
+    "list": "List of results.",
+    "dict": "Dictionary result.",
+    "tuple": "Tuple result.",
+    "Sequence": "Sequence of results.",
+    "Optional": "The result if found, None otherwise.",
+    "Callable": "Callable object.",
+}
 
 
 def _return_desc(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
     returns = node.returns
     if returns is None:
         return None
-    if isinstance(returns, ast.Constant) and returns.value is None:
-        return None
-    if isinstance(returns, ast.Constant) and returns.value is ...:
-        return None
+    if isinstance(returns, ast.Constant):
+        if returns.value is None or returns.value is ...:
+            return None
     if isinstance(returns, ast.Name):
         name = returns.id
-        if name == "None":
-            return None
-        if name == "bool":
-            return "True if successful, False otherwise."
-        if name == "int":
-            return "Integer result."
-        if name == "str":
-            return "String result."
-        if name == "dict":
-            return "Dictionary result."
-        if name == "list":
-            return "List of results."
-        if name == "tuple":
-            return "Tuple result."
-        if name == "Path":
-            return "Path object."
+        if name in _NAME_RETURN_DESC:
+            return _NAME_RETURN_DESC[name]
         return f"{name} instance."
-    if isinstance(returns, ast.Subscript):
-        if isinstance(returns.value, ast.Name):
-            if returns.value.id == "list":
-                return "List of results."
-            if returns.value.id == "dict":
-                return "Dictionary result."
-            if returns.value.id == "tuple":
-                return "Tuple result."
-            if returns.value.id == "Sequence":
-                return "Sequence of results."
-            if returns.value.id == "Optional":
-                return "The result if found, None otherwise."
-            if returns.value.id == "Callable":
-                return "Callable object."
+    if isinstance(returns, ast.Subscript) and isinstance(returns.value, ast.Name):
+        name = returns.value.id
+        if name in _SUB_RETURN_DESC:
+            return _SUB_RETURN_DESC[name]
     return "The result of the operation."
 
 
@@ -294,20 +290,14 @@ def _find_body_start(lines: list[str], lineno: int, body_lineno: int) -> int:
     return body_lineno - 1
 
 
-def _process_file(filepath: Path) -> list[str]:
-    source = filepath.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(filepath))
+def _collect_targets(tree: ast.AST) -> list[tuple[int, str, str, int]]:
     targets: list[tuple[int, str, str, int]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            if node.name.startswith("_"):
-                continue
-            if _has_docstring(node):
+            if node.name.startswith("_") or _has_docstring(node):
                 continue
             docstring = _generate_class_docstring(node)
-            quoted = f'"""{docstring}"""'
-            body_lineno = node.body[0].lineno
-            targets.append((node.lineno, node.name, quoted, body_lineno))
+            targets.append((node.lineno, node.name, f'"""{docstring}"""', node.body[0].lineno))
             continue
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
@@ -324,15 +314,17 @@ def _process_file(filepath: Path) -> list[str]:
         ):
             continue
         docstring = _generate_function_docstring(node)
-        quoted = f'"""{docstring}"""'
-        body_lineno = node.body[0].lineno
-        targets.append((node.lineno, node.name, quoted, body_lineno))
+        targets.append((node.lineno, node.name, f'"""{docstring}"""', node.body[0].lineno))
+    return targets
+
+
+def _apply_changes(source: str, targets: list[tuple[int, str, str, int]]) -> tuple[str, list[str]]:
     if not targets:
-        return []
-    targets.sort(key=lambda t: t[0], reverse=True)
+        return source, []
+    sorted_targets = sorted(targets, key=lambda t: t[0], reverse=True)
     lines = source.splitlines(keepends=True)
     changes: list[str] = []
-    for lineno, name, quoted, body_lineno in targets:
+    for lineno, name, quoted, body_lineno in sorted_targets:
         indent = _get_def_indent(lines, lineno)
         body_indent = indent + "    "
         insert_pos = _find_body_start(lines, lineno, body_lineno)
@@ -342,7 +334,16 @@ def _process_file(filepath: Path) -> list[str]:
             lines.insert(insert_pos, f"{body_indent}{quoted}\n")
         first_line = quoted.split("\n")[0].removeprefix('"""').removesuffix('"""')
         changes.append(f"  L{lineno}: {name} -> {first_line}")
-    result = "".join(lines)
+    return "".join(lines), changes
+
+
+def _process_file(filepath: Path) -> list[str]:
+    source = filepath.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(filepath))
+    targets = _collect_targets(tree)
+    if not targets:
+        return []
+    result, changes = _apply_changes(source, targets)
     try:
         ast.parse(result)
     except SyntaxError as e:

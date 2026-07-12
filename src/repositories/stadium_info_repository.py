@@ -16,8 +16,7 @@ class StadiumInfoRepository:
     """StadiumInfoRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -27,8 +26,7 @@ class StadiumInfoRepository:
         self.session = session
 
     def save_stadium_info(self, data: dict) -> StadiumInfo:
-        """
-        Save stadium info.
+        """Save stadium info.
 
         Args:
             data: Data.
@@ -52,8 +50,7 @@ class StadiumInfoRepository:
         return new_record
 
     def get_all(self) -> list[StadiumInfo]:
-        """
-        Get all.
+        """Get all.
 
         Returns:
             List of results.
@@ -64,8 +61,7 @@ class StadiumInfoRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_code(self, code: str) -> StadiumInfo | None:
-        """
-        Get by code.
+        """Get by code.
 
         Args:
             code: Code.
@@ -79,8 +75,7 @@ class StadiumInfoRepository:
         return self.session.get(StadiumInfo, code)
 
     def save_regulation(self, data: dict) -> StadiumRegulation:
-        """
-        Save regulation.
+        """Save regulation.
 
         Args:
             data: Data.
@@ -97,8 +92,7 @@ class StadiumInfoRepository:
         return new_record
 
     def get_regulations_by_stadium(self, stadium_code: str) -> list[StadiumRegulation]:
-        """
-        Get regulations by stadium.
+        """Get regulations by stadium.
 
         Args:
             stadium_code: Stadium Code.

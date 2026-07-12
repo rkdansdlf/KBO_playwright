@@ -1,6 +1,6 @@
 # PLR0913 Refactor Plan
 
-Last updated: 2026-07-06
+Last updated: 2026-07-12
 
 **Status: COMPLETE** — `PLR0913` is enabled in `pyproject.toml` select and all `src/` violations have been eliminated (0 violations).
 
@@ -25,9 +25,11 @@ All refactors followed the strategy documented in the original plan:
 - Internal helpers: extracted dataclass/context objects (`TeamAggregationQuery`, `_CandidateQuery`, etc.).
 - Repository save helpers: accept typed payload dict/model objects instead of many scalar fields.
 - Service orchestration helpers: introduced `Options`/`Context` dataclasses.
+- Removed all remaining `src/` file-level PLR0913 ignores; compatibility suppressions now live on the affected definitions.
 
 ## Verification
 
 - `ruff check --select PLR0913 src/` = 0 violations
+- `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations
 - `ruff check src/ tests/ scripts/` = 0 errors
 - `pytest` = 8547+ passed in recent full-suite runs

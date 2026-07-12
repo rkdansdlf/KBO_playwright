@@ -16,14 +16,14 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+MIN_OPS_SPLIT_PLATE_APPEARANCES = 50
 
 
 class HomeAwaySplitAggregator:
     """HomeAwaySplitAggregator class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -32,8 +32,7 @@ class HomeAwaySplitAggregator:
         self.session = session
 
     def aggregate_batting(self, year: int) -> list[dict[str, Any]]:
-        """
-        Aggregate batting.
+        """Aggregate batting.
 
         Args:
             year: Season year.
@@ -126,8 +125,7 @@ class HomeAwaySplitAggregator:
         return results
 
     def persist_batting(self, year: int) -> None:
-        """
-        Handle the persist batting operation.
+        """Handle the persist batting operation.
 
         Args:
             year: Season year.
@@ -146,8 +144,7 @@ class HomeAwaySplitAggregator:
         logger.info("[HomeAway] %s batting split rows saved for %s.", len(results), year)
 
     def print_report(self, year: int, top_n: int = 5) -> None:
-        """
-        Print print report.
+        """Print print report.
 
         Args:
             year: Season year.
@@ -187,8 +184,8 @@ class HomeAwaySplitAggregator:
         diffs = [
             (pid, h, a, d)
             for pid, h, a, d in diffs
-            if players[pid].get("HOME", {}).get("plate_appearances", 0) >= 50
-            and players[pid].get("AWAY", {}).get("plate_appearances", 0) >= 50
+            if players[pid].get("HOME", {}).get("plate_appearances", 0) >= MIN_OPS_SPLIT_PLATE_APPEARANCES
+            and players[pid].get("AWAY", {}).get("plate_appearances", 0) >= MIN_OPS_SPLIT_PLATE_APPEARANCES
         ]
         for pid, h_ops, a_ops, diff in diffs[:top_n]:
             logger.info("  %9s %7.3f %8.3f %+6.3f", pid, h_ops, a_ops, diff)

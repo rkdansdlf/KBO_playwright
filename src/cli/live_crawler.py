@@ -1,5 +1,4 @@
-"""
-Real-time KBO live crawler.
+"""Real-time KBO live crawler.
 
 Polls today's schedule, captures relay events plus a lightweight scoreboard snapshot,
 then explicitly syncs changed games to OCI.
@@ -25,6 +24,10 @@ from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
+LATE_GAME_START_INNING = 7
+RECENT_ACTIVITY_WINDOW_SECONDS = 600
+GAME_HOUR_START = 12
+GAME_HOUR_END = 23
 
 DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 LIVE_CRAWLER_EXCEPTIONS = (
@@ -38,6 +41,13 @@ LIVE_CRAWLER_EXCEPTIONS = (
     TypeError,
     OSError,
 )
+
+
+def _raise_empty_kbo_pbp() -> None:
+    msg = "KBO PBP crawl returned no events"
+    raise ValueError(msg)
+
+
 THREAD_EXCEPTIONS = (RuntimeError, OSError)
 
 
@@ -82,8 +92,7 @@ if TYPE_CHECKING:
 
 
 def _has_ending_header(raw_pbp_rows: list[dict[str, Any]]) -> bool:
-    """
-    Check if the last inning_header contains game-ending keywords.
+    """Check if the last inning_header contains game-ending keywords.
 
     Args:
         raw_pbp_rows: Raw Pbp Rows.
@@ -117,8 +126,7 @@ def _select_live_shard(items: list[Any], *, shard_key: str, max_items: int | Non
 def _query_enriched_game_state(
     game_ids: list[str],
 ) -> dict[str, dict[str, int]]:
-    """
-    Query DB for event count and max inning per game_id.
+    """Query DB for event count and max inning per game_id.
 
     Return {game_id: {"event_count": int, "max_inning": int}}.
 
@@ -178,8 +186,7 @@ def _compute_enriched_interval(
     last_event_counts: dict[str, int],
     enriched_state: dict[str, dict[str, int]] | None = None,
 ) -> tuple[int, str, dict[str, int]]:
-    """
-    Improve the base dynamic interval using at-bat/inning/event-density awareness.
+    """Improve the base dynamic interval using at-bat/inning/event-density awareness.
 
     Return (sleep_seconds, extra_note, updated_last_event_counts).
 
@@ -214,7 +221,7 @@ def _compute_enriched_interval(
             multipliers.append(0.6)
 
         # Late-game acceleration: inning >= 7
-        if gs["max_inning"] >= 7:
+        if gs["max_inning"] >= LATE_GAME_START_INNING:
             multipliers.append(0.7)
 
     if not multipliers:
@@ -238,8 +245,7 @@ _ACTIVE_HEALING_GAMES: set[str] = set()
 
 
 def _submit_live_detail_snapshot_background(game_id: str, today_str: str) -> bool:
-    """
-    Queue a non-cadence-critical live detail snapshot crawl for one game.
+    """Queue a non-cadence-critical live detail snapshot crawl for one game.
 
     Args:
         game_id: Game ID.
@@ -306,8 +312,7 @@ def _submit_live_detail_snapshot_background(game_id: str, today_str: str) -> boo
 
 
 async def _run_kbo_fallback_healing(game_id: str) -> None:
-    """
-    Run KBO official website re-crawl as a background fallback task when validation fails.
+    """Run KBO official website re-crawl as a background fallback task when validation fails.
 
     Args:
         game_id: Game ID.
@@ -330,8 +335,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 kbo_data = await kbo_crawler.crawl_game_events(game_id)
                 if kbo_data and kbo_data.get("events"):
                     break
-                msg = "KBO PBP crawl returned no events"
-                raise ValueError(msg)
+                _raise_empty_kbo_pbp()
             except (PlaywrightError, TimeoutError, RuntimeError, ValueError) as fallback_err:
                 logger.warning(
                     "KBO fallback attempt %s failed for %s: %s",
@@ -359,7 +363,10 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     notes="Automatically re-crawled due to Naver validation failure.",
                 )
                 if saved:
-                    msg = f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events from KBO for game {game_id}"
+                    msg = (
+                        f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events "
+                        f"from KBO for game {game_id}"
+                    )
                     logger.info("[FALLBACK SUCCESS] %s", msg)
                     SlackWebhookClient.send_alert(msg)
             except LIVE_CRAWLER_EXCEPTIONS:
@@ -661,8 +668,7 @@ async def run_live_crawler_cycle(
     max_active_games: int | None = None,
     detail_snapshot_background: bool = False,
 ) -> dict[str, Any]:
-    """
-    Run one live polling cycle.
+    """Run one live polling cycle.
 
         Returns status dictionary.
 
@@ -783,8 +789,7 @@ async def run_live_crawler_cycle(
 
 
 async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = None, dynamic: bool = False) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         base_interval_minutes: Base Interval Minutes.
@@ -858,8 +863,7 @@ def _compute_base_dynamic_interval(
     state: GameActivityState,
     base_interval_minutes: int,
 ) -> tuple[int, str]:
-    """
-    Return (base_sleep_seconds, mode_label) for the existing dynamic logic.
+    """Return (base_sleep_seconds, mode_label) for the existing dynamic logic.
 
     Args:
         state: State.
@@ -875,18 +879,17 @@ def _compute_base_dynamic_interval(
     recently_active = False
     if state.last_active_time is not None:
         elapsed = (state.now - state.last_active_time).total_seconds()
-        if elapsed < 600:
+        if elapsed < RECENT_ACTIVITY_WINDOW_SECONDS:
             recently_active = True
     if recently_active:
         return 60, "COOLDOWN (Recently finished)"
-    if 12 <= state.now.hour < 23:
+    if GAME_HOUR_START <= state.now.hour < GAME_HOUR_END:
         return 120, "GAME HOURS (No active games)"
     return 1800, "OFF HOURS"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

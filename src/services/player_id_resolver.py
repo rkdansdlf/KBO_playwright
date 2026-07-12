@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 ALIAS_CSV_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "player_name_aliases.csv"
+HANWHA_PARK_JUNYOUNG_SEASON = 2026
 
 CANONICAL_TEAM_CODES = {
     "OB": "DB",
@@ -56,8 +57,7 @@ class PlayerIdResolver:
         strict_game_resolution: bool = False,
         allow_auto_register: bool | None = None,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -272,8 +272,7 @@ class PlayerIdResolver:
         return None
 
     def preload_season_index(self, season: int) -> None:
-        """
-        Handle the preload season index operation.
+        """Handle the preload season index operation.
 
         Args:
             season: Season year.
@@ -286,8 +285,7 @@ class PlayerIdResolver:
         season_index: dict[str, dict[str, object]] = {}
 
         def add_index_entry(name: str, team: str, pid: int, *, is_pitcher: bool | None) -> None:
-            """
-            Add index entry.
+            """Add index entry.
 
             Args:
                 name: Name.
@@ -528,7 +526,12 @@ class PlayerIdResolver:
         *,
         is_pitcher: bool | None,
     ) -> int | None:
-        if not (player_name == "박준영" and team_code == "HH" and season == 2026 and is_pitcher is True):
+        if not (
+            player_name == "박준영"
+            and team_code == "HH"
+            and season == HANWHA_PARK_JUNYOUNG_SEASON
+            and is_pitcher is True
+        ):
             return None
         if uniform_no == "68":
             return 56709  # 68번 박준영 (2002년생)
@@ -686,7 +689,8 @@ class PlayerIdResolver:
     ) -> int | None:
         if not self.allow_unknown_registration:
             logger.warning(
-                "   [UNKNOWN PLAYER] %s (%s, %s) was not resolved. Leaving player_id NULL; automatic local profile registration is disabled.",
+                "   [UNKNOWN PLAYER] %s (%s, %s) was not resolved. Leaving player_id NULL; "
+                "automatic local profile registration is disabled.",
                 player_name,
                 team_code,
                 season,
@@ -736,8 +740,7 @@ class PlayerIdResolver:
         *,
         is_pitcher: bool | None = None,
     ) -> int | None:
-        """
-        Resolve id.
+        """Resolve id.
 
         Args:
             player_name: Player Name.
@@ -848,8 +851,7 @@ class PlayerIdResolver:
         uniform_no: str | None,
         is_pitcher: bool | None,
     ) -> int | None:
-        """
-        Use already-linked same-season game rows as strict pregame evidence.
+        """Use already-linked same-season game rows as strict pregame evidence.
 
         Args:
             player_name: Player Name.
@@ -906,8 +908,7 @@ class PlayerIdResolver:
         return None
 
     def register_unknown_player(self, name: str, team_code: str, uniform_no: str | None) -> int | None:
-        """
-        Handle the register unknown player operation.
+        """Handle the register unknown player operation.
 
         Args:
             name: Name.
@@ -960,8 +961,7 @@ class PlayerIdResolver:
             return new_id
 
     def _resolve_relaxed(self, player_name: str, team_code: str, season: int) -> int | None:
-        """
-        Relaxed matching: Name + Season match, ensuring exactly one candidate.
+        """Relaxed matching: Name + Season match, ensuring exactly one candidate.
 
         Args:
             player_name: Player Name.

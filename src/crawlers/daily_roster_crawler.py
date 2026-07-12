@@ -1,5 +1,4 @@
-"""
-Crawler for Daily 1st Team Registration Status.
+"""Crawler for Daily 1st Team Registration Status.
 
 Source: https://www.koreabaseball.com/Player/Register.aspx.
 
@@ -46,8 +45,7 @@ class DailyRosterCrawler:
     """Crawl daily roster changes."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -65,8 +63,7 @@ class DailyRosterCrawler:
         end_date: str,
         save_callback: Callable[[list[dict[str, Any]]], Awaitable[object] | object] | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Crawl roster for a range of dates (format: YYYY-MM-DD).
+        """Crawl roster for a range of dates (format: YYYY-MM-DD).
 
         Args:
             start_date: Start Date.
@@ -130,8 +127,8 @@ class DailyRosterCrawler:
             f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';",
         )
 
-        # Alternative: We are already on the page. Use JS to trigger the actual change function if exposed?
-        # Let's try the safest path: Set Value -> Call `__doPostBack` on a harmless control or just the one used by datepicker.
+        # Alternative: trigger the actual change function if the page exposes it.
+        # Use the harmless control that the datepicker itself uses.
         # The datepicker usually calls `__doPostBack('...txtSearchDate', '')`.
         triggers = ["ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect"]
 
@@ -182,7 +179,9 @@ class DailyRosterCrawler:
             const results = [];
             const tables = document.querySelectorAll('#cphContents_cphContents_cphContents_udpRecord table.tNData');
             // DEBUG: return count if 0
-            if (tables.length === 0) return [{ 'status': 'no_tables', 'debug_html_len': document.body.innerHTML.length }];
+            if (tables.length === 0) {
+                return [{ 'status': 'no_tables', 'debug_html_len': document.body.innerHTML.length }];
+            }
 
             tables.forEach(table => {
                 let category = 'Unknown';

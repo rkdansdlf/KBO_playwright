@@ -20,7 +20,11 @@ sqlite3.register_adapter(date, lambda value: value.isoformat())
 sqlite3.register_adapter(datetime, lambda value: value.isoformat())
 
 # Use a separate test database to avoid corrupting the production DB
-TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
+worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
+if worker_id:
+    TEST_DB_PATH = ROOT / "data" / f"test_runtime_{worker_id}.db"
+else:
+    TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
 
 import logging
@@ -58,12 +62,16 @@ def _clean_test_db(request):
     if request.node.get_closest_marker("integration"):
         yield
         return
-    test_db = ROOT / "data" / "test_runtime.db"
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
+    if worker_id:
+        test_db = ROOT / "data" / f"test_runtime_{worker_id}.db"
+    else:
+        test_db = ROOT / "data" / "test_runtime.db"
     if test_db.exists():
         test_db.unlink()
     # Also clean up WAL/SHM files
     for suffix in ("-wal", "-shm"):
-        wal_file = ROOT / "data" / f"test_runtime.db{suffix}"
+        wal_file = test_db.with_name(f"{test_db.name}{suffix}")
         if wal_file.exists():
             wal_file.unlink()
     yield
@@ -71,7 +79,7 @@ def _clean_test_db(request):
     if test_db.exists():
         test_db.unlink()
     for suffix in ("-wal", "-shm"):
-        wal_file = ROOT / "data" / f"test_runtime.db{suffix}"
+        wal_file = test_db.with_name(f"{test_db.name}{suffix}")
         if wal_file.exists():
             wal_file.unlink()
 

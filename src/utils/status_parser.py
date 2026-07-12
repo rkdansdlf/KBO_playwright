@@ -9,8 +9,7 @@ PROFILE_STAFF_KEYWORDS = ("트레이너", "분석원", "불펜포수", "재활",
 
 
 def parse_status_from_text(text: str) -> tuple[str, str | None] | None:
-    """
-    Inspect raw profile text and return (status, staff_role) if a profile label is found.
+    """Inspect raw profile text and return (status, staff_role) if a profile label is found.
 
     status: 'staff' or 'retired'; staff_role is lower-case string (manager/coach/staff/None).
 
@@ -22,8 +21,7 @@ def parse_status_from_text(text: str) -> tuple[str, str | None] | None:
     lowered = text.lower()
 
     def contains(keywords: tuple[str, ...]) -> bool:
-        """
-        Handle the contains operation.
+        """Handle the contains operation.
 
         Args:
             keywords: Keywords.

@@ -50,8 +50,7 @@ def _get_stale_threshold_hours(source: DataSource) -> int:
 
 
 def check_freshness(*, dry_run: bool = False) -> list[str]:
-    """
-    Check freshness.
+    """Check freshness.
 
     Args:
         dry_run: If True, performs a dry run without persisting changes.
@@ -69,7 +68,10 @@ def check_freshness(*, dry_run: bool = False) -> list[str]:
 
         for source in all_active:
             if source.last_success_at is None:
-                msg = f"[STALE] {source.source_key}: never crawled (type={source.source_type}, domain={source.target_domain})"
+                msg = (
+                    f"[STALE] {source.source_key}: never crawled "
+                    f"(type={source.source_type}, domain={source.target_domain})"
+                )
                 logger.warning(msg)
                 if not dry_run:
                     alerts.append(msg)
@@ -91,8 +93,7 @@ def check_freshness(*, dry_run: bool = False) -> list[str]:
 
 
 def check_table_completeness(*, dry_run: bool = False) -> list[str]:
-    """
-    Check table completeness.
+    """Check table completeness.
 
     Args:
         dry_run: If True, performs a dry run without persisting changes.
@@ -125,8 +126,7 @@ def check_table_completeness(*, dry_run: bool = False) -> list[str]:
 
 
 def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
-    """
-    Check p0 readiness.
+    """Check p0 readiness.
 
     Args:
         dry_run: If True, performs a dry run without persisting changes.
@@ -159,8 +159,7 @@ def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
 
 
 def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[str]]:
-    """
-    Run monitor.
+    """Run monitor.
 
     Args:
         alert: Alert.
@@ -193,8 +192,7 @@ def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -208,8 +206,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

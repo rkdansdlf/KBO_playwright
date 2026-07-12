@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+STUB_CHUNK_MAX_LENGTH = 30
+
 
 @dataclass
 class ChunkingContext:
@@ -24,8 +26,7 @@ class TextTransformer:
     """Clean raw text and splits it into semantic chunks based on document type (rules vs news)."""
 
     def clean_text(self, text: str) -> str:
-        """
-        Remove noisy characters, consecutive whitespace, tabs, and markdown clutter.
+        """Remove noisy characters, consecutive whitespace, tabs, and markdown clutter.
 
         Args:
             text: Text.
@@ -51,8 +52,7 @@ class TextTransformer:
         return text.strip()
 
     def chunk_document(self, doc: dict[str, Any]) -> list[dict[str, Any]]:
-        """
-        Handle main entry point for chunking.
+        """Handle main entry point for chunking.
 
             Dispatches to the appropriate chunking strategy
         based on the document's category metadata and environment configuration.
@@ -98,8 +98,7 @@ class TextTransformer:
         meta: dict[str, Any],
         similarity_threshold: float = 0.6,
     ) -> list[dict[str, Any]]:
-        """
-        Split text into sentences, generates embeddings, calculates cosine similarity between adjacent sentences,.
+        """Split text into sentences, generates embeddings, calculates cosine similarity between adjacent sentences,.
 
         and splits the document at boundaries where similarity falls below the threshold.
 
@@ -129,8 +128,7 @@ class TextTransformer:
         # 3. Calculate cosine similarity between adjacent sentences
         def cosine_similarity(v1: list[float], v2: list[float]) -> float:
             # Since our embeddings are already L2 normalized: similarity = dot product
-            """
-            Handle the cosine similarity operation.
+            """Handle the cosine similarity operation.
 
             Args:
                 v1: V1.
@@ -182,8 +180,7 @@ class TextTransformer:
         *,
         ctx: ChunkingContext | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Divides the document into large parent chunks, then splits each parent into smaller child chunks.
+        """Divides the document into large parent chunks, then splits each parent into smaller child chunks.
 
         Store parent content inside the child's metadata so that the child can be retrieved via embedding,
         while the parent context is passed to the LLM.
@@ -258,8 +255,7 @@ class TextTransformer:
         return all_child_chunks
 
     def chunk_by_headings(self, doc_title: str, text: str, meta: dict[str, Any]) -> list[dict[str, Any]]:
-        """
-        Split rulebooks or glossaries by clause headings.
+        """Split rulebooks or glossaries by clause headings.
 
         Recognized heading patterns:
           - Markdown: ## 개요, ### 조항 N
@@ -374,7 +370,7 @@ class TextTransformer:
     def _merge_stub_chunks(self, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = []
         for chunk in chunks:
-            if merged and len(chunk["content"]) < 30:
+            if merged and len(chunk["content"]) < STUB_CHUNK_MAX_LENGTH:
                 merged[-1]["content"] += "\n" + chunk["content"]
             else:
                 merged.append(chunk)
@@ -388,8 +384,7 @@ class TextTransformer:
         chunk_char_limit: int = 800,
         overlap_char_limit: int = 150,
     ) -> list[dict[str, Any]]:
-        """
-        Split articles or columns by paragraph blocks, merging them until the character limit is reached,.
+        """Split articles or columns by paragraph blocks, merging them until the character limit is reached,.
 
         then overlaps 10%-20% of the text.
 

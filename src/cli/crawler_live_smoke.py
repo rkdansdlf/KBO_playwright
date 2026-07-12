@@ -11,6 +11,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
+from src.constants import DATE_STR_LEN
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
@@ -109,8 +110,7 @@ async def run_smoke(  # noqa: PLR0913
     detail_crawler: GameDetailCrawler | None = None,
     relay_crawler: RelayCrawler | None = None,
 ) -> dict[str, Any]:
-    """
-    Run smoke.
+    """Run smoke.
 
     Args:
         target_date: Target date for the operation.
@@ -222,8 +222,7 @@ def _print_human_summary(result: Mapping[str, Any]) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -241,8 +240,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
@@ -251,7 +249,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_arg_parser()
 
     args = parser.parse_args(argv)
-    if len(args.date) != 8 or not args.date.isdigit():
+    if len(args.date) != DATE_STR_LEN or not args.date.isdigit():
         parser.error("--date must be YYYYMMDD")
     if args.limit < 1:
         parser.error("--limit must be at least 1")

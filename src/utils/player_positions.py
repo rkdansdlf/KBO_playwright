@@ -51,8 +51,7 @@ RAW_MAP = {
 
 
 def normalize_position(raw_pos: str | None) -> list[PositionCode]:
-    """
-    Normalize a KBO position string into a list of PositionCode.
+    """Normalize a KBO position string into a list of PositionCode.
 
     Handle composite strings like '타一', '주二', '유三'.
 
@@ -99,8 +98,7 @@ def normalize_position(raw_pos: str | None) -> list[PositionCode]:
 
 
 def get_primary_position(raw_pos: str | None) -> PositionCode:
-    """
-    Return the most 'final' position in a sequence.
+    """Return the most 'final' position in a sequence.
 
     Example: '타一' -> 1B (since they entered as PH but played 1B)
              '유三' -> 3B (moved from SS to 3B)
@@ -122,8 +120,7 @@ def get_primary_position(raw_pos: str | None) -> PositionCode:
 
 
 def is_infield(pos: PositionCode) -> bool:
-    """
-    Return whether the infield.
+    """Return whether the infield.
 
     Args:
         pos: Pos.
@@ -138,8 +135,7 @@ def is_infield(pos: PositionCode) -> bool:
 
 
 def is_outfield(pos: PositionCode) -> bool:
-    """
-    Return whether the outfield.
+    """Return whether the outfield.
 
     Args:
         pos: Pos.
@@ -154,8 +150,7 @@ def is_outfield(pos: PositionCode) -> bool:
 
 
 def is_battery(pos: PositionCode) -> bool:
-    """
-    Return whether the battery.
+    """Return whether the battery.
 
     Args:
         pos: Pos.

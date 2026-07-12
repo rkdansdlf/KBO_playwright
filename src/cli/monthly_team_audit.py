@@ -1,5 +1,4 @@
-"""
-Monthly Team Stats Consistency Audit for Scheduler.
+"""Monthly Team Stats Consistency Audit for Scheduler.
 
 Compare TeamSeasonBatting/Pitching with PlayerSeasonBatting/Pitching
 aggregated by team. Reports mismatches without modifying data.
@@ -19,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from src.constants import KST
+from src.constants import KBO_QUALITY_AUDIT_START_YEAR, KST
 from src.db.engine import SessionLocal
 from src.validators.quality_gate import run_quality_gate
 
@@ -27,8 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_monthly_team_audit(year: int) -> dict[str, Any]:
-    """
-    Run team stats consistency check and return results.
+    """Run team stats consistency check and return results.
 
     Args:
         year: Season year.
@@ -60,8 +58,8 @@ def crawl_monthly_team_audit_job() -> None:
     current_year = datetime.now(KST).year
     target_year = current_year - 1
 
-    if target_year < 2020:
-        logger.info("Skipping team audit for year %s (before 2020)", target_year)
+    if target_year < KBO_QUALITY_AUDIT_START_YEAR:
+        logger.info("Skipping team audit for year %s (before %s)", target_year, KBO_QUALITY_AUDIT_START_YEAR)
         return
 
     logger.info("Starting monthly team stats audit for year %s", target_year)
@@ -106,8 +104,8 @@ def main() -> int:
     current_year = datetime.now(KST).year
     target_year = args.year or current_year - 1
 
-    if target_year < 2020:
-        logger.info("Skipping team audit for year %s (before 2020)", target_year)
+    if target_year < KBO_QUALITY_AUDIT_START_YEAR:
+        logger.info("Skipping team audit for year %s (before %s)", target_year, KBO_QUALITY_AUDIT_START_YEAR)
         return 0
 
     logger.info("Running team stats audit for year %s...", target_year)

@@ -20,6 +20,7 @@ load_dotenv()
 from sqlalchemy import create_engine, inspect, text
 
 oci_url = os.environ.get("TARGET_DATABASE_URL") or os.environ.get("OCI_DB_URL")
+assert oci_url is not None, "OCI_DB_URL or TARGET_DATABASE_URL must be set"
 local_url = "sqlite:////Users/mac/project/KBO_playwright/data/kbo_dev.db"
 
 oci_engine = create_engine(oci_url)

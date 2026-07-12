@@ -1,5 +1,4 @@
-"""
-Transit time crawler for Jamsil Stadium.
+"""Transit time crawler for Jamsil Stadium.
 
 Measures real travel durations from subway stations and bus stops
 near Jamsil Stadium at regular intervals on game days.
@@ -84,8 +83,7 @@ class TransitTimeCrawler:
         stadium_code: str = STADIUM_CODE,
         origins: list[dict] | None = None,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             stadium_code: Stadium Code.
@@ -104,8 +102,7 @@ class TransitTimeCrawler:
         *,
         save: bool = False,
     ) -> list[dict]:
-        """
-        Measure transit times from all configured origins.
+        """Measure transit times from all configured origins.
 
         Args:
             game_date: Game Date.

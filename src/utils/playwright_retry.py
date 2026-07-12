@@ -36,8 +36,7 @@ def retry_navigation(
     timeout: int = _NAVIGATION_TIMEOUT,
     wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
 ) -> bool:
-    """
-    Retry page.goto with simple incremental backoff.
+    """Retry page.goto with simple incremental backoff.
 
     Args:
         page: Page.
@@ -79,8 +78,7 @@ def retry_click(
     timeout: int = _CLICK_TIMEOUT,
     pre_wait_timeout: int = _SELECTOR_TIMEOUT,
 ) -> bool:
-    """
-    Retry page.click with wait_for_selector pre-check, reloading on timeout.
+    """Retry page.click with wait_for_selector pre-check, reloading on timeout.
 
     Args:
         page: Page.
@@ -118,8 +116,7 @@ def retry_wait_for_selector(
     timeout: int = _SELECTOR_TIMEOUT,
     state: Literal["attached", "detached", "hidden", "visible"] = "visible",
 ) -> bool:
-    """
-    Retry wait_for_selector, reloading between timeout attempts.
+    """Retry wait_for_selector, reloading between timeout attempts.
 
     Args:
         page: Page.

@@ -63,27 +63,17 @@ def _cleanup_backups(backup_dir: Path, keep_newest: int = 2) -> list[Path]:
     return removed
 
 
-def archive_data(
-    data_dir: Path = DEFAULT_DATA_DIR,
-    archive_dir: Path = DEFAULT_ARCHIVE_DIR,
-    *,
-    dry_run: bool = False,
-) -> dict[str, list[Path]]:
-    results: dict[str, list[Path]] = {
-        "archived": [],
-        "removed": [],
-        "backups_cleaned": [],
-    }
-
-    archive_dir.mkdir(parents=True, exist_ok=True)
-
+def _archive_expired_subdirs(
+    archive_dir: Path,
+    dry_run: bool,
+    results: dict[str, list[Path]],
+) -> None:
     for sub_dir_name in ["null_player_id", "quality_gate", "review_summary"]:
         sub_dir = archive_dir / sub_dir_name
         if not sub_dir.exists():
             continue
         for csv_file in sub_dir.glob("*.csv"):
-            age = _get_file_age_days(csv_file)
-            if age > RETENTION_DAYS:
+            if _get_file_age_days(csv_file) > RETENTION_DAYS:
                 if dry_run:
                     results["archived"].append(csv_file)
                 else:
@@ -92,16 +82,21 @@ def archive_data(
                     shutil.move(str(csv_file), str(dest / csv_file.name))
                     results["archived"].append(csv_file)
 
-    backup_dir = data_dir / "backups"
-    if backup_dir.exists():
-        for path in backup_dir.iterdir():
-            if _get_file_age_days(path) > RETENTION_DAYS:
-                if dry_run:
-                    results["removed"].append(path)
-                else:
-                    path.unlink()
-                    results["removed"].append(path)
 
+def _remove_old_backups(data_dir: Path, dry_run: bool, results: dict[str, list[Path]]) -> None:
+    backup_dir = data_dir / "backups"
+    if not backup_dir.exists():
+        return
+    for path in backup_dir.iterdir():
+        if _get_file_age_days(path) > RETENTION_DAYS:
+            if dry_run:
+                results["removed"].append(path)
+            else:
+                path.unlink()
+                results["removed"].append(path)
+
+
+def _cleanup_patterns(data_dir: Path, dry_run: bool, results: dict[str, list[Path]]) -> None:
     for pattern in PNG_PATTERNS + LOG_PATTERNS:
         for path in data_dir.glob(pattern):
             age = _get_file_age_days(path)
@@ -112,10 +107,20 @@ def archive_data(
                     path.unlink()
                     results["removed"].append(path)
 
-    if not dry_run:
-        kept = _cleanup_backups(data_dir)
-        results["backups_cleaned"] = kept
 
+def archive_data(
+    data_dir: Path = DEFAULT_DATA_DIR,
+    archive_dir: Path = DEFAULT_ARCHIVE_DIR,
+    *,
+    dry_run: bool = False,
+) -> dict[str, list[Path]]:
+    results: dict[str, list[Path]] = {"archived": [], "removed": [], "backups_cleaned": []}
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    _archive_expired_subdirs(archive_dir, dry_run, results)
+    _remove_old_backups(data_dir, dry_run, results)
+    _cleanup_patterns(data_dir, dry_run, results)
+    if not dry_run:
+        results["backups_cleaned"] = _cleanup_backups(data_dir)
     return results
 
 

@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from src.constants import KBO_FOUNDING_YEAR
+from src.constants import (
+    KBO_FOUNDING_YEAR,
+    KBO_MAX_GAMES_PER_SEASON,
+    KBO_MAX_HOME_RUNS_PER_SEASON,
+    KBO_MAX_VALID_SEASON,
+    KBO_MAX_WINS_PER_SEASON,
+)
 from src.utils.team_codes import resolve_kbo_legacy_team_code
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
@@ -66,8 +72,7 @@ def parse_retired_hitter_tables(
     league: str = "REGULAR",
     level: str = "KBO1",
 ) -> list[dict[str, Any]]:
-    """
-    Parse retired hitter tables.
+    """Parse retired hitter tables.
 
     Args:
         tables: Tables.
@@ -97,7 +102,7 @@ def parse_retired_hitter_tables(
             continue
 
         season = safe_int_or_none(season_label)
-        if season is None or season < KBO_FOUNDING_YEAR or season > 2030:
+        if season is None or season < KBO_FOUNDING_YEAR or season > KBO_MAX_VALID_SEASON:
             continue
 
         team_name = row.get("팀명") or row.get("팀")
@@ -113,7 +118,7 @@ def parse_retired_hitter_tables(
         _apply_stat(record, row, ("경기", "G", "출장", "출장수"), "games", safe_int_or_none)
 
         # Safety Guard: If a single season has > 165 games, it's likely a summary row we missed
-        if record.get("games", 0) > 165:
+        if record.get("games", 0) > KBO_MAX_GAMES_PER_SEASON:
             continue
 
         _apply_stat(record, row, ("타석", "PA"), "plate_appearances", safe_int_or_none)
@@ -125,7 +130,7 @@ def parse_retired_hitter_tables(
         _apply_stat(record, row, ("홈런", "HR"), "home_runs", safe_int_or_none)
 
         # Another Guard: KBO single season HR record is 56 (Lee Seung-yeop)
-        if record.get("home_runs", 0) > 65:
+        if record.get("home_runs", 0) > KBO_MAX_HOME_RUNS_PER_SEASON:
             continue
 
         _apply_stat(record, row, ("타점", "RBI"), "rbi", safe_int_or_none)
@@ -162,8 +167,7 @@ def parse_retired_pitcher_table(
     league: str = "REGULAR",
     level: str = "KBO1",
 ) -> list[dict[str, Any]]:
-    """
-    Parse retired pitcher table.
+    """Parse retired pitcher table.
 
     Args:
         table: Table.
@@ -192,7 +196,7 @@ def parse_retired_pitcher_table(
             continue
 
         season = safe_int_or_none(season_label)
-        if season is None or season < KBO_FOUNDING_YEAR or season > 2030:
+        if season is None or season < KBO_FOUNDING_YEAR or season > KBO_MAX_VALID_SEASON:
             continue
 
         team_name = row.get("팀명") or row.get("팀")
@@ -208,14 +212,14 @@ def parse_retired_pitcher_table(
         _apply_stat(record, row, ("경기", "G"), "games", safe_int_or_none)
 
         # Guard
-        if record.get("games", 0) > 165:
+        if record.get("games", 0) > KBO_MAX_GAMES_PER_SEASON:
             continue
 
         _apply_stat(record, row, ("선발", "GS"), "games_started", safe_int_or_none)
         _apply_stat(record, row, ("승", "W"), "wins", safe_int_or_none)
 
         # Guard: KBO single season win record is 30 (Jang Myeong-bu)
-        if record.get("wins", 0) > 35:
+        if record.get("wins", 0) > KBO_MAX_WINS_PER_SEASON:
             continue
 
         _apply_stat(record, row, ("패", "L"), "losses", safe_int_or_none)

@@ -152,574 +152,293 @@ class StatAudit:
             logger.exception("Failed to save audit warning event")
 
     @staticmethod
+    def _collect_mismatches(
+        official_stats: list,
+        calc_map_or_fn,
+        keys_to_check: list[str],
+        extra_fields: dict[str, tuple[str, str]],
+        session,
+        is_fielding: bool = False,
+    ) -> list[dict]:
+        mismatches: list[dict] = []
+        for off in official_stats:
+            calc = (
+                calc_map_or_fn.get(off.player_id)
+                if not is_fielding
+                else next(
+                    (c for c in calc_map_or_fn.get(off.player_id, []) if c.get("position_id") == off.position_id),
+                    None,
+                )
+            )
+            if not calc:
+                continue
+            diffs = []
+            for key in keys_to_check:
+                off_val = getattr(off, key) if not is_fielding else (off.errors or 0)
+                calc_val = calc.get(key) if not is_fielding else (calc.get("errors") or 0)
+                if off_val != calc_val if not is_fielding else (key == "errors" and off_val != calc_val):
+                    if not is_fielding or key == "errors":
+                        off_val_actual = getattr(off, key) or 0
+                        calc_val_actual = calc.get(key) or 0
+                        if off_val_actual != calc_val_actual:
+                            diffs.append(f"{key}: {off_val_actual} vs {calc_val_actual}")
+            if not diffs:
+                continue
+            player = session.query(PlayerBasic).filter_by(player_id=off.player_id).first()
+            name = player.name if player else f"ID:{off.player_id}"
+            entry = {"player_id": off.player_id, "name": name, "diffs": diffs, "off_record": off, "calc_data": calc}
+            for field, (off_attr, _calc_key) in extra_fields.items():
+                entry[field] = getattr(off, off_attr) or 0
+            if is_fielding:
+                entry["position_id"] = off.position_id
+                entry["off_errors"] = off.errors or 0
+                entry["calc_errors"] = calc.get("errors") or 0
+                entry["diffs"] = [f"errors {entry['off_errors']} vs {entry['calc_errors']}"]
+            mismatches.append(entry)
+        return mismatches
+
+    @staticmethod
+    def _safety_check(
+        mismatches: list[dict],
+        max_mismatches: int,
+        threshold_rules: list[tuple[str, str, int, str]],
+    ) -> tuple[bool, list[str]]:
+        abort_reasons = []
+        if len(mismatches) > max_mismatches:
+            abort_reasons.append(f"Total mismatches ({len(mismatches)}) exceeds threshold of {max_mismatches}")
+        for m in mismatches:
+            for field, _label, threshold, template in threshold_rules:
+                diff = abs(m.get(field, 0) - m.get(field.replace("off_", "calc_"), 0))
+                if diff > threshold:
+                    abort_reasons.append(
+                        template.format(
+                            name=m["name"],
+                            pid=m["player_id"],
+                            diff=diff,
+                            off=m[field],
+                            calc=m.get(field.replace("off_", "calc_"), 0),
+                            threshold=threshold,
+                        ),
+                    )
+        return bool(abort_reasons), abort_reasons
+
+    @staticmethod
+    def _fix_mismatches(
+        mismatches: list[dict],
+        type_name: str,
+        session,
+        save_fn,
+        extra_fields_fn=None,
+    ) -> int:
+        fix_count = 0
+        for m in mismatches:
+            off = m["off_record"]
+            calc = m["calc_data"]
+            name = m["name"]
+            try:
+                original_dict = {
+                    col.name: getattr(off, col.name) for col in off.__table__.columns if not col.name.startswith("_")
+                }
+                backup_path_str = FallbackMonitor.save_audit_backup(
+                    player_id=str(off.player_id),
+                    type_name=type_name,
+                    original_data=original_dict,
+                    calculated_data=calc,
+                    player_name=name,
+                )
+                backup_name = Path(backup_path_str).name
+                if extra_fields_fn:
+                    extra_fields_fn(off, calc, name)
+                save_fn([calc])
+                logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
+                fix_count += 1
+            except AUDIT_EXCEPTIONS as e:
+                logger.info(f"      ⚠️ Failed to fix {name}: {e}")
+                logger.exception(f"Failed to fix {name} {type_name}")
+        return fix_count
+
+    @staticmethod
+    def _run_audit(
+        title: str,
+        year: int,
+        series: str,
+        model_class,
+        official_filter,
+        calc_fn,
+        keys_to_check: list[str],
+        extra_fields: dict,
+        threshold_rules: list,
+        save_fn,
+        extra_fields_fn,
+        fix: bool,
+        max_mismatches: int,
+        **threshold_kwargs,
+    ):
+        logger.info(f"🕵️  Auditing {title} stats for {year} {series}...")
+        with SessionLocal() as session:
+            official_stats = session.query(model_class).filter(*official_filter(session)).all()
+            if not official_stats:
+                logger.info(f"   ⚠️ No official {title.lower()} stats found to compare.")
+                return
+            calc_map_or_fn = calc_fn(session, year, series)
+            mismatches = StatAudit._collect_mismatches(
+                official_stats, calc_map_or_fn, keys_to_check, extra_fields, session
+            )
+            mismatches_count = len(mismatches)
+            if mismatches_count == 0:
+                logger.info(f"   ✅ No {title.lower()} mismatches found.")
+                return
+            logger.info(f"   ❌ Found {mismatches_count} {title.lower()} mismatches.")
+            for m in mismatches:
+                logger.info(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
+            if not fix:
+                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
+                StatAudit.send_audit_warning_alert(year, series, title.upper(), mismatches)
+                return
+            abort, reasons = StatAudit._safety_check(mismatches, max_mismatches, threshold_rules)
+            if abort:
+                reason_str = "; ".join(reasons)
+                logger.info(f"   🛑 Auto-remediation ABORTED for {title.upper()}: {reason_str}")
+                StatAudit.send_remediation_abort_alert(year, series, title.upper(), reason_str)
+                return
+            fix_count = StatAudit._fix_mismatches(mismatches, title.lower(), session, save_fn, extra_fields_fn)
+            summary = f"Audited {len(official_stats)} records. Mismatches: {mismatches_count}, Fixed: {fix_count}"
+            logger.info(f"   📊 {summary}")
+            if fix_count > 0:
+                fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
+                StatAudit.send_remediation_success_alert(year, series, title.upper(), mismatches_count, fixed_players)
+            if mismatches_count > fix_count:
+                FallbackMonitor.log_fallback(year, series, f"{title.upper()}_AUDIT", summary)
+
+    @staticmethod
     def audit_batting(year: int, series: str, fix: bool = False, max_mismatches: int = 10, max_game_diff: int = 15):
-        logger.info(
-            f"🕵️  Auditing BATTING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_game_diff={max_game_diff})...",
-        )
-        with SessionLocal() as session:
-            official_stats = (
-                session.query(PlayerSeasonBatting)
-                .filter(PlayerSeasonBatting.season == year)
-                .filter(PlayerSeasonBatting.league == series.upper())
-                .filter(PlayerSeasonBatting.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]))
-                .all()
-            )
-
-            if not official_stats:
-                logger.info("   ⚠️ No official batting stats found to compare.")
-                return
-
-            # Use BULK aggregation for performance
-            calc_stats_list = SeasonStatAggregator.aggregate_batting_season_bulk(
-                session,
-                year,
-                series,
-                source="AUDIT_FIX",
-            )
-            calc_map = {c["player_id"]: c for c in calc_stats_list}
-
-            mismatches = []
-            keys_to_check = ["games", "at_bats", "hits", "home_runs", "rbi", "walks"]
-
-            for off in official_stats:
-                calc = calc_map.get(off.player_id)
-                if not calc:
-                    continue
-
-                diffs = []
-                for key in keys_to_check:
-                    off_val = getattr(off, key) or 0
-                    calc_val = calc.get(key) or 0
-                    if off_val != calc_val:
-                        diffs.append(f"{key}: {off_val} vs {calc_val}")
-
-                if diffs:
-                    player = session.query(PlayerBasic).filter_by(player_id=off.player_id).first()
-                    name = player.name if player else f"ID:{off.player_id}"
-                    mismatches.append(
-                        {
-                            "player_id": off.player_id,
-                            "name": name,
-                            "diffs": diffs,
-                            "off_record": off,
-                            "calc_data": calc,
-                            "off_games": off.games or 0,
-                            "calc_games": calc.get("games", 0),
-                        },
-                    )
-
-            mismatches_count = len(mismatches)
-            if mismatches_count == 0:
-                logger.info("   ✅ No batting mismatches found.")
-                return
-
-            logger.info(f"   ❌ Found {mismatches_count} batting mismatches.")
-            for m in mismatches:
-                logger.info(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
-
-            if not fix:
-                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
-                StatAudit.send_audit_warning_alert(year, series, "BATTING", mismatches)
-                return
-
-            # Check safety thresholds
-            abort_remediation = False
-            abort_reasons = []
-
-            if mismatches_count > max_mismatches:
-                abort_remediation = True
-                abort_reasons.append(f"Total mismatches ({mismatches_count}) exceeds threshold of {max_mismatches}")
-
-            for m in mismatches:
-                diff_games = abs(m["off_games"] - m["calc_games"])
-                if diff_games > max_game_diff:
-                    abort_remediation = True
-                    abort_reasons.append(
-                        f"Player {m['name']} (ID:{m['player_id']}) has game difference of {diff_games} "
-                        f"(Official: {m['off_games']}, Calculated: {m['calc_games']}), which exceeds threshold of {max_game_diff}",
-                    )
-
-            if abort_remediation:
-                reason_str = "; ".join(abort_reasons)
-                msg = (
-                    f"🛑 Auto-remediation ABORTED for BATTING ({year} {series}) due to safety violations: {reason_str}"
+        StatAudit._run_audit(
+            "BATTING",
+            year,
+            series,
+            PlayerSeasonBatting,
+            lambda s: (
+                PlayerSeasonBatting.season == year,
+                PlayerSeasonBatting.league == series.upper(),
+                PlayerSeasonBatting.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]),
+            ),
+            lambda s, y, sr: {
+                c["player_id"]: c
+                for c in SeasonStatAggregator.aggregate_batting_season_bulk(s, y, sr, source="AUDIT_FIX")
+            },
+            ["games", "at_bats", "hits", "home_runs", "rbi", "walks"],
+            {"off_games": ("games", "games")},
+            [
+                (
+                    "off_games",
+                    "games",
+                    max_game_diff,
+                    "Player {name} (ID:{pid}) has game difference of {diff} (Official: {off}, Calculated: {calc}), which exceeds threshold of {threshold}",
                 )
-                logger.info(f"   {msg}")
-                logger.error(msg)
-                StatAudit.send_remediation_abort_alert(year, series, "BATTING", reason_str)
-                return
-
-            fix_count = 0
-            for m in mismatches:
-                off = m["off_record"]
-                calc = m["calc_data"]
-                name = m["name"]
-                try:
-                    # Backup original data
-                    original_dict = {
-                        col.name: getattr(off, col.name)
-                        for col in off.__table__.columns
-                        if not col.name.startswith("_")
-                    }
-                    backup_path_str = FallbackMonitor.save_audit_backup(
-                        player_id=str(off.player_id),
-                        type_name="batting",
-                        original_data=original_dict,
-                        calculated_data=calc,
-                        player_name=name,
-                    )
-                    backup_name = Path(backup_path_str).name
-
-                    calc["player_name"] = name
-                    if not calc.get("team_code"):
-                        calc["team_code"] = off.team_code
-
-                    save_batting_stats_safe([calc])
-                    logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
-                    fix_count += 1
-                except AUDIT_EXCEPTIONS as e:
-                    logger.info(f"      ⚠️ Failed to fix {name}: {e}")
-                    logger.exception(f"Failed to fix {name} batting")
-
-            summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches_count}, Fixed: {fix_count}"
-            logger.info(f"   📊 {summary_msg}")
-            if fix_count > 0:
-                fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
-                StatAudit.send_remediation_success_alert(year, series, "BATTING", mismatches_count, fixed_players)
-            if mismatches_count > fix_count:
-                FallbackMonitor.log_fallback(year, series, "BATTING_AUDIT", summary_msg)
+            ],
+            save_batting_stats_safe,
+            lambda off, calc, name: (
+                calc.update({"player_name": name}) or calc.setdefault("team_code", off.team_code),
+            ),
+            fix,
+            max_mismatches,
+        )
 
     @staticmethod
-    def audit_pitching(
-        year: int,
-        series: str,
-        fix: bool = False,
-        max_mismatches: int = 10,
-        max_game_diff: int = 15,
-        max_innings_outs_diff: int = 45,
-    ):
-        logger.info(
-            f"🕵️  Auditing PITCHING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_game_diff={max_game_diff}, max_innings_outs_diff={max_innings_outs_diff})...",
+    def audit_pitching(year, series, fix=False, max_mismatches=10, max_game_diff=15, max_innings_outs_diff=45):
+        StatAudit._run_audit(
+            "PITCHING",
+            year,
+            series,
+            PlayerSeasonPitching,
+            lambda s: (
+                PlayerSeasonPitching.season == year,
+                PlayerSeasonPitching.league == series.upper(),
+                PlayerSeasonPitching.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]),
+            ),
+            lambda s, y, sr: {
+                c["player_id"]: c
+                for c in SeasonStatAggregator.aggregate_pitching_season_bulk(s, y, sr, source="AUDIT_FIX")
+            },
+            ["games", "wins", "losses", "saves", "earned_runs", "innings_outs"],
+            {"off_games": ("games", "games"), "off_outs": ("innings_outs", "innings_outs")},
+            [
+                ("off_games", "games", max_game_diff, "Player {name} (ID:{pid}) has game difference of {diff} ..."),
+                (
+                    "off_outs",
+                    "outs",
+                    max_innings_outs_diff,
+                    "Player {name} (ID:{pid}) has innings outs difference of {diff} ...",
+                ),
+            ],
+            save_pitching_stats_to_db,
+            lambda off, calc, name: (
+                calc.update({"player_name": name}) or calc.setdefault("team_code", off.team_code),
+            ),
+            fix,
+            max_mismatches,
         )
-        with SessionLocal() as session:
-            official_stats = (
-                session.query(PlayerSeasonPitching)
-                .filter(PlayerSeasonPitching.season == year)
-                .filter(PlayerSeasonPitching.league == series.upper())
-                .filter(PlayerSeasonPitching.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]))
-                .all()
-            )
-
-            if not official_stats:
-                logger.info("   ⚠️ No official pitching stats found to compare.")
-                return
-
-            # Use BULK aggregation for performance
-            calc_stats_list = SeasonStatAggregator.aggregate_pitching_season_bulk(
-                session,
-                year,
-                series,
-                source="AUDIT_FIX",
-            )
-            calc_map = {c["player_id"]: c for c in calc_stats_list}
-
-            mismatches = []
-            keys_to_check = ["games", "wins", "losses", "saves", "earned_runs", "innings_outs"]
-
-            for off in official_stats:
-                calc = calc_map.get(off.player_id)
-                if not calc:
-                    continue
-
-                diffs = []
-                for key in keys_to_check:
-                    off_val = getattr(off, key) or 0
-                    calc_val = calc.get(key) or 0
-                    if off_val != calc_val:
-                        diffs.append(f"{key}: {off_val} vs {calc_val}")
-
-                if diffs:
-                    player = session.query(PlayerBasic).filter_by(player_id=off.player_id).first()
-                    name = player.name if player else f"ID:{off.player_id}"
-                    mismatches.append(
-                        {
-                            "player_id": off.player_id,
-                            "name": name,
-                            "diffs": diffs,
-                            "off_record": off,
-                            "calc_data": calc,
-                            "off_games": off.games or 0,
-                            "calc_games": calc.get("games", 0),
-                            "off_outs": off.innings_outs or 0,
-                            "calc_outs": calc.get("innings_outs", 0),
-                        },
-                    )
-
-            mismatches_count = len(mismatches)
-            if mismatches_count == 0:
-                logger.info("   ✅ No pitching mismatches found.")
-                return
-
-            logger.info(f"   ❌ Found {mismatches_count} pitching mismatches.")
-            for m in mismatches:
-                logger.info(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
-
-            if not fix:
-                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
-                StatAudit.send_audit_warning_alert(year, series, "PITCHING", mismatches)
-                return
-
-            # Check safety thresholds
-            abort_remediation = False
-            abort_reasons = []
-
-            if mismatches_count > max_mismatches:
-                abort_remediation = True
-                abort_reasons.append(f"Total mismatches ({mismatches_count}) exceeds threshold of {max_mismatches}")
-
-            for m in mismatches:
-                diff_games = abs(m["off_games"] - m["calc_games"])
-                if diff_games > max_game_diff:
-                    abort_remediation = True
-                    abort_reasons.append(
-                        f"Player {m['name']} (ID:{m['player_id']}) has game difference of {diff_games} "
-                        f"(Official: {m['off_games']}, Calculated: {m['calc_games']}), which exceeds threshold of {max_game_diff}",
-                    )
-                diff_outs = abs(m["off_outs"] - m["calc_outs"])
-                if diff_outs > max_innings_outs_diff:
-                    abort_remediation = True
-                    abort_reasons.append(
-                        f"Player {m['name']} (ID:{m['player_id']}) has innings outs difference of {diff_outs} "
-                        f"(Official: {m['off_outs']}, Calculated: {m['calc_outs']}), which exceeds threshold of {max_innings_outs_diff}",
-                    )
-
-            if abort_remediation:
-                reason_str = "; ".join(abort_reasons)
-                msg = (
-                    f"🛑 Auto-remediation ABORTED for PITCHING ({year} {series}) due to safety violations: {reason_str}"
-                )
-                logger.info(f"   {msg}")
-                logger.error(msg)
-                StatAudit.send_remediation_abort_alert(year, series, "PITCHING", reason_str)
-                return
-
-            fix_count = 0
-            for m in mismatches:
-                off = m["off_record"]
-                calc = m["calc_data"]
-                name = m["name"]
-                try:
-                    # Backup
-                    original_dict = {
-                        col.name: getattr(off, col.name)
-                        for col in off.__table__.columns
-                        if not col.name.startswith("_")
-                    }
-                    backup_path_str = FallbackMonitor.save_audit_backup(
-                        player_id=str(off.player_id),
-                        type_name="pitching",
-                        original_data=original_dict,
-                        calculated_data=calc,
-                        player_name=name,
-                    )
-                    backup_name = Path(backup_path_str).name
-
-                    calc["player_name"] = name
-                    if not calc.get("team_code"):
-                        calc["team_code"] = off.team_code
-
-                    save_pitching_stats_to_db([calc])
-                    logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
-                    fix_count += 1
-                except AUDIT_EXCEPTIONS as e:
-                    logger.info(f"      ⚠️ Failed to fix {name}: {e}")
-                    logger.exception(f"Failed to fix {name} pitching")
-
-            summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches_count}, Fixed: {fix_count}"
-            logger.info(f"   📊 {summary_msg}")
-            if fix_count > 0:
-                fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
-                StatAudit.send_remediation_success_alert(year, series, "PITCHING", mismatches_count, fixed_players)
-            if mismatches_count > fix_count:
-                FallbackMonitor.log_fallback(year, series, "PITCHING_AUDIT", summary_msg)
 
     @staticmethod
-    def audit_fielding(year: int, series: str, fix: bool = False, max_mismatches: int = 15, max_error_diff: int = 5):
-        logger.info(
-            f"🕵️  Auditing FIELDING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_error_diff={max_error_diff})...",
+    def audit_fielding(year, series, fix=False, max_mismatches=15, max_error_diff=5):
+        StatAudit._run_audit(
+            "FIELDING",
+            year,
+            series,
+            PlayerSeasonFielding,
+            lambda s: (
+                PlayerSeasonFielding.year == year,
+                PlayerSeasonFielding.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]),
+            ),
+            lambda s, y, sr: {
+                pid: SeasonStatAggregator.aggregate_fielding_season(s, pid, y, sr, source="AUDIT_FIX")
+                for pid in {
+                    off.player_id for off in s.query(PlayerSeasonFielding).filter(PlayerSeasonFielding.year == y).all()
+                }
+            },
+            ["errors"],
+            {"off_errors": ("errors", "errors")},
+            [("off_errors", "errors", max_error_diff, "Player {name} (ID:{pid}) has error difference of {diff} ...")],
+            PlayerSeasonFieldingRepository().upsert_many,
+            lambda off, calc, name: calc.update({"team_id": off.team_id}),
+            fix,
+            max_mismatches,
         )
-        with SessionLocal() as session:
-            official_stats = (
-                session.query(PlayerSeasonFielding)
-                .filter(PlayerSeasonFielding.year == year)
-                .filter(PlayerSeasonFielding.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]))
-                .all()
-            )
-
-            if not official_stats:
-                logger.info("   ⚠️ No official fielding stats found to compare.")
-                return
-
-            mismatches = []
-            repo = PlayerSeasonFieldingRepository()
-
-            # Group official by player to reduce redundant aggregations
-            players = sorted({off.player_id for off in official_stats})
-
-            for pid in players:
-                calc_list = SeasonStatAggregator.aggregate_fielding_season(
-                    session,
-                    pid,
-                    year,
-                    series,
-                    source="AUDIT_FIX",
-                )
-                if not calc_list:
-                    continue
-
-                # Check each position for this player
-                for off in [o for o in official_stats if o.player_id == pid]:
-                    calc = next((c for c in calc_list if c["position_id"] == off.position_id), None)
-                    if not calc:
-                        continue
-
-                    off_errors = off.errors or 0
-                    calc_errors = calc.get("errors") or 0
-                    if off_errors != calc_errors:
-                        player = session.query(PlayerBasic).filter_by(player_id=pid).first()
-                        name = player.name if player else f"ID:{pid}"
-                        mismatches.append(
-                            {
-                                "player_id": pid,
-                                "name": name,
-                                "position_id": off.position_id,
-                                "off_record": off,
-                                "calc_data": calc,
-                                "off_errors": off_errors,
-                                "calc_errors": calc_errors,
-                                "diffs": [f"errors {off_errors} vs {calc_errors}"],
-                            },
-                        )
-
-            mismatches_count = len(mismatches)
-            if mismatches_count == 0:
-                logger.info("   ✅ No fielding mismatches found.")
-                return
-
-            logger.info(f"   ❌ Found {mismatches_count} fielding mismatches.")
-            for m in mismatches:
-                logger.info(f"      - {m['name']} - {m['position_id']}: errors {m['off_errors']} vs {m['calc_errors']}")
-
-            if not fix:
-                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
-                StatAudit.send_audit_warning_alert(year, series, "FIELDING", mismatches)
-                return
-
-            # Check safety thresholds
-            abort_remediation = False
-            abort_reasons = []
-
-            if mismatches_count > max_mismatches:
-                abort_remediation = True
-                abort_reasons.append(f"Total mismatches ({mismatches_count}) exceeds threshold of {max_mismatches}")
-
-            for m in mismatches:
-                diff_errors = abs(m["off_errors"] - m["calc_errors"])
-                if diff_errors > max_error_diff:
-                    abort_remediation = True
-                    abort_reasons.append(
-                        f"Player {m['name']} (ID:{m['player_id']}) has error difference of {diff_errors} for position {m['position_id']} "
-                        f"(Official: {m['off_errors']}, Calculated: {m['calc_errors']}), which exceeds threshold of {max_error_diff}",
-                    )
-
-            if abort_remediation:
-                reason_str = "; ".join(abort_reasons)
-                msg = (
-                    f"🛑 Auto-remediation ABORTED for FIELDING ({year} {series}) due to safety violations: {reason_str}"
-                )
-                logger.info(f"   {msg}")
-                logger.error(msg)
-                StatAudit.send_remediation_abort_alert(year, series, "FIELDING", reason_str)
-                return
-
-            fix_count = 0
-            for m in mismatches:
-                off = m["off_record"]
-                calc = m["calc_data"]
-                name = m["name"]
-                pid = m["player_id"]
-                try:
-                    # Backup
-                    original_dict = {
-                        col.name: getattr(off, col.name)
-                        for col in off.__table__.columns
-                        if not col.name.startswith("_")
-                    }
-                    backup_path_str = FallbackMonitor.save_audit_backup(
-                        player_id=str(pid),
-                        type_name="fielding",
-                        original_data=original_dict,
-                        calculated_data=calc,
-                        player_name=name,
-                    )
-                    backup_name = Path(backup_path_str).name
-
-                    calc["team_id"] = off.team_id
-                    repo.upsert_many([calc])
-                    logger.info(f"      ✅ Fixed {name} ({off.position_id}) in DB. (Backup: {backup_name})")
-                    fix_count += 1
-                except AUDIT_EXCEPTIONS as e:
-                    logger.info(f"      ⚠️ Failed to fix {name}: {e}")
-                    logger.exception(f"Failed to fix {name} fielding")
-
-            logger.info(f"   Done. Mismatches: {mismatches_count}, Fixed: {fix_count}")
-            if fix_count > 0:
-                fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
-                StatAudit.send_remediation_success_alert(year, series, "FIELDING", mismatches_count, fixed_players)
 
     @staticmethod
-    def audit_baserunning(
-        year: int,
-        series: str,
-        fix: bool = False,
-        max_mismatches: int = 15,
-        max_sb_cs_diff: int = 10,
-    ):
-        logger.info(
-            f"🕵️  Auditing BASERUNNING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_sb_cs_diff={max_sb_cs_diff})...",
+    def audit_baserunning(year, series, fix=False, max_mismatches=15, max_sb_cs_diff=10):
+        StatAudit._run_audit(
+            "BASERUNNING",
+            year,
+            series,
+            PlayerSeasonBaserunning,
+            lambda s: (
+                PlayerSeasonBaserunning.year == year,
+                PlayerSeasonBaserunning.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]),
+            ),
+            lambda s, y, sr: {
+                c.get("player_id"): c
+                for c in [
+                    SeasonStatAggregator.aggregate_baserunning_season(s, off.player_id, y, sr, source="AUDIT_FIX")
+                    for off in s.query(PlayerSeasonBaserunning).filter(PlayerSeasonBaserunning.year == y).all()
+                ]
+            },
+            ["stolen_bases", "caught_stealing"],
+            {"off_sb": ("stolen_bases", "stolen_bases"), "off_cs": ("caught_stealing", "caught_stealing")},
+            [
+                ("off_sb", "sb", max_sb_cs_diff, "Player {name} (ID:{pid}) has stolen bases difference of {diff} ..."),
+                (
+                    "off_cs",
+                    "cs",
+                    max_sb_cs_diff,
+                    "Player {name} (ID:{pid}) has caught stealing difference of {diff} ...",
+                ),
+            ],
+            PlayerSeasonBaserunningRepository().upsert_many,
+            lambda off, calc, name: calc.update({"team_id": off.team_id}),
+            fix,
+            max_mismatches,
         )
-        with SessionLocal() as session:
-            official_stats = (
-                session.query(PlayerSeasonBaserunning)
-                .filter(PlayerSeasonBaserunning.year == year)
-                .filter(
-                    PlayerSeasonBaserunning.source.notin_(["FALLBACK", "FALLBACK_AUTO", "AUDIT_FIX", "MANUAL_RECALC"]),
-                )
-                .all()
-            )
-
-            if not official_stats:
-                logger.info("   ⚠️ No official baserunning stats found to compare.")
-                return
-
-            mismatches = []
-            repo = PlayerSeasonBaserunningRepository()
-
-            for off in official_stats:
-                calc = SeasonStatAggregator.aggregate_baserunning_season(
-                    session,
-                    off.player_id,
-                    year,
-                    series,
-                    source="AUDIT_FIX",
-                )
-                if not calc:
-                    continue
-
-                keys = ["stolen_bases", "caught_stealing"]
-                diffs = []
-                for k in keys:
-                    off_val = getattr(off, k) or 0
-                    calc_val = calc.get(k) or 0
-                    if off_val != calc_val:
-                        diffs.append(f"{k}: {off_val} vs {calc_val}")
-
-                if diffs:
-                    player = session.query(PlayerBasic).filter_by(player_id=off.player_id).first()
-                    name = player.name if player else f"ID:{off.player_id}"
-                    mismatches.append(
-                        {
-                            "player_id": off.player_id,
-                            "name": name,
-                            "diffs": diffs,
-                            "off_record": off,
-                            "calc_data": calc,
-                            "off_sb": off.stolen_bases or 0,
-                            "calc_sb": calc.get("stolen_bases", 0),
-                            "off_cs": off.caught_stealing or 0,
-                            "calc_cs": calc.get("caught_stealing", 0),
-                        },
-                    )
-
-            mismatches_count = len(mismatches)
-            if mismatches_count == 0:
-                logger.info("   ✅ No baserunning mismatches found.")
-                return
-
-            logger.info(f"   ❌ Found {mismatches_count} baserunning mismatches.")
-            for m in mismatches:
-                logger.info(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
-
-            if not fix:
-                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
-                StatAudit.send_audit_warning_alert(year, series, "BASERUNNING", mismatches)
-                return
-
-            # Check safety thresholds
-            abort_remediation = False
-            abort_reasons = []
-
-            if mismatches_count > max_mismatches:
-                abort_remediation = True
-                abort_reasons.append(f"Total mismatches ({mismatches_count}) exceeds threshold of {max_mismatches}")
-
-            for m in mismatches:
-                diff_sb = abs(m["off_sb"] - m["calc_sb"])
-                diff_cs = abs(m["off_cs"] - m["calc_cs"])
-                if diff_sb > max_sb_cs_diff:
-                    abort_remediation = True
-                    abort_reasons.append(
-                        f"Player {m['name']} (ID:{m['player_id']}) has stolen bases difference of {diff_sb} "
-                        f"(Official: {m['off_sb']}, Calculated: {m['calc_sb']}), which exceeds threshold of {max_sb_cs_diff}",
-                    )
-                if diff_cs > max_sb_cs_diff:
-                    abort_remediation = True
-                    abort_reasons.append(
-                        f"Player {m['name']} (ID:{m['player_id']}) has caught stealing difference of {diff_cs} "
-                        f"(Official: {m['off_cs']}, Calculated: {m['calc_cs']}), which exceeds threshold of {max_sb_cs_diff}",
-                    )
-
-            if abort_remediation:
-                reason_str = "; ".join(abort_reasons)
-                msg = f"🛑 Auto-remediation ABORTED for BASERUNNING ({year} {series}) due to safety violations: {reason_str}"
-                logger.info(f"   {msg}")
-                logger.error(msg)
-                StatAudit.send_remediation_abort_alert(year, series, "BASERUNNING", reason_str)
-                return
-
-            fix_count = 0
-            for m in mismatches:
-                off = m["off_record"]
-                calc = m["calc_data"]
-                name = m["name"]
-                try:
-                    # Backup
-                    original_dict = {
-                        col.name: getattr(off, col.name)
-                        for col in off.__table__.columns
-                        if not col.name.startswith("_")
-                    }
-                    backup_path_str = FallbackMonitor.save_audit_backup(
-                        player_id=str(off.player_id),
-                        type_name="baserunning",
-                        original_data=original_dict,
-                        calculated_data=calc,
-                        player_name=name,
-                    )
-                    backup_name = Path(backup_path_str).name
-
-                    calc["team_id"] = off.team_id
-                    repo.upsert_many([calc])
-                    logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
-                    fix_count += 1
-                except AUDIT_EXCEPTIONS as e:
-                    logger.info(f"      ⚠️ Failed to fix {name}: {e}")
-                    logger.exception(f"Failed to fix {name} baserunning")
-
-            logger.info(f"   Done. Mismatches: {mismatches_count}, Fixed: {fix_count}")
-            if fix_count > 0:
-                fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
-                StatAudit.send_remediation_success_alert(year, series, "BASERUNNING", mismatches_count, fixed_players)
 
 
 def main():

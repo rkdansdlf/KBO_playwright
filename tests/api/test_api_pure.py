@@ -65,7 +65,7 @@ def test_get_system_status_with_mock_session() -> None:
     movement_query = MagicMock()
     movement_query.order_by.return_value.first.return_value = MagicMock(created_at=datetime(2026, 4, 2, 12, 30))
     session = MagicMock()
-    session.query.side_effect = [game_query, player_query, movement_query]
+    session.query.side_effect = [game_query, player_query, game_query, movement_query]
 
     @contextmanager
     def fake_db_session():
@@ -104,6 +104,13 @@ def test_async_run_daily_update_logs_failures() -> None:
         api_app._async_run_daily_update()
 
 
+def test_async_run_daily_update_completes() -> None:
+    with patch("src.cli.run_daily_update.main") as mock_main:
+        api_app._async_run_daily_update()
+
+    mock_main.assert_called_once_with([])
+
+
 def test_trigger_daily_update_conflict_and_success() -> None:
     background_tasks = MagicMock()
     with patch("src.api.app._check_lock_status", return_value=True), pytest.raises(HTTPException) as exc_info:
@@ -130,6 +137,10 @@ async def test_upload_text_relay_validation_errors() -> None:
         await api_app.upload_text_relay(_FakeUpload("20260402LGOB0.csv", b"\xff\xfe\xfd"))  # type: ignore[arg-type]
     assert decode_exc.value.status_code == 400
 
+    with pytest.raises(HTTPException) as game_id_exc:
+        await api_app.upload_text_relay(_FakeUpload(".csv", b""))  # type: ignore[arg-type]
+    assert game_id_exc.value.status_code == 400
+
 
 @pytest.mark.asyncio
 async def test_upload_text_relay_success_with_mock_session() -> None:
@@ -150,6 +161,23 @@ async def test_upload_text_relay_success_with_mock_session() -> None:
 
     assert result == {"status": "success", "game_id": "20260402LGOB0", "rows_inserted": 1}
     session.add.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_upload_text_relay_returns_http_500_on_db_failure() -> None:
+    @contextmanager
+    def failing_db_session():
+        raise RuntimeError("db unavailable")
+        yield
+
+    with (
+        patch("src.api.app.get_db_session", failing_db_session),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await api_app.upload_text_relay(_FakeUpload("20260402LGOB0.csv", b"inning\n1\n"))  # type: ignore[arg-type]
+
+    assert exc_info.value.status_code == 500
+    assert "CSV Ingestion failure" in exc_info.value.detail
 
 
 def test_api_server_main_passes_args_to_uvicorn() -> None:

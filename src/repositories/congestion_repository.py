@@ -21,8 +21,7 @@ class CongestionRepository:
     """CongestionRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -36,8 +35,7 @@ class CongestionRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumCongestion, bool]:
-        """
-        Insert or update a congestion measurement.
+        """Insert or update a congestion measurement.
 
         Dedup key: (stadium_code, location_label, measured_at).
 
@@ -70,8 +68,7 @@ class CongestionRepository:
         return record, True
 
     def bulk_upsert(self, records: list[dict]) -> tuple[int, int]:
-        """
-        Upsert multiple records.
+        """Upsert multiple records.
 
             Returns (created, updated).
 
@@ -109,8 +106,7 @@ class CongestionRepository:
         location_type: str | None = None,
         location_label: str | None = None,
     ) -> list[StadiumCongestion]:
-        """
-        Get by game date.
+        """Get by game date.
 
         Args:
             stadium_code: Stadium Code.
@@ -146,8 +142,7 @@ class CongestionRepository:
         stadium_code: str,
         location_label: str,
     ) -> StadiumCongestion | None:
-        """
-        Get latest.
+        """Get latest.
 
         Args:
             stadium_code: Stadium Code.
@@ -179,8 +174,7 @@ class CongestionRepository:
         stadium_code: str,
         game_date: date,
     ) -> StadiumCongestion | None:
-        """
-        Return the highest congestion record for a given game date.
+        """Return the highest congestion record for a given game date.
 
         Args:
             stadium_code: Stadium Code.

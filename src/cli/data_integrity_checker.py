@@ -1,5 +1,4 @@
-"""
-Data integrity checker for post-crawl validation.
+"""Data integrity checker for post-crawl validation.
 
 Run after the main daily update pipeline to verify that the collected data
 meets quality standards. Checks for:
@@ -27,7 +26,7 @@ if TYPE_CHECKING:
 
 from sqlalchemy import func
 
-from src.constants import KST
+from src.constants import DATE_STR_LEN, KST
 from src.db.engine import SessionLocal
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import (
@@ -71,8 +70,7 @@ class IntegrityReport:
 
 
 def _parse_target_date(date_str: str) -> date:
-    """
-    Parse YYYYMMDD string to date.
+    """Parse YYYYMMDD string to date.
 
     Args:
         date_str: Date Str.
@@ -86,8 +84,7 @@ def _parse_target_date(date_str: str) -> date:
 
 
 def check_games_exist(session: Session, target: date) -> CheckResult:
-    """
-    Verify that game rows exist for the target date.
+    """Verify that game rows exist for the target date.
 
     Args:
         session: Session.
@@ -113,8 +110,7 @@ def check_games_exist(session: Session, target: date) -> CheckResult:
 
 
 def check_all_terminal_status(session: Session, target: date) -> CheckResult:
-    """
-    Verify all games for target date have terminal status.
+    """Verify all games for target date have terminal status.
 
     Args:
         session: Session.
@@ -162,8 +158,7 @@ def check_all_terminal_status(session: Session, target: date) -> CheckResult:
 
 
 def check_child_stats_exist(session: Session, target: date) -> CheckResult:
-    """
-    Verify that completed games have batting and pitching stats.
+    """Verify that completed games have batting and pitching stats.
 
     Args:
         session: Session.
@@ -232,8 +227,7 @@ def check_child_stats_exist(session: Session, target: date) -> CheckResult:
 
 
 def check_no_null_player_ids(session: Session, target: date) -> CheckResult:
-    """
-    Check for NULL player_ids in critical tables for target date games.
+    """Check for NULL player_ids in critical tables for target date games.
 
     Args:
         session: Session.
@@ -293,8 +287,7 @@ def check_no_null_player_ids(session: Session, target: date) -> CheckResult:
 
 
 def check_game_status_populated(session: Session, target: date) -> CheckResult:
-    """
-    Verify all game rows have a non-NULL game_status.
+    """Verify all game rows have a non-NULL game_status.
 
     Args:
         session: Session.
@@ -323,8 +316,7 @@ def check_game_status_populated(session: Session, target: date) -> CheckResult:
 
 
 def check_scores_populated(session: Session, target: date) -> CheckResult:
-    """
-    Verify completed games have scores populated.
+    """Verify completed games have scores populated.
 
     Args:
         session: Session.
@@ -369,8 +361,7 @@ def check_scores_populated(session: Session, target: date) -> CheckResult:
 
 
 def check_winning_team_consistency(session: Session, target: date) -> CheckResult:
-    """
-    Verify winning_team matches home_score vs away_score.
+    """Verify winning_team matches home_score vs away_score.
 
     Args:
         session: Session.
@@ -427,8 +418,7 @@ def check_winning_team_consistency(session: Session, target: date) -> CheckResul
 
 
 def check_duplicate_games(session: Session, target: date) -> CheckResult:
-    """
-    Detect duplicate games (same date + home_team + away_team).
+    """Detect duplicate games (same date + home_team + away_team).
 
     Args:
         session: Session.
@@ -513,8 +503,7 @@ def check_season_stat_team_code(session: Session) -> CheckResult:
 
 
 def run_integrity_checks(target_date: str) -> IntegrityReport:
-    """
-    Run all integrity checks for the given target date.
+    """Run all integrity checks for the given target date.
 
     Args:
         target_date: Target date for the operation.
@@ -584,8 +573,7 @@ def run_integrity_checks(target_date: str) -> IntegrityReport:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -609,8 +597,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
@@ -621,7 +608,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     target_date = args.date
-    if len(target_date) != 8 or not target_date.isdigit():
+    if len(target_date) != DATE_STR_LEN or not target_date.isdigit():
         logger.error("Invalid date format: %s. Expected YYYYMMDD.", target_date)
         sys.exit(1)
 

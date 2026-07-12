@@ -40,6 +40,8 @@ POSTSEASON_DATE_RANGES: dict[int, tuple[str, str]] = {
 INTERNATIONAL_DATE_RANGES: dict[int, tuple[str, str]] = {
     2024: ("20241110", "20241124"),
 }
+LEGACY_RELAY_BUCKET_END_YEAR = 2023
+ALL_STAR_EAWE_SEASON = 2025
 
 
 @dataclass(slots=True)
@@ -83,8 +85,7 @@ class NormalizedRelayResult:
 
     @property
     def is_empty(self) -> bool:
-        """
-        Return whether the empty.
+        """Return whether the empty.
 
         Returns:
             True if successful, False otherwise.
@@ -97,8 +98,7 @@ class RelaySourceAdapter(ABC):
     """RelaySourceAdapter class."""
 
     def __init__(self, source_name: str) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             source_name: Source Name.
@@ -111,14 +111,16 @@ class RelaySourceAdapter(ABC):
         self.cache_negative_probe = True
 
     @abstractmethod
-    async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
-        """
-        Fetch game.
+    async def fetch_game(
+        self,
+        game_id: str,
+        last_payload_hash: str | None = None,
+    ) -> NormalizedRelayResult:
+        """Fetch game.
 
         Args:
             game_id: Game ID.
-            game_id: Game ID.
-            game_id: Game ID.
+            last_payload_hash: Last seen payload hash.
 
         Returns:
             NormalizedRelayResult instance.
@@ -128,8 +130,7 @@ class RelaySourceAdapter(ABC):
 
 
 def normalize_inning_half(value: object) -> str | None:
-    """
-    Normalize inning half to 'top' or 'bottom'.
+    """Normalize inning half to 'top' or 'bottom'.
 
         Returns None for unrecognized values.
 
@@ -148,8 +149,7 @@ def normalize_inning_half(value: object) -> str | None:
 
 
 def trailing_result_from_description(description: object) -> str | None:
-    """
-    Handle the trailing result from description operation.
+    """Handle the trailing result from description operation.
 
     Args:
         description: Description.
@@ -171,8 +171,7 @@ def trailing_result_from_description(description: object) -> str | None:
 
 
 def event_to_pbp_row(event: dict[str, Any]) -> dict[str, Any]:
-    """
-    Handle the event to pbp row operation.
+    """Handle the event to pbp row operation.
 
     Args:
         event: Event.
@@ -199,8 +198,7 @@ def event_to_pbp_row(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
-    """
-    Normalize a raw PBP row dict to a standard set of fields.
+    """Normalize a raw PBP row dict to a standard set of fields.
 
     Retains the user-facing play fields plus provider trace keys used by the
     persistence layer to make raw rows auditable.
@@ -226,8 +224,7 @@ def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def event_has_minimum_state(event: dict[str, Any]) -> bool:
-    """
-    Handle the event has minimum state operation.
+    """Handle the event has minimum state operation.
 
     Args:
         event: Event.
@@ -242,8 +239,7 @@ def event_has_minimum_state(event: dict[str, Any]) -> bool:
 
 
 def events_have_minimum_state(events: Iterable[dict[str, Any]]) -> bool:
-    """
-    Handle the events have minimum state operation.
+    """Handle the events have minimum state operation.
 
     Args:
         events: Events.
@@ -260,8 +256,7 @@ def events_have_minimum_state(events: Iterable[dict[str, Any]]) -> bool:
 
 
 def derive_bucket_id(game_id: str, league_type_name: str | None = None) -> str:
-    """
-    Derive bucket id.
+    """Derive bucket id.
 
     Args:
         game_id: Game ID.
@@ -280,7 +275,7 @@ def derive_bucket_id(game_id: str, league_type_name: str | None = None) -> str:
     team_code = str(game_id)[8:12]
     league_name = str(league_type_name or "").strip().lower()
 
-    if year <= 2023:
+    if year <= LEGACY_RELAY_BUCKET_END_YEAR:
         return f"{year}_legacy"
     if team_code in {"EAWE", "WEEA"} or "올스타" in league_name:
         return f"{year}_all_star"
@@ -299,7 +294,7 @@ def _derive_bucket_by_date(game_id: str, year: int, team_code: str) -> str:
     intl_range = INTERNATIONAL_DATE_RANGES.get(year)
     if intl_range and intl_range[0] <= game_date <= intl_range[1]:
         return f"{year}_international"
-    if year == 2025 and team_code == "EAWE":
+    if year == ALL_STAR_EAWE_SEASON and team_code == "EAWE":
         return "2025_all_star"
     if year in {2024, 2025, 2026}:
         return f"{year}_regular_kbo"
@@ -307,8 +302,7 @@ def _derive_bucket_by_date(game_id: str, year: int, team_code: str) -> str:
 
 
 def default_source_order_for_bucket(bucket_id: str) -> list[str]:
-    """
-    Handle the default source order for bucket operation.
+    """Handle the default source order for bucket operation.
 
     Args:
         bucket_id: Bucket ID.
@@ -339,8 +333,7 @@ def _coerce_manifest_paths(manifest_path: str | Path | Iterable[str | Path]) -> 
 
 
 def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> list[ManifestEntry]:
-    """
-    Read manifest entries.
+    """Read manifest entries.
 
     Args:
         manifest_path: Manifest file path.
@@ -398,8 +391,7 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
 
 
 def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str], CapabilityRecord]:
-    """
-    Load capability records.
+    """Load capability records.
 
     Args:
         capability_path: Capability file path.
@@ -437,8 +429,7 @@ def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str]
 
 
 def upsert_capability_record(capability_path: str | Path, record: CapabilityRecord) -> None:
-    """
-    Insert or updates capability record.
+    """Insert or updates capability record.
 
     Args:
         capability_path: Capability file path.

@@ -36,8 +36,7 @@ class RelayRecoveryOrchestrator:
         timeout_seconds: float = 30.0,
         circuit_breaker: SourceCircuitBreaker | None = None,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             adapters: Adapters.
@@ -69,8 +68,7 @@ class RelayRecoveryOrchestrator:
         return self._capability_cache
 
     def get_capability(self, bucket_id: str, source_name: str) -> CapabilityRecord | None:
-        """
-        Get capability.
+        """Get capability.
 
         Args:
             bucket_id: Bucket ID.
@@ -103,9 +101,20 @@ class RelayRecoveryOrchestrator:
         self,
         adapter: RelaySourceAdapter,
         game_id: str,
+        last_payload_hash: str | None = None,
     ) -> tuple[NormalizedRelayResult, str]:
         try:
-            result = await asyncio.wait_for(adapter.fetch_game(game_id), timeout=self.timeout_seconds)
+            if last_payload_hash is not None:
+                try:
+                    fetch_coro = adapter.fetch_game(game_id, last_payload_hash=last_payload_hash)
+                except TypeError:
+                    fetch_coro = adapter.fetch_game(game_id)
+            else:
+                fetch_coro = adapter.fetch_game(game_id)
+            result = await asyncio.wait_for(
+                fetch_coro,
+                timeout=self.timeout_seconds,
+            )
         except TimeoutError:
             return (
                 NormalizedRelayResult(
@@ -130,8 +139,7 @@ class RelayRecoveryOrchestrator:
             return result, status
 
     def source_order_for_bucket(self, bucket_id: str, override: Iterable[str] | None = None) -> list[str]:
-        """
-        Handle the source order for bucket operation.
+        """Handle the source order for bucket operation.
 
         Args:
             bucket_id: Bucket ID.
@@ -155,8 +163,7 @@ class RelayRecoveryOrchestrator:
         game_ids: Iterable[str],
         source_order: Iterable[str],
     ) -> dict[str, CapabilityRecord]:
-        """
-        Handle the probe bucket operation.
+        """Handle the probe bucket operation.
 
         Args:
             bucket_id: Bucket ID.
@@ -227,15 +234,16 @@ class RelayRecoveryOrchestrator:
         source_order: Iterable[str],
         *,
         validator: Callable[[NormalizedRelayResult], str | None] | None = None,
+        last_payload_hash: str | None = None,
     ) -> tuple[NormalizedRelayResult, list[dict[str, Any]]]:
-        """
-        Fetch game.
+        """Fetch game.
 
         Args:
             game_id: Game ID.
             bucket_id: Bucket ID.
             source_order: Source Order.
             validator: Validator instance.
+            last_payload_hash: Hash of the most recently stored relay payload.
             game_id: Game ID.
             bucket_id: Bucket ID.
             source_order: Source Order.
@@ -258,13 +266,14 @@ class RelayRecoveryOrchestrator:
                     source_name,
                     bucket_id,
                 )
+                consecutive_failures = cb.consecutive_failures(source_name, bucket_id)
                 attempts.append(
                     {
                         "game_id": game_id,
                         "bucket_id": bucket_id,
                         "source_name": source_name,
                         "status": "cb_open",
-                        "notes": f"circuit breaker open, consecutive_failures={cb.consecutive_failures(source_name, bucket_id)}",
+                        "notes": f"circuit breaker open, consecutive_failures={consecutive_failures}",
                     },
                 )
                 continue
@@ -295,7 +304,7 @@ class RelayRecoveryOrchestrator:
                 )
                 continue
 
-            result, status = await self._fetch_with_timeout(adapter, game_id)
+            result, status = await self._fetch_with_timeout(adapter, game_id, last_payload_hash=last_payload_hash)
 
             validation_error = None
             if not result.is_empty and validator:

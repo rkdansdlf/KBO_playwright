@@ -80,6 +80,8 @@ def crawl_2009_details():
             try:
                 logger.info("   Processing Game %s...", i + 1)
                 href = link.get_attribute("href")
+                if not href:
+                    continue
                 logger.info("   Link: %s", href)
 
                 # Navigation

@@ -1,5 +1,4 @@
-"""
-Crawler for ticket prices, open rules, and seat information from KBO and team pages.
+"""Crawler for ticket prices, open rules, and seat information from KBO and team pages.
 
 Sources:
   - KBO ticket info: https://www.koreabaseball.com/Kbo/League/Map.aspx
@@ -12,7 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, time
 from http import HTTPStatus
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 import httpx
@@ -116,7 +115,7 @@ class TicketCrawler:
         self.current_season = datetime.now(KST).year
         self._raw_pages: list[dict] = []
 
-    TICKET_SOURCE_KEY_MAP: dict[str, str] = {
+    TICKET_SOURCE_KEY_MAP: ClassVar[dict[str, str]] = {
         "LG": "lg_twins_ticket",
         "HH": "hanwha_eagles_ticket",
         "SS": "samsung_lions_ticket",
@@ -130,8 +129,7 @@ class TicketCrawler:
     }
 
     async def run(self, *, save: bool = False, season: int | None = None) -> list[dict[str, Any]]:
-        """
-        Run run.
+        """Run run.
 
         Args:
             save: Whether to persist the results.

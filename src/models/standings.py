@@ -12,8 +12,7 @@ from .base import Base, TimestampMixin
 
 
 class TeamStandingsDaily(Base, TimestampMixin):
-    """
-    Daily snapshot of Team Standings.
+    """Daily snapshot of Team Standings.
 
     Calculated from Game results.
 
@@ -57,4 +56,7 @@ class TeamStandingsDaily(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         """Return a string representation of this object."""
-        return f"<TeamStandingsDaily(date={self.standings_date}, team={self.team_code}, rank={self.rank}, {self.wins}W-{self.losses}L, GB={self.games_behind})>"
+        return (
+            f"<TeamStandingsDaily(date={self.standings_date}, team={self.team_code}, "
+            f"rank={self.rank}, {self.wins}W-{self.losses}L, GB={self.games_behind})>"
+        )

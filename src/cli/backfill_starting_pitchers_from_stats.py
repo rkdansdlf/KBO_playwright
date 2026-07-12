@@ -1,5 +1,4 @@
-"""
-Backfill missing game starting pitchers from pitching stats.
+"""Backfill missing game starting pitchers from pitching stats.
 
 This command repairs ``game.away_pitcher`` and ``game.home_pitcher`` when
 completed games already have starting pitchers in ``game_pitching_stats``.
@@ -19,6 +18,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import DATE_STR_LEN
 from src.db.engine import SessionLocal, get_oci_url
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ def _normalize_date(value: str | None) -> str | None:
         return None
 
     compact = value.strip()
-    if len(compact) == 8 and compact.isdigit():
+    if len(compact) == DATE_STR_LEN and compact.isdigit():
         return f"{compact[:4]}-{compact[4:6]}-{compact[6:]}"
 
     return compact
@@ -46,8 +46,7 @@ def _is_blank(value: object) -> bool:
 
 
 def parse_args() -> argparse.Namespace:
-    """
-    Parse args.
+    """Parse args.
 
     Returns:
         The result of the operation.
@@ -86,8 +85,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
-    """
-    Load candidates.
+    """Load candidates.
 
     Args:
         session: Session.
@@ -174,8 +172,7 @@ def repair_candidates(
     overwrite: bool,
     dry_run: bool,
 ) -> tuple[list[str], int, int]:
-    """
-    Repair candidates.
+    """Repair candidates.
 
     Args:
         session: Session.
@@ -242,8 +239,7 @@ def repair_candidates(
 
 
 def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
-    """
-    Sync to oci.
+    """Sync to oci.
 
     Args:
         game_ids: Game Ids.
@@ -277,8 +273,7 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
 
 
 def find_target_missing_ready_games(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
-    """
-    Find target missing ready games.
+    """Find target missing ready games.
 
     Args:
         session: Session.
@@ -357,8 +352,7 @@ def find_target_missing_ready_games(session: Session, args: argparse.Namespace) 
 
 
 def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
-    """
-    Update target pitcher fields.
+    """Update target pitcher fields.
 
     Args:
         rows: Rows.

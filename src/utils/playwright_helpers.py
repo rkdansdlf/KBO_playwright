@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
-    """
-    Handle the goto next page operation.
+    """Handle the goto next page operation.
 
     Args:
         page: Page.

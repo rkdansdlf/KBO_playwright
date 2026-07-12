@@ -1,5 +1,4 @@
-"""
-Player-related ORM models.
+"""Player-related ORM models.
 
 Aligns with Docs/schema/playerProfileSchemaGuide.md design.
 
@@ -20,8 +19,7 @@ from .base import Base, TimestampMixin
 
 
 class PlayerBasic(Base, TimestampMixin):
-    """
-    Simple player table populated from player search crawler.
+    """Simple player table populated from player search crawler.
 
     Source: https://www.koreabaseball.com/Player/Search.aspx.
 
@@ -197,8 +195,7 @@ class Player(Base, TimestampMixin):
 
 
 class PlayerIdentity(Base, TimestampMixin):
-    """
-    Player naming/identity history.
+    """Player naming/identity history.
 
     Tracks name changes or variations (e.g. Korean name, English name).
 
@@ -282,8 +279,7 @@ class PlayerSeasonBatting(Base, TimestampMixin):
 
 
 class PlayerSeasonPitching(Base, TimestampMixin):
-    """
-    Season-level pitching aggregates by league/split.
+    """Season-level pitching aggregates by league/split.
 
     Compatible with pitcher crawler data structure.
 
@@ -371,8 +367,7 @@ class PlayerSeasonPitching(Base, TimestampMixin):
 
 
 class PlayerMovement(Base, TimestampMixin):
-    """
-    Records player status changes (Trade, FA, Waiver, etc.).
+    """Records player status changes (Trade, FA, Waiver, etc.).
 
     Source: https://www.koreabaseball.com/Player/Trade.aspx.
 
@@ -420,8 +415,7 @@ class PlayerMovement(Base, TimestampMixin):
 
 
 class PlayerSeasonFielding(Base, TimestampMixin):
-    """
-    Season-level fielding stats.
+    """Season-level fielding stats.
 
     Source: https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx.
 
@@ -464,8 +458,7 @@ class PlayerSeasonFielding(Base, TimestampMixin):
 
 
 class PlayerSeasonBaserunning(Base, TimestampMixin):
-    """
-    Season-level baserunning stats.
+    """Season-level baserunning stats.
 
     Source: https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx.
 

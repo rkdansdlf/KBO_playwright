@@ -1,5 +1,4 @@
-"""
-Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL.
+"""Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL.
 
 Dual-repository pattern: SQLite (dev/validation) → OCI (production).
 """
@@ -12,6 +11,7 @@ import json
 import logging
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import count
@@ -51,6 +51,8 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Connection, Result
 
 RawConnection = Any  # psycopg2 connection, typed loosely to avoid heavy deps
+SYNC_LOG_SAMPLE_LIMIT = 10
+LEGACY_OCI_VARCHAR_MAX_LENGTH = 255
 
 
 class SyncBaseProtocol(Protocol):
@@ -75,21 +77,21 @@ class SyncBaseProtocol(Protocol):
         """Sync a simple table with upsert semantics."""
         ...
 
-    def _bulk_copy_upsert(
+    def _bulk_copy_upsert(  # noqa: PLR0913
         self,
         table_name: str,
         records: list[dict[str, Any]],
         unique_cols: list[str],
         *,
         update_timestamp: bool = ...,
-        connection: Any | None = ...,
+        connection: Any | None = ...,  # noqa: ANN401
     ) -> None: ...
     def _ensure_table(self, model: type[Base]) -> None: ...
     def _target_table_exists(self, model: type[Base]) -> bool: ...
     def _get_franchise_id_mapping(self) -> dict[int, int]: ...
     def _get_season_map(self) -> dict[tuple[Any, ...], int]: ...
     def _reset_target_sequence_for_table(self, table_name: str, column_name: str = ...) -> bool: ...
-    def _run_target_session_with_retries(self, *args: Any, **kwargs: Any) -> Any: ...
+    def _run_target_session_with_retries(self, *args: Any, **kwargs: Any) -> Any: ...  # noqa: ANN401
     def test_connection(self) -> bool:
         """Test source and target database connectivity."""
         ...
@@ -98,11 +100,11 @@ class SyncBaseProtocol(Protocol):
         """Close sync resources."""
         ...
 
-    def sync_batting_data(self, *args: Any, **kwargs: Any) -> int:
+    def sync_batting_data(self, *args: Any, **kwargs: Any) -> int:  # noqa: ANN401
         """Sync batting data."""
         ...
 
-    def sync_pitcher_data(self, *args: Any, **kwargs: Any) -> int:
+    def sync_pitcher_data(self, *args: Any, **kwargs: Any) -> int:  # noqa: ANN401
         """Sync pitcher data."""
         ...
 
@@ -119,7 +121,7 @@ class SyncBaseProtocol(Protocol):
         ...
 
     def _chunked(self, items: list[str], size: int) -> list[list[str]]: ...
-    def _sync_referenced_player_basic_for_games(self, *args: Any, **kwargs: Any) -> Any: ...
+    def _sync_referenced_player_basic_for_games(self, *args: Any, **kwargs: Any) -> Any: ...  # noqa: ANN401
 
 
 LEAGUE_NAME_TO_CODE = {
@@ -160,8 +162,7 @@ class GameSyncEligibility:
     skipped_cancelled: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        """
-        Return sync operation counts.
+        """Return sync operation counts.
 
         Returns:
             Dictionary result.
@@ -190,7 +191,7 @@ class SyncBatchConfig:
     dedupe_keys: list[str] | None = None
 
 
-def _serialize_scalar(value: object) -> Any:
+def _serialize_scalar(value: object) -> Any:  # noqa: ANN401
     if value is None:
         return None
     if hasattr(value, "isoformat"):
@@ -198,12 +199,26 @@ def _serialize_scalar(value: object) -> Any:
     return value
 
 
+def _serialize_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert records to the values expected by PostgreSQL COPY."""
+    return [
+        {
+            key: r"\N"
+            if value is None
+            else json.dumps(value, ensure_ascii=False)
+            if isinstance(value, (dict, list))
+            else value
+            for key, value in record.items()
+        }
+        for record in records
+    ]
+
+
 def _dedupe_records_for_conflict_keys(
     records: list[dict[str, Any]],
     conflict_keys: list[str],
 ) -> list[dict[str, Any]]:
-    """
-    Mirror Postgres unique semantics while removing duplicate upsert keys.
+    """Mirror Postgres unique semantics while removing duplicate upsert keys.
 
     Postgres unique indexes allow multiple rows when any indexed column is NULL.
     Python tuple-based dedupe would otherwise collapse rows such as away/home
@@ -273,13 +288,16 @@ def _build_composite_signature_query(game_ids: list[str] | None) -> str:
         if table_name == "game_metadata":
             child_subqueries.append(
                 f"(SELECT COUNT(*) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_count,\n"  # noqa: S608
-                f"            (SELECT MAX({alias}.updated_at) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_max_updated,\n"
-                f"            (SELECT MAX({alias}.start_time) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_start_time",
+                f"            (SELECT MAX({alias}.updated_at) FROM game_metadata {alias} "
+                f"WHERE {alias}.game_id = g.game_id) AS meta_max_updated,\n"
+                f"            (SELECT MAX({alias}.start_time) FROM game_metadata {alias} "
+                f"WHERE {alias}.game_id = g.game_id) AS meta_start_time",
             )
         else:
             child_subqueries.append(
                 f"(SELECT COUNT(*) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_count,\n"  # noqa: S608
-                f"            (SELECT MAX({alias}.updated_at) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_max_updated",
+                f"            (SELECT MAX({alias}.updated_at) FROM {table_name} {alias} "
+                f"WHERE {alias}.game_id = g.game_id) AS {alias}_max_updated",
             )
 
     children_sql = ",\n            ".join(child_subqueries)
@@ -306,8 +324,7 @@ def load_game_sync_signatures(
     *,
     game_ids: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """
-    Load game signatures.
+    """Load game signatures.
 
     Args:
         session_or_conn: Session Or Conn.
@@ -419,8 +436,7 @@ def detect_dirty_game_ids(
     *,
     game_ids: list[str] | None = None,
 ) -> list[str]:
-    """
-    Detect dirty game IDs by comparing local and remote signatures.
+    """Detect dirty game IDs by comparing local and remote signatures.
 
     Args:
         local_session_or_conn: Local Session Or Conn.
@@ -444,8 +460,7 @@ def detect_dirty_game_ids(
 
 
 def filter_game_ids_by_year(game_ids: list[str], year: int | None) -> list[str]:
-    """
-    Filter game IDs by year.
+    """Filter game IDs by year.
 
     Args:
         game_ids: Game Ids.
@@ -586,8 +601,8 @@ def _log_sync_eligibility(eligibility: GameSyncEligibility) -> None:
             "⚠️ %s=%s sample=%s%s",
             reason,
             len(game_ids),
-            ", ".join(game_ids[:10]),
-            " ..." if len(game_ids) > 10 else "",
+            ", ".join(game_ids[:SYNC_LOG_SAMPLE_LIMIT]),
+            " ..." if len(game_ids) > SYNC_LOG_SAMPLE_LIMIT else "",
         )
 
 
@@ -595,8 +610,7 @@ class OCISyncBase:
     """Sync data from SQLite to OCI."""
 
     def __init__(self, oci_url: str, sqlite_session: Session) -> None:
-        """
-        Initialize OCI sync.
+        """Initialize OCI sync.
 
         Args:
             oci_url: PostgreSQL connection string for OCI
@@ -604,6 +618,7 @@ class OCISyncBase:
 
         """
         self.sqlite_session = sqlite_session
+        self.concurrency = 4
 
         # Create OCI engine
         # pool_recycle: force connection refresh every 5 min to beat cloud DB idle-timeout (OCI typically kills
@@ -661,8 +676,7 @@ class OCISyncBase:
         return f'"{identifier}"'
 
     def _reset_target_sequence_for_table(self, table_name: str, column_name: str = "id") -> bool:
-        """
-        Align a PostgreSQL serial/identity sequence with MAX(id).
+        """Align a PostgreSQL serial/identity sequence with MAX(id).
 
         Some sync paths use ORM inserts that rely on the target-side sequence
         after prior COPY/upsert or manual repair jobs have changed row ids. If
@@ -766,61 +780,95 @@ class OCISyncBase:
         }
         return self._franchise_id_mapping_cache
 
-    def _bulk_copy_upsert(
+    def _bulk_copy_upsert(  # noqa: PLR0913
         self,
         table_name: str,
         records: list[dict[str, Any]],
         unique_cols: list[str],
         *,
         update_timestamp: bool = True,
-        connection: Any | None = None,
+        connection: Any | None = None,  # noqa: ANN401
+        reconnect_on_fail: bool = True,
     ) -> None:
         if not records:
+            return
+
+        serialized_records = _serialize_records(records)
+        self._execute_with_retry(
+            lambda active_connection: self._do_bulk_copy_upsert(
+                table_name,
+                serialized_records,
+                unique_cols,
+                update_timestamp=update_timestamp,
+                connection=active_connection,
+            ),
+            table_name=table_name,
+            connection=connection,
+            reconnect_on_fail=reconnect_on_fail,
+        )
+
+    def _close_raw_connection(self, connection: RawConnection | None, *, label: str) -> None:
+        if connection is None:
+            return
+        try:
+            connection.close()
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
+            logger.warning("Failed to close OCI connection label=%s: %s", label, exc)
+
+    def _retry_copy_connection(
+        self,
+        connection: RawConnection | None,
+        *,
+        table_name: str,
+        reconnect_on_fail: bool,
+    ) -> RawConnection | None:
+        if reconnect_on_fail:
+            self._reconnect_oci()
             return None
+        self._close_raw_connection(connection, label=f"{table_name}.retry.thread")
+        return self._raw_oci_connection_with_retries(label=f"{table_name}.retry.thread")
 
-        serialized_records = []
-        for r in records:
-            serialized_r = {}
-            for k, v in r.items():
-                if v is None:
-                    serialized_r[k] = r"\N"
-                elif isinstance(v, (dict, list)):
-                    serialized_r[k] = json.dumps(v, ensure_ascii=False)
-                else:
-                    serialized_r[k] = v
-            serialized_records.append(serialized_r)
-        records = serialized_records
-
+    def _execute_with_retry(
+        self,
+        operation: Callable[[RawConnection | None], None],
+        *,
+        table_name: str,
+        connection: RawConnection | None,
+        reconnect_on_fail: bool,
+    ) -> None:
         max_attempts = 3
         last_exception: Exception | None = None
 
         for attempt in range(1, max_attempts + 1):
             try:
-                return self._do_bulk_copy_upsert(
+                operation(connection)
+            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
+                last_exception = exc
+                if attempt == max_attempts:
+                    break
+                wait = 3 ** (attempt - 1)
+                logger.warning(
+                    "   [RETRY] %s: %s (attempt %d/%d, retry in %ds)",
                     table_name,
-                    records,
-                    unique_cols,
-                    update_timestamp=update_timestamp,
-                    connection=connection,
+                    exc,
+                    attempt,
+                    max_attempts,
+                    wait,
                 )
-            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
-                last_exception = e
-                if attempt < max_attempts:
-                    wait = 1 * (3 ** (attempt - 1))
-                    logger.warning(
-                        "   [RETRY] %s: %s (attempt %d/%d, retry in %ds)",
-                        table_name,
-                        e,
-                        attempt,
-                        max_attempts,
-                        wait,
-                    )
-                    time.sleep(wait)
-                    self._reconnect_oci()
-                    connection = None
+                time.sleep(wait)
+                connection = self._retry_copy_connection(
+                    connection,
+                    table_name=table_name,
+                    reconnect_on_fail=reconnect_on_fail,
+                )
+            else:
+                return
 
         logger.error("❌ Batch COPY Error on %s after %s attempts: %s", table_name, max_attempts, last_exception)
-        raise last_exception  # type: ignore[misc]
+        if last_exception is not None:
+            raise last_exception
+        msg = "COPY retry loop exited without an exception"
+        raise RuntimeError(msg)
 
     def _reconnect_oci(self) -> None:
         """Close and recreate the OCI connection pool."""
@@ -860,7 +908,7 @@ class OCISyncBase:
         label: str,
         max_retries: int = 2,
         base_delay_seconds: float = 1.0,
-    ) -> Any:
+    ) -> Any:  # noqa: ANN401
         """Open a raw OCI connection with bounded retry for transient network loss."""
         max_attempts = max_retries + 1
 
@@ -910,12 +958,12 @@ class OCISyncBase:
 
     def _run_target_session_with_retries(
         self,
-        operation: Callable[[], Any],
+        operation: Callable[[], Any],  # noqa: ANN401
         *,
         label: str,
         max_retries: int = 2,
         base_delay_seconds: float = 1.0,
-    ) -> Any:
+    ) -> Any:  # noqa: ANN401
         """Run an OCI session operation with bounded retry for transient connection loss."""
         max_attempts = max_retries + 1
 
@@ -988,7 +1036,7 @@ class OCISyncBase:
         ):
             source_payload_type = target_column_defs["source_payload"].get("type")
             source_payload_length = getattr(source_payload_type, "length", None)
-            if source_payload_length and source_payload_length <= 255:
+            if source_payload_length and source_payload_length <= LEGACY_OCI_VARCHAR_MAX_LENGTH:
                 columns.remove("source_payload")
                 logger.info("[info] Skipping game_metadata.source_payload for legacy OCI varchar column")
         return columns
@@ -1005,8 +1053,7 @@ class OCISyncBase:
         update_timestamp: bool | None = None,
         dedupe_keys: list[str] | None = None,
     ) -> int:
-        """
-        Sync simple table using Batched UPSERT or COPY.
+        """Sync simple table using Batched UPSERT or COPY.
 
         Generic sync parameter for simple tables.
         """
@@ -1051,65 +1098,147 @@ class OCISyncBase:
             ),
         )
 
-    def _sync_in_batches(self, config: SyncBatchConfig) -> int:
+    def _sync_concurrency(self) -> int:
+        concurrency = getattr(self, "concurrency", 4)
+        try:
+            bind_url = str(self.sqlite_session.get_bind().url)  # type: ignore[union-attr]
+        except (ValueError, TypeError, AttributeError, SQLAlchemyError):
+            return concurrency
+        return 1 if ":memory:" in bind_url else concurrency
+
+    def _load_batch_records(
+        self,
+        config: SyncBatchConfig,
+        offset: int,
+        *,
+        query: Query[Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        source_query = config.query if query is None else query
+        rows = source_query.offset(offset).limit(config.batch_size).all()
+        records = [_row_to_record(row, config.columns, config.transform_fn) for row in rows]
+        filtered_records = [record for record in records if record is not None]
+        return _dedupe_records_for_conflict_keys(filtered_records, config.dedupe_keys or config.conflict_keys)
+
+    def _sync_records_row_by_row(
+        self,
+        config: SyncBatchConfig,
+        records: list[dict[str, Any]],
+        connection: RawConnection,
+    ) -> int:
+        synced = 0
+        for record in records:
+            try:
+                self._direct_insert_upsert(
+                    config.model.__tablename__,
+                    record,
+                    config.conflict_keys,
+                    update_timestamp=config.update_timestamp,
+                    connection=connection,
+                )
+                synced += 1
+            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as exc:
+                logger.warning("Skipping bad row in %s: %s", config.model.__tablename__, exc)
+        return synced
+
+    def _sync_records_with_fallback(  # noqa: PLR0913
+        self,
+        config: SyncBatchConfig,
+        records: list[dict[str, Any]],
+        *,
+        connection: RawConnection | None,
+        copy_label: str,
+        fallback_label: str,
+        failure_context: str,
+        reconnect_on_fail: bool,
+    ) -> tuple[int, str]:
+        try:
+            self._bulk_copy_upsert(
+                config.model.__tablename__,
+                records,
+                config.conflict_keys,
+                update_timestamp=config.update_timestamp,
+                connection=connection,
+                reconnect_on_fail=reconnect_on_fail,
+            )
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as exc:
+            logger.warning(
+                "Batch COPY failed for %s%s, falling back to row-by-row: %s",
+                config.model.__tablename__,
+                failure_context,
+                exc,
+            )
+            self._close_raw_connection(connection, label=copy_label)
+            connection = None
+            fallback_connection = self._raw_oci_connection_with_retries(label=fallback_label)
+            try:
+                return self._sync_records_row_by_row(config, records, fallback_connection), "row-by-row"
+            finally:
+                self._close_raw_connection(fallback_connection, label=fallback_label)
+        else:
+            return len(records), "COPY"
+        finally:
+            self._close_raw_connection(connection, label=copy_label)
+
+    def _sync_sequential(self, config: SyncBatchConfig) -> int:
         synced = 0
         for offset in range(0, config.total_count, config.batch_size):
-            rows = config.query.offset(offset).limit(config.batch_size).all()
-            records = [_row_to_record(row, config.columns, config.transform_fn) for row in rows]
-            records = [r for r in records if r is not None]
-            records = _dedupe_records_for_conflict_keys(records, config.dedupe_keys or config.conflict_keys)
-
-            connection = None
-            if self.oci_engine is not None:
-                connection = self._raw_oci_connection_with_retries(label=f"{config.model.__tablename__}.sync")
-
-            try:
-                try:
-                    self._bulk_copy_upsert(
-                        config.model.__tablename__,
-                        records,
-                        config.conflict_keys,
-                        update_timestamp=config.update_timestamp,
-                        connection=connection,
-                    )
-                    synced += len(records)
-                    logger.info("   Synced %s/%s rows via COPY...", synced, config.total_count)
-                except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as batch_err:
-                    logger.warning(
-                        "Batch COPY failed for %s, falling back to row-by-row: %s",
-                        config.model.__tablename__,
-                        batch_err,
-                    )
-                    try:
-                        if connection is not None:
-                            connection.close()
-                    except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
-                        logger.warning("Failed to close COPY connection before fallback", exc_info=True)
-
-                    connection = self._raw_oci_connection_with_retries(
-                        label=f"{config.model.__tablename__}.sync.fallback",
-                    )
-
-                    for record in records:
-                        try:
-                            self._direct_insert_upsert(
-                                config.model.__tablename__,
-                                record,
-                                config.conflict_keys,
-                                update_timestamp=config.update_timestamp,
-                                connection=connection,
-                            )
-                            synced += 1
-                        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as row_err:
-                            logger.warning("Skipping bad row in %s: %s", config.model.__tablename__, row_err)
-                    logger.info("   Synced %s/%s rows via row-by-row...", synced, config.total_count)
-            finally:
-                if connection is not None:
-                    try:
-                        connection.close()
-                    except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
-                        logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
+            records = self._load_batch_records(config, offset)
+            table_name = config.model.__tablename__
+            connection = (
+                self._raw_oci_connection_with_retries(label=f"{table_name}.sync")
+                if self.oci_engine is not None
+                else None
+            )
+            synced_batch, method = self._sync_records_with_fallback(
+                config,
+                records,
+                connection=connection,
+                copy_label=f"{table_name}.sync",
+                fallback_label=f"{table_name}.sync.fallback",
+                failure_context="",
+                reconnect_on_fail=True,
+            )
+            synced += synced_batch
+            logger.info("   Synced %s/%s rows via %s...", synced, config.total_count, method)
         return synced
+
+    def _sync_concurrent_worker(self, config: SyncBatchConfig, offset: int) -> int:
+        session_factory = sessionmaker(bind=self.sqlite_session.get_bind())
+        thread_session = session_factory()
+        try:
+            thread_query = config.query.with_session(thread_session)
+            records = self._load_batch_records(config, offset, query=thread_query)
+            if not records:
+                return 0
+            table_name = config.model.__tablename__
+            connection = self._raw_oci_connection_with_retries(label=f"{table_name}.sync.thread")
+            synced, _ = self._sync_records_with_fallback(
+                config,
+                records,
+                connection=connection,
+                copy_label=f"{table_name}.sync.thread",
+                fallback_label=f"{table_name}.sync.fallback.thread",
+                failure_context=f" at offset {offset}",
+                reconnect_on_fail=False,
+            )
+            return synced
+        finally:
+            thread_session.close()
+
+    def _sync_concurrent(self, config: SyncBatchConfig, *, max_workers: int) -> int:
+        offsets = list(range(0, config.total_count, config.batch_size))
+        logger.info("   Running concurrent sync with %d workers across %d chunks...", max_workers, len(offsets))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(self._sync_concurrent_worker, [config] * len(offsets), offsets))
+        synced = sum(results)
+        logger.info("   Synced %s/%s rows via concurrent COPY...", synced, config.total_count)
+        return synced
+
+    def _sync_in_batches(self, config: SyncBatchConfig) -> int:
+        concurrency = self._sync_concurrency()
+        if config.total_count <= config.batch_size or concurrency <= 1:
+            return self._sync_sequential(config)
+        return self._sync_concurrent(config, max_workers=concurrency)
 
     def _do_bulk_copy_upsert(
         self,
@@ -1118,7 +1247,7 @@ class OCISyncBase:
         unique_cols: list[str],
         *,
         update_timestamp: bool,
-        connection: Any | None = None,
+        connection: Any | None = None,  # noqa: ANN401
     ) -> None:
         close_connection = connection is None
         if connection is None:
@@ -1182,7 +1311,7 @@ class OCISyncBase:
         conflict_keys: list[str],
         *,
         update_timestamp: bool,
-        connection: Any,
+        connection: Any,  # noqa: ANN401
     ) -> None:
         """Perform a single direct SQL INSERT with ON CONFLICT UPDATE/DO NOTHING."""
         cursor = connection.cursor()

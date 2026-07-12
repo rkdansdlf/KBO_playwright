@@ -153,6 +153,86 @@ def _download_capture(game_id: str, url_kind: str, capture: dict[str, str], down
     return output_path
 
 
+def _process_discover_row(
+    row: dict[str, str], *, timeout: float, download_dir: Path | None, sleep_seconds: float
+) -> list[dict[str, str]]:
+    game_id = str(row.get("game_id") or "").strip()
+    bucket_id = str(row.get("bucket_id") or "").strip() or derive_bucket_id(game_id, row.get("league_type_name"))
+    game_rows: list[dict[str, str]] = []
+    found = False
+    for target in _candidate_targets(game_id):
+        notes = ""
+        capture = None
+        download_path = ""
+        try:
+            captures = _query_wayback(search_url=target["search_url"], match_type=target["match_type"], timeout=timeout)
+            capture = _pick_capture(target["url_kind"], captures)
+            if capture and download_dir is not None:
+                saved = _download_capture(game_id, target["url_kind"], capture, download_dir, timeout)
+                download_path = str(saved)
+        except WAYBACK_EXCEPTIONS as exc:
+            notes = f"{type(exc).__name__}: {exc}"
+        if capture:
+            found = True
+            game_rows.append(
+                {
+                    "game_id": game_id,
+                    "bucket_id": bucket_id,
+                    "url_kind": target["url_kind"],
+                    "search_url": target["search_url"],
+                    "capture_found": "true",
+                    "timestamp": capture["timestamp"],
+                    "original": capture["original"],
+                    "mimetype": capture["mimetype"],
+                    "download_path": download_path,
+                    "notes": notes,
+                }
+            )
+            break
+        game_rows.append(
+            {
+                "game_id": game_id,
+                "bucket_id": bucket_id,
+                "url_kind": target["url_kind"],
+                "search_url": target["search_url"],
+                "capture_found": "false",
+                "timestamp": "",
+                "original": "",
+                "mimetype": "",
+                "download_path": "",
+                "notes": notes or "No capture found",
+            }
+        )
+        time.sleep(sleep_seconds)
+    if not found:
+        time.sleep(sleep_seconds)
+    return game_rows
+
+
+def _write_discover_output(
+    report_rows: list[dict[str, str]], output_path: Path, manifest_output_path: Path | None
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "game_id",
+        "bucket_id",
+        "url_kind",
+        "search_url",
+        "capture_found",
+        "timestamp",
+        "original",
+        "mimetype",
+        "download_path",
+        "notes",
+    ]
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(report_rows)
+    if manifest_output_path is not None:
+        _write_manifest_from_report(report_rows, manifest_output_path)
+
+
 def discover_captures(
     *,
     input_path: Path,
@@ -167,104 +247,29 @@ def discover_captures(
 ) -> int:
     rows = _selected_rows(input_path, game_ids=game_ids, limit=limit)
     report_rows: list[dict[str, str]] = []
-
-    def _process_row(row: dict[str, str]) -> list[dict[str, str]]:
-        game_id = str(row.get("game_id") or "").strip()
-        bucket_id = str(row.get("bucket_id") or "").strip() or derive_bucket_id(
-            game_id,
-            row.get("league_type_name"),
-        )
-        game_rows: list[dict[str, str]] = []
-        found = False
-        for target in _candidate_targets(game_id):
-            notes = ""
-            capture = None
-            download_path = ""
-            try:
-                captures = _query_wayback(
-                    search_url=target["search_url"],
-                    match_type=target["match_type"],
-                    timeout=timeout,
-                )
-                capture = _pick_capture(target["url_kind"], captures)
-                if capture and download_dir is not None:
-                    saved = _download_capture(game_id, target["url_kind"], capture, download_dir, timeout)
-                    download_path = str(saved)
-            except WAYBACK_EXCEPTIONS as exc:
-                notes = f"{type(exc).__name__}: {exc}"
-            if capture:
-                found = True
-                game_rows.append(
-                    {
-                        "game_id": game_id,
-                        "bucket_id": bucket_id,
-                        "url_kind": target["url_kind"],
-                        "search_url": target["search_url"],
-                        "capture_found": "true",
-                        "timestamp": capture["timestamp"],
-                        "original": capture["original"],
-                        "mimetype": capture["mimetype"],
-                        "download_path": download_path,
-                        "notes": notes,
-                    },
-                )
-                break
-            game_rows.append(
-                {
-                    "game_id": game_id,
-                    "bucket_id": bucket_id,
-                    "url_kind": target["url_kind"],
-                    "search_url": target["search_url"],
-                    "capture_found": "false",
-                    "timestamp": "",
-                    "original": "",
-                    "mimetype": "",
-                    "download_path": "",
-                    "notes": notes or "No capture found",
-                },
-            )
-            time.sleep(sleep_seconds)
-        if not found:
-            time.sleep(sleep_seconds)
-        return game_rows
-
     total = len(rows)
     if workers <= 1:
         for index, row in enumerate(rows, start=1):
             game_id = str(row.get("game_id") or "").strip()
             logger.info("[WAYBACK] %s/%s: %s", index, total, game_id)
-            report_rows.extend(_process_row(row))
+            report_rows.extend(
+                _process_discover_row(row, timeout=timeout, download_dir=download_dir, sleep_seconds=sleep_seconds)
+            )
     else:
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            future_map = {executor.submit(_process_row, row): str(row.get("game_id") or "").strip() for row in rows}
+            future_map = {
+                executor.submit(
+                    _process_discover_row, row, timeout=timeout, download_dir=download_dir, sleep_seconds=sleep_seconds
+                ): str(row.get("game_id") or "").strip()
+                for row in rows
+            }
             completed = 0
             for future in as_completed(future_map):
                 completed += 1
                 game_id = future_map[future]
                 logger.info("[WAYBACK] %s/%s: %s", completed, total, game_id)
                 report_rows.extend(future.result())
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=[
-                "game_id",
-                "bucket_id",
-                "url_kind",
-                "search_url",
-                "capture_found",
-                "timestamp",
-                "original",
-                "mimetype",
-                "download_path",
-                "notes",
-            ],
-        )
-        writer.writeheader()
-        writer.writerows(report_rows)
-    if manifest_output_path is not None:
-        _write_manifest_from_report(report_rows, manifest_output_path)
+    _write_discover_output(report_rows, output_path, manifest_output_path)
     return len(report_rows)
 
 

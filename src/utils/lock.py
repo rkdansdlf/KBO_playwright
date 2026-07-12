@@ -96,8 +96,7 @@ class ProcessLock:
             return cls._pg_engines[url]
 
     def _acquire_pg_lock(self, *, effective_blocking: bool) -> bool:
-        """
-        Acquire PostgreSQL advisory lock if configured.
+        """Acquire PostgreSQL advisory lock if configured.
 
         Returns True if lock acquired or not needed.
         Returns False only if lock is held by another process and should NOT fall back.
@@ -268,8 +267,7 @@ class ProcessLock:
 
 
 class ForceProcessLock(ProcessLock):
-    """
-    ProcessLock variant that force-acquires by clearing stale locks.
+    """ProcessLock variant that force-acquires by clearing stale locks.
 
     Use this when you need to guarantee lock acquisition even if a previous
     process crashed without releasing the lock.

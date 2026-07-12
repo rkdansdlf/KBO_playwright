@@ -7,10 +7,12 @@ from typing import Any
 
 from src.services.wpa_calculator import WPACalculator
 
+RUNNER_TEXT_MIN_LENGTH_FOR_SECOND_BASE = 2
+RUNNER_TEXT_MIN_LENGTH_FOR_THIRD_BASE = 3
+
 
 def get_event_value(event: object, key: str) -> object | None:
-    """
-    Get event value.
+    """Get event value.
 
     Args:
         event: Event.
@@ -30,8 +32,7 @@ def get_event_value(event: object, key: str) -> object | None:
 
 
 def format_base_string(runners: int | None) -> str:
-    """
-    Format base string.
+    """Format base string.
 
     Args:
         runners: Runners.
@@ -48,8 +49,7 @@ def format_base_string(runners: int | None) -> str:
 
 
 def parse_base_string(value: object) -> int | None:
-    """
-    Parse base string.
+    """Parse base string.
 
     Args:
         value: Value.
@@ -68,16 +68,15 @@ def parse_base_string(value: object) -> int | None:
     runners = 0
     if len(text) >= 1 and text[0] not in {"-", "0"}:
         runners |= 1
-    if len(text) >= 2 and text[1] not in {"-", "0"}:
+    if len(text) >= RUNNER_TEXT_MIN_LENGTH_FOR_SECOND_BASE and text[1] not in {"-", "0"}:
         runners |= 2
-    if len(text) >= 3 and text[2] not in {"-", "0"}:
+    if len(text) >= RUNNER_TEXT_MIN_LENGTH_FOR_THIRD_BASE and text[2] not in {"-", "0"}:
         runners |= 4
     return runners
 
 
 def coerce_int(value: object) -> int | None:
-    """
-    Handle the coerce int operation.
+    """Handle the coerce int operation.
 
     Args:
         value: Value.
@@ -97,8 +96,7 @@ def coerce_int(value: object) -> int | None:
 
 
 def event_runner_state(event: object) -> int | None:
-    """
-    Handle the event runner state operation.
+    """Handle the event runner state operation.
 
     Args:
         event: Event.
@@ -121,8 +119,7 @@ def event_runner_state(event: object) -> int | None:
 
 
 def event_has_transition_state(event: object) -> bool:
-    """
-    Handle the event has transition state operation.
+    """Handle the event has transition state operation.
 
     Args:
         event: Event.
@@ -149,8 +146,7 @@ def event_has_transition_state(event: object) -> bool:
 
 
 def event_has_wpa_state(event: object) -> bool:
-    """
-    Handle the event has wpa state operation.
+    """Handle the event has wpa state operation.
 
     Args:
         event: Event.
@@ -177,8 +173,7 @@ def apply_wpa_transitions(
     calculator: WPACalculator | None = None,
     only_missing: bool = False,
 ) -> None:
-    """
-    Handle the apply wpa transitions operation.
+    """Handle the apply wpa transitions operation.
 
     Args:
         events: Events.

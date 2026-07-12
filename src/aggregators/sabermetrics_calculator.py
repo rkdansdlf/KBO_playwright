@@ -12,9 +12,13 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
+MIN_LEAGUE_PLAYER_ID = 10_000
+LEAGUE_BATTING_PA_STUB_LIMIT = 10
+LEAGUE_PITCHING_OUTS_STUB_LIMIT = 10
+
+
 class SabermetricsCalculator:
-    """
-    Service to calculate advanced Sabermetrics (wOBA, wRC+, WAR).
+    """Service to calculate advanced Sabermetrics (wOBA, wRC+, WAR).
 
     using league-specific constants per season.
 
@@ -22,8 +26,7 @@ class SabermetricsCalculator:
 
     @staticmethod
     def get_league_constants(session: Session, year: int) -> dict[str, Any]:
-        """
-        Calculate league-wide averages and constants for a given year.
+        """Calculate league-wide averages and constants for a given year.
 
         Args:
             session: Session.
@@ -50,10 +53,10 @@ class SabermetricsCalculator:
             )
             .filter(
                 PlayerSeasonBatting.season == year,
-                PlayerSeasonBatting.player_id >= 10000,
+                PlayerSeasonBatting.player_id >= MIN_LEAGUE_PLAYER_ID,
                 # Filter out obvious stubs/incomplete rows
                 or_(
-                    PlayerSeasonBatting.plate_appearances > 10,
+                    PlayerSeasonBatting.plate_appearances > LEAGUE_BATTING_PA_STUB_LIMIT,
                     PlayerSeasonBatting.home_runs > 0,
                     PlayerSeasonBatting.walks > 0,
                 ),
@@ -74,9 +77,9 @@ class SabermetricsCalculator:
             )
             .filter(
                 PlayerSeasonPitching.season == year,
-                PlayerSeasonPitching.player_id >= 10000,
+                PlayerSeasonPitching.player_id >= MIN_LEAGUE_PLAYER_ID,
                 or_(
-                    PlayerSeasonPitching.innings_outs <= 10,
+                    PlayerSeasonPitching.innings_outs <= LEAGUE_PITCHING_OUTS_STUB_LIMIT,
                     or_(PlayerSeasonPitching.strikeouts > 0, PlayerSeasonPitching.walks_allowed > 0),
                 ),
             )
@@ -144,8 +147,7 @@ class SabermetricsCalculator:
 
     @staticmethod
     def calculate_batting_metrics(stat: PlayerSeasonBatting, lg: dict[str, Any]) -> dict[str, Any]:
-        """
-        Calculate wOBA, wRC+, wRAA, and WAR for a batter.
+        """Calculate wOBA, wRC+, wRAA, and WAR for a batter.
 
         Args:
             stat: Stat.
@@ -198,8 +200,7 @@ class SabermetricsCalculator:
 
     @staticmethod
     def calculate_pitching_metrics(stat: PlayerSeasonPitching, lg: dict[str, Any]) -> dict[str, Any]:
-        """
-        Calculate adjusted FIP and Pitching WAR.
+        """Calculate adjusted FIP and Pitching WAR.
 
         Args:
             stat: Stat.

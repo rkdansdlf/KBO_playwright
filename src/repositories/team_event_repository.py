@@ -17,8 +17,7 @@ class TeamEventRepository:
     """TeamEventRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -28,8 +27,7 @@ class TeamEventRepository:
         self.session = session
 
     def save(self, data: dict) -> TeamEvent:
-        """
-        Save save.
+        """Save save.
 
         Args:
             data: Data.
@@ -70,8 +68,7 @@ class TeamEventRepository:
         return new_record
 
     def get_by_team(self, team_id: str, limit: int = 50) -> list[TeamEvent]:
-        """
-        Get by team.
+        """Get by team.
 
         Args:
             team_id: Team ID.
@@ -94,8 +91,7 @@ class TeamEventRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_upcoming(self, limit: int = 50) -> list[TeamEvent]:
-        """
-        Get upcoming.
+        """Get upcoming.
 
         Args:
             limit: Limit.
@@ -120,8 +116,7 @@ class TeamEventRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_game(self, game_id: str) -> list[TeamEvent]:
-        """
-        Get by game.
+        """Get by game.
 
         Args:
             game_id: Game ID.
@@ -137,8 +132,7 @@ class TeamEventRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def update_status(self, event_id: int, status: str) -> None:
-        """
-        Update status.
+        """Update status.
 
         Args:
             event_id: Event ID.

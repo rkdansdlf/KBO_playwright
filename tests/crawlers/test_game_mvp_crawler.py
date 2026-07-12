@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
 import pytest
 
 from src.crawlers.game_mvp_crawler import GameMvpCrawler
@@ -70,3 +73,93 @@ class TestParseMvpTeam:
     def test_no_match(self, crawler):
         assert crawler._parse_mvp_team("") is None
         assert crawler._parse_mvp_team("야쿠르트") is None
+
+
+@pytest.mark.asyncio
+class TestGameMvpCrawler:
+    async def test_search_mvp_for_game_parses_matching_news(self, crawler):
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {
+            "result": {
+                "newsList": [
+                    {"title": "일반 뉴스"},
+                    {"title": "LG MVP: 홍길동", "subContent": "결승타"},
+                ],
+            },
+        }
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.get = AsyncMock(return_value=response)
+
+        with patch("src.crawlers.game_mvp_crawler.httpx.AsyncClient", return_value=client):
+            result = await crawler._search_mvp_for_game("20250501LGDB0")
+
+        assert result == {
+            "game_id": "20250501LGDB0",
+            "player_name": "홍길동",
+            "team_id": "LG",
+            "mvp_type": "GAME",
+            "reason": "LG MVP: 홍길동",
+            "award_source": "NAVER",
+        }
+
+    async def test_search_mvp_for_game_returns_none_for_non_ok_response(self, crawler):
+        response = MagicMock(status_code=503)
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.get = AsyncMock(return_value=response)
+
+        with patch("src.crawlers.game_mvp_crawler.httpx.AsyncClient", return_value=client):
+            result = await crawler._search_mvp_for_game("20250501LGDB0")
+
+        assert result is None
+
+    async def test_fetch_recent_mvp_news_builds_fallback_game_id(self, crawler):
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {"result": {"newsList": [{"title": "두산 김철수 MVP"}]}}
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.get = AsyncMock(side_effect=[response, *[httpx.HTTPError("stop")] * 6])
+
+        with patch("src.crawlers.game_mvp_crawler.httpx.AsyncClient", return_value=client):
+            records = await crawler._fetch_recent_mvp_news()
+
+        assert len(records) == 1
+        assert records[0]["player_name"] == "김철수"
+        assert records[0]["team_id"] == "DB"
+        assert records[0]["game_id"].endswith("0000")
+
+    async def test_run_with_game_ids_saves_only_found_results(self, crawler):
+        crawler._search_mvp_for_game = AsyncMock(side_effect=[{"game_id": "G1"}, None])
+
+        with patch.object(GameMvpCrawler, "_save_to_db") as save:
+            await crawler.run(["G1", "G2"], save=True)
+
+        save.assert_called_once_with([{"game_id": "G1"}])
+
+    async def test_run_without_game_ids_fetches_and_saves_news(self, crawler):
+        crawler._fetch_recent_mvp_news = AsyncMock(return_value=[{"game_id": "G1"}])
+
+        with patch.object(GameMvpCrawler, "_save_to_db") as save:
+            await crawler.run(save=True)
+
+        save.assert_called_once_with([{"game_id": "G1"}])
+
+    async def test_save_to_db_commits_and_closes_session(self):
+        session = MagicMock()
+        repo = MagicMock()
+
+        with (
+            patch("src.crawlers.game_mvp_crawler.SessionLocal", return_value=session),
+            patch("src.crawlers.game_mvp_crawler.GameMvpRepository", return_value=repo),
+        ):
+            GameMvpCrawler._save_to_db([{"game_id": "G1"}])
+
+        repo.save_mvp.assert_called_once_with({"game_id": "G1"})
+        session.commit.assert_called_once()
+        session.close.assert_called_once()

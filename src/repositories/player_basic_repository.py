@@ -1,5 +1,4 @@
-"""
-Player Basic Repository.
+"""Player Basic Repository.
 
 UPSERT operations for player_basic table.
 
@@ -35,8 +34,7 @@ class PlayerBasicRepository:
         self.last_filter_counts: Counter = Counter()
 
     def upsert_players(self, players: list[dict[str, Any]]) -> int:
-        """
-        Upsert player_basic records (idempotent).
+        """Upsert player_basic records (idempotent).
 
         Args:
             players: Players.
@@ -76,8 +74,7 @@ class PlayerBasicRepository:
                 raise
 
     def _upsert_one(self, session: Session, player_data: dict[str, Any]) -> None:
-        """
-        Upsert single player (SQLite/PostgreSQL compatible).
+        """Upsert single player (SQLite/PostgreSQL compatible).
 
         Args:
             session: Session.
@@ -176,8 +173,7 @@ class PlayerBasicRepository:
         }
 
     def get_all(self, limit: int | None = None) -> list[PlayerBasic]:
-        """
-        Get all players (optionally limited).
+        """Get all players (optionally limited).
 
         Args:
             limit: Limit.
@@ -191,8 +187,7 @@ class PlayerBasicRepository:
             return list(query.all())
 
     def update_statuses(self, updates: list[dict[str, Any]]) -> int:
-        """
-        Update status/staff_role/status_source for existing players.
+        """Update status/staff_role/status_source for existing players.
 
         Args:
             updates: Updates.
@@ -221,8 +216,7 @@ class PlayerBasicRepository:
                 raise
 
     def get_by_id(self, player_id: int) -> PlayerBasic | None:
-        """
-        Get player by ID.
+        """Get player by ID.
 
         Args:
             player_id: Player ID.
@@ -233,8 +227,7 @@ class PlayerBasicRepository:
             return session.query(PlayerBasic).filter_by(player_id=player_id).first()
 
     def get_by_team(self, team: str, limit: int | None = None) -> list[PlayerBasic]:
-        """
-        Get players by team.
+        """Get players by team.
 
         Args:
             team: Team.
@@ -251,8 +244,7 @@ class PlayerBasicRepository:
 
 
 def save_player_basic(player_data: dict[str, Any]) -> int:
-    """
-    Save a single player a single player's basic profile.
+    """Save a single player a single player's basic profile.
 
     Args:
         player_data: Player Data.

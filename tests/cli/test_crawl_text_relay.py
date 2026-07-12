@@ -115,3 +115,38 @@ class TestRunFromArgs:
             mock.return_value = {"total": 10}
             result = await run_from_args(args)
             assert result["total"] == 10
+
+
+class TestCrawlerExecution:
+    @pytest.mark.asyncio
+    async def test_run_single_game_returns_row_count(self):
+        relay_result = MagicMock(status="success", rows=[{"event": 1}, {"event": 2}])
+        crawler = MagicMock()
+        crawler.crawl_game_relay = AsyncMock(return_value=relay_result)
+
+        with patch("src.crawlers.text_relay_crawler.TextRelayCrawler", return_value=crawler):
+            rows = await run_single_game(game_id="20260412SKLG0", save=True, output_dir="relay")
+
+        assert rows == 2
+        crawler.crawl_game_relay.assert_awaited_once_with("20260412SKLG0", save=True)
+
+    @pytest.mark.asyncio
+    async def test_run_season_filters_missing_game_ids_and_counts_failures(self):
+        schedule = MagicMock()
+        schedule.crawl_schedule = AsyncMock(
+            return_value=[{"game_id": "G1"}, {"game_id": None}, {"game_id": "G2"}],
+        )
+        relay = MagicMock()
+        relay.crawl_games = AsyncMock(
+            return_value=[MagicMock(status="success"), MagicMock(status="failed")],
+        )
+
+        with (
+            patch("src.crawlers.schedule_crawler.ScheduleCrawler", return_value=schedule),
+            patch("src.crawlers.text_relay_crawler.TextRelayCrawler", return_value=relay),
+        ):
+            result = await run_season(season=2026, month=None, save=True, output_dir="relay")
+
+        schedule.crawl_schedule.assert_awaited_once_with(year=2026, month=0)
+        relay.crawl_games.assert_awaited_once_with(["G1", "G2"], save=True)
+        assert result == {"total": 2, "success": 1, "failed": 1}

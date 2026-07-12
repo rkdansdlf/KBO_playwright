@@ -23,8 +23,7 @@ class TeamRepository:
     """TeamRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -34,8 +33,7 @@ class TeamRepository:
         self.session = session
 
     def save_daily_rosters(self, rosters: list[dict[str, Any]]) -> int:
-        """
-        Save daily roster records with UPSERT logic.
+        """Save daily roster records with UPSERT logic.
 
         Args:
             rosters: Rosters.

@@ -50,8 +50,7 @@ class SelectorIssue:
     observed_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Handle the to dict operation.
+        """Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -78,8 +77,7 @@ class SelectorGateResult:
 
     @property
     def ok(self) -> bool:
-        """
-        Handle the ok operation.
+        """Handle the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -89,8 +87,7 @@ class SelectorGateResult:
 
     @property
     def issue_count(self) -> int:
-        """
-        Handle the issue count operation.
+        """Handle the issue count operation.
 
         Returns:
             Integer result.
@@ -99,8 +96,7 @@ class SelectorGateResult:
         return len(self.issues)
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Handle the to dict operation.
+        """Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -126,8 +122,7 @@ class SelectorGateSummary:
 
     @property
     def ok(self) -> bool:
-        """
-        Handle the ok operation.
+        """Handle the ok operation.
 
         Returns:
             True if successful, False otherwise.
@@ -137,8 +132,7 @@ class SelectorGateSummary:
 
     @property
     def target_count(self) -> int:
-        """
-        Handle the target count operation.
+        """Handle the target count operation.
 
         Returns:
             Integer result.
@@ -148,8 +142,7 @@ class SelectorGateSummary:
 
     @property
     def issue_count(self) -> int:
-        """
-        Handle the issue count operation.
+        """Handle the issue count operation.
 
         Returns:
             Integer result.
@@ -158,8 +151,7 @@ class SelectorGateSummary:
         return sum(target.issue_count for target in self.targets)
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Handle the to dict operation.
+        """Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -175,8 +167,7 @@ class SelectorGateSummary:
 
 
 def evaluate_html_target(target: SelectorTarget, html: str) -> SelectorGateResult:
-    """
-    Evaluate one target against already-captured HTML.
+    """Evaluate one target against already-captured HTML.
 
     Args:
         target: Target.
@@ -262,8 +253,7 @@ def evaluate_html_target(target: SelectorTarget, html: str) -> SelectorGateResul
 
 
 def load_selector_config(path: str | Path) -> list[SelectorTarget]:
-    """
-    Load selector targets from a JSON config file.
+    """Load selector targets from a JSON config file.
 
     Args:
         path: Path.
@@ -286,8 +276,7 @@ def run_selector_gate(
     *,
     output_dir: str | Path | None = None,
 ) -> SelectorGateSummary:
-    """
-    Run selector checks for all targets and optionally write a JSON report.
+    """Run selector checks for all targets and optionally write a JSON report.
 
     Args:
         targets: Targets.
@@ -322,8 +311,7 @@ def run_selector_gate(
 
 
 def render_selector_summary(summary: SelectorGateSummary) -> str:
-    """
-    Render a compact text report for terminal use.
+    """Render a compact text report for terminal use.
 
     Args:
         summary: Summary.

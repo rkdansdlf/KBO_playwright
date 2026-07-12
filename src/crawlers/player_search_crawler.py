@@ -1,5 +1,4 @@
-"""
-Player Search Crawler.
+"""Player Search Crawler.
 
 Collects comprehensive player information from KBO Player Search page.
 
@@ -58,6 +57,12 @@ PAGER_NEXT_BTNS = PLAYER_SEARCH.pager_next_buttons
 
 REQUEST_DELAY_SEC = 1.0
 TIMEOUT_MS = 15000
+MIN_PLAYER_SEARCH_COLUMNS = 7
+DATE_PART_COUNT = 3
+MIN_PARSEABLE_YEAR = 1900
+MAX_PARSEABLE_YEAR = 2100
+MAX_MONTH = 12
+MAX_DAY_OF_MONTH = 31
 
 POSTBACK_RE = re.compile(r"__doPostBack\('([^']+)'\s*,\s*'([^']*)'\)")
 INITIAL_CH_RE = re.compile(r"^[가-힣A-Z]$")
@@ -114,8 +119,7 @@ class PlayerSearchCrawler:
         *,
         headless: bool = True,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             pool: Connection pool for async operations.
@@ -134,8 +138,7 @@ class PlayerSearchCrawler:
         self.failure_counts[reason] += 1
 
     def get_failure_summary(self) -> dict[str, Any]:
-        """
-        Get failure summary.
+        """Get failure summary.
 
         Returns:
             Dictionary result.
@@ -149,7 +152,7 @@ class PlayerSearchCrawler:
         *,
         url: str = SEARCH_URL,
         required_selector: str | None = None,
-        timeout: int = TIMEOUT_MS,
+        timeout: int = TIMEOUT_MS,  # noqa: ASYNC109
         selector_timeout: int = TIMEOUT_MS,
     ) -> tuple[bool, str]:
         if not await compliance.is_allowed(url):
@@ -173,8 +176,7 @@ class PlayerSearchCrawler:
             return True, "ok"
 
     async def search_player(self, player_name: str) -> list[dict]:
-        """
-        Search for a player and returns matching profiles as dicts.
+        """Search for a player and returns matching profiles as dicts.
 
         Args:
             player_name: Player Name.
@@ -212,8 +214,7 @@ class PlayerSearchCrawler:
                 await active_pool.close()
 
     async def crawl_all_players(self, max_pages: int | None = None) -> list[PlayerRow]:
-        """
-        Crawl all players.
+        """Crawl all players.
 
         Args:
             max_pages: Max Pages.
@@ -380,7 +381,9 @@ class PlayerSearchCrawler:
         for attempt in range(max_attempts):
             try:
                 payload = await page.evaluate(
-                    "(sel) => Array.from(document.querySelectorAll(sel)).map(r => ({cells: Array.from(r.querySelectorAll('td')).map(td => td.innerText.trim()), linkHref: r.querySelector('td:nth-child(2) a')?.getAttribute('href')}))",
+                    "(sel) => Array.from(document.querySelectorAll(sel)).map(r => ({"
+                    "cells: Array.from(r.querySelectorAll('td')).map(td => td.innerText.trim()), "
+                    "linkHref: r.querySelector('td:nth-child(2) a')?.getAttribute('href')}))",
                     TABLE_ROWS,
                 )
                 break
@@ -395,7 +398,7 @@ class PlayerSearchCrawler:
         res = []
         for r in payload or []:
             cells = r["cells"]
-            if len(cells) < 7:
+            if len(cells) < MIN_PLAYER_SEARCH_COLUMNS:
                 self._record_failure("insufficient_columns")
                 continue
             pid = self._extract_pid(r["linkHref"])
@@ -497,8 +500,7 @@ class PlayerSearchCrawler:
 
     @staticmethod
     def row_to_dict(row: PlayerRow) -> dict[str, Any]:
-        """
-        Handle the row to dict operation.
+        """Handle the row to dict operation.
 
         Args:
             row: Row.
@@ -512,8 +514,7 @@ class PlayerSearchCrawler:
 
 
 def parse_birth_date(raw: str | None) -> date_type | None:
-    """
-    Parse birth date.
+    """Parse birth date.
 
     Args:
         raw: Raw.
@@ -544,9 +545,13 @@ def parse_birth_date(raw: str | None) -> date_type | None:
 
     try:
         parts = text.replace("-", ".").replace("/", ".").split(".")
-        if len(parts) == 3 and all(part.isdigit() for part in parts):
+        if len(parts) == DATE_PART_COUNT and all(part.isdigit() for part in parts):
             year, month, day = (int(part) for part in parts)
-            if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
+            if (
+                MIN_PARSEABLE_YEAR <= year <= MAX_PARSEABLE_YEAR
+                and 1 <= month <= MAX_MONTH
+                and 1 <= day <= MAX_DAY_OF_MONTH
+            ):
                 return datetime(year, month, day, tzinfo=KST).date()
     except ValueError:
         logger.warning("Failed to parse date from text: %s", text)
@@ -555,8 +560,7 @@ def parse_birth_date(raw: str | None) -> date_type | None:
 
 
 def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
-    """
-    Handle the player row to dict operation.
+    """Handle the player row to dict operation.
 
     Args:
         row: Row.
@@ -601,8 +605,7 @@ async def crawl_all_players(
     request_delay: float = REQUEST_DELAY_SEC,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[PlayerRow]:
-    """
-    Crawl all players.
+    """Crawl all players.
 
     Args:
         max_pages: Max Pages.

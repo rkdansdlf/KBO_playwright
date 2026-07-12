@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from src.crawlers.game_detail_crawler import (
+    BoxscoreCrawlContext,
     HitterPayloadContext,
     GameDetailCrawler,
     PitcherPayloadContext,
@@ -659,3 +664,316 @@ class TestLogUnresolvedPlayerIds:
         GameDetailCrawler._log_unresolved_player_ids("game1", hitters, pitchers)
         info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
         assert any("최영" in m for m in info_msgs)
+
+
+@pytest.mark.asyncio
+class TestBoxscoreExtractionFlows:
+    async def test_extract_hitters_merges_extra_stats_derives_innings_and_uses_roster(self):
+        crawler = GameDetailCrawler()
+        base_rows = [
+            {
+                "playerName": "홍길동(7)",
+                "playerId": None,
+                "cells": {"타순": "1", "POS": "SS", "타석": "0", "타수": "3", "안타": "1", "볼넷": "0"},
+            },
+            {"playerName": "합계", "playerId": None, "cells": {"타수": "4", "안타": "1"}},
+        ]
+        extra_rows = [{"playerName": "홍길동", "cells": {"볼넷": "1", "OPS": "0.900"}}]
+        inning_rows = [{"cells": {"1": "삼진"}}]
+        crawler._extract_table_rows = AsyncMock(side_effect=[base_rows, extra_rows, inning_rows])
+        ctx = BoxscoreCrawlContext(
+            page=MagicMock(),
+            season_year=2025,
+            roster_map={"홍길동": [{"id": 123, "uniform": "7"}]},
+        )
+
+        hitters, team_total = await crawler._extract_hitters(ctx, team_side="away", team_code="LG")
+
+        assert len(hitters) == 1
+        hitter = hitters[0]
+        assert hitter["player_id"] == 123
+        assert hitter["uniform_no"] == "7"
+        assert hitter["batting_order"] == 1
+        assert hitter["position"] == "SS"
+        assert hitter["stats"]["walks"] == 1
+        assert hitter["stats"]["strikeouts"] == 1
+        assert hitter["stats"]["plate_appearances"] == 4
+        assert hitter["stats"]["ops"] == 0.9
+        assert team_total == {"at_bats": 4, "hits": 1}
+
+    async def test_extract_pitchers_uses_roster_and_parses_decision(self):
+        crawler = GameDetailCrawler()
+        rows = [
+            {
+                "playerName": "최영(18)",
+                "playerId": None,
+                "cells": {"이닝": "5.2", "결과": "승", "삼진": "7"},
+            },
+            {"playerName": "합계", "playerId": None, "cells": {}},
+        ]
+        crawler._extract_table_rows = AsyncMock(return_value=rows)
+        ctx = BoxscoreCrawlContext(
+            page=MagicMock(),
+            season_year=2025,
+            roster_map={"최영": [{"id": 456, "uniform": "18"}]},
+        )
+
+        pitchers = await crawler._extract_pitchers(ctx, team_side="home", team_code="LG")
+
+        assert pitchers == [
+            {
+                "player_id": 456,
+                "player_name": "최영",
+                "uniform_no": "18",
+                "team_code": "LG",
+                "team_side": "home",
+                "is_starting": True,
+                "appearance_seq": 1,
+                "stats": {"strikeouts": 7, "decision": "W", "innings_outs": 17},
+                "extras": {"결과": "승"},
+            },
+        ]
+
+    async def test_extract_team_info_parses_scoreboard_rows(self):
+        page = AsyncMock()
+        page.evaluate.return_value = {
+            "headers": ["TEAM", "1", "2", "3", "R", "H", "E"],
+            "rows": [
+                ["LG", "1", "0", "2", "3", "7", "0"],
+                ["두산", "0", "1", "0", "1", "5", "1"],
+            ],
+        }
+        crawler = GameDetailCrawler()
+
+        teams = await crawler._extract_team_info(page, "20250501LGOB0", 2025)
+
+        assert teams["away"] == {
+            "name": "LG",
+            "code": "LG",
+            "score": 3,
+            "hits": 7,
+            "errors": 0,
+            "line_score": [1, 0, 2],
+        }
+        assert teams["home"] == {
+            "name": "두산",
+            "code": "DB",
+            "score": 1,
+            "hits": 5,
+            "errors": 1,
+            "line_score": [0, 1, 0],
+        }
+
+    async def test_extract_team_info_falls_back_to_live_scores_and_game_id_codes(self):
+        page = AsyncMock()
+        page.evaluate.return_value = None
+        crawler = GameDetailCrawler()
+        crawler._extract_live_scores = AsyncMock(
+            return_value={
+                "away": {"name": "LG", "code": None, "score": 3, "hits": 7, "errors": 0, "line_score": []},
+                "home": {"name": "두산", "code": None, "score": 1, "hits": 5, "errors": 1, "line_score": []},
+            },
+        )
+        crawler._fetch_scoreboard_inning_scores = AsyncMock(return_value=None)
+
+        teams = await crawler._extract_team_info(page, "20250501LGOB0", 2025)
+
+        assert teams["away"]["code"] == "LG"
+        assert teams["home"]["code"] == "DB"
+        crawler._fetch_scoreboard_inning_scores.assert_awaited_once_with(page, "20250501LGOB0", "LG", "OB")
+
+    async def test_crawl_games_uses_injected_pool_and_preserves_input_order(self):
+        pool = MagicMock(max_pages=2)
+        pool.start = AsyncMock()
+        pool.acquire = AsyncMock(side_effect=[MagicMock(), MagicMock()])
+        pool.release = AsyncMock()
+        pool.close = AsyncMock()
+        crawler = GameDetailCrawler(resolver=MagicMock(), pool=pool)
+
+        async def _crawl_single(_page, game_id, _game_date, *, lightweight):
+            return {"game_id": game_id, "lightweight": lightweight}
+
+        crawler._crawl_single = AsyncMock(side_effect=_crawl_single)
+        games = [
+            {"game_id": "20250501LGOB0", "game_date": "20250501"},
+            {"game_id": "20250502KTSS0", "game_date": "20250502"},
+        ]
+
+        payloads = await crawler.crawl_games(games, concurrency=2, lightweight=True)
+
+        assert [payload["game_id"] for payload in payloads] == ["20250501LGOB0", "20250502KTSS0"]
+        assert all(payload["lightweight"] for payload in payloads)
+        pool.start.assert_awaited_once()
+        assert pool.release.await_count == 2
+        pool.close.assert_not_awaited()
+
+    async def test_navigate_section_respects_compliance_block(self):
+        crawler = GameDetailCrawler()
+        ctx = BoxscoreCrawlContext(page=AsyncMock(), game_id="20250501LGOB0", game_date="20250501")
+
+        with patch("src.crawlers.game_detail_crawler.compliance.is_allowed", new=AsyncMock(return_value=False)):
+            success, reason, url = await crawler._navigate_section(ctx, "BOX_SCORE")
+
+        assert success is False
+        assert reason == "blocked"
+        assert "gameId=20250501LGOB0" in url
+
+    async def test_crawl_single_lightweight_builds_partial_payload(self):
+        crawler = GameDetailCrawler()
+        crawler._navigate_section = AsyncMock(return_value=(True, "ok", "https://example.test/review"))
+        crawler._wait_for_boxscore = AsyncMock(return_value=(True, "ok"))
+        crawler._load_roster_map_from_lineup = AsyncMock(return_value={})
+        crawler._extract_team_info = AsyncMock(
+            return_value={
+                "away": {"code": "LG", "score": 3},
+                "home": {"code": "DB", "score": 1},
+            },
+        )
+        crawler._extract_metadata = AsyncMock(return_value={"stadium": "잠실"})
+        crawler._extract_game_summary = AsyncMock(return_value={"status": "running"})
+        crawler._extract_live_scores = AsyncMock(
+            return_value={"away": {"score": 3}, "home": {"score": 1}},
+        )
+
+        result = await crawler._crawl_single(AsyncMock(), "20250501LGOB0", "20250501", lightweight=True)
+
+        assert result == {
+            "game_id": "20250501LGOB0",
+            "game_date": "20250501",
+            "metadata": {"stadium": "잠실"},
+            "summary": {"status": "running"},
+            "teams": {"away": {"code": "LG", "score": 3}, "home": {"code": "DB", "score": 1}},
+            "home_team_code": "DB",
+            "away_team_code": "LG",
+            "hitters": {"away": [], "home": []},
+            "pitchers": {"away": [], "home": []},
+            "lifecycle_state": "running",
+        }
+
+    async def test_extract_metadata_combines_explicit_and_info_area_fields(self):
+        stadium = MagicMock()
+        stadium.text_content = AsyncMock(return_value="구장 : 잠실")
+        crowd = MagicMock()
+        crowd.text_content = AsyncMock(return_value="관중 : 12,345")
+        info = MagicMock()
+        info.text_content = AsyncMock(return_value="개시 : 18:30 종료 : 21:45 경기시간 : 3:15")
+        page = AsyncMock()
+        page.query_selector.side_effect = [stadium, crowd, info]
+
+        metadata = await GameDetailCrawler()._extract_metadata(page)
+
+        assert metadata == {
+            "stadium": "잠실",
+            "attendance": 12345,
+            "start_time": "18:30",
+            "end_time": "21:45",
+            "game_time": "3:15",
+            "duration_minutes": 195,
+        }
+
+    async def test_extract_live_scores_returns_normalized_partial_team_info(self):
+        page = AsyncMock()
+        page.evaluate.return_value = {
+            "away": {"code": "lg", "name": "LG", "score": 3},
+            "home": {"code": "db", "name": "두산", "score": 1},
+        }
+
+        scores = await GameDetailCrawler()._extract_live_scores(page)
+
+        assert scores == {
+            "away": {
+                "code": "lg",
+                "name": "LG",
+                "score": 3,
+                "hits": None,
+                "errors": None,
+                "line_score": [],
+            },
+            "home": {
+                "code": "db",
+                "name": "두산",
+                "score": 1,
+                "hits": None,
+                "errors": None,
+                "line_score": [],
+            },
+        }
+
+    async def test_wait_for_boxscore_records_timeout_after_second_cancel_check(self):
+        crawler = GameDetailCrawler()
+        crawler._is_cancelled_boxscore_page = AsyncMock(side_effect=[False, False])
+        crawler._save_boxscore_timeout_screenshot = AsyncMock()
+        page = AsyncMock()
+        page.url = "https://example.test/review"
+        page.wait_for_selector.side_effect = RuntimeError("timeout")
+
+        with patch("src.crawlers.game_detail_crawler.PlaywrightError", RuntimeError):
+            ready, reason = await crawler._wait_for_boxscore(page, game_id="20250501LGOB0")
+
+        assert (ready, reason) == (False, "timeout")
+        crawler._save_boxscore_timeout_screenshot.assert_awaited_once()
+
+    async def test_extract_detailed_stats_returns_hitter_and_pitcher_pairs(self):
+        crawler = GameDetailCrawler()
+        ctx = BoxscoreCrawlContext(
+            page=AsyncMock(),
+            game_id="20250501LGOB0",
+            team_info={"away": {"code": "LG"}, "home": {"code": "DB"}},
+            metadata={"stadium": "잠실"},
+        )
+        hitters = {"away": [{"stats": {"hits": 1, "at_bats": 3}}], "home": [{"stats": {"hits": 1, "at_bats": 3}}]}
+        pitchers = {"away": [{"player_id": 1}], "home": [{"player_id": 2}]}
+        crawler._click_review_tab_if_present = AsyncMock()
+        crawler._extract_hitter_pair = AsyncMock(return_value=(hitters, {"away": {"hits": 1, "at_bats": 3}}))
+        crawler._extract_pitcher_pair = AsyncMock(return_value=pitchers)
+        crawler._retry_missing_boxscore_sections = AsyncMock(
+            return_value=(hitters, {"away": {"hits": 1, "at_bats": 3}}, pitchers)
+        )
+        crawler._validate_hitter_totals = AsyncMock()
+
+        result = await crawler._extract_detailed_stats(ctx)
+
+        assert result == (hitters, pitchers)
+        crawler._validate_hitter_totals.assert_awaited_once()
+
+    async def test_recover_missing_hitter_and_pitcher_sections(self):
+        crawler = GameDetailCrawler()
+        ctx = BoxscoreCrawlContext(
+            page=AsyncMock(),
+            game_id="20250501LGOB0",
+            team_info={"away": {"code": "LG"}, "home": {"code": "DB"}},
+        )
+        crawler._navigate_section = AsyncMock(return_value=(True, "ok", "https://example.test"))
+        recovered_hitters = {"away": [{"player_id": 1}], "home": [{"player_id": 2}]}
+        recovered_totals = {"away": {}, "home": {}}
+        recovered_pitchers = {"away": [{"player_id": 3}], "home": [{"player_id": 4}]}
+        crawler._extract_hitter_pair = AsyncMock(return_value=(recovered_hitters, recovered_totals))
+        crawler._extract_pitcher_pair = AsyncMock(return_value=recovered_pitchers)
+
+        hitters, totals = await crawler._recover_hitter_section_if_missing(
+            ctx, {"away": [], "home": []}, {"away": {}, "home": {}}
+        )
+        pitchers = await crawler._recover_pitcher_section_if_missing(ctx, {"away": [], "home": []})
+
+        assert (hitters, totals) == (recovered_hitters, recovered_totals)
+        assert pitchers == recovered_pitchers
+
+    async def test_validate_hitter_totals_saves_debug_screenshot_on_mismatch(self):
+        page = AsyncMock()
+        hitters = {"away": [{"stats": {"hits": 1, "at_bats": 3}}], "home": []}
+        totals = {"away": {"hits": 2, "at_bats": 4}}
+
+        await GameDetailCrawler()._validate_hitter_totals(page, "20250501LGOB0", hitters, totals)
+
+        page.screenshot.assert_awaited_once_with(path="data/integrity_warning_20250501LGOB0_away.png")
+
+    async def test_cancelled_boxscore_status_is_detected_before_waiting(self):
+        status = MagicMock()
+        status.text_content = AsyncMock(return_value="우천취소")
+        page = AsyncMock()
+        page.url = "https://example.test/review"
+        page.query_selector.return_value = status
+
+        cancelled = await GameDetailCrawler()._is_cancelled_boxscore_page(page)
+
+        assert cancelled is True

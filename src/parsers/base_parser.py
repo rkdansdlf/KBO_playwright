@@ -1,5 +1,4 @@
-"""
-Base class for stadium-related HTML parsers.
+"""Base class for stadium-related HTML parsers.
 
 Provides shared BeautifulSoup initialization and text extraction.
 
@@ -16,8 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseStadiumParser:
-    """
-    Base class for stadium parsers (food, parking, seat, ticket).
+    """Base class for stadium parsers (food, parking, seat, ticket).
 
     Subclasses override ``parse()`` with domain-specific logic.
     Backward-compatible module-level functions are provided in each parser module.
@@ -25,8 +23,7 @@ class BaseStadiumParser:
     """
 
     def __init__(self, html: str, source_key: str, metadata: dict[str, Any] | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             html: Html.
@@ -44,8 +41,7 @@ class BaseStadiumParser:
         self.text = self.soup.get_text(separator=" ", strip=True)
 
     def parse(self) -> list[dict[str, Any]]:
-        """
-        Parse parse.
+        """Parse parse.
 
         Returns:
             List of results.

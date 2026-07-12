@@ -17,8 +17,7 @@ class RecoveryManager:
     """RecoveryManager class."""
 
     def __init__(self, checkpoint_path: str = "data/recovery/healer_checkpoint.json") -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             checkpoint_path: Checkpoint file path.
@@ -79,8 +78,7 @@ class RecoveryManager:
         cooldown_minutes: int | None = None,
         now: datetime | None = None,
     ) -> list[str]:
-        """
-        Get due detail recovery targets.
+        """Get due detail recovery targets.
 
         Args:
             target_date: Target date for the operation.
@@ -123,8 +121,7 @@ class RecoveryManager:
         return sorted(set(game_ids))
 
     def mark_detail_recovery_success(self, target_date: str, game_id: str) -> None:
-        """
-        Handle the mark detail recovery success operation.
+        """Handle the mark detail recovery success operation.
 
         Args:
             target_date: Target date for the operation.
@@ -149,8 +146,7 @@ class RecoveryManager:
         *,
         failure_reason: str | None = None,
     ) -> None:
-        """
-        Handle the mark detail recovery failure operation.
+        """Handle the mark detail recovery failure operation.
 
         Args:
             target_date: Target date for the operation.
@@ -181,8 +177,7 @@ class RecoveryManager:
         self.save()
 
     def purge_detail_recovery_queue(self, *, max_age_days: int = 7) -> None:
-        """
-        Purge detail recovery queue.
+        """Purge detail recovery queue.
 
         Args:
             max_age_days: Max Age Days.
@@ -229,8 +224,7 @@ class RecoveryManager:
 
     def initialize_run(self, run_id: str, targets: list[str]) -> None:
         # If it's a new run ID, reset everything
-        """
-        Initialize initialize run.
+        """Initialize initialize run.
 
         Args:
             run_id: Run ID.
@@ -254,8 +248,7 @@ class RecoveryManager:
             self.save()
 
     def mark_completed(self, game_id: str) -> None:
-        """
-        Handle the mark completed operation.
+        """Handle the mark completed operation.
 
         Args:
             game_id: Game ID.
@@ -270,8 +263,7 @@ class RecoveryManager:
         self.save()
 
     def mark_failed(self, game_id: str, reason: str) -> None:
-        """
-        Handle the mark failed operation.
+        """Handle the mark failed operation.
 
         Args:
             game_id: Game ID.
@@ -289,8 +281,7 @@ class RecoveryManager:
         self.save()
 
     def get_pending_targets(self) -> list[str]:
-        """
-        Get pending targets.
+        """Get pending targets.
 
         Returns:
             List of results.

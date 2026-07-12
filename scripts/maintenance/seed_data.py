@@ -20,7 +20,9 @@ from src.models.stadium_food import StadiumFood
 from src.models.team import Team
 from src.utils.type_helpers import safe_int_or_none
 
-DEFAULT_TEAMS = [
+from typing import Any
+
+DEFAULT_TEAMS: list[dict[str, Any]] = [
     {
         "team_id": "SS",
         "team_name": "삼성 라이온즈",
@@ -484,8 +486,8 @@ def seed_kbo_seasons(session: Session, csv_path: str | Path):
                     season_year=safe_int_or_none(row.get("season_year") or row.get("시즌 연도")),
                     league_type_code=safe_int_or_none(row.get("league_type_code") or row.get("시즌 종류 코드")),
                     league_type_name=row.get("league_type_name") or row.get("시즌 종류 이름"),
-                    start_date=to_date_or_none(row.get("start_date") or row.get("시즌 시작일")),
-                    end_date=to_date_or_none(row.get("end_date") or row.get("시즌 종료일")),
+                    start_date=to_date_or_none(str(row.get("start_date") or row.get("시즌 시작일") or "")),
+                    end_date=to_date_or_none(str(row.get("end_date") or row.get("시즌 종료일") or "")),
                 )
                 seasons_to_add.append(season)
     else:

@@ -1,5 +1,4 @@
-"""
-KBO Staff Register Crawler.
+"""KBO Staff Register Crawler.
 
 Collects manager (감독) and coach (코치) data from
 https://www.koreabaseball.com/Player/Register.aspx.
@@ -101,8 +100,7 @@ def _parse_birth_date(text: str) -> date_type | None:
 
 
 def _parse_hands(text: str) -> tuple[str | None, str | None]:
-    """
-    Parse throws/bats from '우투우타' style string.
+    """Parse throws/bats from '우투우타' style string.
 
     Args:
         text: Text.
@@ -185,8 +183,7 @@ _EXTRACT_JS = """
 
 
 class StaffRegisterCrawler:
-    """
-    Register.aspx to collect manager and coach records.
+    """Register.aspx to collect manager and coach records.
 
     Returns a list of dicts suitable for upsert into player_basic:
     {
@@ -198,8 +195,7 @@ class StaffRegisterCrawler:
     """
 
     def __init__(self, *, headless: bool = True, request_delay: float = 1.5) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             headless: Whether to run the browser in headless mode.
@@ -218,8 +214,7 @@ class StaffRegisterCrawler:
         kbo_team_code: str,
         _team_display_name: str | None = None,
     ) -> list[dict]:
-        """
-        Crawl a single team's staff registration page.
+        """Crawl a single team's staff registration page.
 
         Args:
             page: Page.
@@ -283,8 +278,7 @@ class StaffRegisterCrawler:
         return records
 
     async def crawl_all_teams(self, team_codes: list[str] | None = None) -> list[dict]:
-        """
-        Crawl all (or specified) teams and return combined staff records.
+        """Crawl all (or specified) teams and return combined staff records.
 
         Args:
             team_codes: Team Codes.
@@ -332,8 +326,7 @@ class StaffRegisterCrawler:
         *,
         dry_run: bool = False,
     ) -> int:
-        """
-        Upsert staff records into player_basic.
+        """Upsert staff records into player_basic.
 
         - Records WITHOUT a player_id (no profile link found): skipped with warning.
         - Records WITH a player_id: upsert with status='staff', staff_role,

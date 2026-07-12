@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from sqlalchemy import inspect
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
 from src.models.season import KboSeason
@@ -44,10 +47,29 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+PUBLIC_RELAY_LEGACY_CUTOFF_YEAR = 2010
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_PATH = PROJECT_ROOT / "data" / "recovery" / "source_manifest.csv"
 DEFAULT_CAPABILITY_PATH = PROJECT_ROOT / "data" / "recovery" / "source_capability.csv"
+
+
+def _load_last_payload_hash(game_id: str) -> str | None:
+    from src.models.game import GameValidationMetrics
+
+    try:
+        with SessionLocal() as session:
+            bind = session.get_bind()
+            if not inspect(bind).has_table(GameValidationMetrics.__tablename__):
+                return None
+            metrics_row = session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).first()
+    except SQLAlchemyError as exc:
+        logger.debug("Skipping relay payload-hash lookup for %s: %s", game_id, exc)
+        return None
+
+    if metrics_row and metrics_row.payload_hash is not None:
+        return str(metrics_row.payload_hash)
+    return None
 
 
 @dataclass
@@ -81,8 +103,7 @@ class RelayRecoveryTarget:
         *,
         state: GameStateInput,
     ) -> RelayRecoveryTarget:
-        """
-        Handle the from game state operation.
+        """Handle the from game state operation.
 
         Args:
             state: State.
@@ -184,8 +205,7 @@ class RecoveryLoopContext:
 
 
 def parse_source_order(value: str | None) -> list[str] | None:
-    """
-    Parse source order.
+    """Parse source order.
 
     Args:
         value: Value.
@@ -203,8 +223,7 @@ def parse_source_order(value: str | None) -> list[str] | None:
 
 
 def load_game_ids_from_file(path: str | Path | None) -> list[str]:
-    """
-    Load game ids from file.
+    """Load game ids from file.
 
     Args:
         path: Path.
@@ -242,8 +261,7 @@ def load_relay_recovery_targets(
     *,
     log: Callable[[str], None] = logger.info,
 ) -> list[RelayRecoveryTarget]:
-    """
-    Load relay recovery targets.
+    """Load relay recovery targets.
 
     Args:
         criteria: Criteria.
@@ -320,8 +338,7 @@ async def recover_relay_data(
     config: RelayRecoveryConfig | None = None,
     orchestrator: RelayRecoveryOrchestrator | None = None,
 ) -> RelayRecoveryResult:
-    """
-    Handle the recover relay data operation.
+    """Handle the recover relay data operation.
 
     Args:
         targets: Targets.
@@ -399,6 +416,8 @@ async def recover_relay_data(
             if _maybe_derive_pbp(ctx, cfg):
                 continue
 
+            last_payload_hash = _load_last_payload_hash(target.game_id)
+
             relay_result, attempts = await orchestrator.fetch_game(
                 target.game_id,
                 bucket_id,
@@ -407,6 +426,7 @@ async def recover_relay_data(
                     target.game_id,
                     validation_config,
                 ),
+                last_payload_hash=last_payload_hash,
             )
             run_result.report_rows.extend(attempts)
             if relay_result.is_empty:
@@ -449,8 +469,7 @@ def _relay_validator(
     config: RelayValidationConfig,
 ) -> Callable[[NormalizedRelayResult], str | None]:
     def validator(relay_result: NormalizedRelayResult) -> str | None:
-        """
-        Handle the validator operation.
+        """Handle the validator operation.
 
         Args:
             relay_result: Relay Result.
@@ -629,8 +648,7 @@ def build_relay_recovery_orchestrator(
     capability_path: str | Path = DEFAULT_CAPABILITY_PATH,
     source_timeout: float = 30.0,
 ) -> RelayRecoveryOrchestrator:
-    """
-    Build relay recovery orchestrator.
+    """Build relay recovery orchestrator.
 
     Args:
         import_manifest: Import Manifest.
@@ -676,8 +694,7 @@ def write_relay_recovery_report(
     *,
     log: Callable[[str], None] = logger.info,
 ) -> None:
-    """
-    Write relay recovery.
+    """Write relay recovery.
 
     Args:
         report_path: Report file path.
@@ -877,8 +894,7 @@ def _should_mark_source_unavailable(
     attempts: list[dict[str, Any]],
     relay_result: NormalizedRelayResult,
 ) -> bool:
-    """
-    Return true when a historical miss should be recorded as explainably unavailable.
+    """Return true when a historical miss should be recorded as explainably unavailable.
 
     Args:
         bucket_id: Bucket ID.
@@ -895,7 +911,7 @@ def _should_mark_source_unavailable(
         year = int(bucket_id.split("_", 1)[0])
     except (TypeError, ValueError):
         year = 0
-    if year >= 2010:
+    if year >= PUBLIC_RELAY_LEGACY_CUTOFF_YEAR:
         return False
 
     failure_text = " ".join(

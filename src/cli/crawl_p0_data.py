@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_events(*, save: bool = False, days: int = 30, team: str | None = None) -> int:
-    """
-    Run events.
+    """Run events.
 
     Args:
         save: Whether to persist the results.
@@ -37,8 +36,7 @@ async def run_events(*, save: bool = False, days: int = 30, team: str | None = N
 
 
 async def run_roster(*, save: bool = False, target_date: str | None = None) -> int:
-    """
-    Run roster.
+    """Run roster.
 
     Args:
         save: Whether to persist the results.
@@ -56,8 +54,7 @@ async def run_roster(*, save: bool = False, target_date: str | None = None) -> i
 
 
 async def run_ticket(*, save: bool = False, season: int | None = None) -> int:
-    """
-    Run ticket.
+    """Run ticket.
 
     Args:
         save: Whether to persist the results.
@@ -82,8 +79,7 @@ async def run_all(
     season: int | None = None,
     target_date: str | None = None,
 ) -> dict[str, int]:
-    """
-    Run all.
+    """Run all.
 
     Args:
         save: Whether to persist the results.
@@ -128,8 +124,7 @@ def _normalize_target_date(value: str | None) -> str | None:
 
 
 async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
-    """
-    Run from args.
+    """Run from args.
 
     Args:
         args: Positional arguments to pass through.
@@ -161,8 +156,7 @@ async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -185,8 +179,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, int]:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

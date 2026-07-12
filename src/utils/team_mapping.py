@@ -21,6 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from src.constants import KBO_EARLY_ERA_END, KBO_MID_90S_ERA_END, KBO_MILLENNIUM_ERA_END
 from src.utils.team_codes import resolve_team_code
 
 if TYPE_CHECKING:
@@ -195,8 +196,7 @@ class TeamMapper:
             return True
 
     def _load_team_history_rows(self, oci_url: str) -> list[Sequence[object]] | None:
-        """
-        Load team history rows.
+        """Load team history rows.
 
         Args:
             oci_url: Oci URL.
@@ -227,8 +227,7 @@ class TeamMapper:
 
     @staticmethod
     def _log_team_history_columns(session: Session) -> None:
-        """
-        Log team history columns.
+        """Log team history columns.
 
         Args:
             session: Session.
@@ -250,8 +249,7 @@ class TeamMapper:
 
     @staticmethod
     def _query_team_history(session: Session) -> list[Sequence[object]] | None:
-        """
-        Handle the query team history operation.
+        """Handle the query team history operation.
 
         Args:
             session: Session.
@@ -275,8 +273,7 @@ class TeamMapper:
         return None
 
     def _apply_oci_mapping_rows(self, rows: Iterable[Sequence[object]]) -> None:
-        """
-        Handle the apply oci mapping rows operation.
+        """Handle the apply oci mapping rows operation.
 
         Args:
             rows: Rows.
@@ -288,8 +285,7 @@ class TeamMapper:
             self._apply_oci_mapping_row(row)
 
     def _apply_oci_mapping_row(self, row: Sequence[object]) -> None:
-        """
-        Handle the apply oci mapping row operation.
+        """Handle the apply oci mapping row operation.
 
         Args:
             row: Row.
@@ -311,8 +307,7 @@ class TeamMapper:
             self._add_mapping_for_years(str(franchise), str(team_code), start_year, end_year)
 
     def _add_mapping_for_years(self, team_name: str, team_code: str, start_year: int, end_year: int) -> None:
-        """
-        Add mapping for years.
+        """Add mapping for years.
 
         Args:
             team_name: Team Name.
@@ -335,8 +330,7 @@ class TeamMapper:
             self.year_specific_mapping.setdefault(year, {})[team_name] = team_code
 
     def get_team_code(self, team_name: str, year: int | None = None) -> str | None:
-        """
-        팀명으로 팀 코드 조회 (년도 고려).
+        """팀명으로 팀 코드 조회 (년도 고려).
 
         Args:
             team_name: Team Name.
@@ -362,8 +356,7 @@ class TeamMapper:
 
     def _resolve_team_code(self, team_name: str, year: int | None = None) -> str | None:
         # 1.5 Standard Resolution via team_codes (Superior to static/fuzzy)
-        """
-        Resolve team code.
+        """Resolve team code.
 
         Args:
             team_name: Team Name.
@@ -391,8 +384,7 @@ class TeamMapper:
         return self._fuzzy_match(team_name, year)
 
     def _fuzzy_match(self, team_name: str, year: int | None = None) -> str | None:
-        """
-        퍼지 매칭으로 팀 코드 찾기.
+        """퍼지 매칭으로 팀 코드 찾기.
 
         Args:
             team_name: Team Name.
@@ -412,8 +404,7 @@ class TeamMapper:
 
     @staticmethod
     def _partial_fuzzy_match(team_name: str) -> str | None:
-        """
-        Handle the partial fuzzy match operation.
+        """Handle the partial fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -431,8 +422,7 @@ class TeamMapper:
 
     @staticmethod
     def _year_specific_fuzzy_match(team_name: str, year: int | None = None) -> str | None:
-        """
-        Handle the year specific fuzzy match operation.
+        """Handle the year specific fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -448,18 +438,17 @@ class TeamMapper:
         """
         if not year:
             return None
-        if year <= 1985:
+        if year <= KBO_EARLY_ERA_END:
             return TeamMapper._early_kbo_fuzzy_match(team_name)
-        if year <= 1995:
+        if year <= KBO_MID_90S_ERA_END:
             return TeamMapper._nineties_fuzzy_match(team_name)
-        if year <= 2000:
+        if year <= KBO_MILLENNIUM_ERA_END:
             return TeamMapper._late_nineties_fuzzy_match(team_name)
         return None
 
     @staticmethod
     def _early_kbo_fuzzy_match(team_name: str) -> str | None:
-        """
-        Handle the early kbo fuzzy match operation.
+        """Handle the early kbo fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -482,8 +471,7 @@ class TeamMapper:
 
     @staticmethod
     def _nineties_fuzzy_match(team_name: str) -> str | None:
-        """
-        Handle the nineties fuzzy match operation.
+        """Handle the nineties fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -502,8 +490,7 @@ class TeamMapper:
 
     @staticmethod
     def _late_nineties_fuzzy_match(team_name: str) -> str | None:
-        """
-        Handle the late nineties fuzzy match operation.
+        """Handle the late nineties fuzzy match operation.
 
         Args:
             team_name: Team Name.
@@ -521,8 +508,7 @@ class TeamMapper:
         return None
 
     def get_all_teams_for_year(self, year: int) -> dict[str, str]:
-        """
-        특정 년도의 모든 팀 매핑 반환 (정적 매핑과 통합).
+        """특정 년도의 모든 팀 매핑 반환 (정적 매핑과 통합).
 
         Args:
             year: Season year.
@@ -540,8 +526,7 @@ class TeamMapper:
         return mapping
 
     def validate_team_code(self, team_code: str, _year: int | None = None) -> bool:
-        """
-        팀 코드 유효성 검증.
+        """팀 코드 유효성 검증.
 
         Args:
             team_code: Team Code.
@@ -572,8 +557,7 @@ def get_team_mapper() -> TeamMapper:
 
 
 def get_team_code(team_name: str, year: int | None = None) -> str | None:
-    """
-    간편 함수: 팀명으로 팀 코드 조회.
+    """간편 함수: 팀명으로 팀 코드 조회.
 
     Args:
         team_name: Team Name.
@@ -588,8 +572,7 @@ def get_team_code(team_name: str, year: int | None = None) -> str | None:
 
 
 def get_team_mapping_for_year(year: int) -> dict[str, str]:
-    """
-    간편 함수: 특정 년도의 팀 매핑 반환.
+    """간편 함수: 특정 년도의 팀 매핑 반환.
 
     Args:
         year: Season year.

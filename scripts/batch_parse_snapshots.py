@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import logging
 from datetime import datetime
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -46,53 +47,112 @@ DOMAIN_FLAT_REPOS = {
 }
 
 
+def _save_flat(session, domain: str, data: list[dict]) -> int:
+    repo = cast("Any", DOMAIN_FLAT_REPOS[domain](session))
+    count = 0
+    for item in data:
+        try:
+            repo.save(item)
+            count += 1
+        except BATCH_PARSE_EXCEPTIONS:
+            logger.exception("Save failed in domain=%s: %s", domain, item.get("title", item.get("player_name", "")))
+    return count
+
+
+def _save_parking(session, data: list[dict]) -> int:
+    lot_repo = ParkingLotRepository(session)
+    fee_repo = ParkingFeeRuleRepository(session)
+    count = 0
+    for entry in data:
+        try:
+            lot = lot_repo.save(entry.get("lot", {}))
+            count += 1
+            for fee in entry.get("fee_rules", []):
+                fee_repo.save({"parking_lot_id": lot.id, **fee})
+        except BATCH_PARSE_EXCEPTIONS:
+            logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
+    return count
+
+
+def _save_food(session, data: list[dict]) -> int:
+    vendor_repo = StadiumFoodVendorRepository(session)
+    menu_repo = StadiumFoodMenuItemRepository(session)
+    count = 0
+    for entry in data:
+        try:
+            vendor = vendor_repo.save(entry.get("vendor", {}))
+            count += 1
+            for menu in entry.get("menus", []):
+                menu_repo.save({"vendor_id": vendor.id, **menu})
+        except BATCH_PARSE_EXCEPTIONS:
+            logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
+    return count
+
+
+_DOMAIN_SAVERS = {
+    "parking": _save_parking,
+    "food": _save_food,
+}
+
+
 def _save_parsed(session, target_domain: str, parsed_data: list[dict]) -> int:
     if target_domain in DOMAIN_FLAT_REPOS:
-        repo_class = DOMAIN_FLAT_REPOS[target_domain]
-        repo = repo_class(session)
-        count = 0
-        for item in parsed_data:
-            try:
-                repo.save(item)
-                count += 1
-            except BATCH_PARSE_EXCEPTIONS:
-                logger.exception(
-                    "Save failed in domain=%s: %s",
-                    target_domain,
-                    item.get("title", item.get("player_name", "")),
-                )
-        return count
-
-    if target_domain == "parking":
-        lot_repo = ParkingLotRepository(session)
-        fee_repo = ParkingFeeRuleRepository(session)
-        count = 0
-        for entry in parsed_data:
-            try:
-                lot = lot_repo.save(entry.get("lot", {}))
-                count += 1
-                for fee in entry.get("fee_rules", []):
-                    fee_repo.save({"parking_lot_id": lot.id, **fee})
-            except BATCH_PARSE_EXCEPTIONS:
-                logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
-        return count
-
-    if target_domain == "food":
-        vendor_repo = StadiumFoodVendorRepository(session)
-        menu_repo = StadiumFoodMenuItemRepository(session)
-        count = 0
-        for entry in parsed_data:
-            try:
-                vendor = vendor_repo.save(entry.get("vendor", {}))
-                count += 1
-                for menu in entry.get("menus", []):
-                    menu_repo.save({"vendor_id": vendor.id, **menu})
-            except BATCH_PARSE_EXCEPTIONS:
-                logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
-        return count
-
+        return _save_flat(session, target_domain, parsed_data)
+    saver = _DOMAIN_SAVERS.get(target_domain)
+    if saver:
+        return saver(session, parsed_data)
     logger.warning("No repository for domain: %s", target_domain)
     return 0
+
+
+def _process_snapshot(session, snap_repo, snapshot, dry_run: bool) -> str:
+    stmt = select(DSModel).where(DSModel.id == snapshot.data_source_id)
+    ds = session.execute(stmt).scalar_one_or_none()
+    if not ds:
+        snap_repo.update_parse_status(snapshot.id, "failed", error_message="DataSource not found")
+        return "failed"
+    parser = get_parser(ds.source_key)
+    if not parser:
+        snap_repo.update_parse_status(snapshot.id, "failed", error_message=f"No parser for source_key={ds.source_key}")
+        return "failed"
+    url = snapshot.raw_html_or_json_path
+    if not url:
+        snap_repo.update_parse_status(snapshot.id, "failed", error_message="No URL in snapshot")
+        return "failed"
+    try:
+        host = urlparse(url).hostname or "koreabaseball.com"
+        throttle.wait_sync(host)
+        resp = httpx.get(url, headers=HEADERS, timeout=15, follow_redirects=True)
+        if resp.status_code != 200:
+            snap_repo.update_parse_status(snapshot.id, "failed", error_message=f"HTTP {resp.status_code}")
+            return "failed"
+        actual_hash = hashlib.sha256(resp.text.encode()).hexdigest()
+        if snapshot.content_hash and actual_hash != snapshot.content_hash:
+            snap_repo.update_parse_status(
+                snapshot.id, "failed", error_message="Content hash mismatch (page changed since crawl)"
+            )
+            return "failed"
+        metadata = {
+            "url": url,
+            "fetched_at": snapshot.fetched_at.isoformat() if snapshot.fetched_at else "",
+            "season": datetime.now().year,
+            "cutoff_days": 60,
+        }
+        parsed = parser(resp.text, ds.source_key, metadata)
+        if dry_run:
+            logger.info("[DRY-RUN] %s: %d items would be saved", ds.source_key, len(parsed))
+            return "done"
+        saved = _save_parsed(session, ds.target_domain, parsed)
+        snap_repo.update_parse_status(snapshot.id, "done", parser_version=PARSER_VERSION)
+        session.commit()
+        logger.info("[PARSE] %s: %d items saved", ds.source_key, saved)
+        return "done"
+    except BATCH_PARSE_EXCEPTIONS as e:
+        session.rollback()
+        snap_repo.update_parse_status(snapshot.id, "failed", error_message=str(e))
+        session.commit()
+        logger.exception("Parse failed for snapshot %s (%s)", snapshot.id, ds.source_key)
+        return "failed"
 
 
 def run_batch_parse(
@@ -102,87 +162,20 @@ def run_batch_parse(
     retry_after_hours: int = 1,
 ) -> dict[str, int]:
     stats: dict[str, int] = {"processed": 0, "done": 0, "failed": 0, "skipped": 0}
-
     with SessionLocal() as session:
         snap_repo = RawSourceSnapshotRepository(session)
-
         pending = snap_repo.get_unparsed(limit=limit)
         if retry_failed:
             failed = snap_repo.get_failed_for_retry(retry_after_hours=retry_after_hours, limit=limit - len(pending))
             pending.extend(failed)
-
         if not pending:
             logger.info("[PARSE] No pending snapshots found.")
             return stats
-
         logger.info("[PARSE] Processing %d snapshots (dry_run=%s)...", len(pending), dry_run)
-
         for snapshot in pending:
             stats["processed"] += 1
-            stmt = select(DSModel).where(DSModel.id == snapshot.data_source_id)
-            ds = session.execute(stmt).scalar_one_or_none()
-
-            if not ds:
-                snap_repo.update_parse_status(snapshot.id, "failed", error="DataSource not found")
-                stats["failed"] += 1
-                continue
-
-            parser = get_parser(ds.source_key)
-            if not parser:
-                snap_repo.update_parse_status(snapshot.id, "failed", error=f"No parser for source_key={ds.source_key}")
-                stats["failed"] += 1
-                continue
-
-            url = snapshot.raw_html_or_json_path
-            if not url:
-                snap_repo.update_parse_status(snapshot.id, "failed", error="No URL in snapshot")
-                stats["failed"] += 1
-                continue
-
-            try:
-                host = urlparse(url).hostname or "koreabaseball.com"
-                throttle.wait_sync(host)
-                resp = httpx.get(url, headers=HEADERS, timeout=15, follow_redirects=True)
-                if resp.status_code != 200:
-                    snap_repo.update_parse_status(snapshot.id, "failed", error=f"HTTP {resp.status_code}")
-                    stats["failed"] += 1
-                    continue
-
-                actual_hash = hashlib.sha256(resp.text.encode()).hexdigest()
-                if snapshot.content_hash and actual_hash != snapshot.content_hash:
-                    snap_repo.update_parse_status(
-                        snapshot.id,
-                        "failed",
-                        error="Content hash mismatch (page changed since crawl)",
-                    )
-                    stats["failed"] += 1
-                    continue
-
-                metadata = {
-                    "url": url,
-                    "fetched_at": snapshot.fetched_at.isoformat() if snapshot.fetched_at else "",
-                    "season": datetime.now().year,
-                    "cutoff_days": 60,
-                }
-                parsed = parser(resp.text, ds.source_key, metadata)
-
-                if dry_run:
-                    logger.info("[DRY-RUN] %s: %d items would be saved", ds.source_key, len(parsed))
-                    stats["done"] += 1
-                else:
-                    saved = _save_parsed(session, ds.target_domain, parsed)
-                    snap_repo.update_parse_status(snapshot.id, "done", parser_version=PARSER_VERSION)
-                    session.commit()
-                    logger.info("[PARSE] %s: %d items saved", ds.source_key, saved)
-                    stats["done"] += 1
-
-            except BATCH_PARSE_EXCEPTIONS as e:
-                session.rollback()
-                snap_repo.update_parse_status(snapshot.id, "failed", error=str(e))
-                session.commit()
-                logger.exception(f"Parse failed for snapshot {snapshot.id} ({ds.source_key})")
-                stats["failed"] += 1
-
+            result = _process_snapshot(session, snap_repo, snapshot, dry_run)
+            stats[result] += 1
     logger.info("[PARSE] Done: %d, Failed: %d, Skipped: %d", stats["done"], stats["failed"], stats["skipped"])
     return stats
 
