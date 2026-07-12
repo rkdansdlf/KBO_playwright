@@ -26,6 +26,20 @@ class TestCalculateSabermetrics:
             _, kwargs = mock.call_args
             assert kwargs["sync_oci"] is True
 
+    def test_specific_level(self):
+        with patch("src.cli.calculate_sabermetrics.batch_calculate_sabermetrics") as mock:
+            result = main(["--level", "KBO2"])
+            assert result == 0
+            _, kwargs = mock.call_args
+            assert kwargs["levels"] == ["KBO2"]
+
+    def test_all_levels(self):
+        with patch("src.cli.calculate_sabermetrics.batch_calculate_sabermetrics") as mock:
+            result = main(["--level", "all"])
+            assert result == 0
+            _, kwargs = mock.call_args
+            assert kwargs["levels"] == ["KBO1", "KBO2"]
+
 
 class TestBatchCalculateSabermetrics:
     def test_sync_oci_without_url_skips_sync(self):

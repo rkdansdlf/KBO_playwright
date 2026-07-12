@@ -185,6 +185,7 @@ def _add_batting(
     session,
     player_id=10001,
     season=2025,
+    level="KBO1",
     pa=600,
     ab=500,
     hits=150,
@@ -201,6 +202,7 @@ def _add_batting(
         PlayerSeasonBatting(
             player_id=player_id,
             season=season,
+            level=level,
             plate_appearances=pa,
             at_bats=ab,
             hits=hits,
@@ -221,6 +223,7 @@ def _add_pitching(
     session,
     player_id=10001,
     season=2025,
+    level="KBO1",
     outs=300,
     er=60,
     hr_allowed=15,
@@ -234,6 +237,7 @@ def _add_pitching(
         PlayerSeasonPitching(
             player_id=player_id,
             season=season,
+            level=level,
             innings_outs=outs,
             earned_runs=er,
             home_runs_allowed=hr_allowed,
@@ -281,3 +285,18 @@ class TestGetLeagueConstants:
         result = SabermetricsCalculator.get_league_constants(session, 2025)
         assert result["lg_woba"] == 0.320
         assert result["lg_era"] == 4.50
+
+    def test_get_league_constants_respects_level(self, session):
+        # Add KBO2 stats only
+        _add_batting(session, level="KBO2")
+        _add_pitching(session, level="KBO2")
+
+        # Calculate for KBO1 (should return default since there is no KBO1 data)
+        result_kbo1 = SabermetricsCalculator.get_league_constants(session, 2025, level="KBO1")
+        assert result_kbo1["lg_woba"] == 0.320
+        assert result_kbo1["lg_era"] == 4.50
+
+        # Calculate for KBO2 (should return calculated values)
+        result_kbo2 = SabermetricsCalculator.get_league_constants(session, 2025, level="KBO2")
+        assert result_kbo2["lg_woba"] > 0.320
+        assert result_kbo2["lg_era"] > 4.50
