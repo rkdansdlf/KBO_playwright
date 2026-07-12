@@ -1,5 +1,4 @@
-"""
-Fetch HITTER section HTML from KBO GameCenter and extract SH/SF values.
+"""Fetch HITTER section HTML from KBO GameCenter and extract SH/SF values.
 
 The HITTER section of KBO GameCenter pages includes dedicated columns
 for 희타 (sacrifice hits) and 희비 (sacrifice flies) in the batter stat tables.
@@ -50,8 +49,7 @@ DEFAULT_HEADERS = {
 
 
 def build_hitter_url(game_id: str, game_date: str) -> str:
-    """
-    Build the HITTER section URL for a KBO game.
+    """Build the HITTER section URL for a KBO game.
 
     game_date should be in YYYY-MM-DD or YYYYMMDD format.
 
@@ -68,8 +66,7 @@ def build_hitter_url(game_id: str, game_date: str) -> str:
 
 
 def _get_column_index_map(table_tag: Tag) -> dict[str, int]:
-    """
-    Map column header text to cell index for a stats table.
+    """Map column header text to cell index for a stats table.
 
     Args:
         table_tag: Table Tag.
@@ -85,8 +82,7 @@ def _get_column_index_map(table_tag: Tag) -> dict[str, int]:
 
 
 def parse_hitter_sh_sf(html: str, game_id: str) -> dict[int | str, dict[str, int]]:
-    """
-    Parse SH/SF values from HITTER section HTML.
+    """Parse SH/SF values from HITTER section HTML.
 
     Read lineup tables (tblAwayHitter1 / tblHomeHitter1) for player IDs
     and stat tables (tblAwayHitter3 / tblHomeHitter3) for 희타/희비 columns.
@@ -170,8 +166,7 @@ def fetch_hitter_page_sync(
     game_date: str,
     client: httpx.Client | None = None,
 ) -> str | None:
-    """
-    Fetch HITTER section HTML synchronously.
+    """Fetch HITTER section HTML synchronously.
 
     Return the raw HTML string, or None on failure.
 
@@ -211,8 +206,7 @@ def fetch_and_parse_hitter_sh_sf(
     game_date: str,
     client: httpx.Client | None = None,
 ) -> dict[int | str, dict[str, int]]:
-    """
-    Fetch HITTER page and parse SH/SF in one call.
+    """Fetch HITTER page and parse SH/SF in one call.
 
     Args:
         game_id: Game ID.
@@ -236,8 +230,7 @@ def derive_sh_sf_from_hitter_page(
     game_date: str,
     client: httpx.Client | None = None,
 ) -> int:
-    """
-    Derive SH/SF from HITTER page and update game_batting_stats in-place.
+    """Derive SH/SF from HITTER page and update game_batting_stats in-place.
 
     Return number of updated rows.
 
@@ -305,8 +298,7 @@ def derive_sh_sf_hybrid(
     client: httpx.Client | None = None,
     pbp_delay: float = 0.0,
 ) -> int:
-    """
-    Hybrid derivation: try PBP first, fall back to HITTER page.
+    """Hybrid derivation: try PBP first, fall back to HITTER page.
 
     Args:
         session: Session.

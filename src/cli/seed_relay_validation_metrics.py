@@ -1,5 +1,4 @@
-"""
-Seed canonical relay validation metrics for completed games.
+"""Seed canonical relay validation metrics for completed games.
 
 This command is intentionally conservative: it records a validation state for
 every completed/DRAW game so relay gaps are explainable, but it does not invent
@@ -32,6 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+PUBLIC_RELAY_LEGACY_END_YEAR = 2009
 
 
 def seed_relay_validation_metrics(
@@ -39,8 +39,7 @@ def seed_relay_validation_metrics(
     season: int | None = None,
     mark_legacy_unavailable: bool = True,
 ) -> dict[str, int]:
-    """
-    Seed relay validation metrics.
+    """Seed relay validation metrics.
 
     Args:
         season: Season year.
@@ -93,7 +92,7 @@ def seed_relay_validation_metrics(
             elif has_pbp or has_events:
                 status = VALIDATION_SOURCE_INCOMPLETE
                 reason = "existing_relay_without_full_state"
-            elif mark_legacy_unavailable and year <= 2009:
+            elif mark_legacy_unavailable and year <= PUBLIC_RELAY_LEGACY_END_YEAR:
                 status = VALIDATION_SOURCE_UNAVAILABLE
                 reason = "legacy_public_relay_source_unavailable"
             else:
@@ -127,8 +126,7 @@ def seed_relay_validation_metrics(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

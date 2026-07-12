@@ -86,8 +86,7 @@ class TeamEventCrawler:
     """TeamEventCrawler class."""
 
     def __init__(self, days_back: int = 30) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             days_back: Days Back.
@@ -100,8 +99,7 @@ class TeamEventCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict]:
-        """
-        Run run.
+        """Run run.
 
         Args:
             save: Whether to persist the results.

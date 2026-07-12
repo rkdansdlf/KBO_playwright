@@ -57,14 +57,7 @@ def collect_unclassified_text(
         ]
 
 
-def analyze_texts(rows: list[dict], top_words: int = 15) -> None:
-    """Analyze unclassified texts for patterns."""
-    if not rows:
-        logger.info("No unclassified relay texts found. Good!")
-        return
-
-    texts = [r["text"] for r in rows if r["text"]]
-
+def _report_game_summary(rows: list[dict]) -> None:
     games = Counter(r["game_id"] for r in rows)
     logger.info(f"\nTotal unclassified entries: {len(rows)}")
     logger.info(f"Across {len(games)} game(s)")
@@ -72,48 +65,60 @@ def analyze_texts(rows: list[dict], top_words: int = 15) -> None:
     for game_id, count in games.most_common(10):
         logger.info(f"  {game_id}: {count}")
 
-    prefixes = Counter()
+
+def _analyze_prefixes(texts: list[str], top_words: int) -> None:
+    prefixes: Counter[str] = Counter()
     for text in texts:
         if ":" in text:
-            prefix = text.split(":", 1)[0].strip()
-            prefixes[prefix] += 1
+            prefixes[text.split(":", 1)[0].strip()] += 1
         else:
             prefixes[f"[NO_COLON] {text[:50]}"] += 1
-
     logger.info(f"\nTop {top_words} most common prefixes:")
     for prefix, count in prefixes.most_common(top_words):
         logger.info(f"  {count:4d}x  {prefix}")
 
-    result_keywords = Counter()
+
+def _analyze_keywords(texts: list[str], top_words: int) -> None:
+    result_keywords: Counter[str] = Counter()
     for text in texts:
         if ":" in text:
             result = text.split(":", 1)[1].strip()
             for token in re.findall(r"[\w]+", result):
                 result_keywords[token] += 1
-
     logger.info(f"\nTop {top_words} most common keywords in result text:")
     for word, count in result_keywords.most_common(top_words):
         logger.info(f"  {count:4d}x  {word}")
 
+
+def _detect_noise_patterns(texts: list[str], top_words: int) -> None:
     from src.utils.relay_text import _RELAY_NOISE_PATTERNS, _RELAY_NOISE_TOKENS
 
-    {t.lower() for t in _RELAY_NOISE_TOKENS}
-    candidate_noise = Counter()
+    candidate_noise: Counter[str] = Counter()
     for text in texts:
         text_lower = text.lower()
-        is_known_noise = any(pattern.search(text) for pattern in _RELAY_NOISE_PATTERNS) or any(
+        is_noise = any(pattern.search(text) for pattern in _RELAY_NOISE_PATTERNS) or any(
             token.lower() in text_lower for token in _RELAY_NOISE_TOKENS
         )
-        if not is_known_noise:
+        if not is_noise:
             segment = text.split(":")[0].strip() if ":" in text else text.strip()
             if len(segment) > 3:
                 candidate_noise[segment] += 1
-
     logger.info(f"\nTop {top_words} potential new noise patterns (not in current filters):")
     for segment, count in candidate_noise.most_common(top_words):
         logger.info(f"  {count:4d}x  '{segment}'")
-
     logger.info(f"\nRecommendation: {'UPDATE _RELAY_NOISE_TOKENS' if candidate_noise else 'No update needed'}")
+
+
+def analyze_texts(rows: list[dict], top_words: int = 15) -> None:
+    """Analyze unclassified texts for patterns."""
+    if not rows:
+        logger.info("No unclassified relay texts found. Good!")
+        return
+    texts = [r["text"] for r in rows if r["text"]]
+    _report_game_summary(rows)
+    _analyze_prefixes(texts, top_words)
+    _analyze_keywords(texts, top_words)
+    _detect_noise_patterns(texts, top_words)
 
 
 def main():

@@ -1,5 +1,4 @@
-"""
-CLI entrypoint to execute Phase 1 supplementary crawlers.
+"""CLI entrypoint to execute Phase 1 supplementary crawlers.
 
 broadcast, game MVP, injury/IL, foreign player, manager change, fan culture.
 
@@ -16,8 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_broadcast(*, save: bool = False) -> None:
-    """
-    Run broadcast.
+    """Run broadcast.
 
     Args:
         save: Whether to persist the results.
@@ -31,8 +29,7 @@ async def run_broadcast(*, save: bool = False) -> None:
 
 
 async def run_game_mvp(game_ids: list[str] | None = None, *, save: bool = False) -> None:
-    """
-    Run game mvp.
+    """Run game mvp.
 
     Args:
         game_ids: Game Ids.
@@ -49,8 +46,7 @@ async def run_game_mvp(game_ids: list[str] | None = None, *, save: bool = False)
 
 
 async def run_injury(*, save: bool = False) -> None:
-    """
-    Run injury.
+    """Run injury.
 
     Args:
         save: Whether to persist the results.
@@ -64,8 +60,7 @@ async def run_injury(*, save: bool = False) -> None:
 
 
 async def run_foreign_player(*, save: bool = False) -> None:
-    """
-    Run foreign player.
+    """Run foreign player.
 
     Args:
         save: Whether to persist the results.
@@ -79,8 +74,7 @@ async def run_foreign_player(*, save: bool = False) -> None:
 
 
 async def run_manager_change(*, save: bool = False) -> None:
-    """
-    Run manager change.
+    """Run manager change.
 
     Args:
         save: Whether to persist the results.
@@ -94,8 +88,7 @@ async def run_manager_change(*, save: bool = False) -> None:
 
 
 async def run_fan_culture(*, save: bool = False) -> None:
-    """
-    Run fan culture.
+    """Run fan culture.
 
     Args:
         save: Whether to persist the results.
@@ -116,8 +109,7 @@ def seed_stadium_info() -> None:
 
 
 async def run_all_crawlers(*, save: bool = False) -> None:
-    """
-    Run all news-based crawlers (broadcast, mvp, injury, foreign, manager).
+    """Run all news-based crawlers (broadcast, mvp, injury, foreign, manager).
 
     Args:
         save: Whether to persist the results.
@@ -142,8 +134,7 @@ def run_all_seeds() -> None:
 
 
 async def run_all(*, save: bool = False) -> None:
-    """
-    Run all Phase 1 crawlers and seeds (legacy compat).
+    """Run all Phase 1 crawlers and seeds (legacy compat).
 
     Args:
         save: Whether to persist the results.

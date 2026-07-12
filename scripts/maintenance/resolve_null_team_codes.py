@@ -5,8 +5,9 @@ Heuristics used:
 1. Game-level stats (batting/pitching) matching the same player and season.
 2. Other season stats (fielding/baserunning) matching the same player and season.
 3. Game lineups matching the same player and season.
-4. Single-career team code: If the player has only ever played for one team across their entire career.
-5. Adjacent seasons team code: If the player played for the same team in season - 1 and season + 1.
+4. Roster history: Check team_daily_roster and roster_transactions for that season.
+5. Single-career team code: If the player has only ever played for one team across their entire career.
+6. Adjacent seasons team code: If the player played for the same team in season - 1 and season + 1.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import logging
 import shutil
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +96,7 @@ def find_null_rows(session: Session, year: int | None = None) -> list[NullRow]:
 
 def resolve_from_game_stats(session: Session, player_id: int, season: int, is_pitcher: bool) -> str | None:
     """Heuristic 1: Get unique team_code from game stats in that season."""
-    table = "player_game_pitching" if is_pitcher else "player_game_batting"
+    table = "game_pitching_stats" if is_pitcher else "game_batting_stats"
     sql = f"""
         SELECT DISTINCT gs.team_code
         FROM {table} gs
@@ -154,16 +155,56 @@ def resolve_from_lineups(session: Session, player_id: int, season: int) -> str |
     return None
 
 
+def resolve_from_rosters(session: Session, player_id: int, season: int) -> str | None:
+    """Heuristic 4: Check team_daily_roster and roster_transactions for that season."""
+    sql_daily = """
+        SELECT DISTINCT team_code
+        FROM team_daily_roster
+        WHERE player_id = :player_id
+          AND roster_date >= :start_date
+          AND roster_date <= :end_date
+          AND team_code IS NOT NULL
+          AND team_code != ''
+    """
+    sql_trans = """
+        SELECT DISTINCT team_id
+        FROM roster_transactions
+        WHERE player_id = :player_id
+          AND transaction_date >= :start_date
+          AND transaction_date <= :end_date
+          AND team_id IS NOT NULL
+          AND team_id != ''
+    """
+
+    start_date = date(season, 1, 1)
+    end_date = date(season, 12, 31)
+
+    codes = set()
+    for sql in (sql_daily, sql_trans):
+        res = session.execute(
+            text(sql),
+            {"player_id": player_id, "start_date": start_date, "end_date": end_date},
+        ).fetchall()
+        for r in res:
+            codes.add(str(r[0]))
+
+    if len(codes) == 1:
+        return list(codes)[0]
+    return None
+
+
 def resolve_from_single_career_team(session: Session, player_id: int) -> str | None:
-    """Heuristic 4: If player has only ever played for one team in their whole career."""
+    """Heuristic 5: If player has only ever played for one team in their whole career."""
     queries = [
         "SELECT DISTINCT team_id FROM player_season_fielding WHERE player_id = :player_id",
         "SELECT DISTINCT team_id FROM player_season_baserunning WHERE player_id = :player_id",
         "SELECT DISTINCT team_code FROM player_season_batting WHERE player_id = :player_id",
         "SELECT DISTINCT team_code FROM player_season_pitching WHERE player_id = :player_id",
-        "SELECT DISTINCT team_code FROM player_game_batting WHERE player_id = :player_id",
-        "SELECT DISTINCT team_code FROM player_game_pitching WHERE player_id = :player_id",
+        "SELECT DISTINCT team_code FROM game_batting_stats WHERE player_id = :player_id",
+        "SELECT DISTINCT team_code FROM game_pitching_stats WHERE player_id = :player_id",
         "SELECT DISTINCT team_code FROM game_lineups WHERE player_id = :player_id",
+        "SELECT DISTINCT team_code FROM team_daily_roster WHERE player_id = :player_id",
+        "SELECT DISTINCT team_id FROM roster_transactions WHERE player_id = :player_id",
     ]
 
     codes = set()
@@ -180,7 +221,7 @@ def resolve_from_single_career_team(session: Session, player_id: int) -> str | N
 
 
 def resolve_from_adjacent_seasons(session: Session, player_id: int, season: int, table_name: str) -> str | None:
-    """Heuristic 5: Match team code of preceding (N-1) and succeeding (N+1) seasons."""
+    """Heuristic 6: Match team code of preceding (N-1) and succeeding (N+1) seasons."""
     sql = f"""
         SELECT season, team_code
         FROM {table_name}
@@ -208,6 +249,7 @@ def resolve_team_codes(session: Session, year: int | None = None, apply: bool = 
         "resolved_game_stats": 0,
         "resolved_season_stats": 0,
         "resolved_lineups": 0,
+        "resolved_rosters": 0,
         "resolved_single_career": 0,
         "resolved_adjacent": 0,
         "unresolved": 0,
@@ -240,14 +282,21 @@ def resolve_team_codes(session: Session, year: int | None = None, apply: bool = 
             stats["resolved_lineups"] += 1
             continue
 
-        # Heuristic 4: Career unique team
+        # Heuristic 4: Roster Tables
+        team = resolve_from_rosters(session, r.player_id, r.season)
+        if team:
+            updates.append((r, team, "roster_tables"))
+            stats["resolved_rosters"] += 1
+            continue
+
+        # Heuristic 5: Career unique team
         team = resolve_from_single_career_team(session, r.player_id)
         if team:
             updates.append((r, team, "single_career"))
             stats["resolved_single_career"] += 1
             continue
 
-        # Heuristic 5: Adjacent seasons
+        # Heuristic 6: Adjacent seasons
         team = resolve_from_adjacent_seasons(session, r.player_id, r.season, r.table_name)
         if team:
             updates.append((r, team, "adjacent_seasons"))

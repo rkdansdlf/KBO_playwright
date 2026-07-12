@@ -7,7 +7,7 @@ from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session, declarative_base
 
-from src.sync.sync_base import OCISyncBase, _serialize_scalar
+from src.sync.sync_base import OCISyncBase, _serialize_records, _serialize_scalar
 
 _Base = declarative_base()
 
@@ -56,6 +56,24 @@ class TestSerializeScalar:
     def test_list_passes_through(self):
         val = [1, 2, 3]
         assert _serialize_scalar(val) is val
+
+
+class TestSerializeRecords:
+    def test_converts_copy_values_without_mutating_input(self):
+        records = [{"missing": None, "payload": {"key": "value"}, "items": [1, 2], "count": 3}]
+
+        serialized = _serialize_records(records)
+
+        assert serialized == [
+            {
+                "missing": r"\N",
+                "payload": '{"key": "value"}',
+                "items": "[1, 2]",
+                "count": 3,
+            },
+        ]
+        assert records[0]["missing"] is None
+        assert records[0]["payload"] == {"key": "value"}
 
 
 # ── _chunked ──────────────────────────────────────────────────────────

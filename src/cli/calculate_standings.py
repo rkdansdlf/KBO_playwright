@@ -1,5 +1,4 @@
-"""
-KBO 순위 자동 연산 엔진 (Standings Calculator).
+"""KBO 순위 자동 연산 엔진 (Standings Calculator).
 
 경기 결과 데이터로부터 일일 순위, 5강, 최근10경기, 홈/원정, 주차별 승률추이 계산.
 
@@ -28,13 +27,13 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+TOP_STANDINGS_RANK_LIMIT = 5
 
 STANDINGS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, ZeroDivisionError)
 
 
 def calculate_games_behind(wins: int, losses: int, leader_wins: int, leader_losses: int) -> float:
-    """
-    Calculate games behind.
+    """Calculate games behind.
 
     Args:
         wins: Wins.
@@ -54,8 +53,7 @@ def calculate_games_behind(wins: int, losses: int, leader_wins: int, leader_loss
 
 
 def iso_week_number(d: date) -> str:
-    """
-    Handle the iso week number operation.
+    """Handle the iso week number operation.
 
     Args:
         d: D.
@@ -87,8 +85,7 @@ class TeamState:
     """TeamState class."""
 
     def __init__(self, team_code: str) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             team_code: Team Code.
@@ -112,8 +109,7 @@ class TeamState:
 
     @property
     def games_played(self) -> int:
-        """
-        Handle the games played operation.
+        """Handle the games played operation.
 
         Returns:
             Integer result.
@@ -123,8 +119,7 @@ class TeamState:
 
     @property
     def win_pct(self) -> float:
-        """
-        Handle the win pct operation.
+        """Handle the win pct operation.
 
         Returns:
             float instance.
@@ -136,8 +131,7 @@ class TeamState:
 
     @property
     def recent_10_wins(self) -> int:
-        """
-        Handle the recent 10 wins operation.
+        """Handle the recent 10 wins operation.
 
         Returns:
             Integer result.
@@ -147,8 +141,7 @@ class TeamState:
 
     @property
     def recent_10_losses(self) -> int:
-        """
-        Handle the recent 10 losses operation.
+        """Handle the recent 10 losses operation.
 
         Returns:
             Integer result.
@@ -158,8 +151,7 @@ class TeamState:
 
     @property
     def recent_10_draws(self) -> int:
-        """
-        Handle the recent 10 draws operation.
+        """Handle the recent 10 draws operation.
 
         Returns:
             Integer result.
@@ -168,8 +160,7 @@ class TeamState:
         return sum(1 for r in self.recent_games if r == "D")
 
     def add_game(self, result: GameResultData) -> None:
-        """
-        Add game.
+        """Add game.
 
         Args:
             result: Result.
@@ -342,7 +333,7 @@ def _build_snapshot(
         runs_allowed=team.runs_allowed,
         run_differential=team.runs_scored - team.runs_allowed,
         rank=rank_idx,
-        top_5=1 if rank_idx <= 5 else 0,
+        top_5=1 if rank_idx <= TOP_STANDINGS_RANK_LIMIT else 0,
         recent_10_wins=team.recent_10_wins,
         recent_10_losses=team.recent_10_losses,
         recent_10_draws=team.recent_10_draws,
@@ -377,8 +368,7 @@ class StandingsCalculator:
     """StandingsCalculator class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -408,8 +398,7 @@ class StandingsCalculator:
         self.session.commit()
 
     def calculate_year(self, year: int) -> None:
-        """
-        Calculate year.
+        """Calculate year.
 
         Args:
             year: Season year.
@@ -427,8 +416,7 @@ class StandingsCalculator:
         logger.info("[Standings] %s 시즌 순위표 계산 완료!", year)
 
     def print_report(self, year: int, target_date: date | None = None) -> None:
-        """
-        Print print report.
+        """Print print report.
 
         Args:
             year: Season year.
@@ -524,8 +512,7 @@ class StandingsCalculator:
         logger.info("  ★ 상위 5팀 (5강)" if top_5_rows else "")
 
     def print_trend(self, year: int, team_code: str | None = None) -> None:
-        """
-        Print trend.
+        """Print trend.
 
         Args:
             year: Season year.
@@ -580,7 +567,7 @@ class StandingsCalculator:
                 )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Standings Calculator")
     parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="대상 년도")
@@ -589,7 +576,7 @@ def main() -> int:
     parser.add_argument("--trend", type=str, nargs="?", const="__all__", help="승률추이 (팀코드 지정 또는 전체)")
     parser.add_argument("--date", type=str, help="리포트 기준일 (YYYY-MM-DD)")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     session = SessionLocal()
     try:

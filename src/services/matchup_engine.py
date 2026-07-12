@@ -32,8 +32,7 @@ class MatchupEngine:
     """Service to aggregate splits matrices natively from Box Scores and Play-by-Play."""
 
     def __init__(self, session: Session | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -43,8 +42,7 @@ class MatchupEngine:
         self.session = session
 
     def execute_all(self, season_year: int) -> None:
-        """
-        Run the entire suite of split calculations.
+        """Run the entire suite of split calculations.
 
         Args:
             season_year: Season Year.
@@ -223,8 +221,7 @@ class MatchupEngine:
                 self._add_new_bvp(session, batter_id, pitcher_id, stats)
 
     def _calc_precise_bvp(self, session: Session, season_year: int) -> None:
-        """
-        Aggregate precise batter vs pitcher stats from GameEvents.
+        """Aggregate precise batter vs pitcher stats from GameEvents.
 
         Args:
             session: Session.
@@ -416,8 +413,7 @@ class MatchupEngine:
                 )
 
     def _calc_situational_splits(self, session: Session, season_year: int) -> None:
-        """
-        RISP and vs Handedness splits using GameEvents.
+        """RISP and vs Handedness splits using GameEvents.
 
         Args:
             session: Session.
@@ -439,8 +435,7 @@ class MatchupEngine:
         self._insert_pitcher_situational_splits(session, season_year, pit_splits)
 
     def _calc_batter_team_splits(self, session: Session, season_year: int) -> None:
-        """
-        Aggregate batter stats partitioned by the opposing team.
+        """Aggregate batter stats partitioned by the opposing team.
 
         Args:
             session: Session.
@@ -598,8 +593,7 @@ class MatchupEngine:
         session.add_all(splits)
 
     def _calc_batter_stadium_splits(self, session: Session, season_year: int) -> None:
-        """
-        Aggregate batter stats by stadium.
+        """Aggregate batter stats by stadium.
 
         Args:
             session: Session.
@@ -680,8 +674,7 @@ class MatchupEngine:
         session.add_all(splits)
 
     def _calc_batter_vs_starter(self, session: Session, season_year: int) -> None:
-        """
-        Determine the opposing starting pitcher heuristically and aggregates batter stats against them.
+        """Determine the opposing starting pitcher heuristically and aggregates batter stats against them.
 
         Args:
             session: Session.
@@ -764,8 +757,7 @@ class MatchupEngine:
         *,
         is_full: bool = True,
     ) -> tuple[float, float, float, float]:
-        """
-        Calculate composite rates safely.
+        """Calculate composite rates safely.
 
         Args:
             stats: Stats.

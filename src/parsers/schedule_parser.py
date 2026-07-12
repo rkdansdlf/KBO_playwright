@@ -19,8 +19,7 @@ def parse_schedule_html(
     default_year: int | None = None,
     season_type: str = "regular",
 ) -> list[dict[str, Any]]:
-    """
-    Extract schedule entries from a saved schedule page.
+    """Extract schedule entries from a saved schedule page.
 
     Args:
         html: Html.

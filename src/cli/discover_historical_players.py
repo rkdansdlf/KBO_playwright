@@ -1,5 +1,4 @@
-"""
-CLI to discover and store historical player IDs from 1982 to current.
+"""CLI to discover and store historical player IDs from 1982 to current.
 
 Phase 1 of the Retired Player Backfill project.
 
@@ -25,8 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 async def discover_and_save_players(start_year: int, end_year: int, active_year: int) -> None:
-    """
-    Save discover and players.
+    """Save discover and players.
 
     Args:
         start_year: Start Year.
@@ -87,8 +85,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

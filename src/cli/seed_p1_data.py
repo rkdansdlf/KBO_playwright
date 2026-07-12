@@ -10,8 +10,7 @@ if TYPE_CHECKING:
 
 
 def run_seat(*, dry_run: bool = False) -> None:
-    """
-    Run seat.
+    """Run seat.
 
     Args:
         dry_run: If True, performs a dry run without persisting changes.
@@ -23,8 +22,7 @@ def run_seat(*, dry_run: bool = False) -> None:
 
 
 def run_parking(*, dry_run: bool = False) -> None:
-    """
-    Run parking.
+    """Run parking.
 
     Args:
         dry_run: If True, performs a dry run without persisting changes.
@@ -36,8 +34,7 @@ def run_parking(*, dry_run: bool = False) -> None:
 
 
 def run_food(*, dry_run: bool = False) -> None:
-    """
-    Run food.
+    """Run food.
 
     Args:
         dry_run: If True, performs a dry run without persisting changes.
@@ -49,8 +46,7 @@ def run_food(*, dry_run: bool = False) -> None:
 
 
 def run_all(*, dry_run: bool = False) -> None:
-    """
-    Run all.
+    """Run all.
 
     Args:
         dry_run: If True, performs a dry run without persisting changes.
@@ -63,8 +59,7 @@ def run_all(*, dry_run: bool = False) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -83,8 +78,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

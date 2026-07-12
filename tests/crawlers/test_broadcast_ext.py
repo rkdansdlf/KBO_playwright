@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -137,6 +137,65 @@ class TestNormalizeGameIds:
         ]
         result = BroadcastCrawler._normalize_game_ids(data, 2023)
         assert len(result) == len(teams)
+
+
+@pytest.mark.asyncio
+class TestBroadcastExtractionAndRun:
+    async def test_extract_broadcast_data_evaluates_page_and_normalizes_rows(self):
+        page = AsyncMock()
+        page.evaluate.return_value = [
+            {
+                "game_date": "20260531",
+                "away_team_code": "KIA",
+                "home_team_code": "LG",
+                "broadcaster": "SPOTV",
+                "channel_name": "SPOTV",
+                "source": "KBO",
+            },
+        ]
+
+        records = await BroadcastCrawler()._extract_broadcast_data(page, 2026)
+
+        page.evaluate.assert_awaited_once()
+        assert records == [
+            {
+                "game_id": "20260531HTLG0",
+                "broadcaster": "SPOTV",
+                "channel_name": "SPOTV",
+                "source": "KBO",
+            },
+        ]
+
+    async def test_run_uses_requested_month_and_saves_data(self):
+        browser = MagicMock()
+        browser.new_context = AsyncMock()
+        browser.close = AsyncMock()
+        context = MagicMock()
+        context.new_page = AsyncMock(return_value=AsyncMock())
+        browser.new_context.return_value = context
+        playwright = MagicMock()
+        playwright.chromium.launch = AsyncMock(return_value=browser)
+        manager = MagicMock()
+        manager.__aenter__ = AsyncMock(return_value=playwright)
+        manager.__aexit__ = AsyncMock(return_value=False)
+        crawler = BroadcastCrawler()
+        crawler._extract_broadcast_data = AsyncMock(return_value=[{"game_id": "20260531HTLG0"}])
+        crawler._save_to_db = MagicMock()
+
+        with (
+            patch("src.crawlers.broadcast_crawler.async_playwright", return_value=manager),
+            patch("src.crawlers.broadcast_crawler.install_async_resource_blocking", new=AsyncMock()),
+        ):
+            await crawler.run(year=2026, month=5, save=True)
+
+        page = context.new_page.return_value
+        page.goto.assert_awaited_once_with(
+            f"{crawler.url}?year=2026&month=05",
+            wait_until="networkidle",
+            timeout=30000,
+        )
+        crawler._save_to_db.assert_called_once_with([{"game_id": "20260531HTLG0"}])
+        browser.close.assert_awaited_once()
 
 
 class TestSaveToDb:

@@ -1,5 +1,4 @@
-"""
-Safe batting data repository with foreign key constraint bypass.
+"""Safe batting data repository with foreign key constraint bypass.
 
 타자 데이터를 외래키 제약조건 우회하여 안전하게 저장.
 
@@ -30,8 +29,7 @@ BATTING_CONFLICT_KEYS = ["player_id", "season", "league", "level"]
 
 
 def get_last_filter_counts() -> dict[str, int]:
-    """
-    Get last counts.
+    """Get last counts.
 
     Returns:
         Dictionary result.
@@ -213,8 +211,7 @@ def _save_rows_by_database_type(session: Session, rows: list[dict[str, Any]], db
 
 
 def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
-    """
-    타자 시즌 통계를 player_season_batting 테이블에 안전하게 UPSERT 저장.
+    """타자 시즌 통계를 player_season_batting 테이블에 안전하게 UPSERT 저장.
 
     외래키 제약조건을 임시로 비활성화하여 데이터 저장.
 
@@ -269,8 +266,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
 
 
 def get_batting_stats_count(session: Session | None = None) -> int:
-    """
-    타자 테이블의 레코드 수 조회.
+    """타자 테이블의 레코드 수 조회.
 
     Args:
         session: Session.
@@ -284,8 +280,7 @@ def get_batting_stats_count(session: Session | None = None) -> int:
 
 
 def get_batting_stats_by_season(season: int, session: Session | None = None) -> list[PlayerSeasonBatting]:
-    """
-    시즌별 타자 데이터 조회.
+    """시즌별 타자 데이터 조회.
 
     Args:
         season: Season year.
@@ -301,8 +296,7 @@ def get_batting_stats_by_season(season: int, session: Session | None = None) -> 
 
 
 def cleanup_invalid_batting_data(session: Session | None = None) -> int:
-    """
-    잘못된 타자 데이터 정리 (예: 필수 필드 누락).
+    """잘못된 타자 데이터 정리 (예: 필수 필드 누락).
 
     Args:
         session: Session.
@@ -335,8 +329,7 @@ def cleanup_invalid_batting_data(session: Session | None = None) -> int:
 
 
 def save_futures_batting(player_id_db: int, rows: list[dict], league: str = "FUTURES", level: str = "KBO2") -> int:
-    """
-    Save futures batting.
+    """Save futures batting.
 
     Args:
         player_id_db: Player Id Db.

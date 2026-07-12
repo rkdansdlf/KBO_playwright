@@ -352,6 +352,95 @@ def _unique_player_basic_exact_name(session, player_name: str) -> list[int]:
     return sorted({int(row[0]) for row in rows})
 
 
+def _resolve_via_override(session, override, existing_group_ids) -> dict[str, Any] | None:
+    if not override:
+        return None
+    if not _existing_player_id(session, override.resolved_player_id):
+        return {
+            "candidate_ids": [],
+            "resolution_method": "",
+            "resolution_reason": "override_player_id_not_found_in_player_basic",
+        }
+    existing_set = set(existing_group_ids)
+    if existing_set and existing_set != {int(override.resolved_player_id)}:
+        return {
+            "candidate_ids": [],
+            "resolution_method": "",
+            "resolution_reason": "override_conflicts_existing_group_ids",
+        }
+    return {
+        "candidate_ids": [override.resolved_player_id],
+        "resolution_method": "override_exact_group",
+        "resolution_reason": override.reason,
+    }
+
+
+def _resolve_via_existing_group(existing_group_ids) -> dict[str, Any] | None:
+    if is_group_resolvable(existing_group_ids):
+        return {
+            "candidate_ids": existing_group_ids,
+            "resolution_method": "existing_game_group",
+            "resolution_reason": "single_existing_non_null_group_player_id",
+        }
+    return None
+
+
+def _resolve_via_season_preferred(
+    session, table_name: str, season: int, canonical_team: str, canonical_name: str, uniform_nos: list[str]
+) -> dict[str, Any] | None:
+    preferred = (
+        ("player_season_pitching",)
+        if table_name == "game_pitching_stats"
+        else ("player_season_batting", "player_season_pitching")
+    )
+    for season_table in preferred:
+        candidate_ids = _candidate_ids_from_season_table(
+            session, season_table=season_table, season=season, team_code=canonical_team, player_name=canonical_name
+        )
+        uniform_filtered = _filter_by_uniform(session, candidate_ids, uniform_nos)
+        if is_group_resolvable(uniform_filtered):
+            method = "uniform_filter" if uniform_filtered != candidate_ids else "season_team_name"
+            return {"candidate_ids": uniform_filtered, "resolution_method": method, "resolution_reason": season_table}
+        if candidate_ids and uniform_nos and not uniform_filtered:
+            return {"candidate_ids": [], "resolution_method": "", "resolution_reason": "uniform_filter_no_match"}
+    return None
+
+
+def _resolve_via_season_without_team(session, canonical_name: str, uniform_nos: list[str]) -> dict[str, Any] | None:
+    season_candidates: set[int] = set()
+    for season_table in ("player_season_batting", "player_season_pitching"):
+        season_candidates.update(
+            _candidate_ids_from_season_table(
+                session, season_table=season_table, season=None, team_code=None, player_name=canonical_name
+            )
+        )
+    sorted_ids = sorted(season_candidates)
+    uniform_filtered = _filter_by_uniform(session, sorted_ids, uniform_nos)
+    if is_group_resolvable(uniform_filtered):
+        method = "uniform_filter" if uniform_filtered != sorted_ids else "season_name_unique"
+        return {
+            "candidate_ids": uniform_filtered,
+            "resolution_method": method,
+            "resolution_reason": "season_without_team",
+        }
+    return (
+        {"candidate_ids": sorted_ids, "resolution_method": "", "resolution_reason": "ambiguous_or_missing_candidate"}
+        if sorted_ids
+        else None
+    )
+
+
+def _resolve_via_exact_name(session, canonical_name: str) -> dict[str, Any] | None:
+    candidates = _unique_player_basic_exact_name(session, canonical_name)
+    if is_group_resolvable(candidates):
+        return {
+            "candidate_ids": candidates,
+            "resolution_method": "unique_player_basic_exact_name",
+            "resolution_reason": "single_exact_name_in_player_basic",
+        }
+    return None
+
+
 def choose_candidate_ids(
     session,
     *,
@@ -365,111 +454,25 @@ def choose_candidate_ids(
 ) -> dict[str, Any]:
     canonical_team = canonical_team_code(team_code)
     existing_group_ids = _existing_non_null_player_ids_for_group(
-        session,
-        table_name=table_name,
-        year=season,
-        team_code=team_code,
-        player_name=player_name,
+        session, table_name=table_name, year=season, team_code=team_code, player_name=player_name
     )
-
     override = _lookup_group_override(
-        overrides,
-        table_name=table_name,
-        season=season,
-        team_code=team_code,
-        player_name=player_name,
+        overrides, table_name=table_name, season=season, team_code=team_code, player_name=player_name
     )
-    if override:
-        if _existing_player_id(session, override.resolved_player_id):
-            existing_set = set(existing_group_ids)
-            if existing_set and existing_set != {int(override.resolved_player_id)}:
-                return {
-                    "candidate_ids": [],
-                    "resolution_method": "",
-                    "resolution_reason": "override_conflicts_existing_group_ids",
-                }
-            return {
-                "candidate_ids": [override.resolved_player_id],
-                "resolution_method": "override_exact_group",
-                "resolution_reason": override.reason,
-            }
-        return {
-            "candidate_ids": [],
-            "resolution_method": "",
-            "resolution_reason": "override_player_id_not_found_in_player_basic",
-        }
-
-    if is_group_resolvable(existing_group_ids):
-        return {
-            "candidate_ids": existing_group_ids,
-            "resolution_method": "existing_game_group",
-            "resolution_reason": "single_existing_non_null_group_player_id",
-        }
-
     canonical_name = alias_map.get(player_name, player_name)
-    preferred_tables = (
-        ("player_season_pitching",)
-        if table_name == "game_pitching_stats"
-        else ("player_season_batting", "player_season_pitching")
-    )
 
-    for season_table in preferred_tables:
-        candidate_ids = _candidate_ids_from_season_table(
-            session,
-            season_table=season_table,
-            season=season,
-            team_code=canonical_team,
-            player_name=canonical_name,
-        )
-        uniform_filtered = _filter_by_uniform(session, candidate_ids, uniform_nos)
-        if is_group_resolvable(uniform_filtered):
-            method = "uniform_filter" if uniform_filtered != candidate_ids else "season_team_name"
-            return {
-                "candidate_ids": uniform_filtered,
-                "resolution_method": method,
-                "resolution_reason": season_table,
-            }
-        if candidate_ids and uniform_nos and not uniform_filtered:
-            return {
-                "candidate_ids": [],
-                "resolution_method": "",
-                "resolution_reason": "uniform_filter_no_match",
-            }
-
-    season_candidates: set[int] = set()
-    for season_table in ("player_season_batting", "player_season_pitching"):
-        season_candidates.update(
-            _candidate_ids_from_season_table(
-                session,
-                season_table=season_table,
-                season=season,
-                team_code=None,
-                player_name=canonical_name,
-            ),
-        )
-    candidate_ids = sorted(season_candidates)
-    uniform_filtered = _filter_by_uniform(session, candidate_ids, uniform_nos)
-    if is_group_resolvable(uniform_filtered):
-        method = "uniform_filter" if uniform_filtered != candidate_ids else "season_name_unique"
-        return {
-            "candidate_ids": uniform_filtered,
-            "resolution_method": method,
-            "resolution_reason": "season_without_team",
-        }
-
-    exact_name_candidates = _unique_player_basic_exact_name(session, canonical_name)
-    if is_group_resolvable(exact_name_candidates):
-        return {
-            "candidate_ids": exact_name_candidates,
-            "resolution_method": "unique_player_basic_exact_name",
-            "resolution_reason": "single_exact_name_in_player_basic",
-        }
-
-    return {
-        "candidate_ids": candidate_ids,
-        "resolution_method": "",
-        "resolution_reason": "ambiguous_or_missing_candidate",
-    }
+    resolvers = [
+        lambda: _resolve_via_override(session, override, existing_group_ids),
+        lambda: _resolve_via_existing_group(existing_group_ids),
+        lambda: _resolve_via_season_preferred(session, table_name, season, canonical_team, canonical_name, uniform_nos),
+        lambda: _resolve_via_season_without_team(session, canonical_name, uniform_nos),
+        lambda: _resolve_via_exact_name(session, canonical_name),
+    ]
+    for resolver in resolvers:
+        result = resolver()
+        if result is not None:
+            return result
+    return {"candidate_ids": [], "resolution_method": "", "resolution_reason": "ambiguous_or_missing_candidate"}
 
 
 def update_null_player_ids_for_group(
@@ -691,6 +694,129 @@ def _collect_null_groups(session, *, tables: tuple[str, ...], years: tuple[int, 
     return groups
 
 
+RESOLVED_FIELDNAMES = [
+    "table_name",
+    "year",
+    "team_code",
+    "raw_team_code",
+    "canonical_team_code",
+    "player_name",
+    "game_id",
+    "appearance_seq",
+    "row_count",
+    "uniform_nos",
+    "candidate_ids",
+    "resolution_method",
+    "resolution_reason",
+    "resolved_player_id",
+    "updated_rows",
+    "duplicate_null_rows",
+]
+
+
+def _process_row_override_entry(
+    session, entry, *, apply, delete_duplicates, years, tables, total_updated, resolved_rows
+):
+    if entry.source_table not in tables:
+        return total_updated
+    try:
+        entry_year = int(entry.game_id[:4])
+    except ValueError:
+        return total_updated
+    if entry_year not in years:
+        return total_updated
+    result = apply_row_override(session, entry=entry, dry_run=not apply, delete_duplicates=delete_duplicates)
+    updated = int(result["updated_rows"])
+    duplicate_rows = int(result["duplicate_null_rows"])
+    if updated or duplicate_rows:
+        total_updated += updated
+        resolved_rows.append(
+            {
+                "table_name": entry.source_table,
+                "year": entry_year,
+                "team_code": entry.team_code,
+                "raw_team_code": entry.team_code,
+                "canonical_team_code": canonical_team_code(entry.team_code),
+                "player_name": entry.player_name,
+                "game_id": entry.game_id,
+                "appearance_seq": entry.appearance_seq,
+                "row_count": 1,
+                "uniform_nos": "",
+                "candidate_ids": str(entry.resolved_player_id),
+                "resolution_method": "row_override",
+                "resolution_reason": result["resolution_reason"],
+                "resolved_player_id": entry.resolved_player_id,
+                "updated_rows": updated,
+                "duplicate_null_rows": duplicate_rows,
+            }
+        )
+    return total_updated
+
+
+def _process_null_group(
+    session, group, *, alias_map, overrides, apply, delete_duplicates, resolved_rows, unresolved_rows
+) -> int:
+    uniforms = fetch_group_uniform_nos(
+        session,
+        table_name=group["table_name"],
+        year=group["year"],
+        team_code=group["team_code"],
+        player_name=group["player_name"],
+    )
+    result = choose_candidate_ids(
+        session,
+        table_name=group["table_name"],
+        season=group["year"],
+        team_code=group["team_code"],
+        player_name=group["player_name"],
+        uniform_nos=uniforms,
+        alias_map=alias_map,
+        overrides=overrides,
+    )
+    candidate_ids = [int(pid) for pid in result["candidate_ids"]]
+    base_row = {
+        **group,
+        "raw_team_code": group["team_code"],
+        "canonical_team_code": canonical_team_code(group["team_code"]),
+        "game_id": "",
+        "appearance_seq": "",
+        "uniform_nos": ",".join(uniforms),
+        "candidate_ids": ",".join(str(pid) for pid in candidate_ids),
+        "resolution_method": result.get("resolution_method", ""),
+        "resolution_reason": result.get("resolution_reason", ""),
+    }
+    if is_group_resolvable(candidate_ids):
+        duplicate_rows = delete_duplicate_null_player_id_rows_for_group(
+            session,
+            table_name=group["table_name"],
+            year=group["year"],
+            team_code=group["team_code"],
+            player_name=group["player_name"],
+            player_id=candidate_ids[0],
+            dry_run=not (apply and delete_duplicates),
+        )
+        updated = update_null_player_ids_for_group(
+            session,
+            table_name=group["table_name"],
+            year=group["year"],
+            team_code=group["team_code"],
+            player_name=group["player_name"],
+            player_id=candidate_ids[0],
+            dry_run=not apply,
+        )
+        resolved_rows.append(
+            {
+                **base_row,
+                "resolved_player_id": candidate_ids[0],
+                "updated_rows": updated,
+                "duplicate_null_rows": duplicate_rows,
+            }
+        )
+        return updated
+    unresolved_rows.append({**base_row, "resolved_player_id": "", "updated_rows": 0, "duplicate_null_rows": 0})
+    return 0
+
+
 def resolve_null_player_ids(
     *,
     years: tuple[int, ...],
@@ -726,108 +852,27 @@ def resolve_null_player_ids(
     try:
         with session_factory() as session:
             for entry in row_overrides.values():
-                if entry.source_table not in tables:
-                    continue
-                try:
-                    entry_year = int(entry.game_id[:4])
-                except ValueError:
-                    continue
-                if entry_year not in years:
-                    continue
-                result = apply_row_override(
+                total_updated = _process_row_override_entry(
                     session,
-                    entry=entry,
-                    dry_run=not apply,
+                    entry,
+                    apply=apply,
                     delete_duplicates=delete_duplicates,
+                    years=years,
+                    tables=tables,
+                    total_updated=total_updated,
+                    resolved_rows=resolved_rows,
                 )
-                updated = int(result["updated_rows"])
-                duplicate_rows = int(result["duplicate_null_rows"])
-                if updated or duplicate_rows:
-                    total_updated += updated
-                    resolved_rows.append(
-                        {
-                            "table_name": entry.source_table,
-                            "year": entry_year,
-                            "team_code": entry.team_code,
-                            "raw_team_code": entry.team_code,
-                            "canonical_team_code": canonical_team_code(entry.team_code),
-                            "player_name": entry.player_name,
-                            "game_id": entry.game_id,
-                            "appearance_seq": entry.appearance_seq,
-                            "row_count": 1,
-                            "uniform_nos": "",
-                            "candidate_ids": str(entry.resolved_player_id),
-                            "resolution_method": "row_override",
-                            "resolution_reason": result["resolution_reason"],
-                            "resolved_player_id": entry.resolved_player_id,
-                            "updated_rows": updated,
-                            "duplicate_null_rows": duplicate_rows,
-                        },
-                    )
-
-            groups = _collect_null_groups(session, tables=tables, years=years)
-            for group in groups:
-                uniforms = fetch_group_uniform_nos(
+            for group in _collect_null_groups(session, tables=tables, years=years):
+                total_updated += _process_null_group(
                     session,
-                    table_name=group["table_name"],
-                    year=group["year"],
-                    team_code=group["team_code"],
-                    player_name=group["player_name"],
-                )
-                result = choose_candidate_ids(
-                    session,
-                    table_name=group["table_name"],
-                    season=group["year"],
-                    team_code=group["team_code"],
-                    player_name=group["player_name"],
-                    uniform_nos=uniforms,
+                    group,
                     alias_map=alias_map,
                     overrides=overrides,
+                    apply=apply,
+                    delete_duplicates=delete_duplicates,
+                    resolved_rows=resolved_rows,
+                    unresolved_rows=unresolved_rows,
                 )
-                candidate_ids = [int(pid) for pid in result["candidate_ids"]]
-                base_row = {
-                    **group,
-                    "raw_team_code": group["team_code"],
-                    "canonical_team_code": canonical_team_code(group["team_code"]),
-                    "game_id": "",
-                    "appearance_seq": "",
-                    "uniform_nos": ",".join(uniforms),
-                    "candidate_ids": ",".join(str(pid) for pid in candidate_ids),
-                    "resolution_method": result.get("resolution_method", ""),
-                    "resolution_reason": result.get("resolution_reason", ""),
-                }
-                if is_group_resolvable(candidate_ids):
-                    duplicate_rows = delete_duplicate_null_player_id_rows_for_group(
-                        session,
-                        table_name=group["table_name"],
-                        year=group["year"],
-                        team_code=group["team_code"],
-                        player_name=group["player_name"],
-                        player_id=candidate_ids[0],
-                        dry_run=not (apply and delete_duplicates),
-                    )
-                    updated = update_null_player_ids_for_group(
-                        session,
-                        table_name=group["table_name"],
-                        year=group["year"],
-                        team_code=group["team_code"],
-                        player_name=group["player_name"],
-                        player_id=candidate_ids[0],
-                        dry_run=not apply,
-                    )
-                    total_updated += updated
-                    resolved_rows.append(
-                        {
-                            **base_row,
-                            "resolved_player_id": candidate_ids[0],
-                            "updated_rows": updated,
-                            "duplicate_null_rows": duplicate_rows,
-                        },
-                    )
-                else:
-                    unresolved_rows.append(
-                        {**base_row, "resolved_player_id": "", "updated_rows": 0, "duplicate_null_rows": 0},
-                    )
             if apply:
                 session.commit()
             else:
@@ -838,26 +883,8 @@ def resolve_null_player_ids(
 
     resolved_csv = output_dir / f"null_player_id_conservative_resolved_{stamp}.csv"
     unresolved_csv = output_dir / f"null_player_id_conservative_unresolved_{stamp}.csv"
-    fieldnames = [
-        "table_name",
-        "year",
-        "team_code",
-        "raw_team_code",
-        "canonical_team_code",
-        "player_name",
-        "game_id",
-        "appearance_seq",
-        "row_count",
-        "uniform_nos",
-        "candidate_ids",
-        "resolution_method",
-        "resolution_reason",
-        "resolved_player_id",
-        "updated_rows",
-        "duplicate_null_rows",
-    ]
-    _write_csv(resolved_csv, resolved_rows, fieldnames)
-    _write_csv(unresolved_csv, unresolved_rows, fieldnames)
+    _write_csv(resolved_csv, resolved_rows, RESOLVED_FIELDNAMES)
+    _write_csv(unresolved_csv, unresolved_rows, RESOLVED_FIELDNAMES)
     return {
         "dry_run": not apply,
         "resolved_groups": len(resolved_rows),

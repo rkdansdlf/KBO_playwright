@@ -29,8 +29,7 @@ STAFF_KEYWORDS = (
 
 
 def _normalize(value: str | None) -> str:
-    """
-    Normalize  normalize.
+    """Normalize  normalize.
 
     Args:
         value: Value.
@@ -45,8 +44,7 @@ def _normalize(value: str | None) -> str:
 
 
 def classify_player(entry: dict[str, object]) -> PlayerCategory:
-    """
-    Rough heuristic to classify player search rows.
+    """Rough heuristic to classify player search rows.
 
     - Position strings with 감독/코치 계열 → staff categories
     - Empty team/position or explicit '은퇴' 키워드 → RETIRED
@@ -75,8 +73,7 @@ def classify_player(entry: dict[str, object]) -> PlayerCategory:
 
 
 def _classify_active_player(position: str, team: str, team_lower: str) -> PlayerCategory:
-    """
-    Classifies active player.
+    """Classifies active player.
 
     Args:
         position: Position.

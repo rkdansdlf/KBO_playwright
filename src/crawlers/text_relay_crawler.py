@@ -1,5 +1,4 @@
-"""
-Text Relay Crawler - KBO 문자중계(Play-by-Play) 수집 모듈.
+"""Text Relay Crawler - KBO 문자중계(Play-by-Play) 수집 모듈.
 
 KBO 공식 웹사이트의 LiveText.aspx 페이지에 접근하여
 경기별 타석/투구 기록을 스크래핑하고 DataFrame으로 변환 후 CSV로 저장합니다.
@@ -33,6 +32,7 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.text_parser import KBOTextParser
 
 logger = logging.getLogger(__name__)
+TEXT_RELAY_SEPARATOR_MIN_LENGTH = 10
 
 TEXT_RELAY_CRAWLER_EXCEPTIONS = (
     PlaywrightError,
@@ -71,8 +71,7 @@ class RelayRow:
     description: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Handle the to dict operation.
+        """Handle the to dict operation.
 
         Returns:
             Dictionary result.
@@ -106,8 +105,7 @@ class RelayCrawlResult:
     error_message: str | None = None
 
     def to_dataframe(self) -> pd.DataFrame:
-        """
-        Handle the to dataframe operation.
+        """Handle the to dataframe operation.
 
         Returns:
             The result of the operation.
@@ -135,8 +133,7 @@ class RelayCrawlResult:
         return pd.DataFrame(data)
 
     def save_csv(self, output_dir: str = DEFAULT_OUTPUT_DIR) -> Path:
-        """
-        Save csv.
+        """Save csv.
 
         Args:
             output_dir: Output Dir.
@@ -157,8 +154,7 @@ class RelayCrawlResult:
 
 
 class TextRelayCrawler:
-    """
-    KBO 문자중계 크롤러.
+    """KBO 문자중계 크롤러.
 
     Playwright 비동기 기반으로 특정 경기 ID의 문자중계 페이지에 진입하여
     전체 투구 기록 리스트를 스크래핑합니다.
@@ -180,8 +176,7 @@ class TextRelayCrawler:
         pool: AsyncPlaywrightPool | None = None,
         output_dir: str = DEFAULT_OUTPUT_DIR,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -204,8 +199,7 @@ class TextRelayCrawler:
 
     @staticmethod
     def _is_auth_redirect(page: Page) -> bool:
-        """
-        인증 리다이렉트 여부 확인.
+        """인증 리다이렉트 여부 확인.
 
         Args:
             page: Page.
@@ -215,8 +209,7 @@ class TextRelayCrawler:
         return "Error.html" in page.url or "Login.aspx" in page.url
 
     async def _prepare_live_text_page(self, page: Page, game_date: str, url: str) -> bool:
-        """
-        LiveText 페이지 준비 (Referer warmup 포함).
+        """LiveText 페이지 준비 (Referer warmup 포함).
 
         Args:
             page: Page.
@@ -244,8 +237,7 @@ class TextRelayCrawler:
         return True
 
     async def _wait_for_relay_container(self, page: Page, game_id: str) -> bool:
-        """
-        문자중계 컨테이너 대기.
+        """문자중계 컨테이너 대기.
 
         Args:
             page: Page.
@@ -294,8 +286,7 @@ class TextRelayCrawler:
 
     @staticmethod
     def _parse_inning_header(text: str, cls: str) -> tuple[int, str] | None:
-        """
-        이닝 헤더 파싱 (예: '3회초' -> (3, '초')).
+        """이닝 헤더 파싱 (예: '3회초' -> (3, '초')).
 
         Args:
             text: Text.
@@ -313,8 +304,7 @@ class TextRelayCrawler:
 
     @staticmethod
     def _is_event_text(text: str, cls: str) -> bool:
-        """
-        이벤트 텍스트 여부 확인.
+        """이벤트 텍스트 여부 확인.
 
         Args:
             text: Text.
@@ -327,8 +317,7 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_pitch_info(text: str) -> tuple[str, str]:
-        """
-        구종/구속 추출 (예: '145km/h 슬라이더' -> ('슬라이더', '145')).
+        """구종/구속 추출 (예: '145km/h 슬라이더' -> ('슬라이더', '145')).
 
         Args:
             text: Text.
@@ -369,8 +358,7 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_player_names(text: str) -> tuple[str, str]:
-        """
-        투수명/타자명 추출.
+        """투수명/타자명 추출.
 
         Args:
             text: Text.
@@ -395,8 +383,7 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_result(text: str) -> str:
-        """
-        결과 추출 (스트라이크/볼/아웃/안타 등).
+        """결과 추출 (스트라이크/볼/아웃/안타 등).
 
         Args:
             text: Text.
@@ -433,8 +420,7 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_pitch_count(text: str) -> tuple[int, int]:
-        """
-        볼/스트라이크 카운트 추출.
+        """볼/스트라이크 카운트 추출.
 
         Args:
             text: Text.
@@ -458,8 +444,7 @@ class TextRelayCrawler:
 
     @staticmethod
     def _extract_runners(text: str) -> str:
-        """
-        주자 상태 추출 (예: '1루', '1,2루', '만루').
+        """주자 상태 추출 (예: '1루', '1,2루', '만루').
 
         Args:
             text: Text.
@@ -474,8 +459,7 @@ class TextRelayCrawler:
         return ",".join(runners) if runners else ""
 
     def _parse_relay_spans(self, raw_spans: list[dict[str, str]]) -> list[RelayRow]:
-        """
-        원시 span 데이터를 RelayRow 리스트로 파싱.
+        """원시 span 데이터를 RelayRow 리스트로 파싱.
 
         Args:
             raw_spans: Raw Spans.
@@ -503,7 +487,7 @@ class TextRelayCrawler:
                 continue
 
             # 구분선 스킵
-            if "---" in text and len(text) > 10:
+            if "---" in text and len(text) > TEXT_RELAY_SEPARATOR_MIN_LENGTH:
                 continue
 
             # 이벤트 텍스트 확인
@@ -545,8 +529,7 @@ class TextRelayCrawler:
         return rows
 
     async def _extract_relay_rows(self, page: Page) -> list[RelayRow]:
-        """
-        페이지에서 문자중계 행 추출.
+        """페이지에서 문자중계 행 추출.
 
         Args:
             page: Page.
@@ -573,8 +556,7 @@ class TextRelayCrawler:
         *,
         save: bool = False,
     ) -> RelayCrawlResult:
-        """
-        특정 경기의 문자중계 데이터를 수집합니다.
+        """특정 경기의 문자중계 데이터를 수집합니다.
 
         Args:
             game_id: Game ID.
@@ -663,8 +645,7 @@ class TextRelayCrawler:
         *,
         save: bool = False,
     ) -> list[RelayCrawlResult]:
-        """
-        여러 경기의 문자중계 데이터를 일괄 수집합니다.
+        """여러 경기의 문자중계 데이터를 일괄 수집합니다.
 
         Args:
             game_ids: Game Ids.
@@ -698,8 +679,7 @@ async def crawl_text_relay(
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> pd.DataFrame | None:
-    """
-    단일 경기 문자중계 수집 편의 함수.
+    """단일 경기 문자중계 수집 편의 함수.
 
     Args:
         game_id: Game ID.
@@ -731,8 +711,7 @@ async def crawl_text_relays(
     save: bool = False,
     output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> list[str]:
-    """
-    여러 경기 문자중계 수집 편의 함수.
+    """여러 경기 문자중계 수집 편의 함수.
 
     Args:
         game_ids: Game Ids.

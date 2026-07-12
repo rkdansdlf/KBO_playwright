@@ -1,5 +1,4 @@
-"""
-로컬에 저장된 경기 상세 HTML 파일(fixture)을 데이터베이스로 가져오는 스크립트.
+"""로컬에 저장된 경기 상세 HTML 파일(fixture)을 데이터베이스로 가져오는 스크립트.
 
 주로 오프라인 테스트나 디버깅 목적으로 사용됩니다. 지정된 디렉터리에서 HTML 파일을
 읽어와 파싱한 후, 그 결과를 데이터베이스에 저장합니다.
@@ -23,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_mock_html(args: argparse.Namespace) -> None:
-    """
-    저장된 HTML fixture를 파싱하여 데이터베이스에 저장하는 로직을 수행합니다.
+    """저장된 HTML fixture를 파싱하여 데이터베이스에 저장하는 로직을 수행합니다.
 
     Args:
         args: Positional arguments to pass through.
@@ -75,8 +73,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Iterable[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

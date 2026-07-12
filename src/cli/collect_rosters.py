@@ -15,13 +15,13 @@ from src.db.engine import SessionLocal
 from src.repositories.team_repository import TeamRepository
 
 logger = logging.getLogger(__name__)
+LAST_MONTH_OF_YEAR = 12
 
 ROSTER_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 def save_chunk(chunk: list[dict[str, Any]]) -> None:
-    """
-    Save chunk.
+    """Save chunk.
 
     Args:
         chunk: Chunk.
@@ -41,8 +41,7 @@ def save_chunk(chunk: list[dict[str, Any]]) -> None:
 
 
 async def collect_rosters(year: int, month: int | None = None) -> None:
-    """
-    Handle the collect rosters operation.
+    """Handle the collect rosters operation.
 
     Args:
         year: Season year.
@@ -57,7 +56,11 @@ async def collect_rosters(year: int, month: int | None = None) -> None:
     if month:
         start_date = date(year, month, 1)
         # End date: start of next month - 1 day
-        end_date = date(year, 12, 31) if month == 12 else date(year, month + 1, 1) - timedelta(days=1)
+        end_date = (
+            date(year, LAST_MONTH_OF_YEAR, 31)
+            if month == LAST_MONTH_OF_YEAR
+            else date(year, month + 1, 1) - timedelta(days=1)
+        )
     else:
         # Full year (Regular season roughly Mar-Nov)
         start_date = date(year, 3, 1)

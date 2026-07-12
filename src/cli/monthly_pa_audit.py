@@ -1,5 +1,4 @@
-"""
-Monthly PA Formula Audit Job for Scheduler.
+"""Monthly PA Formula Audit Job for Scheduler.
 
 Imported by scripts/scheduler.py as the crawl_monthly_pa_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
@@ -18,6 +17,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.exc import SQLAlchemyError
 
 from scripts.maintenance.audit_pa_formula import fix_year_formula
+from src.constants import KBO_QUALITY_AUDIT_START_YEAR
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -28,8 +28,7 @@ PA_AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSE
 
 
 def run_monthly_pa_audit(target_year: int) -> int:
-    """
-    Apply the monthly PA formula fix for a target season.
+    """Apply the monthly PA formula fix for a target season.
 
     Args:
         target_year: Target Year.
@@ -54,16 +53,15 @@ def crawl_monthly_pa_audit_job() -> None:
     current_year = datetime.now(kst).year
     target_year = current_year - 1
 
-    if target_year < 2020:
-        logger.info("Skipping PA formula audit for year %s (before 2020)", target_year)
+    if target_year < KBO_QUALITY_AUDIT_START_YEAR:
+        logger.info("Skipping PA formula audit for year %s (before %s)", target_year, KBO_QUALITY_AUDIT_START_YEAR)
         return
 
     run_monthly_pa_audit(target_year)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    CLI entry point for direct invocation (e.g., from GitHub Actions).
+    """CLI entry point for direct invocation (e.g., from GitHub Actions).
 
     Args:
         argv: Argv.
@@ -78,8 +76,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     current_year = datetime.now(kst).year
     target_year = args.year or current_year - 1
 
-    if target_year < 2020:
-        logger.info("Skipping PA formula audit for year %s (before 2020)", target_year)
+    if target_year < KBO_QUALITY_AUDIT_START_YEAR:
+        logger.info("Skipping PA formula audit for year %s (before %s)", target_year, KBO_QUALITY_AUDIT_START_YEAR)
         return 0
 
     try:

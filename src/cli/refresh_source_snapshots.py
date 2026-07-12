@@ -58,8 +58,7 @@ class RefreshResult:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -177,8 +176,7 @@ async def _fetch_source(
 
 
 async def refresh_sources(args: argparse.Namespace) -> list[RefreshResult]:
-    """
-    Handle the refresh sources operation.
+    """Handle the refresh sources operation.
 
     Args:
         args: Positional arguments to pass through.
@@ -265,8 +263,7 @@ def _write_results(results: Sequence[RefreshResult], *, json_output: bool) -> No
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

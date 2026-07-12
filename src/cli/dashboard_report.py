@@ -1,5 +1,4 @@
-"""
-통합 KBO 데이터 대시보드 CLI.
+"""통합 KBO 데이터 대시보드 CLI.
 
 standings, park_factor, quality, freshness, rankings, team_defense 섹션을 한 번에 출력.
 
@@ -29,6 +28,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+TOP_RANKING_LIMIT = 5
 KST = __import__("zoneinfo").ZoneInfo("Asia/Seoul")
 SYNC_CHECK_EXCEPTIONS = (ImportError, SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
@@ -45,8 +45,7 @@ AVAILABLE_SECTIONS = [
 
 
 def _r2dict(obj: object, model: type[object]) -> dict[str, Any]:
-    """
-    Convert SQLAlchemy ORM instance to dict.
+    """Convert SQLAlchemy ORM instance to dict.
 
     Args:
         obj: Obj.
@@ -123,7 +122,7 @@ def _build_rankings(session: Session, year: int) -> dict[str, Any]:
         cat = r.get("metric_name", "").upper()
         if cat not in top5:
             top5[cat] = []
-        if len(top5[cat]) < 5:
+        if len(top5[cat]) < TOP_RANKING_LIMIT:
             top5[cat].append(
                 {
                     "player_name": r.get("player_name", r.get("entity_name", "?")),

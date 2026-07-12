@@ -21,8 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def _load_csv_file(csv_path: Path, session: Session) -> int:
-    """
-    Load a single text relay CSV into game_play_by_play.
+    """Load a single text relay CSV into game_play_by_play.
 
     Return the number of rows inserted.
 
@@ -65,8 +64,7 @@ def _load_csv_file(csv_path: Path, session: Session) -> int:
 
 
 def _find_csv_files(input_dir: Path) -> list[Path]:
-    """
-    Find all text relay CSV files in the directory.
+    """Find all text relay CSV files in the directory.
 
     Args:
         input_dir: Input Dir.
@@ -80,8 +78,7 @@ def load_text_relays(
     *,
     dry_run: bool = False,
 ) -> dict[str, int]:
-    """
-    Load all text relay CSVs from a directory into the database.
+    """Load all text relay CSVs from a directory into the database.
 
     Return {game_id: rows_inserted}.
 
@@ -126,8 +123,7 @@ def load_text_relays(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -151,8 +147,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

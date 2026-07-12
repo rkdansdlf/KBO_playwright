@@ -1,5 +1,4 @@
-"""
-Sync collected pregame preview rows for scheduled games to OCI/Postgres.
+"""Sync collected pregame preview rows for scheduled games to OCI/Postgres.
 
 This is intentionally scoped to games that already have local preview summaries
 or registered starting pitchers, so backfilled pregame data can be published
@@ -20,6 +19,7 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from sqlalchemy import text
 
+from src.constants import DATE_STR_LEN
 from src.db.engine import SessionLocal, get_oci_url
 from src.sync.oci_sync import OCISync
 from src.utils.date_helpers import parse_datetime_str
@@ -45,7 +45,7 @@ class PregameSyncTarget:
 
 def _yyyymmdd(value: str) -> str:
     normalized = value.replace("-", "")
-    if len(normalized) != 8 or not normalized.isdigit():
+    if len(normalized) != DATE_STR_LEN or not normalized.isdigit():
         msg = f"Invalid date: {value}. Use YYYYMMDD."
         raise argparse.ArgumentTypeError(msg)
     parse_datetime_str(normalized)
@@ -61,8 +61,7 @@ def _default_end_date(days_ahead: int) -> str:
 
 
 def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyncTarget]:
-    """
-    Find pregame targets.
+    """Find pregame targets.
 
     Args:
         start_date: Start Date.
@@ -114,8 +113,7 @@ def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyn
 
 
 def run_sync(args: argparse.Namespace) -> int:
-    """
-    Run run sync.
+    """Run run sync.
 
     Args:
         args: Positional arguments to pass through.
@@ -179,8 +177,7 @@ def run_sync(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -197,8 +194,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

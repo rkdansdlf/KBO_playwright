@@ -27,7 +27,7 @@ class TestBatterFromDescription:
 
 class TestResultFromDescription:
     def test_valid(self):
-        assert _result_from_description("김선수: 홈런") == "홈런"
+        assert _result_from_description("김선수: 홈런") == "HR"
 
     def test_no_colon(self):
         assert _result_from_description("홈런") is None

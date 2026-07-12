@@ -22,50 +22,71 @@ import sys
 from pathlib import Path
 
 
+def _visit_except_handler(blocks: dict, node: ast.ExceptHandler, lines: list[str]) -> None:
+    first = node.lineno - 1
+    last = node.end_lineno or len(lines)
+    has_logger = False
+    print_lines: set[int] = set()
+
+    for stmt in node.body:
+        stmt_first = stmt.lineno - 1
+        stmt_last = stmt.end_lineno or stmt_first
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            if isinstance(stmt.value.func, ast.Attribute):
+                if isinstance(stmt.value.func.value, ast.Name) and stmt.value.func.value.id == "logger":
+                    has_logger = True
+        for ln in range(stmt_first, stmt_last + 1):
+            if first <= ln <= last:
+                line = lines[ln] if ln < len(lines) else ""
+                if re.match(r"^\s*print\(", line):
+                    print_lines.add(ln)
+
+    for ln in range(first, last + 1):
+        blocks[ln] = {"has_logger": has_logger, "print_lines": print_lines, "first_line": first, "last_line": last}
+
+
 def _find_except_blocks(source: str) -> dict[int, dict]:
-    """Return dict of lineno(0-indexed) -> {'has_logger': bool, 'print_lines': set, 'first_line': int, 'last_line': int}."""
     tree = ast.parse(source)
     blocks = {}
+    lines = source.splitlines()
 
     class ExceptVisitor(ast.NodeVisitor):
         def visit_ExceptHandler(self, node):
-            first = node.lineno - 1
-            last = node.end_lineno or len(source.splitlines())
-            has_logger = False
-            print_lines = set()
-
-            for stmt in node.body:
-                stmt_first = stmt.lineno - 1
-                stmt_last = stmt.end_lineno or stmt_first
-
-                # Check if this statement is a logger call
-                if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
-                    if isinstance(stmt.value.func, ast.Attribute):
-                        if isinstance(stmt.value.func.value, ast.Name) and stmt.value.func.value.id == "logger":
-                            has_logger = True
-
-                # Check if it's a bare except: with no type
-                if node.type is None and not isinstance(stmt, ast.Raise):
-                    pass  # bare except
-
-                # Record print statements in this block
-                for ln in range(stmt_first, stmt_last + 1):
-                    if ln >= first and ln <= last:
-                        line = source.splitlines()[ln] if ln < len(source.splitlines()) else ""
-                        if re.match(r"^\s*print\(", line):
-                            print_lines.add(ln)
-
-            for ln in range(first, last + 1):
-                blocks[ln] = {
-                    "has_logger": has_logger,
-                    "print_lines": print_lines,
-                    "first_line": first,
-                    "last_line": last,
-                }
+            _visit_except_handler(blocks, node, lines)
             self.generic_visit(node)
 
     ExceptVisitor().visit(tree)
     return blocks
+
+
+def _convert_print_line(line: str, i: int, except_blocks: dict, delete_lines: set) -> str | None:
+    stripped = line.strip()
+    if not (stripped.startswith("print(") and stripped.endswith(")")):
+        return None
+    if i in delete_lines:
+        return ""  # signal deletion
+    is_except = i in except_blocks
+    m = re.match(r"^(\s*)print\((.*)\)\s*$", line)
+    if not m:
+        return line
+    indent, content = m.group(1), m.group(2)
+    if is_except:
+        return f"{indent}logger.exception({content})"
+    if "❌" in content:
+        return f"{indent}logger.error({content})"
+    if "⚠️" in content:
+        return f"{indent}logger.warning({content})"
+    return f"{indent}logger.info({content})"
+
+
+def _add_logging_import(source: str, new_source: str) -> str:
+    if "import logging" in source or "logging.getLogger" in source:
+        return new_source
+    if "from __future__" in source:
+        new_source = new_source.replace("from __future__", "import logging\nfrom __future__", 1)
+    else:
+        new_source = "import logging\n" + new_source
+    return re.sub(r"(^(?:import|from)\s.*\n)", r"\1\nlogger = logging.getLogger(__name__)\n", new_source, count=1)
 
 
 def process_file(path: Path) -> int:
@@ -73,7 +94,6 @@ def process_file(path: Path) -> int:
     lines = source.splitlines()
     except_blocks = _find_except_blocks(source)
 
-    # Build set of print lines that should be DELETED (already has logger in except block)
     delete_lines = set()
     for _lineno, info in except_blocks.items():
         if info["has_logger"]:
@@ -85,47 +105,17 @@ def process_file(path: Path) -> int:
     deleted = 0
 
     for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("print(") and stripped.endswith(")"):
-            if i in delete_lines:
-                # Remove the print() line entirely
-                deleted += 1
-                continue
-
-            # Convert
-            is_except = i in except_blocks
-            m = re.match(r"^(\s*)print\((.*)\)\s*$", line)
-            if m:
-                indent = m.group(1)
-                content = m.group(2)
-                if is_except:
-                    new_lines.append(f"{indent}logger.exception({content})")
-                elif "❌" in content:
-                    new_lines.append(f"{indent}logger.error({content})")
-                elif "⚠️" in content:
-                    new_lines.append(f"{indent}logger.warning({content})")
-                else:
-                    new_lines.append(f"{indent}logger.info({content})")
-                changed += 1
-                continue
-            # Fallback: keep original if regex didn't match
+        converted = _convert_print_line(line, i, except_blocks, delete_lines)
+        if converted is None:
             new_lines.append(line)
+        elif converted == "":
+            deleted += 1
         else:
-            new_lines.append(line)
+            new_lines.append(converted)
+            changed += 1
 
     if changed or deleted:
-        new_source = "\n".join(new_lines)
-        if "import logging" not in source and "logging.getLogger" not in source:
-            if "from __future__" in source:
-                new_source = new_source.replace("from __future__", "import logging\nfrom __future__", 1)
-            else:
-                new_source = "import logging\n" + new_source
-            new_source = re.sub(
-                r"(^(?:import|from)\s.*\n)",
-                r"\1\nlogger = logging.getLogger(__name__)\n",
-                new_source,
-                count=1,
-            )
+        new_source = _add_logging_import(source, "\n".join(new_lines))
         path.write_text(new_source)
         logger.info(f"  {path.name}: {changed} converted, {deleted} removed")
 

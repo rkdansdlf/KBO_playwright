@@ -1,5 +1,4 @@
-"""
-CLI: Fix player names by re-crawling from KBO website.
+"""CLI: Fix player names by re-crawling from KBO website.
 
 Usage:
     python3 -m src.cli.fix_player_names --crawl --save
@@ -97,8 +96,7 @@ async def fix_player_names(
     save: bool = False,
     sync_oci: bool = False,
 ) -> None:
-    """
-    Fix player names.
+    """Fix player names.
 
     Args:
         max_pages: Max Pages.

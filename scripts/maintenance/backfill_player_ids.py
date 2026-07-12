@@ -34,7 +34,7 @@ def backfill_year(session, resolver: PlayerIdResolver, year: int, dry_run: bool 
     """Resolve NULL player_ids for a single season year."""
     resolver.preload_season_index(year)
 
-    stats = defaultdict(int)  # resolved, skipped, failed
+    stats: defaultdict[str, int] = defaultdict(int)  # resolved, skipped, failed
 
     for table_name, pk_col, is_pitcher in TABLES:
         rows = session.execute(
@@ -108,7 +108,7 @@ def main():
     if args.dry_run:
         print("   ⚠️  DRY RUN — no DB writes")
 
-    grand = defaultdict(int)
+    grand: dict[str, int] = defaultdict(int)
 
     with SessionLocal() as session:
         resolver = PlayerIdResolver(session)

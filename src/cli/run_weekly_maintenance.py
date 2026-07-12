@@ -1,5 +1,4 @@
-"""
-KBO Weekly Maintenance Orchestrator.
+"""KBO Weekly Maintenance Orchestrator.
 
 Performs player profile enrichment, DB health checks, team events, fan culture crawling, and OCI cleanup/sync.
 
@@ -73,6 +72,33 @@ async def _healthcheck_step() -> None:
     logger.info("   ✅ Healthcheck complete")
 
 
+async def _resolve_null_team_codes_step() -> None:
+    from scripts.maintenance.resolve_null_team_codes import resolve_team_codes
+
+    logger.info("   - Resolving NULL team codes in player_season tables...")
+    with SessionLocal() as session:
+        stats = resolve_team_codes(session, apply=True)
+        session.commit()
+        logger.info("   ✅ NULL team codes resolution complete: %s updated", stats["updated"])
+
+
+async def _resolve_roster_player_links_step() -> None:
+    from sqlalchemy import text
+
+    logger.info("   - Linking player_basic_id in team_daily_roster...")
+    with SessionLocal() as session:
+        sql = """
+            UPDATE team_daily_roster
+            SET player_basic_id = player_id, updated_at = :now
+            WHERE person_type = 'player'
+              AND player_basic_id IS NULL
+              AND player_id IN (SELECT player_id FROM player_basic)
+        """
+        res = session.execute(text(sql), {"now": datetime.now(KST)})
+        session.commit()
+        logger.info("   ✅ Team daily roster player links resolved: %s updated", res.rowcount)  # type: ignore[attr-defined]
+
+
 async def _team_events_step() -> None:
     from src.crawlers.team_event_crawler import TeamEventCrawler
 
@@ -133,8 +159,7 @@ async def run_weekly_maintenance(
     *,
     sync: bool = False,
 ) -> None:
-    """
-    Run weekly maintenance.
+    """Run weekly maintenance.
 
     Args:
         profile_limit: Profile Limit.
@@ -154,6 +179,16 @@ async def run_weekly_maintenance(
         lambda: _profile_enrichment_step(profile_limit),
     )
     await _run_weekly_step("🩺 Step 2: Running Database Healthcheck...", "Error during healthcheck", _healthcheck_step)
+    await _run_weekly_step(
+        "🛠️  Step 2.5: Resolving NULL team_code entries...",
+        "Error during team_code resolution",
+        _resolve_null_team_codes_step,
+    )
+    await _run_weekly_step(
+        "🛠️  Step 2.6: Resolving NULL player_basic_id in team_daily_roster...",
+        "Error during player_basic_id resolution",
+        _resolve_roster_player_links_step,
+    )
     await _run_weekly_step("📅 Step 3: Crawling Team Events & News...", "Error crawling team events", _team_events_step)
     await _run_weekly_step(
         "🎵 Step 4: Crawling Fan Culture & Cheer Songs...",

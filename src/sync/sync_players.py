@@ -6,6 +6,8 @@ import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
+MISSING_PLAYER_GAME_SAMPLE_LIMIT = 5
+MISSING_PLAYER_ID_SAMPLE_LIMIT = 20
 
 from src.models.base import Base
 from src.models.crawl import CrawlRun
@@ -89,8 +91,7 @@ class PlayerSyncMixin(SyncBaseProtocol):
         }
 
     def sync_player_basic(self, limit: int | None = None) -> int:
-        """
-        Sync player_basic data from SQLite to OCI using fast bulk COPY.
+        """Sync player_basic data from SQLite to OCI using fast bulk COPY.
 
         Args:
             limit: Limit.
@@ -109,8 +110,7 @@ class PlayerSyncMixin(SyncBaseProtocol):
         )
 
     def sync_player_basic_by_ids(self, player_ids: list[int]) -> int:
-        """
-        Sync specific players from SQLite to OCI by their IDs using bulk COPY upsert.
+        """Sync specific players from SQLite to OCI by their IDs using bulk COPY upsert.
 
         Args:
             player_ids: Player Ids.
@@ -173,8 +173,7 @@ class PlayerSyncMixin(SyncBaseProtocol):
         return synced
 
     def _sync_referenced_player_basic_for_games(self, game_ids: list[str]) -> int:
-        """
-        Sync local player_basic rows referenced by game child tables before FK-bound child sync.
+        """Sync local player_basic rows referenced by game child tables before FK-bound child sync.
 
         Args:
             game_ids: Game Ids.
@@ -215,12 +214,14 @@ class PlayerSyncMixin(SyncBaseProtocol):
         }
         missing_player_ids = sorted(referenced_player_ids - local_player_ids)
         if missing_player_ids:
-            game_list = ", ".join(target_game_ids[:5])
-            if len(target_game_ids) > 5:
-                game_list += f", ... (+{len(target_game_ids) - 5})"
-            missing_list = ", ".join(str(player_id) for player_id in missing_player_ids[:20])
-            if len(missing_player_ids) > 20:
-                missing_list += f", ... (+{len(missing_player_ids) - 20})"
+            game_list = ", ".join(target_game_ids[:MISSING_PLAYER_GAME_SAMPLE_LIMIT])
+            if len(target_game_ids) > MISSING_PLAYER_GAME_SAMPLE_LIMIT:
+                game_list += f", ... (+{len(target_game_ids) - MISSING_PLAYER_GAME_SAMPLE_LIMIT})"
+            missing_list = ", ".join(
+                str(player_id) for player_id in missing_player_ids[:MISSING_PLAYER_ID_SAMPLE_LIMIT]
+            )
+            if len(missing_player_ids) > MISSING_PLAYER_ID_SAMPLE_LIMIT:
+                missing_list += f", ... (+{len(missing_player_ids) - MISSING_PLAYER_ID_SAMPLE_LIMIT})"
             logger.warning(
                 "Skipping %d missing player_ids (not in local player_basic) for games=[%s]: [%s]",
                 len(missing_player_ids),
@@ -260,8 +261,7 @@ class PlayerSyncMixin(SyncBaseProtocol):
         )
 
     def sync_crawl_runs(self) -> int:
-        """
-        Sync runs.
+        """Sync runs.
 
         Returns:
             Integer result.

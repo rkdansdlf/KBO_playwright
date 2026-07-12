@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
@@ -817,3 +817,58 @@ class TestIsTransientOCIDetailed:
     def test_ssl_syscall_message(self):
         err = Exception("ssl syscall error: connection closed")
         assert OCISyncBase._is_transient_oci_error(err) is True
+
+
+class TestOCISyncBaseConcurrentSync:
+    def test_concurrent_batch_sync_success(self):
+        # Setup mock db and session
+        sqlite_session = MagicMock(spec=Session)
+        sqlite_session.get_bind.return_value = MagicMock()
+        sync = OCISyncBase("postgresql://user:pass@host/db", sqlite_session)
+        sync.concurrency = 3
+        sync.oci_engine = MagicMock()
+        sync.target_session = MagicMock()
+
+        # Config details
+        from src.models.player import PlayerSeasonBatting
+        from src.sync.sync_base import SyncBatchConfig
+
+        mock_query = MagicMock()
+        mock_query.offset.return_value.limit.return_value.all.return_value = [
+            MagicMock(player_id=1, season=2025, league="REGULAR", level="KBO", team_code="KIA", games=10)
+        ]
+        # with_session returns mock_query itself in this test double setup
+        mock_query.with_session.return_value = mock_query
+
+        config = SyncBatchConfig(
+            model=PlayerSeasonBatting,
+            query=mock_query,
+            total_count=10,
+            columns=["player_id", "season", "league", "level", "team_code", "games"],
+            conflict_keys=["player_id", "season", "league", "level"],
+            transform_fn=None,
+            update_timestamp=True,
+            batch_size=3,
+        )
+
+        with (
+            patch.object(sync, "_bulk_copy_upsert") as mock_copy,
+            patch("src.sync.sync_base.sessionmaker") as mock_sessionmaker,
+        ):
+            # sessionmaker() returns a session mock
+            mock_sessionmaker.return_value.return_value = MagicMock()
+
+            result = sync._sync_in_batches(config)
+
+            # We have 10 rows total, batch size 3, so offsets: 0, 3, 6, 9 (4 chunks)
+            assert result == 4
+            assert mock_copy.call_count == 4
+            # reconnect_on_fail should be False in thread worker
+            mock_copy.assert_any_call(
+                "player_season_batting",
+                ANY,
+                ["player_id", "season", "league", "level"],
+                update_timestamp=True,
+                connection=ANY,
+                reconnect_on_fail=False,
+            )

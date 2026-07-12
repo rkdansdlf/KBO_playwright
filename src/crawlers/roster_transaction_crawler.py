@@ -1,5 +1,4 @@
-"""
-Crawler for daily roster transactions (call-up / send-down).
+"""Crawler for daily roster transactions (call-up / send-down).
 
 Sources:
   - KBO mobile registration page: https://m.koreabaseball.com/Kbo/PlayerAdd.aspx
@@ -65,8 +64,7 @@ class RosterTransactionCrawler:
     """RosterTransactionCrawler class."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -83,8 +81,7 @@ class RosterTransactionCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
-        """
-        Run run.
+        """Run run.
 
         Args:
             save: Whether to persist the results.
@@ -142,8 +139,7 @@ class RosterTransactionCrawler:
         return self._parse_mobile_html(html, target_date)
 
     def _parse_mobile_html(self, html: str, target_date: date) -> list[dict[str, Any]]:
-        """
-        Parse the mobile KBO registration page.
+        """Parse the mobile KBO registration page.
 
         Args:
             html: Html.
@@ -213,8 +209,7 @@ class RosterTransactionCrawler:
         return transactions
 
     def _parse_alternate_mobile(self, html: str, target_date: date) -> list[dict[str, Any]]:
-        """
-        Fallback parser for alternate mobile page layout.
+        """Fallback parser for alternate mobile page layout.
 
         Args:
             html: Html.
@@ -265,8 +260,7 @@ class RosterTransactionCrawler:
         return transactions
 
     async def _crawl_desktop_page(self, target_date: date) -> list[dict[str, Any]]:
-        """
-        Fallback: crawl the desktop ASP.NET page.
+        """Fallback: crawl the desktop ASP.NET page.
 
         Args:
             target_date: Target date for the operation.
@@ -292,12 +286,14 @@ class RosterTransactionCrawler:
 
                 date_str = target_date.strftime("%Y%m%d")
                 await page.evaluate(
-                    f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';",
+                    f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate')"
+                    f".value = '{date_str}';",
                 )
                 try:
                     async with page.expect_response(lambda r: "Register.aspx" in r.url, timeout=SHORT_TIMEOUT):
                         await page.evaluate(
-                            "__doPostBack('ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')",
+                            "__doPostBack("
+                            "'ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')",
                         )
                 except TimeoutError:
                     logger.warning("Calendar select postback timeout, continuing")

@@ -1,5 +1,4 @@
-"""
-Crawler for Player Movement (Trade, FA, Waiver, etc.).
+"""Crawler for Player Movement (Trade, FA, Waiver, etc.).
 
 Source: https://www.koreabaseball.com/Player/Trade.aspx.
 
@@ -44,8 +43,7 @@ class PlayerMovementCrawler:
     """Crawl player status changes (Trade, FA, Waiver, etc.)."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -65,8 +63,7 @@ class PlayerMovementCrawler:
         *,
         save_snapshots: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Crawl data for a range of years.
+        """Crawl data for a range of years.
 
         Args:
             start_year: Start Year.

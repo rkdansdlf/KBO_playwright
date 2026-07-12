@@ -1,5 +1,4 @@
-"""
-Daily Review Batch Script.
+"""Daily Review Batch Script.
 
 Generate post-game review context from game_events/WPA and persists it locally.
 
@@ -116,8 +115,7 @@ def _trusted_relay_game_ids(session: Session, game_ids: Sequence[str]) -> set[st
 
 
 async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    """
-    Run review batch.
+    """Run review batch.
 
     Args:
         target_date: Target date for the operation.
@@ -224,8 +222,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

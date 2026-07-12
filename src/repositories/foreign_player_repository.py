@@ -16,8 +16,7 @@ class ForeignPlayerRepository:
     """ForeignPlayerRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -27,8 +26,7 @@ class ForeignPlayerRepository:
         self.session = session
 
     def save_change(self, data: dict) -> ForeignPlayerChange:
-        """
-        Save change.
+        """Save change.
 
         Args:
             data: Data.
@@ -64,8 +62,7 @@ class ForeignPlayerRepository:
         return new_record
 
     def get_by_team(self, team_id: str, season: int | None = None) -> list[ForeignPlayerChange]:
-        """
-        Get by team.
+        """Get by team.
 
         Args:
             team_id: Team ID.
@@ -87,8 +84,7 @@ class ForeignPlayerRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_season(self, season: int) -> list[ForeignPlayerChange]:
-        """
-        Get by season.
+        """Get by season.
 
         Args:
             season: Season year.

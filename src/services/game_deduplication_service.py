@@ -46,8 +46,7 @@ def mark_primary_games(  # noqa: PLR0913
     preferred_codes: Sequence[str] = DEFAULT_PRIMARY_CODE_PREFERENCES,
     remove_extreme_dates: bool = False,
 ) -> DeduplicationResult:
-    """
-    Mark one primary game per date/franchise/doubleheader slot.
+    """Mark one primary game per date/franchise/doubleheader slot.
 
     The winner is the candidate with the most `game_batting_stats` rows. Ties
     prefer modern canonical team-code strings such as SSG/KH/DB/KIA.

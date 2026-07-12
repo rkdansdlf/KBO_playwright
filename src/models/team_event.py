@@ -31,7 +31,9 @@ class TeamEvent(Base, TimestampMixin):
     event_type: Mapped[str | None] = mapped_column(
         String(30),
         nullable=True,
-        comment="giveaway / signing / first_pitch / promotion / fan_participation / discount / ceremony / festival / notice",
+        comment=(
+            "giveaway / signing / first_pitch / promotion / fan_participation / discount / ceremony / festival / notice"
+        ),
     )
     event_start_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="Event start datetime")
     event_end_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="Event end datetime")

@@ -119,7 +119,7 @@ def test_run_weekly_maintenance_routes_all_steps(monkeypatch: pytest.MonkeyPatch
     ):
         asyncio.run(weekly.run_weekly_maintenance(profile_limit=3, sync=True))
 
-    assert run_step.await_count == 4
+    assert run_step.await_count == 6
     cleanup.assert_called_once_with("oci")
     sync.assert_called_once_with("oci")
 

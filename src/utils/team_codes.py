@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from src.constants import DATE_STR_LEN
+from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN
 from src.utils.team_history import resolve_team_code_for_season
 
 # Canonical KBO short codes (aligned with modern franchise IDs)
@@ -91,11 +91,11 @@ KBO_LEGACY_TECHNICAL_CODE = {
     "DB": "OB",
     "KIA": "HT",
 }
+LEGACY_GAME_ID_NORMALIZATION_START_YEAR = 2024
 
 
 def resolve_team_code(name: str | None, season_year: int | None = None) -> str | None:
-    """
-    Resolve team code.
+    """Resolve team code.
 
     Args:
         name: Name.
@@ -128,8 +128,7 @@ def resolve_team_code(name: str | None, season_year: int | None = None) -> str |
 
 
 def resolve_kbo_legacy_team_code(name: str | None, season_year: int | None = None) -> str | None:
-    """
-    Resolve kbo legacy team code.
+    """Resolve kbo legacy team code.
 
     Args:
         name: Name.
@@ -149,8 +148,7 @@ def resolve_kbo_legacy_team_code(name: str | None, season_year: int | None = Non
 
 
 def kbo_game_id_team_code(team_code: str | None, season_year: int | None = None) -> str | None:
-    """
-    Return the KBO GameCenter team-code token for a team code.
+    """Return the KBO GameCenter team-code token for a team code.
 
     Args:
         team_code: Team Code.
@@ -181,8 +179,7 @@ def build_kbo_game_id(
     doubleheader_no: object | None = 0,
     season_year: int | None = None,
 ) -> str | None:
-    """
-    Build a canonical KBO legacy GameCenter ID from explicit game fields.
+    """Build a canonical KBO legacy GameCenter ID from explicit game fields.
 
     Args:
         game_date: Game Date.
@@ -250,8 +247,7 @@ GAME_ID_SEGMENT_TO_CODE = {
 
 
 def team_code_from_game_id_segment(segment: str | None, season_year: int | None = None) -> str | None:
-    """
-    Handle the team code from game id segment operation.
+    """Handle the team code from game id segment operation.
 
     Args:
         segment: Segment.
@@ -282,8 +278,7 @@ def team_code_from_game_id_segment(segment: str | None, season_year: int | None 
 
 
 def normalize_kbo_game_id(game_id: str) -> str:
-    """
-    Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
+    """Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
 
     Some KBO internal APIs (like GetKboGameList) have started returning modern codes
     (SSG, KH, DB, KIA) in the G_ID field for 2026, while the public GameCenter
@@ -297,7 +292,7 @@ def normalize_kbo_game_id(game_id: str) -> str:
         game_id: Game ID.
 
     """
-    if not game_id or len(game_id) < 12:
+    if not game_id or len(game_id) < GAME_ID_FULL_LEN:
         return game_id
 
     raw = str(game_id).strip().upper()
@@ -313,7 +308,7 @@ def normalize_kbo_game_id(game_id: str) -> str:
     # match existing records.
     try:
         year = int(date_part[:4])
-        if year < 2024:
+        if year < LEGACY_GAME_ID_NORMALIZATION_START_YEAR:
             return game_id
     except ValueError:
         return game_id
@@ -349,8 +344,7 @@ KBO_GAME_ID_TEAM_CODES = tuple(
 
 
 def _split_game_id_team_part(team_part: str) -> tuple[str | None, str | None]:
-    """
-    Split AWAY+HOME team code suffix using known KBO game-id code tokens.
+    """Split AWAY+HOME team code suffix using known KBO game-id code tokens.
 
     Args:
         team_part: Team Part.

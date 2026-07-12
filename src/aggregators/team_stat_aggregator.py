@@ -1,5 +1,4 @@
-"""
-Service to aggregate player season stats into team-level season stats.
+"""Service to aggregate player season stats into team-level season stats.
 
 Acts as a fallback when KBO's team cumulative record pages are unavailable.
 
@@ -56,16 +55,14 @@ DEFAULT_TEAM_NAMES = {
 
 
 class TeamStatAggregator:
-    """
-    aggregate individual player season statistics into team-level season statistics.
+    """aggregate individual player season statistics into team-level season statistics.
 
     Provides pure in-memory aggregation methods for testability and DB-integrated methods for CLI/Crawlers.
 
     """
 
     def __init__(self, session: Session | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -75,8 +72,7 @@ class TeamStatAggregator:
 
     @staticmethod
     def _get_team_games(session: Session, team_id: str, year: int) -> int:
-        """
-        Get the total games played by a team in a season from standings.
+        """Get the total games played by a team in a season from standings.
 
         Return 0 if not found.
 
@@ -103,8 +99,7 @@ class TeamStatAggregator:
 
     @staticmethod
     def _get_team_record_from_standings(session: Session, team_id: str, year: int) -> dict[str, int]:
-        """
-        Get the team win/loss/tie record from standings.
+        """Get the team win/loss/tie record from standings.
 
         Args:
             session: Session.
@@ -173,8 +168,7 @@ class TeamStatAggregator:
         team_games_map: dict[tuple[int, str], int] | None = None,
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Dispatch to database-driven aggregation if an integer season is passed,.
+        """Dispatch to database-driven aggregation if an integer season is passed,.
 
         or pure in-memory aggregation if an iterable of rows is passed.
 
@@ -225,8 +219,7 @@ class TeamStatAggregator:
         team_games_map: dict[tuple[int, str], int] | None = None,
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Dispatch to database-driven aggregation if an integer season is passed,.
+        """Dispatch to database-driven aggregation if an integer season is passed,.
 
         or pure in-memory aggregation if an iterable of rows is passed.
 
@@ -274,8 +267,7 @@ class TeamStatAggregator:
         *,
         dry_run: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
-        """
-        Aggregate and updates both batting and pitching stats.
+        """Aggregate and updates both batting and pitching stats.
 
         Args:
             season: Season year.
@@ -568,8 +560,7 @@ class TeamStatAggregator:
         team_names: dict[str, str] | None = None,
         team_games_map: dict[tuple[int, str], int] | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Pure in-memory aggregation of player season batting rows into team batting stats.
+        """Pure in-memory aggregation of player season batting rows into team batting stats.
 
         Grouped by (season, team_code).
 
@@ -670,8 +661,7 @@ class TeamStatAggregator:
         team_names: dict[str, str] | None = None,
         team_games_map: dict[tuple[int, str], int] | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Pure in-memory aggregation of player season pitching rows into team pitching stats.
+        """Pure in-memory aggregation of player season pitching rows into team pitching stats.
 
         Grouped by (season, team_code).
 
@@ -762,8 +752,7 @@ class TeamStatAggregator:
 
     @staticmethod
     def aggregate_team_batting(session: Session, year: int, league: str = "REGULAR") -> list[dict[str, Any]]:
-        """
-        Aggregate batting stats for all teams in a given season/league using database queries.
+        """Aggregate batting stats for all teams in a given season/league using database queries.
 
         Maintains legacy database-bound compatibility while reusing pure business logic under the hood.
 
@@ -806,8 +795,7 @@ class TeamStatAggregator:
 
     @staticmethod
     def aggregate_team_pitching(session: Session, year: int, league: str = "REGULAR") -> list[dict[str, Any]]:
-        """
-        Aggregate pitching stats for all teams in a given season/league using database queries.
+        """Aggregate pitching stats for all teams in a given season/league using database queries.
 
         Maintains legacy database-bound compatibility while reusing pure business logic under the hood.
 

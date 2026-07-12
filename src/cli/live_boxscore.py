@@ -1,5 +1,4 @@
-"""
-Live boxscore CLI — query inning-by-inning scores for today's in-progress KBO games.
+"""Live boxscore CLI — query inning-by-inning scores for today's in-progress KBO games.
 
 Usage:
     python3 -m src.cli.live_boxscore
@@ -21,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
-from src.constants import KST
+from src.constants import DATE_STR_LEN, KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameInningScore
 
@@ -75,7 +74,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def _resolve_target_date(date_str: str | None) -> date_cls:
     if date_str:
-        if len(date_str) != 8 or not date_str.isdigit():
+        if len(date_str) != DATE_STR_LEN or not date_str.isdigit():
             msg = f"Invalid date format: {date_str!r}, expected YYYYMMDD"
             raise ValueError(msg)
         return date_cls(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
@@ -192,8 +191,7 @@ def _format_text(payload: dict[str, Any]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run live boxscore CLI.
+    """Run live boxscore CLI.
 
     Args:
         argv: Argv.

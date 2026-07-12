@@ -167,8 +167,7 @@ def _duplicate_provider_count(events: list[dict[str, Any]], raw_pbp_rows: list[d
 
 
 def derive_play_by_play_rows_from_events(events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    """
-    Deterministically project normalized game_events into lightweight play_by_play rows.
+    """Deterministically project normalized game_events into lightweight play_by_play rows.
 
     Args:
         events: Events.
@@ -179,8 +178,7 @@ def derive_play_by_play_rows_from_events(events: Iterable[dict[str, Any]]) -> li
 
 
 def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
-    """
-    Regenerate game_play_by_play rows from stored game_events for one game.
+    """Regenerate game_play_by_play rows from stored game_events for one game.
 
     Note: this is a legacy backfill that projects a minimal subset of fields
     (inning, inning_half, batter_name, pitcher_name, play_description,
@@ -249,8 +247,7 @@ def backfill_missing_game_stubs_for_relays(
     seasons: Iterable[int] | None = None,
     sync_to_oci: bool = False,
 ) -> int:
-    """
-    Ensure a parent `game` row exists for any relay-bearing game_id.
+    """Ensure a parent `game` row exists for any relay-bearing game_id.
 
     This repairs local integrity when historical backfills inserted `game_events`
     or `game_play_by_play` before the corresponding `game` row existed.
@@ -306,8 +303,7 @@ def mark_relay_source_unavailable(
     evidence: dict[str, Any] | None = None,
     sync_to_oci: bool = False,
 ) -> bool:
-    """
-    Mark a completed game as explainably unrecoverable from public relay sources.
+    """Mark a completed game as explainably unrecoverable from public relay sources.
 
     Args:
         game_id: Game ID.
@@ -458,8 +454,7 @@ def repair_game_parent_from_existing_children(
     *,
     sync_to_oci: bool = False,
 ) -> bool:
-    """
-    Rebuild/repair one parent `game` row from existing child tables.
+    """Rebuild/repair one parent `game` row from existing child tables.
 
     Historical backfills sometimes inserted box-score children before the parent
     `game` row. If those children exist, they are more authoritative than a
@@ -516,8 +511,7 @@ class _RelayResolutionContext:
     home_team_code: str | None
 
     def offense_team(self, half: str | None) -> str | None:
-        """
-        Handle the offense team operation.
+        """Handle the offense team operation.
 
         Args:
             half: Half.
@@ -535,8 +529,7 @@ class _RelayResolutionContext:
         return None
 
     def defense_team(self, half: str | None) -> str | None:
-        """
-        Handle the defense team operation.
+        """Handle the defense team operation.
 
         Args:
             half: Half.
@@ -560,8 +553,7 @@ class _RelayResolutionContext:
         *,
         is_pitcher: bool | None = None,
     ) -> tuple[int | None, str | None, str | None]:
-        """
-        Resolve participant.
+        """Resolve participant.
 
         Args:
             name: Name.
@@ -1029,7 +1021,8 @@ def _log_relay_save_result(
 ) -> None:
     if events and not valid_event_rows:
         logger.warning(
-            "Relay save for %s: saved_event_rows=0 saved_pbp_rows=%d skipped_event_rows_reason=insufficient_relay_state",
+            "Relay save for %s: saved_event_rows=0 saved_pbp_rows=%d "
+            "skipped_event_rows_reason=insufficient_relay_state",
             game_id,
             pbp_count,
         )
@@ -1045,8 +1038,7 @@ def save_relay_data(
     options: RelaySaveOptions | None = None,
     **overrides: object,
 ) -> int:
-    """
-    Persist normalized relay data.
+    """Persist normalized relay data.
 
     Rules:
     - When normalized events have enough state, persist both game_events and game_play_by_play.

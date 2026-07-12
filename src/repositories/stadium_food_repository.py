@@ -17,8 +17,7 @@ class StadiumFoodVendorRepository:
     """StadiumFoodVendorRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -28,8 +27,7 @@ class StadiumFoodVendorRepository:
         self.session = session
 
     def save(self, data: dict) -> StadiumFoodVendor:
-        """
-        Save save.
+        """Save save.
 
         Args:
             data: Data.
@@ -59,8 +57,7 @@ class StadiumFoodVendorRepository:
         return new_record
 
     def get_by_stadium(self, stadium_id: str) -> list[StadiumFoodVendor]:
-        """
-        Get by stadium.
+        """Get by stadium.
 
         Args:
             stadium_id: Stadium ID.
@@ -79,8 +76,7 @@ class StadiumFoodVendorRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
-        """
-        Save bulk.
+        """Save bulk.
 
         Args:
             records: Records.
@@ -103,8 +99,7 @@ class StadiumFoodMenuItemRepository:
     """StadiumFoodMenuItemRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -114,8 +109,7 @@ class StadiumFoodMenuItemRepository:
         self.session = session
 
     def save(self, data: dict) -> StadiumFoodMenuItem:
-        """
-        Save save.
+        """Save save.
 
         Args:
             data: Data.
@@ -144,8 +138,7 @@ class StadiumFoodMenuItemRepository:
         return new_record
 
     def get_by_vendor(self, vendor_id: int) -> list[StadiumFoodMenuItem]:
-        """
-        Get by vendor.
+        """Get by vendor.
 
         Args:
             vendor_id: Vendor ID.
@@ -164,8 +157,7 @@ class StadiumFoodMenuItemRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_stadium(self, stadium_id: str) -> list[dict]:
-        """
-        Get by stadium.
+        """Get by stadium.
 
         Args:
             stadium_id: Stadium ID.
@@ -192,8 +184,7 @@ class StadiumFoodMenuItemRepository:
         return [dict(row._mapping) for row in rows]
 
     def bulk_save(self, records: list[dict]) -> int:
-        """
-        Save bulk.
+        """Save bulk.
 
         Args:
             records: Records.

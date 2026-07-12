@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from bs4.element import Tag
 
 logger = logging.getLogger(__name__)
+MIN_EVENT_TITLE_LENGTH = 4
 
 EVENT_KEYWORDS = [
     "이벤트",
@@ -304,7 +305,7 @@ def _parse_json_team_events(
     seen_titles = set()
     for row in _iter_json_rows(payload):
         title = str(row.get("TITLE") or row.get("title") or "").strip()
-        if len(title) < 4:
+        if len(title) < MIN_EVENT_TITLE_LENGTH:
             continue
         if not _is_event_title(title, page_url):
             continue
@@ -349,8 +350,7 @@ def _parse_json_team_events(
 
 
 def parse_team_events(html: str, source_key: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """
-    Parse team events.
+    """Parse team events.
 
     Args:
         html: Html.
@@ -392,7 +392,7 @@ def parse_team_events(html: str, source_key: str, metadata: dict[str, Any] | Non
 
     for title_tag in title_tags + fallback_tags:
         title = title_tag.get_text(" ", strip=True)
-        if len(title) < 4:
+        if len(title) < MIN_EVENT_TITLE_LENGTH:
             continue
         if not _is_event_title(title, page_url):
             continue

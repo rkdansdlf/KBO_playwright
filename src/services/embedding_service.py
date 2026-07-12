@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 EMBEDDING_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 EMBEDDING_HTTP_EXCEPTIONS = (httpx.HTTPError, ValueError, TypeError, RuntimeError, OSError)
+EMBEDDING_NORMALIZATION_EPSILON = 1e-9
 
 
 class EmbeddingService:
@@ -27,8 +28,7 @@ class EmbeddingService:
             logger.warning("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
 
     def adjust_embedding_dimension(self, embedding: list[float], target_dim: int = 256) -> list[float]:
-        """
-        Truncate or pad embedding list to target_dim.
+        """Truncate or pad embedding list to target_dim.
 
         If truncating, L2 normalization is applied.
 
@@ -51,7 +51,7 @@ class EmbeddingService:
             import math
 
             norm = math.sqrt(sum(x * x for x in truncated))
-            if norm > 1e-9:
+            if norm > EMBEDDING_NORMALIZATION_EPSILON:
                 return [x / norm for x in truncated]
             return truncated
         return embedding + [0.0] * (target_dim - current_dim)
@@ -64,8 +64,7 @@ class EmbeddingService:
         return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
     def get_embedding(self, text: str) -> list[float]:
-        """
-        Generate embedding for a single text string.
+        """Generate embedding for a single text string.
 
         Args:
             text: Text.
@@ -77,8 +76,7 @@ class EmbeddingService:
         return results[0] if results else [0.0] * 256
 
     def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
-        """
-        Generate embeddings for a batch of text strings, utilizing a local SQLite cache.
+        """Generate embeddings for a batch of text strings, utilizing a local SQLite cache.
 
         Args:
             texts: Texts.
@@ -184,8 +182,7 @@ class EmbeddingService:
             cached_map[hashes[missing_indices[idx]]] = emb
 
     def _fetch_openrouter_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """
-        Call OpenRouter's's OpenAI-compatible embeddings endpoint.
+        """Call OpenRouter's's OpenAI-compatible embeddings endpoint.
 
         Args:
             texts: Texts.
@@ -219,8 +216,7 @@ class EmbeddingService:
         return [[0.0] * 256 for _ in texts]
 
     def _fetch_google_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """
-        Call standard Google Gemini AI Studio Embeddings API.
+        """Call standard Google Gemini AI Studio Embeddings API.
 
         Args:
             texts: Texts.

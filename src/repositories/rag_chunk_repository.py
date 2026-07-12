@@ -18,8 +18,7 @@ class RagChunkRepository:
     """Data Access Object (DAO) for managing rag_chunks."""
 
     def upsert_chunks(self, session: Session, chunks: list[dict[str, Any]]) -> int:
-        """
-        Save or updates RAG chunks using a clean, database-agnostic query-and-upsert approach.
+        """Save or updates RAG chunks using a clean, database-agnostic query-and-upsert approach.
 
         Args:
             session: Session.

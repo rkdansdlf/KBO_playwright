@@ -25,4 +25,7 @@ class StadiumFood(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         """Return a string representation of this object."""
-        return f"<StadiumFood(stadium='{self.stadium_name}', restaurant='{self.restaurant_name}', menu='{self.menu_item}')>"
+        return (
+            f"<StadiumFood(stadium='{self.stadium_name}', restaurant='{self.restaurant_name}', "
+            f"menu='{self.menu_item}')>"
+        )

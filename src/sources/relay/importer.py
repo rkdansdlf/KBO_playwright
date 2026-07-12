@@ -34,8 +34,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
         allowed_source_types: set[str] | None = None,
         manifest_base_dir: str | Path | None = None,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             manifest_entries: Manifest Entries.
@@ -57,14 +56,16 @@ class ImportRelayAdapter(RelaySourceAdapter):
         self.manifest_base_dir = Path(manifest_base_dir or ".")
         self._relay_parser = RelayCrawler()
 
-    async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
-        """
-        Fetch game.
+    async def fetch_game(
+        self,
+        game_id: str,
+        last_payload_hash: str | None = None,  # noqa: ARG002
+    ) -> NormalizedRelayResult:
+        """Fetch game.
 
         Args:
             game_id: Game ID.
-            game_id: Game ID.
-            game_id: Game ID.
+            last_payload_hash: Last seen payload hash.
 
         Returns:
             NormalizedRelayResult instance.

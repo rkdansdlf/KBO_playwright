@@ -1,5 +1,4 @@
-"""
-로컬 SQLite 데이터베이스의 데이터를 원격 OCI/Postgres 데이터베이스와 동기화하는 스크립트.
+"""로컬 SQLite 데이터베이스의 데이터를 원격 OCI/Postgres 데이터베이스와 동기화하는 스크립트.
 
 OCISync 클래스와 전용 동기화 메서드를 사용하여 테이블별로 특화된 UPSERT/COPY 로직을
 수행합니다. `--truncate` 옵션을 사용하면 대상 테이블의 데이터를 삭제한 후 새로 삽입할 수 있습니다.
@@ -44,8 +43,7 @@ def run_parallel_sync(
     workers: int,
     **kwargs: object,
 ) -> None:
-    """
-    연도별로 병렬 동기화 작업을 수행합니다.
+    """연도별로 병렬 동기화 작업을 수행합니다.
 
     Args:
         sync_fn: Sync Fn.
@@ -58,8 +56,7 @@ def run_parallel_sync(
     logger.info("🚀 Starting parallel sync with %s workers for years: %s", workers, years)
 
     def sync_worker(year: int) -> None:
-        """
-        Sync worker.
+        """Sync worker.
 
         Args:
             year: Season year.
@@ -71,6 +68,7 @@ def run_parallel_sync(
         with SessionLocal() as session:
             try:
                 syncer = OCISync(target_url, session)
+                syncer.concurrency = 1
                 sync_fn(syncer, year, **kwargs)
                 logger.info("✅ Worker finished for year %s", year)
             except OCI_CLI_EXCEPTIONS:
@@ -139,6 +137,11 @@ def _add_basic_args(parser: argparse.ArgumentParser) -> None:
         "--apply",
         action="store_true",
         help="Apply the synchronization after comparison (use with --compare).",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="시그니처 비교를 건너뛰고 강제로 동기화를 진행합니다.",
     )
 
 
@@ -375,7 +378,9 @@ def _add_perf_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--reset-sequences",
         action="store_true",
-        help="동기화 후 OCI 시퀀스 식별자를 재설정합니다. (기본값: 해제 — per-table reset이 이미 sync_games에서 처리됨)",
+        help=(
+            "동기화 후 OCI 시퀀스 식별자를 재설정합니다. (기본값: 해제 — per-table reset이 이미 sync_games에서 처리됨)"
+        ),
     )
 
 
@@ -404,8 +409,7 @@ _ALLOWED_YEAR_COLUMNS = frozenset(
 
 
 def get_available_years(session: Session, model: type[object], column_name: str = "season") -> list[int]:
-    """
-    대상 테이블에서 사용 가능한 연도 목록을 가져옵니다.
+    """대상 테이블에서 사용 가능한 연도 목록을 가져옵니다.
 
     Args:
         session: Session.
@@ -456,10 +460,12 @@ def _run_sync(
             batch_size=args.batch_size,
             copy_batch_size=args.copy_batch_size,
             truncate=args.truncate,
+            force=getattr(args, "force", False),
         )
     else:
         with SessionLocal() as session:
             syncer = OCISync(args.target_url, session)
+            syncer.concurrency = args.workers
             try:
                 years = [args.year] if args.year else [None]
                 for year in years:
@@ -472,6 +478,7 @@ def _run_sync(
                         copy_batch_size=args.copy_batch_size,
                         truncate=args.truncate,
                         requested_game_ids=_parse_game_ids(getattr(args, "game_ids", None)),
+                        force=getattr(args, "force", False),
                     )
             finally:
                 syncer.close()
@@ -495,39 +502,91 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
 
 
 def _build_sync_dispatch() -> dict[str, tuple]:
-    # fmt: off
     return {
-        "game_details":   (lambda s, y, **kw: s.sync_game_details(year=y, days=kw.get("days"), unsynced_only=kw.get("unsynced_only"), batch_size=kw.get("copy_batch_size")) if not kw.get("requested_game_ids")
-                           else logger.info("   Explicit game sync result: %s", s.sync_game_details_for_ids(kw["requested_game_ids"], batch_size=kw.get("copy_batch_size"))),
-                           "🚀 Syncing Game Details using specialized OCISync...", True,
-                           lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
-                           "✅ Game Details Sync Finished"),
-        "games_only":     (lambda s, y, **kw: logger.info("   [%s] Synced %s rows", y, s.sync_games(filters=[Game.game_id.like(f"{y}%")] if y else None, batch_size=kw.get("copy_batch_size"))),
-                           "🚀 Syncing game table only using specialized OCISync...", True,
-                           lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
-                           "✅ Game Table Sync Finished"),
-        "season_stats":   (_sync_season_stats,
-                           "🚀 Syncing Season Stats using specialized OCISync...", True,
-                           lambda sess: get_available_years(sess, PlayerSeasonBatting, "season"),
-                           "✅ Season Stats Sync Finished"),
-        "standings":      (lambda s, y, **kw: logger.info("   [%s] Synced %s rows", y, s.sync_standings(days=kw.get("days"), year=y, batch_size=kw.get("copy_batch_size"))),
-                           "🚀 Syncing Daily Standings using specialized OCISync...", True,
-                           lambda sess: get_available_years(sess, TeamStandingsDaily, "strftime('%Y', standings_date)"),
-                           "✅ Daily Standings Sync Finished"),
-        "matchups":       (lambda s, y, **kw: s.sync_matchups(year=y, batch_size=kw.get("copy_batch_size")),
-                           "🚀 Syncing Matchup Splits using specialized OCISync...", True,
-                           lambda sess: get_available_years(sess, BatterTeamSplit, "season_year"),
-                           "✅ Matchup Splits Sync Finished"),
-        "rankings":       (lambda s, y, **kw: logger.info("   [%s] Synced %s rows", y, s.sync_stat_rankings(year=y, batch_size=kw.get("copy_batch_size"))),
-                            "🚀 Syncing Stat Rankings using specialized OCISync...", True,
-                            lambda sess: get_available_years(sess, StatRanking, "season"),
-                            "✅ Stat Rankings Sync Finished"),
-        "player_game_stats": (_sync_player_game_stats,
-                            "🚀 Syncing Player Game Stats...", True,
-                            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
-                            "✅ Player Game Stats Sync Finished"),
+        "game_details": (
+            lambda s, y, **kw: (
+                s.sync_game_details(
+                    year=y,
+                    days=kw.get("days"),
+                    unsynced_only=kw.get("unsynced_only"),
+                    batch_size=kw.get("copy_batch_size"),
+                )
+                if not kw.get("requested_game_ids")
+                else logger.info(
+                    "   Explicit game sync result: %s",
+                    s.sync_game_details_for_ids(
+                        kw["requested_game_ids"],
+                        batch_size=kw.get("copy_batch_size"),
+                    ),
+                )
+            ),
+            "🚀 Syncing Game Details using specialized OCISync...",
+            True,
+            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
+            "✅ Game Details Sync Finished",
+        ),
+        "games_only": (
+            lambda s, y, **kw: logger.info(
+                "   [%s] Synced %s rows",
+                y,
+                s.sync_games(
+                    filters=[Game.game_id.like(f"{y}%")] if y else None,
+                    batch_size=kw.get("copy_batch_size"),
+                ),
+            ),
+            "🚀 Syncing game table only using specialized OCISync...",
+            True,
+            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
+            "✅ Game Table Sync Finished",
+        ),
+        "season_stats": (
+            _sync_season_stats,
+            "🚀 Syncing Season Stats using specialized OCISync...",
+            True,
+            lambda sess: get_available_years(sess, PlayerSeasonBatting, "season"),
+            "✅ Season Stats Sync Finished",
+        ),
+        "standings": (
+            lambda s, y, **kw: logger.info(
+                "   [%s] Synced %s rows",
+                y,
+                s.sync_standings(
+                    days=kw.get("days"),
+                    year=y,
+                    batch_size=kw.get("copy_batch_size"),
+                ),
+            ),
+            "🚀 Syncing Daily Standings using specialized OCISync...",
+            True,
+            lambda sess: get_available_years(sess, TeamStandingsDaily, "strftime('%Y', standings_date)"),
+            "✅ Daily Standings Sync Finished",
+        ),
+        "matchups": (
+            lambda s, y, **kw: s.sync_matchups(year=y, batch_size=kw.get("copy_batch_size")),
+            "🚀 Syncing Matchup Splits using specialized OCISync...",
+            True,
+            lambda sess: get_available_years(sess, BatterTeamSplit, "season_year"),
+            "✅ Matchup Splits Sync Finished",
+        ),
+        "rankings": (
+            lambda s, y, **kw: logger.info(
+                "   [%s] Synced %s rows",
+                y,
+                s.sync_stat_rankings(year=y, batch_size=kw.get("copy_batch_size")),
+            ),
+            "🚀 Syncing Stat Rankings using specialized OCISync...",
+            True,
+            lambda sess: get_available_years(sess, StatRanking, "season"),
+            "✅ Stat Rankings Sync Finished",
+        ),
+        "player_game_stats": (
+            _sync_player_game_stats,
+            "🚀 Syncing Player Game Stats...",
+            True,
+            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
+            "✅ Player Game Stats Sync Finished",
+        ),
     }
-    # fmt: on
 
 
 def _build_simple_flags() -> dict[str, tuple[str, str]]:
@@ -623,6 +682,7 @@ def _run_bulk_simple_flag(syncer: OCISync, args: argparse.Namespace, flag: str, 
 def _run_simple_flag(args: argparse.Namespace, flag: str, method_name: str, header_str: str) -> None:
     with SessionLocal() as session:
         syncer = OCISync(args.target_url, session)
+        syncer.concurrency = args.workers
         try:
             if _run_special_simple_flag(syncer, args, flag, header_str):
                 return
@@ -657,8 +717,7 @@ def _reset_sequences_if_requested(args: argparse.Namespace) -> None:
 
 
 def main(argv: Iterable[str] | None = None) -> None:
-    """
-    스크립트의 메인 실행 함수.
+    """스크립트의 메인 실행 함수.
 
     Args:
         argv: Argv.
@@ -691,7 +750,8 @@ def main(argv: Iterable[str] | None = None) -> None:
         oci_batting = oci_session.query(PlayerSeasonBatting).count()
         oci_pitching = oci_session.query(PlayerSeasonPitching).count()
         logger.info(
-            "📊 Data counts comparison:\n   Local batting: %s, OCI batting: %s\n   Local pitching: %s, OCI pitching: %s",
+            "📊 Data counts comparison:\n   Local batting: %s, OCI batting: %s\n"
+            "   Local pitching: %s, OCI pitching: %s",
             local_batting,
             oci_batting,
             local_pitching,
@@ -752,22 +812,23 @@ def _maybe_purge(syncer: OCISync, year: int | None, truncate: object) -> None:
 
 def _sync_season_stats(syncer: OCISync, year: int | None, **kw: object) -> object:
     _maybe_purge(syncer, year, kw.get("truncate"))
+    force = bool(kw.get("force"))
     logger.info("  - [%s] Syncing Player Batting stats...", year)
-    syncer.sync_player_season_batting(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    syncer.sync_player_season_batting(year=year, batch_size=kw.get("batch_size"), force=force)  # type: ignore[arg-type]
     logger.info("  - [%s] Syncing Player Pitching stats...", year)
-    syncer.sync_player_season_pitching(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    syncer.sync_player_season_pitching(year=year, batch_size=kw.get("batch_size"), force=force)  # type: ignore[arg-type]
     logger.info("  - [%s] Syncing Team Batting stats...", year)
-    syncer.sync_team_season_batting(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    syncer.sync_team_season_batting(year=year, batch_size=kw.get("batch_size"), force=force)  # type: ignore[arg-type]
     logger.info("  - [%s] Syncing Team Pitching stats...", year)
-    syncer.sync_team_season_pitching(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    syncer.sync_team_season_pitching(year=year, batch_size=kw.get("batch_size"), force=force)  # type: ignore[arg-type]
     logger.info("  - [%s] Syncing Fielding stats...", year)
-    syncer.sync_fielding_stats(year=year, batch_size=kw.get("copy_batch_size"))  # type: ignore[arg-type]
+    syncer.sync_fielding_stats(year=year, batch_size=kw.get("copy_batch_size"), force=force)  # type: ignore[arg-type]
     logger.info("  - [%s] Syncing Baserunning stats...", year)
-    syncer.sync_baserunning_stats(year=year, batch_size=kw.get("copy_batch_size"))  # type: ignore[arg-type]
+    syncer.sync_baserunning_stats(year=year, batch_size=kw.get("copy_batch_size"), force=force)  # type: ignore[arg-type]
     logger.info("  - [%s] Syncing Team Fielding stats...", year)
-    syncer.sync_team_season_fielding(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    syncer.sync_team_season_fielding(year=year, batch_size=kw.get("batch_size"), force=force)  # type: ignore[arg-type]
     logger.info("  - [%s] Syncing Team Baserunning stats...", year)
-    return syncer.sync_team_season_baserunning(year=year, batch_size=kw.get("batch_size"))  # type: ignore[arg-type]
+    return syncer.sync_team_season_baserunning(year=year, batch_size=kw.get("batch_size"), force=force)  # type: ignore[arg-type]
 
 
 def _sync_player_game_stats(syncer: OCISync, year: int | None, **kw: object) -> object:

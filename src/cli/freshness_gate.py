@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+FRESHNESS_ALERT_FAILURE_LIMIT = 20
 
 KBO_FRESHNESS_TEAM_CODES = {
     "DB",
@@ -223,8 +224,7 @@ def collect_freshness_issues(
     days: int | None = None,
     max_hours: int | None = None,
 ) -> dict[str, list[str]]:
-    """
-    Handle the collect freshness issues operation.
+    """Handle the collect freshness issues operation.
 
     Args:
         session: Session.
@@ -287,8 +287,7 @@ def evaluate_freshness_gate(
     days: int | None = None,
     max_hours: int | None = None,
 ) -> list[str]:
-    """
-    Handle the evaluate freshness gate operation.
+    """Handle the evaluate freshness gate operation.
 
     Args:
         session: Session.
@@ -313,15 +312,95 @@ def evaluate_freshness_gate(
 def _send_freshness_alert(failures: list[str]) -> None:
     header = "<b>\u2757 KBO Freshness Gate Failed</b>"
     body = "\n".join(f"\u2022 {f}" for f in failures[:20])
-    if len(failures) > 20:
-        body += f"\n... and {len(failures) - 20} more failures"
+    if len(failures) > FRESHNESS_ALERT_FAILURE_LIMIT:
+        body += f"\n... and {len(failures) - FRESHNESS_ALERT_FAILURE_LIMIT} more failures"
     message = f"{header}\n\n{body}"
     SlackWebhookClient.send_alert(message)
 
 
+def _log_sla_metrics(session: Session, issues: dict[str, list[str]]) -> None:
+    import zoneinfo
+    from datetime import date, time
+    from typing import Any, cast
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from src.models.game import GameMetadata
+    from src.models.sla_metrics import SlaMetrics
+
+    kst_tz = zoneinfo.ZoneInfo("Asia/Seoul")
+    now = datetime.now(kst_tz)
+
+    categories: dict[str, dict[str, Any]] = {
+        "game": {
+            "issues": [
+                "missing_scores",
+                "missing_starting_pitchers",
+                "missing_pitching_stats",
+                "missing_pitching_starters",
+            ],
+            "threshold": 3,
+        },
+        "relay": {
+            "issues": ["missing_events", "missing_lineups", "missing_inning_scores"],
+            "threshold": 1,
+        },
+        "analysis": {
+            "issues": ["missing_review_wpa", "missing_review_moments", "inning_score_mismatch"],
+            "threshold": 12,
+        },
+    }
+
+    for cat_name, cfg in categories.items():
+        threshold = cast("int", cfg["threshold"])
+        cfg_issues = cast("list[str]", cfg["issues"])
+        cat_game_ids = set()
+        for issue_key in cfg_issues:
+            cat_game_ids.update(issues.get(issue_key, []))
+
+        for game_id in cat_game_ids:
+            try:
+                game_date_str = game_id.split("_")[0]
+                game_year = int(game_date_str[:4])
+                game_month = int(game_date_str[4:6])
+                game_day = int(game_date_str[6:8])
+                end_time_val: Any = time(22, 0)
+
+                meta = session.query(GameMetadata).filter(GameMetadata.game_id == game_id).first()
+                if meta and meta.end_time:
+                    end_time_val = meta.end_time
+
+                end_time_kst = datetime.combine(
+                    date(game_year, game_month, game_day),
+                    end_time_val,
+                    tzinfo=kst_tz,
+                )
+                delay_hours = max(0.0, (now - end_time_kst).total_seconds() / 3600.0)
+            except (ValueError, TypeError, KeyError, AttributeError, SQLAlchemyError):
+                delay_hours = 0.0
+
+            is_violation = delay_hours > threshold
+
+            metric = SlaMetrics(
+                check_time=now,
+                category=cat_name,
+                sla_threshold_hours=threshold,
+                actual_delay_hours=round(delay_hours, 2),
+                is_violation=is_violation,
+                notes=f"Game {game_id} has issues: "
+                + ", ".join([k for k in cfg_issues if game_id in issues.get(k, [])]),
+            )
+            session.add(metric)
+
+    try:
+        session.commit()
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.warning("Failed to commit SLA metrics: %s", e)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
@@ -363,6 +442,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         with session_factory() as session:
             issues = collect_freshness_issues(session, target_date=args.date, days=args.days, max_hours=args.max_hours)
             failures = evaluate_freshness_gate(session, target_date=args.date, days=args.days, max_hours=args.max_hours)
+            _log_sla_metrics(session, issues)
     finally:
         if engine is not None:
             engine.dispose()

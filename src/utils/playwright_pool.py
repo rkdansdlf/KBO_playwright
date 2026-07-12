@@ -36,8 +36,7 @@ class AsyncPlaywrightPool:
     """AsyncPlaywrightPool class."""
 
     def __init__(self, options: AsyncPlaywrightPoolOptions | None = None, **overrides: object) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             options: Options.
@@ -78,8 +77,7 @@ class AsyncPlaywrightPool:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        """
-        Exit the async runtime context.
+        """Exit the async runtime context.
 
         Args:
             exc_type: Exc Type.
@@ -150,8 +148,7 @@ class AsyncPlaywrightPool:
 
     @staticmethod
     def _stealth_script() -> str:
-        """
-        Handle the stealth script operation.
+        """Handle the stealth script operation.
 
         Returns:
             String result.
@@ -196,8 +193,7 @@ class AsyncPlaywrightPool:
             await self._queue.put(page)
 
     async def acquire(self) -> Page:
-        """
-        Handle the acquire operation.
+        """Handle the acquire operation.
 
         Returns:
             Page instance.
@@ -211,8 +207,7 @@ class AsyncPlaywrightPool:
         return await self._queue.get()
 
     async def release(self, page: Page) -> None:
-        """
-        Handle the release operation.
+        """Handle the release operation.
 
         Args:
             page: Page.
@@ -231,8 +226,7 @@ class AsyncPlaywrightPool:
 
     @asynccontextmanager  # type: ignore[arg-type]
     async def page(self) -> Page:  # type: ignore[misc]
-        """
-        Handle the page operation.
+        """Handle the page operation.
 
         Returns:
             Page instance.

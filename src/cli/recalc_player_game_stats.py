@@ -1,5 +1,4 @@
-"""
-CLI tool to recalculate player-game-level stats from game-level (transactional) data.
+"""CLI tool to recalculate player-game-level stats from game-level (transactional) data.
 
 Aggregate GameBattingStat -> PlayerGameBatting
 Aggregates GamePitchingStat -> PlayerGamePitching.
@@ -85,8 +84,7 @@ def _print_pitching_records(records: list[dict[str, object]]) -> None:
 
 
 def recalc_for_game(session: Session, game_id: str, *, dry_run: bool = False) -> dict[str, int]:
-    """
-    Recalculate for game.
+    """Recalculate for game.
 
     Args:
         session: Session.
@@ -118,8 +116,7 @@ def recalc_for_game(session: Session, game_id: str, *, dry_run: bool = False) ->
 
 
 def recalc_for_games_batch(session: Session, game_ids: list[str], *, dry_run: bool = False) -> dict[str, int]:
-    """
-    Batch recalc: single query per side, single commit for all games.
+    """Batch recalc: single query per side, single commit for all games.
 
     Args:
         session: Session.
@@ -150,8 +147,7 @@ def run_recalc(
     dry_run: bool = False,
     include_futures: bool = False,
 ) -> int:
-    """
-    Run run recalc.
+    """Run run recalc.
 
     Args:
         game_id: Game ID.
@@ -234,8 +230,7 @@ def run_recalc(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

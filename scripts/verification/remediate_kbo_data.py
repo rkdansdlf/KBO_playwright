@@ -173,13 +173,15 @@ async def main():
             detail_crawler = GameDetailCrawler(request_delay=args.delay, resolver=resolver)
 
             logger.info(f"🚀 Starting remediation crawl for {args.game_id}...")
+            config = GameCollectionConfig()
+            config.force = True
+            config.pause_every = 10
+            config.pause_seconds = 2.0
+            config.log = print
             result = await crawl_and_save_game_details(
                 targets,
                 detail_crawler=detail_crawler,
-                force=True,
-                pause_every=10,
-                pause_seconds=2.0,
-                log=print,
+                config=config,
             )
             logger.info(f"\n🎉 Remediation completed: Saved={result.detail_saved} Failed={result.detail_failed}")
         return

@@ -578,11 +578,11 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage**: 76.84% (fail_under=70).
 - **pytest**: 8,006 passed.
 
-### Current Verification Baseline (2026-07-08)
+### Current Verification Baseline (2026-07-10)
 
 - `ruff check src/ tests/ scripts/` = 0 errors (expanded rules, 0 warnings).
 - `ruff format --check .` = clean.
-- `python -m pytest --tb=line -q --no-header` = **8,709 passed**, 0 failed, 25 skipped, 263 deselected, 1 xfailed; 42.83s.
+- `python -m pytest --tb=line -q --no-header` = **8,880 passed**, 0 failed, 26 skipped, 263 deselected, 1 xfailed; 103.52s.
 - Targeted coverage/branch expansion tests: `tests/test_data_quality_regression_pack_core.py`, `tests/sync/test_sync_misc_coverage.py`, `tests/services/test_relay_recovery_ext.py`, `tests/test_crawler_selector_gate_core.py`, `tests/test_failure_diagnosis.py` pass.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = **76-77%** in recent full runs (fail_under=70, exceeded target 75%).
@@ -644,3 +644,20 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **ASYNC cleanup**: Converted blocking `httpx.Client` usage in async crawlers to `httpx.AsyncClient`, replaced blocking subprocess calls with `asyncio.create_subprocess_exec`, and moved blocking Path/file snapshot operations behind `asyncio.to_thread`. Remaining ASYNC ignores are compatibility-sensitive `timeout` parameter names.
 - **PLR0913 assessment**: Confirmed 20 remaining violations are real public/crawler/CLI API signatures requiring options-object/dataclass refactors; left unchanged.
 - **Verification**: `ruff check src/ tests/ scripts/` passes; `ruff check --select RUF001,F821,T201 src/ --config 'lint.per-file-ignores={}'` passes; `ruff check --select ASYNC src/` passes; targeted tests (`248 passed`, plus async crawler/compliance/periodic tests `39 passed, 1 xfailed`) pass; unit pytest passes with `8745 passed, 26 skipped, 263 deselected, 1 xfailed`.
+
+### Phase 57 Complete (2026-07-09) — PLR0913 + remaining src per-file-ignore cleanup
+
+- **PLR0913 cleanup**: Removed all `src/` file-level PLR0913 ignores by narrowing the 20 compatibility-sensitive public/crawler/CLI/repository signatures to function-level `noqa` annotations. This preserves existing keyword-call contracts while eliminating broad file suppressions.
+- **Small-rule cleanup**: Removed `src/` file-level ignores for `PLW0603`, `PLW0127`, `FBT003`, `N806`, `A002`, `TC001/TC002/TC003`, `SLF001`, `FURB171`, `ARG001`, and `ARG002` by combining safe code changes with line-level compatibility suppressions.
+- **RUF012 cleanup**: Marked mutable class constants as `ClassVar` across Naver/event crawlers, ticket crawler, player repository, relay circuit breaker, and runtime hydrator; removed all `src/` RUF012 ignores.
+- **TRY cleanup**: Refactored the remaining `TRY300`/`TRY301` cases in `smart_polling_gate.py` and `live_crawler.py`; removed all `src/` TRY300/TRY301 file-level ignores.
+- **Remaining `src/` per-file ignores**: Only compatibility-sensitive `ASYNC109` timeout parameter names, `ANN401` in `sync_base.py`, and intentional lazy-import `PLC0415` entries remain.
+- **Verification**: `ruff check src/ tests/ scripts/` passes; selected-rule no-ignore check for PLR0913/A/B/C cleanup passes; `ruff format --check src/ scripts/` passes; targeted tests (`364 passed, 1 deselected, 1 xfailed`) pass; unit pytest passes with `8843 passed, 26 skipped, 263 deselected, 1 xfailed`.
+
+### Phase 58 Complete (2026-07-10) — Coverage expansion + relay/sync stabilization
+
+- **Coverage expansion**: Added pure/mock coverage for `team_stats_helpers.py` and `matchup_engine.py`; targeted `matchup_engine.py` coverage reached 81.93%.
+- **Ruff expansion**: Added verified low-risk rules including `AIR`, `FAST`, `DJ`, `Q`, `COM819`, `EM102`, `EM103`, `TRY203`, `TC005`, `TC007`, `TC010`, `S105`, `S106`, `S308`, `S702`, and `S704`.
+- **Relay recovery stabilization**: `recover_relay_data` now treats missing `game_validation_metrics` as optional for payload-hash lookup, preventing recovery from failing on lean test/runtime schemas.
+- **Sync test stabilization**: `sync_simple_table` batching tests now pin test syncers to the sequential path, keeping the test focused on batch splitting rather than concurrent COPY behavior.
+- **Verification**: `ruff check src/ tests/ scripts/` passes; `ruff format --check` passes on touched files; targeted relay/sync suite passes (`145 passed`); full unit pytest passes with `8880 passed, 26 skipped, 263 deselected, 1 xfailed`.

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_
 
+from src.constants import KBO_QUALITY_AUDIT_START_YEAR
 from src.models.game import Game
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
@@ -29,8 +30,7 @@ STANDINGS_FIELDS = (
 
 
 def validate_standings_integrity(session: Session, target_date: date) -> dict[str, Any]:
-    """
-    Compare one daily standings snapshot with an independent game-result rollup.
+    """Compare one daily standings snapshot with an independent game-result rollup.
 
     Args:
         session: Session.
@@ -43,7 +43,7 @@ def validate_standings_integrity(session: Session, target_date: date) -> dict[st
 
     # so old snapshots contain multi-season accumulated data for the same team_code
     # (e.g. SK games from 2000 and SK games from 2020 merge under one row).
-    if target_date.year < 2020:
+    if target_date.year < KBO_QUALITY_AUDIT_START_YEAR:
         return {
             "ok": True,
             "checked_date": target_date.isoformat(),

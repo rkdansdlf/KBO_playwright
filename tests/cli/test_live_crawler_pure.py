@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.cli.live_crawler import (
     GameActivityState,
+    _apply_dynamic_delay_scaling,
     _compute_base_dynamic_interval,
     _compute_enriched_interval,
     _empty_live_result,
@@ -177,6 +178,34 @@ class TestEmptyLiveResult:
     def test_all_finished_false(self) -> None:
         result = _empty_live_result(all_finished=False)
         assert result["all_finished"] is False
+
+
+class TestApplyDynamicDelayScaling:
+    def test_no_candidates_leaves_policy_unchanged(self) -> None:
+        relay_crawler = MagicMock()
+        relay_crawler.policy.min_delay = 1.0
+        relay_crawler.policy.max_delay = 2.0
+
+        _apply_dynamic_delay_scaling(relay_crawler, [])
+
+        assert relay_crawler.policy.min_delay == 1.0
+        assert relay_crawler.policy.max_delay == 2.0
+
+    def test_scales_policy_by_active_game_count(self) -> None:
+        relay_crawler = MagicMock()
+        relay_crawler.policy.min_delay = 1.0
+        relay_crawler.policy.max_delay = 2.0
+
+        _apply_dynamic_delay_scaling(relay_crawler, [({"game_id": "G1"}, None, None), ({"game_id": "G2"}, None, None)])
+
+        assert relay_crawler.policy.min_delay == 1.5
+        assert relay_crawler.policy.max_delay == 3.0
+
+    def test_missing_policy_is_allowed(self) -> None:
+        relay_crawler = MagicMock()
+        relay_crawler.policy = None
+
+        _apply_dynamic_delay_scaling(relay_crawler, [({"game_id": "G1"}, None, None)])
 
 
 class TestResolveLiveLifecycle:

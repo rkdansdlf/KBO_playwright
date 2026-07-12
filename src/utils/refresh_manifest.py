@@ -17,8 +17,7 @@ def infer_topics(
     datasets: Sequence[str] | None = None,
     derived_refresh: Sequence[str] | None = None,
 ) -> list[str]:
-    """
-    Handle the infer topics operation.
+    """Handle the infer topics operation.
 
     Args:
         datasets: Datasets.
@@ -67,8 +66,7 @@ class RefreshManifestSpec:
 
 
 def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: object) -> Path:
-    """
-    Write refresh manifest.
+    """Write refresh manifest.
 
     Args:
         spec: Spec.

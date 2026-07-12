@@ -1,5 +1,4 @@
-"""
-Unified data gap reporter for KBO pipeline.
+"""Unified data gap reporter for KBO pipeline.
 
 Aggregate gap checks from multiple existing monitors into a single
 structured report, then sends gap-type-aware alerts via Slack/Telegram.
@@ -24,6 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.freshness_gate import collect_freshness_issues
 from src.cli.monitor_data_freshness import check_freshness
+from src.constants import MIN_KBO_PLAYER_ID
 from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
 from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
@@ -66,7 +66,7 @@ def check_profile_gaps() -> dict[str, Any]:
             session.query(PlayerBasic.player_id)
             .filter(
                 PlayerBasic.photo_url.is_(None),
-                PlayerBasic.player_id >= 10000,
+                PlayerBasic.player_id >= MIN_KBO_PLAYER_ID,
                 or_(PlayerBasic.status.is_(None), ~PlayerBasic.status.in_(["NOT_FOUND", "PSEUDO"])),
             )
             .all()
@@ -319,7 +319,10 @@ _GAP_SUMMARY_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "PROFILE": lambda d: [f"{d.get('missing_count', 0)} players missing profiles"],
     "PA_FORMULA": lambda d: [f"{d.get('violation_count', 0)} PA formula violations"],
     "ID_RESOLUTION": lambda d: [
-        f"{d.get('total', 0)} NULL player_ids (batting={d.get('counts', {}).get('batting')}, pitching={d.get('counts', {}).get('pitching')}, lineups={d.get('counts', {}).get('lineups')})",
+        f"{d.get('total', 0)} NULL player_ids "
+        f"(batting={d.get('counts', {}).get('batting')}, "
+        f"pitching={d.get('counts', {}).get('pitching')}, "
+        f"lineups={d.get('counts', {}).get('lineups')})",
     ],
 }
 
@@ -369,8 +372,7 @@ def _gap_detail_items(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
 
 
 def send_gap_alerts(report: dict[str, Any]) -> None:
-    """
-    Send gap-type-aware alerts for each non-ok gap in the report.
+    """Send gap-type-aware alerts for each non-ok gap in the report.
 
     Args:
         report: Report.
@@ -388,8 +390,7 @@ def send_gap_alerts(report: dict[str, Any]) -> None:
 
 
 def format_report_summary(report: dict[str, Any]) -> str:
-    """
-    Return a human-readable one-line summary of all gap states.
+    """Return a human-readable one-line summary of all gap states.
 
     Args:
         report: Report.
@@ -406,8 +407,7 @@ def format_report_summary(report: dict[str, Any]) -> str:
 
 
 def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
-    """
-    Build and optionally alert the unified gap report.
+    """Build and optionally alert the unified gap report.
 
     Args:
         alert: Alert.
@@ -445,8 +445,7 @@ def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, An
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -460,8 +459,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

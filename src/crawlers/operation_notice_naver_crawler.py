@@ -1,5 +1,4 @@
-"""
-Naver Search-based operation notice crawler.
+"""Naver Search-based operation notice crawler.
 
 Supplements the LG/Doosan website crawlers by querying Naver News API
 for real-time game-day notices and urgent announcements.
@@ -35,6 +34,7 @@ logger = logging.getLogger(__name__)
 STADIUM_CODE = "JAMSIL"
 SOURCE_NAME = "naver_search"
 NAVER_NOTICE_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
+NOTICE_LOG_PREVIEW_LIMIT = 5
 
 TEAM_SOURCE_MAP = {
     "LG": "naver_search_LG",
@@ -45,8 +45,7 @@ TEAM_SOURCE_MAP = {
 
 
 def _infer_game_date(result: NaverSearchResult) -> date | None:
-    """
-    Infer game date from publication date (assume same-day notice).
+    """Infer game date from publication date (assume same-day notice).
 
     Args:
         result: Result.
@@ -79,8 +78,7 @@ def _result_to_notice(result: NaverSearchResult) -> dict[str, Any]:
 
 
 class OperationNoticeNaverCrawler:
-    """
-    Naver News for KBO game-day operation notices.
+    """Naver News for KBO game-day operation notices.
 
     Complements official team website crawlers with real-time news coverage.
     Results are tagged is_confirmed=False to distinguish from official notices.
@@ -88,8 +86,7 @@ class OperationNoticeNaverCrawler:
     """
 
     def __init__(self, days_back: int = 3) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             days_back: Days Back.
@@ -100,8 +97,7 @@ class OperationNoticeNaverCrawler:
         self.client = NaverSearchClient()
 
     async def run(self, *, save: bool = False) -> list[dict]:
-        """
-        Run run.
+        """Run run.
 
         Args:
             save: Whether to persist the results.
@@ -125,7 +121,7 @@ class OperationNoticeNaverCrawler:
         if save:
             self._save_to_db(notices)
         else:
-            for n in notices[:5]:
+            for n in notices[:NOTICE_LOG_PREVIEW_LIMIT]:
                 logger.info(
                     "  [%s] %s | urgent=%s | %s",
                     n["notice_type"],
@@ -133,8 +129,8 @@ class OperationNoticeNaverCrawler:
                     n["is_urgent"],
                     n["published_at"],
                 )
-            if len(notices) > 5:
-                logger.info("  ... and %s more", len(notices) - 5)
+            if len(notices) > NOTICE_LOG_PREVIEW_LIMIT:
+                logger.info("  ... and %s more", len(notices) - NOTICE_LOG_PREVIEW_LIMIT)
 
         return notices
 

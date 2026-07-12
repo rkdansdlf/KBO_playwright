@@ -51,8 +51,7 @@ class DynamicDataCrawler:
     """Manages daily crawls of schedules, ticket open times, and roster entries."""
 
     def __init__(self, db_session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             db_session: Db Session.
@@ -63,8 +62,7 @@ class DynamicDataCrawler:
         self.roster_crawler = DailyRosterCrawler()
 
     async def crawl_roster_changes(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
-        """
-        Crawl daily 1st team registration changes using the existing DailyRosterCrawler.
+        """Crawl daily 1st team registration changes using the existing DailyRosterCrawler.
 
         Args:
             start_date: Start Date.
@@ -83,8 +81,7 @@ class DynamicDataCrawler:
             return records
 
     def crawl_and_update_ticket_times(self, lookahead_days: int = 14) -> list[TicketSchedule]:
-        """
-        Calculate upcoming game ticketing open times based on KBO team rules.
+        """Calculate upcoming game ticketing open times based on KBO team rules.
 
         and saves them to the ticket_schedules table.
 

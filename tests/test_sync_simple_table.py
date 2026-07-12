@@ -36,6 +36,7 @@ def _build_syncer(session):
     syncer.sqlite_session = session
     syncer.oci_engine = None
     syncer.target_session = None
+    syncer.concurrency = 1  # Force sequential path: concurrent path requires a real OCI engine
     return syncer
 
 

@@ -20,16 +20,14 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 
 
 class StaticTextCrawler:
-    """
-    crawl and extracts static text (rules, history, terminology).
+    """crawl and extracts static text (rules, history, terminology).
 
     from local/remote PDFs and wikis.
 
     """
 
     def __init__(self, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             pool: Connection pool for async operations.
@@ -41,8 +39,7 @@ class StaticTextCrawler:
         self._raw_pages: list[dict] = []
 
     def parse_local_pdf(self, pdf_path: str) -> list[dict[str, Any]]:
-        """
-        Parse a local PDF rulebook using pypdf and extracts text by page.
+        """Parse a local PDF rulebook using pypdf and extracts text by page.
 
         Args:
             pdf_path: Pdf file path.
@@ -83,8 +80,7 @@ class StaticTextCrawler:
         return chunks
 
     async def crawl_namuwiki(self, url: str, *, save: bool = False) -> dict[str, Any]:
-        """
-        Crawl a Namuwiki page using Playwright to bypass Cloudflare protection.
+        """Crawl a Namuwiki page using Playwright to bypass Cloudflare protection.
 
         and extracts cleaned main content with BeautifulSoup.
 

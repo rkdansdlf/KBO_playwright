@@ -1,5 +1,4 @@
-"""
-Morning PBP (Play-by-Play) Report CLI.
+"""Morning PBP (Play-by-Play) Report CLI.
 
 Send a daily Telegram notification summarizing PBP collection failures,
 recovery results, and validation status from the most recent daily summary
@@ -30,13 +29,13 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+REPORT_GAME_SAMPLE_LIMIT = 10
 
 DAILY_SUMMARY_DIR = Path(__file__).resolve().parents[2] / "logs" / "daily_update_summary"
 
 
 def _find_latest_summary(target_date: str | None = None) -> tuple[str, dict[str, Any]] | None:
-    """
-    Find the daily summary JSON for the given date (default: yesterday in KST).
+    """Find the daily summary JSON for the given date (default: yesterday in KST).
 
     Args:
         target_date: Target date for the operation.
@@ -106,8 +105,8 @@ def _append_relay_section(lines: list[str], relay_data: dict[str, Any], relay_fa
     if relay_failures:
         lines.append(f"❌ <b>Failed Relay</b>: {len(relay_failures)} games")
         lines.extend(f"   - {game_id}" for game_id in relay_failures[:10])
-        if len(relay_failures) > 10:
-            lines.append(f"   ... and {len(relay_failures) - 10} more")
+        if len(relay_failures) > REPORT_GAME_SAMPLE_LIMIT:
+            lines.append(f"   ... and {len(relay_failures) - REPORT_GAME_SAMPLE_LIMIT} more")
     else:
         lines.append("✅ <b>Relay</b>: All targets recovered")
 
@@ -150,8 +149,8 @@ def _append_affected_games(lines: list[str], affected: list[str]) -> None:
     if affected:
         lines.append(f"\n📋 <b>Affected Games</b>: {len(affected)} total")
         lines.extend(f"   - {game_id}" for game_id in affected[:10])
-        if len(affected) > 10:
-            lines.append(f"   ... and {len(affected) - 10} more")
+        if len(affected) > REPORT_GAME_SAMPLE_LIMIT:
+            lines.append(f"   ... and {len(affected) - REPORT_GAME_SAMPLE_LIMIT} more")
 
 
 def _build_telegram_message(
@@ -161,8 +160,7 @@ def _build_telegram_message(
     *,
     dry_run: bool,
 ) -> str:
-    """
-    Format a Telegram HTML message from the daily summary and validation data.
+    """Format a Telegram HTML message from the daily summary and validation data.
 
     Args:
         target_date: Target date for the operation.
@@ -193,8 +191,7 @@ def _build_telegram_message(
 
 
 def _read_pbp_report_csv(target_date: str) -> list[dict[str, str]]:
-    """
-    Read the per-game PBP attempt CSV if available.
+    """Read the per-game PBP attempt CSV if available.
 
     Args:
         target_date: Target date for the operation.
@@ -219,8 +216,7 @@ def run_morning_report(
     *,
     dry_run: bool = False,
 ) -> bool:
-    """
-    Execute the morning PBP report.
+    """Execute the morning PBP report.
 
     Return True if a notification was sent (or would be sent in dry-run).
 
@@ -260,8 +256,7 @@ def run_morning_report(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

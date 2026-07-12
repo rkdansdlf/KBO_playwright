@@ -6,7 +6,7 @@ import argparse
 import logging
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -22,10 +22,10 @@ logger = logging.getLogger(__name__)
 class ManagerChangeCrawler(NaverNewsCrawlerBase):
     """ManagerChangeCrawler class."""
 
-    KEYWORDS = ["감독", "선임", "경질", "사임", "대행", "사퇴"]
+    KEYWORDS: ClassVar[list[str]] = ["감독", "선임", "경질", "사임", "대행", "사퇴"]
     LABEL = "manager change"
 
-    EXCLUDE_MANAGER_NAMES: set[str] = {
+    EXCLUDE_MANAGER_NAMES: ClassVar[set[str]] = {
         "타이거즈",
         "자이언츠",
         "베어스",

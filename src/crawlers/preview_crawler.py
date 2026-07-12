@@ -1,5 +1,4 @@
-"""
-KBO Preview Crawler.
+"""KBO Preview Crawler.
 
 Fetch Pre-game information (Starting Pitchers, Lineups) for LLM context generation.
 
@@ -12,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 from playwright.async_api import Error as PlaywrightError
@@ -29,6 +28,9 @@ HTTP_API_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError)
 PLAYWRIGHT_API_EXCEPTIONS = (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError, TypeError, OSError)
 LINEUP_PARSE_EXCEPTIONS = (json.JSONDecodeError, TypeError, ValueError, KeyError, IndexError)
 PREVIEW_CRAWL_EXCEPTIONS = (*HTTP_API_EXCEPTIONS, *PLAYWRIGHT_API_EXCEPTIONS)
+HOME_LINEUP_ROW_INDEX = 3
+AWAY_LINEUP_ROW_INDEX = 4
+MIN_LINEUP_GRID_CELLS = 3
 
 
 class PreviewCrawler:
@@ -37,7 +39,7 @@ class PreviewCrawler:
     GAME_LIST_URL = "https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList"
     LINEUP_URL = "https://www.koreabaseball.com/ws/Schedule.asmx/GetLineUpAnalysis"
     BASE_REFERER = "https://www.koreabaseball.com/"
-    BASE_HEADERS = {
+    BASE_HEADERS: ClassVar[dict[str, str]] = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -47,8 +49,7 @@ class PreviewCrawler:
     }
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -62,8 +63,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _coerce_api_payload(payload: object) -> object | None:
-        """
-        Normalize API payloads from ASP.NET/JSON wrappers to a Python object.
+        """Normalize API payloads from ASP.NET/JSON wrappers to a Python object.
 
         Args:
             payload: Payload.
@@ -86,8 +86,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _extract_list_payload(payload: object) -> list[object]:
-        """
-        Get list-like payload from various KBO API shapes.
+        """Get list-like payload from various KBO API shapes.
 
         Args:
             payload: Payload.
@@ -109,8 +108,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _clean_text(value: object) -> str:
-        """
-        Return a stripped string for nullable KBO API fields.
+        """Return a stripped string for nullable KBO API fields.
 
         Args:
             value: Value.
@@ -122,8 +120,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _to_flag(value: object) -> bool:
-        """
-        Interpret API flags (0/1/numeric/string) as bool.
+        """Interpret API flags (0/1/numeric/string) as bool.
 
         Args:
             value: Value.
@@ -154,8 +151,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _extract_starter_name(game: dict[str, Any], side: str) -> str:
-        """
-        Extract announced starter names from KBO game-list variants.
+        """Extract announced starter names from KBO game-list variants.
 
         Args:
             game: Game.
@@ -189,8 +185,7 @@ class PreviewCrawler:
     @staticmethod
     @staticmethod
     def _extract_starter_id(game: dict[str, Any], side: str) -> object | None:
-        """
-        Resolve the starter ID for the requested side using multiple key variants.
+        """Resolve the starter ID for the requested side using multiple key variants.
 
         Args:
             game: Game.
@@ -223,8 +218,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _extract_lineup_announced(lineup_rows: list[Any], *, fallback: bool) -> bool:
-        """
-        Read LINEUP_CK from GetLineUpAnalysis when present.
+        """Read LINEUP_CK from GetLineUpAnalysis when present.
 
         Args:
             lineup_rows: Lineup Rows.
@@ -242,8 +236,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _extract_embedded_game_ids(payload: object) -> set[str]:
-        """
-        Collect normalized G_ID values embedded in lineup analysis payloads.
+        """Collect normalized G_ID values embedded in lineup analysis payloads.
 
         Args:
             payload: Payload.
@@ -265,8 +258,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _lineup_rows_match_game(lineup_rows: list[Any], game_id: str) -> bool:
-        """
-        Return False when KBO returns stale lineup rows for a different game.
+        """Return False when KBO returns stale lineup rows for a different game.
 
         Args:
             lineup_rows: Lineup Rows.
@@ -287,8 +279,7 @@ class PreviewCrawler:
         referer: str,
         page: Page | None = None,
     ) -> dict[str, object] | list[object] | None:
-        """
-        Try direct HTTP first (fast/fewer dependencies), then fallback to Playwright.
+        """Try direct HTTP first (fast/fewer dependencies), then fallback to Playwright.
 
         request when a page is available.
 
@@ -343,8 +334,7 @@ class PreviewCrawler:
         return None
 
     async def crawl_preview_for_date(self, game_date: str) -> list[dict[str, Any]]:
-        """
-        주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해.
+        """주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해.
 
         선발투수와 선발 라인업(발표되었을 경우) 정보를 수집합니다.
 
@@ -518,10 +508,10 @@ class PreviewCrawler:
             return
         if not preview_data["lineup_announced"]:
             return
-        if len(lineup_rows) > 3:
-            preview_data["home_lineup"] = PreviewCrawler._parse_lineup_grid(lineup_rows[3])
-        if len(lineup_rows) > 4:
-            preview_data["away_lineup"] = PreviewCrawler._parse_lineup_grid(lineup_rows[4])
+        if len(lineup_rows) > HOME_LINEUP_ROW_INDEX:
+            preview_data["home_lineup"] = PreviewCrawler._parse_lineup_grid(lineup_rows[HOME_LINEUP_ROW_INDEX])
+        if len(lineup_rows) > AWAY_LINEUP_ROW_INDEX:
+            preview_data["away_lineup"] = PreviewCrawler._parse_lineup_grid(lineup_rows[AWAY_LINEUP_ROW_INDEX])
 
     @staticmethod
     def _log_preview_result(preview_data: dict[str, Any]) -> None:
@@ -536,8 +526,7 @@ class PreviewCrawler:
 
     @staticmethod
     def _parse_lineup_grid(grid_str_list: list[Any]) -> list[dict[str, Any]]:
-        """
-        Parse the nested KBO Lineup grid JSON string into a structured list.
+        """Parse the nested KBO Lineup grid JSON string into a structured list.
 
         Args:
             grid_str_list: Grid Str List.
@@ -553,7 +542,7 @@ class PreviewCrawler:
             rows = grid_data.get("rows", [])
             for row in rows:
                 cells = row.get("row", [])
-                if len(cells) >= 3:
+                if len(cells) >= MIN_LINEUP_GRID_CELLS:
                     order = str(cells[0].get("Text", "")).strip()
                     pos = str(cells[1].get("Text", "")).strip()
                     name = str(cells[2].get("Text", "")).strip()

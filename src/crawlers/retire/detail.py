@@ -24,8 +24,7 @@ class RetiredPlayerDetailCrawler:
     pitcher_url = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -64,8 +63,7 @@ class RetiredPlayerDetailCrawler:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
     async def fetch_player(self, player_id: str, retries: int = 2) -> dict[str, Any]:
-        """
-        Fetch hitter & pitcher pages for the given player ID.
+        """Fetch hitter & pitcher pages for the given player ID.
 
         Args:
             player_id: Player ID.

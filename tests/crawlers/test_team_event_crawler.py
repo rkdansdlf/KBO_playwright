@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest import mark
+import httpx
 
 from src.crawlers.team_event_crawler import TEAM_NEWS_SOURCES, TeamEventCrawler
 
@@ -70,7 +71,7 @@ class TestCrawlTeam:
     @mark.asyncio
     async def test_handles_http_error_gracefully(self, crawler):
         mock_client = AsyncMock()
-        mock_client.get.side_effect = Exception("timeout")
+        mock_client.get.side_effect = httpx.HTTPError("timeout")
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__ = AsyncMock()
 
@@ -83,6 +84,23 @@ class TestCrawlTeam:
             result = await crawler._crawl_team("LG", config)
 
         assert result == []
+
+    @mark.asyncio
+    async def test_stops_after_non_ok_response(self, crawler):
+        mock_client = AsyncMock()
+        mock_client.get.return_value = MagicMock(status_code=503)
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__ = AsyncMock()
+        config = {"url": "https://lg.com/page={page}", "link_prefix": "https://lg.com"}
+
+        with (
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch("src.crawlers.team_event_crawler.throttle.wait", AsyncMock()),
+        ):
+            result = await crawler._crawl_team("LG", config)
+
+        assert result == []
+        mock_client.get.assert_awaited_once_with("https://lg.com/page=1")
 
 
 class TestRun:
@@ -127,3 +145,15 @@ class TestSaveToDb:
             mock_repo.save.assert_called_once()
             mock_session.commit.assert_called_once()
             assert crawler._raw_pages == []
+
+    def test_rolls_back_on_snapshot_save_error(self, crawler):
+        with (
+            patch("src.crawlers.team_event_crawler.SessionLocal") as mock_sl,
+            patch("src.crawlers.team_event_crawler.save_raw_snapshots", side_effect=RuntimeError("db unavailable")),
+        ):
+            mock_session = MagicMock()
+            mock_sl.return_value.__enter__.return_value = mock_session
+            crawler._save_to_db([{"title": "Event"}])
+
+        mock_session.rollback.assert_called_once()
+        assert crawler._raw_pages == []

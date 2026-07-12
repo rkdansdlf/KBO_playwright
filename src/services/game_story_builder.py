@@ -17,6 +17,11 @@ STORY_SCHEMA_VERSION = "game_story.v1"
 STORY_TIMELINE_LIMIT = 8
 STORY_MIN_TIMELINE_EVENTS = 5
 STORY_SUMMARY_TYPE = "경기_스토리"
+LATE_INNING_START = 7
+WALK_OFF_INNING_START = 9
+CRITICAL_ERROR_WPA_THRESHOLD = 0.20
+LATE_HIGH_WPA_THRESHOLD = 0.15
+HIGH_WPA_THRESHOLD = 0.25
 
 _TAG_ORDER = (
     "walk_off",
@@ -63,8 +68,7 @@ class GameStoryBuilder:
     """Derive a compact, structured game story from stored play-by-play events."""
 
     def build(self, game: Game, events: Iterable[GameEvent]) -> dict[str, Any]:
-        """
-        Build build.
+        """Build build.
 
         Args:
             game: Game.
@@ -238,7 +242,11 @@ class GameStoryBuilder:
     def _is_critical_error(self, event: GameEvent, description: str, result_code: str, runs_scored: int) -> bool:
         if "실책" not in description and result_code not in {"E", "ROE"}:
             return False
-        return bool(runs_scored > 0 or abs(float(event.wpa or 0.0)) >= 0.2 or (event.inning or 0) >= 7)
+        return bool(
+            runs_scored > 0
+            or abs(float(event.wpa or 0.0)) >= CRITICAL_ERROR_WPA_THRESHOLD
+            or (event.inning or 0) >= LATE_INNING_START
+        )
 
     def _score_diff_tags(self, score_diff_before: int | None, score_diff_after: int | None) -> set[str]:
         if score_diff_before is None or score_diff_after is None:
@@ -253,9 +261,9 @@ class GameStoryBuilder:
 
     def _wpa_tags(self, event: GameEvent, abs_wpa: float) -> set[str]:
         tags = set()
-        if (event.inning or 0) >= 7 and abs_wpa >= 0.15:
+        if (event.inning or 0) >= LATE_INNING_START and abs_wpa >= LATE_HIGH_WPA_THRESHOLD:
             tags.add("late_high_wpa")
-        if abs_wpa >= 0.25:
+        if abs_wpa >= HIGH_WPA_THRESHOLD:
             tags.add("high_wpa")
         return tags
 
@@ -269,7 +277,7 @@ class GameStoryBuilder:
     ) -> bool:
         return bool(
             inning_half == "bottom"
-            and (event.inning or 0) >= 9
+            and (event.inning or 0) >= WALK_OFF_INNING_START
             and score_diff_before is not None
             and score_diff_after is not None
             and score_diff_before <= 0

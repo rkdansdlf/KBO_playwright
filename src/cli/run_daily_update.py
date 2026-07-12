@@ -1,5 +1,4 @@
-"""
-KBO Daily Data Update Orchestrator.
+"""KBO Daily Data Update Orchestrator.
 
 This entrypoint is the postgame finalize + daily reconciliation job.
 
@@ -30,6 +29,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from scripts.maintenance.audit_game_status_integrity import audit_game_status
 from scripts.maintenance.quality_gate import run_quality_gate as run_legacy_quality_gate
 from src.cli.auto_healer import run_healer_async
+from src.constants import DATE_STR_LEN
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.player_batting_all_series_crawler import crawl_series_batting_stats
@@ -132,6 +132,9 @@ logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DAILY_SUMMARY_DIR = PROJECT_ROOT / "logs" / "daily_update_summary"
+FAILURE_SAMPLE_LIMIT = 5
+TELEGRAM_FAILURE_TEXT_MAX_LENGTH = 2900
+TELEGRAM_FAILURE_TEXT_PREFIX_LENGTH = 2800
 OCI_SKIP_KEYS = (
     "skipped_schedule_only",
     "skipped_incomplete_detail",
@@ -326,8 +329,7 @@ def _write_daily_update_summary(
 
 
 def format_stability_alert_summary(result: object) -> str | None:
-    """
-    Format stability summary.
+    """Format stability summary.
 
     Args:
         result: Result.
@@ -384,7 +386,7 @@ def _failure_status(target_date: str, failure_reason: str | None, today: date) -
 def _run_python_step(argv: Sequence[str]) -> None:
     import subprocess
 
-    subprocess.run([sys.executable, *argv], check=True)  # noqa: S603 - internal Python module step argv.
+    subprocess.run([sys.executable, *argv], check=True)
 
 
 def _run_game_status_integrity_audit() -> None:
@@ -394,10 +396,10 @@ def _run_game_status_integrity_audit() -> None:
 
     sample = "; ".join(
         f"{item.get('game_id')} {item.get('game_date')} {item.get('status')}: {item.get('reason')}"
-        for item in violations[:5]
+        for item in violations[:FAILURE_SAMPLE_LIMIT]
     )
-    if len(violations) > 5:
-        sample = f"{sample}; ... and {len(violations) - 5} more"
+    if len(violations) > FAILURE_SAMPLE_LIMIT:
+        sample = f"{sample}; ... and {len(violations) - FAILURE_SAMPLE_LIMIT} more"
     msg = f"{len(violations)} game status integrity violations found: {sample}"
     raise RuntimeError(msg)
 
@@ -414,16 +416,15 @@ def _run_oci_parity_quality_gate() -> dict[str, Any]:
     )
     if not result.get("ok"):
         failures = result.get("failures") or []
-        detail = "; ".join(str(item) for item in failures[:5]) if failures else "unknown failure"
-        if len(failures) > 5:
-            detail = f"{detail}; ... and {len(failures) - 5} more"
+        detail = "; ".join(str(item) for item in failures[:FAILURE_SAMPLE_LIMIT]) if failures else "unknown failure"
+        if len(failures) > FAILURE_SAMPLE_LIMIT:
+            detail = f"{detail}; ... and {len(failures) - FAILURE_SAMPLE_LIMIT} more"
         raise RuntimeError(detail)
     return result
 
 
 def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]]:
-    """
-    Capture auto-healer candidates so repaired past games can be finalized and synced.
+    """Capture auto-healer candidates so repaired past games can be finalized and synced.
 
     Args:
         today: Today.
@@ -460,7 +461,7 @@ def _format_target_date(value: object, *, fallback_game_id: str) -> str:
     if isinstance(value, date):
         return value.strftime("%Y%m%d")
     text = str(value or "").replace("-", "")
-    if len(text) == 8 and text.isdigit():
+    if len(text) == DATE_STR_LEN and text.isdigit():
         return text
     return fallback_game_id[:8]
 
@@ -1443,7 +1444,9 @@ def _write_finalize_outputs(
 def _log_finalize_summaries(ctx: _RunContext, p0_readiness: dict[str, Any]) -> None:
     logger.info(ctx.write_contract.summary())
     logger.info(
-        "Stability summary: detail_failures=%s detail_recovery_passes=%s detail_recovered_after_retry=%s detail_still_missing=%s relay_targets=%s oci_skips=%s non_p0_quality_gates=%s p0_non_game=%s",
+        "Stability summary: detail_failures=%s detail_recovery_passes=%s "
+        "detail_recovered_after_retry=%s detail_still_missing=%s relay_targets=%s "
+        "oci_skips=%s non_p0_quality_gates=%s p0_non_game=%s",
         _format_counts(ctx.detail_failure_counts),
         ctx.detail_recovery_passes,
         ctx.detail_recovered_after_retry,
@@ -1518,8 +1521,8 @@ def _build_pbp_recovery_blocks(
     ]
     if failed_details:
         failed_text = "\n".join(failed_details)
-        if len(failed_text) > 2900:
-            failed_text = failed_text[:2800] + "\n... (truncated)"
+        if len(failed_text) > TELEGRAM_FAILURE_TEXT_MAX_LENGTH:
+            failed_text = failed_text[:TELEGRAM_FAILURE_TEXT_PREFIX_LENGTH] + "\n... (truncated)"
         blocks.append(
             {
                 "type": "section",
@@ -1607,8 +1610,7 @@ async def run_update(  # noqa: PLR0913
     skip_oci_supporting_sync: bool = False,
     run_p0_non_game: bool = True,
 ) -> dict[str, Any]:
-    """
-    Handle main orchestration logic for postgame finalize and daily reconciliation.
+    """Handle main orchestration logic for postgame finalize and daily reconciliation.
 
     Args:
         target_date: Target date for the operation.
@@ -1680,8 +1682,7 @@ async def run_update(  # noqa: PLR0913
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -1766,8 +1767,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
@@ -1781,7 +1781,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     target_date = args.date
     if not target_date:
         target_date = (datetime.now(KST) - timedelta(days=1)).strftime("%Y%m%d")
-    elif len(target_date) != 8 or not target_date.isdigit():
+    elif len(target_date) != DATE_STR_LEN or not target_date.isdigit():
         logger.error("❌ Invalid date format: %s. Please use YYYYMMDD.", target_date)
         sys.exit(1)
 

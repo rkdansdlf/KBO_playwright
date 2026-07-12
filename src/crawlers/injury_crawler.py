@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
-from typing import Any
+from typing import Any, ClassVar
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class InjuryCrawler(NaverNewsCrawlerBase):
     """InjuryCrawler class."""
 
-    KEYWORDS = ["부상", "IL", "전력이탈", "이탈", "재활", "복귀"]
+    KEYWORDS: ClassVar[list[str]] = ["부상", "IL", "전력이탈", "이탈", "재활", "복귀"]
     LABEL = "injury"
 
     def _parse_article(self, article: dict) -> dict[str, Any] | None:

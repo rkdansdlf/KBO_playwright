@@ -1,5 +1,4 @@
-"""
-KBO PBP (Relay) Crawler - Powered by Naver Sports API.
+"""KBO PBP (Relay) Crawler - Powered by Naver Sports API.
 
 Fetch play-by-play data from Naver Sports API instead of KBO website due to access restrictions.
 
@@ -37,6 +36,8 @@ if TYPE_CHECKING:
     from src.utils.playwright_pool import AsyncPlaywrightPool
 
 logger = logging.getLogger(__name__)
+RECENT_RELAY_DELAY_MINUTES = 30
+STALE_RELAY_DELAY_MINUTES = 120
 
 PARSER_VERSION = "2026-05-31-v1"
 SOURCE_SCHEMA_VERSION = "naver-relay-v1"
@@ -46,8 +47,7 @@ class _PermanentStatusError(Exception):
     """Raised when the HTTP response indicates a permanent (non-retryable) error."""
 
     def __init__(self, status_code: int) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             status_code: Status Code.
@@ -167,8 +167,7 @@ class RelayCrawler:
         policy: RequestPolicy | None = None,
         _pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        """
-        Pool is retained for backward compatibility with GameDetailCrawler but is unused.
+        """Pool is retained for backward compatibility with GameDetailCrawler but is unused.
 
         Args:
             request_delay: Request Delay.
@@ -183,7 +182,11 @@ class RelayCrawler:
 
         self.wpa_calc = WPACalculator()
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1",
+            "User-Agent": (
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 "
+                "Mobile/15E148 Safari/604.1"
+            ),
             "Accept": "application/json, text/plain, */*",
             "Origin": "https://m.sports.naver.com",
         }
@@ -195,8 +198,7 @@ class RelayCrawler:
         self._last_fetch_failure_reason: str | None = None
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
-        """
-        Get last failure reason.
+        """Get last failure reason.
 
         Args:
             game_id: Game ID.
@@ -218,8 +220,7 @@ class RelayCrawler:
         """API-based crawler doesn't need explicit resource release for now."""
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """
-        Backward-compatible alias used by older CLI entrypoints.
+        """Backward-compatible alias used by older CLI entrypoints.
 
         Args:
             game_id: Game ID.
@@ -230,8 +231,7 @@ class RelayCrawler:
 
     @staticmethod
     def _map_to_naver_id(kbo_game_id: str) -> str:
-        """
-        Convert KBO game ID (e.g., 20260412SKLG0) to Naver ID (e.g., 20260412SKLG02026).
+        """Convert KBO game ID (e.g., 20260412SKLG0) to Naver ID (e.g., 20260412SKLG02026).
 
         Args:
             kbo_game_id: Kbo Game ID.
@@ -307,7 +307,7 @@ class RelayCrawler:
         *,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
-        timeout: float = 10.0,
+        timeout: float = 10.0,  # noqa: ASYNC109
     ) -> tuple[dict[str, Any] | None, str | None]:
         full_url = str(httpx.URL(url, params=params or {}))
         if not await compliance.is_allowed(full_url):
@@ -405,8 +405,7 @@ class RelayCrawler:
         dh_no: str,
     ) -> int:
         def is_dh_truthy(v: object) -> bool:
-            """
-            Return whether the dh truthy.
+            """Return whether the dh truthy.
 
             Args:
                 v: V.
@@ -499,8 +498,7 @@ class RelayCrawler:
         stadium: str | None = None,
         game_time: str | None = None,
     ) -> dict[str, Any] | None:
-        """
-        Match a KBO game ID to a Naver schedule game object using a scoring system.
+        """Match a KBO game ID to a Naver schedule game object using a scoring system.
 
         Args:
             kbo_game_id: Kbo Game ID.
@@ -602,8 +600,7 @@ class RelayCrawler:
 
     @staticmethod
     def _is_team_in_id(team_code: str, game_id: str) -> bool:
-        """
-        Check if a team code (modern or legacy) is present in the game ID string.
+        """Check if a team code (modern or legacy) is present in the game ID string.
 
         Args:
             team_code: Team Code.
@@ -697,20 +694,15 @@ class RelayCrawler:
         kbo_game_id: str,
         stadium: str | None = None,
         game_time: str | None = None,
+        last_payload_hash: str | None = None,
     ) -> dict[str, Any] | None:
-        """
-        Crawl game relay.
+        """Crawl game relay.
 
         Args:
             kbo_game_id: Kbo Game ID.
             stadium: Stadium.
             game_time: Game Time.
-            kbo_game_id: Kbo Game ID.
-            stadium: Stadium.
-            game_time: Game Time.
-            kbo_game_id: Kbo Game ID.
-            stadium: Stadium.
-            game_time: Game Time.
+            last_payload_hash: Last seen payload hash.
 
         Returns:
             The result of the operation.
@@ -741,6 +733,21 @@ class RelayCrawler:
                 )
                 self._set_failure_reason(kbo_game_id, reason)
                 return None
+
+            current_hash = self._compute_payload_hash(all_text_relays)
+            if last_payload_hash and current_hash == last_payload_hash:
+                logger.info(
+                    "   ⏩ Relay payload hash matches last_payload_hash (%s). Skipping parse.", last_payload_hash
+                )
+                return {
+                    "game_id": kbo_game_id,
+                    "naver_game_id": naver_id,
+                    "game_date": kbo_game_id[:8],
+                    "status": "not_modified",
+                    "events": [],
+                    "raw_pbp_rows": [],
+                    "payload_hash": current_hash,
+                }
 
             return self._build_relay_result(kbo_game_id, naver_id, all_text_relays)
         except RELAY_CRAWL_EXCEPTIONS:
@@ -854,7 +861,10 @@ class RelayCrawler:
         text_hash = hashlib.sha256(str(identity.text or "").encode("utf-8")).hexdigest()[:10]
         half_token = (identity.half or "x")[:1]
         inning_token = identity.inning if identity.inning is not None else "x"
-        return f"naver:{identity.payload_hash}:{inning_token}{half_token}:{identity.segment_index}:{identity.log_index}:{text_hash}"
+        return (
+            f"naver:{identity.payload_hash}:{inning_token}{half_token}:"
+            f"{identity.segment_index}:{identity.log_index}:{text_hash}"
+        )
 
     def _parse_naver_payload(self, text_relays: list[dict[str, Any]]) -> dict[str, Any]:
         parsed_events: list[dict[str, Any]] = []
@@ -1214,9 +1224,9 @@ class RelayCrawler:
 def _time_diff_score(diff_mins: int) -> int:
     if diff_mins == 0:
         return 25
-    if diff_mins <= 30:
+    if diff_mins <= RECENT_RELAY_DELAY_MINUTES:
         return 15
-    if diff_mins > 120:
+    if diff_mins > STALE_RELAY_DELAY_MINUTES:
         return -30
     return -10
 
@@ -1278,8 +1288,7 @@ def _pbp_rows_to_legacy_innings(rows: list[dict[str, Any]]) -> list[dict[str, An
 
 
 async def fetch_and_parse_relay(game_id: str, game_date: str | None = None) -> dict[str, Any] | None:
-    """
-    Compatibility helper for older tests and scripts that expect inning-grouped output.
+    """Compatibility helper for older tests and scripts that expect inning-grouped output.
 
     Args:
         game_id: Game ID.

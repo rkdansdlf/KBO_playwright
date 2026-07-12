@@ -1,4 +1,8 @@
-"""CLI entrypoint and scheduler daemon to execute KBO crawlers, transform text, generate embeddings, and load to database."""
+"""Execute KBO crawlers, transform text, generate embeddings, and load data.
+
+CLI entrypoint and scheduler daemon.
+
+"""
 
 from __future__ import annotations
 
@@ -54,8 +58,7 @@ _CATEGORY_MAP: dict[str, str] = {
 
 
 def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
-    """
-    Enrichens chunk metadata using LLM and prepares content strings for vector embedding.
+    """Enrichens chunk metadata using LLM and prepares content strings for vector embedding.
 
     Args:
         all_chunks: All Chunks.
@@ -203,8 +206,7 @@ def _sync_static_chunks_to_oci(session: Session) -> None:
 
 
 async def run_static_pipeline(pdf_path: str | None = None) -> None:
-    """
-    Run extraction, chunking, and embedding for static rulebooks and wikis.
+    """Run extraction, chunking, and embedding for static rulebooks and wikis.
 
     Args:
         pdf_path: Pdf file path.
@@ -331,8 +333,7 @@ async def run_realtime_pipeline() -> None:
 
 
 def run_consistency_check(*, deep: bool = False) -> None:
-    """
-    Run a post-sync consistency audit between local SQLite and OCI.
+    """Run a post-sync consistency audit between local SQLite and OCI.
 
     Send an alert if mismatches are found. Skips silently if OCI is not configured.
 
@@ -360,8 +361,7 @@ def run_consistency_check(*, deep: bool = False) -> None:
 
 
 def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
-    """
-    Run async pipeline synchronously and catch errors for Telegram alerts.
+    """Run async pipeline synchronously and catch errors for Telegram alerts.
 
     After OCI sync completes, automatically runs a count-level consistency audit.
 

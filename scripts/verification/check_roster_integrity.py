@@ -15,73 +15,66 @@ from src.models.team import TeamDailyRoster
 logger = logging.getLogger(__name__)
 
 
-def check_integrity(year: int):
-    logger.info(f"🧐 Auditing Team Daily Roster Integrity for Year: {year}...")
-
-    # 2015 onwards should have 10 teams
+def _collect_roster_days(
+    year: int, start_date: date, end_date: date
+) -> tuple[list[date], list[tuple[date, list[str]]]]:
     expected_team_count = 10
     standard_teams = ["LG", "HH", "SS", "KT", "OB", "LT", "HT", "NC", "SK", "WO"]
-
-    # Season start and end dates (approximate for verification)
-    start_date = date(year, 3, 23)
-    end_date = date(year, 10, 31)
-
-    # Current date for 2026 check
-    if year == 2026:
-        end_date = date(2026, 4, 15)
-
-    missing_days = []
-    partial_days = []
-
+    missing_days: list[date] = []
+    partial_days: list[tuple[date, list[str]]] = []
     with SessionLocal() as session:
         current_date = start_date
         while current_date <= end_date:
-            # Check distinct team codes for this date
             teams_on_date = (
                 session.query(TeamDailyRoster.team_code)
                 .filter(TeamDailyRoster.roster_date == current_date)
                 .distinct()
                 .all()
             )
-
             team_codes = [t[0] for t in teams_on_date]
             count = len(team_codes)
-
             if count == 0:
                 missing_days.append(current_date)
-                # print(f"  ❌ {current_date}: COMPLETELY MISSING")
             elif count < expected_team_count:
-                missing = [t for t in standard_teams if t not in team_codes]
-                partial_days.append((current_date, missing))
-                # print(f"  ⚠️ {current_date}: PARTIAL ({count}/{expected_team_count}) - Missing: {missing}")
-
+                partial_days.append((current_date, [t for t in standard_teams if t not in team_codes]))
             current_date += timedelta(days=1)
+    return missing_days, partial_days
 
-    # Print Summary
-    total_days = (end_date - start_date).days + 1
+
+def _print_roster_summary(
+    year: int, total_days: int, missing_days: list[date], partial_days: list[tuple[date, list[str]]]
+) -> None:
     complete_days = total_days - len(missing_days) - len(partial_days)
-
     logger.info(f"\n{'=' * 40}")
-    logger.info(f"📊 SUMMARY FOR {year}")
+    logger.info(f"SUMMARY FOR {year}")
     logger.info(f"{'=' * 40}")
-    logger.info(f"✅ Complete Days: {complete_days}/{total_days}")
-    logger.info(f"❌ Missing Days:  {len(missing_days)}")
-    logger.info(f"⚠️ Partial Days:  {len(partial_days)}")
+    logger.info(f"Complete Days: {complete_days}/{total_days}")
+    logger.info(f"Missing Days:  {len(missing_days)}")
+    logger.info(f"Partial Days:  {len(partial_days)}")
     logger.info(f"{'=' * 40}")
-
     if partial_days:
-        logger.info("\n🔍 Details of Partial Days:")
+        logger.info("Details of Partial Days:")
         for d, missing in partial_days[:10]:
             logger.info(f"  - {d}: Missing teams {missing}")
         if len(partial_days) > 10:
             logger.info(f"  ... and {len(partial_days) - 10} more.")
-
     if missing_days:
-        logger.info("\n🚫 Sample of Missing Days:")
+        logger.info("Sample of Missing Days:")
         for d in missing_days[:10]:
             logger.info(f"  - {d}")
         if len(missing_days) > 10:
             logger.info(f"  ... and {len(missing_days) - 10} more.")
+
+
+def check_integrity(year: int):
+    logger.info(f"Auditing Team Daily Roster Integrity for Year: {year}...")
+    start_date = date(year, 3, 23)
+    end_date = date(year, 10, 31)
+    if year == 2026:
+        end_date = date(2026, 4, 15)
+    missing_days, partial_days = _collect_roster_days(year, start_date, end_date)
+    total_days = (end_date - start_date).days + 1
+    _print_roster_summary(year, total_days, missing_days, partial_days)
 
 
 if __name__ == "__main__":

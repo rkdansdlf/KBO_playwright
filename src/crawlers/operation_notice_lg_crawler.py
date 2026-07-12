@@ -1,5 +1,4 @@
-"""
-Crawler for LG Twins official operation notices (lgtwins.com).
+"""Crawler for LG Twins official operation notices (lgtwins.com).
 
 Scrape game-day notices including gate changes, entry restrictions,
 rain delays, and general announcements. Supports incremental crawling
@@ -67,8 +66,7 @@ def _parse_date(raw: str) -> datetime | None:
 
 
 def _extract_article_id(href: str) -> str | None:
-    """
-    Extract article ID from URL query params or path.
+    """Extract article ID from URL query params or path.
 
     Args:
         href: Href.
@@ -85,16 +83,14 @@ def _extract_article_id(href: str) -> str | None:
 
 
 class OperationNoticeLGCrawler:
-    """
-    LG Twins official announcements and maps them to.
+    """LG Twins official announcements and maps them to.
 
     StadiumOperationNotice records for JAMSIL stadium.
 
     """
 
     def __init__(self, max_pages: int = 5) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             max_pages: Max Pages.
@@ -105,8 +101,7 @@ class OperationNoticeLGCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
-        """
-        Crawl notices.
+        """Crawl notices.
 
             If stop_at_external_id is provided, stops when
         a previously seen article is encountered (incremental mode).
@@ -155,8 +150,7 @@ class OperationNoticeLGCrawler:
         return all_notices
 
     def _parse_page(self, html: str, stop_at_id: str | None) -> tuple[list[dict], bool]:
-        """
-        Parse one listing page.
+        """Parse one listing page.
 
             Returns (notices, hit_stop_id).
 

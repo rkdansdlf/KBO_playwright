@@ -16,8 +16,7 @@ class ManagerChangeRepository:
     """ManagerChangeRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -27,8 +26,7 @@ class ManagerChangeRepository:
         self.session = session
 
     def save_change(self, data: dict) -> ManagerChange:
-        """
-        Save change.
+        """Save change.
 
         Args:
             data: Data.
@@ -62,8 +60,7 @@ class ManagerChangeRepository:
         return new_record
 
     def get_by_team(self, team_id: str) -> list[ManagerChange]:
-        """
-        Get by team.
+        """Get by team.
 
         Args:
             team_id: Team ID.
@@ -82,8 +79,7 @@ class ManagerChangeRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_season(self, season: int) -> list[ManagerChange]:
-        """
-        Get by season.
+        """Get by season.
 
         Args:
             season: Season year.

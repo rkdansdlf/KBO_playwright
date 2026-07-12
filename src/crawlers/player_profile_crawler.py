@@ -1,5 +1,4 @@
-"""
-KBO Player Profile Crawler (Enhanced).
+"""KBO Player Profile Crawler (Enhanced).
 
 Collects extended player profile: photo_url, bats, throws, salary, draft info, debut_year.
 
@@ -22,6 +21,10 @@ from playwright.async_api import Page
 from src.constants import KST
 
 logger = logging.getLogger(__name__)
+TWO_DIGIT_YEAR_LIMIT = 100
+TWO_DIGIT_YEAR_2000S_CUTOFF = 50
+TWENTIETH_CENTURY_START = 1900
+TWENTY_FIRST_CENTURY_START = 2000
 
 from src.urls import HITTER_DETAIL, PITCHER_DETAIL
 from src.utils.compliance import compliance
@@ -126,8 +129,7 @@ PROFILE_CRAWL_EXCEPTIONS = (
 
 
 def _parse_hands(text: str) -> dict[str, str | None]:
-    """
-    Parse throwing/batting hand from 포지션 텍스트 like '투수(우투우타)'.
+    """Parse throwing/batting hand from 포지션 텍스트 like '투수(우투우타)'.
 
     Args:
         text: Text.
@@ -143,8 +145,7 @@ def _parse_hands(text: str) -> dict[str, str | None]:
 
 
 def _parse_debut_year(text: str | None) -> int | None:
-    """
-    Extract 4-digit year from a text like '2015 두산' or '2015년'.
+    """Extract 4-digit year from a text like '2015 두산' or '2015년'.
 
     Args:
         text: Text.
@@ -158,15 +159,16 @@ def _parse_debut_year(text: str | None) -> int | None:
         return None
 
     year = int(m.group(1))
-    if year < 100:
+    if year < TWO_DIGIT_YEAR_LIMIT:
         # Assume 2000s for KBO entrants (founded 1982)
-        return 2000 + year if year < 50 else 1900 + year
+        return (
+            TWENTY_FIRST_CENTURY_START + year if year < TWO_DIGIT_YEAR_2000S_CUTOFF else TWENTIETH_CENTURY_START + year
+        )
     return year
 
 
 def _parse_height_weight(text: str | None) -> dict[str, int | None]:
-    """
-    Parse height and weight from '185cm/92kg' format.
+    """Parse height and weight from '185cm/92kg' format.
 
     Args:
         text: Text.
@@ -184,8 +186,7 @@ def _parse_height_weight(text: str | None) -> dict[str, int | None]:
 
 
 def _clean_photo_url(raw: str | None) -> str | None:
-    """
-    Return None for missing/default images.
+    """Return None for missing/default images.
 
     Args:
         raw: Raw.
@@ -203,8 +204,7 @@ def _clean_photo_url(raw: str | None) -> str | None:
 
 
 class PlayerProfileCrawler:
-    """
-    선수 고유 ID를 사용하여 KBO 공식 사이트에서 상세 프로필을 크롤링.
+    """선수 고유 ID를 사용하여 KBO 공식 사이트에서 상세 프로필을 크롤링.
 
     타자/투수 페이지를 포지션 기준으로 자동 선택.
 
@@ -219,8 +219,7 @@ class PlayerProfileCrawler:
     FUTURES_PITCHER_URL = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
     def __init__(self, request_delay: float = 1.2, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -234,8 +233,7 @@ class PlayerProfileCrawler:
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, player_id: str) -> str | None:
-        """
-        Get last failure reason.
+        """Get last failure reason.
 
         Args:
             player_id: Player ID.
@@ -248,8 +246,7 @@ class PlayerProfileCrawler:
         return self._last_failure_reason.get(str(player_id))
 
     def _select_urls(self, player_id: str, position: str | None) -> list[str]:
-        """
-        순차적으로 시도할 URL 후보 목록을 반환.
+        """순차적으로 시도할 URL 후보 목록을 반환.
 
         Args:
             player_id: Player ID.
@@ -287,8 +284,7 @@ class PlayerProfileCrawler:
         *,
         position: str | None = None,
     ) -> dict[str, Any] | None:
-        """
-        Crawl the profile detail page for player_id.
+        """Crawl the profile detail page for player_id.
 
         Return a dict with photo_url, bats, throws, debut_year,
         salary_original, signing_bonus_original, draft_info.

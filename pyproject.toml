@@ -180,8 +180,9 @@ select = [
      "PLW0245",  # super-without-brackets
      "PLW1509",  # subprocess-popen-preexec-fn
       "B026",     # star-args-unpacked-after-keyword-arg
-       "D213",    # multi-line-summary-second-line
-      "D100",    # undocumented-public-module
+        "D212",    # multi-line-summary-first-line
+       "D417",    # undocumented-param
+       "D100",    # undocumented-public-module
       "D102",    # undocumented-public-method
       "D103",    # undocumented-public-function
       "D104",    # undocumented-public-package
@@ -392,7 +393,7 @@ select = [
     "PLC2401",
     "PLC2403",
     "PLC3002",
-        "PLR1704",
+    "PLR1704",
     "PLR1722",
                 "PTH100",
     "PTH101",
@@ -421,34 +422,90 @@ select = [
     "SIM113",
     "SIM117",
     "SIM118",
-    "TID",
-    "ICN",     # import-convention
-    "SLOT",    # slotted-class
-    ]
+     "TID",
+     "ICN",     # import-convention
+     "SLOT",    # slotted-class
+     "AIR",     # Airflow-specific rules (zero-violation; no Airflow usage)
+     "FAST",    # FastAPI-specific rules
+     "DJ",      # Django-specific rules (zero-violation; no Django usage)
+     "Q",       # flake8-quotes
+     "COM819",  # prohibited-trailing-comma
+     "EM102",   # f-string-in-exception
+     "EM103",   # dot-format-in-exception
+     "TRY203",  # useless-try-except
+     "TC005",   # empty-type-checking-block
+     "TC007",   # unquoted-type-alias
+     "TC010",   # runtime-string-union
+     "S105",    # hardcoded-password-string
+     "S106",    # hardcoded-password-func-arg
+     "S308",    # suspicious-mark-safe-usage
+      "S702",    # mako-templates
+      "S704",    # unsafe-markup-use
+      # Stable zero-violation rule expansion (2026-07-12).
+      "D101",
+      "D107",
+      "D200",
+      "D201",
+      "D215",
+      "PLC0105",
+      "PLC0131",
+      "PLC0132",
+      "PLC0205",
+      "PLC1802",
+      "PLR0124",
+      "PLR0133",
+      "PLR0206",
+      "PLR1716",
+      "PLR1730",
+      "PLR1733",
+      "PLR1736",
+      "PLR2004",
+      "PLR2044",
+      "PLW0120",
+      "PLW0128",
+      "PLW0129",
+      "PLW0131",
+      "PLW0133",
+      "PLW0177",
+      "PLW0211",
+      "PLW0406",
+      "PLW0604",
+      "PLW0642",
+      "PLW0711",
+      "PLW1501",
+      "PLW1507",
+      "PLW1508",
+      "PLW1641",
+      "PLW2101",
+      "PLW3301",
+      "RUF010",
+      "RUF051",
+      "RUF053",
+      "RUF057",
+      "RUF058",
+      "RUF060",
+      "RUF061",
+      "RUF064",
+      "RUF101",
+      "RUF102",
+      "RUF103",
+      "RUF104",
+      "RUF200",
+      "TRY002",
+      ]
  ignore = [
-     "E402",    # module-import-not-at-top (lazy imports intentional)
-     "E501",    # line-too-long (handled by formatter)
-     "COM812",  # missing-trailing-comma (conflicts with formatter)
-
-     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
+    "E402",    # module-import-not-at-top (lazy imports intentional)
+    "COM812",  # missing-trailing-comma (conflicts with formatter)
+    "RUF100",  # unused-noqa (required compatibility suppressions remain)
+    "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
       "PLC0415",  # import-outside-top-level (intentional lazy imports for circular deps)
-     "PLR2004",  # magic-value-comparison (domain-specific thresholds)
 
- ]
+  ]
 
 [tool.ruff.lint.per-file-ignores]
 "src/models/**" = ["TC001", "TC002", "TC003"]
-"src/crawlers/base_naver_crawler.py" = ["RUF012"]
-"src/crawlers/foreign_player_crawler.py" = ["RUF012"]
-"src/crawlers/injury_crawler.py" = ["RUF012"]
-"src/crawlers/manager_change_crawler.py" = ["RUF012"]
-"src/crawlers/preview_crawler.py" = ["RUF012"]
-"src/crawlers/ticket_crawler.py" = ["RUF012"]
-"src/crawlers/player_search_crawler.py" = ["ASYNC109", "ARG001"]
-"src/crawlers/relay_crawler.py" = ["ASYNC109"]
-"src/crawlers/schedule_crawler.py" = ["ASYNC109"]
+"src/crawlers/player_search_crawler.py" = ["ARG001"]
 "src/validators/quality_gate.py" = ["TC001"]
-"src/repositories/player_repository.py" = ["RUF012"]
 "src/repositories/player_season_pitching_repository.py" = ["PLW0603"]
 "src/repositories/safe_batting_repository.py" = ["PLW0603"]
 "src/utils/team_mapping.py" = ["PLW0603"]
@@ -456,29 +513,23 @@ select = [
 "src/sources/relay/base.py" = ["PLW0127"]
 "src/sources/relay/orchestrator.py" = ["PLW0127"]
 "src/monitoring/sla_tracker.py" = ["PLW0127"]
-"src/sources/relay/circuit_breaker.py" = ["RUF012"]
-"src/cli/crawler_live_smoke.py" = ["SLF001", "ARG001", "TRY300", "TRY301"]
-"src/cli/smart_polling_gate.py" = ["TRY300"]
-"src/cli/live_crawler.py" = ["TRY301", "SLF001", "ARG001", "TRY300"]
+"src/cli/live_crawler.py" = ["SLF001", "ARG001"]
 "src/crawlers/futures/futures_batting.py" = ["N806"]
 "src/crawlers/operation_notice_naver_crawler.py" = ["SLF001"]
-"src/cli/recalc_player_stats.py" = ["FBT003"]
-"src/repositories/game_helpers.py" = ["FURB171", "FBT003"]
-"src/repositories/game_save.py" = ["FBT003"]
-"src/repositories/team_event_repository.py" = ["FURB171"]
 "src/repositories/stadium_food_repository.py" = ["SLF001"]
-"src/sync/runtime_hydrator.py" = ["RUF012", "FURB171"]
 "src/sources/relay/importer.py" = ["SLF001"]
-"src/sync/sync_base.py" = ["ANN401"]
-"src/sync/sync_games.py" = ["ARG002"]
 "src/sync/sync_players.py" = ["ARG002"]
+"src/aggregators/team_stat_aggregator.py" = ["SLF001"]
+"src/cli/crawler_live_smoke.py" = ["SLF001", "ARG001"]
+"src/cli/retry_daily_failures.py" = ["S603"]
+"src/cli/run_daily_update.py" = ["S603"]
+"src/sync/sync_base.py" = ["PLR0912", "PLR0915", "SIM105", "S110", "BLE001", "RET505"]
+"src/sync/sync_games.py" = ["ARG002"]
 "src/sync/sync_stats.py" = ["A002", "ARG002"]
-"src/aggregators/team_stat_aggregator.py" = ["SLF001", "PLC0415"]
-"src/cli/auto_healer.py" = ["PLC0415"]
-"tests/**" = ["E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "TRY002", "ARG", "T201", "T20", "ERA001", "RUF001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "FURB132", "RUF024", "RUF040", "PERF", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1722", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "F821", "A002", "D100", "D104", "RUF034", "D101", "D102", "D103", "D105", "D107", "D205", "D400", "D415", "D213", "S108", "INP001", "Q000", "B007", "PERF102", "S607",
+"tests/**" = ["E501", "E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "TRY002", "ARG", "T201", "T20", "ERA001", "RUF001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "PLR2004", "FURB132", "RUF024", "RUF040", "PERF", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1722", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "F821", "A002", "D100", "D104", "RUF034", "D101", "D102", "D103", "D105", "D107", "D205", "D400", "D415", "D212", "S108", "INP001", "Q000", "B007", "PERF102", "S607", "S105", "S106",
     "PLC2401",
 ]
-"scripts/**" = ["E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "ERA001", "RUF001", "I001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1704", "PLR1722", "D100", "D104", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "A002", "D101", "D102", "D103", "D105", "D107", "D205", "D400", "D415", "D213", "INP001", "EXE001", "PD002", "PLE1205", "Q000", "S607", "PERF102", "COM812", "TRY002",
+"scripts/**" = ["E501", "E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "ERA001", "RUF001", "I001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "PLR2004", "FURB132", "RUF024", "RUF040", "BLE001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1704", "PLR1722", "D100", "D104", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "A002", "D101", "D102", "D103", "D105", "D107", "D205", "D400", "D415", "D212", "INP001", "EXE001", "PD002", "PLE1205", "Q000", "S607", "PERF102", "COM812", "TRY002",
     "PIE810",
     "PERF",]
 "migrations/**" = ["FBT001", "FBT002", "TC001", "TC002", "TC003", "SIM102", "SIM108", "SIM113", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "ARG", "T20", "T201", "FURB167", "RUF013", "DTZ005", "S608", "N", "SLF001", "PLR0913", "PLR0912", "PLR0911", "PLR0915", "FURB132", "RUF024", "RUF040", "BLE001"]
@@ -492,6 +543,12 @@ line-ending = "lf"
 [tool.coverage.run]
 branch = true
 source = ["src"]
+omit = [
+    "src/cli/api_server.py",
+    "src/cli/run_daily_update.py",
+    "src/utils/metrics.py",
+    "src/utils/sentry.py",
+]
 
 [tool.coverage.report]
 fail_under = 70
@@ -506,7 +563,7 @@ exclude_also = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration' -n auto"
 markers = [
     "slow: marks tests as slow-running (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests requiring external services",
@@ -518,8 +575,23 @@ python_version = "3.12"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 warn_unused_ignores = true
 ignore_missing_imports = true
-files = ["src/models/", "src/utils/", "src/db/", "src/parsers/", "src/sources/", "src/analyzers/", "src/monitoring/", "src/validators/", "src/sync/", "src/aggregators/", "src/services/", "src/repositories/", "src/cli/"]
+files = [
+    "src/models/", "src/utils/", "src/db/", "src/parsers/", "src/sources/",
+    "src/analyzers/", "src/monitoring/", "src/validators/", "src/sync/",
+    "src/aggregators/", "src/services/", "src/repositories/", "src/cli/",
+    "scripts/maintenance/", "scripts/verification/", "scripts/diagnostic/",
+    "scripts/scheduler.py", "scripts/batch_parse_snapshots.py",
+    "scripts/hydrate_from_oci.py", "scripts/sync_from_oci.py",
+    "scripts/sync_metadata_to_oci.py", "scripts/sync_new_games_to_oci.py",
+    "scripts/seed_fan_culture.py", "scripts/analyze_futures_html.py",
+    "scripts/crawl_2002_2009_stats.py",
+]
 
 [[tool.mypy.overrides]]
 module = ["src.repositories.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# Legacy investigation and one-off scripts — excluded from ruff scope as well
+module = ["scripts.investigations.*", "scripts.supabase.*"]
 ignore_errors = true

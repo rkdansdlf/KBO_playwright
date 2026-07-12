@@ -1,25 +1,45 @@
 """Additional pure helper tests for run_daily_update."""
 
+import json
+import asyncio
+from contextlib import ExitStack
 from datetime import date
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.run_daily_update import (
     _RunContext,
     _build_pbp_failed_details,
     _build_pbp_recovery_blocks,
+    _build_p0_readiness_for_context,
     _build_stability_summary,
+    _collect_past_scheduled_recovery_targets,
     _daily_summary_path,
     _failure_status,
     _failure_reason_summary,
     _finalize_manifest_game_ids,
+    _finalize_run_update,
+    _load_pbp_attempts_by_game,
     _format_counts,
     _format_target_date,
     _is_recoverable_detail_reason,
     _merge_oci_skip_summary,
     _normalize_pbp_attempt_notes,
+    _log_finalize_summaries,
+    _run_game_status_integrity_audit,
+    _run_oci_parity_quality_gate,
+    _run_python_step,
+    _send_pbp_recovery_report,
     _set_candidate_sync_game_ids,
+    _step_0_auto_healer,
+    _step_1_schedule,
     _summarize_pbp_failed_game,
+    _write_daily_update_summary,
+    _write_finalize_outputs,
     format_stability_alert_summary,
+    run_update,
 )
 from src.services.game_write_contract import GameWriteContract
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_UNRESOLVED
@@ -72,6 +92,24 @@ def test_failure_reason_summary_counts_groups_and_deduplicates_ids():
 def test_daily_summary_path_uses_default_and_custom_directory(tmp_path: Path):
     assert _daily_summary_path("20260402").name == "20260402.json"
     assert _daily_summary_path("20260402", tmp_path) == tmp_path / "20260402.json"
+
+
+def test_write_daily_update_summary_serializes_payload(tmp_path: Path):
+    summary_path = tmp_path / "nested" / "summary.json"
+
+    result = _write_daily_update_summary(
+        target_date="20260402",
+        stability={"detail": {"failure_counts": {}}},
+        p0_readiness={"summary": {"ok": True}},
+        manifest_path=tmp_path / "manifest.json",
+        summary_path=summary_path,
+    )
+
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert result == summary_path
+    assert payload["phase"] == "postgame_finalize"
+    assert payload["target_date"] == "20260402"
+    assert payload["stability"]["detail"] == {"failure_counts": {}}
 
 
 def test_format_target_date_accepts_date_strings_and_fallbacks():
@@ -171,6 +209,90 @@ def test_failure_status_for_cancelled_past_and_invalid_dates():
     assert _failure_status("20260403", None, date(2026, 4, 3)) is None
 
 
+def test_integrity_and_parity_quality_gates_handle_success_and_failures():
+    with patch("src.cli.run_daily_update.audit_game_status", return_value=[]):
+        _run_game_status_integrity_audit()
+
+    violations = [{"game_id": f"G{i}", "game_date": "20260402", "status": "bad", "reason": "x"} for i in range(6)]
+    with patch("src.cli.run_daily_update.audit_game_status", return_value=violations):
+        try:
+            _run_game_status_integrity_audit()
+        except RuntimeError as exc:
+            assert "1 more" in str(exc)
+        else:  # pragma: no cover - defensive assertion
+            raise AssertionError("expected RuntimeError")
+
+
+def test_python_step_and_past_scheduled_recovery_targets():
+    with patch("subprocess.run") as run:
+        _run_python_step(["-m", "src.cli.example"])
+    assert run.call_args.args[0][1:] == ["-m", "src.cli.example"]
+    assert run.call_args.kwargs == {"check": True}
+
+    session = MagicMock()
+    session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+        ("20260401LGSS0", date(2026, 4, 1)),
+        (None, date(2026, 4, 1)),
+    ]
+    with patch("src.cli.run_daily_update.SessionLocal") as session_local:
+        session_local.return_value.__enter__.return_value = session
+        targets = _collect_past_scheduled_recovery_targets(date(2026, 4, 3))
+    assert targets == [{"game_id": "20260401LGSS0", "game_date": "20260401"}]
+
+    with patch("src.cli.run_daily_update.SessionLocal", side_effect=SQLAlchemyError("db down")):
+        assert _collect_past_scheduled_recovery_targets(date(2026, 4, 3)) == []
+
+
+def test_auto_healer_and_schedule_steps_cover_skip_success_and_error_paths():
+    skipped = _ctx()
+    skipped.run_auto_healer = False
+    asyncio.run(_step_0_auto_healer(skipped))
+    assert skipped.healer_recovery_targets == []
+
+    ctx = _ctx()
+    with (
+        patch("src.cli.run_daily_update._collect_past_scheduled_recovery_targets", return_value=[{"game_id": "G1"}]),
+        patch("src.cli.run_daily_update.run_healer_async", new=AsyncMock(side_effect=RuntimeError("boom"))),
+    ):
+        asyncio.run(_step_0_auto_healer(ctx))
+    assert ctx.healer_recovery_targets == []
+
+    schedule_ctx = _ctx()
+    schedule_ctx.limit = 1
+    crawler = MagicMock()
+    crawler.crawl_schedule = AsyncMock(
+        return_value=[
+            {"game_id": "G1", "game_date": "20260402"},
+            {"game_id": "G2", "game_date": "20260402"},
+            {"game_id": "G3", "game_date": "20260403"},
+        ],
+    )
+    save_result = MagicMock(discovered=3, saved=2, failed=1)
+    with (
+        patch("src.cli.run_daily_update.ScheduleCrawler", return_value=crawler),
+        patch("src.cli.run_daily_update.save_schedule_games", return_value=save_result),
+        patch("src.cli.run_daily_update.is_detail_candidate_game", side_effect=[True, True]),
+    ):
+        asyncio.run(_step_1_schedule(schedule_ctx))
+
+    assert [game["game_id"] for game in schedule_ctx.daily_games] == ["G1", "G2"]
+    assert [game["game_id"] for game in schedule_ctx.detail_games] == ["G1"]
+
+    with patch("src.cli.run_daily_update.run_legacy_quality_gate", return_value={"ok": True, "failures": []}):
+        assert _run_oci_parity_quality_gate()["ok"] is True
+
+    with patch(
+        "src.cli.run_daily_update.run_legacy_quality_gate",
+        return_value={"ok": False, "failures": ["a", "b", "c", "d", "e", "f"]},
+    ):
+        try:
+            _run_oci_parity_quality_gate()
+        except RuntimeError as exc:
+            assert "1 more" in str(exc)
+        else:  # pragma: no cover - defensive assertion
+            raise AssertionError("expected RuntimeError")
+
+
 def test_finalize_manifest_game_ids_priority_order():
     ctx = _ctx()
     ctx.daily_games = [{"game_id": "D2"}, {"game_id": "D1"}]
@@ -182,6 +304,52 @@ def test_finalize_manifest_game_ids_priority_order():
     ctx.processed_game_ids = ["P2", "P1"]
     ctx.reconciliation_changed_ids = ["P1", "R1"]
     assert _finalize_manifest_game_ids(ctx) == ["P1", "P2", "R1"]
+
+
+def test_p0_readiness_and_finalize_output_helpers(tmp_path: Path):
+    ctx = _ctx()
+    ctx.oci_skip_counts = {"skipped_empty_relay": 1}
+    ctx.oci_skip_game_ids = {"skipped_empty_relay": ["G1"]}
+
+    session = MagicMock()
+    with (
+        patch("src.cli.run_daily_update.SessionLocal") as session_local,
+        patch("src.cli.run_daily_update.build_p0_readiness", return_value={"summary": {"ok": True}}) as build,
+    ):
+        session_local.return_value.__enter__.return_value = session
+        assert _build_p0_readiness_for_context(ctx) == {"summary": {"ok": True}}
+    build.assert_called_once()
+
+    with patch("src.cli.run_daily_update.SessionLocal", side_effect=RuntimeError("db down")):
+        fallback = _build_p0_readiness_for_context(ctx)
+    assert fallback["summary"]["ok"] is False
+    assert fallback["oci"]["skip_counts"] == ctx.oci_skip_counts
+
+    with (
+        patch("src.cli.run_daily_update.write_refresh_manifest", return_value=tmp_path / "manifest.json") as manifest,
+        patch("src.cli.run_daily_update._write_daily_update_summary") as write_summary,
+    ):
+        result = _write_finalize_outputs(ctx, {"stable": True}, {"summary": {"ok": True}}, tmp_path / "summary.json")
+    assert result == tmp_path / "manifest.json"
+    manifest.assert_called_once()
+    write_summary.assert_called_once()
+
+
+def test_log_finalize_summaries_uses_contract_and_counts():
+    ctx = _ctx()
+    ctx.detail_failure_counts = {"timeout": 2}
+    ctx.relay_recovery_target_ids = {"G1", "G2"}
+    ctx.oci_skip_counts = {"skipped_empty_relay": 1}
+    ctx.non_p0_quality_gate_counts = {"ticket": 1}
+    ctx.p0_non_game_counts = {"events": 1}
+    ctx.detail_still_missing = {"G3"}
+
+    with patch("src.cli.run_daily_update.logger") as mock_logger:
+        _log_finalize_summaries(ctx, {"summary": {"ok": True}})
+
+    rendered = "\n".join(str(call.args) for call in mock_logger.info.call_args_list)
+    assert "timeout" in rendered
+    assert "P0 readiness" in rendered
 
 
 def test_pbp_failed_detail_helpers_and_blocks_truncate_long_details():
@@ -202,3 +370,86 @@ def test_pbp_failed_detail_helpers_and_blocks_truncate_long_details():
     assert blocks[0]["type"] == "header"
     assert blocks[1]["fields"][0]["text"] == "*Target Games:* 2"
     assert "truncated" in blocks[2]["text"]["text"]
+
+
+def test_pbp_attempt_loading_and_recovery_report(tmp_path: Path, monkeypatch):
+    report_dir = tmp_path / "logs" / "daily_update_summary"
+    report_dir.mkdir(parents=True)
+    (report_dir / "pbp_report_naver_20260402.csv").write_text(
+        "game_id,source_name,status,notes\nG2,naver,failed,missing_middle_inning\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    attempts = _load_pbp_attempts_by_game("20260402")
+    assert attempts["G2"][0]["source_name"] == "naver"
+
+    ctx = _ctx()
+    _send_pbp_recovery_report(ctx)
+
+    ctx.relay_recovery_target_ids = {"G1", "G2"}
+    session = MagicMock()
+    session.execute.return_value.scalars.return_value.all.return_value = ["G1"]
+    with (
+        patch("src.cli.run_daily_update.SessionLocal") as session_local,
+        patch("src.cli.run_daily_update.SlackWebhookClient.send_alert") as send_alert,
+    ):
+        session_local.return_value.__enter__.return_value = session
+        _send_pbp_recovery_report(ctx)
+
+    send_alert.assert_called_once()
+    assert "Daily PBP Recovery Report" in send_alert.call_args.args[0]
+
+    with patch("src.cli.run_daily_update.SessionLocal", side_effect=RuntimeError("db down")):
+        _send_pbp_recovery_report(ctx)
+
+
+def test_finalize_run_update_and_run_update_orchestration(tmp_path: Path):
+    ctx = _ctx()
+    ctx.summary_dir = tmp_path
+
+    with (
+        patch("src.cli.run_daily_update._build_stability_summary_for_context", return_value={"stable": True}),
+        patch("src.cli.run_daily_update._build_p0_readiness_for_context", return_value={"summary": {"ok": True}}),
+        patch("src.cli.run_daily_update._write_finalize_outputs", return_value=tmp_path / "manifest.json"),
+        patch("src.cli.run_daily_update._log_finalize_summaries") as log_summaries,
+        patch("src.cli.run_daily_update._send_pbp_recovery_report") as send_report,
+    ):
+        result = _finalize_run_update(ctx)
+
+    assert result["phase"] == "postgame_finalize"
+    assert result["manifest_path"].endswith("manifest.json")
+    assert result["summary_path"].endswith("20260402.json")
+    log_summaries.assert_called_once()
+    send_report.assert_called_once()
+
+    queue = MagicMock()
+    queue.get_due_detail_recovery_targets.return_value = ["G9"]
+    expected = {"phase": "postgame_finalize", "target_date": "20260402"}
+    step_patches = [
+        "_step_0_auto_healer",
+        "_step_1_schedule",
+        "_step_2_detail_crawl",
+        "_step_3_refresh_status",
+        "_step_4_relay_recovery",
+        "_step_4_5_proactive_relay",
+        "_step_5_content_generation",
+        "_step_6_player_stats",
+        "_step_6_5_maintenance",
+        "_step_7_rosters",
+        "_step_7_5_p0_non_game",
+        "_step_8_derived_stats",
+        "_step_10_7_enrichment",
+        "_step_11_sync_pipeline",
+        "_step_14_tomorrow_preview",
+    ]
+    with ExitStack() as stack:
+        stack.enter_context(patch("src.cli.run_daily_update._today_kst", return_value=date(2026, 4, 3)))
+        stack.enter_context(patch("src.cli.run_daily_update.RecoveryManager", return_value=queue))
+        stack.enter_context(patch("src.cli.run_daily_update._finalize_run_update", return_value=expected))
+        for name in step_patches:
+            stack.enter_context(patch(f"src.cli.run_daily_update.{name}", new=AsyncMock()))
+        assert asyncio.run(run_update("20260402", summary_dir=tmp_path, limit=3)) == expected
+
+    queue.purge_detail_recovery_queue.assert_called_once()
+    queue.get_due_detail_recovery_targets.assert_called_once()

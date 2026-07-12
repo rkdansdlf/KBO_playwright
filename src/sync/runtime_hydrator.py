@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -49,7 +49,7 @@ class HydrationSpec:
 class RuntimeHydrator:
     """Copy the minimum operational runtime dataset from OCI into local SQLite."""
 
-    SQLITE_UPSERT_KEYS: dict[type, Sequence[str]] = {
+    SQLITE_UPSERT_KEYS: ClassVar[dict[type, Sequence[str]]] = {
         Game: ("game_id",),
         GameIdAlias: ("alias_game_id",),
         GameMetadata: ("game_id",),
@@ -66,8 +66,7 @@ class RuntimeHydrator:
     }
 
     def __init__(self, source_session: Session, target_session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             source_session: Source Session.
@@ -87,8 +86,7 @@ class RuntimeHydrator:
         target_date: date | None = None,
         preserve_aliases: bool = False,
     ) -> dict[str, int]:
-        """
-        Handle the hydrate year operation.
+        """Handle the hydrate year operation.
 
         Args:
             year: Season year.

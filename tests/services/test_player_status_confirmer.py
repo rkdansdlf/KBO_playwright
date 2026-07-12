@@ -138,3 +138,41 @@ class TestPlayerStatusConfirmer:
             await confirmer.confirm_entries([{"player_id": "1", "status": "retired"}])
         mock_pool.start.assert_called_once()
         mock_pool.close.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_confirm_single_uses_profile_url_and_returns_parsed_status(self, monkeypatch):
+        async def _no_sleep(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _no_sleep)
+        page = AsyncMock()
+        page.inner_text.return_value = "profile text"
+        confirmer = PlayerStatusConfirmer(request_delay=0)
+
+        with patch(
+            "src.services.player_status_confirmer.parse_status_from_text",
+            return_value=("staff", "coach"),
+        ) as parse_status:
+            result = await confirmer._confirm_single(page, "12345")
+
+        page.goto.assert_awaited_once_with(
+            f"{confirmer.base_url}?playerId=12345",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        page.inner_text.assert_awaited_once_with("body")
+        parse_status.assert_called_once_with("profile text")
+        assert result == {"status": "staff", "staff_role": "coach", "status_source": "profile"}
+
+    @pytest.mark.asyncio
+    async def test_releases_injected_page_when_confirmation_fails(self, mock_pool):
+        page = AsyncMock()
+        page.goto.side_effect = RuntimeError("page unavailable")
+        mock_pool.acquire.return_value = page
+        confirmer = PlayerStatusConfirmer(pool=mock_pool)
+
+        with pytest.raises(RuntimeError, match="page unavailable"):
+            await confirmer.confirm_entries([{"player_id": "1", "status": "retired"}])
+
+        mock_pool.release.assert_awaited_once_with(page)
+        mock_pool.close.assert_not_called()

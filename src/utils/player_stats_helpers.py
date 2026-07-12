@@ -15,8 +15,7 @@ def extract_rows_fast(
     selector: str = "table",
     link_query: str = "td:nth-child(2) a",
 ) -> list[dict[str, object]] | None:
-    """
-    Extract rows fast.
+    """Extract rows fast.
 
     Args:
         page: Page.

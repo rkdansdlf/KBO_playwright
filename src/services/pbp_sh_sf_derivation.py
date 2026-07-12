@@ -1,5 +1,4 @@
-"""
-Derive sacrifice_hits (SH) and sacrifice_flies (SF) from game_events PBP data.
+"""Derive sacrifice_hits (SH) and sacrifice_flies (SF) from game_events PBP data.
 
 The Naver/KBO box score HTML often omits the SH/SF columns, causing
 game_batting_stats.sacrifice_hits and .sacrifice_flies to remain 0.
@@ -25,6 +24,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+SACRIFICE_FLY_MAX_OUTS = 2
 
 _DERIVE_EVENTS_SQL = text("""
     SELECT batter_id, batter_name, description, outs
@@ -35,8 +35,7 @@ _DERIVE_EVENTS_SQL = text("""
 
 
 def derive_sh_sf_for_game(session: Session, game_id: str) -> dict[int | str, dict[str, int]]:
-    """
-    Query game_events and return {player_id_or_name: {'sh': N, 'sf': N}}.
+    """Query game_events and return {player_id_or_name: {'sh': N, 'sf': N}}.
 
     Args:
         session: Session.
@@ -61,7 +60,7 @@ def derive_sh_sf_for_game(session: Session, game_id: str) -> dict[int | str, dic
 
         # SF only counts with fewer than 2 outs before the play
         outs = cast("int | None", getattr(row, "outs", None))
-        if is_sf and outs is not None and outs >= 2:
+        if is_sf and outs is not None and outs >= SACRIFICE_FLY_MAX_OUTS:
             continue
 
         key = _resolve_derived_batter_key(row, name_to_id)
@@ -110,8 +109,7 @@ def count_sh_sf_from_events(
     event_rows: list[object],
     name_to_id: dict[str, int],
 ) -> dict[int | str, dict[str, int]]:
-    """
-    Count SH/SF from pre-fetched event rows.
+    """Count SH/SF from pre-fetched event rows.
 
     Pure function: takes event rows and a name-to-id map,
     returns {player_key: {'sh': N, 'sf': N}}.
@@ -129,7 +127,7 @@ def count_sh_sf_from_events(
         if not is_sh and not is_sf:
             continue
         outs = cast("int | None", getattr(row, "outs", None))
-        if is_sf and outs is not None and outs >= 2:
+        if is_sf and outs is not None and outs >= SACRIFICE_FLY_MAX_OUTS:
             continue
         key = _resolve_derived_batter_key(row, name_to_id)
         if key is None:
@@ -143,8 +141,7 @@ def count_sh_sf_from_events(
 
 
 def apply_sh_sf_to_batting_stats(session: Session, game_id: str) -> int:
-    """
-    Derive SH/SF from game_events and update game_batting_stats in-place.
+    """Derive SH/SF from game_events and update game_batting_stats in-place.
 
     Return the number of updated rows.
 

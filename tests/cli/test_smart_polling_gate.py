@@ -397,11 +397,8 @@ class TestCheckAllGamesFinished:
 
 class TestMain:
     def test_main_exits_zero_on_proceed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        async def fake_main_async(argv):
-            return 0
-
         fake_asyncio = MagicMock()
-        fake_asyncio.run.return_value = 0
+        fake_asyncio.run.side_effect = lambda coro: _close_and_return(coro, 0)
 
         monkeypatch.setattr(gate_module, "asyncio", fake_asyncio)
         with pytest.raises(SystemExit) as exc_info:
@@ -409,13 +406,15 @@ class TestMain:
         assert exc_info.value.code == 0
 
     def test_main_exits_one_on_skip(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        async def fake_main_async(argv):
-            return 1
-
         fake_asyncio = MagicMock()
-        fake_asyncio.run.return_value = 1
+        fake_asyncio.run.side_effect = lambda coro: _close_and_return(coro, 1)
 
         monkeypatch.setattr(gate_module, "asyncio", fake_asyncio)
         with pytest.raises(SystemExit) as exc_info:
             main([])
         assert exc_info.value.code == 1
+
+
+def _close_and_return(coro, value: int) -> int:
+    coro.close()
+    return value

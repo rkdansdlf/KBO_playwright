@@ -1,5 +1,4 @@
-"""
-Quality metric trend tracker.
+"""Quality metric trend tracker.
 
 Read daily quality report JSONs to compute trends over time.
 Detects metric degradation (recent trend worsening).
@@ -21,14 +20,15 @@ from src.utils.date_helpers import parse_datetime_str
 logger = logging.getLogger(__name__)
 
 QUALITY_REPORT_DIR = Path("logs/quality_reports")
+TREND_DIRECTION_MIN_VALUES = 3
+MIN_DEGRADATION_REPORTS = 2
 
 
 class TrendTracker:
     """TrendTracker class."""
 
     def __init__(self, report_dir: str | Path = QUALITY_REPORT_DIR) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             report_dir: Report Dir.
@@ -38,8 +38,7 @@ class TrendTracker:
         self.report_dir = Path(report_dir)
 
     def load_reports(self, days: int = 30) -> list[dict[str, Any]]:
-        """
-        Load reports.
+        """Load reports.
 
         Args:
             days: Days.
@@ -69,8 +68,7 @@ class TrendTracker:
         return sorted(reports_by_date.values(), key=lambda r: r["_report_date"])
 
     def get_trend(self, metric_key: str, days: int = 7) -> dict[str, Any]:
-        """
-        Get trend.
+        """Get trend.
 
         Args:
             metric_key: Metric Key.
@@ -93,8 +91,8 @@ class TrendTracker:
                 values.append({"date": r.get("metrics", {}).get("date"), "value": val})
 
         direction = "stable"
-        if len(values) >= 3:
-            recent = [v["value"] for v in values[-3:]]
+        if len(values) >= TREND_DIRECTION_MIN_VALUES:
+            recent = [v["value"] for v in values[-TREND_DIRECTION_MIN_VALUES:]]
             if all(recent[i] <= recent[i + 1] for i in range(len(recent) - 1)):
                 direction = "increasing"
             elif all(recent[i] >= recent[i + 1] for i in range(len(recent) - 1)):
@@ -103,8 +101,7 @@ class TrendTracker:
         return {"metric": metric_key, "values": values, "direction": direction}
 
     def detect_degradations(self, threshold_map: dict[str, float], days: int = 14) -> list[dict[str, Any]]:
-        """
-        Handle the detect degradations operation.
+        """Handle the detect degradations operation.
 
         Args:
             threshold_map: Threshold Map.
@@ -117,7 +114,7 @@ class TrendTracker:
         alerts: list[dict[str, Any]] = []
 
         reports = self.load_reports(days=days)
-        if len(reports) < 2:
+        if len(reports) < MIN_DEGRADATION_REPORTS:
             return alerts
 
         first = reports[0]
@@ -168,8 +165,7 @@ class TrendTracker:
         return ""
 
     def print_trend_summary(self, days: int = 14) -> None:
-        """
-        Print trend summary.
+        """Print trend summary.
 
         Args:
             days: Days.
@@ -220,8 +216,7 @@ class TrendTracker:
         logger.info("")
 
     def send_degradation_alert(self, days: int = 14) -> None:
-        """
-        Detect metric degradations over the last `days` days and send an alert.
+        """Detect metric degradations over the last `days` days and send an alert.
 
         via Telegram/Slack if any are found. Stays quiet when everything is healthy.
 

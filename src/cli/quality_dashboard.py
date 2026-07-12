@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from src.constants import KST
+from src.constants import DATE_STR_LEN, KST
 from src.utils.date_helpers import parse_date_str, parse_datetime_str
 
 if TYPE_CHECKING:
@@ -105,7 +105,7 @@ def _within_days(record: dict[str, Any], days: int | None) -> bool:
 
 
 def _is_yyyymmdd(value: str) -> bool:
-    if len(value) != 8 or not value.isdigit():
+    if len(value) != DATE_STR_LEN or not value.isdigit():
         return False
     try:
         parse_datetime_str(value)
@@ -120,8 +120,7 @@ def load_quality_records(
     days: int | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    """
-    Load quality records.
+    """Load quality records.
 
     Args:
         report_dir: Report Dir.
@@ -149,8 +148,7 @@ def load_quality_records(
 
 
 def build_quality_dashboard(report_dir: Path, *, days: int | None = None, limit: int | None = None) -> dict[str, Any]:
-    """
-    Build quality dashboard.
+    """Build quality dashboard.
 
     Args:
         report_dir: Report Dir.
@@ -208,8 +206,7 @@ def _log_dashboard_summary(dashboard: dict[str, Any]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

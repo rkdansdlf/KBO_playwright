@@ -16,8 +16,7 @@ class GameMvpRepository:
     """GameMvpRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -27,8 +26,7 @@ class GameMvpRepository:
         self.session = session
 
     def save_mvp(self, data: dict) -> GameMvp:
-        """
-        Save mvp.
+        """Save mvp.
 
         Args:
             data: Data.
@@ -62,8 +60,7 @@ class GameMvpRepository:
         return new_record
 
     def get_by_game(self, game_id: str) -> list[GameMvp]:
-        """
-        Get by game.
+        """Get by game.
 
         Args:
             game_id: Game ID.
@@ -79,8 +76,7 @@ class GameMvpRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def delete_by_game(self, game_id: str) -> None:
-        """
-        Delete by game.
+        """Delete by game.
 
         Args:
             game_id: Game ID.

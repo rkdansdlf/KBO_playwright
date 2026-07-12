@@ -1,5 +1,4 @@
-"""
-CLI tool to recalculate player-level season stats from game-level (transactional) data.
+"""CLI tool to recalculate player-level season stats from game-level (transactional) data.
 
 Aggregate GameBattingStat -> PlayerSeasonBatting
 Aggregates GamePitchingStat -> PlayerSeasonPitching.
@@ -42,8 +41,7 @@ def _get_regular_season_ids(session: Session, year: int) -> list[int]:
 
 
 def _get_player_teams(session: Session, season_ids: list[int], model: type[object]) -> dict[int, str]:
-    """
-    Get the most common canonical_team_code per player_id.
+    """Get the most common canonical_team_code per player_id.
 
     Args:
         session: Session.
@@ -283,7 +281,7 @@ def _aggregate_pitching(
             func.sum(case((GamePitchingStat.decision == "H", 1), else_=0)).label("holds"),
             func.sum(GamePitchingStat.batters_faced).label("batters_faced"),
             func.sum(GamePitchingStat.pitches).label("pitches"),
-            func.count(func.nullif(GamePitchingStat.is_starting.is_(True), False)).label("games_started"),
+            func.sum(case((GamePitchingStat.is_starting.is_(True), 1), else_=0)).label("games_started"),
         )
         .join(Game, Game.game_id == GamePitchingStat.game_id)
         .filter(
@@ -386,8 +384,7 @@ def run_recalc(
     batting_only: bool = False,
     pitching_only: bool = False,
 ) -> int:
-    """
-    Run run recalc.
+    """Run run recalc.
 
     Args:
         season: Season year.
@@ -440,8 +437,7 @@ def run_recalc(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

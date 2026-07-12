@@ -10,6 +10,7 @@ from src.db.engine import (
     Engine,
     SessionLocal,
     _is_sqlite,
+    _normalize_sqlite_synchronous,
     create_engine_for_url,
     get_database_type,
     get_db_session,
@@ -31,6 +32,22 @@ class TestIsSqlite:
 
     def test_mysql(self):
         assert not _is_sqlite("mysql://user:pass@localhost/db")
+
+
+class TestNormalizeSqliteSynchronous:
+    def test_none_defaults_to_normal(self):
+        assert _normalize_sqlite_synchronous(None) == "NORMAL"
+
+    def test_accepts_full_case_insensitive(self):
+        assert _normalize_sqlite_synchronous(" full ") == "FULL"
+
+    def test_accepts_normal_case_insensitive(self):
+        assert _normalize_sqlite_synchronous("normal") == "NORMAL"
+
+    def test_unsupported_defaults_to_normal(self, caplog):
+        with caplog.at_level("WARNING"):
+            assert _normalize_sqlite_synchronous("OFF") == "NORMAL"
+        assert "Unsupported SQLITE_SYNCHRONOUS" in caplog.text
 
 
 class TestCreateEngineForUrl:
@@ -64,6 +81,22 @@ class TestCreateEngineForUrl:
         engine = create_engine_for_url("postgresql://user:pass@localhost/db")
         assert engine is not None
         engine.dispose()
+
+    def test_non_sqlite_engine_uses_pool_options(self):
+        with patch("src.db.engine.create_engine") as mock_create_engine:
+            mock_engine = MagicMock()
+            mock_create_engine.return_value = mock_engine
+
+            result = create_engine_for_url("mysql://user:pass@localhost/db")
+
+        assert result is mock_engine
+        mock_create_engine.assert_called_once_with(
+            "mysql://user:pass@localhost/db",
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+            echo=False,
+        )
 
 
 class TestGetDatabaseType:

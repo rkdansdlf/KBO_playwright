@@ -242,6 +242,60 @@ class TestFanCultureCrawler:
         from src.crawlers.fan_culture_crawler import FanCultureCrawler
 
         monkeypatch.setattr("asyncio.sleep", _no_sleep)
+        fake_items = [
+            YouTubeVideoItem(
+                video_id=f"test_{i}",
+                title=f"2026 선수 {i} 응원가",
+                description="",
+                published_at="2026-04-01T00:00:00Z",
+                thumbnail_url="",
+                channel_id="UC_TEST",
+            )
+            for i in range(6)
+        ]
+        # Add duplicate and invalid video items to trigger corresponding branch limits
+        fake_items.append(
+            YouTubeVideoItem(
+                video_id="invalid_video",
+                title="일반 잡담 브이로그 영상",
+                description="",
+                published_at="2026-04-01T00:00:00Z",
+                thumbnail_url="",
+                channel_id="UC_TEST",
+            )
+        )
+        fake_items.append(fake_items[0])  # duplicate
+
+        # Test case 1: returns <= 5 items to cover len(all_songs) > 5 evaluates to False
+        async def fake_search_videos_short(channel_id, query, max_results=50):
+            return fake_items[:3]
+
+        monkeypatch.setenv("YOUTUBE_API_KEY", "test_key")
+        crawler_short = FanCultureCrawler(season=2026)
+        crawler_short.client.search_videos = fake_search_videos_short
+
+        results_short = asyncio.run(crawler_short.run(save=False, team_filter="LG"))
+        assert len(results_short) == 3
+
+        # Test case 2: returns > 5 items to cover len(all_songs) > 5 evaluates to True
+        async def fake_search_videos_long(channel_id, query, max_results=50):
+            return fake_items
+
+        crawler_long = FanCultureCrawler(season=2026)
+        crawler_long.client.search_videos = fake_search_videos_long
+
+        results_long = asyncio.run(crawler_long.run(save=False, team_filter="LG"))
+        assert len(results_long) == 6
+
+    def test_run_with_save_true(self, monkeypatch):
+        import asyncio
+        from unittest.mock import MagicMock
+        from src.crawlers.fan_culture_crawler import FanCultureCrawler
+
+        async def _no_sleep(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _no_sleep)
         fake_item = YouTubeVideoItem(
             video_id="test123",
             title="2026 홍길동 응원가",
@@ -258,11 +312,69 @@ class TestFanCultureCrawler:
         crawler = FanCultureCrawler(season=2026)
         crawler.client.search_videos = fake_search_videos
 
-        # Only test one team to speed up
-        results = asyncio.run(crawler.run(save=False, team_filter="LG"))
-        assert len(results) >= 1
-        assert results[0]["team_id"] == "LG"
-        assert results[0]["introduction_year"] == 2026
+        mock_save = MagicMock()
+        crawler._save_to_db = mock_save
+
+        results = asyncio.run(crawler.run(save=True, team_filter="LG"))
+        assert len(results) == 1
+        mock_save.assert_called_once_with(results)
+
+    def test_save_to_db_success(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+        from src.crawlers.fan_culture_crawler import FanCultureCrawler
+
+        mock_session = MagicMock()
+        mock_session_local = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_session
+        monkeypatch.setattr("src.crawlers.fan_culture_crawler.SessionLocal", mock_session_local)
+
+        mock_repo = MagicMock()
+        monkeypatch.setattr("src.crawlers.fan_culture_crawler.FanCultureRepository", lambda s: mock_repo)
+
+        crawler = FanCultureCrawler(season=2026)
+        crawler._save_to_db([{"song_name": "Song 1"}])
+
+        mock_repo.save_cheer_song.assert_called_once_with({"song_name": "Song 1"})
+        mock_session.commit.assert_called_once()
+
+    def test_save_to_db_item_fails_continues(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+        from sqlalchemy.exc import SQLAlchemyError
+        from src.crawlers.fan_culture_crawler import FanCultureCrawler
+
+        mock_session = MagicMock()
+        mock_session_local = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_session
+        monkeypatch.setattr("src.crawlers.fan_culture_crawler.SessionLocal", mock_session_local)
+
+        mock_repo = MagicMock()
+        mock_repo.save_cheer_song.side_effect = [SQLAlchemyError("DB error"), None]
+        monkeypatch.setattr("src.crawlers.fan_culture_crawler.FanCultureRepository", lambda s: mock_repo)
+
+        crawler = FanCultureCrawler(season=2026)
+        crawler._save_to_db([{"song_name": "Song 1"}, {"song_name": "Song 2"}])
+
+        assert mock_repo.save_cheer_song.call_count == 2
+        mock_session.commit.assert_called_once()
+
+    def test_save_to_db_transaction_fails_rolls_back(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+        from sqlalchemy.exc import SQLAlchemyError
+        from src.crawlers.fan_culture_crawler import FanCultureCrawler
+
+        mock_session = MagicMock()
+        mock_session.commit.side_effect = SQLAlchemyError("Commit error")
+        mock_session_local = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_session
+        monkeypatch.setattr("src.crawlers.fan_culture_crawler.SessionLocal", mock_session_local)
+
+        mock_repo = MagicMock()
+        monkeypatch.setattr("src.crawlers.fan_culture_crawler.FanCultureRepository", lambda s: mock_repo)
+
+        crawler = FanCultureCrawler(season=2026)
+        crawler._save_to_db([{"song_name": "Song 1"}])
+
+        mock_session.rollback.assert_called_once()
 
 
 # ─────────────────────────────────────────────

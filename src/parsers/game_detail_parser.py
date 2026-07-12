@@ -11,12 +11,16 @@ from bs4 import BeautifulSoup
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN
+from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, MAX_INNINGS
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+
+DURATION_PART_COUNT = 2
+MIN_NAME_LENGTH_WITH_SPACING = 2
 
 
 def parse_game_detail_html(
@@ -25,8 +29,7 @@ def parse_game_detail_html(
     game_date: str,
     db_session: Session | None = None,
 ) -> dict[str, Any]:
-    """
-    Parse game detail html.
+    """Parse game detail html.
 
     Args:
         html: Html.
@@ -130,8 +133,7 @@ def _build_team_info(
         home_row = df.iloc[1] if len(df) > 1 else None
 
         def parse_row(row: pd.Series, info: dict[str, Any]) -> None:
-            """
-            Parse row.
+            """Parse row.
 
             Args:
                 row: Row.
@@ -193,7 +195,7 @@ def _build_hitter_payload(
                 "team_side": team_side,
                 "batting_order": safe_int_or_none(row.get("타순")),
                 "position": str(row.get("POS", "") or row.get("포지션", "")).strip() or None,
-                "is_starter": ((bo := safe_int_or_none(row.get("타순"))) is not None and bo <= 9),
+                "is_starter": ((bo := safe_int_or_none(row.get("타순"))) is not None and bo <= MAX_INNINGS),
                 "stats": {
                     "plate_appearances": safe_int_or_none(row.get("타석")),
                     "at_bats": safe_int_or_none(row.get("타수")),
@@ -370,7 +372,7 @@ def _parse_duration_minutes(duration: str | None) -> int | None:
     if not duration:
         return None
     parts = duration.split(":")
-    if len(parts) != 2:
+    if len(parts) != DURATION_PART_COUNT:
         return None
     try:
         hours = int(parts[0])
@@ -381,8 +383,7 @@ def _parse_duration_minutes(duration: str | None) -> int | None:
 
 
 def _resolve_missing_player_id(db_session: Session, player_name: str, team_code: str) -> int | None:
-    """
-    Fallback resolution of player_id via name and team search.
+    """Fallback resolution of player_id via name and team search.
 
     Useful for exhibition games where IDs are missing from the HTML.
 
@@ -412,7 +413,7 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
         player_name
         if " " in player_name
         else f"{player_name[0]} {player_name[1:]}"
-        if len(player_name) > 2
+        if len(player_name) > MIN_NAME_LENGTH_WITH_SPACING
         else player_name
     )
 

@@ -28,8 +28,7 @@ class FuturesProfileCrawler:
     pitcher_profile_url = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -46,8 +45,7 @@ class FuturesProfileCrawler:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
     async def fetch_player_futures(self, player_id: str) -> dict[str, Any]:
-        """
-        Fetch futures profile data (tables + profile text) for a player.
+        """Fetch futures profile data (tables + profile text) for a player.
 
         Args:
             player_id: Player ID.
@@ -193,8 +191,7 @@ class FuturesProfileCrawler:
         return tables
 
     def _parse_table_with_bs4(self, table_elem: Tag) -> dict[str, Any] | None:
-        """
-        Parse a table element using BeautifulSoup for proper Korean encoding.
+        """Parse a table element using BeautifulSoup for proper Korean encoding.
 
         Args:
             table_elem: Table Elem.

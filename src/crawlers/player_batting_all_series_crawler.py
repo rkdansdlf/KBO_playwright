@@ -1,5 +1,4 @@
-"""
-KBO 전체 시리즈 타자 기록 크롤러.
+"""KBO 전체 시리즈 타자 기록 크롤러.
 
 - 정규시즌, 시범경기, 와일드카드, 준플레이오프, 플레이오프, 한국시리즈.
 
@@ -47,6 +46,12 @@ from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
 
 logger = logging.getLogger(__name__)
+
+MIN_BATTING_TABLE_CELLS = 10
+MIN_LEGACY_ROW_CELLS = 5
+PLAYER_NAME_CELL_INDEX = 1
+TEAM_NAME_CELL_INDEX = 2
+DEBUG_ROW_LIMIT = 3
 
 
 @dataclass
@@ -114,8 +119,7 @@ def get_series_mapping() -> dict[str, dict[str, str]]:
 
 
 def safe_parse_number(value_str: str | None, data_type: type, *, _allow_zero: bool = True) -> int | float | None:
-    """
-    안전하게 숫자를 파싱하는 함수.
+    """안전하게 숫자를 파싱하는 함수.
 
     Args:
         value_str: Value Str.
@@ -163,8 +167,7 @@ def _build_batting_data(ctx: BattingRowData) -> dict[str, Any]:
     league_name = series_map.get(ctx.series_key, {}).get("league", "REGULAR")
 
     def cell(idx: int) -> str | None:
-        """
-        Handle the cell operation.
+        """Handle the cell operation.
 
         Args:
             idx: Idx.
@@ -246,8 +249,7 @@ def _build_batting_data(ctx: BattingRowData) -> dict[str, Any]:
 
 
 def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | None = None) -> list[dict]:
-    """
-    Parse batting table using JS extraction for reduced RPC.
+    """Parse batting table using JS extraction for reduced RPC.
 
     Args:
         page: Page.
@@ -356,20 +358,22 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | N
         players_data = []
         for row in rows:
             cell_nodes = row.query_selector_all("td")
-            if len(cell_nodes) < 10:
+            if len(cell_nodes) < MIN_BATTING_TABLE_CELLS:
                 continue
 
             cells = [(cell.text_content() or "").strip() for cell in cell_nodes]
-            name_link = cell_nodes[1].query_selector("a")
+            name_link = cell_nodes[PLAYER_NAME_CELL_INDEX].query_selector("a")
             href = name_link.get_attribute("href") if name_link else None
             player_id = _extract_player_id_from_href(href)
             if not player_id:
                 continue
 
             player_name = (
-                (name_link.text_content() or "").strip() if name_link else (cells[1] if len(cells) > 1 else "")
+                (name_link.text_content() or "").strip()
+                if name_link
+                else (cells[PLAYER_NAME_CELL_INDEX] if len(cells) > PLAYER_NAME_CELL_INDEX else "")
             )
-            team_name = cells[2] if len(cells) > 2 else ""
+            team_name = cells[TEAM_NAME_CELL_INDEX] if len(cells) > TEAM_NAME_CELL_INDEX else ""
             team_code = resolve_team_code(team_name, year) or team_name
 
             batting_data = _build_batting_data(
@@ -399,8 +403,7 @@ def parse_batting_stats_table(
     *,
     use_fast: bool | None = None,
 ) -> list[dict]:
-    """
-    Parse batting stats table.
+    """Parse batting stats table.
 
     Args:
         page: Page.
@@ -425,8 +428,7 @@ def parse_batting_stats_table(
 
 
 def build_batting_crawl_summary(rows: list[dict]) -> tuple[dict[str, object], list[dict]]:
-    """
-    Build batting summary.
+    """Build batting summary.
 
     Args:
         rows: Rows.
@@ -448,8 +450,7 @@ def build_batting_crawl_summary(rows: list[dict]) -> tuple[dict[str, object], li
 
 
 def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | None = None) -> bool:
-    """
-    다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복).
+    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복).
 
     Args:
         page: Page.
@@ -566,8 +567,7 @@ def crawl_basic2_with_headers(
     series_info: dict,
     policy: RequestPolicy | None = None,
 ) -> dict[int, dict]:
-    """
-    정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집.
+    """정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집.
 
     Args:
         page: Page.
@@ -608,8 +608,7 @@ def _extract_basic2_stat_by_header(
     cells: list[str],
     batting_data: dict[str, Any],
 ) -> None:
-    """
-    Basic2 테이블의 헤더(BB, IBB, HBP 등)에 맞춰 데이터를 파싱하여 batting_data에 추가합니다.
+    """Basic2 테이블의 헤더(BB, IBB, HBP 등)에 맞춰 데이터를 파싱하여 batting_data에 추가합니다.
 
     Args:
         current_header: Current Header.
@@ -669,7 +668,7 @@ def _log_first_rows_basic2_legacy(
     current_header: str,
     batting_data: dict[str, Any],
 ) -> None:
-    if row_idx < 3:
+    if row_idx < DEBUG_ROW_LIMIT:
         sort_value = "N/A"
         if current_header in ["BB", "IBB", "HBP", "SO", "GDP", "SLG", "OBP", "OPS"]:
             sort_value = batting_data.get(current_header.lower(), "N/A")
@@ -683,11 +682,11 @@ def _log_first_rows_basic2_legacy(
 
 def _parse_legacy_row(ctx: LegacyRowContext) -> tuple[int, dict] | None:
     cells = ctx.row.query_selector_all("td")
-    if len(cells) < 5:
+    if len(cells) < MIN_LEGACY_ROW_CELLS:
         return None
 
     try:
-        name_cell = cells[1]
+        name_cell = cells[PLAYER_NAME_CELL_INDEX]
         name_link = name_cell.query_selector("a")
         if not name_link:
             return None
@@ -698,7 +697,7 @@ def _parse_legacy_row(ctx: LegacyRowContext) -> tuple[int, dict] | None:
         if not player_id:
             return None
 
-        team_name = (cells[2].text_content() or "").strip()
+        team_name = (cells[TEAM_NAME_CELL_INDEX].text_content() or "").strip()
         team_code = get_team_code(team_name, ctx.year)
         if not team_code:
             team_code = ctx.team_mapping.get(team_name, team_name)
@@ -727,8 +726,7 @@ def _parse_basic2_header_data_legacy(
     description: str,
     year: int | None = None,
 ) -> dict[int, dict]:
-    """
-    Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱.
+    """Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱.
 
     각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집.
 
@@ -799,7 +797,7 @@ def _parse_fast_row(
     team_mapping: dict[str, str],
 ) -> tuple[int, dict] | None:
     cells = row.get("cells") or []
-    if len(cells) < 5:
+    if len(cells) < MIN_LEGACY_ROW_CELLS:
         return None
 
     href = row.get("linkHref")
@@ -807,8 +805,10 @@ def _parse_fast_row(
     if not player_id:
         return None
 
-    player_name = (row.get("linkText") or (cells[1] if len(cells) > 1 else "")).strip()
-    team_name = cells[2] if len(cells) > 2 else ""
+    player_name = (
+        row.get("linkText") or (cells[PLAYER_NAME_CELL_INDEX] if len(cells) > PLAYER_NAME_CELL_INDEX else "")
+    ).strip()
+    team_name = cells[TEAM_NAME_CELL_INDEX] if len(cells) > TEAM_NAME_CELL_INDEX else ""
     team_code = get_team_code(team_name, year)
     if not team_code:
         team_code = team_mapping.get(team_name, team_name)
@@ -857,8 +857,7 @@ def parse_basic2_header_data(
     *,
     use_fast: bool | None = None,
 ) -> dict[int, dict]:
-    """
-    Parse basic2 header data.
+    """Parse basic2 header data.
 
     Args:
         page: Page.
@@ -890,8 +889,7 @@ def parse_basic2_header_data(
 
 
 def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> list[dict]:
-    """
-    KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다.
+    """KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다.
 
     Args:
         year: Season year.
@@ -1156,8 +1154,7 @@ def crawl_series_batting_stats(  # noqa: PLR0913
     headless: bool = False,
     by_team: bool = False,
 ) -> list[dict]:
-    """
-    특정 시리즈의 타자 기록을 크롤링.
+    """특정 시리즈의 타자 기록을 크롤링.
 
     Args:
         year: Season year.
@@ -1284,8 +1281,7 @@ def crawl_all_series(
     headless: bool = False,
     by_team: bool = False,
 ) -> dict[str, list[dict]]:
-    """
-    모든 시리즈의 타자 기록을 크롤링.
+    """모든 시리즈의 타자 기록을 크롤링.
 
     Args:
         year: Season year.

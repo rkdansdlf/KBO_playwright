@@ -6,7 +6,7 @@ import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from http import HTTPStatus
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
@@ -30,12 +30,11 @@ HEADERS = {
 class NaverNewsCrawlerBase(ABC):
     """NaverNewsCrawlerBase class."""
 
-    KEYWORDS: list[str] = []
+    KEYWORDS: ClassVar[list[str]] = []
     LABEL: str = "news"
 
     async def run(self, *, save: bool = False) -> None:
-        """
-        Run run.
+        """Run run.
 
         Args:
             save: Whether to persist the results.

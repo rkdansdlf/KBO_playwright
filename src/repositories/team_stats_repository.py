@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 from sqlalchemy import text
@@ -18,8 +19,7 @@ class BaseStatsUpsertRepository:
     """Shared UPSERT helpers for stat tables."""
 
     def __init__(self, model: type[TeamSeasonBatting | TeamSeasonPitching], unique_keys: list[str]) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             model: Model.
@@ -34,8 +34,7 @@ class BaseStatsUpsertRepository:
         self.dialect = Engine.dialect.name
 
     def upsert_many(self, records: list[dict[str, Any]]) -> int:
-        """
-        Insert or update many.
+        """Insert or update many.
 
         Args:
             records: Records.
@@ -58,9 +57,21 @@ class BaseStatsUpsertRepository:
                 if db_type == "sqlite":
                     session.execute(text("PRAGMA foreign_keys = OFF"))
 
+                # Group records by their column key-set so we can bulk-execute
+                # each group in one statement instead of one-per-record.
+                groups: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
                 for payload in cleaned:
-                    stmt = self._build_insert_stmt(payload)
-                    session.execute(stmt)
+                    groups[tuple(sorted(payload.keys()))].append(payload)
+
+                for group in groups.values():
+                    # Build stmt from the first record (representative shape)
+                    stmt = self._build_insert_stmt(group[0])
+                    if len(group) == 1:
+                        session.execute(stmt)
+                    else:
+                        # Re-build as VALUES-list stmt for bulk insert
+                        bulk_stmt = self._build_bulk_insert_stmt(group)
+                        session.execute(bulk_stmt)
 
                 session.commit()
                 return len(cleaned)
@@ -72,8 +83,7 @@ class BaseStatsUpsertRepository:
                     session.execute(text("PRAGMA foreign_keys = ON"))
 
     def _filter_model_fields(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """
-        Filter out keys that are not present in the model's columns.
+        """Filter out keys that are not present in the model's columns.
 
         Args:
             payload: Payload.
@@ -109,6 +119,39 @@ class BaseStatsUpsertRepository:
         # Fallback: rely on merge semantics (slower but portable)
         stmt = sqlite_insert(self.model).values(**payload)
         update_dict = {k: v for k, v in payload.items() if k not in self.unique_keys}
+        return stmt.on_conflict_do_update(
+            index_elements=self.unique_keys,
+            set_=update_dict,
+        )
+
+    def _build_bulk_insert_stmt(self, payloads: list[dict[str, Any]]) -> text | str:
+        """Build a multi-row upsert statement for a list of records sharing the same key-set."""
+        if self.dialect == "sqlite":
+            stmt = sqlite_insert(self.model).values(payloads)
+            first = payloads[0]
+            update_dict = {k: v for k, v in first.items() if k not in self.unique_keys}
+            return stmt.on_conflict_do_update(
+                index_elements=self.unique_keys,
+                set_=update_dict,
+            )
+
+        if self.dialect == "postgresql":
+            stmt = pg_insert(self.model).values(payloads)
+            update_dict = {k: stmt.excluded[k] for k in payloads[0] if k not in self.unique_keys}
+            return stmt.on_conflict_do_update(
+                index_elements=self.unique_keys,
+                set_=update_dict,
+            )
+
+        if self.dialect == "mysql":
+            stmt = mysql_insert(self.model).values(payloads)
+            update_dict = {k: stmt.inserted[k] for k in payloads[0] if k not in self.unique_keys}
+            return stmt.on_duplicate_key_update(**update_dict)
+
+        # Fallback
+        stmt = sqlite_insert(self.model).values(payloads)
+        first = payloads[0]
+        update_dict = {k: v for k, v in first.items() if k not in self.unique_keys}
         return stmt.on_conflict_do_update(
             index_elements=self.unique_keys,
             set_=update_dict,

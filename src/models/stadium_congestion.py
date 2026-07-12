@@ -1,5 +1,4 @@
-"""
-Model for stadium area congestion measurements.
+"""Model for stadium area congestion measurements.
 
 Captures real-time congestion levels at stadium gates, surrounding subway stations,
 roads, and parking areas on game days. Sourced from Seoul Open Data API,

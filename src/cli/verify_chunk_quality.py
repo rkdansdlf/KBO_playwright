@@ -1,5 +1,4 @@
-"""
-verify_chunk_quality.py.
+"""verify_chunk_quality.py.
 
 CLI tool to measure and report the quality of RAG chunks stored in the local SQLite database.
 
@@ -58,8 +57,7 @@ KEYWORD_COVERAGE_TARGET = 0.80  # 80%
 
 
 def load_chunks(session: Session, source_filter: str | None = None) -> list[dict[str, Any]]:
-    """
-    Load rag_chunks rows from the local SQLite database.
+    """Load rag_chunks rows from the local SQLite database.
 
     Return a list of dicts with keys: id, source_table, source_row_id, content, metadata.
 
@@ -110,8 +108,7 @@ def _percentile(sorted_vals: list[int], pct: float) -> int:
 
 
 def compute_length_stats(chunks: list[dict]) -> dict[str, Any]:
-    """
-    Compute length stats.
+    """Compute length stats.
 
     Args:
         chunks: Chunks.
@@ -137,8 +134,7 @@ def compute_length_stats(chunks: list[dict]) -> dict[str, Any]:
 
 
 def count_empty_chunks(chunks: list[dict]) -> int:
-    """
-    Handle the count empty chunks operation.
+    """Handle the count empty chunks operation.
 
     Args:
         chunks: Chunks.
@@ -152,8 +148,7 @@ def count_empty_chunks(chunks: list[dict]) -> int:
 
 
 def count_stub_chunks(chunks: list[dict]) -> int:
-    """
-    Handle the count stub chunks operation.
+    """Handle the count stub chunks operation.
 
     Args:
         chunks: Chunks.
@@ -167,8 +162,7 @@ def count_stub_chunks(chunks: list[dict]) -> int:
 
 
 def find_duplicates(chunks: list[dict]) -> tuple[int, list[str]]:
-    """
-    Return (duplicate_count, list of duplicate source_row_ids).
+    """Return (duplicate_count, list of duplicate source_row_ids).
 
     Args:
         chunks: Chunks.
@@ -192,8 +186,7 @@ def find_duplicates(chunks: list[dict]) -> tuple[int, list[str]]:
 
 
 def keyword_coverage(chunks: list[dict]) -> float:
-    """
-    Handle the keyword coverage operation.
+    """Handle the keyword coverage operation.
 
     Args:
         chunks: Chunks.
@@ -210,8 +203,7 @@ def keyword_coverage(chunks: list[dict]) -> float:
 
 
 def category_distribution(chunks: list[dict]) -> Counter:
-    """
-    Handle the category distribution operation.
+    """Handle the category distribution operation.
 
     Args:
         chunks: Chunks.
@@ -225,8 +217,7 @@ def category_distribution(chunks: list[dict]) -> Counter:
 
 
 def chunks_per_source(chunks: list[dict]) -> dict[str, int]:
-    """
-    Handle the chunks per source operation.
+    """Handle the chunks per source operation.
 
     Args:
         chunks: Chunks.
@@ -254,8 +245,7 @@ def _status(*, ok: bool) -> str:
 
 
 def print_report(chunks: list[dict], source_filter: str | None) -> bool:
-    """
-    Print the quality report.
+    """Print the quality report.
 
         Returns True if all checks pass.
 
@@ -353,8 +343,7 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
 
 
 def remove_duplicate_chunks(session: Session) -> int:
-    """
-    Remove duplicate rag_chunks rows keeping the one with the lowest id.
+    """Remove duplicate rag_chunks rows keeping the one with the lowest id.
 
     Return the number of rows deleted.
 

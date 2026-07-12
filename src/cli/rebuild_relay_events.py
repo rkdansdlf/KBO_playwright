@@ -66,8 +66,7 @@ def rebuild_relay_events(  # noqa: PLR0913
     oci_url: str | None = None,
     log: Callable[..., Any] = logger.info,
 ) -> list[RebuildReportRow]:
-    """
-    Handle the rebuild relay events operation.
+    """Handle the rebuild relay events operation.
 
     Args:
         seasons: Seasons.
@@ -428,10 +427,14 @@ def _batter_from_description(description: object) -> str | None:
 
 
 def _result_from_description(description: object) -> str | None:
-    text = str(description or "").strip()
-    if ":" not in text:
-        return None
-    return text.split(":", 1)[-1].strip() or None
+    """이벤트 설명에서 result_code를 추출합니다.
+
+    한국어 PBP 텍스트를 표준 result_code (H1/H2/H3/HR/K/BB/FC 등)로 변환하며,
+    매핑 실패 시 `:` 이후 원문을 폴백으로 반환합니다.
+    """
+    from src.utils.result_code_mapper import enrich_result_code
+
+    return enrich_result_code(str(description or "").strip())
 
 
 def _format_base_string(runners: int) -> str:
@@ -475,8 +478,7 @@ def _chunked(values: Sequence[str], size: int) -> Iterable[Sequence[str]]:
 
 
 def run(argv: Sequence[str] | None = None) -> int:
-    """
-    Run run.
+    """Run run.
 
     Args:
         argv: Argv.

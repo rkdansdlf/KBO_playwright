@@ -139,8 +139,7 @@ def _write_csv_report(report_data: dict, path: str) -> None:
 
 
 def generate_report(years: list[int], output_format: str, output_dir: str, db_url: str | None = None) -> None:
-    """
-    Generate generate report.
+    """Generate generate report.
 
     Args:
         years: Years.
@@ -164,8 +163,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

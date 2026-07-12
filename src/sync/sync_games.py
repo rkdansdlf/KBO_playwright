@@ -32,6 +32,8 @@ from src.models.game import (
 )
 
 logger = logging.getLogger(__name__)
+MIN_LEGACY_SEASON_ID = 1900
+SEASON_ID_ENCODING_BOUNDARY = 10_000
 
 from src.sync.sync_base import (
     GameSyncEligibility,
@@ -68,8 +70,7 @@ def _serialized_payload_length(payload: object) -> int:
 
 
 def _compact_metadata_source_payload_for_limit(payload: object, limit: int | None) -> object:
-    """
-    Keep OCI varchar-backed source_payload values under the target length.
+    """Keep OCI varchar-backed source_payload values under the target length.
 
     Args:
         payload: Payload.
@@ -156,8 +157,7 @@ class GameSyncMixin(SyncBaseProtocol):
         return data
 
     def sync_games(self, limit: int | None = None, filters: list[Any] | None = None, batch_size: int = 5000) -> int:
-        """
-        Sync game detail data from SQLite to OCI using Batched UPSERT or COPY.
+        """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY.
 
         Args:
             limit: Limit.
@@ -175,9 +175,9 @@ class GameSyncMixin(SyncBaseProtocol):
         def transform(data: dict[str, Any]) -> dict[str, Any] | None:
             nonlocal unmapped_count
             raw_sid = data.get("season_id")
-            if raw_sid and raw_sid > 1900:
-                year = raw_sid if raw_sid < 10000 else raw_sid // 100
-                code = 0 if raw_sid < 10000 else raw_sid % 100
+            if raw_sid and raw_sid > MIN_LEGACY_SEASON_ID:
+                year = raw_sid if raw_sid < SEASON_ID_ENCODING_BOUNDARY else raw_sid // 100
+                code = 0 if raw_sid < SEASON_ID_ENCODING_BOUNDARY else raw_sid % 100
                 key = (year, code)
                 if key in season_map:
                     data["season_id"] = season_map[key]
@@ -217,8 +217,7 @@ class GameSyncMixin(SyncBaseProtocol):
         return result
 
     def sync_player_game_batting(self, year: int | None = None, batch_size: int = 5000) -> int:
-        """
-        Sync player game batting stats from SQLite to OCI.
+        """Sync player game batting stats from SQLite to OCI.
 
         Args:
             year: Season year.
@@ -238,8 +237,7 @@ class GameSyncMixin(SyncBaseProtocol):
         )
 
     def sync_player_game_pitching(self, year: int | None = None, batch_size: int = 5000) -> int:
-        """
-        Sync player game pitching stats from SQLite to OCI.
+        """Sync player game pitching stats from SQLite to OCI.
 
         Args:
             year: Season year.
@@ -263,8 +261,7 @@ class GameSyncMixin(SyncBaseProtocol):
         return 0
 
     def sync_all_game_data(self, limit: int | None = None) -> dict[str, Any]:
-        """
-        Sync all game-related data.
+        """Sync all game-related data.
 
         Args:
             limit: Limit.
@@ -279,8 +276,7 @@ class GameSyncMixin(SyncBaseProtocol):
         }
 
     def _purge_game_detail_children_for_year(self, year: int) -> None:
-        """
-        Delete year-scoped child detail rows on OCI before re-sync.
+        """Delete year-scoped child detail rows on OCI before re-sync.
 
         This prevents stale duplicates when mutable fields (e.g. player_id) change.
 
@@ -502,8 +498,7 @@ class GameSyncMixin(SyncBaseProtocol):
         unsynced_only: bool = False,
         batch_size: int = 5000,
     ) -> dict[str, int]:
-        """
-        Sync game details.
+        """Sync game details.
 
         Args:
             days: Days.
@@ -550,8 +545,7 @@ class GameSyncMixin(SyncBaseProtocol):
         return self._aggregate_game_detail_chunks(scope)
 
     def sync_game_details_for_ids(self, game_ids: list[str], batch_size: int = 5000) -> dict[str, Any]:
-        """
-        Sync completed game details for an explicit list of game IDs.
+        """Sync completed game details for an explicit list of game IDs.
 
         Args:
             game_ids: Game Ids.
@@ -667,8 +661,7 @@ class GameSyncMixin(SyncBaseProtocol):
             )
 
         def get_child_filters(model_cls: type[Base]) -> list[Any] | None:
-            """
-            Get child filters.
+            """Get child filters.
 
             Args:
                 model_cls: Model Cls.
@@ -763,8 +756,7 @@ class GameSyncMixin(SyncBaseProtocol):
         return results
 
     def sync_specific_game(self, game_id: str) -> dict[str, int]:
-        """
-        Sync all related data for a single game_id.
+        """Sync all related data for a single game_id.
 
         Args:
             game_id: Game ID.
@@ -883,8 +875,7 @@ class GameSyncMixin(SyncBaseProtocol):
         return results
 
     def sync_pregame_game(self, game_id: str) -> dict[str, int]:
-        """
-        Sync only pregame publish tables for one game without touching completed detail datasets.
+        """Sync only pregame publish tables for one game without touching completed detail datasets.
 
         Args:
             game_id: Game ID.
@@ -952,8 +943,7 @@ class GameSyncMixin(SyncBaseProtocol):
         *,
         summary_type: str = "리뷰_WPA",
     ) -> dict[str, int]:
-        """
-        Replace and sync review summary rows for a bounded game_id set.
+        """Replace and sync review summary rows for a bounded game_id set.
 
         Args:
             game_ids: Game Ids.

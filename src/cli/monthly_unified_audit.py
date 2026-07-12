@@ -1,5 +1,4 @@
-"""
-Monthly Unified Audit Job for Scheduler.
+"""Monthly Unified Audit Job for Scheduler.
 
 Run both PA formula audit (with fix) and team stats consistency check.
 
@@ -27,6 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from scripts.maintenance.audit_pa_formula import audit_year, fix_year_formula
 from src.cli.monthly_team_audit import run_monthly_team_audit
+from src.constants import KBO_QUALITY_AUDIT_START_YEAR
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,7 @@ PA_AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSE
 
 
 def run_pa_fix(year: int, *, dry_run: bool = False) -> dict[str, Any]:
-    """
-    Apply PA formula fix for a given year, returning result dict.
+    """Apply PA formula fix for a given year, returning result dict.
 
     Args:
         year: Season year.
@@ -57,8 +56,7 @@ def run_pa_fix(year: int, *, dry_run: bool = False) -> dict[str, Any]:
 
 
 def run_pa_audit(year: int) -> dict[str, Any]:
-    """
-    Run PA formula audit (read-only) and return JSON result.
+    """Run PA formula audit (read-only) and return JSON result.
 
     Args:
         year: Season year.
@@ -84,8 +82,8 @@ def crawl_monthly_unified_audit_job() -> None:
     current_year = datetime.now(kst).year
     target_year = current_year - 1
 
-    if target_year < 2020:
-        logger.info("Skipping unified audit for year %s (before 2020)", target_year)
+    if target_year < KBO_QUALITY_AUDIT_START_YEAR:
+        logger.info("Skipping unified audit for year %s (before %s)", target_year, KBO_QUALITY_AUDIT_START_YEAR)
         return
 
     logger.info("Starting unified audit for year %s", target_year)
@@ -228,8 +226,8 @@ def main() -> int:
 
     target_year = _target_year_from_args(args.year)
 
-    if target_year < 2020:
-        logger.info("Skipping unified audit for year %s (before 2020)", target_year)
+    if target_year < KBO_QUALITY_AUDIT_START_YEAR:
+        logger.info("Skipping unified audit for year %s (before %s)", target_year, KBO_QUALITY_AUDIT_START_YEAR)
         return 0
 
     logger.info("Running unified audit for year %s...", target_year)

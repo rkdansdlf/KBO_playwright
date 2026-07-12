@@ -31,6 +31,7 @@ from .player import PlayerBasic as PlayerBasic
 from .rag_chunk import RagChunk as RagChunk
 from .roster_transaction import RosterTransaction as RosterTransaction
 from .season import KboSeason as KboSeason
+from .sla_metrics import SlaMetrics as SlaMetrics
 from .source_registry import DataSource as DataSource
 from .source_registry import RawSourceSnapshot as RawSourceSnapshot
 from .stadium_congestion import StadiumCongestion as StadiumCongestion

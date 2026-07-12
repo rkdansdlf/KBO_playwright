@@ -98,8 +98,7 @@ def _backfill_fielding(
 
 
 def backfill_stats(years: list[int], series: str) -> None:
-    """
-    Backfills stats.
+    """Backfills stats.
 
     Args:
         years: Years.
@@ -123,8 +122,7 @@ def backfill_stats(years: list[int], series: str) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

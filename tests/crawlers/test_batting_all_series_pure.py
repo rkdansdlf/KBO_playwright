@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,25 @@ from src.crawlers.player_batting_all_series_crawler import (
     _extract_basic2_stat_by_header,
     _extract_player_id_from_href,
     _finalize_batting_summary,
+    _collect_basic2_pages,
+    _collect_batting_stats_loop,
+    _get_team_options,
+    _handle_batting_fallback,
+    _navigate_to_basic2,
+    _apply_pa_sorting,
+    _parse_basic2_header_data_legacy,
+    _select_team_if_needed,
+    _select_year_option,
+    _select_series_option,
+    _save_batting_if_needed,
     _is_basic2_headers,
+    _merge_basic2_data,
+    _parse_basic2_header_data_fast,
+    parse_batting_stats_table,
+    crawl_series_batting_stats,
+    crawl_all_series,
+    BattingCrawlContext,
+    go_to_next_page,
     _parse_fast_row,
     build_batting_crawl_summary,
     get_series_mapping,
@@ -401,3 +419,393 @@ class TestFinalizeBattingSummary:
     def test_empty_input(self):
         result = _finalize_batting_summary([], {"name": "테스트"})
         assert result == []
+
+
+class TestBattingPageParsers:
+    def test_fast_basic1_table_parser_builds_normalized_payload(self):
+        page = MagicMock()
+        page.evaluate.return_value = {
+            "is_basic2": False,
+            "results": [
+                {
+                    "player_id": 123,
+                    "player_name": "홍길동",
+                    "team_name": "LG 트윈스",
+                    "raw_cells": [
+                        "1",
+                        "홍길동",
+                        "LG 트윈스",
+                        "0.333",
+                        "10",
+                        "40",
+                        "30",
+                        "12",
+                        "3",
+                        "1",
+                        "2",
+                        "8",
+                        "1",
+                        "0",
+                        "4",
+                        "1",
+                        "5",
+                        "0",
+                        "0",
+                    ],
+                },
+            ],
+        }
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler.get_team_mapping_for_year"),
+            patch("src.crawlers.player_batting_all_series_crawler.resolve_team_code", return_value="LG"),
+        ):
+            records = parse_batting_stats_table(page, "regular", 2025, use_fast=True)
+
+        assert records[0]["player_id"] == 123
+        assert records[0]["team_code"] == "LG"
+        assert records[0]["season"] == 2025
+        assert records[0]["avg"] == 0.333
+        assert records[0]["home_runs"] == 8
+
+    def test_fast_table_parser_returns_empty_for_invalid_extraction(self):
+        page = MagicMock()
+        page.evaluate.return_value = {"is_basic2": False, "results": []}
+
+        records = parse_batting_stats_table(page, "regular", 2025, use_fast=True)
+
+        assert records == []
+
+    def test_fast_basic2_header_parser_extracts_requested_stat(self):
+        page = MagicMock()
+        page.query_selector.return_value = None
+        rows = [
+            {
+                "cells": ["1", "홍길동", "LG", "0.333", "12"],
+                "linkHref": "/Player/Detail.aspx?playerId=123",
+                "linkText": "홍길동",
+            },
+        ]
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler.extract_rows_fast", return_value=rows),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.get_team_mapping_for_year", return_value={"LG": "LG"}
+            ),
+            patch("src.crawlers.player_batting_all_series_crawler.get_team_code", return_value="LG"),
+        ):
+            records = _parse_basic2_header_data_fast(page, "BB", "볼넷", 2025)
+
+        assert records == {
+            123: {
+                "player_id": 123,
+                "player_name": "홍길동",
+                "team_code": "LG",
+                "walks": 12,
+            },
+        }
+
+    def test_merge_basic2_data_updates_only_non_identity_values(self):
+        basic1 = [
+            {
+                "player_id": 123,
+                "player_name": "홍길동",
+                "team_code": "LG",
+                "season": 2025,
+                "league": "REGULAR",
+                "avg": 0.3,
+            },
+        ]
+
+        with patch(
+            "src.crawlers.player_batting_all_series_crawler.crawl_basic2_with_headers",
+            return_value={
+                123: {
+                    "player_id": 123,
+                    "player_name": "다른 이름",
+                    "team_code": "SS",
+                    "walks": 12,
+                    "ops": None,
+                },
+            },
+        ):
+            merged = _merge_basic2_data(basic1, MagicMock(), 2025, {}, MagicMock())
+
+        assert merged == [
+            {
+                "player_id": 123,
+                "player_name": "홍길동",
+                "team_code": "LG",
+                "season": 2025,
+                "league": "REGULAR",
+                "avg": 0.3,
+                "walks": 12,
+            },
+        ]
+
+    def test_legacy_table_parser_reads_dom_rows(self):
+        class Node:
+            def __init__(self, text="", *, href=None, children=None):
+                self.text = text
+                self.href = href
+                self.children = children or {}
+
+            def get_attribute(self, name):
+                return self.href if name == "href" else None
+
+            def query_selector(self, selector):
+                return self.children.get(selector)
+
+            def query_selector_all(self, selector):
+                return self.children.get(selector, [])
+
+            def text_content(self):
+                return self.text
+
+        headers = [
+            Node(value) for value in ["순위", "선수명", "팀명", "AVG", "G", "PA", "AB", "R", "H", "2B", "3B", "HR"]
+        ]
+        cells = [Node(value) for value in ["1", "홍길동", "LG", "0.333", "10", "40", "30", "8", "12", "3", "1", "2"]]
+        cells[1].children["a"] = Node("홍길동", href="/Player/Detail.aspx?playerId=123")
+        row = Node(children={"td": cells})
+        table = Node(children={"thead": Node(children={"th": headers}), "tbody": Node(children={"tr": [row]})})
+        page = MagicMock()
+        page.query_selector.side_effect = lambda selector: table if selector == "table" else None
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler.get_team_mapping_for_year"),
+            patch("src.crawlers.player_batting_all_series_crawler.resolve_team_code", return_value="LG"),
+        ):
+            records = parse_batting_stats_table(page, "regular", 2025, use_fast=False)
+
+        assert records[0]["player_id"] == 123
+        assert records[0]["hits"] == 12
+        assert records[0]["home_runs"] == 2
+
+    def test_legacy_basic2_parser_reads_header_specific_stat(self):
+        class Node:
+            def __init__(self, text="", *, href=None, children=None):
+                self.text = text
+                self.href = href
+                self.children = children or {}
+
+            def get_attribute(self, name):
+                return self.href if name == "href" else None
+
+            def query_selector(self, selector):
+                return self.children.get(selector)
+
+            def query_selector_all(self, selector):
+                return self.children.get(selector, [])
+
+            def text_content(self):
+                return self.text
+
+        cells = [Node(value) for value in ["1", "홍길동", "LG", "0.333", "12"]]
+        cells[1].children["a"] = Node("홍길동", href="/Player/Detail.aspx?playerId=123")
+        row = Node(children={"td": cells})
+        table = Node(children={"tbody": Node(children={"tr": [row]})})
+        page = MagicMock()
+        page.query_selector.side_effect = lambda selector: table if selector == "table" else None
+
+        with (
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.get_team_mapping_for_year", return_value={"LG": "LG"}
+            ),
+            patch("src.crawlers.player_batting_all_series_crawler.get_team_code", return_value="LG"),
+        ):
+            records = _parse_basic2_header_data_legacy(page, "BB", "볼넷", 2025)
+
+        assert records[123]["walks"] == 12
+
+    def test_collect_basic2_pages_merges_duplicate_player_rows(self):
+        page = MagicMock()
+        players = {}
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler.retry_wait_for_selector", side_effect=[True, True]),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.parse_batting_stats_table",
+                side_effect=[
+                    [{"player_id": 1, "avg": 0.3}],
+                    [{"player_id": 1, "walks": 10}, {"player_id": 2, "avg": 0.2}],
+                ],
+            ),
+            patch("src.crawlers.player_batting_all_series_crawler.go_to_next_page", side_effect=[True, False]),
+        ):
+            _collect_basic2_pages(page, 2025, players)
+
+        assert players == {
+            1: {"player_id": 1, "avg": 0.3, "walks": 10},
+            2: {"player_id": 2, "avg": 0.2},
+        }
+
+    def test_go_to_next_page_clicks_enabled_number_button(self):
+        page = MagicMock()
+        button = MagicMock()
+        button.get_attribute.return_value = None
+        page.query_selector.side_effect = [MagicMock(), button]
+        policy = MagicMock()
+
+        moved = go_to_next_page(page, 1, policy)
+
+        assert moved is True
+        policy.delay.assert_called_once()
+        page.click.assert_called_once_with('a[href*="btnNo2"]', timeout=15000)
+
+    def test_navigate_to_basic2_returns_false_when_link_is_unavailable(self):
+        with patch("src.crawlers.player_batting_all_series_crawler.retry_wait_for_selector", return_value=False):
+            moved = _navigate_to_basic2(MagicMock(), None)
+
+        assert moved is False
+
+    def test_crawl_series_orchestrates_basic1_basic2_and_finalization(self):
+        page = MagicMock()
+        browser = MagicMock()
+        context = MagicMock()
+        context.new_page.return_value = page
+        browser.new_context.return_value = context
+        playwright = MagicMock()
+        playwright.chromium.launch.return_value = browser
+        manager = MagicMock()
+        manager.__enter__.return_value = playwright
+        manager.__exit__.return_value = False
+
+        def _collect(ctx):
+            ctx.all_players_data.append({"player_id": 123, "player_name": "홍길동"})
+
+        crawled = [{"player_id": 123, "player_name": "홍길동", "walks": 12}]
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler.sync_playwright", return_value=manager),
+            patch("src.crawlers.player_batting_all_series_crawler.install_sync_resource_blocking"),
+            patch("src.crawlers.player_batting_all_series_crawler.compliance.is_allowed_sync", return_value=True),
+            patch("src.crawlers.player_batting_all_series_crawler._select_season_and_series"),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler._get_team_options",
+                return_value=[{"value": "", "text": "전체"}],
+            ),
+            patch("src.crawlers.player_batting_all_series_crawler._collect_batting_stats_loop", side_effect=_collect),
+            patch("src.crawlers.player_batting_all_series_crawler._merge_basic2_data", return_value=crawled),
+            patch("src.crawlers.player_batting_all_series_crawler._finalize_batting_summary", return_value=crawled),
+            patch("src.crawlers.player_batting_all_series_crawler._save_batting_if_needed") as save,
+        ):
+            result = crawl_series_batting_stats(2025, "regular", save_to_db=True, headless=True)
+
+        assert result == crawled
+        playwright.chromium.launch.assert_called_once_with(headless=True)
+        browser.close.assert_called_once()
+        save.assert_called_once_with(crawled, save_to_db=True)
+
+    def test_crawl_series_rejects_unknown_series_before_browser_start(self):
+        with patch("src.crawlers.player_batting_all_series_crawler.sync_playwright") as browser:
+            result = crawl_series_batting_stats(2025, "unknown")
+
+        assert result == []
+        browser.assert_not_called()
+
+    def test_season_and_series_selectors_wait_and_apply_values(self):
+        page = MagicMock()
+        policy = MagicMock()
+
+        with patch("src.crawlers.player_batting_all_series_crawler.retry_wait_for_selector", return_value=True):
+            _select_year_option(page, 2025, policy)
+            _select_series_option(page, "0", policy)
+
+        page.select_option.assert_any_call(
+            'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]',
+            "2025",
+        )
+        page.select_option.assert_any_call(
+            'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]',
+            value="0",
+        )
+        assert policy.delay.call_count == 2
+
+    def test_team_helpers_extract_select_and_sort(self):
+        page = MagicMock()
+        page.eval_on_selector_all.return_value = [{"value": "LG", "text": "LG"}, {"value": "", "text": "전체"}]
+        page.query_selector.return_value = MagicMock()
+        policy = MagicMock()
+
+        options = _get_team_options(page, by_team=True)
+        selected = _select_team_if_needed(page, options[0], by_team=True, policy=policy)
+        _apply_pa_sorting(page, policy)
+
+        assert options == [{"value": "LG", "text": "LG"}]
+        assert selected is True
+        assert page.select_option.called
+        assert page.click.called
+
+    def test_collect_batting_loop_updates_duplicate_player_until_last_page(self):
+        page = MagicMock()
+        policy = MagicMock()
+        data = []
+        ctx = BattingCrawlContext(
+            page=page,
+            year=2025,
+            series_key="regular",
+            iteration_targets=[{"value": "", "text": "전체"}],
+            by_team=False,
+            limit=None,
+            policy=policy,
+            unique_players=set(),
+            all_players_data=data,
+        )
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler._apply_pa_sorting"),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.parse_batting_stats_table",
+                side_effect=[
+                    [{"player_id": 1, "avg": 0.3}],
+                    [{"player_id": 1, "walks": 12}, {"player_id": 2, "avg": 0.2}],
+                ],
+            ),
+            patch("src.crawlers.player_batting_all_series_crawler.go_to_next_page", side_effect=[True, False]),
+        ):
+            _collect_batting_stats_loop(ctx)
+
+        assert data == [{"player_id": 1, "avg": 0.3, "walks": 12}, {"player_id": 2, "avg": 0.2}]
+
+    def test_batting_fallback_marks_source_and_saves_payloads(self):
+        rows = [{"player_id": 123, "source": "FALLBACK"}]
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler.fallback_batting_from_db", return_value=rows),
+            patch("src.crawlers.player_batting_all_series_crawler.FallbackMonitor.log_fallback") as monitor,
+            patch("src.crawlers.player_batting_all_series_crawler.save_batting_stats_safe", return_value=1) as save,
+        ):
+            result = _handle_batting_fallback(2025, "regular", "test failure", save_to_db=True)
+
+        assert result == [{"player_id": 123, "source": "FALLBACK_AUTO"}]
+        monitor.assert_called_once()
+        save.assert_called_once_with(result)
+
+    def test_save_batting_if_needed_ignores_empty_payloads_and_saves_nonempty(self):
+        with patch("src.crawlers.player_batting_all_series_crawler.save_batting_stats_safe", return_value=1) as save:
+            _save_batting_if_needed([], save_to_db=True)
+            _save_batting_if_needed([{"player_id": 123}], save_to_db=True)
+
+        save.assert_called_once_with([{"player_id": 123}])
+
+    def test_crawl_all_series_delegates_each_mapping_with_shared_options(self):
+        policy = MagicMock()
+        mapping = {
+            "regular": {"name": "정규시즌"},
+            "exhibition": {"name": "시범경기"},
+        }
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler.RequestPolicy", return_value=policy),
+            patch("src.crawlers.player_batting_all_series_crawler.get_series_mapping", return_value=mapping),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.crawl_series_batting_stats",
+                side_effect=[[{"player_id": 1}], [{"player_id": 2}]],
+            ) as crawl_series,
+        ):
+            result = crawl_all_series(2025, limit=10, save_to_db=True, headless=True, by_team=True)
+
+        assert result == {"regular": [{"player_id": 1}], "exhibition": [{"player_id": 2}]}
+        assert crawl_series.call_count == 2
+        policy.delay.assert_called()

@@ -1,5 +1,4 @@
-"""
-P0 game-data readiness checks.
+"""P0 game-data readiness checks.
 
 This module keeps the operational readiness rules in one place so the CLI,
 daily finalize summary, and freshness monitor report the same gaps.
@@ -57,8 +56,7 @@ def _env_enabled(name: str, default: str = "1") -> bool:
 
 
 def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
-    """
-    Normalize yyyymmdd.
+    """Normalize yyyymmdd.
 
     Args:
         value: Value.
@@ -627,8 +625,7 @@ def build_p0_readiness(  # noqa: PLR0913
     oci_skip_counts: dict[str, int] | None = None,
     oci_skip_game_ids: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
-    """
-    Build a JSON-serializable P0 readiness report for a date window.
+    """Build a JSON-serializable P0 readiness report for a date window.
 
     Args:
         session: Session.
@@ -768,8 +765,7 @@ def build_p0_readiness(  # noqa: PLR0913
 
 
 def format_p0_readiness_summary(readiness: dict[str, Any] | None) -> str:
-    """
-    Format p0 readiness summary.
+    """Format p0 readiness summary.
 
     Args:
         readiness: Readiness.

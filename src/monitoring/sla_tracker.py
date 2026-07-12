@@ -1,5 +1,4 @@
-"""
-SLA tracker: measure data freshness SLAs over time.
+"""SLA tracker: measure data freshness SLAs over time.
 
 Tracks PBP coverage rate, game completion rate, detail capture rate.
 Generates daily/weekly/monthly SLA reports.
@@ -12,6 +11,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from src.constants import DATE_STR_LEN
 from src.models.game import Game, GameBattingStat, GameLineup, GameMetadata, GamePitchingStat, GamePlayByPlay
 from src.utils.alerting import SlackWebhookClient
 from src.utils.date_helpers import parse_datetime_str
@@ -21,14 +21,14 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+MIN_ACCEPTABLE_COMPLETION_RATE = 0.80
 
 
 class SlaTracker:
     """SlaTracker class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -38,8 +38,7 @@ class SlaTracker:
         self.session = session
 
     def compute_daily_sla(self, target_date: str) -> dict[str, Any]:
-        """
-        Compute daily sla.
+        """Compute daily sla.
 
         Args:
             target_date: Target date for the operation.
@@ -50,7 +49,7 @@ class SlaTracker:
             Dictionary result.
 
         """
-        if isinstance(target_date, str) and len(target_date) == 8:
+        if isinstance(target_date, str) and len(target_date) == DATE_STR_LEN:
             query_date = date(int(target_date[:4]), int(target_date[4:6]), int(target_date[6:8]))
         elif isinstance(target_date, str):
             query_date = date.fromisoformat(target_date)
@@ -103,8 +102,7 @@ class SlaTracker:
         }
 
     def compute_weekly_sla(self, end_date: str, days: int = 7) -> list[dict[str, Any]]:
-        """
-        Compute weekly sla.
+        """Compute weekly sla.
 
         Args:
             end_date: End Date.
@@ -127,8 +125,7 @@ class SlaTracker:
         return results
 
     def print_weekly_report(self, end_date: str) -> None:
-        """
-        Print weekly.
+        """Print weekly.
 
         Args:
             end_date: End Date.
@@ -170,8 +167,7 @@ class SlaTracker:
         logger.info("")
 
     def send_weekly_sla_report(self, end_date: str | None = None) -> None:
-        """
-        Compute the past 7-day SLA data and send a summary to Telegram/Slack.
+        """Compute the past 7-day SLA data and send a summary to Telegram/Slack.
 
         If end_date is None, uses today (UTC).
 
@@ -196,7 +192,7 @@ class SlaTracker:
         overall_rate = total_completed / total_games if total_games else 0
 
         # Find low-completion days (< 80%)
-        low_days = [s for s in active if s.get("completion_rate", 1.0) < 0.80]
+        low_days = [s for s in active if s.get("completion_rate", 1.0) < MIN_ACCEPTABLE_COMPLETION_RATE]
         low_days_text = ""
         if low_days:
             low_days_text = "\n⚠️ 낮은 완료율 날짜:\n"

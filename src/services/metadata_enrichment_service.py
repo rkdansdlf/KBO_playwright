@@ -1,5 +1,4 @@
-"""
-Service to enrich text chunk metadata using Gemini API (via Google or OpenRouter).
+"""Service to enrich text chunk metadata using Gemini API (via Google or OpenRouter).
 
 Extract keywords, summaries, and expected questions to boost RAG search match rate.
 
@@ -18,6 +17,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 METADATA_ENRICHMENT_EXCEPTIONS = (httpx.HTTPError, json.JSONDecodeError, RuntimeError, ValueError, TypeError, OSError)
+MIN_ENRICHMENT_CONTENT_LENGTH = 50
 
 
 class MetadataEnrichmentService:
@@ -31,8 +31,7 @@ class MetadataEnrichmentService:
             self.enabled = False
 
     def enrich_chunk(self, content: str) -> dict[str, Any]:
-        """
-        Enrichens a text chunk with summary, keywords, and expected questions.
+        """Enrichens a text chunk with summary, keywords, and expected questions.
 
         Return a dict with 'summary', 'keywords', and 'questions'.
 
@@ -41,13 +40,14 @@ class MetadataEnrichmentService:
             content: Content.
 
         """
-        if not self.enabled or not content or len(content.strip()) < 50:
+        if not self.enabled or not content or len(content.strip()) < MIN_ENRICHMENT_CONTENT_LENGTH:
             return {"summary": "", "keywords": [], "questions": []}
 
         # Prompt instruction
         prompt = (
             "아래 텍스트 본문을 분석하여 RAG 검색 매칭 성능을 극대화하기 위한 분석 정보를 추출해 주세요.\n"
-            "반드시 아래 지정된 JSON 포맷으로만 응답해야 하며, 어떠한 마크다운 코드 블록(```json 등)이나 설명글도 포함하지 마세요.\n\n"
+            "반드시 아래 지정된 JSON 포맷으로만 응답해야 하며, 어떠한 마크다운 코드 "
+            "블록(```json 등)이나 설명글도 포함하지 마세요.\n\n"
             "JSON 포맷:\n"
             "{\n"
             '  "summary": "텍스트의 핵심 한 줄 요약",\n'

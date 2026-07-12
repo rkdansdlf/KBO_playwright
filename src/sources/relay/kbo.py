@@ -12,8 +12,7 @@ class KboRelayAdapter(RelaySourceAdapter):
     """KboRelayAdapter class."""
 
     def __init__(self, crawler: PBPCrawler | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             crawler: Crawler.
@@ -24,14 +23,16 @@ class KboRelayAdapter(RelaySourceAdapter):
 
         self.crawler = crawler or PBPCrawler()
 
-    async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
-        """
-        Fetch game.
+    async def fetch_game(
+        self,
+        game_id: str,
+        last_payload_hash: str | None = None,  # noqa: ARG002
+    ) -> NormalizedRelayResult:
+        """Fetch game.
 
         Args:
             game_id: Game ID.
-            game_id: Game ID.
-            game_id: Game ID.
+            last_payload_hash: Last seen payload hash.
 
         Returns:
             NormalizedRelayResult instance.
