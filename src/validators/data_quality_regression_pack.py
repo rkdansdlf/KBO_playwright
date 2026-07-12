@@ -104,6 +104,13 @@ class _SqlCheck:
     sample_sql: str
 
 
+@dataclass(frozen=True)
+class _PackOptions:
+    target_date: str | None
+    season: int | None
+    require_schema: bool
+
+
 _CHECKS: tuple[_SqlCheck, ...] = (
     _SqlCheck(
         check_id="game_batting_pa_formula",
@@ -245,12 +252,12 @@ _CHECKS: tuple[_SqlCheck, ...] = (
         check_id="batting_avg_range",
         description="Season batting average should be between 0.0 and 1.0",
         table="player_season_batting",
-        required_columns=("batting_avg",),
-        count_sql="SELECT COUNT(*) FROM player_season_batting WHERE batting_avg < 0 OR batting_avg > 1.0",
+        required_columns=("avg",),
+        count_sql="SELECT COUNT(*) FROM player_season_batting WHERE avg < 0 OR avg > 1.0",
         sample_sql="""
-            SELECT COALESCE(CAST(player_id AS TEXT), ''), batting_avg
+            SELECT COALESCE(CAST(player_id AS TEXT), ''), avg
             FROM player_season_batting
-            WHERE batting_avg < 0 OR batting_avg > 1.0
+            WHERE avg < 0 OR avg > 1.0
             LIMIT 5
         """,
     ),
@@ -283,20 +290,29 @@ _CHECKS: tuple[_SqlCheck, ...] = (
 )
 
 
-def run_regression_pack(conn: Connection, checks: Sequence[_SqlCheck] = _CHECKS) -> QualityRegressionReport:
+def run_regression_pack(
+    conn: Connection,
+    checks: Sequence[_SqlCheck] = _CHECKS,
+    *,
+    target_date: str | None = None,
+    season: int | None = None,
+    require_schema: bool = False,
+) -> QualityRegressionReport:
     """Run data quality invariants against a SQLAlchemy connection.
 
     Args:
         conn: Conn.
         checks: Checks.
-        conn: Conn.
-        checks: Checks.
+        target_date: Optional YYYYMMDD target date for game-level checks.
+        season: Optional season for season-level checks.
+        require_schema: Treat missing tables or columns as failures.
 
     """
     inspector = inspect(conn)
 
     table_names = set(inspector.get_table_names())
-    results = tuple(_run_check(conn, inspector, table_names, check) for check in checks)
+    options = _PackOptions(target_date=target_date, season=season, require_schema=require_schema)
+    results = tuple(_run_check(conn, inspector, table_names, check, options) for check in checks)
     return QualityRegressionReport(results=results)
 
 
@@ -346,29 +362,38 @@ def _run_check(
     inspector: Inspector,
     table_names: set[str],
     check: _SqlCheck,
+    options: _PackOptions,
 ) -> QualityRegressionResult:
+    missing_status = "fail" if options.require_schema else "skipped"
     if check.table not in table_names:
         return QualityRegressionResult(
             check_id=check.check_id,
             description=check.description,
-            status="skipped",
+            status=missing_status,
             violation_count=0,
             message=f"missing table: {check.table}",
         )
 
     columns = {column["name"] for column in inspector.get_columns(check.table)}
-    missing_columns = [column for column in check.required_columns if column not in columns]
+    predicate, params, scope_columns = _scope_predicate(
+        check.table,
+        target_date=options.target_date,
+        season=options.season,
+    )
+    missing_columns = [column for column in (*check.required_columns, *scope_columns) if column not in columns]
     if missing_columns:
         return QualityRegressionResult(
             check_id=check.check_id,
             description=check.description,
-            status="skipped",
+            status=missing_status,
             violation_count=0,
             message=f"missing columns on {check.table}: {', '.join(missing_columns)}",
         )
 
-    violation_count = int(conn.execute(text(check.count_sql)).scalar_one())
-    sample_ids = tuple(str(row[0]) for row in conn.execute(text(check.sample_sql)).all())
+    count_sql = _append_scope_predicate(check.count_sql, predicate)
+    sample_sql = _append_scope_predicate(check.sample_sql, predicate)
+    violation_count = int(conn.execute(text(count_sql), params).scalar_one())
+    sample_ids = tuple(str(row[0]) for row in conn.execute(text(sample_sql), params).all())
     status = "pass" if violation_count == 0 else "fail"
     message = "ok" if status == "pass" else f"{violation_count} violation(s) found"
     return QualityRegressionResult(
@@ -379,3 +404,27 @@ def _run_check(
         message=message,
         sample_ids=sample_ids,
     )
+
+
+def _scope_predicate(
+    table: str,
+    *,
+    target_date: str | None,
+    season: int | None,
+) -> tuple[str | None, dict[str, object], tuple[str, ...]]:
+    game_tables = {"game_batting_stats", "game_pitching_stats", "game_lineups"}
+    season_tables = {"player_season_batting", "player_season_pitching"}
+    if table in game_tables and target_date:
+        return "game_id LIKE :target_game_prefix", {"target_game_prefix": f"{target_date}%"}, ("game_id",)
+    if table in season_tables and season is not None:
+        return "season = :target_season", {"target_season": season}, ("season",)
+    return None, {}, ()
+
+
+def _append_scope_predicate(sql: str, predicate: str | None) -> str:
+    if predicate is None:
+        return sql
+    query, separator, limit = sql.rpartition("LIMIT")
+    if separator:
+        return f"{query.rstrip()} AND {predicate}\nLIMIT{limit}"
+    return f"{sql.rstrip()} AND {predicate}"

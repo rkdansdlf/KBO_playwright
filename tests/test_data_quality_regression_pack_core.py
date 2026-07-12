@@ -150,6 +150,38 @@ def test_regression_pack_skips_missing_optional_tables() -> None:
     assert all("missing table" in result.message for result in report.results)
 
 
+def test_regression_pack_requires_schema_when_requested() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        report = run_regression_pack(conn, require_schema=True)
+
+    assert report.ok is False
+    assert {result.status for result in report.results} == {"fail"}
+
+
+def test_regression_pack_scopes_game_checks_to_target_date() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_tables(conn)
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_batting_stats
+                    (game_id, player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, hits)
+                VALUES
+                    ('20260624LGSS0', 1001, 4, 4, 1, 0, 0, 0, 2),
+                    ('20260625LGSS0', 1002, 4, 4, 1, 0, 0, 0, 2)
+                """,
+            ),
+        )
+
+        report = run_regression_pack(conn, target_date="20260624")
+
+    results = {result.check_id: result for result in report.results}
+    assert results["game_batting_pa_formula"].violation_count == 1
+    assert results["game_batting_pa_formula"].sample_ids == ("20260624LGSS0",)
+
+
 def test_data_quality_regression_pack_cli_emits_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "quality.db"
     engine = create_engine(f"sqlite:///{db_path}")
