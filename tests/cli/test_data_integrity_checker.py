@@ -14,6 +14,7 @@ from src.cli.data_integrity_checker import (
     IntegrityReport,
     check_all_terminal_status,
     check_child_stats_exist,
+    check_duplicate_games,
     check_game_status_populated,
     check_games_exist,
     check_no_null_player_ids,
@@ -191,6 +192,36 @@ class TestCheckNoNullPlayerIds:
         result = check_no_null_player_ids(session, _date(2026, 6, 24))
         assert result.passed is False
         assert "NULL player_id" in result.message
+
+
+class TestCheckDuplicateGames:
+    def _game(self, game_id: str) -> MagicMock:
+        game = MagicMock()
+        game.game_id = game_id
+        return game
+
+    def test_doubleheader_slots_are_not_duplicate_games(self) -> None:
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = [
+            self._game("20260624LGSS0"),
+            self._game("20260624LGSS1"),
+        ]
+
+        result = check_duplicate_games(session, _date(2026, 6, 24))
+
+        assert result.passed is True
+
+    def test_legacy_and_modern_aliases_for_same_slot_are_duplicates(self) -> None:
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = [
+            self._game("20260418SSGNC0"),
+            self._game("20260418SKNC0"),
+        ]
+
+        result = check_duplicate_games(session, _date(2026, 4, 18))
+
+        assert result.passed is False
+        assert result.details["duplicates"][0]["canonical_slot"] == "20260418SKNC0"
 
 
 class TestRunIntegrityChecks:
