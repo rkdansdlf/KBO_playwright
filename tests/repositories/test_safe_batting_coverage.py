@@ -408,11 +408,11 @@ class TestCleanupInvalidBattingData:
 
 class TestSaveFuturesBatting:
     def test_empty_rows_returns_zero(self):
-        assert save_futures_batting(1, []) == 0
+        assert save_futures_batting(1, None, []) == 0
 
     def test_no_season_skipped(self):
         rows = [{"G": 10, "AB": 30}]
-        assert save_futures_batting(1, rows) == 0
+        assert save_futures_batting(1, None, rows) == 0
 
     @patch("src.repositories.safe_batting_repository.filter_valid_season_stat_payloads")
     def test_with_valid_data(self, mock_filter, session):
@@ -434,7 +434,7 @@ class TestSaveFuturesBatting:
         ]
         mock_filter.return_value = (payloads, Counter())
         rows = [{"season": 2024, "G": 10, "AB": 30, "H": 9, "AVG": 0.300}]
-        result = save_futures_batting(1, rows)
+        result = save_futures_batting(1, "A", rows)
         assert result == 1
 
     @patch("src.repositories.safe_batting_repository.filter_valid_season_stat_payloads")
@@ -450,5 +450,5 @@ class TestSaveFuturesBatting:
             {"season": 2024, "G": 10, "AB": 30},
             {"season": 2025, "G": 15, "AB": 45},
         ]
-        result = save_futures_batting(1, rows)
+        result = save_futures_batting(1, "A", rows)
         assert result == 2
