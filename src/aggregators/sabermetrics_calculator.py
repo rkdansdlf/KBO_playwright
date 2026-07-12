@@ -25,12 +25,13 @@ class SabermetricsCalculator:
     """
 
     @staticmethod
-    def get_league_constants(session: Session, year: int) -> dict[str, Any]:
+    def get_league_constants(session: Session, year: int, level: str = "KBO1") -> dict[str, Any]:
         """Calculate league-wide averages and constants for a given year.
 
         Args:
             session: Session.
             year: Season year.
+            level: League level (e.g. KBO1, KBO2).
 
         """
         # Aggregate league batting stats
@@ -53,6 +54,7 @@ class SabermetricsCalculator:
             )
             .filter(
                 PlayerSeasonBatting.season == year,
+                PlayerSeasonBatting.level == level,
                 PlayerSeasonBatting.player_id >= MIN_LEAGUE_PLAYER_ID,
                 # Filter out obvious stubs/incomplete rows
                 or_(
@@ -77,6 +79,7 @@ class SabermetricsCalculator:
             )
             .filter(
                 PlayerSeasonPitching.season == year,
+                PlayerSeasonPitching.level == level,
                 PlayerSeasonPitching.player_id >= MIN_LEAGUE_PLAYER_ID,
                 or_(
                     PlayerSeasonPitching.innings_outs <= LEAGUE_PITCHING_OUTS_STUB_LIMIT,
