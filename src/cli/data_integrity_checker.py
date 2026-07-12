@@ -33,6 +33,7 @@ from src.utils.game_status import (
     GAME_STATUS_UNRESOLVED,
     is_terminal_status,
 )
+from src.utils.team_codes import normalize_kbo_game_id
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -418,44 +419,35 @@ def check_winning_team_consistency(session: Session, target: date) -> CheckResul
 
 
 def check_duplicate_games(session: Session, target: date) -> CheckResult:
-    """Detect duplicate games (same date + home_team + away_team).
+    """Detect duplicate canonical game slots without flagging doubleheaders.
 
     Args:
         session: Session.
         target: Target.
 
     """
-    from sqlalchemy import func as sqlfunc
-
     from src.models.game import Game
 
-    dupes = (
-        session.query(
-            Game.game_date,
-            Game.home_team,
-            Game.away_team,
-            sqlfunc.count(Game.id).label("cnt"),
-        )
-        .filter(Game.game_date == target)
-        .group_by(Game.game_date, Game.home_team, Game.away_team)
-        .having(sqlfunc.count(Game.id) > 1)
-        .all()
-    )
+    games = session.query(Game).filter(Game.game_date == target).all()
+    games_by_slot: dict[str, list[str]] = {}
+    for game in games:
+        canonical_slot = normalize_kbo_game_id(game.game_id)
+        games_by_slot.setdefault(canonical_slot, []).append(game.game_id)
+    duplicate_slots = {slot: game_ids for slot, game_ids in games_by_slot.items() if len(game_ids) > 1}
 
-    if dupes:
+    if duplicate_slots:
         details = [
             {
-                "game_date": str(d.game_date),
-                "home_team": d.home_team,
-                "away_team": d.away_team,
-                "count": d.cnt,
+                "canonical_slot": slot,
+                "game_ids": game_ids,
+                "count": len(game_ids),
             }
-            for d in dupes
+            for slot, game_ids in sorted(duplicate_slots.items())
         ]
         return CheckResult(
             name="duplicate_games",
             passed=False,
-            message=f"{len(dupes)} duplicate game combinations found",
+            message=f"{len(duplicate_slots)} duplicate canonical game slot(s) found",
             details={"duplicates": details},
         )
 
