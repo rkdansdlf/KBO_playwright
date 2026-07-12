@@ -16,7 +16,7 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
 
@@ -42,7 +42,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -83,7 +83,7 @@ jobs:
 
   integration-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 8
     needs: test
     if: always() && needs.test.result == 'success'
     steps:
