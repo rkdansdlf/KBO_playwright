@@ -69,6 +69,17 @@ jobs:
             --strict \
             --db-url env:OCI_DB_URL
 
+      - name: Data Quality Regression Pack (local, preflight)
+        id: regression_pack_local
+        continue-on-error: true
+        run: |
+          python3 -m src.cli.data_quality_regression_pack \
+            --date "${{ steps.job-setup.outputs.KST_DATE }}" \
+            --year "${{ steps.job-setup.outputs.KST_YEAR }}" \
+            --require-schema \
+            --json \
+            --output "$RUNNER_TEMP/data_quality_regression_local.json"
+
       - name: Run Postgame Finalize & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
@@ -97,6 +108,25 @@ jobs:
             --include-incomplete \
             --strict \
             --db-url env:OCI_DB_URL
+
+      - name: Data Quality Regression Pack (OCI, post-sync)
+        env:
+          DATABASE_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.data_quality_regression_pack \
+            --date "${{ steps.job-setup.outputs.KST_DATE }}" \
+            --year "${{ steps.job-setup.outputs.KST_YEAR }}" \
+            --require-schema \
+            --json \
+            --output "$RUNNER_TEMP/data_quality_regression_oci.json"
+
+      - name: Upload Data Quality Regression Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-quality-regression-${{ steps.job-setup.outputs.KST_DATE }}
+          path: ${{ runner.temp }}/data_quality_regression_*.json
+          if-no-files-found: warn
 
       - name: Compute Standings
         run: |
