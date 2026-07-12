@@ -91,6 +91,18 @@ def test_daily_kbo_sync_includes_core_steps():
     assert workflow.index("Compute Standings") < workflow.index("OCI Freshness Gate")
 
 
+def test_daily_kbo_sync_runs_scoped_regression_pack_with_artifacts():
+    workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
+
+    assert "Data Quality Regression Pack (local, preflight)" in workflow
+    assert "Data Quality Regression Pack (OCI, post-sync)" in workflow
+    assert "--require-schema" in workflow
+    assert '--output "$RUNNER_TEMP/data_quality_regression_local.json"' in workflow
+    assert '--output "$RUNNER_TEMP/data_quality_regression_oci.json"' in workflow
+    assert "Upload Data Quality Regression Artifacts" in workflow
+    assert "actions/upload-artifact@v4" in workflow
+
+
 def test_daily_kbo_sync_includes_quality_and_gap_report():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
