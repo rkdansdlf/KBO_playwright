@@ -21,6 +21,7 @@ from playwright.async_api import Error as PlaywrightError
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import LONG_TIMEOUT, SHORT_TIMEOUT
+from src.utils.team_codes import TEAM_NAME_TO_CODE
 from src.utils.throttle import throttle
 from src.utils.type_helpers import safe_float_or_none, safe_int_or_none
 
@@ -28,7 +29,25 @@ if TYPE_CHECKING:
     from bs4.element import Tag
 
 logger = logging.getLogger(__name__)
-FUTURES_KEYS = ["season", "AVG", "G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SLG", "OBP"]
+FUTURES_KEYS = [
+    "season",
+    "AVG",
+    "G",
+    "AB",
+    "R",
+    "H",
+    "2B",
+    "3B",
+    "HR",
+    "RBI",
+    "SB",
+    "BB",
+    "HBP",
+    "SO",
+    "SLG",
+    "OBP",
+    "team_code",
+]
 
 HEADER_MAP = {
     # Korean/English mixed → standardized keys
@@ -67,6 +86,8 @@ HEADER_MAP = {
     "slg": "SLG",
     "출루율": "OBP",
     "obp": "OBP",
+    "팀명": "team_name",
+    "팀": "team_name",
 }
 
 
@@ -150,6 +171,12 @@ def _parse_batting_row(headers: list[str], cells: list[str]) -> dict[str, Any]:
         if key == "season":
             m = re.search(r"\d{4}", v)
             row["season"] = int(m.group()) if m else None
+        elif key == "team_name":
+            row["team_name"] = v
+            code = TEAM_NAME_TO_CODE.get(v.strip())
+            if not code:
+                code = TEAM_NAME_TO_CODE.get(v.strip().upper())
+            row["team_code"] = code
         elif key in ("AVG", "SLG", "OBP"):
             row[key] = safe_float_or_none(v)
         elif key in ("G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SF"):

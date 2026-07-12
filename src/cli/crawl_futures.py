@@ -256,7 +256,8 @@ async def _save_futures_player_stats(
 
     if batting_rows:
         try:
-            saved_batting = await asyncio.to_thread(save_futures_batting, player_id, batting_rows)  # type: ignore[arg-type]
+            player_id_int = int(player_id) if player_id.isdigit() else None
+            saved_batting = await asyncio.to_thread(save_futures_batting, player_id_int, player_name, batting_rows)  # type: ignore[arg-type]
             saved += saved_batting
             if saved_batting == 0:
                 save_failures.append("batting_save_zero")

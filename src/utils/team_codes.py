@@ -83,6 +83,11 @@ TEAM_NAME_TO_CODE = {
     "캐나다": "CA",
     "이탈리아": "IT",
     "체코": "CZ",
+    "상무": "OT",
+    "경찰": "OT",
+    "경찰청": "OT",
+    "고양": "OT",
+    "울산": "OT",
 }
 
 KBO_LEGACY_TECHNICAL_CODE = {
