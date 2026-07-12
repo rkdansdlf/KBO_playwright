@@ -6,7 +6,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
+from src.aggregators.sabermetrics_calculator import (
+    LEAGUE_BATTING_PA_STUB_LIMIT,
+    MIN_LEAGUE_PLAYER_ID,
+    SabermetricsCalculator,
+)
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
 # ── Test data ─────────────────────────────────────────────────────────────────
@@ -252,16 +256,16 @@ class TestGetLeagueConstants:
         assert set(result.keys()) == expected_keys
 
     def test_filters_low_player_id(self, session):
-        _add_batting(session, player_id=9999)
+        _add_batting(session, player_id=MIN_LEAGUE_PLAYER_ID - 1)
         result = SabermetricsCalculator.get_league_constants(session, 2025)
-        # 9999 < 10000, should be filtered out -> falls back to defaults
+        # IDs below the league-player boundary are filtered out.
         assert result["lg_woba"] == 0.320
         assert result["lg_era"] == 4.50
 
     def test_filters_stub_rows(self, session):
-        _add_batting(session, player_id=10001, pa=1, hr=0, bb=0)
+        _add_batting(session, player_id=MIN_LEAGUE_PLAYER_ID, pa=LEAGUE_BATTING_PA_STUB_LIMIT, hr=0, bb=0)
         result = SabermetricsCalculator.get_league_constants(session, 2025)
-        # Stub filtered out (pa <= 10, hr=0, bb=0)
+        # A row exactly at the PA boundary remains a stub when it has no HR or BB.
         assert result["lg_woba"] == 0.320
 
     def test_computes_value_with_valid_data(self, session):

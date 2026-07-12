@@ -29,8 +29,7 @@ class BroadcastCrawler:
         self.url = SCHEDULE
 
     async def run(self, year: int | None = None, month: int | None = None, *, save: bool = False) -> None:
-        """
-        Run run.
+        """Run run.
 
         Args:
             year: Season year.
@@ -72,8 +71,15 @@ class BroadcastCrawler:
         (args) => {
             const year = args.year;
             const results = [];
-            const TEAM_MAP = {"LG":"LG","KT":"KT","NC":"NC","두산":"DB","롯데":"LT","삼성":"SS","키움":"KH","한화":"HH","KIA":"KIA","SSG":"SSG"};
-            const BC_MAP = {"SPO":"SPOTV","SPO-2":"SPOTV2","SPO-2T":"SPOTV2","S-BS":"SBS Sports","SBS":"SBS Sports","K-BS":"KBS N Sports","MBC":"MBC SPORTS+","CPB":"CPBC TV"};
+            const TEAM_MAP = {
+                "LG":"LG", "KT":"KT", "NC":"NC", "두산":"DB", "롯데":"LT",
+                "삼성":"SS", "키움":"KH", "한화":"HH", "KIA":"KIA", "SSG":"SSG"
+            };
+            const BC_MAP = {
+                "SPO":"SPOTV", "SPO-2":"SPOTV2", "SPO-2T":"SPOTV2",
+                "S-BS":"SBS Sports", "SBS":"SBS Sports", "K-BS":"KBS N Sports",
+                "MBC":"MBC SPORTS+", "CPB":"CPBC TV"
+            };
             const rows = document.querySelectorAll('#tblScheduleList tbody tr');
             rows.forEach(tr => {
                 const cells = tr.querySelectorAll('td');
@@ -95,10 +101,16 @@ class BroadcastCrawler:
                 const radioText = cells[6]?.innerText?.trim() || '';
                 if (tvText && tvText !== '-') {
                     const norm = BC_MAP[tvText] || tvText;
-                    results.push({game_date: gameDate, away_team_code: awayTeam, home_team_code: homeTeam, broadcaster: norm, channel_name: norm, source: 'KBO'});
+                    results.push({
+                        game_date: gameDate, away_team_code: awayTeam, home_team_code: homeTeam,
+                        broadcaster: norm, channel_name: norm, source: 'KBO'
+                    });
                 }
                 if (radioText && radioText !== '-') {
-                    results.push({game_date: gameDate, away_team_code: awayTeam, home_team_code: homeTeam, broadcaster: 'RADIO_' + radioText, channel_name: radioText + ' (라디오)', source: 'KBO'});
+                    results.push({
+                        game_date: gameDate, away_team_code: awayTeam, home_team_code: homeTeam,
+                        broadcaster: 'RADIO_' + radioText, channel_name: radioText + ' (라디오)', source: 'KBO'
+                    });
                 }
             });
             return results;

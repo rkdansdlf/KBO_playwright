@@ -1,5 +1,4 @@
-"""
-Backfill missing pregame preview data for scheduled games.
+"""Backfill missing pregame preview data for scheduled games.
 
 This CLI finds scheduled game dates whose preview summaries or starting
 pitcher fields are incomplete, then runs daily_preview_batch for those dates.
@@ -21,6 +20,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 
 from src.cli.daily_preview_batch import run_preview_batch
+from src.constants import DATE_STR_LEN
 from src.db.engine import SessionLocal
 from src.utils.date_helpers import parse_datetime_str
 
@@ -45,7 +45,7 @@ class PregameBackfillDate:
 
 def _yyyymmdd(value: str) -> str:
     normalized = value.replace("-", "")
-    if len(normalized) != 8 or not normalized.isdigit():
+    if len(normalized) != DATE_STR_LEN or not normalized.isdigit():
         msg = f"Invalid date: {value}. Use YYYYMMDD."
         raise argparse.ArgumentTypeError(msg)
     parse_datetime_str(normalized)
@@ -79,8 +79,7 @@ def find_missing_pregame_dates(
     include_complete: bool = False,
     limit_dates: int | None = None,
 ) -> list[PregameBackfillDate]:
-    """
-    Find missing pregame dates.
+    """Find missing pregame dates.
 
     Args:
         start_date: Start Date.
@@ -164,8 +163,7 @@ def find_missing_pregame_dates(
 
 
 def get_pregame_date_status(target_date: str) -> PregameBackfillDate | None:
-    """
-    Get pregame date status.
+    """Get pregame date status.
 
     Args:
         target_date: Target date for the operation.
@@ -236,8 +234,7 @@ def _log_backfill_result(saved_total: int, failed: list[str], incomplete: list[s
 
 
 async def run_backfill(args: argparse.Namespace) -> int:
-    """
-    Run run backfill.
+    """Run run backfill.
 
     Args:
         args: Positional arguments to pass through.
@@ -288,8 +285,7 @@ async def run_backfill(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -318,8 +314,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

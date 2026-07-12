@@ -1,5 +1,4 @@
-"""
-KBO Pipeline Auto-Healer.
+"""KBO Pipeline Auto-Healer.
 
 Two healing modes:
 
@@ -72,8 +71,10 @@ def _find_inconsistent_games() -> list[Game]:
 
         JOIN (
             SELECT g.game_id, g.away_score, g.home_score,
-                   COALESCE((SELECT SUM(runs) FROM game_inning_scores i WHERE i.game_id = g.game_id AND i.team_side = 'away'), 0) as away_sum,
-                   COALESCE((SELECT SUM(runs) FROM game_inning_scores i WHERE i.game_id = g.game_id AND i.team_side = 'home'), 0) as home_sum
+                   COALESCE((SELECT SUM(runs) FROM game_inning_scores i
+                             WHERE i.game_id = g.game_id AND i.team_side = 'away'), 0) as away_sum,
+                   COALESCE((SELECT SUM(runs) FROM game_inning_scores i
+                             WHERE i.game_id = g.game_id AND i.team_side = 'home'), 0) as home_sum
             FROM game g
             WHERE g.game_status IN ('COMPLETED', 'DRAW')
         ) sub ON g.game_id = sub.game_id
@@ -89,8 +90,7 @@ def _find_inconsistent_games() -> list[Game]:
 
 
 def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> str:
-    """
-    Apply status repair based on one shared collection result item.
+    """Apply status repair based on one shared collection result item.
 
     Return one of: 'completed', 'cancelled', 'unresolved'
 
@@ -256,8 +256,7 @@ async def run_healer_async(
     reset_checkpoint: bool = False,
     target_game_ids: list[str] | None = None,
 ) -> int:
-    """
-    Run healer async.
+    """Run healer async.
 
     Args:
         dry_run: If True, performs a dry run without persisting changes.
@@ -307,8 +306,7 @@ async def run_healer_async(
 
 
 def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
-    """
-    Scan game_metadata for finished games whose PBP is still 'unverified'.
+    """Scan game_metadata for finished games whose PBP is still 'unverified'.
 
     Return a list of dicts: {game_id, game_date, away_team, home_team, error_reason}
 
@@ -365,8 +363,7 @@ async def run_pbp_healer_async(
     lookback_days: int = 3,
     target_game_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """
-    PBP Auto-Healer.
+    """PBP Auto-Healer.
 
       1. Scan DB for unverified PBP games.
 
@@ -521,8 +518,7 @@ async def run_pbp_healer_async(
 
 
 def run_pbp_healer(argv: Sequence[str] | None = None) -> int:
-    """
-    CLI entry point for PBP-specific auto-healing.
+    """CLI entry point for PBP-specific auto-healing.
 
     Args:
         argv: Argv.
@@ -561,8 +557,7 @@ def run_pbp_healer(argv: Sequence[str] | None = None) -> int:
 
 
 def run_healer(argv: Sequence[str] | None = None) -> int:
-    """
-    Run healer.
+    """Run healer.
 
     Args:
         argv: Argv.
@@ -617,8 +612,7 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

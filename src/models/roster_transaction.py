@@ -75,4 +75,7 @@ class RosterTransaction(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         """Return a string representation of this object."""
-        return f"<RosterTransaction(date={self.transaction_date}, team='{self.team_id}', player='{self.player_name}', action='{self.action}')>"
+        return (
+            f"<RosterTransaction(date={self.transaction_date}, team='{self.team_id}', "
+            f"player='{self.player_name}', action='{self.action}')>"
+        )

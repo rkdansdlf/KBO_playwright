@@ -1,5 +1,4 @@
-"""
-Repository for StadiumOperationNotice CRUD operations.
+"""Repository for StadiumOperationNotice CRUD operations.
 
 Handle upsert logic based on (stadium_code, source_name, external_id)
 or (stadium_code, source_name, title, published_at) as fallback.
@@ -28,8 +27,7 @@ class OperationNoticeRepository:
     """OperationNoticeRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -43,8 +41,7 @@ class OperationNoticeRepository:
     # ─────────────────────────────────────────────
 
     def upsert(self, data: dict) -> tuple[StadiumOperationNotice, bool]:
-        """
-        Insert or update a notice.
+        """Insert or update a notice.
 
         Return (record, created: bool).
 
@@ -99,8 +96,7 @@ class OperationNoticeRepository:
         return record, True
 
     def bulk_upsert(self, notices: list[dict]) -> tuple[int, int]:
-        """
-        Upsert multiple notices.
+        """Upsert multiple notices.
 
         Return (created, updated) counts.
 
@@ -144,8 +140,7 @@ class OperationNoticeRepository:
         *,
         urgent_only: bool = False,
     ) -> list[StadiumOperationNotice]:
-        """
-        Get by game date.
+        """Get by game date.
 
         Args:
             stadium_code: Stadium Code.
@@ -180,8 +175,7 @@ class OperationNoticeRepository:
         notice_type: str | None = None,
         source_name: str | None = None,
     ) -> list[StadiumOperationNotice]:
-        """
-        Get recent.
+        """Get recent.
 
         Args:
             stadium_code: Stadium Code.
@@ -208,8 +202,7 @@ class OperationNoticeRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_urgent_today(self, stadium_code: str) -> list[StadiumOperationNotice]:
-        """
-        Get urgent today.
+        """Get urgent today.
 
         Args:
             stadium_code: Stadium Code.
@@ -225,8 +218,7 @@ class OperationNoticeRepository:
         return self.get_by_game_date(stadium_code, today, urgent_only=True)
 
     def get_latest_external_id(self, stadium_code: str, source_name: str) -> str | None:
-        """
-        Return the most recently published external_id for incremental crawling.
+        """Return the most recently published external_id for incremental crawling.
 
         Args:
             stadium_code: Stadium Code.

@@ -1,7 +1,7 @@
-"""
-Miscellaneous sync: franchises, teams, awards, stadium info, food, ticket, rag, matchup splits, home/away, park factor.
+"""Synchronize miscellaneous reference data and stadium real-time data.
 
-Stadium real-time data: transit times, congestion, operation notices.
+Includes franchises, teams, awards, stadium info, food, ticket, RAG, matchup
+splits, home/away, park factor, transit times, congestion, and notices.
 
 """
 
@@ -49,6 +49,7 @@ from src.models.ticket_schedule import TicketSchedule
 from src.sync.sync_base import SyncBaseProtocol
 
 logger = logging.getLogger(__name__)
+EMBEDDING_NORMALIZATION_EPSILON = 1e-9
 
 
 def _normalize_daily_roster_date(value: date | datetime | str | None) -> date | None:
@@ -170,8 +171,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         )
 
     def sync_rag_chunks(self, batch_size: int = 1000) -> int:
-        """
-        Sync RAG chunks from SQLite to OCI Postgres.
+        """Sync RAG chunks from SQLite to OCI Postgres.
 
         Args:
             batch_size: Batch Size.
@@ -186,8 +186,7 @@ class MiscSyncMixin(SyncBaseProtocol):
             logger.exception("metadata create_all error (might already exist)")
 
         def transform_rag_chunk(data: dict[str, Any]) -> dict[str, Any]:
-            """
-            Transform rag chunk.
+            """Transform rag chunk.
 
             Args:
                 data: Data.
@@ -217,7 +216,9 @@ class MiscSyncMixin(SyncBaseProtocol):
                             import math
 
                             norm = math.sqrt(sum(x * x for x in truncated))
-                            adjusted = [x / norm for x in truncated] if norm > 1e-9 else truncated
+                            adjusted = (
+                                [x / norm for x in truncated] if norm > EMBEDDING_NORMALIZATION_EPSILON else truncated
+                            )
                         else:
                             adjusted = embedding + [0.0] * (target_dim - current_dim)
                         data["embedding"] = adjusted
@@ -232,8 +233,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         )
 
     def sync_ticket_schedules(self, batch_size: int = 1000) -> int:
-        """
-        Sync ticket schedules from SQLite to OCI Postgres.
+        """Sync ticket schedules from SQLite to OCI Postgres.
 
         Args:
             batch_size: Batch Size.
@@ -255,8 +255,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         )
 
     def sync_stadium_foods(self, batch_size: int = 1000) -> int:
-        """
-        Sync stadium foods from SQLite to OCI Postgres.
+        """Sync stadium foods from SQLite to OCI Postgres.
 
         Args:
             batch_size: Batch Size.
@@ -392,8 +391,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         game_date: str | None = None,
         batch_size: int = 1000,
     ) -> int:
-        """
-        Sync stadium_transit_times from SQLite to OCI.
+        """Sync stadium_transit_times from SQLite to OCI.
 
         Args:
             game_date: Game Date.
@@ -424,8 +422,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         game_date: str | None = None,
         batch_size: int = 1000,
     ) -> int:
-        """
-        Sync stadium_congestion from SQLite to OCI.
+        """Sync stadium_congestion from SQLite to OCI.
 
         Args:
             game_date: Game Date.
@@ -456,8 +453,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         game_date: str | None = None,
         batch_size: int = 500,
     ) -> int:
-        """
-        Sync stadium_operation_notices from SQLite to OCI.
+        """Sync stadium_operation_notices from SQLite to OCI.
 
         Args:
             game_date: Game Date.
@@ -487,8 +483,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         self,
         game_date: str | None = None,
     ) -> dict[str, int]:
-        """
-        Sync all 3 stadium real-time tables to OCI in one call.
+        """Sync all 3 stadium real-time tables to OCI in one call.
 
         Args:
             game_date: Game Date.
@@ -508,8 +503,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         start_date: date | datetime | str | None = None,
         end_date: date | datetime | str | None = None,
     ) -> int:
-        """
-        Sync team_daily_roster from SQLite to OCI.
+        """Sync team_daily_roster from SQLite to OCI.
 
         Args:
             start_date: Start Date.
@@ -611,8 +605,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         franchise_mapping = self._get_franchise_id_mapping()
 
         def transform(data: dict[str, Any]) -> dict[str, Any]:
-            """
-            Transform transform.
+            """Transform transform.
 
             Args:
                 data: Data.
@@ -636,8 +629,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         )
 
     def sync_matchups(self, year: int | None = None, batch_size: int = 10000) -> dict[str, int]:
-        """
-        Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI.
+        """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI.
 
         Args:
             year: Season year.

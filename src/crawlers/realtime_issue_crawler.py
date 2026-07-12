@@ -23,8 +23,7 @@ class RealtimeIssueCrawler:
     """Scrape real-time baseball topics, headlines, and forum discussions."""
 
     def __init__(self, timeout: int = 15) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             timeout: Timeout.
@@ -34,14 +33,18 @@ class RealtimeIssueCrawler:
 
         self._raw_pages: list[dict] = []
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+            ),
             "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         }
 
     def fetch_naver_news_headlines(self, *, save: bool = False) -> list[dict[str, Any]]:
-        """
-        Fetch latest baseball news headlines from Naver Sports GW API (JSON).
+        """Fetch latest baseball news headlines from Naver Sports GW API (JSON).
 
         with fallback to web scraping if API is down.
 
@@ -170,8 +173,7 @@ class RealtimeIssueCrawler:
         return articles
 
     def fetch_mlbpark_bullpen_posts(self, *, save: bool = False) -> list[dict[str, Any]]:
-        """
-        Crawl popular titles and post details from MLBPark Bullpen forum.
+        """Crawl popular titles and post details from MLBPark Bullpen forum.
 
         Args:
             save: Whether to persist the results.

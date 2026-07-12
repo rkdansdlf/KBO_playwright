@@ -1,5 +1,4 @@
-"""
-KBO Schedule Crawler POC.
+"""KBO Schedule Crawler POC.
 
 Collects game IDs from the KBO schedule page.
 
@@ -39,8 +38,7 @@ SCHEDULE_CRAWLER_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, Valu
 
 
 class ScheduleCrawler:
-    """
-    KBO 공식 사이트의 월별 경기 일정 페이지에서 경기 정보를 크롤링하는 클래스.
+    """KBO 공식 사이트의 월별 경기 일정 페이지에서 경기 정보를 크롤링하는 클래스.
 
     주요 기능:
     - 특정 연도와 월에 해당하는 경기 일정 페이지에 접근합니다.
@@ -56,8 +54,7 @@ class ScheduleCrawler:
         pool: AsyncPlaywrightPool | None = None,
         policy: RequestPolicy | None = None,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -76,8 +73,7 @@ class ScheduleCrawler:
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, key: str) -> str | None:
-        """
-        Get last failure reason.
+        """Get last failure reason.
 
         Args:
             key: Key.
@@ -95,8 +91,7 @@ class ScheduleCrawler:
         return f"{year}-{month:02d}:{suffix}"
 
     async def crawl_schedule(self, year: int, month: int, series_id: str | None = None) -> list[dict]:
-        """
-        지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
+        """지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
         Args:
             year: Season year.
@@ -140,8 +135,7 @@ class ScheduleCrawler:
         months: list[int] | None = None,
         series_id: str | None = None,
     ) -> list[dict]:
-        """
-        주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
+        """주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
         Args:
             year: Season year.
@@ -181,7 +175,7 @@ class ScheduleCrawler:
         page: Page,
         *,
         required_selector: str = "#ddlYear, #ddlMonth, #ddlSeries, .tbl",
-        timeout: int = 30000,
+        timeout: int = 30000,  # noqa: ASYNC109
         selector_timeout: int = 10000,
     ) -> tuple[bool, str]:
         if not await compliance.is_allowed(self.base_url):
@@ -202,7 +196,7 @@ class ScheduleCrawler:
 
         return True, "ok"
 
-    async def _wait_for_schedule_table(self, page: Page, *, timeout: int = 10000) -> tuple[bool, str]:
+    async def _wait_for_schedule_table(self, page: Page, *, timeout: int = 10000) -> tuple[bool, str]:  # noqa: ASYNC109
         try:
             await page.wait_for_selector(".tbl tbody tr", timeout=timeout)
         except SCHEDULE_CRAWLER_EXCEPTIONS:
@@ -237,8 +231,7 @@ class ScheduleCrawler:
         return True, "ok"
 
     async def _crawl_month(self, page: Page, year: int, month: int, series_id: str | None = None) -> list[dict]:
-        """
-        특정 월의 경기 일정 페이지에서 정보를 추출합니다.
+        """특정 월의 경기 일정 페이지에서 정보를 추출합니다.
 
         series_id가 지정되지 않은 경우 전 시리즈(시범/정규/포스트)를 순회합니다.
 
@@ -323,8 +316,7 @@ class ScheduleCrawler:
         return all_games
 
     async def _select_year_month(self, page: Page, year: int, month: int) -> tuple[bool, str]:
-        """
-        연도와 월 드롭다운을 선택하고 페이지 갱신을 기다립니다.
+        """연도와 월 드롭다운을 선택하고 페이지 갱신을 기다립니다.
 
         Args:
             page: Page.
@@ -385,8 +377,7 @@ class ScheduleCrawler:
         return labels.get(text, GAME_STATUS_SCHEDULED)
 
     async def _extract_games(self, page: Page, year: int, month: int, season_type: str = "regular") -> list[dict]:
-        """
-        페이지에서 경기 관련 데이터를 추출합니다.
+        """페이지에서 경기 관련 데이터를 추출합니다.
 
             (JS Fast Path).
 
@@ -679,8 +670,7 @@ class ScheduleCrawler:
 
     @staticmethod
     def _extract_game_id(href: str) -> str:
-        """
-        URL(href)에서 game_id를 안전하게 추출합니다.
+        """URL(href)에서 game_id를 안전하게 추출합니다.
 
         Args:
             href: Href.

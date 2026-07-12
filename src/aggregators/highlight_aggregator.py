@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import func
 
+from src.constants import MAX_INNINGS
 from src.models.game import GameEvent, GameHighlight
 
 if TYPE_CHECKING:
@@ -16,8 +17,7 @@ class HighlightAggregator:
     """Compute and tags game highlights from Play-by-Play event records."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -42,7 +42,7 @@ class HighlightAggregator:
     def _is_walkoff(event: GameEvent, score_diff_before: int, score_diff_after: int) -> bool:
         inning = cast("int | None", event.inning)
         description = cast("str | None", event.description)
-        is_bottom_late = (inning or 1) >= 9 and event.inning_half == "bottom"
+        is_bottom_late = (inning or 1) >= MAX_INNINGS and event.inning_half == "bottom"
         walkoff_by_score = is_bottom_late and score_diff_before <= 0 and score_diff_after > 0
         walkoff_by_desc = description is not None and "끝내기" in description
         return bool(walkoff_by_score or walkoff_by_desc)
@@ -157,8 +157,7 @@ class HighlightAggregator:
         )
 
     def aggregate_game_highlights(self, game_id: str, min_wpa_threshold: float = 0.05) -> list[GameHighlight]:
-        """
-        Scan all play events for a given game, detects significant plays,.
+        """Scan all play events for a given game, detects significant plays,.
 
         tags them, and calculates an importance score for ranking.
 
@@ -192,8 +191,7 @@ class HighlightAggregator:
         return highlights
 
     def save_highlights(self, game_id: str, highlights: list[GameHighlight]) -> int:
-        """
-        Delete existing highlights for a game and saves the new ones.
+        """Delete existing highlights for a game and saves the new ones.
 
         Args:
             game_id: Game ID.

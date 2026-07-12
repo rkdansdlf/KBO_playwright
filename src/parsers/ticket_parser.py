@@ -35,8 +35,7 @@ class TicketParser(BaseStadiumParser):
     SOURCE_KEY_MAP = TEAM_CODE_FROM_SOURCE_KEY
 
     def parse(self) -> list[dict[str, Any]]:
-        """
-        Parse parse.
+        """Parse parse.
 
         Returns:
             List of results.
@@ -95,8 +94,7 @@ class TicketParser(BaseStadiumParser):
 
 
 def parse_ticket_page(html: str, source_key: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """
-    Parse ticket page.
+    """Parse ticket page.
 
     Args:
         html: Html.

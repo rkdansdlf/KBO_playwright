@@ -99,8 +99,7 @@ _RELAY_NOISE_TOKENS = (
 
 
 def compact_relay_text(description: object) -> str:
-    """
-    Handle the compact relay text operation.
+    """Handle the compact relay text operation.
 
     Args:
         description: Description.
@@ -115,8 +114,7 @@ def compact_relay_text(description: object) -> str:
 
 
 def parse_pitch_count(description: str) -> dict[str, int | None]:
-    """
-    Parse one pitch log into the count change caused by that pitch.
+    """Parse one pitch log into the count change caused by that pitch.
 
     The leading ``n구`` value is the pitch ordinal, not the ball/strike count.
     This function therefore returns the count delta for a single pitch, with
@@ -146,8 +144,7 @@ def parse_pitch_count(description: str) -> dict[str, int | None]:
 
 
 def advance_pitch_count(description: str, balls: int = 0, strikes: int = 0) -> tuple[int, int, bool]:
-    """
-    Advance an at-bat count from one raw pitch text.
+    """Advance an at-bat count from one raw pitch text.
 
     Foul balls do not move the count past two strikes. Returns
     ``(balls, strikes, matched_pitch_text)``.
@@ -178,8 +175,7 @@ def advance_pitch_count(description: str, balls: int = 0, strikes: int = 0) -> t
 
 
 def is_relay_noise_text(description: object) -> bool:
-    """
-    Return whether the relay noise text.
+    """Return whether the relay noise text.
 
     Args:
         description: Description.
@@ -200,8 +196,7 @@ def is_relay_noise_text(description: object) -> bool:
 
 
 def is_relay_result_event_text(description: object) -> bool:
-    """
-    Return whether the relay result event text.
+    """Return whether the relay result event text.
 
     Args:
         description: Description.
@@ -223,8 +218,7 @@ def is_relay_result_event_text(description: object) -> bool:
 
 
 def detect_relay_event_type(description: object) -> str:
-    """
-    Handle the detect relay event type operation.
+    """Handle the detect relay event type operation.
 
     Args:
         description: Description.
@@ -247,3 +241,22 @@ def detect_relay_event_type(description: object) -> str:
     if "주루사" in result_text or "견제사" in result_text or "태그아웃" in result_text:
         return "runner_out"
     return "batting"
+
+
+def classify_relay_result(description: object) -> str | None:
+    """릴레이 이벤트 설명에서 표준 result_code를 반환합니다.
+
+    ``detect_relay_event_type()`` 의 고수준 분류(batting/steal/…)와는 달리,
+    ``H1 / H2 / H3 / HR / K / BB / FC`` 등 세분화된 타격 결과 코드를 반환합니다.
+    split_calculator, game_story_builder 등에서 사용하는 코드 체계와 호환됩니다.
+
+    Args:
+        description: 이벤트 설명 텍스트.
+
+    Returns:
+        표준 result_code (예: ``"H1"``, ``"HR"``, ``"FC"``) 또는 None.
+
+    """
+    from src.utils.result_code_mapper import map_korean_to_result_code
+
+    return map_korean_to_result_code(compact_relay_text(description))

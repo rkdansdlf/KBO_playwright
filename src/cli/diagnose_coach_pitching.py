@@ -1,5 +1,4 @@
-"""
-Diagnose completed-game Coach pitcher data flow.
+"""Diagnose completed-game Coach pitcher data flow.
 
 Shows, per game, where starter and bullpen data is present or missing across:
 1. raw crawl tables (game_pitching_stats),
@@ -86,8 +85,7 @@ def _print_text_report(rows: list[dict]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

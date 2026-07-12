@@ -1,5 +1,4 @@
-"""
-데이터 무결성 및 상태 점검 스크립트.
+"""데이터 무결성 및 상태 점검 스크립트.
 
 데이터베이스에 저장된 경기 일정, 선수, 퓨처스리그 데이터 등의 상태를 확인하고,
 예상 수치와 비교하여 잠재적인 문제를 경고합니다.
@@ -128,8 +127,7 @@ def _validate_schedule_counts(total: int, operational_total: int, type_counts: d
 
 
 def check_schedules(session: Session) -> dict[str, Any]:
-    """
-    `game_schedules` 테이블의 데이터 현황을 점검합니다.
+    """`game_schedules` 테이블의 데이터 현황을 점검합니다.
 
     Args:
         session: Session.
@@ -166,8 +164,7 @@ def check_schedules(session: Session) -> dict[str, Any]:
 
 
 def check_players(session: Session) -> dict[str, Any]:
-    """
-    `players` 테이블의 데이터 현황을 점검합니다.
+    """`players` 테이블의 데이터 현황을 점검합니다.
 
     Args:
         session: Session.
@@ -192,8 +189,7 @@ def check_players(session: Session) -> dict[str, Any]:
 
 
 def check_futures_data(session: Session) -> dict[str, Any]:
-    """
-    퓨처스리그 관련 데이터(타자/투수 기록) 현황을 점검합니다.
+    """퓨처스리그 관련 데이터(타자/투수 기록) 현황을 점검합니다.
 
     Args:
         session: Session.
@@ -229,8 +225,7 @@ def check_futures_data(session: Session) -> dict[str, Any]:
 
 
 def check_game_data(session: Session) -> dict[str, Any]:
-    """
-    Check game data.
+    """Check game data.
 
     Args:
         session: Session.
@@ -251,12 +246,16 @@ def check_game_data(session: Session) -> dict[str, Any]:
     # Duplicate check
     dup_b = session.execute(
         text(
-            "SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM player_game_batting GROUP BY game_id, player_id HAVING COUNT(*) > 1)",
+            "SELECT COALESCE(COUNT(*), 0) FROM "
+            "(SELECT game_id, player_id, COUNT(*) FROM player_game_batting "
+            "GROUP BY game_id, player_id HAVING COUNT(*) > 1)",
         ),
     ).scalar()
     dup_p = session.execute(
         text(
-            "SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM player_game_pitching GROUP BY game_id, player_id HAVING COUNT(*) > 1)",
+            "SELECT COALESCE(COUNT(*), 0) FROM "
+            "(SELECT game_id, player_id, COUNT(*) FROM player_game_pitching "
+            "GROUP BY game_id, player_id HAVING COUNT(*) > 1)",
         ),
     ).scalar()
     if dup_b or dup_p:
@@ -326,8 +325,7 @@ def check_game_data(session: Session) -> dict[str, Any]:
 
 
 def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -> dict[str, Any]:
-    """
-    예정 경기 선발투수 적재율을 점검합니다.
+    """예정 경기 선발투수 적재율을 점검합니다.
 
     Args:
         session: Session.
@@ -687,8 +685,7 @@ def _run_full_status_check(*, verbose: bool) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    데이터 점검 스크립트의 메인 실행 함수.
+    """데이터 점검 스크립트의 메인 실행 함수.
 
     Args:
         argv: Argv.

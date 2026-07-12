@@ -8,6 +8,7 @@ import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+from src.constants import DATE_STR_LEN
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.services.player_id_resolver import PlayerIdResolver
@@ -26,8 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_reconciliation(args: argparse.Namespace) -> int:
-    """
-    Run reconciliation.
+    """Run reconciliation.
 
     Args:
         args: Positional arguments to pass through.
@@ -82,8 +82,7 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -117,8 +116,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
@@ -171,7 +169,7 @@ def _ordered_range(start_date: str, end_date: str) -> tuple[str, str]:
 
 
 def _validate_date(value: str) -> None:
-    if len(value) != 8 or not value.isdigit():
+    if len(value) != DATE_STR_LEN or not value.isdigit():
         msg = f"Invalid date format: {value}. Use YYYYMMDD."
         raise ValueError(msg)
     parse_datetime_str(value)

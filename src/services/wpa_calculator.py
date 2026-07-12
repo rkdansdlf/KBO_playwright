@@ -45,8 +45,7 @@ class WPACalculator:
         self._load_matrix(matrix_path)
 
     def _load_matrix(self, path: str) -> None:
-        """
-        Load Win Expectancy Matrix from CSV.
+        """Load Win Expectancy Matrix from CSV.
 
         Expected columns: inning, half, outs, runners, score_diff, win_prob.
         """
@@ -69,8 +68,7 @@ class WPACalculator:
         logger.info("✅ Loaded %s Win Expectancy entries from %s", len(self._matrix), path)
 
     def calculate_wpa(self, *, data: WpaInput) -> float:
-        """
-        Calculate WPA = WinProb(After) - WinProb(Before).
+        """Calculate WPA = WinProb(After) - WinProb(Before).
 
         Returns WPA from the perspective of the Batting Team.
         """
@@ -98,8 +96,7 @@ class WPACalculator:
         return round(wpa, 4)
 
     def get_win_probability(self, inning: int, *, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
-        """
-        Return probability (0.0 to 1.0) that HOME team wins.
+        """Return probability (0.0 to 1.0) that HOME team wins.
 
         Uses Matrix lookup with fallback interpolation for missing keys.
         """

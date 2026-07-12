@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+DIFF_ENTRY_PREVIEW_LIMIT = 3
+MISMATCH_PREVIEW_LIMIT = 5
 
 CATEGORY_LABELS = {
     "batting": "Batting",
@@ -48,18 +50,17 @@ def _print_category(category: str, result: dict) -> None:
             if diffs:
                 for d in diffs[:3]:
                     logger.warning("      %s", d)
-                if len(diffs) > 3:
-                    logger.warning("      ... and %d more diff entries", len(diffs) - 3)
+                if len(diffs) > DIFF_ENTRY_PREVIEW_LIMIT:
+                    logger.warning("      ... and %d more diff entries", len(diffs) - DIFF_ENTRY_PREVIEW_LIMIT)
             for key in ("expected_pa", "actual_pa", "difference"):
                 if key in mismatch:
                     logger.warning("      %s: %s", key, mismatch[key])
-        if len(mismatches) > 5:
-            logger.warning("    - ... and %d more", len(mismatches) - 5)
+        if len(mismatches) > MISMATCH_PREVIEW_LIMIT:
+            logger.warning("    - ... and %d more", len(mismatches) - MISMATCH_PREVIEW_LIMIT)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

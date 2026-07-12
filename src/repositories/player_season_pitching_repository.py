@@ -1,5 +1,4 @@
-"""
-PlayerSeasonPitching 전용 리포지토리.
+"""PlayerSeasonPitching 전용 리포지토리.
 
 투수 시즌 데이터를 player_season_pitching 테이블에 올바르게 저장.
 
@@ -28,8 +27,7 @@ LAST_FILTER_COUNTS: Counter = Counter()
 
 
 def get_last_filter_counts() -> dict[str, int]:
-    """
-    Get last counts.
+    """Get last counts.
 
     Returns:
         Dictionary result.
@@ -50,8 +48,7 @@ def _prefer_payload_value(
 
 
 def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
-    """
-    투수 시즌 통계를 player_season_pitching 테이블에 UPSERT 저장.
+    """투수 시즌 통계를 player_season_pitching 테이블에 UPSERT 저장.
 
     Args:
         payloads: Payloads.
@@ -202,8 +199,7 @@ def _merge_pitching_row(session: Session, data: dict[str, Any]) -> None:
 
 
 def get_pitching_stats_count(session: Session | None = None) -> int:
-    """
-    투수 테이블의 레코드 수 조회.
+    """투수 테이블의 레코드 수 조회.
 
     Args:
         session: Session.
@@ -217,8 +213,7 @@ def get_pitching_stats_count(session: Session | None = None) -> int:
 
 
 def get_pitching_stats_by_season(season: int, session: Session | None = None) -> list[PlayerSeasonPitching]:
-    """
-    시즌별 투수 데이터 조회.
+    """시즌별 투수 데이터 조회.
 
     Args:
         season: Season year.
@@ -234,8 +229,7 @@ def get_pitching_stats_by_season(season: int, session: Session | None = None) ->
 
 
 def cleanup_invalid_pitching_data(session: Session | None = None) -> int:
-    """
-    잘못된 투수 데이터 정리 (예: 필수 필드 누락).
+    """잘못된 투수 데이터 정리 (예: 필수 필드 누락).
 
     Args:
         session: Session.

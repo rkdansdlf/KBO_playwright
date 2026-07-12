@@ -33,8 +33,7 @@ TRUSTED_RELAY_STATUSES = {"verified", "recovered"}
 
 
 def dump_story_json(story_data: dict) -> str:
-    """
-    Dump story json.
+    """Dump story json.
 
     Args:
         story_data: Story Data.
@@ -121,8 +120,7 @@ def _sync_story_summaries(game_ids: Sequence[str]) -> None:
 
 
 async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    """
-    Run story batch.
+    """Run story batch.
 
     Args:
         target_date: Target date for the operation.
@@ -206,8 +204,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

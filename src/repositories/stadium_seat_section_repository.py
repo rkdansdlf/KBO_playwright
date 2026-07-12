@@ -16,8 +16,7 @@ class StadiumSeatSectionRepository:
     """StadiumSeatSectionRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -27,8 +26,7 @@ class StadiumSeatSectionRepository:
         self.session = session
 
     def save(self, data: dict) -> StadiumSeatSection:
-        """
-        Save save.
+        """Save save.
 
         Args:
             data: Data.
@@ -65,8 +63,7 @@ class StadiumSeatSectionRepository:
         return new_record
 
     def get_by_stadium(self, stadium_id: str) -> list[StadiumSeatSection]:
-        """
-        Get by stadium.
+        """Get by stadium.
 
         Args:
             stadium_id: Stadium ID.
@@ -85,8 +82,7 @@ class StadiumSeatSectionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_cheering_sections(self, stadium_id: str) -> list[StadiumSeatSection]:
-        """
-        Get cheering sections.
+        """Get cheering sections.
 
         Args:
             stadium_id: Stadium ID.
@@ -108,8 +104,7 @@ class StadiumSeatSectionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
-        """
-        Save bulk.
+        """Save bulk.
 
         Args:
             records: Records.

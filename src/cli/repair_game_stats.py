@@ -1,5 +1,4 @@
-"""
-통합 Game Stat 복구 스크립트.
+"""통합 Game Stat 복구 스크립트.
 
     --type batting|pitching 으로 선택.
 
@@ -113,8 +112,7 @@ def _repair_pitching() -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

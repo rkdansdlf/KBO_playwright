@@ -1,5 +1,4 @@
-"""
-오프라인 HTML fixture를 사용하여 전체 데이터 파이프라인을 시연하는 스크립트.
+"""오프라인 HTML fixture를 사용하여 전체 데이터 파이프라인을 시연하는 스크립트.
 
 이 스크립트는 실제 웹 크롤링 없이, 로컬에 저장된 HTML 파일을 사용하여
 다음과 같은 전체 데이터 처리 과정을 보여줍니다:
@@ -35,8 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year: int | None) -> int:
-    """
-    경기 일정 fixture 파일들을 데이터베이스로 가져옵니다.
+    """경기 일정 fixture 파일들을 데이터베이스로 가져옵니다.
 
     Args:
         fixtures_dir: Fixtures Dir.
@@ -58,8 +56,7 @@ def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year:
 
 
 def ingest_game_fixtures(fixtures_dir: Path) -> int:
-    """
-    경기 상세 정보 fixture 파일들을 데이터베이스로 가져옵니다.
+    """경기 상세 정보 fixture 파일들을 데이터베이스로 가져옵니다.
 
     Args:
         fixtures_dir: Fixtures Dir.
@@ -78,8 +75,7 @@ def ingest_game_fixtures(fixtures_dir: Path) -> int:
 
 
 async def run_futures(limit: int | None, season: int, delay: float, concurrency: int) -> None:
-    """
-    퓨처스리그 크롤러를 실행하는 래퍼(wrapper) 함수.
+    """퓨처스리그 크롤러를 실행하는 래퍼(wrapper) 함수.
 
     Args:
         limit: Limit.
@@ -120,8 +116,7 @@ def show_schedule_totals() -> None:
 
 
 def show_summary(game_ids: list[str]) -> None:
-    """
-    처리된 게임 데이터의 요약 정보를 출력합니다.
+    """처리된 게임 데이터의 요약 정보를 출력합니다.
 
     Args:
         game_ids: Game Ids.
@@ -169,8 +164,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    스크립트의 메인 실행 함수.
+    """스크립트의 메인 실행 함수.
 
     Args:
         argv: Argv.

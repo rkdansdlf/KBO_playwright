@@ -39,4 +39,7 @@ class StatRanking(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         """Return a string representation of this object."""
-        return f"<StatRanking(season={self.season}, metric='{self.metric}', entity_id='{self.entity_id}', rank={self.rank})>"
+        return (
+            f"<StatRanking(season={self.season}, metric='{self.metric}', "
+            f"entity_id='{self.entity_id}', rank={self.rank})>"
+        )

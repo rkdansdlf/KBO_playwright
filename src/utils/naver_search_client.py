@@ -1,5 +1,4 @@
-"""
-Naver Search API client for KBO operation notice crawling.
+"""Naver Search API client for KBO operation notice crawling.
 
 Uses the Naver Open API (검색 API) to query news and blog posts
 related to stadium operations. This is a free alternative to Twitter/X API.
@@ -80,8 +79,7 @@ class NaverSearchResult:
 
 
 def _parse_naver_date(pub_date_str: str) -> datetime | None:
-    """
-    Parse Naver API date string (RFC 2822 format).
+    """Parse Naver API date string (RFC 2822 format).
 
     Args:
         pub_date_str: Pub Date Str.
@@ -105,8 +103,7 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
 
 
 def _clean_html(text: str) -> str:
-    """
-    Remove Naver search result HTML tags (e.g. <b>, </b>).
+    """Remove Naver search result HTML tags (e.g. <b>, </b>).
 
     Args:
         text: Text.
@@ -117,8 +114,7 @@ def _clean_html(text: str) -> str:
 
 
 class NaverSearchClient:
-    """
-    Async client for Naver Open Search API.
+    """Async client for Naver Open Search API.
 
     Usage:
         client = NaverSearchClient()
@@ -132,8 +128,7 @@ class NaverSearchClient:
         self.client_secret = os.getenv("NAVER_CLIENT_SECRET", "")
 
     def _is_configured(self) -> bool:
-        """
-        Handle the is configured operation.
+        """Handle the is configured operation.
 
         Returns:
             True if the condition is met, False otherwise.
@@ -142,8 +137,7 @@ class NaverSearchClient:
         return bool(self.client_id and self.client_secret)
 
     def _headers(self) -> dict[str, Any]:
-        """
-        Handle the headers operation.
+        """Handle the headers operation.
 
         Returns:
             Dictionary mapping.
@@ -161,8 +155,7 @@ class NaverSearchClient:
         display: int = 20,
         sort: str = "date",
     ) -> list[NaverSearchResult]:
-        """
-        Search Naver for news/blog/cafe articles.
+        """Search Naver for news/blog/cafe articles.
 
         Args:
             query: Query.
@@ -221,8 +214,7 @@ class NaverSearchClient:
         self,
         days_back: int = 3,
     ) -> list[NaverSearchResult]:
-        """
-        Run all KBO notice queries and return deduplicated results.
+        """Run all KBO notice queries and return deduplicated results.
 
         Args:
             days_back: Days Back.

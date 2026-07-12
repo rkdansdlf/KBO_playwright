@@ -359,6 +359,63 @@ def _unique_franchise_season_player_id(
     return next(iter(season_ids)) if len(season_ids) == 1 else None
 
 
+def _resolve_by_position(rows: list, position: str) -> int | None:
+    position_ids = {int(row[0]) for row in rows if row[2] == position}
+    return next(iter(position_ids)) if len(position_ids) == 1 else None
+
+
+def _resolve_by_team_context(conn: sqlite3.Connection, rows: list, team_id: str) -> int | None:
+    team_row = conn.execute("SELECT team_short_name, team_name FROM teams WHERE team_id = ?", (team_id,)).fetchone()
+    terms = [team_id]
+    if team_row:
+        terms.extend(t for t in team_row if t)
+    contextual = {int(row[0]) for row in rows if any(term and term in str(row[1] or "") for term in terms)}
+    return next(iter(contextual)) if len(contextual) == 1 else None
+
+
+def _resolve_by_season_team(conn: sqlite3.Connection, ids: set[int], season: int, team_id: str) -> int | None:
+    season_ids: set[int] = set()
+    for table_name in ("player_season_batting", "player_season_pitching"):
+        if _table_exists(conn, table_name):
+            season_rows = conn.execute(
+                f"SELECT player_id FROM {table_name} WHERE player_id IN ({','.join('?' for _ in ids)}) AND season = ? AND team_code = ?",
+                (*sorted(ids), season, team_id),
+            ).fetchall()
+            season_ids.update(int(row[0]) for row in season_rows)
+    return next(iter(season_ids)) if len(season_ids) == 1 else None
+
+
+def _try_resolvers(
+    conn: sqlite3.Connection,
+    rows: list,
+    ids: set[int],
+    team_id: str | None,
+    season: int | None,
+    position: str | None,
+    roster_player_id: int | None,
+) -> int | None:
+    resolvers: list = []
+    if position:
+        resolvers.append(lambda: _resolve_by_position(rows, position))
+    resolvers.append(
+        lambda: _unique_profile_mirror_player_id(
+            conn, {int(row[0]) for row in rows if row[2] == position} if position else ids
+        )
+    )
+    if roster_player_id:
+        resolvers.append(lambda: roster_player_id)
+    resolvers.append(lambda: _unique_franchise_season_player_id(conn, ids, team_id, season))
+    if team_id:
+        resolvers.append(lambda: _resolve_by_team_context(conn, rows, team_id))
+        if season:
+            resolvers.append(lambda: _resolve_by_season_team(conn, ids, season, team_id))
+    for resolver in resolvers:
+        result = resolver()
+        if result:
+            return result
+    return None
+
+
 def _unique_player_id_by_name(
     conn: sqlite3.Connection,
     player_name: str,
@@ -366,57 +423,14 @@ def _unique_player_id_by_name(
     season: int | None = None,
     position: str | None = None,
 ) -> int | None:
-    rows = conn.execute(
-        "SELECT player_id, team, position FROM player_basic WHERE name = ?",
-        (player_name,),
-    ).fetchall()
+    rows = conn.execute("SELECT player_id, team, position FROM player_basic WHERE name = ?", (player_name,)).fetchall()
     ids = {int(row[0]) for row in rows}
-    roster_player_id = _unique_roster_player_id(conn, player_name, team_id, season, ids)
     if len(ids) == 1:
         return next(iter(ids))
+    roster_player_id = _unique_roster_player_id(conn, player_name, team_id, season, ids)
     if not ids:
         return roster_player_id
-    position_ids: set[int] = set()
-    if position:
-        position_ids = {int(row[0]) for row in rows if row[2] == position}
-        if len(position_ids) == 1:
-            return next(iter(position_ids))
-    profile_mirror_id = _unique_profile_mirror_player_id(conn, position_ids or ids)
-    if profile_mirror_id:
-        return profile_mirror_id
-    if roster_player_id:
-        return roster_player_id
-    franchise_season_id = _unique_franchise_season_player_id(conn, ids, team_id, season)
-    if franchise_season_id:
-        return franchise_season_id
-    if team_id:
-        team_row = conn.execute(
-            "SELECT team_short_name, team_name FROM teams WHERE team_id = ?",
-            (team_id,),
-        ).fetchone()
-        terms = [team_id]
-        if team_row:
-            terms.extend([term for term in team_row if term])
-        contextual_ids = {int(row[0]) for row in rows if any(term and term in str(row[1] or "") for term in terms)}
-        if len(contextual_ids) == 1:
-            return next(iter(contextual_ids))
-        if season:
-            season_ids = set()
-            for table_name in ("player_season_batting", "player_season_pitching"):
-                if _table_exists(conn, table_name):
-                    season_rows = conn.execute(
-                        f"""
-                        SELECT player_id FROM {table_name}
-                        WHERE player_id IN ({",".join("?" for _ in ids)})
-                          AND season = ?
-                          AND team_code = ?
-                        """,
-                        (*sorted(ids), season, team_id),
-                    ).fetchall()
-                    season_ids.update(int(row[0]) for row in season_rows)
-            if len(season_ids) == 1:
-                return next(iter(season_ids))
-    return None
+    return _try_resolvers(conn, rows, ids, team_id, season, position, roster_player_id)
 
 
 def _unique_team_by_player_history(conn: sqlite3.Connection, player_name: str, season: int | None) -> str | None:
@@ -429,7 +443,7 @@ def _unique_team_by_player_history(conn: sqlite3.Connection, player_name: str, s
     ]
     if not player_ids:
         return None
-    teams = set()
+    teams: set[str] = set()
     placeholders = ",".join("?" for _ in player_ids)
     for table_name in ("player_season_batting", "player_season_pitching"):
         if not _table_exists(conn, table_name):
@@ -707,7 +721,7 @@ def _repair_movements(conn: sqlite3.Connection, actions: list[Action], apply: bo
     unresolved_team = 0
     team_ids = {row[0] for row in conn.execute("SELECT team_id FROM teams").fetchall()}
     for movement_id, movement_date, raw_team, raw_name in rows:
-        canonical_team = TEAM_NAME_TO_CODE.get(str(raw_team or "").strip(), str(raw_team or "").strip())
+        canonical_team: str | None = TEAM_NAME_TO_CODE.get(str(raw_team or "").strip(), str(raw_team or "").strip())
         if canonical_team not in team_ids:
             canonical_team = None
         year = int(str(movement_date)[:4]) if movement_date else None

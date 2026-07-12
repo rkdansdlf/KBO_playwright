@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+DATA_SOURCE_STALE_AFTER_HOURS = 48
 
 TABLE_CHECKS = [
     ("game", "game_date"),
@@ -50,7 +51,11 @@ def _check_datasource_health(session: Session) -> list[dict[str, Any]]:
         stale = ""
         if ds.last_success_at:
             hours_since = (datetime.now(UTC).replace(tzinfo=None) - ds.last_success_at).total_seconds() / 3600
-            stale = f"STALE ({hours_since:.0f}h)" if hours_since > 48 else f"ok ({hours_since:.0f}h ago)"
+            stale = (
+                f"STALE ({hours_since:.0f}h)"
+                if hours_since > DATA_SOURCE_STALE_AFTER_HOURS
+                else f"ok ({hours_since:.0f}h ago)"
+            )
         else:
             stale = "NEVER"
         rows.append(
@@ -127,8 +132,7 @@ def run_health_check() -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -138,8 +142,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

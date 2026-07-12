@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run(args: argparse.Namespace) -> int:
-    """
-    Run run.
+    """Run run.
 
     Args:
         args: Positional arguments to pass through.
@@ -39,8 +38,7 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -54,8 +52,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

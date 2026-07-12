@@ -1,5 +1,4 @@
-"""
-Smart polling gate for KBO daily data collection.
+"""Smart polling gate for KBO daily data collection.
 
 Layer 1 lightweight checker: queries the Naver Sports schedule API to determine
 whether all of today's KBO games have finished. Exits with code 0 if crawling
@@ -54,8 +53,7 @@ def get_kst_today_date() -> date:
 
 
 def _build_query_params(date_str: str) -> dict[str, str]:
-    """
-    Build Naver Sports API query parameters for a given date.
+    """Build Naver Sports API query parameters for a given date.
 
     Note: seasonYear uses the calendar year of the game date. For KBO games
     in Jan-Feb (which may belong to the previous season), this still works
@@ -81,8 +79,7 @@ async def _fetch_naver_games(
     client: httpx.AsyncClient,
     date_str: str,
 ) -> list[dict[str, Any]]:
-    """
-    Fetch today's game list from Naver Sports API.
+    """Fetch today's game list from Naver Sports API.
 
     Return empty list on any error or non-200 response.
     Network errors are logged at ERROR level to distinguish from "no games."
@@ -125,15 +122,15 @@ async def _fetch_naver_games(
             )
         else:
             logger.info("[GATE] No games found for date %s (confirmed by API)", date_str)
-        return games
     except (httpx.HTTPError, ValueError, TypeError, KeyError):
         logger.exception("[GATE] Failed to fetch/parse Naver schedule")
         return []
+    else:
+        return games
 
 
 def _extract_game_status(game: dict[str, Any]) -> str | None:
-    """
-    Extract the lifecycle-relevant status string from a Naver game object.
+    """Extract the lifecycle-relevant status string from a Naver game object.
 
     Check multiple possible field names in order of reliability.
 
@@ -151,8 +148,7 @@ def _extract_game_status(game: dict[str, Any]) -> str | None:
 def _classify_games(
     games: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """
-    Classify games into terminal, active, and unknown categories.
+    """Classify games into terminal, active, and unknown categories.
 
     Return (terminal_games, active_games, unknown_games).
 
@@ -181,8 +177,7 @@ def _classify_games(
 
 
 def _format_game_label(game: dict[str, Any]) -> str:
-    """
-    Format a human-readable label for a game dict.
+    """Format a human-readable label for a game dict.
 
     Args:
         game: Game.
@@ -246,8 +241,7 @@ async def _handle_no_games(
 
 
 async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
-    """
-    Check if all of today's KBO games have reached a terminal state.
+    """Check if all of today's KBO games have reached a terminal state.
 
     Returns:
         (should_proceed, has_games_today, details) where:
@@ -320,8 +314,7 @@ async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Build arg parser.
+    """Build arg parser.
 
     Returns:
         The result of the operation.
@@ -339,8 +332,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 async def main_async(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
@@ -369,8 +361,7 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

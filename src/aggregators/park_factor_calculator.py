@@ -1,5 +1,4 @@
-"""
-Park Factor calculator for KBO stadiums.
+"""Park Factor calculator for KBO stadiums.
 
 Calculate run factor (PF) and home run factor (HRF) per stadium per season.
 Formula: (RS + RA)_home / (RS + RA)_away  (standardized to 1.00 = neutral).
@@ -22,13 +21,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+PARK_FACTOR_HITTER_FRIENDLY_THRESHOLD = 1.10
+PARK_FACTOR_SLIGHTLY_HITTER_FRIENDLY_THRESHOLD = 1.04
+PARK_FACTOR_NEUTRAL_THRESHOLD = 0.96
+PARK_FACTOR_SLIGHTLY_PITCHER_FRIENDLY_THRESHOLD = 0.90
+
 
 class ParkFactorCalculator:
     """ParkFactorCalculator class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -37,8 +40,7 @@ class ParkFactorCalculator:
         self.session = session
 
     def calculate(self, year: int) -> list[dict[str, Any]]:
-        """
-        Calculate calculate.
+        """Calculate calculate.
 
         Args:
             year: Season year.
@@ -117,19 +119,18 @@ class ParkFactorCalculator:
         return results
 
     def _label(self, pf: float) -> str:
-        if pf > 1.10:
+        if pf > PARK_FACTOR_HITTER_FRIENDLY_THRESHOLD:
             return "타자친화"
-        if pf > 1.04:
+        if pf > PARK_FACTOR_SLIGHTLY_HITTER_FRIENDLY_THRESHOLD:
             return "약간 타자친화"
-        if pf > 0.96:
+        if pf > PARK_FACTOR_NEUTRAL_THRESHOLD:
             return "중립"
-        if pf > 0.90:
+        if pf > PARK_FACTOR_SLIGHTLY_PITCHER_FRIENDLY_THRESHOLD:
             return "약간 투수친화"
         return "투수친화"
 
     def print_report(self, year: int) -> None:
-        """
-        Print print report.
+        """Print print report.
 
         Args:
             year: Season year.

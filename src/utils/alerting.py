@@ -12,6 +12,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 ALERTING_EXCEPTIONS = (httpx.HTTPError, OSError, TimeoutError, ValueError, TypeError)
+GAP_ALERT_DETAIL_LIMIT = 15
 
 GAP_EMOJI_MAP: dict[str, str] = {
     "FRESHNESS": "\u2757",
@@ -43,8 +44,7 @@ class TelegramBotClient:
 
     @staticmethod
     def send_message(message: str, chat_id: str | None = None) -> bool:
-        """
-        Send an alert message to a Telegram chat.
+        """Send an alert message to a Telegram chat.
 
         Uses TELEGRAM_CHAT_ID by default, or the provided chat_id override.
         Requires TELEGRAM_BOT_TOKEN.
@@ -79,8 +79,7 @@ class SlackWebhookClient:
 
     @staticmethod
     def send_alert(message: str, blocks: list[Any] | None = None) -> bool:
-        """
-        Send an alert message.
+        """Send an alert message.
 
         Tries Telegram first, falls back to Slack if configured.
 
@@ -117,8 +116,7 @@ class SlackWebhookClient:
 
     @staticmethod
     def send_gap_alert(gap_type: str, summary: str, details: list[str] | None = None) -> bool:
-        """
-        Send a gap-type-aware alert with optional per-category Telegram chat routing.
+        """Send a gap-type-aware alert with optional per-category Telegram chat routing.
 
         Args:
             gap_type: Gap Type.
@@ -135,8 +133,8 @@ class SlackWebhookClient:
         body = ""
         if details:
             body = "\n".join(f"\u2022 {d}" for d in details[:15])
-            if len(details) > 15:
-                body += f"\n... and {len(details) - 15} more"
+            if len(details) > GAP_ALERT_DETAIL_LIMIT:
+                body += f"\n... and {len(details) - GAP_ALERT_DETAIL_LIMIT} more"
         message = header + ("\n\n" + body if body else "")
 
         chat_env = GAP_CATEGORY_ENV_MAP.get(gap_type)
@@ -160,8 +158,7 @@ class SlackWebhookClient:
 
     @staticmethod
     def send_error_alert(traceback_msg: str) -> bool:
-        """
-        Format and send and send a critical error trace.
+        """Format and send and send a critical error trace.
 
         Args:
             traceback_msg: Traceback Msg.

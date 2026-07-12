@@ -17,10 +17,16 @@ R = TypeVar("R")
 _SYSTEM_RANDOM = secrets.SystemRandom()
 
 DEFAULT_USER_AGENTS = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+    ),
+    ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
+    ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"),
+    (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+    ),
 ]
 
 
@@ -40,8 +46,7 @@ class RequestPolicy:
     """Centralized throttling and retry policy."""
 
     def __init__(self, config: RequestPolicyConfig | None = None, **overrides: object) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             config: Configuration object.
@@ -69,8 +74,7 @@ class RequestPolicy:
 
     @classmethod
     def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> "RequestPolicy":
-        """
-        Handle the with delay operation.
+        """Handle the with delay operation.
 
         Args:
             min_delay: Min Delay.
@@ -87,8 +91,7 @@ class RequestPolicy:
         return cls(RequestPolicyConfig(min_delay=min_delay, max_delay=max_delay))
 
     def _load_user_agents(self, override: Iterable[str] | None) -> list[str]:
-        """
-        Load user agents.
+        """Load user agents.
 
         Args:
             override: Override.
@@ -111,8 +114,7 @@ class RequestPolicy:
         return DEFAULT_USER_AGENTS
 
     def random_user_agent(self) -> str:
-        """
-        Handle the random user agent operation.
+        """Handle the random user agent operation.
 
         Returns:
             String result.
@@ -121,8 +123,7 @@ class RequestPolicy:
         return secrets.choice(self.user_agents)
 
     def build_context_kwargs(self, **overrides: object) -> dict[str, Any]:
-        """
-        Build context kwargs.
+        """Build context kwargs.
 
         Args:
             overrides: Overrides.
@@ -138,8 +139,7 @@ class RequestPolicy:
         return kwargs
 
     def _random_delay(self) -> float:
-        """
-        Handle the random delay operation.
+        """Handle the random delay operation.
 
         Returns:
             float instance.
@@ -148,8 +148,7 @@ class RequestPolicy:
         return _SYSTEM_RANDOM.uniform(self.min_delay, self.max_delay)
 
     def delay(self, host: str = "koreabaseball.com") -> None:
-        """
-        Handle the delay operation.
+        """Handle the delay operation.
 
         Args:
             host: Host.
@@ -162,8 +161,7 @@ class RequestPolicy:
         throttle.wait_sync(host)
 
     async def delay_async(self, host: str = "koreabaseball.com") -> None:
-        """
-        Handle the delay async operation.
+        """Handle the delay async operation.
 
         Args:
             host: Host.
@@ -176,8 +174,7 @@ class RequestPolicy:
         await throttle.wait(host)
 
     def run_with_retry(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
-        """
-        Run with retry.
+        """Run with retry.
 
         Args:
             func: Func.
@@ -209,8 +206,7 @@ class RequestPolicy:
         raise RuntimeError(msg)
 
     async def run_with_retry_async(self, func: Callable[P, Awaitable[R]], *args: P.args, **kwargs: P.kwargs) -> R:
-        """
-        Run with retry async.
+        """Run with retry async.
 
         Args:
             func: Func.
@@ -242,8 +238,7 @@ class RequestPolicy:
         raise RuntimeError(msg)
 
     def _backoff_delay(self, attempt: int) -> float:
-        """
-        Handle the backoff delay operation.
+        """Handle the backoff delay operation.
 
         Args:
             attempt: Attempt.

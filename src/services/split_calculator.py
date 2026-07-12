@@ -35,8 +35,7 @@ class SituationalSplitCalculator:
     """Compute situational batting splits from game_events (PBP) data."""
 
     def __init__(self, session: Session | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -55,8 +54,7 @@ class SituationalSplitCalculator:
     # base_state bitmask: 1=1B, 2=2B, 4=3B  → RISP = 2B or 3B set → & 6
     # ------------------------------------------------------------------ #
     def _resolve_name(self, player_id: int, session: Session) -> str | None:
-        """
-        Return the Korean name for a given player_id.
+        """Return the Korean name for a given player_id.
 
         Args:
             player_id: Player ID.
@@ -72,8 +70,7 @@ class SituationalSplitCalculator:
         return row.name if row else None
 
     def get_risp_stats(self, player_id: int, season: int) -> dict[str, Any]:
-        """
-        RISP batting stats for a player in a given season.
+        """RISP batting stats for a player in a given season.
 
         Args:
             player_id: Player ID.
@@ -83,7 +80,8 @@ class SituationalSplitCalculator:
         query = """
 
         SELECT
-            COUNT(CASE WHEN e.result_code NOT IN ('BB','HBP','SH','SF') AND e.result_code IS NOT NULL THEN 1 END) AS risp_ab,
+            COUNT(CASE WHEN e.result_code NOT IN ('BB','HBP','SH','SF')
+                AND e.result_code IS NOT NULL THEN 1 END) AS risp_ab,
             COUNT(CASE WHEN e.result_code IN ('H1','H2','H3','HR') THEN 1 END)           AS risp_hits,
             COUNT(CASE WHEN e.result_code IN ('H1','H2','H3','HR','BB','HBP') THEN 1 END) AS risp_on_base
         FROM game_events e
@@ -117,8 +115,7 @@ class SituationalSplitCalculator:
     # L/R Splits: vs Left-handed / Right-handed Pitcher
     # ------------------------------------------------------------------ #
     def get_lr_splits(self, player_id: int, season: int) -> dict[str, Any]:
-        """
-        Return batting splits vs LHP and RHP.
+        """Return batting splits vs LHP and RHP.
 
         Joins game_events → game_pitching_stats → player_basic (throws).
         Uses batter_name since batter_id may be NULL in game_events.
@@ -171,8 +168,7 @@ class SituationalSplitCalculator:
     # Two-Out RBI: Clutch situational stat
     # ------------------------------------------------------------------ #
     def get_two_out_stats(self, player_id: int, season: int) -> dict[str, Any]:
-        """
-        Return batting stats with 2 outs.
+        """Return batting stats with 2 outs.
 
         Args:
             player_id: Player ID.
@@ -213,8 +209,7 @@ class SituationalSplitCalculator:
     # Full profile helper
     # ------------------------------------------------------------------ #
     def get_full_splits(self, player_id: int, season: int) -> dict[str, Any]:
-        """
-        Get full splits.
+        """Get full splits.
 
         Args:
             player_id: Player ID.

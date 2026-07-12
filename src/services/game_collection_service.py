@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+LAST_MONTH_OF_YEAR = 12
 
 DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE = {
     "no_detail_payload",
@@ -52,8 +53,7 @@ class DetailCrawler(Protocol):
         *,
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Crawl game details for the given game list.
+        """Crawl game details for the given game list.
 
         Args:
             games: Games.
@@ -75,8 +75,7 @@ class RelayCrawler(Protocol):
     """RelayCrawler class."""
 
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
-        """
-        Crawl game events for a given game ID.
+        """Crawl game events for a given game ID.
 
         Args:
             game_id: Game ID.
@@ -98,8 +97,7 @@ class GameCollectionTarget:
     game_date: str
 
     def as_crawler_input(self) -> dict[str, str]:
-        """
-        Handle the as crawler input operation.
+        """Handle the as crawler input operation.
 
         Returns:
             Dictionary result.
@@ -189,8 +187,7 @@ class GameCollectionItemResult:
 
 
 def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
-    """
-    Build game id range.
+    """Build game id range.
 
     Args:
         year: Season year.
@@ -206,7 +203,7 @@ def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
     """
     if month:
         start = date(year, month, 1)
-        end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+        end = date(year + 1, 1, 1) if month == LAST_MONTH_OF_YEAR else date(year, month + 1, 1)
     else:
         start = date(year, 1, 1)
         end = date(year + 1, 1, 1)
@@ -214,8 +211,7 @@ def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
 
 
 def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameCollectionTarget]:
-    """
-    Load game targets from db.
+    """Load game targets from db.
 
     Args:
         year: Season year.
@@ -248,8 +244,7 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
 
 
 def load_game_targets_by_ids(game_ids: list[str]) -> list[GameCollectionTarget]:
-    """
-    game_id 목록으로 GameCollectionTarget 리스트를 조회합니다.
+    """game_id 목록으로 GameCollectionTarget 리스트를 조회합니다.
 
     Args:
         game_ids: Game Ids.
@@ -273,8 +268,7 @@ def load_game_targets_by_ids(game_ids: list[str]) -> list[GameCollectionTarget]:
 
 
 def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
-    """
-    Normalize game targets.
+    """Normalize game targets.
 
     Args:
         games: Games.
@@ -302,8 +296,7 @@ def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
 
 
 def inspect_existing_game_data(targets: Iterable[GameCollectionTarget]) -> dict[str, ExistingGameData]:
-    """
-    Handle the inspect existing game data operation.
+    """Handle the inspect existing game data operation.
 
     Args:
         targets: Targets.
@@ -342,8 +335,7 @@ async def crawl_and_save_game_details(
     detail_crawler: DetailCrawler,
     config: GameCollectionConfig | None = None,
 ) -> GameCollectionResult:
-    """
-    Crawl and game details.
+    """Crawl and game details.
 
     Args:
         games: Games.
@@ -748,8 +740,7 @@ async def _maybe_pause(
 
 
 def _derive_sh_sf_for_results(result: GameCollectionResult, log: Callable[[str], None]) -> None:
-    """
-    Derive sacrifice_hits/sacrifice_flies from PBP events for collected games.
+    """Derive sacrifice_hits/sacrifice_flies from PBP events for collected games.
 
     Args:
         result: Result.

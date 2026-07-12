@@ -5,11 +5,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def check_anomalies(db_path):
-    conn = sqlite3.connect(db_path)
-    logger.info(f"Checking anomalies for {db_path}...")
-
-    # 1. Check for NULLs in mandatory fields (that might not have constraints)
+def _check_nulls(conn):
     tables_to_check = {
         "player_basic": ["player_id", "name"],
         "player_season_batting": ["player_id", "season", "league", "team_code"],
@@ -18,29 +14,24 @@ def check_anomalies(db_path):
         "game_batting_stats": ["game_id", "player_id", "team_code"],
         "game_pitching_stats": ["game_id", "player_id", "team_code"],
     }
-
     logger.info("\n--- NULL/Empty Check ---")
     for table, cols in tables_to_check.items():
         for col in cols:
-            query = f"SELECT COUNT(*) FROM {table} WHERE {col} IS NULL OR {col} = ''"
-            count = conn.execute(query).fetchone()[0]
-            if count > 0:
-                logger.info(f"[FAIL] {table}.{col} has {count} NULL or empty values.")
-            else:
-                logger.info(f"[PASS] {table}.{col} looks good.")
+            count = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} IS NULL OR {col} = ''").fetchone()[0]
+            logger.info(f"{'[FAIL]' if count > 0 else '[PASS]'} {table}.{col} has {count} NULL or empty values.")
 
-    # 2. Check for logical duplicates (even if they don't violate PK/Unique)
-    # E.g. Same player, same year, same team, same league in batting stats
+
+def _check_duplicates(conn):
     logger.info("\n--- Logical Duplicate Check ---")
-    dup_checks = {
+    for table, cols in {
         "player_season_batting": ["player_id", "season", "league", "level"],
         "player_season_pitching": ["player_id", "season", "league", "level"],
         "game": ["game_id"],
-    }
-    for table, cols in dup_checks.items():
+    }.items():
         cols_str = ", ".join(cols)
-        query = f"SELECT {cols_str}, COUNT(*) FROM {table} GROUP BY {cols_str} HAVING COUNT(*) > 1"
-        dups = conn.execute(query).fetchall()
+        dups = conn.execute(
+            f"SELECT {cols_str}, COUNT(*) FROM {table} GROUP BY {cols_str} HAVING COUNT(*) > 1"
+        ).fetchall()
         if dups:
             logger.info(f"[FAIL] {table} has {len(dups)} groups of duplicates based on {cols}.")
             for d in dups[:3]:
@@ -48,23 +39,26 @@ def check_anomalies(db_path):
         else:
             logger.info(f"[PASS] {table} has no logical duplicates on {cols}.")
 
-    # 3. Check for statistical anomalies
+
+def _check_stat_anomalies(conn):
     logger.info("\n--- Statistical Sanity Check ---")
-    # AVG > 1.0 (possible if plate appearances are low and logic is wrong, but usually 0-1)
-    query = "SELECT player_id, season, avg FROM player_season_batting WHERE avg > 1.0"
-    res = conn.execute(query).fetchall()
+    res = conn.execute("SELECT player_id, season, avg FROM player_season_batting WHERE avg > 1.0").fetchall()
     if res:
         logger.info(f"[WARN] player_season_batting has {len(res)} records with AVG > 1.0.")
         for r in res[:3]:
             logger.info(f"  {r}")
-
-    # Negative stats
-    stat_cols = ["games", "plate_appearances", "at_bats", "hits", "home_runs", "runs"]
-    for col in stat_cols:
-        query = f"SELECT COUNT(*) FROM player_season_batting WHERE {col} < 0"
-        count = conn.execute(query).fetchone()[0]
+    for col in ["games", "plate_appearances", "at_bats", "hits", "home_runs", "runs"]:
+        count = conn.execute(f"SELECT COUNT(*) FROM player_season_batting WHERE {col} < 0").fetchone()[0]
         if count > 0:
             logger.info(f"[FAIL] player_season_batting has {count} records with negative {col}.")
+
+
+def check_anomalies(db_path):
+    conn = sqlite3.connect(db_path)
+    logger.info(f"Checking anomalies for {db_path}...")
+    _check_nulls(conn)
+    _check_duplicates(conn)
+    _check_stat_anomalies(conn)
 
     # 4. Team Code Consistency
     logger.info("\n--- Team Code Consistency Check ---")

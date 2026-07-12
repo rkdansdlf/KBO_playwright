@@ -19,6 +19,7 @@ from src.utils.team_codes import resolve_team_code
 from src.utils.type_helpers import safe_float, safe_int
 
 logger = logging.getLogger(__name__)
+MIN_BASERUNNING_ROW_CELLS = 10
 
 BASERUNNING_CRAWL_EXCEPTIONS = (
     PlaywrightError,
@@ -48,8 +49,7 @@ def crawl_baserunning_stats(
     max_retries: int = 3,
     timeout: int = LONG_TIMEOUT,
 ) -> list[dict[str, Any]]:
-    """
-    전체 선수의 주루 기록을 크롤링합니다.
+    """전체 선수의 주루 기록을 크롤링합니다.
 
     Args:
         year: Season year.
@@ -131,7 +131,7 @@ def _extract_baserunning_player(cells: list[_BaserunningCell]) -> tuple[str | No
 
 def _parse_baserunning_row(row: _BaserunningRow, year: int) -> dict[str, Any] | None:
     cells = row.query_selector_all("td")
-    if len(cells) < 10:
+    if len(cells) < MIN_BASERUNNING_ROW_CELLS:
         return None
     player_name = "알 수 없음"
     try:
@@ -160,8 +160,7 @@ def save_baserunning_stats(
     year: int | None = None,
     db_path: str | None = None,
 ) -> None:
-    """
-    Save baserunning stats.
+    """Save baserunning stats.
 
     Args:
         player_list: Player List.
@@ -250,8 +249,10 @@ def _insert_baserunning_record(
     try:
         cursor.execute(
             """INSERT OR REPLACE INTO kbo_season_baserunning_stats
-(player_id, team_id, year, player_name, games, stolen_base_attempts, stolen_bases, caught_stealing, stolen_base_percentage, out_on_base, picked_off, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+ (player_id, team_id, year, player_name, games, stolen_base_attempts,
+  stolen_bases, caught_stealing, stolen_base_percentage, out_on_base,
+  picked_off, updated_at)
+ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 player_id,
                 stats["team_id"],

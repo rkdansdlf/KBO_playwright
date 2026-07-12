@@ -1,5 +1,4 @@
-"""
-은퇴 또는 비활동 선수의 데이터를 수집하기 위한 CLI 스크립트.
+"""은퇴 또는 비활동 선수의 데이터를 수집하기 위한 CLI 스크립트.
 
 이 스크립트는 다음 과정을 통해 과거 선수들의 기록을 수집합니다:
 1. 특정 기간(예: 1982-2023)의 모든 선수 ID와 현재 시즌의 현역 선수 ID를 비교하여
@@ -61,8 +60,7 @@ async def determine_inactive_ids(
     active_year: int,
     request_delay: float,
 ) -> set[str]:
-    """
-    과거 시즌과 현재 시즌의 선수 명단을 비교하여 은퇴/비활동 선수 ID를 식별합니다.
+    """과거 시즌과 현재 시즌의 선수 명단을 비교하여 은퇴/비활동 선수 ID를 식별합니다.
 
     Args:
         start_year: Start Year.
@@ -85,8 +83,7 @@ async def process_player(
     detail_crawler: RetiredPlayerDetailCrawler,
     repository: PlayerRepository,
 ) -> None:
-    """
-    단일 은퇴 선수의 상세 정보(프로필, 시즌 기록)를 크롤링하고 저장합니다.
+    """단일 은퇴 선수의 상세 정보(프로필, 시즌 기록)를 크롤링하고 저장합니다.
 
     Args:
         player_id: Player ID.
@@ -143,8 +140,7 @@ async def process_player(
 
 
 async def crawl_retired_players(args: argparse.Namespace) -> None:
-    """
-    은퇴 선수 데이터 수집 파이프라인의 메인 로직.
+    """은퇴 선수 데이터 수집 파이프라인의 메인 로직.
 
     Args:
         args: Positional arguments to pass through.
@@ -177,8 +173,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     semaphore = asyncio.Semaphore(args.concurrency)  # 동시 요청 수 제어
 
     async def runner(pid: str) -> None:
-        """
-        Handle the runner operation.
+        """Handle the runner operation.
 
         Args:
             pid: Pid.
@@ -213,8 +208,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

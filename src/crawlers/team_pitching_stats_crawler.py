@@ -105,8 +105,7 @@ class TeamPitchingStatsCrawler:
     """collect and persists team-level pitching stats for a season."""
 
     def __init__(self, league: str = "REGULAR", policy: RequestPolicy | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             league: League.
@@ -121,8 +120,7 @@ class TeamPitchingStatsCrawler:
         self.policy = policy or RequestPolicy()
 
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
-        """
-        Crawl crawl.
+        """Crawl crawl.
 
         Args:
             season: Season year.
@@ -229,8 +227,7 @@ def parse_team_pitching_html(
     league: str,
     team_mapping: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """
-    Parse team pitching html.
+    """Parse team pitching html.
 
     Args:
         html: Html.

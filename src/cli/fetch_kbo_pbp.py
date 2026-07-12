@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_fetcher(argv: Sequence[str] | None = None) -> int:
-    """
-    Run fetcher.
+    """Run fetcher.
 
     Args:
         argv: Argv.
@@ -100,8 +99,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

@@ -11,9 +11,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from src.constants import KST
+from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, KST, MAX_INNINGS
 
 logger = logging.getLogger(__name__)
+
+MIN_SCOREBOARD_TEAM_ROWS = 2
+RHE_COLUMN_COUNT = 3
+MIN_SCOREBOARD_CELL_COUNT = RHE_COLUMN_COUNT + 1
+RHE_HITS_INDEX = 1
+RHE_ERRORS_INDEX = 2
+DURATION_PART_COUNT = 2
+PARK_JUNYOUNG_RESOLUTION_ROW_THRESHOLD = 4
+PARK_JUNYOUNG_ERA_THRESHOLD = 3.0
+PARK_JUNYOUNG_SPECIAL_SEASON = 2026
 
 import contextlib
 from datetime import datetime
@@ -130,8 +140,7 @@ class PlayerIdResolver(Protocol):
         uniform_no: str | None = None,
         is_pitcher: bool = False,
     ) -> int | None:
-        """
-        Resolve player ID from name and team information.
+        """Resolve player ID from name and team information.
 
         Args:
             player_name: Player Name.
@@ -207,8 +216,7 @@ class GameDetailCrawler:
         resolver: PlayerIdResolver | None = None,
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -224,8 +232,7 @@ class GameDetailCrawler:
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
-        """
-        Get last failure reason.
+        """Get last failure reason.
 
         Args:
             game_id: Game ID.
@@ -244,8 +251,7 @@ class GameDetailCrawler:
             self.pool = None
 
     def _section_url(self, game_id: str, game_date: str, section: str) -> str:
-        """
-        Handle the section url operation.
+        """Handle the section url operation.
 
         Args:
             game_id: Game ID.
@@ -263,8 +269,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _empty_metadata() -> dict[str, Any]:
-        """
-        Handle the empty metadata operation.
+        """Handle the empty metadata operation.
 
         Returns:
             Dictionary mapping.
@@ -281,8 +286,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_name_and_uniform(player_name: str, cells: dict[str, Any]) -> tuple[str, str | None]:
-        """
-        Parse name and uniform.
+        """Parse name and uniform.
 
         Args:
             player_name: Player Name.
@@ -312,8 +316,7 @@ class GameDetailCrawler:
         player_name: str,
         uniform_no: str | None,
     ) -> tuple[int | None, str | None]:
-        """
-        Resolve from roster.
+        """Resolve from roster.
 
         Args:
             roster_map: Roster Map.
@@ -346,8 +349,7 @@ class GameDetailCrawler:
         required_selector: str | None = None,
         selector_timeout: int = 15000,
     ) -> tuple[bool, str, str]:
-        """
-        Handle the navigate section operation.
+        """Handle the navigate section operation.
 
         Args:
             ctx: Ctx.
@@ -385,8 +387,7 @@ class GameDetailCrawler:
         return True, "ok", url
 
     async def crawl_game(self, game_id: str, game_date: str, *, lightweight: bool = False) -> dict[str, Any] | None:
-        """
-        Crawl game.
+        """Crawl game.
 
         Args:
             game_id: Game ID.
@@ -431,8 +432,7 @@ class GameDetailCrawler:
         *,
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Crawl games.
+        """Crawl games.
 
         Args:
             games: Games.
@@ -507,8 +507,7 @@ class GameDetailCrawler:
         *,
         lightweight: bool = False,
     ) -> dict[str, Any] | None:
-        """
-        Crawl single.
+        """Crawl single.
 
         Args:
             page: Page.
@@ -602,8 +601,7 @@ class GameDetailCrawler:
         return game_data
 
     async def _click_review_tab_if_present(self, page: Page) -> None:
-        """
-        Handle the click review tab if present operation.
+        """Handle the click review tab if present operation.
 
         Args:
             page: Page.
@@ -625,8 +623,7 @@ class GameDetailCrawler:
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None,
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
-        """
-        Extract hitter pair.
+        """Extract hitter pair.
 
         Args:
             page: Page.
@@ -659,8 +656,7 @@ class GameDetailCrawler:
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None,
     ) -> dict[str, list[dict[str, Any]]]:
-        """
-        Extract pitcher pair.
+        """Extract pitcher pair.
 
         Args:
             page: Page.
@@ -689,8 +685,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _stats_complete(hitters: dict[str, list[dict[str, Any]]], pitchers: dict[str, list[dict[str, Any]]]) -> bool:
-        """
-        Handle the stats complete operation.
+        """Handle the stats complete operation.
 
         Args:
             hitters: Hitters.
@@ -711,8 +706,7 @@ class GameDetailCrawler:
         hitter_totals: dict[str, dict[str, Any]],
         pitchers: dict[str, list[dict[str, Any]]],
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
-        """
-        Handle the retry missing boxscore sections operation.
+        """Handle the retry missing boxscore sections operation.
 
         Args:
             ctx: Ctx.
@@ -751,8 +745,7 @@ class GameDetailCrawler:
         hitters: dict[str, list[dict[str, Any]]],
         hitter_totals: dict[str, dict[str, Any]],
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
-        """
-        Handle the recover hitter section if missing operation.
+        """Handle the recover hitter section if missing operation.
 
         Args:
             ctx: Ctx.
@@ -791,8 +784,7 @@ class GameDetailCrawler:
         ctx: BoxscoreCrawlContext,
         pitchers: dict[str, list[dict[str, Any]]],
     ) -> dict[str, list[dict[str, Any]]]:
-        """
-        Handle the recover pitcher section if missing operation.
+        """Handle the recover pitcher section if missing operation.
 
         Args:
             ctx: Ctx.
@@ -826,8 +818,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _has_partial_recovery_anchor(team_info: dict[str, dict[str, Any]], metadata: dict[str, Any]) -> bool:
-        """
-        Handle the has partial recovery anchor operation.
+        """Handle the has partial recovery anchor operation.
 
         Args:
             team_info: Team Info.
@@ -853,8 +844,7 @@ class GameDetailCrawler:
         hitters: dict[str, list[dict[str, Any]]],
         hitter_totals: dict[str, dict[str, Any]],
     ) -> None:
-        """
-        Validate hitter totals.
+        """Validate hitter totals.
 
         Args:
             page: Page.
@@ -890,8 +880,7 @@ class GameDetailCrawler:
         self,
         ctx: BoxscoreCrawlContext,
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]] | None:
-        """
-        Extract detailed stats.
+        """Extract detailed stats.
 
         Args:
             ctx: Ctx.
@@ -920,15 +909,15 @@ class GameDetailCrawler:
                 self._last_failure_reason[ctx.game_id] = "incomplete_detail"
                 return None
             logger.info(
-                "[info] No box scores found for %s, but scoreboard/metadata available. Proceeding with partial recovery.",
+                "[info] No box scores found for %s, but scoreboard/metadata available. "
+                "Proceeding with partial recovery.",
                 ctx.game_id,
             )
         await self._validate_hitter_totals(ctx.page, ctx.game_id, hitters, hitter_totals)
         return hitters, pitchers
 
     async def _is_cancelled_boxscore_page(self, page: Page) -> bool:
-        """
-        Handle the is cancelled boxscore page operation.
+        """Handle the is cancelled boxscore page operation.
 
         Args:
             page: Page.
@@ -960,8 +949,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _boxscore_timeout_debug_path(game_id: str, *, lightweight: bool) -> str:
-        """
-        Handle the boxscore timeout debug path operation.
+        """Handle the boxscore timeout debug path operation.
 
         Args:
             game_id: Game ID.
@@ -977,8 +965,7 @@ class GameDetailCrawler:
         return f"data/{prefix}_{game_id}_{datetime.now(KST).strftime('%Y%m%d_%H%M%S')}.png"
 
     async def _save_boxscore_timeout_screenshot(self, page: Page, debug_path: str) -> None:
-        """
-        Save boxscore timeout screenshot.
+        """Save boxscore timeout screenshot.
 
         Args:
             page: Page.
@@ -996,8 +983,7 @@ class GameDetailCrawler:
             logger.exception("⚠️ Failed to save timeout debug screenshot for %s", page.url)
 
     async def _wait_for_boxscore(self, page: Page, *, game_id: str, lightweight: bool = False) -> tuple[bool, str]:
-        """
-        Wait for box score elements to be visible with fast-fail for cancelled games.
+        """Wait for box score elements to be visible with fast-fail for cancelled games.
 
         Args:
             page: Page.
@@ -1035,8 +1021,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_metadata_info_text(metadata: dict[str, Any], text: str) -> None:
-        """
-        Parse metadata info text.
+        """Parse metadata info text.
 
         Args:
             metadata: Metadata.
@@ -1065,8 +1050,7 @@ class GameDetailCrawler:
                 metadata[key] = match.group(1).strip()
 
     async def _extract_metadata(self, page: Page) -> dict[str, Any]:
-        """
-        Extract metadata.
+        """Extract metadata.
 
         Args:
             page: Page.
@@ -1189,7 +1173,7 @@ class GameDetailCrawler:
 
             for table in tables:
                 rows = await table.query_selector_all("tbody tr")
-                if len(rows) < 2:
+                if len(rows) < MIN_SCOREBOARD_TEAM_ROWS:
                     continue
 
                 first_row_cells = await rows[0].query_selector_all("th, td")
@@ -1262,7 +1246,7 @@ class GameDetailCrawler:
             val = (await c.text_content() or "").strip()
             cell_values.append(val)
 
-        if len(cell_values) < 4:
+        if len(cell_values) < MIN_SCOREBOARD_CELL_COUNT:
             return None
 
         line_score = GameDetailCrawler._build_line_score(cell_values)
@@ -1278,8 +1262,7 @@ class GameDetailCrawler:
         }
 
     async def _extract_team_info(self, page: Page, game_id: str, season_year: int | None) -> dict[str, dict[str, Any]]:
-        """
-        Extract team info.
+        """Extract team info.
 
         Args:
             page: Page.
@@ -1328,7 +1311,10 @@ class GameDetailCrawler:
                 const totalRows = getRows(totalTable, false);
 
                 if (teamRows.length >= 2 && inningRows.length >= 2 && totalRows.length >= 2) {
-                    const headers = ["TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)), "R", "H", "E"];
+                    const headers = [
+                        "TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)),
+                        "R", "H", "E"
+                    ];
                     const rows = [];
                     for (let i=0; i<2; i++) {
                         const teamName = teamRows[i][0] || "Unknown";
@@ -1344,12 +1330,18 @@ class GameDetailCrawler:
             teamTable = null; inningTable = null; totalTable = null;
 
             for (const table of tables) {
-                const headers = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').replace(/\u00a0/g, ' ').trim().toUpperCase());
+                const headers = Array.from(table.querySelectorAll('thead th')).map(
+                    th => (th.textContent || '').replace(/\u00a0/g, ' ').trim().toUpperCase()
+                );
 
-                if (!teamTable && (headers.some(h => h.includes('TEAM')) || headers.includes('팀') || headers.includes('\u00a0'))) {
+                if (!teamTable && (
+                    headers.some(h => h.includes('TEAM')) || headers.includes('팀') || headers.includes('\u00a0')
+                )) {
                     if (headers.length <= 4) teamTable = table;
                 }
-                if (!inningTable && headers.includes('1') && headers.includes('2') && headers.includes('3')) inningTable = table;
+                if (!inningTable && headers.includes('1') && headers.includes('2') && headers.includes('3')) {
+                    inningTable = table;
+                }
                 if (!totalTable && headers.includes('R') && headers.includes('H')) totalTable = table;
             }
 
@@ -1386,7 +1378,10 @@ class GameDetailCrawler:
             const totalRows = getRowsFallback(totalTable);
 
             if (teamRows.length >= 2 && inningRows.length >= 2 && totalRows.length >= 2) {
-                const headers = ["TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)), "R", "H", "E"];
+                const headers = [
+                    "TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)),
+                    "R", "H", "E"
+                ];
                 const rows = [];
                 for (let i=0; i<2; i++) {
                     let teamName = teamRows[i][0] || "";
@@ -1406,7 +1401,7 @@ class GameDetailCrawler:
         away_info: dict[str, Any] | None
         home_info: dict[str, Any] | None
 
-        if result and len(result["rows"]) >= 2:
+        if result and len(result["rows"]) >= MIN_SCOREBOARD_TEAM_ROWS:
             headers = result["headers"]
             rows = result["rows"]
             away_info = self._parse_scoreboard_row(headers, rows[0], season_year)
@@ -1428,8 +1423,8 @@ class GameDetailCrawler:
                     home_info = live_scores["home"]
 
         # Fallback to gameId decoding for missing/generic team info (common in All-Star)
-        away_segment = game_id[8:10] if len(game_id) >= 10 else None
-        home_segment = game_id[10:12] if len(game_id) >= 12 else None
+        away_segment = game_id[8:10] if len(game_id) >= GAME_ID_MIN_LEN else None
+        home_segment = game_id[10:12] if len(game_id) >= GAME_ID_FULL_LEN else None
 
         if not away_info or not away_info.get("code") or away_info.get("name") in (None, "", "Unknown"):
             away_info = {
@@ -1459,8 +1454,7 @@ class GameDetailCrawler:
         season_year: int | None,
         uniform_no: str | None,
     ) -> int | None:
-        """
-        Resolve hitter id.
+        """Resolve hitter id.
 
         Args:
             player_name: Player Name.
@@ -1498,8 +1492,7 @@ class GameDetailCrawler:
         player_name: str,
         idx: int,
     ) -> dict[str, Any] | None:
-        """
-        Handle the select hitter extra row operation.
+        """Handle the select hitter extra row operation.
 
         Args:
             extra_has_names: Extra Has Names.
@@ -1519,8 +1512,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _apply_hitter_inning_derivatives(stats: dict[str, Any], inning_rows: list[dict[str, Any]], idx: int) -> None:
-        """
-        Handle the apply hitter inning derivatives operation.
+        """Handle the apply hitter inning derivatives operation.
 
         Args:
             stats: Stats.
@@ -1540,8 +1532,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _backfill_hitter_plate_appearances(stats: dict[str, Any]) -> None:
-        """
-        Backfills hitter plate appearances.
+        """Backfills hitter plate appearances.
 
         Args:
             stats: Stats.
@@ -1562,8 +1553,7 @@ class GameDetailCrawler:
     def _build_hitter_payload(
         ctx: HitterPayloadContext,
     ) -> dict[str, Any]:
-        """
-        Build hitter payload.
+        """Build hitter payload.
 
         Args:
             ctx: Ctx.
@@ -1584,7 +1574,7 @@ class GameDetailCrawler:
             "team_side": ctx.team_side,
             "batting_order": batting_order,
             "position": position,
-            "is_starter": batting_order is not None and batting_order <= 9,
+            "is_starter": batting_order is not None and batting_order <= MAX_INNINGS,
             "appearance_seq": ctx.idx,
             "stats": ctx.stats,
             "extras": ctx.extras or None,
@@ -1596,8 +1586,7 @@ class GameDetailCrawler:
         team_side: str,
         team_code: str | None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """
-        Extract hitters.
+        """Extract hitters.
 
         Args:
             ctx: Ctx.
@@ -1699,8 +1688,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _resolve_hanwha_park_junyoung(row: dict[str, Any], rows: list[dict[str, Any]], idx: int) -> int:
-        """
-        Resolve hanwha park junyoung.
+        """Resolve hanwha park junyoung.
 
         Args:
             row: Row.
@@ -1721,7 +1709,7 @@ class GameDetailCrawler:
                 rel_idx = [candidate["playerName"] for candidate in rows].index("박준영")
                 return 52731 if idx == rel_idx + 1 else 56709
             except ValueError:
-                return 56709 if idx > 4 else 52731
+                return 56709 if idx > PARK_JUNYOUNG_RESOLUTION_ROW_THRESHOLD else 52731
 
         era_val = 5.0
         try:
@@ -1730,14 +1718,13 @@ class GameDetailCrawler:
                 era_val = float(era_str)
         except ValueError:
             pass
-        return 56709 if era_val < 3.0 else 52731
+        return 56709 if era_val < PARK_JUNYOUNG_ERA_THRESHOLD else 52731
 
     def _resolve_pitcher_from_resolver(
         self,
         ctx: PitcherResolutionContext,
     ) -> int | None:
-        """
-        Resolve pitcher from resolver.
+        """Resolve pitcher from resolver.
 
         Args:
             ctx: Ctx.
@@ -1749,7 +1736,7 @@ class GameDetailCrawler:
         """
         if not (self.resolver and ctx.team_code and ctx.season_year):
             return None
-        if ctx.player_name == "박준영" and ctx.team_code == "HH" and ctx.season_year == 2026:
+        if ctx.player_name == "박준영" and ctx.team_code == "HH" and ctx.season_year == PARK_JUNYOUNG_SPECIAL_SEASON:
             return self._resolve_hanwha_park_junyoung(ctx.row, ctx.rows, ctx.idx)
         return self.resolver.resolve_id(
             ctx.player_name,
@@ -1760,8 +1747,7 @@ class GameDetailCrawler:
         )
 
     async def _search_and_register_pitcher(self, player_name: str, team_code: str | None) -> int | None:
-        """
-        Search for and register pitcher.
+        """Search for and register pitcher.
 
         Args:
             player_name: Player Name.
@@ -1803,8 +1789,7 @@ class GameDetailCrawler:
         self,
         ctx: PitcherResolutionContext,
     ) -> int | None:
-        """
-        Resolve pitcher id.
+        """Resolve pitcher id.
 
         Args:
             ctx: Ctx.
@@ -1826,8 +1811,7 @@ class GameDetailCrawler:
     def _build_pitcher_payload(
         ctx: PitcherPayloadContext,
     ) -> dict[str, Any]:
-        """
-        Build pitcher payload.
+        """Build pitcher payload.
 
         Args:
             ctx: Ctx.
@@ -1868,8 +1852,7 @@ class GameDetailCrawler:
         team_side: str,
         team_code: str | None,
     ) -> list[dict[str, Any]]:
-        """
-        Extract pitchers.
+        """Extract pitchers.
 
         Args:
             ctx: Ctx.
@@ -1949,8 +1932,7 @@ class GameDetailCrawler:
         return results
 
     async def _extract_table_rows(self, page: Page, selector: str) -> list[dict[str, Any]]:
-        """
-        Extract table rows.
+        """Extract table rows.
 
         Args:
             page: Page.
@@ -1987,7 +1969,10 @@ class GameDetailCrawler:
                     const header = headers[i] || `COL_${i}`;
                     values[header] = cells[i].textContent.trim();
                 }
-                const link = tr.querySelector('a[href*="playerId="], a[href*="p_id="], a[href*="pCode="], a[href*="pcode="], a[href*="PlayerDetail"]');
+                const link = tr.querySelector(
+                    'a[href*="playerId="], a[href*="p_id="], a[href*="pCode="], '
+                    + 'a[href*="pcode="], a[href*="PlayerDetail"]'
+                );
                 let playerId = null;
                 let playerName = null;
                 let uniformNo = null;
@@ -2031,8 +2016,7 @@ class GameDetailCrawler:
         return await page.evaluate(script, selector)
 
     async def _extract_game_summary(self, page: Page) -> list[dict[str, str]]:
-        """
-        Extract game summary details from #tblEtc (Winning hit, HR, Errors, Umpires, etc.).
+        """Extract game summary details from #tblEtc (Winning hit, HR, Errors, Umpires, etc.).
 
         Args:
             page: Page.
@@ -2079,8 +2063,7 @@ class GameDetailCrawler:
         *,
         lightweight: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
-        """
-        Load roster from lineup.
+        """Load roster from lineup.
 
         Args:
             page: Page.
@@ -2104,8 +2087,7 @@ class GameDetailCrawler:
             lineup_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
 
             async def _navigate_lineup(_url: str = lineup_url) -> None:
-                """
-                Handle the navigate lineup operation.
+                """Handle the navigate lineup operation.
 
                 Args:
                     _url: Url.
@@ -2151,8 +2133,7 @@ class GameDetailCrawler:
         hitters: dict[str, list[dict[str, Any]]],
         pitchers: dict[str, list[dict[str, Any]]],
     ) -> None:
-        """
-        Log unresolved player ids.
+        """Log unresolved player ids.
 
         Args:
             game_id: Game ID.
@@ -2184,8 +2165,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _derive_hitter_stats_from_inning_cells(cells: dict[str, str]) -> dict[str, int]:
-        """
-        Count stats from inning breakdown cells (e.g. '삼진', '4구').
+        """Count stats from inning breakdown cells (e.g. '삼진', '4구').
 
         Args:
             cells: Cells.
@@ -2210,8 +2190,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _populate_hitter_stats(stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:
-        """
-        Handle the populate hitter stats operation.
+        """Handle the populate hitter stats operation.
 
         Args:
             stats: Stats.
@@ -2239,8 +2218,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _populate_pitcher_stats(stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:
-        """
-        Handle the populate pitcher stats operation.
+        """Handle the populate pitcher stats operation.
 
         Args:
             stats: Stats.
@@ -2274,8 +2252,7 @@ class GameDetailCrawler:
         row: list[str],
         season_year: int | None = None,
     ) -> dict[str, Any]:
-        """
-        Parse scoreboard row.
+        """Parse scoreboard row.
 
         Args:
             headers: Headers.
@@ -2304,8 +2281,8 @@ class GameDetailCrawler:
             name = name.replace("승", "").replace("패", "").replace("무", "").replace("세", "").strip()
 
         # Validate row structure against headers: last 3 should be R/H/E
-        if headers and len(headers) >= 4 and len(headers) == len(row):
-            _last3 = [h.upper() for h in headers[-3:]]
+        if headers and len(headers) >= MIN_SCOREBOARD_CELL_COUNT and len(headers) == len(row):
+            _last3 = [h.upper() for h in headers[-RHE_COLUMN_COUNT:]]
             if _last3[0] not in ("R", "RUN", "득점", "R/H/E"):
                 logger.debug("Unexpected scoreboard header before R: %s", headers[-3])
             if _last3[1] not in ("H", "HIT", "안타"):
@@ -2313,12 +2290,12 @@ class GameDetailCrawler:
             if _last3[2] not in ("E", "ERR", "실책", "E/H"):
                 logger.debug("Unexpected scoreboard header before E: %s", headers[-1])
 
-        line = row[1:-3] if len(row) > 4 else []
-        totals = row[-3:] if len(row) >= 3 else []
+        line = row[1:-RHE_COLUMN_COUNT] if len(row) > MIN_SCOREBOARD_CELL_COUNT else []
+        totals = row[-RHE_COLUMN_COUNT:] if len(row) >= RHE_COLUMN_COUNT else []
 
         score = safe_int_or_none(totals[0]) if totals else None
-        hits = safe_int_or_none(totals[1]) if len(totals) > 1 else None
-        errors = safe_int_or_none(totals[2]) if len(totals) > 2 else None
+        hits = safe_int_or_none(totals[RHE_HITS_INDEX]) if len(totals) > RHE_HITS_INDEX else None
+        errors = safe_int_or_none(totals[RHE_ERRORS_INDEX]) if len(totals) > RHE_ERRORS_INDEX else None
 
         line_numeric = [safe_int_or_none(item) for item in line]
 
@@ -2333,8 +2310,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_batting_order(cells: dict[str, str]) -> int | None:
-        """
-        Parse batting order.
+        """Parse batting order.
 
         Args:
             cells: Cells.
@@ -2353,8 +2329,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_position(cells: dict[str, str]) -> str | None:
-        """
-        Parse position.
+        """Parse position.
 
         Args:
             cells: Cells.
@@ -2371,8 +2346,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_decision(text: str | None) -> str | None:
-        """
-        Parse decision.
+        """Parse decision.
 
         Args:
             text: Text.
@@ -2400,8 +2374,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_duration_minutes(duration: str | None) -> int | None:
-        """
-        Parse duration minutes.
+        """Parse duration minutes.
 
         Args:
             duration: Duration.
@@ -2414,7 +2387,7 @@ class GameDetailCrawler:
         if not duration:
             return None
         parts = duration.strip().split(":")
-        if len(parts) != 2:
+        if len(parts) != DURATION_PART_COUNT:
             return None
         try:
             hours = int(parts[0])
@@ -2425,8 +2398,7 @@ class GameDetailCrawler:
 
     @staticmethod
     def _parse_season_year(game_date: str) -> int | None:
-        """
-        Parse season year.
+        """Parse season year.
 
         Args:
             game_date: Game Date.
@@ -2438,16 +2410,15 @@ class GameDetailCrawler:
         """
         digits = "".join(ch for ch in str(game_date) if ch.isdigit())
 
-        if len(digits) >= 4:
+        if len(digits) >= GAME_ID_YEAR_LEN:
             try:
-                return int(digits[:4])
+                return int(digits[:GAME_ID_YEAR_LEN])
             except ValueError:
                 return None
         return None
 
     async def _extract_roster_from_lineup(self, page: Page) -> dict[str, list[dict[str, Any]]]:
-        """
-        Extract a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
+        """Extract a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
 
         Used to resolve player IDs when the Review page boxscore lacks links (legacy games).
 
@@ -2475,7 +2446,10 @@ class GameDetailCrawler:
             };
 
             // Find all anchor tags that look like player links
-            const links = document.querySelectorAll('a[href*="PlayerDetail"], a[href*="playerId="], a[href*="p_id="], a[href*="pCode="], a[href*="pcode="]');
+            const links = document.querySelectorAll(
+                'a[href*="PlayerDetail"], a[href*="playerId="], a[href*="p_id="], '
+                + 'a[href*="pCode="], a[href*="pcode="]'
+            );
 
             links.forEach(a => {
                 const name = a.textContent.trim();

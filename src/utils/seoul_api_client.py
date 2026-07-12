@@ -1,5 +1,4 @@
-"""
-Seoul Open Data API client for stadium congestion data.
+"""Seoul Open Data API client for stadium congestion data.
 
 Primary data sources:
   1. 서울시 실시간 도시데이터 API (Seoul Real-time City Data)
@@ -59,8 +58,7 @@ LEVEL_MAP = {
 
 
 async def get_area_congestion(area_name: str) -> CongestionSnapshot | None:
-    """
-    Fetch real-time congestion for a specific Seoul area from the Seoul Open Data API.
+    """Fetch real-time congestion for a specific Seoul area from the Seoul Open Data API.
 
     The API returns congestion_lvl (여유/보통/약간 붐빔/붐빔) and area_ppltn_max/min.
 

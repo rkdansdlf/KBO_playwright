@@ -61,7 +61,7 @@ def test_players_sync_runs_player_basic_before_master_players(monkeypatch):
             return False
 
     class _FakeOCISync:
-        def __init__(self, target_url, session):
+        def __init__(self, target_url, session, **_kwargs):
             calls.append(("init", target_url, session))
 
         def sync_player_basic(self):
@@ -109,7 +109,7 @@ def test_teams_sync_runs_reference_tables_in_dependency_order(monkeypatch):
             return False
 
     class _FakeOCISync:
-        def __init__(self, target_url, session):
+        def __init__(self, target_url, session, **_kwargs):
             calls.append(("init", target_url, session))
 
         def sync_franchises(self):
@@ -167,7 +167,7 @@ def test_daily_roster_sync_passes_date_scope(monkeypatch):
             return False
 
     class _FakeOCISync:
-        def __init__(self, target_url, session):
+        def __init__(self, target_url, session, **_kwargs):
             calls.append(("init", target_url, session))
 
         def sync_daily_rosters(self, *, start_date=None, end_date=None):

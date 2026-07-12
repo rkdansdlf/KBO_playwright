@@ -140,8 +140,7 @@ class StartersInfo:
 
 
 def get_games_by_date(target_date: str) -> list[Game]:
-    """
-    Retrieve Game objects for a specific date (YYYYMMDD).
+    """Retrieve Game objects for a specific date (YYYYMMDD).
 
     Args:
         target_date: Target date for the operation.
@@ -196,8 +195,7 @@ def _resolve_pregame_starter(
 
 
 def resolve_canonical_game_id(game_id: str) -> str | None:
-    """
-    Resolve an external/alias game_id to the canonical legacy KBO game_id.
+    """Resolve an external/alias game_id to the canonical legacy KBO game_id.
 
     Args:
         game_id: Game ID.
@@ -221,8 +219,7 @@ def save_schedule_game(
     source_crawler: str = "ScheduleCrawler",
     source_reason: str = "schedule_refresh",
 ) -> bool:
-    """
-    Persist basic game info from schedule crawler.
+    """Persist basic game info from schedule crawler.
 
     Args:
         game_data: Game Data.
@@ -269,7 +266,7 @@ def save_schedule_game(
                 session.add(game)
                 changed = True
                 if write_contract:
-                    write_contract.field_updated(game_id, source, "game.created", None, changed=True)
+                    write_contract.field_updated(game_id, source, "game.created", old=None, new=True)
 
             changed |= _assign_field_if_changed(
                 game,
@@ -382,7 +379,7 @@ def _get_or_create_game(
     session.add(game)
     session.flush()
     if write_contract:
-        write_contract.field_updated(game_id, source, "game.created", None, changed=True)
+        write_contract.field_updated(game_id, source, "game.created", old=None, new=True)
     return game, True
 
 
@@ -612,8 +609,7 @@ def save_game_detail(
     source_crawler: str = "GameDetailCrawler",
     source_reason: str = "detail_recovery",
 ) -> bool:
-    """
-    Persist full game snapshot including box score + player stats.
+    """Persist full game snapshot including box score + player stats.
 
     Args:
         game_data: Game Data.
@@ -751,8 +747,7 @@ def save_game_detail(
 
 
 def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) -> bool:
-    """
-    Persist live/lightweight scoreboard data without touching full detail sections.
+    """Persist live/lightweight scoreboard data without touching full detail sections.
 
     Args:
         game_data: Game Data.
@@ -919,8 +914,7 @@ def _apply_snapshot_status_and_winner(
 
 
 def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
-    """
-    Persist pregame start time, announced starters, and published starting lineups.
+    """Persist pregame start time, announced starters, and published starting lineups.
 
     Args:
         preview_data: Preview Data.

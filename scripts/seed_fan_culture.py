@@ -27,7 +27,7 @@ RIVALRIES_CSV = ROOT / "data" / "seed" / "team_rivalries.csv"
 
 
 def seed_rivalries(dry_run: bool = False) -> int:
-    rows = []
+    rows: list[dict[str, str | None]] = []
     with RIVALRIES_CSV.open(encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows.extend(

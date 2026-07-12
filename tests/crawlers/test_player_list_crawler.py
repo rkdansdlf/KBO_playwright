@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from src.crawlers.player_list_crawler import _is_pitcher, _row_to_dict
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from src.crawlers.player_list_crawler import PlayerListCrawler, _is_pitcher, _row_to_dict
 from src.crawlers.player_search_crawler import PlayerRow
 
 
@@ -118,3 +122,30 @@ class TestRowToDict:
         result = _row_to_dict(row)
         assert result["status"] == "staff"
         assert result["staff_role"] == "coach"
+
+
+class TestPlayerListCrawler:
+    @pytest.mark.asyncio
+    async def test_crawl_all_players_forwards_options_and_groups_categories(self):
+        rows = [
+            PlayerRow(1, "7", "타자", "LG", "내야수", None, None, None, None),
+            PlayerRow(2, "1", "투수", "LG", "P", None, None, None, None),
+            PlayerRow(3, None, "은퇴", "", "", None, None, None, None),
+            PlayerRow(4, None, "코치", "LG", "코치", None, None, None, None),
+        ]
+        crawler = PlayerListCrawler(request_delay=0.2, headless=False, max_pages=3)
+
+        with patch(
+            "src.crawlers.player_list_crawler.crawl_all_players",
+            new=AsyncMock(return_value=rows),
+        ) as crawl_all:
+            result = await crawler.crawl_all_players(2025)
+
+        crawl_all.assert_awaited_once_with(max_pages=3, headless=False, request_delay=0.2)
+        assert result["total"] == 4
+        assert result["active_total"] == 2
+        assert result["retired_total"] == 1
+        assert result["staff_total"] == 1
+        assert result["pitchers"][0]["player_name"] == "투수"
+        assert result["hitters"][0]["player_name"] == "타자"
+        assert result["staff"][0]["staff_role"] == "COACH"

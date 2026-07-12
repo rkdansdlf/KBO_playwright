@@ -110,8 +110,7 @@ STADIUM_KR_TO_CODE: dict[str, str] = {
 
 @lru_cache(maxsize=256)
 def resolve_stadium_code(stadium_name: str | None) -> str | None:
-    """
-    Resolve a stadium name (Korean short or full) to canonical stadium_code.
+    """Resolve a stadium name (Korean short or full) to canonical stadium_code.
 
     Args:
         stadium_name: Stadium Name.
@@ -143,8 +142,7 @@ def resolve_stadium_code_from_db(
     session: Session,
     stadium_name: str | None,
 ) -> str | None:
-    """
-    Resolve stadium code using the database stadium_short_name_map table.
+    """Resolve stadium code using the database stadium_short_name_map table.
 
     Falls back to the static mapping if DB lookup fails.
 

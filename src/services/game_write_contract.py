@@ -10,6 +10,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
+MAX_VALUE_REPR_LENGTH = 80
+TRUNCATED_VALUE_REPR_LENGTH = 77
+
+
 @dataclass(frozen=True)
 class GameWriteSource:
     """GameWriteSource class."""
@@ -19,8 +23,7 @@ class GameWriteSource:
     reason: str = ""
 
     def label(self) -> str:
-        """
-        Handle the label operation.
+        """Handle the label operation.
 
         Returns:
             String result.
@@ -43,8 +46,7 @@ class GameWriteContract:
         log: Callable[[str], None] | None = None,
         log_duplicate_fields: bool = False,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             run_label: Run Label.
@@ -67,8 +69,7 @@ class GameWriteContract:
         self.duplicate_datasets = 0
 
     def claim_game(self, game_id: str, source: GameWriteSource) -> None:
-        """
-        Handle the claim game operation.
+        """Handle the claim game operation.
 
         Args:
             game_id: Game ID.
@@ -94,8 +95,7 @@ class GameWriteContract:
         )
 
     def field_updated(self, game_id: str, source: GameWriteSource, field: str, old: object, new: object) -> None:
-        """
-        Handle the field updated operation.
+        """Handle the field updated operation.
 
         Args:
             game_id: Game ID.
@@ -130,8 +130,7 @@ class GameWriteContract:
         )
 
     def field_duplicate(self, game_id: str, source: GameWriteSource, field: str, value: object) -> None:
-        """
-        Handle the field duplicate operation.
+        """Handle the field duplicate operation.
 
         Args:
             game_id: Game ID.
@@ -157,8 +156,7 @@ class GameWriteContract:
             )
 
     def dataset_replaced(self, game_id: str, source: GameWriteSource, dataset: str, rows: int) -> None:
-        """
-        Handle the dataset replaced operation.
+        """Handle the dataset replaced operation.
 
         Args:
             game_id: Game ID.
@@ -183,8 +181,7 @@ class GameWriteContract:
         )
 
     def dataset_duplicate(self, game_id: str, source: GameWriteSource, dataset: str, rows: int) -> None:
-        """
-        Handle the dataset duplicate operation.
+        """Handle the dataset duplicate operation.
 
         Args:
             game_id: Game ID.
@@ -209,8 +206,7 @@ class GameWriteContract:
         )
 
     def summary(self) -> str:
-        """
-        Handle the summary operation.
+        """Handle the summary operation.
 
         Returns:
             String result.
@@ -229,6 +225,6 @@ class GameWriteContract:
 
 def _format_value(value: object) -> str:
     text = repr(value)
-    if len(text) > 80:
-        return text[:77] + "..."
+    if len(text) > MAX_VALUE_REPR_LENGTH:
+        return text[:TRUNCATED_VALUE_REPR_LENGTH] + "..."
     return text

@@ -17,11 +17,11 @@ from src.utils.throttle import throttle
 logger = logging.getLogger(__name__)
 
 TEAM_INFO_MODAL_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, KeyError)
+MIN_TEAM_TABLE_COLUMNS = 4
 
 
 class TeamInfoCrawler:
-    """
-    crawl KBO Team Info page (https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx).
+    """crawl KBO Team Info page (https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx).
 
     Collects: CEO, Owner, Founded Date, Homepage, Phone, Address.
 
@@ -55,8 +55,7 @@ class TeamInfoCrawler:
             await self.playwright.stop()
 
     async def crawl(self, *, save: bool = False) -> list[dict]:
-        """
-        Crawl crawl.
+        """Crawl crawl.
 
         Args:
             save: Whether to persist the results.
@@ -106,7 +105,7 @@ class TeamInfoCrawler:
 
     async def _extract_team_row(self, row: Locator) -> dict | None:
         cols = await row.locator("td").all()
-        if len(cols) < 4:
+        if len(cols) < MIN_TEAM_TABLE_COLUMNS:
             return None
 
         team_name = (await cols[0].inner_text()).strip()
@@ -183,8 +182,7 @@ class TeamInfoCrawler:
             logger.info("Saved %d raw snapshots for team info.", count)
 
     async def save(self, data: list[dict]) -> None:
-        """
-        Save save.
+        """Save save.
 
         Args:
             data: Data.

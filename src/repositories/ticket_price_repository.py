@@ -16,8 +16,7 @@ class TicketPriceRepository:
     """TicketPriceRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -27,8 +26,7 @@ class TicketPriceRepository:
         self.session = session
 
     def save(self, data: dict) -> TicketPrice:
-        """
-        Save save.
+        """Save save.
 
         Args:
             data: Data.
@@ -57,8 +55,7 @@ class TicketPriceRepository:
         return new_record
 
     def get_by_team_season(self, team_id: str, season: int) -> list[TicketPrice]:
-        """
-        Get by team season.
+        """Get by team season.
 
         Args:
             team_id: Team ID.
@@ -80,8 +77,7 @@ class TicketPriceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_by_stadium_season(self, stadium_id: str, season: int) -> list[TicketPrice]:
-        """
-        Get by stadium season.
+        """Get by stadium season.
 
         Args:
             stadium_id: Stadium ID.
@@ -103,8 +99,7 @@ class TicketPriceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def bulk_save(self, records: list[dict]) -> int:
-        """
-        Save bulk.
+        """Save bulk.
 
         Args:
             records: Records.

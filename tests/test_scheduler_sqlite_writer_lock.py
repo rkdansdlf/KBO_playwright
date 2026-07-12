@@ -42,3 +42,9 @@ def test_scheduler_job_lock_nests_tier_and_sqlite_locks(monkeypatch):
     tier_lock.__exit__.assert_called_once()
     sqlite_lock.__enter__.assert_called_once()
     sqlite_lock.__exit__.assert_called_once()
+
+
+def test_sqlite_writer_lock_is_force_process_lock():
+    from src.utils.lock import ForceProcessLock
+
+    assert isinstance(scheduler.SQLITE_WRITE_LOCK, ForceProcessLock)

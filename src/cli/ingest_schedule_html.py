@@ -1,5 +1,4 @@
-"""
-로컬에 저장된 경기 일정 HTML 파일을 데이터베이스로 가져오는 CLI 스크립트.
+"""로컬에 저장된 경기 일정 HTML 파일을 데이터베이스로 가져오는 CLI 스크립트.
 
 이 스크립트는 `ingest_mock_game_html.py`와 유사하지만, 경기 상세 정보가 아닌
 월별 경기 '일정' 페이지만을 처리하여 `game_schedules` 테이블에 저장합니다.
@@ -23,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_schedule_html(args: argparse.Namespace) -> None:
-    """
-    저장된 경기 일정 HTML 파일들을 파싱하여 데이터베이스에 저장합니다.
+    """저장된 경기 일정 HTML 파일들을 파싱하여 데이터베이스에 저장합니다.
 
     Args:
         args: Positional arguments to pass through.
@@ -89,8 +87,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Iterable[str] | None = None) -> None:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

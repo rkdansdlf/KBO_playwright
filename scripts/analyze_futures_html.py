@@ -46,7 +46,8 @@ print(f"Total tables: {len(all_tables)}")
 
 print("\n=== Sample: First table with class 'tData' ===")
 for table in all_tables:
-    cls = table.get("class", [])
+    raw_cls = table.get("class")
+    cls: list[str] = list(raw_cls) if raw_cls else []
     if cls and any("tData" in c for c in cls):
         print(f"Class: {cls}")
         thead = table.find("thead")

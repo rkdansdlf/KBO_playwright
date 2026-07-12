@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 
 TEAM_HISTORY_PARSE_EXCEPTIONS = (PlaywrightError, ValueError, TypeError)
 TEAM_HISTORY_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
+TEAM_HISTORY_SLOT_COUNT = 12
 
 
 class TeamHistoryCrawler:
-    """
-    crawl KBO Team History page (https://www.koreabaseball.com/Kbo/League/TeamHistory.aspx).
+    """crawl KBO Team History page (https://www.koreabaseball.com/Kbo/League/TeamHistory.aspx).
 
     Collects: Annual Team Names, Logos, Rankings, Season Info.
 
@@ -60,8 +60,7 @@ class TeamHistoryCrawler:
             await self.playwright.stop()
 
     async def crawl(self) -> list[dict]:
-        """
-        Crawl crawl.
+        """Crawl crawl.
 
         Returns:
             List of results.
@@ -88,7 +87,7 @@ class TeamHistoryCrawler:
         # State tracking: 12 slots for teams (KBO has max 10 active + history slots?)
         # Subagent said 12 columns.
         # We store {name: str, logo: str} for each column index.
-        team_slots: list[dict[str, str | None]] = [{"name": None, "logo": None} for _ in range(12)]
+        team_slots: list[dict[str, str | None]] = [{"name": None, "logo": None} for _ in range(TEAM_HISTORY_SLOT_COUNT)]
 
         for row in rows:
             year = await self._parse_history_year(row)
@@ -96,7 +95,7 @@ class TeamHistoryCrawler:
                 continue
             cells = await row.locator("td").all()
             for i, cell in enumerate(cells):
-                if i >= 12:
+                if i >= TEAM_HISTORY_SLOT_COUNT:
                     break  # Safety
                 entry = await self._parse_history_cell(cell, i, year, team_slots)
                 if entry is not None:
@@ -159,8 +158,7 @@ class TeamHistoryCrawler:
         return None, None
 
     async def save(self, data: list[dict]) -> None:
-        """
-        Save save.
+        """Save save.
 
         Args:
             data: Data.

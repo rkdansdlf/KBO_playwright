@@ -34,8 +34,7 @@ MINIMUM_SERIES_RATIO = 0.5
 
 
 def get_available_series_by_year(year: int) -> list[str]:
-    """
-    연도별 존재하는 시리즈 목록 반환.
+    """연도별 존재하는 시리즈 목록 반환.
 
     Args:
         year: Season year.
@@ -55,8 +54,7 @@ def get_available_series_by_year(year: int) -> list[str]:
 
 
 def is_series_available(year: int, series_key: str) -> bool:
-    """
-    특정 연도에 특정 시리즈가 존재하는지 확인.
+    """특정 연도에 특정 시리즈가 존재하는지 확인.
 
     Args:
         year: Season year.
@@ -76,8 +74,7 @@ def is_series_available(year: int, series_key: str) -> bool:
 
 
 def filter_series_for_year(year: int, requested_series: list[str]) -> list[str]:
-    """
-    요청된 시리즈 목록에서 해당 연도에 존재하지 않는 시리즈 제거.
+    """요청된 시리즈 목록에서 해당 연도에 존재하지 않는 시리즈 제거.
 
     Args:
         year: Season year.
@@ -116,8 +113,7 @@ def get_series_info() -> dict[str, dict[str, Any]]:
 
 
 def validate_year_series_combination(year: int, series_key: str) -> tuple[bool, str]:
-    """
-    연도-시리즈 조합 유효성 검증.
+    """연도-시리즈 조합 유효성 검증.
 
     Args:
         year: Season year.
@@ -145,8 +141,7 @@ def validate_year_series_combination(year: int, series_key: str) -> tuple[bool, 
 
 
 def get_recommended_series_for_period(start_year: int, end_year: int) -> list[str]:
-    """
-    특정 기간에 대한 권장 시리즈 목록.
+    """특정 기간에 대한 권장 시리즈 목록.
 
     Args:
         start_year: Start Year.

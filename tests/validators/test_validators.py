@@ -8,7 +8,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.validators.game_data_validator import validate_game_data
-from src.validators.quality_gate import AGGREGATE_TEAM_CODES, INVALID_TEAM_CODES, QualityGate
+from src.validators.quality_gate import (
+    AGGREGATE_TEAM_CODES,
+    INVALID_TEAM_CODES,
+    QualityGate,
+    _batting_pa_mismatch,
+    _team_stat_mismatch,
+)
 from src.validators.standings_integrity import validate_standings_integrity
 
 
@@ -176,6 +182,15 @@ class TestGameDataValidator:
 
 
 class TestQualityGatePureFunctions:
+    def test_batting_pa_mismatch_respects_absolute_and_relative_tolerances(self) -> None:
+        assert _batting_pa_mismatch(2, 100) is False
+        assert _batting_pa_mismatch(5, 1000) is False
+        assert _batting_pa_mismatch(6, 1000) is True
+
+    def test_team_stat_mismatch_respects_default_tolerance(self) -> None:
+        assert _team_stat_mismatch(5) is False
+        assert _team_stat_mismatch(6) is True
+
     def test_valid_team_code_filters_returns_tuple(self) -> None:
         from sqlalchemy import column
 

@@ -1,5 +1,4 @@
-"""
-KBO 전체 시리즈 투수 기록 크롤러.
+"""KBO 전체 시리즈 투수 기록 크롤러.
 
 요구사항 요약:
 1. https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx 페이지에서
@@ -168,8 +167,7 @@ PRIMARY_SORT_CONFIG = {
 
 
 def normalize_header(text: str) -> str:
-    """
-    Normalize header.
+    """Normalize header.
 
     Args:
         text: Text.
@@ -191,8 +189,7 @@ def normalize_header(text: str) -> str:
 
 
 def extract_player_id(href: str | None) -> int | None:
-    """
-    Extract player id.
+    """Extract player id.
 
     Args:
         href: Href.
@@ -209,8 +206,7 @@ def extract_player_id(href: str | None) -> int | None:
 
 
 def wait_for_table(page: Page, timeout: int = 30000) -> None:
-    """
-    Handle the wait for table operation.
+    """Handle the wait for table operation.
 
     Args:
         page: Page.
@@ -232,8 +228,7 @@ def wait_for_table(page: Page, timeout: int = 30000) -> None:
 
 
 def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None = None) -> bool:
-    """
-    다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복).
+    """다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복).
 
     Args:
         page: Page.
@@ -332,8 +327,7 @@ def apply_sort(
     sort_code: str | None = None,
     policy: RequestPolicy | None = None,
 ) -> bool:
-    """
-    Handle the apply sort operation.
+    """Handle the apply sort operation.
 
     Args:
         page: Page.
@@ -576,8 +570,7 @@ def parse_basic1_page(
     pitchers: dict[int, PitcherStats],
     max_players: int | None = None,
 ) -> int:
-    """
-    Parse basic1 page.
+    """Parse basic1 page.
 
     Args:
         page: Page.
@@ -605,7 +598,9 @@ def parse_basic1_page(
         const rows = document.querySelectorAll('table.tData01 tbody tr');
         if (rows.length === 0) return [];
 
-        const headers = Array.from(document.querySelectorAll('table.tData01 thead th')).map(th => th.textContent.trim());
+        const headers = Array.from(document.querySelectorAll('table.tData01 thead th')).map(
+            th => th.textContent.trim()
+        );
         const headerIndex = {};
         headers.forEach((h, i) => headerIndex[h] = i);
 
@@ -675,8 +670,7 @@ def _extract_basic2_row_info(
             return None
 
         def cell_text_fast(idx: int) -> str | None:
-            """
-            Handle the cell text fast operation.
+            """Handle the cell text fast operation.
 
             Args:
                 idx: Idx.
@@ -699,8 +693,7 @@ def _extract_basic2_row_info(
         return None
 
     def cell_text_slow(idx: int) -> str | None:
-        """
-        Handle the cell text slow operation.
+        """Handle the cell text slow operation.
 
         Args:
             idx: Idx.
@@ -764,8 +757,7 @@ def _update_pitcher_basic2_stats(
 
 
 def parse_basic2_page(ctx: Basic2PageContext) -> int:
-    """
-    Parse basic2 page.
+    """Parse basic2 page.
 
     Args:
         ctx: Ctx.
@@ -821,8 +813,7 @@ def parse_basic2_page(ctx: Basic2PageContext) -> int:
 
 
 def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, policy: RequestPolicy | None = None) -> bool:
-    """
-    Set up pitcher page.
+    """Set up pitcher page.
 
     Args:
         page: Page.
@@ -883,8 +874,7 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
 
 
 def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[str, object], list[PitcherStats]]:
-    """
-    Build pitching summary.
+    """Build pitching summary.
 
     Args:
         stats_list: Stats List.
@@ -914,8 +904,7 @@ def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[s
 
 
 def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> list[PitcherStats]:
-    """
-    KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 투수 시즌 기록을 생성합니다.
+    """KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 투수 시즌 기록을 생성합니다.
 
     Args:
         year: Season year.
@@ -1128,8 +1117,7 @@ def crawl_pitcher_series(  # noqa: PLR0913
     save_to_db: bool = False,
     by_team: bool = False,
 ) -> list[PitcherStats]:
-    """
-    Crawl pitcher series.
+    """Crawl pitcher series.
 
     Args:
         year: Season year.
@@ -1238,8 +1226,7 @@ def crawl_pitcher_series(  # noqa: PLR0913
 
 
 def parse_arguments() -> argparse.Namespace:
-    """
-    Parse arguments.
+    """Parse arguments.
 
     Returns:
         The result of the operation.

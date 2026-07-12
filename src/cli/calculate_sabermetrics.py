@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 from src.cli.sync_oci import OCISync
+from src.constants import MIN_KBO_PLAYER_ID
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
@@ -23,8 +24,7 @@ SABERMETRICS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeE
 
 
 def batch_calculate_sabermetrics(years: list[int], *, sync_oci: bool = False) -> None:
-    """
-    Batches through years and updates all players with advanced Sabermetrics.
+    """Batches through years and updates all players with advanced Sabermetrics.
 
     Args:
         years: Years.
@@ -50,7 +50,7 @@ def batch_calculate_sabermetrics(years: list[int], *, sync_oci: bool = False) ->
             # 1. Update Batting Sabermetrics
             batters = (
                 session.query(PlayerSeasonBatting)
-                .filter(PlayerSeasonBatting.season == year, PlayerSeasonBatting.player_id >= 10000)
+                .filter(PlayerSeasonBatting.season == year, PlayerSeasonBatting.player_id >= MIN_KBO_PLAYER_ID)
                 .all()
             )
             for bat in batters:
@@ -66,7 +66,7 @@ def batch_calculate_sabermetrics(years: list[int], *, sync_oci: bool = False) ->
             # 2. Update Pitching Sabermetrics
             pitchers = (
                 session.query(PlayerSeasonPitching)
-                .filter(PlayerSeasonPitching.season == year, PlayerSeasonPitching.player_id >= 10000)
+                .filter(PlayerSeasonPitching.season == year, PlayerSeasonPitching.player_id >= MIN_KBO_PLAYER_ID)
                 .all()
             )
             for pit in pitchers:
@@ -96,8 +96,7 @@ def batch_calculate_sabermetrics(years: list[int], *, sync_oci: bool = False) ->
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

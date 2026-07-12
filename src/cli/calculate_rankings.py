@@ -29,8 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def _dictify_rows(rows: Sequence[object], label_lookup: dict[int, str]) -> list[dict]:
-    """
-    Convert ORM rows to dicts and inject player names.
+    """Convert ORM rows to dicts and inject player names.
 
     Args:
         rows: Rows.
@@ -53,8 +52,7 @@ def _dictify_rows(rows: Sequence[object], label_lookup: dict[int, str]) -> list[
 
 
 def _games_played_in_season(session: Session, season: int) -> int:
-    """
-    Return number of completed game-dates in the given season.
+    """Return number of completed game-dates in the given season.
 
     Args:
         session: Session.
@@ -81,8 +79,7 @@ _MIN_IP_FLOOR = 90  # 시즌 초반 최소 보호 기준 (90 이닝 아웃 = 30 
 
 
 def _compute_min_pa(session: Session, season: int) -> int:
-    """
-    시즌 진행 경기 수 기반으로 타율 자격 min_pa를 동적으로 계산.
+    """시즌 진행 경기 수 기반으로 타율 자격 min_pa를 동적으로 계산.
 
     완료된 시즌(144경기 이상)은 공식 기준 446 PA 적용.
     진행 중인 시즌은 현재까지의 경기 수 기반으로 완화된 기준 적용.
@@ -100,8 +97,7 @@ def _compute_min_pa(session: Session, season: int) -> int:
 
 
 def _compute_min_ip_outs(session: Session, season: int) -> int:
-    """
-    시즌 진행 경기 수 기반으로 평균자책점 자격 min_ip_outs를 동적으로 계산.
+    """시즌 진행 경기 수 기반으로 평균자책점 자격 min_ip_outs를 동적으로 계산.
 
     완료된 시즌(144경기 이상)은 공식 기준 432 이닝아웃 적용.
     진행 중인 시즌은 현재까지의 경기 수 기반으로 완화된 기준 적용.
@@ -119,8 +115,7 @@ def _compute_min_ip_outs(session: Session, season: int) -> int:
 
 
 def rebuild_rankings(season: int) -> int:
-    """
-    Handle the rebuild rankings operation.
+    """Handle the rebuild rankings operation.
 
     Args:
         season: Season year.
@@ -213,8 +208,7 @@ def rebuild_rankings(season: int) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

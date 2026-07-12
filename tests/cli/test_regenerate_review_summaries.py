@@ -1,18 +1,25 @@
 from dataclasses import dataclass
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from src.cli.regenerate_review_summaries import (
     ReviewRegenReportRow,
     _append_missing_review_rows,
     _build_review_report_row,
+    _collect_game_ids,
     _count_crucial_moments,
     _count_noise_moments,
     _load_game_ids_file,
     _mark_review_oci_status,
+    _process_review_games,
     _process_review_game,
     _short_hash,
     _skipped_review_row,
+    _sync_review_summaries,
+    _write_backup,
+    _write_report,
+    regenerate_review_summaries,
     main,
 )
 
@@ -152,3 +159,124 @@ def test_process_review_game_branches():
         row, should_sync = _process_review_game(session, agg, _Game(), apply=True)
     assert row.status == "SKIPPED_REVIEW_MOMENT_NOISE"
     assert should_sync is False
+
+
+def test_process_review_game_apply_changed_and_unchanged():
+    session = MagicMock()
+    agg = MagicMock()
+
+    with (
+        patch("src.cli.regenerate_review_summaries._existing_review_json", return_value=None),
+        patch("src.cli.regenerate_review_summaries._build_review_data", return_value={"crucial_moments": []}),
+        patch("src.cli.regenerate_review_summaries._upsert_review_summary") as mock_upsert,
+    ):
+        row, should_sync = _process_review_game(session, agg, _Game(), apply=True)
+    assert row.status == "APPLIED"
+    assert should_sync is True
+    mock_upsert.assert_called_once()
+
+    with (
+        patch("src.cli.regenerate_review_summaries._existing_review_json", return_value='{"crucial_moments": []}'),
+        patch("src.cli.regenerate_review_summaries._build_review_data", return_value={"crucial_moments": []}),
+        patch("src.cli.regenerate_review_summaries._upsert_review_summary") as mock_upsert,
+    ):
+        row, should_sync = _process_review_game(session, agg, _Game(), apply=True)
+    assert row.status == "UNCHANGED"
+    assert should_sync is True
+    mock_upsert.assert_not_called()
+
+
+def test_process_review_games_collects_sync_ids():
+    games = [_Game(game_id="G1"), _Game(game_id="G2")]
+    with patch(
+        "src.cli.regenerate_review_summaries._process_review_game",
+        side_effect=[
+            (ReviewRegenReportRow("G1", "20260402", "APPLIED"), True),
+            (ReviewRegenReportRow("G2", "20260402", "SKIPPED"), False),
+        ],
+    ):
+        rows, sync_ids = _process_review_games(MagicMock(), games, MagicMock(), apply=True)
+
+    assert [row.game_id for row in rows] == ["G1", "G2"]
+    assert sync_ids == ["G1"]
+
+
+def test_write_report_and_backup(tmp_path):
+    report_path = tmp_path / "report.csv"
+    _write_report([ReviewRegenReportRow("G1", "20260402", "APPLIED", changed=True)], report_path)
+    assert "G1" in report_path.read_text(encoding="utf-8")
+
+    backup_path = tmp_path / "backup.csv"
+    session = MagicMock()
+    session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+        SimpleNamespace(
+            id=1, game_id="G1", summary_type="리뷰_WPA", player_id=None, player_name=None, detail_text="old"
+        ),
+    ]
+    _write_backup(session, ["G1"], backup_path)
+    assert "old" in backup_path.read_text(encoding="utf-8")
+
+
+def test_collect_game_ids_reads_file(tmp_path):
+    path = tmp_path / "ids.txt"
+    path.write_text("G2\n", encoding="utf-8")
+    args = SimpleNamespace(game_id=["G1"], game_ids_file=str(path))
+    assert _collect_game_ids(args) == ["G1", "G2"]
+
+
+def test_sync_review_summaries_empty_and_success():
+    with patch("src.cli.regenerate_review_summaries.SessionLocal") as mock_session_local:
+        _sync_review_summaries([], [], oci_url="postgresql://db", log=MagicMock())
+    mock_session_local.assert_not_called()
+
+    rows = [ReviewRegenReportRow("G1", "20260402", "APPLIED")]
+    syncer = MagicMock()
+    syncer.sync_review_summaries_for_games.return_value = {"summary": 2}
+    with (
+        patch("src.cli.regenerate_review_summaries.SessionLocal") as mock_session_local,
+        patch("src.cli.regenerate_review_summaries.OCISync", return_value=syncer),
+    ):
+        mock_session_local.return_value.__enter__.return_value = MagicMock()
+        _sync_review_summaries(["G1"], rows, oci_url="postgresql://db", log=MagicMock())
+
+    assert rows[0].oci_status == "synced_summary:2"
+    syncer.close.assert_called_once()
+
+
+def test_regenerate_review_summaries_orchestrator_dry_run(tmp_path):
+    report_path = tmp_path / "report.csv"
+    processed = [ReviewRegenReportRow("G1", "20260402", "DRY_RUN_READY")]
+    with (
+        patch("src.cli.regenerate_review_summaries.SessionLocal") as mock_session_local,
+        patch("src.cli.regenerate_review_summaries._query_target_games", return_value=[_Game(game_id="G1")]),
+        patch("src.cli.regenerate_review_summaries.ContextAggregator"),
+        patch("src.cli.regenerate_review_summaries._process_review_games", return_value=(processed, [])),
+        patch("src.cli.regenerate_review_summaries._write_report") as mock_write,
+    ):
+        mock_session_local.return_value.__enter__.return_value = MagicMock()
+        rows = regenerate_review_summaries(game_ids=["G1"], report_out=report_path, log=MagicMock())
+
+    assert rows == processed
+    mock_write.assert_called_once_with(processed, report_path)
+
+
+def test_regenerate_review_summaries_apply_commit_failure_rolls_back(tmp_path):
+    session = MagicMock()
+    session.commit.side_effect = RuntimeError("commit failed")
+    with (
+        patch("src.cli.regenerate_review_summaries.SessionLocal") as mock_session_local,
+        patch("src.cli.regenerate_review_summaries._query_target_games", return_value=[]),
+        patch("src.cli.regenerate_review_summaries._write_backup"),
+        patch("src.cli.regenerate_review_summaries.ContextAggregator"),
+        patch("src.cli.regenerate_review_summaries._process_review_games", return_value=([], [])),
+    ):
+        mock_session_local.return_value.__enter__.return_value = session
+        try:
+            regenerate_review_summaries(
+                game_ids=["G1"], apply=True, report_out=tmp_path / "report.csv", log=MagicMock()
+            )
+            raise AssertionError("expected RuntimeError")
+        except RuntimeError:
+            pass
+
+    session.rollback.assert_called_once()

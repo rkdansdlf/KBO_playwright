@@ -36,8 +36,7 @@ class RetiredPlayerListingCrawler:
     """Fetch player ID sets for historical seasons and compute inactive (retired) candidates."""
 
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
@@ -58,8 +57,7 @@ class RetiredPlayerListingCrawler:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
     async def collect_player_ids_for_year(self, season_year: int) -> dict[str, str]:
-        """
-        Collect all player IDs and names (hitters + pitchers) for a given season.
+        """Collect all player IDs and names (hitters + pitchers) for a given season.
 
         Args:
             season_year: Season Year.
@@ -84,8 +82,7 @@ class RetiredPlayerListingCrawler:
                 await pool.close()
 
     async def _crawl_record_page_ids(self, page: Page, base_url: str, year: int) -> dict[str, str]:
-        """
-        Navigate to one record page and collect IDs across its pagination.
+        """Navigate to one record page and collect IDs across its pagination.
 
         Kept as the stable no-team-filter path used by compatibility tests and
         smaller diagnostics. `collect_player_ids_for_year` uses the broader
@@ -144,8 +141,7 @@ class RetiredPlayerListingCrawler:
         )
 
     async def _crawl_record_page_ids_with_teams(self, page: Page, base_url: str, year: int) -> dict[str, str]:
-        """
-        Navigate to record page, select year, and iterate through all teams to collect IDs and names.
+        """Navigate to record page, select year, and iterate through all teams to collect IDs and names.
 
         Args:
             page: Page.
@@ -193,7 +189,8 @@ class RetiredPlayerListingCrawler:
             logger.info("    [Year %s] Fetching team %s", year, code)
             await page.select_option(team_selector, code)
             await page.evaluate(
-                "el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }",
+                "el => { if (el.onchange) el.onchange(); "
+                "else el.dispatchEvent(new Event('change', { bubbles: true })); }",
                 await page.query_selector(team_selector),
             )
             with contextlib.suppress(PlaywrightError, TimeoutError):
@@ -259,8 +256,7 @@ class RetiredPlayerListingCrawler:
         return players
 
     async def collect_historical_player_ids(self, seasons: Iterable[int]) -> dict[str, str]:
-        """
-        Handle the collect historical player ids operation.
+        """Handle the collect historical player ids operation.
 
         Args:
             seasons: Seasons.
@@ -279,8 +275,7 @@ class RetiredPlayerListingCrawler:
         semaphore = asyncio.Semaphore(10)  # Allow 10 concurrent years
 
         async def fetch_year(season: int) -> dict[str, str]:
-            """
-            Fetch year.
+            """Fetch year.
 
             Args:
                 season: Season year.
@@ -312,8 +307,7 @@ class RetiredPlayerListingCrawler:
         end_year: int,
         active_year: int,
     ) -> set[str]:
-        """
-        Determine inactive player IDs by diffing historical seasons with active roster.
+        """Determine inactive player IDs by diffing historical seasons with active roster.
 
         Return ONLY the set of IDs for backward compatibility.
 

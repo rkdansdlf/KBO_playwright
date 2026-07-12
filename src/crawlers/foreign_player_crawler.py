@@ -6,7 +6,7 @@ import argparse
 import logging
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -17,12 +17,13 @@ from src.repositories.foreign_player_repository import ForeignPlayerRepository
 from src.utils.naver_helpers import NAVER_TEAM_MAP, build_naver_sports_url, parse_iso_date
 
 logger = logging.getLogger(__name__)
+MIN_FOREIGN_PLAYER_NAME_LENGTH = 3
 
 
 class ForeignPlayerCrawler(NaverNewsCrawlerBase):
     """ForeignPlayerCrawler class."""
 
-    KEYWORDS = ["외국인", "대체", "교체", "방출", "영입", "재계약", "웨이버", "퇴출"]
+    KEYWORDS: ClassVar[list[str]] = ["외국인", "대체", "교체", "방출", "영입", "재계약", "웨이버", "퇴출"]
     LABEL = "foreign player change"
 
     def _parse_article(self, article: dict) -> dict[str, Any] | None:
@@ -94,7 +95,14 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
                 return name
         names = re.findall(r"[A-Z][a-z]+(?:\s[A-Z][a-z]+)*", text)
         for name in names:
-            if len(name) > 3 and name.lower() not in ("kbo", "naver", "sports", "http", "https", "mlb"):
+            if len(name) > MIN_FOREIGN_PLAYER_NAME_LENGTH and name.lower() not in (
+                "kbo",
+                "naver",
+                "sports",
+                "http",
+                "https",
+                "mlb",
+            ):
                 return name
         korean_name = re.search(r"([가-힣]{2,4})(?:선수|투수|타자)", text)
         if korean_name:

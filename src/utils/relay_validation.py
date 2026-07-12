@@ -1,5 +1,4 @@
-"""
-Play-by-play (PBP) data validation rules.
+"""Play-by-play (PBP) data validation rules.
 
 Validate structural integrity (e.g. missing innings) and score correctness.
 Supports two-phase validation: live (structural) and post-game (cross-check).
@@ -47,8 +46,7 @@ TERMINAL_VALIDATION_STATES = frozenset({VALIDATION_VERIFIED, VALIDATION_RECOVERE
 
 
 def validate_live_events(events: list[dict[str, Any]]) -> list[str]:
-    """
-    Validate event sequence structure during live play.
+    """Validate event sequence structure during live play.
 
     Check for structural errors only — no cross-referencing with box scores.
     Returns a list of warning/error messages (empty = clean).
@@ -101,8 +99,7 @@ def _score_regression_warnings(
     prev_home_score: int,
     prev_away_score: int,
 ) -> list[str]:
-    """
-    Handle the score regression warnings operation.
+    """Handle the score regression warnings operation.
 
     Args:
         index: Index.
@@ -141,8 +138,7 @@ def _inning_regression_warnings(
     prev_inning: int | None,
     prev_half: str | None,
 ) -> list[str]:
-    """
-    Handle the inning regression warnings operation.
+    """Handle the inning regression warnings operation.
 
     Args:
         index: Index.
@@ -190,8 +186,7 @@ class OutCountContext:
 
 
 def _out_count_warnings(ctx: OutCountContext) -> list[str]:
-    """
-    Handle the out count warnings operation.
+    """Handle the out count warnings operation.
 
     Args:
         ctx: Ctx.
@@ -218,8 +213,7 @@ def _out_count_warnings(ctx: OutCountContext) -> list[str]:
 
 
 def _event_sequence_warnings(index: int, event: dict[str, Any], events: list[dict[str, Any]]) -> list[str]:
-    """
-    Handle the event sequence warnings operation.
+    """Handle the event sequence warnings operation.
 
     Args:
         index: Index.
@@ -251,8 +245,7 @@ def cross_validate_with_box_score(
     game_id: str,
     events: list[dict[str, Any]],
 ) -> tuple[bool, str | None]:
-    """
-    Cross-validate PBP event scores against game_inning_scores table.
+    """Cross-validate PBP event scores against game_inning_scores table.
 
     Return (is_match, error_reason).
     Only applicable for completed games with inning score data.
@@ -329,8 +322,7 @@ def validate_pbp_payload(
     events: list[dict[str, Any]],
     raw_pbp_rows: list[dict[str, Any]],
 ) -> tuple[bool, str | None]:
-    """
-    Validate final PBP payload for structural integrity and score correctness.
+    """Validate final PBP payload for structural integrity and score correctness.
 
     Return (is_valid, error_reason).
 
@@ -363,8 +355,7 @@ def validate_pbp_payload(
 
 
 def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[str, Any]]) -> str | None:
-    """
-    Validate pbp innings.
+    """Validate pbp innings.
 
     Args:
         events: Events.
@@ -398,8 +389,7 @@ def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[
 
 
 def _validate_pbp_final_score(game: Game, events: list[dict[str, Any]]) -> str | None:
-    """
-    Validate pbp final score.
+    """Validate pbp final score.
 
     Args:
         game: Game.
@@ -431,8 +421,7 @@ def _validate_pbp_final_score(game: Game, events: list[dict[str, Any]]) -> str |
 
 
 def _last_pbp_score(events: list[dict[str, Any]]) -> tuple[int, int] | None:
-    """
-    Handle the last pbp score operation.
+    """Handle the last pbp score operation.
 
     Args:
         events: Events.

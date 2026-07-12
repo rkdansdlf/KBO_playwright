@@ -18,8 +18,7 @@ class TeamFieldingAggregator:
     """TeamFieldingAggregator class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -28,8 +27,7 @@ class TeamFieldingAggregator:
         self.session = session
 
     def aggregate_fielding(self, season: int, team_code: str) -> dict[str, Any]:
-        """
-        Aggregate fielding.
+        """Aggregate fielding.
 
         Args:
             season: Season year.
@@ -88,8 +86,7 @@ class TeamFieldingAggregator:
         }
 
     def aggregate_baserunning(self, season: int, team_code: str) -> dict[str, Any]:
-        """
-        Aggregate baserunning.
+        """Aggregate baserunning.
 
         Args:
             season: Season year.
@@ -138,8 +135,7 @@ class TeamFieldingAggregator:
         }
 
     def run_all(self, season: int, team_codes: list[str]) -> None:
-        """
-        Run all.
+        """Run all.
 
         Args:
             season: Season year.

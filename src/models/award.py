@@ -44,4 +44,7 @@ class Award(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         """Return a string representation of this object."""
-        return f"<Award(year={self.year}, type='{self.award_type}', category='{self.category}', player='{self.player_name}')>"
+        return (
+            f"<Award(year={self.year}, type='{self.award_type}', category='{self.category}', "
+            f"player='{self.player_name}')>"
+        )

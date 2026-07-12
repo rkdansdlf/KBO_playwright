@@ -1,5 +1,4 @@
-"""
-Team History model definition.
+"""Team History model definition.
 
 Tracks changes in team name, logo, city, etc. over time.
 
@@ -14,8 +13,7 @@ from .base import Base, TimestampMixin
 
 
 class TeamHistory(Base, TimestampMixin):
-    """
-    Represents historical snapshots of a team's identity for a specific season.
+    """Represents historical snapshots of a team's identity for a specific season.
 
     e.g. 1990 LG Twins, 1982 MBC Blue Dragons.
 

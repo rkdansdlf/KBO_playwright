@@ -48,6 +48,7 @@ def fix_lotte_code():
 
             # Verify
             result_after = session.execute(check_sql).fetchone()
+            assert result_after is not None
             logger.info(
                 "New state: ID=%s, Name=%s, Original=%s, Current=%s",
                 result_after.id,

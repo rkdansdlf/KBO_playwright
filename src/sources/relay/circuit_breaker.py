@@ -6,13 +6,13 @@ import csv
 import logging
 import time
 from pathlib import Path
+from typing import ClassVar
 
 logger = logging.getLogger(__name__)
 
 
 class SourceCircuitBreaker:
-    """
-    Tracks consecutive failures per (source_name, bucket_id) and enforces cooldown.
+    """Tracks consecutive failures per (source_name, bucket_id) and enforces cooldown.
 
     When a source exceeds the consecutive-failure threshold for a given bucket,
     it enters cooldown. During cooldown, `is_available()` returns False and the
@@ -25,28 +25,30 @@ class SourceCircuitBreaker:
 
     """
 
-    PERSIST_HEADER = ["source_name", "bucket_id", "failures", "cooldown_until_epoch"]
+    PERSIST_HEADER: ClassVar[list[str]] = ["source_name", "bucket_id", "failures", "cooldown_until_epoch"]
 
     def __init__(
         self,
-        threshold: int = 3,
-        cooldown_seconds: float = 60.0,
+        threshold: int | None = None,
+        cooldown_seconds: float | None = None,
         persist_path: str | Path | None = None,
     ) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
-            threshold: Threshold.
-            cooldown_seconds: Cooldown Seconds.
-            persist_path: Persist file path.
-            threshold: Threshold.
-            cooldown_seconds: Cooldown Seconds.
+            threshold: Failure count threshold before opening breaker.
+            cooldown_seconds: Cooldown duration in seconds.
             persist_path: Persist file path.
 
         """
-        self._threshold = threshold
+        import os
 
+        if threshold is None:
+            threshold = int(os.getenv("RELAY_BREAKER_THRESHOLD", "3"))
+        if cooldown_seconds is None:
+            cooldown_seconds = float(os.getenv("RELAY_BREAKER_COOLDOWN", "60.0"))
+
+        self._threshold = threshold
         self._cooldown = cooldown_seconds
         self._failures: dict[tuple[str, str], int] = {}
         self._cooldowns: dict[tuple[str, str], float] = {}
@@ -124,8 +126,7 @@ class SourceCircuitBreaker:
     # ------------------------------------------------------------------
 
     def record_success(self, source_name: str, bucket_id: str) -> None:
-        """
-        Handle the record success operation.
+        """Handle the record success operation.
 
         Args:
             source_name: Source Name.
@@ -150,8 +151,7 @@ class SourceCircuitBreaker:
         self._save_state()
 
     def record_failure(self, source_name: str, bucket_id: str) -> None:
-        """
-        Handle the record failure operation.
+        """Handle the record failure operation.
 
         Args:
             source_name: Source Name.
@@ -178,8 +178,7 @@ class SourceCircuitBreaker:
         self._save_state()
 
     def is_available(self, source_name: str, bucket_id: str) -> bool:
-        """
-        Return whether the available.
+        """Return whether the available.
 
         Args:
             source_name: Source Name.
@@ -217,8 +216,7 @@ class SourceCircuitBreaker:
         return False
 
     def consecutive_failures(self, source_name: str, bucket_id: str) -> int:
-        """
-        Handle the consecutive failures operation.
+        """Handle the consecutive failures operation.
 
         Args:
             source_name: Source Name.
@@ -235,8 +233,7 @@ class SourceCircuitBreaker:
         return self._failures.get((source_name, bucket_id), 0)
 
     def is_open(self, source_name: str, bucket_id: str) -> bool:
-        """
-        Return whether the open.
+        """Return whether the open.
 
         Args:
             source_name: Source Name.

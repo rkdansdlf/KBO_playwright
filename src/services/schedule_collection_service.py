@@ -30,8 +30,7 @@ class ScheduleSaveResult:
 
     @property
     def discovered(self) -> int:
-        """
-        Handle the discovered operation.
+        """Handle the discovered operation.
 
         Returns:
             Integer result.
@@ -48,8 +47,7 @@ def save_schedule_games(
     source_crawler: str = "ScheduleCrawler",
     source_reason: str = "schedule_refresh",
 ) -> ScheduleSaveResult:
-    """
-    Save schedule games.
+    """Save schedule games.
 
     Args:
         games: Games.

@@ -16,8 +16,7 @@ class FanCultureRepository:
     """FanCultureRepository class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -28,8 +27,7 @@ class FanCultureRepository:
 
     # TeamRivalry
     def save_rivalry(self, data: dict) -> TeamRivalry:
-        """
-        Save rivalry.
+        """Save rivalry.
 
         Args:
             data: Data.
@@ -64,8 +62,7 @@ class FanCultureRepository:
         return new_record
 
     def get_all_rivalries(self) -> list[TeamRivalry]:
-        """
-        Get all rivalries.
+        """Get all rivalries.
 
         Returns:
             List of results.
@@ -77,8 +74,7 @@ class FanCultureRepository:
 
     # CheerSong
     def save_cheer_song(self, data: dict) -> CheerSong:
-        """
-        Save cheer song.
+        """Save cheer song.
 
         Args:
             data: Data.
@@ -110,8 +106,7 @@ class FanCultureRepository:
         return new_record
 
     def get_cheer_songs_by_team(self, team_id: str) -> list[CheerSong]:
-        """
-        Get cheer songs by team.
+        """Get cheer songs by team.
 
         Args:
             team_id: Team ID.
@@ -128,8 +123,7 @@ class FanCultureRepository:
 
     # CheerChant
     def save_cheer_chant(self, data: dict) -> CheerChant:
-        """
-        Save cheer chant.
+        """Save cheer chant.
 
         Args:
             data: Data.
@@ -159,8 +153,7 @@ class FanCultureRepository:
         return new_record
 
     def get_cheer_chants_by_team(self, team_id: str) -> list[CheerChant]:
-        """
-        Get cheer chants by team.
+        """Get cheer chants by team.
 
         Args:
             team_id: Team ID.

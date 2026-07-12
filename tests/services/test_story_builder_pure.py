@@ -50,6 +50,12 @@ class TestScoringTags:
         tags = b._scoring_tags(event, "", "ROE", 1)
         assert "critical_error" in tags
 
+    def test_critical_error_wpa_boundary_without_runs(self) -> None:
+        b = self._builder()
+        event = _MockGameEvent(wpa=0.2, inning=6)
+        tags = b._scoring_tags(event, "실책", "E", 0)
+        assert "critical_error" in tags
+
 
 class TestScoreDiffTags:
     def _builder(self) -> GameStoryBuilder:
@@ -106,6 +112,12 @@ class TestWpaTags:
         event = _MockGameEvent(inning=3)
         assert b._wpa_tags(event, 0.1) == set()
 
+    def test_wpa_tag_boundaries(self) -> None:
+        b = self._builder()
+        event = _MockGameEvent(inning=7)
+        assert b._wpa_tags(event, 0.15) == {"late_high_wpa"}
+        assert b._wpa_tags(event, 0.25) == {"late_high_wpa", "high_wpa"}
+
 
 class TestIsWalkOff:
     def _builder(self) -> GameStoryBuilder:
@@ -115,6 +127,12 @@ class TestIsWalkOff:
         b = self._builder()
         event = _MockGameEvent(inning=10, inning_half="bottom")
         result = b._is_walk_off(event, "bottom", -1, 1, 2)
+        assert result is True
+
+    def test_walkoff_ninth_inning_boundary(self) -> None:
+        b = self._builder()
+        event = _MockGameEvent(inning=9, inning_half="bottom")
+        result = b._is_walk_off(event, "bottom", -1, 1, 1)
         assert result is True
 
     def test_not_walkoff_top_inning(self) -> None:

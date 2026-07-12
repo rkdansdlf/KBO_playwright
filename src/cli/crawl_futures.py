@@ -1,5 +1,4 @@
-"""
-퓨처스리그 선수들의 연도별 타격 기록을 수집하는 CLI 스크립트.
+"""퓨처스리그 선수들의 연도별 타격 기록을 수집하는 CLI 스크립트.
 
 이 스크립트는 다음 단계를 수행합니다:
 1. 특정 시즌의 모든 현역 선수 ID 목록을 가져옵니다.
@@ -91,8 +90,7 @@ def _has_player_basic(player_id: str) -> bool:
 
 
 async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, dict[str, str]]:
-    """
-    지정된 시즌의 모든 현역 선수 ID와 메타정보(포지션, 이름)를 수집합니다.
+    """지정된 시즌의 모든 현역 선수 ID와 메타정보(포지션, 이름)를 수집합니다.
 
     Args:
         season_year: Season Year.
@@ -138,8 +136,7 @@ async def process_player(
     repository: PlayerRepository,
     pool: AsyncPlaywrightPool,
 ) -> tuple[str, int]:
-    """
-    단일 선수의 퓨처스리그 기록을 크롤링하고 데이터베이스에 저장합니다.
+    """단일 선수의 퓨처스리그 기록을 크롤링하고 데이터베이스에 저장합니다.
 
     Args:
         target: Target.
@@ -160,8 +157,7 @@ async def process_player_result(
     repository: PlayerRepository,
     pool: AsyncPlaywrightPool,
 ) -> dict[str, Any]:
-    """
-    Process player result.
+    """Process player result.
 
     Args:
         target: Target.
@@ -318,8 +314,7 @@ def _build_pitching_payload(row: dict[str, Any], player_id: str, player_name: st
 
 
 async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
-    """
-    퓨처스리그 크롤링 메인 로직.
+    """퓨처스리그 크롤링 메인 로직.
 
     Args:
         args: Positional arguments to pass through.
@@ -408,8 +403,7 @@ async def _run_futures_players(
     failure_counts: Counter = Counter()
 
     async def runner(pid: str, meta: dict) -> None:
-        """
-        Handle the runner operation.
+        """Handle the runner operation.
 
         Args:
             pid: Pid.
@@ -571,8 +565,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

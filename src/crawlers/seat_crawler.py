@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 SEAT_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, OSError)
 SEAT_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+MIN_SEAT_SECTION_NAME_LENGTH = 2
 
 TEAM_SEAT_SOURCES: dict[str, dict[str, Any]] = {
     "LG": {
@@ -50,8 +51,7 @@ class SeatCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:
-        """
-        Run run.
+        """Run run.
 
         Args:
             save: Whether to persist the results.
@@ -117,7 +117,7 @@ class SeatCrawler:
         for pattern in SECTION_PATTERNS:
             for match in pattern.finditer(text):
                 name = match.group(0).strip()
-                if name in seen or len(name) < 2:
+                if name in seen or len(name) < MIN_SEAT_SECTION_NAME_LENGTH:
                     continue
                 seen.add(name)
                 sections.append(

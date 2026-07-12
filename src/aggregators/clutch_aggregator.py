@@ -1,5 +1,4 @@
-"""
-Clutch/WPA aggregator.
+"""Clutch/WPA aggregator.
 
 Compute per-player, per-season clutch metrics from GameEvent WPA data.
 
@@ -25,14 +24,14 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+HIGH_LEVERAGE_WIN_EXPECTANCY_MARGIN = 0.15
 
 
 class ClutchAggregator:
     """ClutchAggregator class."""
 
     def __init__(self, session: Session) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             session: Session.
@@ -41,8 +40,7 @@ class ClutchAggregator:
         self.session = session
 
     def aggregate(self, year: int) -> list[dict[str, Any]]:
-        """
-        Aggregate aggregate.
+        """Aggregate aggregate.
 
         Args:
             year: Season year.
@@ -94,7 +92,7 @@ class ClutchAggregator:
             bs["count"] += 1
 
             # High leverage: win expectancy close to 0.5 (±0.15)
-            if leverage <= 0.15:
+            if leverage <= HIGH_LEVERAGE_WIN_EXPECTANCY_MARGIN:
                 bs["high_leverage_wpa"] += e.wpa or 0.0
                 bs["high_leverage_count"] += 1
 
@@ -119,8 +117,7 @@ class ClutchAggregator:
         return results
 
     def persist_to_extra_stats(self, year: int) -> None:
-        """
-        Handle the persist to extra stats operation.
+        """Handle the persist to extra stats operation.
 
         Args:
             year: Season year.
@@ -187,8 +184,7 @@ class ClutchAggregator:
                 raise
 
     def print_report(self, year: int, top_n: int = 10) -> None:
-        """
-        Print print report.
+        """Print print report.
 
         Args:
             year: Season year.

@@ -1,5 +1,4 @@
-"""
-Daily Highlight Batch Script.
+"""Daily Highlight Batch Script.
 
 Generate game highlights from PBP/WPA data, persists them, syncs to OCI, and sends Telegram reports.
 
@@ -156,7 +155,10 @@ def _format_top_highlight_plays(top_3_plays: list[GameHighlight], game_map: dict
     for rank, highlight in enumerate(top_3_plays, start=1):
         game = game_map[highlight.game_id]  # type: ignore[index]
         half_str = "초" if highlight.inning_half == "top" else "말"
-        message += f"{rank}. <b>{game.away_team} {game.away_score} : {game.home_score} {game.home_team}</b> ({highlight.inning}회{half_str})\n"
+        message += (
+            f"{rank}. <b>{game.away_team} {game.away_score} : "
+            f"{game.home_score} {game.home_team}</b> ({highlight.inning}회{half_str})\n"
+        )
         message += f"   👉 {highlight.description} (WPA {highlight.wpa:+.3f})\n"
     return message
 
@@ -181,8 +183,7 @@ async def run_highlight_batch(
     sync_to_oci: bool | None = None,
     notify: bool = True,
 ) -> list[str]:
-    """
-    Run highlight batch.
+    """Run highlight batch.
 
     Args:
         target_date_str: Target Date Str.
@@ -229,8 +230,7 @@ async def run_highlight_batch(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """
-    Run the main entry point for this CLI command.
+    """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.

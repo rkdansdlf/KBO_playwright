@@ -1,5 +1,4 @@
-"""
-Crawler for Doosan Bears official operation notices (doosanbears.com).
+"""Crawler for Doosan Bears official operation notices (doosanbears.com).
 
 Targets the Doosan Bears event/notice board to capture game-day
 operational announcements for Jamsil Stadium (Doosan's home).
@@ -75,16 +74,14 @@ def _extract_article_id(href: str) -> str | None:
 
 
 class OperationNoticeDoosanCrawler:
-    """
-    Doosan Bears official announcements and maps them to.
+    """Doosan Bears official announcements and maps them to.
 
     StadiumOperationNotice records for JAMSIL stadium.
 
     """
 
     def __init__(self, max_pages: int = 5) -> None:
-        """
-        Initialize a new instance.
+        """Initialize a new instance.
 
         Args:
             max_pages: Max Pages.
@@ -95,8 +92,7 @@ class OperationNoticeDoosanCrawler:
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
-        """
-        Run run.
+        """Run run.
 
         Args:
             save: Whether to persist the results.

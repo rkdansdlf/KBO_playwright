@@ -30,6 +30,26 @@ logger = logging.getLogger(__name__)
 PBP_RESOLUTION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, LookupError, OSError)
 
 
+def _write_updates(session, updates: list[tuple]) -> None:
+    if not updates:
+        logger.info("   No rows were resolved.")
+        return
+    logger.info("   Writing %s resolved player_ids to DB...", len(updates))
+    for i in range(0, len(updates), 500):
+        for pid, conf, reason, unresolved, rid in updates[i : i + 500]:
+            session.execute(
+                text("""
+                    UPDATE game_play_by_play
+                    SET player_id = :pid, resolver_confidence = :conf, resolver_reason = :reason,
+                        unresolved_player_name = :unresolved, updated_at = datetime('now')
+                    WHERE id = :rid
+                """),
+                {"pid": pid, "conf": conf, "reason": reason, "unresolved": unresolved, "rid": rid},
+            )
+    session.commit()
+    logger.info("   Successfully updated %s rows.", len(updates))
+
+
 def backfill_year(session, year: int, dry_run: bool = False) -> None:
     """Resolve NULL player_ids for game_play_by_play in a single season year."""
     logger.info("📅 Resolving PBP player IDs for year %s...", year)
@@ -37,28 +57,22 @@ def backfill_year(session, year: int, dry_run: bool = False) -> None:
         text("""
             SELECT id, game_id, inning, inning_half, pitcher_name, batter_name, play_description
             FROM game_play_by_play
-            WHERE player_id IS NULL
-              AND game_id LIKE :prefix
+            WHERE player_id IS NULL AND game_id LIKE :prefix
               AND (batter_name IS NOT NULL OR pitcher_name IS NOT NULL)
             ORDER BY game_id, id
         """),
         {"prefix": f"{year}%"},
     ).fetchall()
-
     if not rows:
         logger.info("   No NULL player_id rows found for %s.", year)
         return
-
     logger.info("   Found %s NULL player_id rows.", len(rows))
-
     current_game_id: str | None = None
     resolution = None
     resolved_count = 0
     updates: list[tuple[int | None, str | None, str | None, str | None, int]] = []
-
     for row in rows:
         rid, game_id, inning, inning_half, pitcher_name, batter_name, play_description = row
-
         if game_id != current_game_id:
             current_game_id = game_id
             try:
@@ -66,10 +80,8 @@ def backfill_year(session, year: int, dry_run: bool = False) -> None:
             except PBP_RESOLUTION_EXCEPTIONS as e:
                 logger.warning("   Failed to create resolution context for game %s: %s", game_id, e)
                 resolution = None
-
         if resolution is None:
             continue
-
         pbp_dict = {
             "inning": inning,
             "inning_half": inning_half,
@@ -77,7 +89,6 @@ def backfill_year(session, year: int, dry_run: bool = False) -> None:
             "batter_name": batter_name,
             "play_description": play_description,
         }
-
         try:
             player_id, confidence, reason, unresolved_name = _resolve_pbp_player(pbp_dict, resolution)
             if player_id:
@@ -96,33 +107,10 @@ def backfill_year(session, year: int, dry_run: bool = False) -> None:
                     )
         except PBP_RESOLUTION_EXCEPTIONS as e:
             logger.debug("Failed to resolve row %s: %s", rid, e)
-
     if dry_run:
         logger.info("   [DRY-RUN SUMMARY] Would resolve %s/%s rows.", resolved_count, len(rows))
         return
-
-    if updates:
-        logger.info("   Writing %s resolved player_ids to DB...", len(updates))
-        # Batch UPDATE in chunks of 500
-        for i in range(0, len(updates), 500):
-            chunk = updates[i : i + 500]
-            for pid, conf, reason, unresolved, rid in chunk:
-                session.execute(
-                    text("""
-                        UPDATE game_play_by_play
-                        SET player_id = :pid,
-                            resolver_confidence = :conf,
-                            resolver_reason = :reason,
-                            unresolved_player_name = :unresolved,
-                            updated_at = datetime('now')
-                        WHERE id = :rid
-                    """),
-                    {"pid": pid, "conf": conf, "reason": reason, "unresolved": unresolved, "rid": rid},
-                )
-        session.commit()
-        logger.info("   Successfully updated %s rows.", len(updates))
-    else:
-        logger.info("   No rows were resolved.")
+    _write_updates(session, updates)
 
 
 def main() -> None:

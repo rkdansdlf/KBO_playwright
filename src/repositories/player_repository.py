@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import re
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from sqlalchemy import select, update
 
@@ -20,6 +20,8 @@ from src.models.player import (
     PlayerSeasonPitching,
 )
 from src.models.team import Team, TeamDailyRoster
+
+DEBUT_TIMELINE_MATCH_YEAR_DELTA = 5
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -38,8 +40,7 @@ class PlayerRepository:
     # Profile / identity handling
     # ------------------------------------------------------------------
     def upsert_player_profile(self, kbo_player_id: str, profile: PlayerProfileParsed) -> Player | None:
-        """
-        Upsert player and primary identity based on parsed profile info.
+        """Upsert player and primary identity based on parsed profile info.
 
         Also synchronizes status and key fields to PlayerBasic.
 
@@ -223,8 +224,7 @@ class PlayerRepository:
     # Season aggregates (batting/pitching)
     # ------------------------------------------------------------------
     def upsert_season_batting(self, player_id: int, season_data: dict[str, Any]) -> None:
-        """
-        Insert or updates season batting.
+        """Insert or updates season batting.
 
         Args:
             player_id: Player ID.
@@ -238,8 +238,7 @@ class PlayerRepository:
         self._upsert_season_stats(PlayerSeasonBatting, player_id, season_data)
 
     def upsert_season_pitching(self, player_id: int, season_data: dict[str, Any]) -> None:
-        """
-        Insert or updates season pitching.
+        """Insert or updates season pitching.
 
         Args:
             player_id: Player ID.
@@ -292,8 +291,7 @@ class PlayerRepository:
     # Player Movements
     # ------------------------------------------------------------------
     def save_player_movements(self, movements: list[dict[str, Any]]) -> int:
-        """
-        Save player movements.
+        """Save player movements.
 
         Args:
             movements: Movements.
@@ -360,7 +358,7 @@ class PlayerRepository:
             session.commit()
         return saved_count
 
-    _TEAM_CODE_BY_NAME = {
+    _TEAM_CODE_BY_NAME: ClassVar[dict[str, str]] = {
         "KIA": "KIA",
         "기아": "KIA",
         "두산": "DB",
@@ -441,7 +439,9 @@ class PlayerRepository:
     @staticmethod
     def _narrow_by_debut_timeline(candidates: list[PlayerBasic], season: int) -> tuple[list[PlayerBasic], int | None]:
         timeline_matches = [
-            candidate for candidate in candidates if candidate.debut_year and abs(candidate.debut_year - season) <= 5
+            candidate
+            for candidate in candidates
+            if candidate.debut_year and abs(candidate.debut_year - season) <= DEBUT_TIMELINE_MATCH_YEAR_DELTA
         ]
         if len(timeline_matches) == 1:
             return timeline_matches, timeline_matches[0].player_id
