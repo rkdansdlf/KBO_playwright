@@ -93,6 +93,7 @@ class PlayerRepository:
             "debut_year": profile.entry_year,
             "salary_original": profile.salary_original,
             "signing_bonus_original": profile.signing_bonus_original,
+            "team": profile.team,
         }
         for field, value in field_map.items():
             if value:
@@ -499,7 +500,7 @@ class PlayerRepository:
             return candidates[0].player_id
         return self._resolve_multi_candidate(candidates, session, player_name, canonical_team_id, season, raw_position)
 
-    def _resolve_multi_candidate(  # noqa: PLR0913
+    def _resolve_multi_candidate(
         self,
         candidates: list,
         session: Session,

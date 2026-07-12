@@ -31,12 +31,19 @@ from src.utils.game_status import (
 
 logger = logging.getLogger(__name__)
 _REQUIRED_INNINGS = 9
+_OFFICIAL_SHORTENED_GAME_INNINGS = 5
 
 
-def _has_required_home_innings(home_score: int | None, away_score: int | None, inning_home_cnt: int) -> bool:
+def _has_required_home_innings(
+    home_score: int | None,
+    away_score: int | None,
+    inning_home_cnt: int,
+    *,
+    required_innings: int = _REQUIRED_INNINGS,
+) -> bool:
     if home_score is not None and away_score is not None and home_score > away_score:
-        return inning_home_cnt >= _REQUIRED_INNINGS - 1
-    return inning_home_cnt >= _REQUIRED_INNINGS
+        return inning_home_cnt >= required_innings - 1
+    return inning_home_cnt >= required_innings
 
 
 def _parse_statuses(raw: str | None, include_incomplete: bool) -> list[str]:
@@ -132,7 +139,8 @@ def _build_template_query(strict: bool) -> str:
                 (SELECT COUNT(*) FROM game_pitching_stats p WHERE p.game_id = g.game_id AND p.team_side = 'away') AS pitching_away_cnt,
                 (SELECT COUNT(*) FROM game_pitching_stats p WHERE p.game_id = g.game_id AND p.team_side = 'home') AS pitching_home_cnt,
                 (SELECT COUNT(*) FROM game_events e WHERE e.game_id = g.game_id) AS event_cnt,
-                (SELECT COUNT(*) FROM game_play_by_play p WHERE p.game_id = g.game_id) AS pbp_cnt
+                (SELECT COUNT(*) FROM game_play_by_play p WHERE p.game_id = g.game_id) AS pbp_cnt,
+                g.game_status
             FROM game g
             WHERE {where_clause}
               AND g.game_status IN :status_list
@@ -169,12 +177,39 @@ def _check_strict_row(row) -> list[str]:
         pitching_home_cnt,
         event_cnt,
         pbp_cnt,
+        game_status,
     ) = row
+    has_full_inning_scores = inning_away_cnt >= _REQUIRED_INNINGS and _has_required_home_innings(
+        home_score,
+        away_score,
+        inning_home_cnt,
+    )
+    has_complete_shortened_detail = all(
+        (
+            game_status in {"COMPLETED", "DRAW"},
+            home_score is not None,
+            away_score is not None,
+            inning_away_cnt >= _OFFICIAL_SHORTENED_GAME_INNINGS,
+            _has_required_home_innings(
+                home_score,
+                away_score,
+                inning_home_cnt,
+                required_innings=_OFFICIAL_SHORTENED_GAME_INNINGS,
+            ),
+            metadata_cnt > 0,
+            lineup_away_cnt > 0,
+            lineup_home_cnt > 0,
+            batting_away_cnt > 0,
+            batting_home_cnt > 0,
+            pitching_away_cnt > 0,
+            pitching_home_cnt > 0,
+            event_cnt > 0 or pbp_cnt > 0,
+        ),
+    )
     checks: list[tuple[bool, str]] = [
         (home_score is None or away_score is None, "scores"),
         (metadata_cnt == 0, "metadata"),
-        (inning_away_cnt < _REQUIRED_INNINGS, "away_inning_scores"),
-        (not _has_required_home_innings(home_score, away_score, inning_home_cnt), "home_inning_scores"),
+        (not (has_full_inning_scores or has_complete_shortened_detail), "inning_scores"),
         (lineup_away_cnt == 0, "away_lineups"),
         (lineup_home_cnt == 0, "home_lineups"),
         (batting_away_cnt == 0, "away_batting_stats"),

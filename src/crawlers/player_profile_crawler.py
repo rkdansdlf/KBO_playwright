@@ -26,6 +26,18 @@ TWO_DIGIT_YEAR_2000S_CUTOFF = 50
 TWENTIETH_CENTURY_START = 1900
 TWENTY_FIRST_CENTURY_START = 2000
 
+
+def clean_team_name(team_name: str | None) -> str | None:
+    """Normalize team name (e.g. KT 위즈 -> KT, KIA 타이거즈 -> KIA)."""
+    if not team_name:
+        return None
+    team_name = team_name.strip()
+    parts = team_name.split()
+    if not parts:
+        return None
+    return parts[0]
+
+
 from src.urls import HITTER_DETAIL, PITCHER_DETAIL
 from src.utils.compliance import compliance
 from src.utils.player_validation import validate_player_payload
@@ -95,8 +107,12 @@ _EXTRACT_JS = f"""
     // If still emblem, null it out
     if (photoUrl && photoUrl.includes('emblem')) photoUrl = null;
 
+    const teamEl = document.getElementById('h4Team');
+    const team = teamEl ? teamEl.innerText.trim() : null;
+
     return {{
         name:         name,
+        team:         team,
         photo_url:    photoUrl,
         photo_attr:   photoEl ? photoEl.getAttribute('src') : null,
         salary:       getVal('lblSalary'),
@@ -348,7 +364,7 @@ class PlayerProfileCrawler:
                 # Success found data
                 from src.parsers.player_profile_parser import parse_profile
 
-                parsed = parse_profile(_profile_raw_text(raw))
+                parsed = parse_profile(_profile_raw_text(raw), team=clean_team_name(raw.get("team")))
                 result = _build_profile_result(player_id, raw, parsed)
                 self._last_failure_reason.pop(str(player_id), None)
             except PROFILE_CRAWL_EXCEPTIONS:
@@ -416,6 +432,7 @@ def _build_profile_result(player_id: str, raw: dict[str, Any], parsed: Any) -> d
     return {
         "player_id": player_id,
         "name": raw.get("name") or parsed.get("player_name"),
+        "team": clean_team_name(raw.get("team")),
         "photo_url": _clean_photo_url(_profile_photo_url(raw, player_id)),
         "bats": parsed.get("batting_hand") or hands["bats"],
         "throws": parsed.get("throwing_hand") or hands["throws"],

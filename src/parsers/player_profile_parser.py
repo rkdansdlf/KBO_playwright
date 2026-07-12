@@ -45,6 +45,7 @@ class PlayerProfileParsed(BaseModel):
     is_active: bool | None = None
     is_foreign: bool | None = None  # 소스 맥락/페이지 플래그로 세팅
     photo_url: str | None = None
+    team: str | None = None
 
     @property
     def education_path(self) -> list[str]:
@@ -401,6 +402,7 @@ def parse_profile(
     *,
     is_active: bool | None = None,
     is_foreign: bool | None = None,
+    team: str | None = None,
 ) -> PlayerProfileParsed:
     """Tokenize raw profile text raw profile text and returns a structured dictionary.
 
@@ -410,9 +412,7 @@ def parse_profile(
         raw_text: Raw Text.
         is_active: Is Active.
         is_foreign: Is Foreign.
-        raw_text: Raw Text.
-        is_active: Is Active.
-        is_foreign: Is Foreign.
+        team: Team.
 
     """
     tokens = tokenize_profile(raw_text)
@@ -508,4 +508,5 @@ def parse_profile(
         entry_team_code=out.get("entry_team_code"),
         is_active=is_active,
         is_foreign=is_foreign,
+        team=team,
     )

@@ -1,6 +1,5 @@
 # noqa: INP001
-"""
-SQLite deletion-anomaly integrity migration.
+"""SQLite deletion-anomaly integrity migration.
 
 SQLite requires table rebuilds for most FK and ON DELETE changes, so this
 migration delegates to the idempotent repair/rebuild tool.
