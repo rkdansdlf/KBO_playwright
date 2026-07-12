@@ -4,50 +4,61 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Callable
+
 from sqlalchemy import text
+
 from src.db.engine import SessionLocal
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+FUTURES_MISSING_PLAYER_QUERY = (
+    "SELECT DISTINCT player_id FROM player_season_batting "
+    "WHERE team_code IS NULL AND league = 'FUTURES' AND level = 'KBO2'"
+)
+FUTURES_BACKFILL_CHUNK_SIZE = 60
 
 
-def run_batch_backfill() -> None:
-    session = SessionLocal()
-    try:
-        # 2010~2025 범위 전체에서 여전히 team_code가 NULL인 고유 player_id 수집
-        rows = session.execute(
-            text("SELECT DISTINCT player_id FROM player_season_batting WHERE team_code IS NULL;")
-        ).fetchall()
-    finally:
-        session.close()
+def _load_futures_player_ids() -> list[str]:
+    with SessionLocal() as session:
+        rows = session.execute(text(FUTURES_MISSING_PLAYER_QUERY)).fetchall()
+    return [str(row[0]) for row in rows]
 
-    player_ids = [str(r[0]) for r in rows]
+
+def _futures_backfill_command(player_ids: list[str]) -> list[str]:
+    return [
+        "venv/bin/python",
+        "-m",
+        "src.cli.crawl_futures",
+        "--player-ids",
+        ",".join(player_ids),
+        "--concurrency",
+        "8",
+    ]
+
+
+def _run_futures_backfill_command(command: list[str]) -> None:
+    subprocess.run(command, check=True)
+
+
+def run_batch_backfill(*, runner: Callable[[list[str]], None] = _run_futures_backfill_command) -> None:
+    """Recrawl only Futures players whose scoped season rows lack a team code."""
+    player_ids = _load_futures_player_ids()
     logger.info("Found %d players with missing team_codes to process.", len(player_ids))
 
     if not player_ids:
         logger.info("No players to process. Exiting.")
         return
 
-    # 60명씩 청크로 쪼개기
-    chunk_size = 60
-    chunks = [player_ids[i : i + chunk_size] for i in range(0, len(player_ids), chunk_size)]
+    chunks = [
+        player_ids[index : index + FUTURES_BACKFILL_CHUNK_SIZE]
+        for index in range(0, len(player_ids), FUTURES_BACKFILL_CHUNK_SIZE)
+    ]
 
     for idx, chunk in enumerate(chunks):
-        ids_str = ",".join(chunk)
         logger.info("Processing chunk %d/%d (Size: %d)...", idx + 1, len(chunks), len(chunk))
-
-        # Subprocess로 crawl_futures CLI 기동 (동시성 8)
-        cmd = [
-            "venv/bin/python",
-            "-m",
-            "src.cli.crawl_futures",
-            "--player-ids",
-            ids_str,
-            "--concurrency",
-            "8",
-        ]
         try:
-            subprocess.run(cmd, check=True)
+            runner(_futures_backfill_command(chunk))
         except subprocess.CalledProcessError:
             logger.exception("Error executing chunk %d", idx + 1)
 
