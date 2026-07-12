@@ -661,3 +661,13 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Relay recovery stabilization**: `recover_relay_data` now treats missing `game_validation_metrics` as optional for payload-hash lookup, preventing recovery from failing on lean test/runtime schemas.
 - **Sync test stabilization**: `sync_simple_table` batching tests now pin test syncers to the sequential path, keeping the test focused on batch splitting rather than concurrent COPY behavior.
 - **Verification**: `ruff check src/ tests/ scripts/` passes; `ruff format --check` passes on touched files; targeted relay/sync suite passes (`145 passed`); full unit pytest passes with `8880 passed, 26 skipped, 263 deselected, 1 xfailed`.
+
+### Current Verification Baseline (2026-07-12)
+
+- GitHub Actions [Test Suite run 29180252264](https://github.com/rkdansdlf/KBO_playwright/actions/runs/29180252264) passed: lint, Python 3.12 test, and integration-test jobs all succeeded.
+- `ruff check src/ tests/ scripts/` = 0 errors.
+- `ruff format --check .` = 1,066 files already formatted.
+- `ruff check --select C901 src/ scripts/` = 0 violations.
+- `ruff check --select PLR0913 src/` = 0 violations.
+- `venv/bin/python -m pytest --tb=line -q --cov=src --cov-report=term --cov-report=xml:coverage.xml` = **9,210 passed**, 24 skipped, 1 xfailed; total coverage **86.60%** (70% gate passed).
+- `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.

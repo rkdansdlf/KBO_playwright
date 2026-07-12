@@ -88,6 +88,7 @@ TEAM_NAME_TO_CODE = {
     "경찰청": "OT",
     "고양": "OT",
     "울산": "OT",
+    "화성": "OT",
 }
 
 KBO_LEGACY_TECHNICAL_CODE = {
