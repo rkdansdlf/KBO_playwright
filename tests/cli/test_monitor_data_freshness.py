@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,8 @@ from src.cli.monitor_data_freshness import (
     check_p0_readiness,
     main,
     run_monitor,
+    KST,
+    _table_staleness_message,
 )
 
 
@@ -126,6 +129,16 @@ class TestCheckFreshnessEdgeCases:
         assert "STALE" in result[0]
         assert "never crawled" in result[0]
 
+    def test_dry_run_returns_stale_findings_without_alert_delivery(self):
+        source = self._make_fake_source(last_success_at=None)
+        mock_ds_repo = MagicMock()
+        mock_ds_repo.get_all_active.return_value = [source]
+
+        with patch("src.cli.monitor_data_freshness.DataSourceRepository", return_value=mock_ds_repo):
+            result = check_freshness(dry_run=True)
+
+        assert result == ["[STALE] game_schedule: never crawled (type=daily, domain=naver)"]
+
     def test_stale_over_threshold(self):
         from datetime import datetime
 
@@ -201,6 +214,36 @@ class TestCheckTableCompletenessEdgeCases:
         assert len(result) > 0
         assert any("ERROR" in r for r in result)
 
+    def test_populated_table_with_old_timestamp_is_stale_in_dry_run(self):
+        mock_session = MagicMock()
+        old_timestamp = datetime.now(KST) - timedelta(days=9)
+
+        def exec_side_effect(query):
+            if "COUNT" in str(query):
+                return self._make_row_mock(1)
+            return self._make_row_mock(old_timestamp)
+
+        mock_session.execute.side_effect = exec_side_effect
+        with patch("src.cli.monitor_data_freshness.SessionLocal") as mock_sf:
+            mock_sf.return_value.__enter__.return_value = mock_session
+            result = check_table_completeness(dry_run=True)
+
+        assert any("[STALE] Table team_events" in issue for issue in result)
+
+    def test_ticket_price_season_uses_current_season_policy(self):
+        now = datetime(2026, 7, 1, tzinfo=KST)
+
+        issue = _table_staleness_message(
+            domain="ticket",
+            table="ticket_prices",
+            date_column="season",
+            latest_value=2025,
+            now=now,
+        )
+
+        assert issue is not None
+        assert "required>=2026" in issue
+
 
 class TestRunMonitorEdgeCases:
     def test_alert_sends_slack(self):
@@ -218,6 +261,18 @@ class TestRunMonitorEdgeCases:
 
             mock_slack.send_alert.assert_called_once()
             assert "stale" in result
+
+    def test_dry_run_reports_issues_without_sending_slack(self):
+        with (
+            patch("src.cli.monitor_data_freshness.check_freshness", return_value=["source: stale"]),
+            patch("src.cli.monitor_data_freshness.check_table_completeness", return_value=[]),
+            patch("src.cli.monitor_data_freshness.check_p0_readiness", return_value=[]),
+            patch("src.cli.monitor_data_freshness.SlackWebhookClient") as mock_slack,
+        ):
+            result = run_monitor(alert=True, dry_run=True)
+
+        assert result["stale"] == ["source: stale"]
+        mock_slack.send_alert.assert_not_called()
 
     def test_no_issues_logger(self, caplog):
         with (

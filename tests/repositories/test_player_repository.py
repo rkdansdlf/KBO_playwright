@@ -90,6 +90,8 @@ class TestPlayerRepository:
         profile.signing_bonus_currency = None
         profile.education_path = None
         profile.is_foreign = False
+        profile.team = "LG"
+        profile.position = "투수"
 
         player = repo.upsert_player_profile("1001", profile)
         assert player is not None

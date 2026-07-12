@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from scripts.verification.audit_daily_completeness import (
     _coerce_date,
     _format_scope,
+    _check_strict_row,
     _has_required_home_innings,
     _parse_statuses,
     audit_completeness,
@@ -165,6 +166,7 @@ class TestAuditCompleteness:
                 0,
                 0,
                 0,
+                "COMPLETED",
             ),
         ]
 
@@ -200,6 +202,7 @@ class TestAuditCompleteness:
                 3,
                 0,
                 20,
+                "COMPLETED",
             ),
         ]
 
@@ -235,6 +238,7 @@ class TestAuditCompleteness:
                 3,
                 0,
                 20,
+                "COMPLETED",
             ),
         ]
 
@@ -246,6 +250,53 @@ class TestAuditCompleteness:
             strict=True,
         )
         assert result == 0
+
+    def test_official_shortened_game_with_complete_detail_passes_strict(self):
+        row = (
+            "G1",
+            "2025-04-08",
+            5,
+            2,
+            1,
+            5,
+            4,
+            9,
+            9,
+            10,
+            10,
+            3,
+            3,
+            0,
+            20,
+            "COMPLETED",
+        )
+
+        assert _check_strict_row(row) == []
+
+    def test_partial_shortened_game_is_not_accepted(self):
+        row = (
+            "G1",
+            "2025-04-08",
+            5,
+            2,
+            1,
+            5,
+            4,
+            9,
+            9,
+            10,
+            10,
+            3,
+            3,
+            0,
+            0,
+            "COMPLETED",
+        )
+
+        missing = _check_strict_row(row)
+
+        assert "inning_scores" in missing
+        assert "relay_or_event" in missing
 
 
 class TestMain:

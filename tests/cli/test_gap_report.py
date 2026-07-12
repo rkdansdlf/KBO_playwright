@@ -534,6 +534,7 @@ class TestCheckWrappers:
         with patch("src.cli.gap_report.check_freshness") as mock_check:
             mock_check.return_value = ["stale1", "stale2"]
             _check_staleness(report)
+            mock_check.assert_called_once_with(dry_run=True)
         assert report["gaps"]["STALENESS"]["ok"] is False
         assert report["gaps"]["STALENESS"]["stale_count"] == 2
 
