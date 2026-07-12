@@ -35,6 +35,9 @@ line-length = 120
 target-version = "py312"
 exclude = ["scripts/investigations/"]
 
+[tool.ruff.lint.pylint]
+max-args = 8
+
 [tool.ruff.lint]
 select = [
     "E",       # pycodestyle errors
@@ -496,7 +499,6 @@ select = [
  ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
     "COM812",  # missing-trailing-comma (conflicts with formatter)
-    "RUF100",  # unused-noqa (required compatibility suppressions remain)
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
       "PLC0415",  # import-outside-top-level (intentional lazy imports for circular deps)
 
@@ -520,10 +522,12 @@ select = [
 "src/sources/relay/importer.py" = ["SLF001"]
 "src/sync/sync_players.py" = ["ARG002"]
 "src/aggregators/team_stat_aggregator.py" = ["SLF001"]
-"src/cli/crawler_live_smoke.py" = ["SLF001", "ARG001"]
-"src/cli/retry_daily_failures.py" = ["S603"]
+"src/aggregators/ranking_aggregator.py" = ["PLR0913"]
+"src/cli/crawler_live_smoke.py" = ["SLF001", "ARG001", "PLR0913"]
+"src/cli/retry_daily_failures.py" = ["S603", "PLR0913"]
 "src/cli/run_daily_update.py" = ["S603"]
-"src/sync/sync_base.py" = ["PLR0912", "PLR0915", "SIM105", "S110", "BLE001", "RET505"]
+"src/cli/*" = ["PLR0913"]
+"src/sync/sync_base.py" = ["PLR0912", "PLR0913", "PLR0915", "SIM105", "S110", "BLE001", "RET505"]
 "src/sync/sync_games.py" = ["ARG002"]
 "src/sync/sync_stats.py" = ["A002", "ARG002"]
 "tests/**" = ["E501", "E731", "FBT001", "FBT002", "FBT003", "TC001", "TC002", "TC003", "SIM102", "SIM105", "SIM108", "SIM113", "SIM117", "PT", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "ANN401", "TRY003", "TRY300", "TRY301", "TRY002", "ARG", "T201", "T20", "ERA001", "RUF001", "FURB167", "RUF013", "DTZ001", "DTZ003", "DTZ005", "DTZ007", "DTZ011", "DTZ006", "S608", "FLY002", "N", "SLF001", "PLR0913", "PLR0915", "PLR2004", "FURB132", "RUF024", "RUF040", "PERF", "BLE001", "F401", "I001", "RUF015", "RUF046", "RUF059", "EM101", "PYI034", "PYI", "PYI036", "RUF012", "PLW0603", "PLW0127", "S501", "S311", "S310", "S603", "S101", "PLR1722", "ASYNC109", "ASYNC212", "ASYNC240", "ASYNC230", "FURB110", "F821", "A002", "D100", "D104", "RUF034", "D101", "D102", "D103", "D105", "D107", "D205", "D400", "D415", "D212", "S108", "INP001", "Q000", "B007", "PERF102", "S607", "S105", "S106",

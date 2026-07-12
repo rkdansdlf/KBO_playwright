@@ -225,7 +225,12 @@ class FanCultureCrawler:
             try:
                 repo = FanCultureRepository(session)
                 saved = 0
+                seen_keys = set()
                 for item in songs:
+                    key = (item.get("team_id"), item.get("song_name"), item.get("song_type"))
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
                     try:
                         repo.save_cheer_song(item)
                         saved += 1
