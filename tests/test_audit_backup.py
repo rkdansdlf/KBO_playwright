@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from src.constants import KST
 from src.utils.fallback_monitor import FallbackMonitor
 
 
@@ -60,7 +61,7 @@ def test_save_audit_backup_creates_file_and_serializes_dates(clean_audit_dir):
     assert file_path.exists()
 
     # Validate expected filename format: {date}_{player_id}_{type}.json
-    date_str = datetime.now().strftime("%Y%m%d")
+    date_str = datetime.now(KST).strftime("%Y%m%d")
     expected_filename = f"{date_str}_{player_id}_{type_name}.json"
     assert file_path.name == expected_filename
 
