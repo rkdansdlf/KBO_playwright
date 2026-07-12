@@ -84,7 +84,12 @@ class TestDataQualityRegressionPackCLI:
 
             assert result == 0
             mock_create_engine.assert_called_once_with("sqlite:///:memory:")
-            mock_run.assert_called_once_with(mock_conn)
+            mock_run.assert_called_once_with(
+                mock_conn,
+                target_date=None,
+                season=None,
+                require_schema=False,
+            )
             mock_render.assert_called_once_with(mock_report)
 
     def test_main_missing_database_url_fails(self):
@@ -140,3 +145,38 @@ class TestDataQualityRegressionPackCLI:
             captured = capsys.readouterr()
             assert '{"ok": false}' in captured.out
             mock_json.assert_called_once_with(mock_report)
+
+    def test_main_scopes_checks_and_writes_json_artifact(self, tmp_path):
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        output_path = tmp_path / "regression.json"
+
+        with (
+            patch("src.cli.data_quality_regression_pack.create_engine", return_value=mock_engine),
+            patch(
+                "src.cli.data_quality_regression_pack.run_regression_pack", return_value=_make_report(ok=True)
+            ) as mock_run,
+            patch("src.cli.data_quality_regression_pack.render_regression_report", return_value="ok"),
+            patch("src.cli.data_quality_regression_pack.report_to_json", return_value='{"ok": true}'),
+        ):
+            result = main(
+                [
+                    "--database-url",
+                    "sqlite:///:memory:",
+                    "--date",
+                    "2026-06-24",
+                    "--require-schema",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        assert result == 0
+        mock_run.assert_called_once_with(
+            mock_conn,
+            target_date="20260624",
+            season=2026,
+            require_schema=True,
+        )
+        assert output_path.read_text(encoding="utf-8") == '{"ok": true}\n'
