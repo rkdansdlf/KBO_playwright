@@ -23,6 +23,9 @@ BATTING_PA_ABSOLUTE_TOLERANCE = 2
 BATTING_PA_RELATIVE_TOLERANCE = 0.005
 PITCHING_OUTS_RELATIVE_TOLERANCE = 0.01
 TEAM_STAT_ABSOLUTE_TOLERANCE = 5
+FUTURES_BATTING_TOLERANCE = 0.005
+FUTURES_PITCHING_TOLERANCE = 0.01
+FUTURES_FIP_TOLERANCE = 0.02
 
 
 class PitchingCumulativeRow(Protocol):
@@ -702,15 +705,226 @@ class QualityGate:
             mismatches=mismatches,
         )
 
+    def _check_futures_batting_impossible(self, player: PlayerSeasonBatting) -> str | None:
+        pa = player.plate_appearances or 0
+        ab = player.at_bats or 0
+        hits = player.hits or 0
+        doubles = player.doubles or 0
+        triples = player.triples or 0
+        hr = player.home_runs or 0
+        so = player.strikeouts or 0
+        walks = player.walks or 0
+
+        if ab > pa:
+            return f"AB ({ab}) > PA ({pa})"
+        if hits > ab:
+            return f"Hits ({hits}) > AB ({ab})"
+        if doubles + triples + hr > hits:
+            return f"Extra-base hits ({doubles + triples + hr}) > Hits ({hits})"
+        if so > pa:
+            return f"Strikeouts ({so}) > PA ({pa})"
+        if walks > pa:
+            return f"Walks ({walks}) > PA ({pa})"
+        return None
+
+    def _check_futures_batting_rates(self, player: PlayerSeasonBatting) -> list[str]:
+        ab = player.at_bats or 0
+        hits = player.hits or 0
+        doubles = player.doubles or 0
+        triples = player.triples or 0
+        hr = player.home_runs or 0
+        walks = player.walks or 0
+        hbp = player.hbp or 0
+        sf = player.sacrifice_flies or 0
+        avg = player.avg
+        obp = player.obp
+        slg = player.slg
+
+        diffs = []
+        if ab > 0 and avg is not None:
+            expected_avg = round(hits / ab, 3)
+            if abs(avg - expected_avg) > FUTURES_BATTING_TOLERANCE:
+                diffs.append(f"AVG mismatch: recorded={avg}, expected={expected_avg}")
+
+        obp_denom = ab + walks + hbp + sf
+        if obp_denom > 0 and obp is not None:
+            expected_obp = round((hits + walks + hbp) / obp_denom, 3)
+            if abs(obp - expected_obp) > FUTURES_BATTING_TOLERANCE:
+                diffs.append(f"OBP mismatch: recorded={obp}, expected={expected_obp}")
+
+        if ab > 0 and slg is not None:
+            singles = hits - doubles - triples - hr
+            tb = singles + 2 * doubles + 3 * triples + 4 * hr
+            expected_slg = round(tb / ab, 3)
+            if abs(slg - expected_slg) > FUTURES_BATTING_TOLERANCE:
+                diffs.append(f"SLG mismatch: recorded={slg}, expected={expected_slg}")
+        return diffs
+
+    def validate_futures_batting(self, season: int) -> dict[str, Any]:
+        """Validate Futures batting stats for impossible values and wOBA consistency.
+
+        Args:
+            season: Season year.
+
+        """
+        import contextlib
+
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
+
+        players = (
+            self.session.query(PlayerSeasonBatting)
+            .filter(
+                PlayerSeasonBatting.season == season,
+                PlayerSeasonBatting.league == "FUTURES",
+            )
+            .all()
+        )
+
+        if not players:
+            return self._result(season=season, league="FUTURES")
+
+        lg_constants = None
+        with contextlib.suppress(SQLAlchemyError, ValueError):
+            lg_constants = SabermetricsCalculator.get_league_constants(self.session, season, level="KBO2")
+
+        mismatches = []
+        for player in players:
+            pid = player.player_id
+
+            impossible_issue = self._check_futures_batting_impossible(player)
+            if impossible_issue:
+                mismatches.append({"player_id": pid, "issue": f"Impossible batting stats: {impossible_issue}"})
+                continue
+
+            rate_diffs = self._check_futures_batting_rates(player)
+            mismatches.extend({"player_id": pid, "issue": diff} for diff in rate_diffs)
+
+            if lg_constants and player.extra_stats and "woba" in player.extra_stats:
+                woba = player.extra_stats["woba"]
+                metrics = SabermetricsCalculator.calculate_batting_metrics(player, lg_constants)
+                expected_woba = metrics["woba"]
+                if abs(woba - expected_woba) > FUTURES_BATTING_TOLERANCE:
+                    mismatches.append(
+                        {
+                            "player_id": pid,
+                            "issue": f"wOBA mismatch: recorded={woba}, calculated={expected_woba}",
+                        }
+                    )
+
+        return self._result(
+            season=season,
+            league="FUTURES",
+            checked_players=len(players),
+            mismatches=mismatches,
+        )
+
+    def _check_futures_pitching_impossible(self, player: PlayerSeasonPitching) -> str | None:
+        games = player.games or 0
+        wins = player.wins or 0
+        losses = player.losses or 0
+        saves = player.saves or 0
+        holds = player.holds or 0
+        outs = player.innings_outs or 0
+        er = player.earned_runs or 0
+        r_allowed = player.runs_allowed or 0
+        walks_allowed = player.walks_allowed or 0
+        so = player.strikeouts or 0
+
+        if er > r_allowed:
+            return f"Earned Runs ({er}) > Runs Allowed ({r_allowed})"
+        if wins + losses + saves + holds > games:
+            return f"W+L+S+H ({wins + losses + saves + holds}) > Games ({games})"
+        if outs < 0 or walks_allowed < 0 or so < 0:
+            return f"Negative values found (outs={outs}, bb={walks_allowed}, so={so})"
+        return None
+
+    def _check_futures_pitching_rates(self, player: PlayerSeasonPitching) -> list[str]:
+        outs = player.innings_outs or 0
+        er = player.earned_runs or 0
+        hits_allowed = player.hits_allowed or 0
+        walks_allowed = player.walks_allowed or 0
+        era = player.era
+        whip = player.whip
+
+        diffs = []
+        if outs > 0 and era is not None:
+            expected_era = round((er * 27) / outs, 2)
+            if abs(era - expected_era) > FUTURES_PITCHING_TOLERANCE:
+                diffs.append(f"ERA mismatch: recorded={era}, expected={expected_era}")
+
+        if outs > 0 and whip is not None:
+            expected_whip = round(((walks_allowed + hits_allowed) * 3) / outs, 2)
+            if abs(whip - expected_whip) > FUTURES_PITCHING_TOLERANCE:
+                diffs.append(f"WHIP mismatch: recorded={whip}, expected={expected_whip}")
+        return diffs
+
+    def validate_futures_pitching(self, season: int) -> dict[str, Any]:
+        """Validate Futures pitching stats for impossible values and FIP consistency.
+
+        Args:
+            season: Season year.
+
+        """
+        import contextlib
+
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
+
+        players = (
+            self.session.query(PlayerSeasonPitching)
+            .filter(
+                PlayerSeasonPitching.season == season,
+                PlayerSeasonPitching.league == "FUTURES",
+            )
+            .all()
+        )
+
+        if not players:
+            return self._result(season=season, league="FUTURES")
+
+        lg_constants = None
+        with contextlib.suppress(SQLAlchemyError, ValueError):
+            lg_constants = SabermetricsCalculator.get_league_constants(self.session, season, level="KBO2")
+
+        mismatches = []
+        for player in players:
+            pid = player.player_id
+
+            impossible_issue = self._check_futures_pitching_impossible(player)
+            if impossible_issue:
+                mismatches.append({"player_id": pid, "issue": f"Impossible pitching stats: {impossible_issue}"})
+                continue
+
+            rate_diffs = self._check_futures_pitching_rates(player)
+            mismatches.extend({"player_id": pid, "issue": diff} for diff in rate_diffs)
+
+            if lg_constants and player.fip is not None:
+                fip = player.fip
+                metrics = SabermetricsCalculator.calculate_pitching_metrics(player, lg_constants)
+                expected_fip = metrics["fip_adj"]
+                if abs(fip - expected_fip) > FUTURES_FIP_TOLERANCE:
+                    mismatches.append(
+                        {
+                            "player_id": pid,
+                            "issue": f"FIP mismatch: recorded={fip}, calculated={expected_fip}",
+                        }
+                    )
+
+        return self._result(
+            season=season,
+            league="FUTURES",
+            checked_players=len(players),
+            mismatches=mismatches,
+        )
+
 
 def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
     """Run quality gate.
 
     Args:
-        session: Session.
-        season: Season year.
-        session: Session.
-        season: Season year.
         session: Session.
         season: Season year.
 
@@ -725,6 +939,8 @@ def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
     pa_formula_result = gate.validate_season_pa_formula(season)
     team_batting_result = gate.validate_season_team_batting(season)
     team_pitching_result = gate.validate_season_team_pitching(season)
+    futures_batting_result = gate.validate_futures_batting(season)
+    futures_pitching_result = gate.validate_futures_pitching(season)
 
     return {
         "batting": batting_result,
@@ -732,9 +948,13 @@ def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
         "pa_formula": pa_formula_result,
         "team_batting": team_batting_result,
         "team_pitching": team_pitching_result,
+        "futures_batting": futures_batting_result,
+        "futures_pitching": futures_pitching_result,
         "ok": batting_result.get("ok", False)
         and pitching_result.get("ok", False)
         and pa_formula_result.get("ok", False)
         and team_batting_result.get("ok", False)
-        and team_pitching_result.get("ok", False),
+        and team_pitching_result.get("ok", False)
+        and futures_batting_result.get("ok", False)
+        and futures_pitching_result.get("ok", False),
     }

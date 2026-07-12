@@ -398,7 +398,7 @@ def _mark_story_oci_status(rows: Sequence[StoryRegenReportRow], *, apply: bool, 
                 row.oci_status = "skipped_missing_oci_url"
 
 
-def regenerate_game_stories(  # noqa: PLR0913
+def regenerate_game_stories(
     *,
     game_ids: Sequence[str] | None = None,
     dates: Sequence[str] | None = None,

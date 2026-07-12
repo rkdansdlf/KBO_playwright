@@ -25,6 +25,8 @@ CATEGORY_LABELS = {
     "pa_formula": "PA Formula",
     "team_batting": "Team Batting",
     "team_pitching": "Team Pitching",
+    "futures_batting": "Futures Batting",
+    "futures_pitching": "Futures Pitching",
 }
 
 
@@ -88,7 +90,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         logger.info("Statistical Quality Gate for %d", year)
         logger.info("----------------------------------------")
 
-        for category in ["batting", "pitching", "pa_formula", "team_batting", "team_pitching"]:
+        for category in [
+            "batting",
+            "pitching",
+            "pa_formula",
+            "team_batting",
+            "team_pitching",
+            "futures_batting",
+            "futures_pitching",
+        ]:
             _print_category(category, result[category])
 
         logger.info("----------------------------------------")

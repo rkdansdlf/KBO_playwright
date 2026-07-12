@@ -1,6 +1,24 @@
-# Coverage Improvement Plan: 70% → 85%+
+# Coverage Maintenance Plan
 
-**Current State**: 70.70% overall (36,073 stmts), 50 modules < 70%
+**Current State (2026-07-12)**: 88.30% line coverage and 80.47% branch coverage in the latest `coverage.xml`.
+
+## Current Priorities
+
+1. Keep line coverage above 88% and branch coverage above 80%; the configured gate remains 70% until the serial full-suite baseline is automated in CI.
+2. Measure coverage serially with an isolated coverage file. Do not use parallel pytest-cov output as an authoritative baseline because parallel data combination has corrupted the shared `.coverage` database.
+3. Team crawler coverage is now 68% for batting and 81% for pitching after selector, fallback URL, persist, and aggregation-fallback tests. The remaining batting gaps are error handling and CLI paths, not parser behavior.
+4. Next crawler targets are PBP, text relay, schedule, and player search orchestration. Reuse fake page/pool fixtures and avoid live browser or database dependencies.
+
+```bash
+run_id="kbo-cov-$$_$(date +%s)"
+COVERAGE_FILE="/tmp/${run_id}.data" \
+venv/bin/python -m pytest -o addopts='' -n 0 -m "not slow and not integration" \
+  --cov=src --cov-report=term --cov-report="xml:/tmp/${run_id}.xml"
+```
+
+## Historical Backlog
+
+The module percentages and estimates below are retained as historical context and must be re-measured before prioritizing new work.
 
 ---
 
