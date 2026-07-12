@@ -123,6 +123,8 @@ class TestQualityGateCheck:
                     "pa_formula": {"ok": True, "checked_players": 0, "mismatches": []},
                     "team_batting": {"ok": True, "checked_players": 0, "mismatches": []},
                     "team_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
+                    "futures_batting": {"ok": True, "checked_players": 0, "mismatches": []},
+                    "futures_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
                 }
                 result = main([])
                 assert result == 0
@@ -139,6 +141,8 @@ class TestQualityGateCheck:
                     "pa_formula": {"ok": True, "checked_players": 0, "mismatches": []},
                     "team_batting": {"ok": True, "checked_players": 0, "mismatches": []},
                     "team_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
+                    "futures_batting": {"ok": True, "checked_players": 0, "mismatches": []},
+                    "futures_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
                 }
                 result = main(["--year", "2025"])
                 assert result == 0
@@ -155,6 +159,8 @@ class TestQualityGateCheck:
                     "pa_formula": {"ok": True, "checked_players": 0, "mismatches": []},
                     "team_batting": {"ok": True, "checked_players": 0, "mismatches": []},
                     "team_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
+                    "futures_batting": {"ok": True, "checked_players": 0, "mismatches": []},
+                    "futures_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
                 }
                 result = main(["--json"])
                 assert result == 0
@@ -175,6 +181,8 @@ class TestQualityGateCheck:
                         "mismatches": [{"team_id": "LG", "issue": "test"}],
                     },
                     "team_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
+                    "futures_batting": {"ok": True, "checked_players": 0, "mismatches": []},
+                    "futures_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
                 }
                 result = main([])
                 assert result == 1

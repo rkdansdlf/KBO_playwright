@@ -6,197 +6,16 @@ from src.validators.quality_gate import run_quality_gate
 
 
 def _make_session():
+    from src.models.base import Base
+
+    # Ensure all models are imported so metadata is populated
+    from src.models.game import Game, GameBattingStat, GamePitchingStat
+    from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+    from src.models.season import KboSeason
+    from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
+
     engine = create_engine("sqlite:///:memory:")
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                CREATE TABLE kbo_seasons (
-                    season_id INTEGER PRIMARY KEY,
-                    season_year INTEGER NOT NULL,
-                    league_type_code INTEGER NOT NULL
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE game (
-                    game_id TEXT PRIMARY KEY,
-                    game_status TEXT,
-                    season_id INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE game_batting_stats (
-                    game_id TEXT,
-                    player_id INTEGER,
-                    plate_appearances INTEGER,
-                    at_bats INTEGER,
-                    walks INTEGER,
-                    hbp INTEGER,
-                    hits INTEGER,
-                    runs INTEGER,
-                    home_runs INTEGER,
-                    sacrifice_hits INTEGER,
-                    sacrifice_flies INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE player_season_batting (
-                    player_id INTEGER,
-                    season INTEGER,
-                    league TEXT,
-                    team_code TEXT,
-                    canonical_team_code TEXT,
-                    plate_appearances INTEGER,
-                    hits INTEGER,
-                    runs INTEGER,
-                    home_runs INTEGER,
-                    games INTEGER,
-                    at_bats INTEGER,
-                    doubles INTEGER,
-                    triples INTEGER,
-                    rbi INTEGER,
-                    stolen_bases INTEGER,
-                    caught_stealing INTEGER,
-                    walks INTEGER,
-                    strikeouts INTEGER,
-                    sacrifice_hits INTEGER,
-                    sacrifice_flies INTEGER,
-                    intentional_walks INTEGER,
-                    hbp INTEGER,
-                    gdp INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE game_pitching_stats (
-                    game_id TEXT,
-                    player_id INTEGER,
-                    innings_outs INTEGER,
-                    wins INTEGER,
-                    strikeouts INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE player_season_pitching (
-                    player_id INTEGER,
-                    season INTEGER,
-                    league TEXT,
-                    team_code TEXT,
-                    canonical_team_code TEXT,
-                    innings_outs INTEGER,
-                    innings_pitched FLOAT,
-                    extra_stats JSON,
-                    wins INTEGER,
-                    strikeouts INTEGER,
-                    losses INTEGER,
-                    saves INTEGER,
-                    holds INTEGER,
-                    runs_allowed INTEGER,
-                    earned_runs INTEGER,
-                    hits_allowed INTEGER,
-                    home_runs_allowed INTEGER,
-                    walks_allowed INTEGER,
-                    games INTEGER,
-                    intentional_walks INTEGER,
-                    hit_batters INTEGER,
-                    tbf INTEGER,
-                    complete_games INTEGER,
-                    shutouts INTEGER,
-                    wild_pitches INTEGER,
-                    balks INTEGER,
-                    sacrifices_allowed INTEGER,
-                    sacrifice_flies_allowed INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE team_season_batting (
-                    team_id TEXT,
-                    season INTEGER,
-                    league TEXT,
-                    games INTEGER,
-                    plate_appearances INTEGER,
-                    at_bats INTEGER,
-                    runs INTEGER,
-                    hits INTEGER,
-                    doubles INTEGER,
-                    triples INTEGER,
-                    home_runs INTEGER,
-                    rbi INTEGER,
-                    stolen_bases INTEGER,
-                    caught_stealing INTEGER,
-                    walks INTEGER,
-                    strikeouts INTEGER,
-                    intentional_walks INTEGER,
-                    hbp INTEGER,
-                    sacrifice_hits INTEGER,
-                    sacrifice_flies INTEGER,
-                    gdp INTEGER,
-                    iso FLOAT,
-                    babip FLOAT
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE team_season_pitching (
-                    team_id TEXT,
-                    season INTEGER,
-                    league TEXT,
-                    games INTEGER,
-                    wins INTEGER,
-                    losses INTEGER,
-                    saves INTEGER,
-                    holds INTEGER,
-                    innings_pitched FLOAT,
-                    runs_allowed INTEGER,
-                    earned_runs INTEGER,
-                    hits_allowed INTEGER,
-                    home_runs_allowed INTEGER,
-                    walks_allowed INTEGER,
-                    strikeouts INTEGER,
-                    innings_outs INTEGER,
-                    intentional_walks INTEGER,
-                    hit_batters INTEGER,
-                    tbf INTEGER,
-                    complete_games INTEGER,
-                    shutouts INTEGER,
-                    wild_pitches INTEGER,
-                    balks INTEGER,
-                    sacrifices_allowed INTEGER,
-                    sacrifice_flies_allowed INTEGER,
-                    k_per_nine FLOAT,
-                    bb_per_nine FLOAT,
-                    kbb FLOAT,
-                    fip FLOAT
-                )
-                """,
-            ),
-        )
+    Base.metadata.create_all(engine)
     return sessionmaker(bind=engine)()
 
 
@@ -204,8 +23,8 @@ def _insert_regular_season(session):
     session.execute(
         text(
             """
-            INSERT INTO kbo_seasons (season_id, season_year, league_type_code)
-            VALUES (202501, 2025, 0)
+            INSERT INTO kbo_seasons (season_id, season_year, league_type_code, league_type_name)
+            VALUES (202501, 2025, 0, '정규시즌')
             """,
         ),
     )
@@ -219,8 +38,8 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
         session.execute(
             text(
                 """
-                INSERT INTO game (game_id, game_status, season_id)
-                VALUES ('G1', 'COMPLETED', 202501), ('G2', 'SCHEDULED', 202501)
+                INSERT INTO game (game_id, game_status, season_id, game_date)
+                VALUES ('G1', 'COMPLETED', 202501, '2025-04-01'), ('G2', 'SCHEDULED', 202501, '2025-04-02')
                 """,
             ),
         )
@@ -228,10 +47,10 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, plate_appearances, hits, runs, home_runs, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
+                    (game_id, player_id, plate_appearances, hits, runs, home_runs, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, player_name, appearance_seq)
                 VALUES
-                    ('G1', 10, 4, 2, 1, 0, 2, 1, 0, 0, 1),  -- PA=4 = 2+1+0+0+1
-                    ('G2', 10, 99, 99, 99, 99, 99, 0, 0, 0, 0) -- PA=99 = 99+0+0+0+0
+                    ('G1', 10, 4, 2, 1, 0, 2, 1, 0, 0, 1, 'HOME', 'TestPlayer', 1),  -- PA=4 = 2+1+0+0+1
+                    ('G2', 10, 99, 99, 99, 99, 99, 0, 0, 0, 0, 'HOME', 'TestPlayer', 1) -- PA=99 = 99+0+0+0+0
                 """,
             ),
         )
@@ -239,8 +58,8 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO player_season_batting
-                    (player_id, season, league, team_code, canonical_team_code, plate_appearances, at_bats, hits, runs, home_runs)
-                VALUES (10, 2025, 'REGULAR', 'SSG', 'SSG', 5, 2, 2, 1, 0)
+                    (player_id, season, league, team_code, canonical_team_code, plate_appearances, at_bats, hits, runs, home_runs, level, source)
+                VALUES (10, 2025, 'REGULAR', 'SSG', 'SSG', 5, 2, 2, 1, 0, 'KBO1', 'ROLLUP')
                 """,
             ),
         )
@@ -248,8 +67,8 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO game_pitching_stats
-                    (game_id, player_id, innings_outs, wins, strikeouts)
-                VALUES ('G1', 20, 6, 1, 4), ('G2', 20, 20, 9, 9)
+                    (game_id, player_id, innings_outs, wins, strikeouts, team_side, player_name, appearance_seq)
+                VALUES ('G1', 20, 6, 1, 4, 'HOME', 'TestPlayer', 1), ('G2', 20, 20, 9, 9, 'HOME', 'TestPlayer', 1)
                 """,
             ),
         )
@@ -257,8 +76,8 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO player_season_pitching
-                    (player_id, season, league, team_code, canonical_team_code, innings_outs, innings_pitched, extra_stats, wins, strikeouts)
-                VALUES (20, 2025, 'REGULAR', 'SSG', 'SSG', 7, NULL, NULL, 1, 4)
+                    (player_id, season, league, team_code, canonical_team_code, innings_outs, innings_pitched, extra_stats, wins, strikeouts, level, source)
+                VALUES (20, 2025, 'REGULAR', 'SSG', 'SSG', 7, NULL, NULL, 1, 4, 'KBO1', 'ROLLUP')
                 """,
             ),
         )
@@ -266,8 +85,8 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO team_season_batting
-                    (team_id, season, league, games, plate_appearances, at_bats, runs, hits, home_runs)
-                VALUES ('SSG', 2025, 'REGULAR', 1, 5, 2, 1, 2, 0)
+                    (team_id, season, league, team_name, games, plate_appearances, at_bats, runs, hits, home_runs)
+                VALUES ('SSG', 2025, 'REGULAR', 'SSG Landers', 1, 5, 2, 1, 2, 0)
                 """,
             ),
         )
@@ -275,8 +94,8 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO team_season_pitching
-                    (team_id, season, league, games, wins, strikeouts, innings_pitched, innings_outs)
-                VALUES ('SSG', 2025, 'REGULAR', 1, 1, 4, 2.333, 7)
+                    (team_id, season, league, team_name, games, wins, strikeouts, innings_pitched, innings_outs)
+                VALUES ('SSG', 2025, 'REGULAR', 'SSG Landers', 1, 1, 4, 2.333, 7)
                 """,
             ),
         )
@@ -300,10 +119,10 @@ def test_team_gate_ignores_placeholder_player_team_rows_with_canonical_codes():
             text(
                 """
                 INSERT INTO player_season_batting
-                    (player_id, season, league, team_code, canonical_team_code, plate_appearances, at_bats, runs, hits, home_runs)
+                    (player_id, season, league, team_code, canonical_team_code, plate_appearances, at_bats, runs, hits, home_runs, level, source)
                 VALUES
-                    (10, 2025, 'REGULAR', 'SK', 'SSG', 5, 2, 1, 2, 0),
-                    (11, 2025, 'REGULAR', 'TOTAL', 'SSG', 99, 99, 99, 99, 99)
+                    (10, 2025, 'REGULAR', 'SK', 'SSG', 5, 2, 1, 2, 0, 'KBO1', 'ROLLUP'),
+                    (11, 2025, 'REGULAR', 'TOTAL', 'SSG', 99, 99, 99, 99, 99, 'KBO1', 'ROLLUP')
                 """,
             ),
         )
@@ -311,8 +130,8 @@ def test_team_gate_ignores_placeholder_player_team_rows_with_canonical_codes():
             text(
                 """
                 INSERT INTO team_season_batting
-                    (team_id, season, league, games, plate_appearances, at_bats, runs, hits, home_runs)
-                VALUES ('SSG', 2025, 'REGULAR', 1, 5, 2, 1, 2, 0)
+                    (team_id, season, league, team_name, games, plate_appearances, at_bats, runs, hits, home_runs)
+                VALUES ('SSG', 2025, 'REGULAR', 'SSG Landers', 1, 5, 2, 1, 2, 0)
                 """,
             ),
         )
@@ -320,10 +139,10 @@ def test_team_gate_ignores_placeholder_player_team_rows_with_canonical_codes():
             text(
                 """
                 INSERT INTO player_season_pitching
-                    (player_id, season, league, team_code, canonical_team_code, innings_outs, innings_pitched, wins, strikeouts, tbf)
+                    (player_id, season, league, team_code, canonical_team_code, innings_outs, innings_pitched, wins, strikeouts, tbf, level, source)
                 VALUES
-                    (20, 2025, 'REGULAR', 'SK', 'SSG', 7, NULL, 1, 4, 30),
-                    (21, 2025, 'REGULAR', 'TOTAL', 'SSG', 99, NULL, 9, 99, 99)
+                    (20, 2025, 'REGULAR', 'SK', 'SSG', 7, NULL, 1, 4, 30, 'KBO1', 'ROLLUP'),
+                    (21, 2025, 'REGULAR', 'TOTAL', 'SSG', 99, NULL, 9, 99, 99, 'KBO1', 'ROLLUP')
                 """,
             ),
         )
@@ -331,8 +150,8 @@ def test_team_gate_ignores_placeholder_player_team_rows_with_canonical_codes():
             text(
                 """
                 INSERT INTO team_season_pitching
-                    (team_id, season, league, games, wins, strikeouts, innings_pitched, innings_outs, tbf)
-                VALUES ('SSG', 2025, 'REGULAR', 1, 1, 4, 2.333, 7, 30)
+                    (team_id, season, league, team_name, games, wins, strikeouts, innings_pitched, innings_outs, tbf)
+                VALUES ('SSG', 2025, 'REGULAR', 'SSG Landers', 1, 1, 4, 2.333, 7, 30)
                 """,
             ),
         )
@@ -354,8 +173,8 @@ def test_statistical_quality_gate_reports_missing_cumulative_records():
         session.execute(
             text(
                 """
-                INSERT INTO game (game_id, game_status, season_id)
-                VALUES ('G1', 'COMPLETED', 202501)
+                INSERT INTO game (game_id, game_status, season_id, game_date)
+                VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
                 """,
             ),
         )
@@ -363,8 +182,8 @@ def test_statistical_quality_gate_reports_missing_cumulative_records():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, plate_appearances, hits, runs, home_runs)
-                VALUES ('G1', 99, 4, 2, 1, 0)
+                    (game_id, player_id, plate_appearances, hits, runs, home_runs, team_side, player_name, appearance_seq)
+                VALUES ('G1', 99, 4, 2, 1, 0, 'HOME', 'TestPlayer', 1)
                 """,
             ),
         )
@@ -372,8 +191,8 @@ def test_statistical_quality_gate_reports_missing_cumulative_records():
             text(
                 """
                 INSERT INTO game_pitching_stats
-                    (game_id, player_id, innings_outs, wins, strikeouts)
-                VALUES ('G1', 88, 6, 1, 4)
+                    (game_id, player_id, innings_outs, wins, strikeouts, team_side, player_name, appearance_seq)
+                VALUES ('G1', 88, 6, 1, 4, 'HOME', 'TestPlayer', 1)
                 """,
             ),
         )
@@ -395,8 +214,8 @@ def test_statistical_quality_gate_reports_pa_formula_mismatch():
         session.execute(
             text(
                 """
-                INSERT INTO game (game_id, game_status, season_id)
-                VALUES ('G1', 'COMPLETED', 202501)
+                INSERT INTO game (game_id, game_status, season_id, game_date)
+                VALUES ('G1', 'COMPLETED', 202501, '2025-04-01')
                 """,
             ),
         )
@@ -406,8 +225,8 @@ def test_statistical_quality_gate_reports_pa_formula_mismatch():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, plate_appearances, at_bats, walks, hbp, hits, runs, home_runs, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 10, 4, 0, 0, 2, 1, 0, 0, 0)
+                    (game_id, player_id, plate_appearances, at_bats, walks, hbp, hits, runs, home_runs, sacrifice_hits, sacrifice_flies, team_side, player_name, appearance_seq)
+                VALUES ('G1', 10, 10, 4, 0, 0, 2, 1, 0, 0, 0, 'HOME', 'TestPlayer', 1)
                 """,
             ),
         )
@@ -415,8 +234,8 @@ def test_statistical_quality_gate_reports_pa_formula_mismatch():
             text(
                 """
                 INSERT INTO player_season_batting
-                    (player_id, season, league, plate_appearances, hits, runs, home_runs)
-                VALUES (10, 2025, 'REGULAR', 5, 2, 1, 0)
+                    (player_id, season, league, plate_appearances, hits, runs, home_runs, level, source)
+                VALUES (10, 2025, 'REGULAR', 5, 2, 1, 0, 'KBO1', 'ROLLUP')
                 """,
             ),
         )
@@ -479,6 +298,8 @@ def test_quality_gate_cli_prints_failed_error_results(monkeypatch, capsys):
             "pa_formula": dict(failed_category),
             "team_batting": dict(failed_category),
             "team_pitching": dict(failed_category),
+            "futures_batting": dict(failed_category),
+            "futures_pitching": dict(failed_category),
             "ok": False,
         },
     )
@@ -489,3 +310,51 @@ def test_quality_gate_cli_prints_failed_error_results(monkeypatch, capsys):
     assert "Statistical Quality Gate for 2025" in out
     assert "No Regular Season IDs found for 2025" in out
     assert "Overall Status: FAILURE" in out
+
+
+def test_validate_futures_batting_impossible_stat():
+    session = _make_session()
+    try:
+        # AB (10) > PA (5)
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, season, league, team_code, canonical_team_code, plate_appearances, at_bats, hits, runs, home_runs, level, source)
+                VALUES (999, 2025, 'FUTURES', 'SSG', 'SSG', 5, 10, 2, 1, 0, 'KBO2', 'PROFILE')
+                """,
+            ),
+        )
+        session.commit()
+
+        result = run_quality_gate(session, 2025)
+        assert result["ok"] is False
+        assert result["futures_batting"]["ok"] is False
+        assert len(result["futures_batting"]["mismatches"]) == 1
+        assert "Impossible batting stats" in result["futures_batting"]["mismatches"][0]["issue"]
+    finally:
+        session.close()
+
+
+def test_validate_futures_pitching_impossible_stat():
+    session = _make_session()
+    try:
+        # ER (5) > Runs Allowed (3)
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_pitching
+                    (player_id, season, league, team_code, canonical_team_code, innings_outs, runs_allowed, earned_runs, games, level, source)
+                VALUES (888, 2025, 'FUTURES', 'SSG', 'SSG', 9, 3, 5, 1, 'KBO2', 'PROFILE')
+                """,
+            ),
+        )
+        session.commit()
+
+        result = run_quality_gate(session, 2025)
+        assert result["ok"] is False
+        assert result["futures_pitching"]["ok"] is False
+        assert len(result["futures_pitching"]["mismatches"]) == 1
+        assert "Impossible pitching stats" in result["futures_pitching"]["mismatches"][0]["issue"]
+    finally:
+        session.close()

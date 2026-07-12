@@ -26,6 +26,7 @@ if worker_id:
 else:
     TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
+os.environ["OCI_DB_URL"] = ""
 
 import logging
 

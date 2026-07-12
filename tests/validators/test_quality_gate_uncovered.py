@@ -684,7 +684,9 @@ class TestRunQualityGate:
                 with patch.object(QualityGate, "validate_season_pa_formula", return_value={"ok": True}):
                     with patch.object(QualityGate, "validate_season_team_batting", return_value={"ok": True}):
                         with patch.object(QualityGate, "validate_season_team_pitching", return_value={"ok": True}):
-                            result = run_quality_gate(session, 2025)
+                            with patch.object(QualityGate, "validate_futures_batting", return_value={"ok": True}):
+                                with patch.object(QualityGate, "validate_futures_pitching", return_value={"ok": True}):
+                                    result = run_quality_gate(session, 2025)
         assert result["ok"] is True
 
     def test_any_failure_means_not_ok(self):
@@ -694,7 +696,9 @@ class TestRunQualityGate:
                 with patch.object(QualityGate, "validate_season_pa_formula", return_value={"ok": True}):
                     with patch.object(QualityGate, "validate_season_team_batting", return_value={"ok": True}):
                         with patch.object(QualityGate, "validate_season_team_pitching", return_value={"ok": True}):
-                            result = run_quality_gate(session, 2025)
+                            with patch.object(QualityGate, "validate_futures_batting", return_value={"ok": True}):
+                                with patch.object(QualityGate, "validate_futures_pitching", return_value={"ok": True}):
+                                    result = run_quality_gate(session, 2025)
         assert result["ok"] is False
 
     def test_returns_all_keys(self):
@@ -704,6 +708,17 @@ class TestRunQualityGate:
                 with patch.object(QualityGate, "validate_season_pa_formula", return_value={"ok": True}):
                     with patch.object(QualityGate, "validate_season_team_batting", return_value={"ok": True}):
                         with patch.object(QualityGate, "validate_season_team_pitching", return_value={"ok": True}):
-                            result = run_quality_gate(session, 2025)
-        for key in ("batting", "pitching", "pa_formula", "team_batting", "team_pitching", "ok"):
+                            with patch.object(QualityGate, "validate_futures_batting", return_value={"ok": True}):
+                                with patch.object(QualityGate, "validate_futures_pitching", return_value={"ok": True}):
+                                    result = run_quality_gate(session, 2025)
+        for key in (
+            "batting",
+            "pitching",
+            "pa_formula",
+            "team_batting",
+            "team_pitching",
+            "futures_batting",
+            "futures_pitching",
+            "ok",
+        ):
             assert key in result

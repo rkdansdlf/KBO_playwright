@@ -62,7 +62,7 @@ class SyncBaseProtocol(Protocol):
     target_session: Any
     oci_engine: Any
 
-    def sync_simple_table(  # noqa: PLR0913
+    def sync_simple_table(
         self,
         model: type[Base],
         conflict_keys: list[str],
@@ -780,7 +780,7 @@ class OCISyncBase:
         }
         return self._franchise_id_mapping_cache
 
-    def _bulk_copy_upsert(  # noqa: PLR0913
+    def _bulk_copy_upsert(
         self,
         table_name: str,
         records: list[dict[str, Any]],
@@ -1041,7 +1041,7 @@ class OCISyncBase:
                 logger.info("[info] Skipping game_metadata.source_payload for legacy OCI varchar column")
         return columns
 
-    def sync_simple_table(  # noqa: PLR0913
+    def sync_simple_table(
         self,
         model: type[Base],
         conflict_keys: list[str],
@@ -1140,7 +1140,7 @@ class OCISyncBase:
                 logger.warning("Skipping bad row in %s: %s", config.model.__tablename__, exc)
         return synced
 
-    def _sync_records_with_fallback(  # noqa: PLR0913
+    def _sync_records_with_fallback(
         self,
         config: SyncBatchConfig,
         records: list[dict[str, Any]],

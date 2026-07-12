@@ -1108,7 +1108,7 @@ def _collect_pitcher_basic2_additional(ctx: Basic2AdditionalContext) -> None:
         logger.info("   ✅ Basic2 %s 정렬 처리: %s행", display_name, total_processed)
 
 
-def crawl_pitcher_series(  # noqa: PLR0913
+def crawl_pitcher_series(
     year: int,
     series_key: str,
     limit: int | None = None,

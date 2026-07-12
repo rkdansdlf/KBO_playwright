@@ -100,14 +100,23 @@ class TestGetTransitTimesBatch:
         assert result == []
 
     async def test_batch_returns_transit_results(self, monkeypatch):
-        monkeypatch.setenv("KAKAO_REST_API_KEY", "key")
-        monkeypatch.setenv("NAVER_CLIENT_ID", "")
-        monkeypatch.setenv("NAVER_CLIENT_SECRET", "")
-        monkeypatch.setenv("TMAP_API_KEY", "")
+        async def mock_get_transit_time(req):
+            return TransitResult(
+                origin_label=req.origin_label,
+                transport_mode=req.mode,
+                duration_minutes=30,
+                distance_meters=5000,
+                source_api="kakao",
+                raw_response={},
+            )
+
+        monkeypatch.setattr("src.utils.map_api_client.get_transit_time", mock_get_transit_time)
 
         origins = [{"label": "A", "lat": 37.0, "lng": 127.0}]
         result = await get_transit_times_batch(origins)
         assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].origin_label == "A"
 
 
 class TestCallKakaoEdge:

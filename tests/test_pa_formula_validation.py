@@ -8,196 +8,27 @@ from src.validators.quality_gate import QualityGate, run_quality_gate
 
 
 def _make_session():
+    from src.models.base import Base
+
+    # Import all models to populate metadata
+    from src.models.game import Game, GameBattingStat, GamePitchingStat
+    from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+    from src.models.season import KboSeason
+    from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
+
+    # Monkeypatch to make all columns nullable for legacy manual insert test compatibility, then restore
+    original_nullables = {}
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            original_nullables[column] = column.nullable
+            column.nullable = True
+
     engine = create_engine("sqlite:///:memory:")
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                CREATE TABLE kbo_seasons (
-                    season_id INTEGER PRIMARY KEY,
-                    season_year INTEGER NOT NULL,
-                    league_type_code INTEGER NOT NULL,
-                    league_type_name TEXT
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE game (
-                    game_id TEXT PRIMARY KEY,
-                    game_status TEXT,
-                    season_id INTEGER,
-                    game_date DATE
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE game_batting_stats (
-                    game_id TEXT,
-                    player_id INTEGER,
-                    player_name TEXT,
-                    plate_appearances INTEGER,
-                    at_bats INTEGER,
-                    walks INTEGER,
-                    hbp INTEGER,
-                    sacrifice_hits INTEGER,
-                    sacrifice_flies INTEGER,
-                    hits INTEGER,
-                    runs INTEGER,
-                    home_runs INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE player_season_batting (
-                    player_id INTEGER,
-                    season INTEGER,
-                    league TEXT,
-                    team_code TEXT,
-                    canonical_team_code TEXT,
-                    games INTEGER,
-                    plate_appearances INTEGER,
-                    at_bats INTEGER,
-                    hits INTEGER,
-                    runs INTEGER,
-                    doubles INTEGER,
-                    triples INTEGER,
-                    home_runs INTEGER,
-                    rbi INTEGER,
-                    stolen_bases INTEGER,
-                    caught_stealing INTEGER,
-                    walks INTEGER,
-                    strikeouts INTEGER,
-                    intentional_walks INTEGER,
-                    hbp INTEGER,
-                    sacrifice_hits INTEGER,
-                    sacrifice_flies INTEGER,
-                    gdp INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE game_pitching_stats (
-                    game_id TEXT,
-                    player_id INTEGER,
-                    innings_outs INTEGER,
-                    wins INTEGER,
-                    strikeouts INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE player_season_pitching (
-                    player_id INTEGER,
-                    season INTEGER,
-                    league TEXT,
-                    team_code TEXT,
-                    canonical_team_code TEXT,
-                    games INTEGER,
-                    innings_outs INTEGER,
-                    innings_pitched FLOAT,
-                    era FLOAT,
-                    whip FLOAT,
-                    extra_stats JSON,
-                    wins INTEGER,
-                    losses INTEGER,
-                    saves INTEGER,
-                    holds INTEGER,
-                    runs_allowed INTEGER,
-                    earned_runs INTEGER,
-                    hits_allowed INTEGER,
-                    home_runs_allowed INTEGER,
-                    walks_allowed INTEGER,
-                    strikeouts INTEGER,
-                    intentional_walks INTEGER,
-                    hit_batters INTEGER,
-                    tbf INTEGER,
-                    complete_games INTEGER,
-                    shutouts INTEGER,
-                    wild_pitches INTEGER,
-                    balks INTEGER,
-                    sacrifices_allowed INTEGER,
-                    sacrifice_flies_allowed INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE team_season_batting (
-                    team_id TEXT,
-                    season INTEGER,
-                    league TEXT,
-                    games INTEGER,
-                    plate_appearances INTEGER,
-                    at_bats INTEGER,
-                    runs INTEGER,
-                    hits INTEGER,
-                    doubles INTEGER,
-                    triples INTEGER,
-                    home_runs INTEGER,
-                    rbi INTEGER,
-                    stolen_bases INTEGER,
-                    caught_stealing INTEGER,
-                    walks INTEGER,
-                    strikeouts INTEGER,
-                    intentional_walks INTEGER,
-                    hbp INTEGER,
-                    sacrifice_hits INTEGER,
-                    sacrifice_flies INTEGER,
-                    gdp INTEGER
-                )
-                """,
-            ),
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE team_season_pitching (
-                    team_id TEXT,
-                    season INTEGER,
-                    league TEXT,
-                    games INTEGER,
-                    wins INTEGER,
-                    losses INTEGER,
-                    saves INTEGER,
-                    holds INTEGER,
-                    innings_pitched FLOAT,
-                    runs_allowed INTEGER,
-                    earned_runs INTEGER,
-                    hits_allowed INTEGER,
-                    home_runs_allowed INTEGER,
-                    walks_allowed INTEGER,
-                    strikeouts INTEGER,
-                    innings_outs INTEGER,
-                    intentional_walks INTEGER,
-                    hit_batters INTEGER,
-                    tbf INTEGER,
-                    complete_games INTEGER,
-                    shutouts INTEGER,
-                    wild_pitches INTEGER,
-                    balks INTEGER,
-                    sacrifices_allowed INTEGER,
-                    sacrifice_flies_allowed INTEGER
-                )
-                """,
-            ),
-        )
+    Base.metadata.create_all(engine)
+
+    for column, val in original_nullables.items():
+        column.nullable = val
+
     return sessionmaker(bind=engine)()
 
 
@@ -231,8 +62,8 @@ def test_pa_formula_matches_when_formula_holds():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, hits, runs, home_runs)
-                VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1, 1, 0, 0)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, hits, runs, home_runs, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1, 1, 0, 0, 'HOME', 1)
                 """,
             ),
         )
@@ -265,8 +96,8 @@ def test_pa_formula_detects_violation():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0, 'HOME', 1)
                 """,
             ),
         )
@@ -304,8 +135,8 @@ def test_pa_formula_null_coalesce():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Player1', 3, 3, NULL, NULL, NULL, NULL)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Player1', 3, 3, NULL, NULL, NULL, NULL, 'HOME', 1)
                 """,
             ),
         )
@@ -338,9 +169,9 @@ def test_pa_formula_excludes_non_completed():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Player1', 10, 2, 0, 0, 0, 0),
-                       ('G2', 10, 'Player1', 5, 1, 0, 0, 0, 0)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Player1', 10, 2, 0, 0, 0, 0, 'HOME', 1),
+                       ('G2', 10, 'Player1', 5, 1, 0, 0, 0, 0, 'HOME', 1)
                 """,
             ),
         )
@@ -387,9 +218,9 @@ def test_pa_formula_multiple_players_mixed():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Good', 5, 2, 1, 0, 1, 1),
-                       ('G1', 20, 'Bad', 8, 3, 0, 0, 0, 0)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Good', 5, 2, 1, 0, 1, 1, 'HOME', 1),
+                       ('G1', 20, 'Bad', 8, 3, 0, 0, 0, 0, 'HOME', 1)
                 """,
             ),
         )
@@ -423,8 +254,8 @@ def test_pa_formula_all_zeros():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Zero', 0, 0, 0, 0, 0, 0)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Zero', 0, 0, 0, 0, 0, 0, 'HOME', 1)
                 """,
             ),
         )
@@ -455,8 +286,8 @@ def test_pa_formula_integrity_function():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1, 'HOME', 1)
                 """,
             ),
         )
@@ -486,8 +317,8 @@ def test_pa_formula_integrity_function_detects_violations():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0, 'HOME', 1)
                 """,
             ),
         )
@@ -522,8 +353,8 @@ def test_run_quality_gate_includes_pa_formula():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Player1', 5, 2, 1, 0, 1, 1, 'HOME', 1)
                 """,
             ),
         )
@@ -588,8 +419,8 @@ def test_run_quality_gate_fails_on_pa_formula_violation():
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
-                VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0)
+                    (game_id, player_id, player_name, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, team_side, appearance_seq)
+                VALUES ('G1', 10, 'Player1', 10, 4, 0, 0, 0, 0, 'HOME', 1)
                 """,
             ),
         )

@@ -128,7 +128,7 @@ class TeamStatAggregator:
         return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
 
     @staticmethod
-    def _build_aggregation_query(  # noqa: PLR0913
+    def _build_aggregation_query(
         query: TeamAggregationQuery | int | Iterable[Any],
         *,
         team_id: str | None = None,
@@ -158,7 +158,7 @@ class TeamStatAggregator:
             dry_run=dry_run,
         )
 
-    def aggregate_batting(  # noqa: PLR0913
+    def aggregate_batting(
         self,
         query: TeamAggregationQuery | int | Iterable[Any],
         *,
@@ -209,7 +209,7 @@ class TeamStatAggregator:
         msg = "Either an integer season or rows iterable must be provided"
         raise ValueError(msg)
 
-    def aggregate_pitching(  # noqa: PLR0913
+    def aggregate_pitching(
         self,
         query: TeamAggregationQuery | int | Iterable[Any],
         *,

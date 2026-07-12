@@ -43,7 +43,12 @@ class TestComplianceChecker:
         assert allowed
 
     @pytest.mark.asyncio
-    async def test_ensure_loaded_fetches_when_expired(self):
+    async def test_ensure_loaded_fetches_when_expired(self, monkeypatch):
+        from pathlib import Path
+
+        monkeypatch.setattr(
+            "src.utils.compliance._save_robots_snapshot", lambda url, content: Path("docs/robots/mocked_robots.txt")
+        )
         checker = ComplianceChecker()
         checker.last_fetch_time = 0
         with patch.object(checker, "_lock", new=MagicMock()):

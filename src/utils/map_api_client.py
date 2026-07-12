@@ -296,6 +296,13 @@ async def get_transit_time(req: TransitRequest) -> TransitResult | None:
         req: Req.
 
     """
+    kakao_key = os.getenv("KAKAO_REST_API_KEY", "")
+    naver_id = os.getenv("NAVER_CLIENT_ID", "")
+    naver_secret = os.getenv("NAVER_CLIENT_SECRET", "")
+    tmap_key = os.getenv("TMAP_API_KEY", "")
+    if not (kakao_key or (naver_id and naver_secret) or tmap_key):
+        return None
+
     async with httpx.AsyncClient(timeout=15) as client:
         for caller, api_name in [
             (_call_kakao, "kakao"),

@@ -142,6 +142,8 @@ class PlayerIdResolver:
             "빙그레": "빙그레",
             "MBC": "MBC",
             "청룡": "MBC",
+            "OT": "기타",
+            "기타": "기타",
         }
         self.TEAM_NAME_MAP.update(self.ALL_STAR_TEAMS)
 
