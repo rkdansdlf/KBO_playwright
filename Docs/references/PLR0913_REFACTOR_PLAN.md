@@ -32,4 +32,4 @@ All refactors followed the strategy documented in the original plan:
 - `ruff check --select PLR0913 src/` = 0 violations
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations
 - `ruff check src/ tests/ scripts/` = 0 errors
-- `pytest` = 8547+ passed in recent full-suite runs
+- `pytest --cov=src` = 9,210 passed, 24 skipped, 1 xfailed; total coverage 86.60%

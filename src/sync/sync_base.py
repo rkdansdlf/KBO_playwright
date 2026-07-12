@@ -77,7 +77,7 @@ class SyncBaseProtocol(Protocol):
         """Sync a simple table with upsert semantics."""
         ...
 
-    def _bulk_copy_upsert(  # noqa: PLR0913
+    def _bulk_copy_upsert(
         self,
         table_name: str,
         records: list[dict[str, Any]],
@@ -958,7 +958,7 @@ class OCISyncBase:
 
     def _run_target_session_with_retries(
         self,
-        operation: Callable[[], Any],  # noqa: ANN401
+        operation: Callable[[], Any],
         *,
         label: str,
         max_retries: int = 2,
