@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -23,6 +24,7 @@ from src.cli.smart_polling_gate import (
     main,
     main_async,
 )
+from src.constants import KST
 
 
 def _make_response(status_code: int, payload: dict[str, Any]) -> Any:
@@ -324,9 +326,7 @@ class TestCheckAllGamesFinished:
 
     @pytest.mark.asyncio
     async def test_unknown_status_today_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from datetime import date
-
-        today_str = date.today().strftime("%Y-%m-%d")
+        today_str = datetime.now(KST).strftime("%Y-%m-%d")
         games = [{"status": "UNKNOWN", "gameDate": today_str, "awayTeamName": "LG", "homeTeamName": "SSG"}]
         payload = {"result": {"games": games}}
         _patch_client(monkeypatch, _make_response(200, payload))

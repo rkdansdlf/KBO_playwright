@@ -2,12 +2,14 @@ import json
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from src.constants import KST
 from src.monitoring.trend_tracker import TrendTracker
 
 
 def test_send_degradation_alert_triggered(tmp_path):
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-    today = datetime.now().strftime("%Y%m%d")
+    now = datetime.now(KST)
+    yesterday = (now - timedelta(days=1)).strftime("%Y%m%d")
+    today = now.strftime("%Y%m%d")
 
     report1 = {
         "metrics": {
@@ -44,8 +46,9 @@ def test_send_degradation_alert_triggered(tmp_path):
 
 
 def test_detect_degradations_supports_completed_count_when_explicit(tmp_path):
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-    today = datetime.now().strftime("%Y%m%d")
+    now = datetime.now(KST)
+    yesterday = (now - timedelta(days=1)).strftime("%Y%m%d")
+    today = now.strftime("%Y%m%d")
 
     report1 = {
         "metrics": {
@@ -79,8 +82,9 @@ def test_detect_degradations_supports_completed_count_when_explicit(tmp_path):
 
 
 def test_send_degradation_alert_ignores_completed_count_by_default(tmp_path):
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-    today = datetime.now().strftime("%Y%m%d")
+    now = datetime.now(KST)
+    yesterday = (now - timedelta(days=1)).strftime("%Y%m%d")
+    today = now.strftime("%Y%m%d")
 
     report1 = {
         "metrics": {
@@ -114,7 +118,7 @@ def test_send_degradation_alert_ignores_completed_count_by_default(tmp_path):
 
 
 def test_load_reports_dedupes_by_metrics_date_with_latest_generated_at(tmp_path):
-    today = datetime.now().strftime("%Y%m%d")
+    today = datetime.now(KST).strftime("%Y%m%d")
     stale_report = {
         "metrics": {
             "date": today,
@@ -144,8 +148,9 @@ def test_load_reports_dedupes_by_metrics_date_with_latest_generated_at(tmp_path)
 
 
 def test_send_degradation_alert_quiet_when_healthy(tmp_path):
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-    today = datetime.now().strftime("%Y%m%d")
+    now = datetime.now(KST)
+    yesterday = (now - timedelta(days=1)).strftime("%Y%m%d")
+    today = now.strftime("%Y%m%d")
 
     report1 = {
         "metrics": {
