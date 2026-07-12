@@ -14,12 +14,17 @@ Exits with code 0 on success, code 1 on failure (to fail CI pipeline).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
+
+from sqlalchemy.exc import SQLAlchemyError
+
+from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -35,8 +40,15 @@ from src.utils.game_status import (
 )
 from src.utils.team_codes import normalize_kbo_game_id
 
+FUTURES_BATTING_TOLERANCE = 0.005
+FUTURES_PITCHING_TOLERANCE = 0.01
+FUTURES_FIP_TOLERANCE = 0.02
+
+
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+    from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
 logger = logging.getLogger(__name__)
 
@@ -459,6 +471,172 @@ def check_duplicate_games(session: Session, target: date) -> CheckResult:
     )
 
 
+def _check_futures_batting_row(session: Session, bat: PlayerSeasonBatting) -> list[str]:
+    pid = bat.player_id
+    pa = bat.plate_appearances or 0
+    ab = bat.at_bats or 0
+    hits = bat.hits or 0
+    doubles = bat.doubles or 0
+    triples = bat.triples or 0
+    hr = bat.home_runs or 0
+    so = bat.strikeouts or 0
+    walks = bat.walks or 0
+    hbp = bat.hbp or 0
+    sf = bat.sacrifice_flies or 0
+    avg = bat.avg
+    obp = bat.obp
+    slg = bat.slg
+
+    errors = []
+    if ab > pa or hits > ab or doubles + triples + hr > hits or so > pa or walks > pa:
+        msg = (
+            f"Player {pid} Batting: Impossible stats (PA={pa}, AB={ab}, H={hits}, "
+            f"2B+3B+HR={doubles + triples + hr}, SO={so}, BB={walks})"
+        )
+        errors.append(msg)
+
+    if ab > 0 and avg is not None:
+        expected_avg = round(hits / ab, 3)
+        if abs(avg - expected_avg) > FUTURES_BATTING_TOLERANCE:
+            errors.append(f"Player {pid} Batting: AVG mismatch: recorded={avg}, expected={expected_avg}")
+
+    obp_denom = ab + walks + hbp + sf
+    if obp_denom > 0 and obp is not None:
+        expected_obp = round((hits + walks + hbp) / obp_denom, 3)
+        if abs(obp - expected_obp) > FUTURES_BATTING_TOLERANCE:
+            errors.append(f"Player {pid} Batting: OBP mismatch: recorded={obp}, expected={expected_obp}")
+
+    if ab > 0 and slg is not None:
+        singles = hits - doubles - triples - hr
+        tb = singles + 2 * doubles + 3 * triples + 4 * hr
+        expected_slg = round(tb / ab, 3)
+        if abs(slg - expected_slg) > FUTURES_BATTING_TOLERANCE:
+            errors.append(f"Player {pid} Batting: SLG mismatch: recorded={slg}, expected={expected_slg}")
+
+    if bat.extra_stats and "woba" in bat.extra_stats:
+        with contextlib.suppress(SQLAlchemyError, ValueError):
+            lg_constants = SabermetricsCalculator.get_league_constants(session, bat.season, level="KBO2")
+            metrics = SabermetricsCalculator.calculate_batting_metrics(bat, lg_constants)
+            expected_woba = metrics["woba"]
+            woba = bat.extra_stats["woba"]
+            if abs(woba - expected_woba) > FUTURES_BATTING_TOLERANCE:
+                errors.append(f"Player {pid} Batting: wOBA mismatch: recorded={woba}, expected={expected_woba}")
+
+    return errors
+
+
+def _check_futures_pitching_row(session: Session, pit: PlayerSeasonPitching) -> list[str]:
+    pid = pit.player_id
+    games = pit.games or 0
+    wins = pit.wins or 0
+    losses = pit.losses or 0
+    saves = pit.saves or 0
+    holds = pit.holds or 0
+    outs = pit.innings_outs or 0
+    er = pit.earned_runs or 0
+    r_allowed = pit.runs_allowed or 0
+    hits_allowed = pit.hits_allowed or 0
+    walks_allowed = pit.walks_allowed or 0
+    so = pit.strikeouts or 0
+    era = pit.era
+    whip = pit.whip
+
+    errors = []
+    if er > r_allowed or wins + losses + saves + holds > games or outs < 0 or walks_allowed < 0 or so < 0:
+        msg = (
+            f"Player {pid} Pitching: Impossible stats (ER={er}, R={r_allowed}, "
+            f"W+L+S+H={wins + losses + saves + holds}, IP_outs={outs}, BB={walks_allowed}, SO={so})"
+        )
+        errors.append(msg)
+
+    if outs > 0 and era is not None:
+        expected_era = round((er * 27) / outs, 2)
+        if abs(era - expected_era) > FUTURES_PITCHING_TOLERANCE:
+            errors.append(f"Player {pid} Pitching: ERA mismatch: recorded={era}, expected={expected_era}")
+
+    if outs > 0 and whip is not None:
+        expected_whip = round(((walks_allowed + hits_allowed) * 3) / outs, 2)
+        if abs(whip - expected_whip) > FUTURES_PITCHING_TOLERANCE:
+            errors.append(f"Player {pid} Pitching: WHIP mismatch: recorded={whip}, expected={expected_whip}")
+
+    if pit.fip is not None:
+        with contextlib.suppress(SQLAlchemyError, ValueError):
+            lg_constants = SabermetricsCalculator.get_league_constants(session, pit.season, level="KBO2")
+            metrics = SabermetricsCalculator.calculate_pitching_metrics(pit, lg_constants)
+            expected_fip = metrics["fip_adj"]
+            if abs(pit.fip - expected_fip) > FUTURES_FIP_TOLERANCE:
+                errors.append(f"Player {pid} Pitching: FIP mismatch: recorded={pit.fip}, expected={expected_fip}")
+
+    return errors
+
+
+def check_futures_daily_integrity(session: Session, target: date) -> CheckResult:
+    """Check that Futures batting/pitching stats updated on target date are consistent.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
+    from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+
+    batting_records = (
+        session.query(PlayerSeasonBatting)
+        .filter(
+            PlayerSeasonBatting.league == "FUTURES",
+            func.date(PlayerSeasonBatting.updated_at) == target,
+        )
+        .all()
+    )
+
+    pitching_records = (
+        session.query(PlayerSeasonPitching)
+        .filter(
+            PlayerSeasonPitching.league == "FUTURES",
+            func.date(PlayerSeasonPitching.updated_at) == target,
+        )
+        .all()
+    )
+
+    if not batting_records and not pitching_records:
+        return CheckResult(
+            name="futures_daily_integrity",
+            passed=True,
+            message=f"No Futures records updated on {target.isoformat()}",
+            details={"checked_batting": 0, "checked_pitching": 0},
+        )
+
+    errors = []
+
+    for bat in batting_records:
+        errors.extend(_check_futures_batting_row(session, bat))
+
+    for pit in pitching_records:
+        errors.extend(_check_futures_pitching_row(session, pit))
+
+    if errors:
+        return CheckResult(
+            name="futures_daily_integrity",
+            passed=False,
+            message=f"Found {len(errors)} Futures integrity issues",
+            details={
+                "checked_batting": len(batting_records),
+                "checked_pitching": len(pitching_records),
+                "errors": errors[:5],
+            },
+        )
+
+    return CheckResult(
+        name="futures_daily_integrity",
+        passed=True,
+        message=f"Verified {len(batting_records)} batting and {len(pitching_records)} pitching Futures records",
+        details={
+            "checked_batting": len(batting_records),
+            "checked_pitching": len(pitching_records),
+        },
+    )
+
+
 CHECKS = [
     check_games_exist,
     check_game_status_populated,
@@ -468,6 +646,7 @@ CHECKS = [
     check_no_null_player_ids,
     check_winning_team_consistency,
     check_duplicate_games,
+    check_futures_daily_integrity,
 ]
 
 

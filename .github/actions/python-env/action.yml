@@ -42,13 +42,21 @@ runs:
       shell: bash
       run: uv pip install --system -r requirements.txt
 
+    - name: Get Playwright version
+      if: ${{ inputs.playwright == 'true' }}
+      id: playwright-version
+      shell: bash
+      run: |
+        PLAYWRIGHT_VERSION=$(python3 -m playwright --version | awk '{print $2}')
+        echo "version=$PLAYWRIGHT_VERSION" >> $GITHUB_OUTPUT
+
     - name: Cache Playwright browsers
       id: cache-playwright
       if: ${{ inputs.playwright == 'true' }}
       uses: actions/cache@v5
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ hashFiles('requirements.txt') }}
+        key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
     - name: Install Playwright
       if: ${{ inputs.playwright == 'true' }}

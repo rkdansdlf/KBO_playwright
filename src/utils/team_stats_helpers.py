@@ -131,7 +131,7 @@ def build_team_column_map(headers: list[str], header_map: dict[str, str]) -> dic
     return indexes
 
 
-def parse_team_stats_html(  # noqa: PLR0913
+def parse_team_stats_html(
     html: str,
     season: int,
     league: str,
@@ -203,7 +203,7 @@ def parse_team_stats_html(  # noqa: PLR0913
     return results
 
 
-def _parse_one_team_row(  # noqa: PLR0913
+def _parse_one_team_row(
     row: Tag,
     indexes: dict[str, int],
     season: int,

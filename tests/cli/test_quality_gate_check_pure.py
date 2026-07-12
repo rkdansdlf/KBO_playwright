@@ -19,6 +19,8 @@ class TestQualityGateCheckCLI:
             "pa_formula": {"ok": True, "mismatches": []},
             "team_batting": {"ok": True, "mismatches": []},
             "team_pitching": {"ok": True, "mismatches": []},
+            "futures_batting": {"ok": True, "mismatches": []},
+            "futures_pitching": {"ok": True, "mismatches": []},
         }
         with patch("src.cli.quality_gate_check.SessionLocal") as mock_session:
             mock_session.return_value.__enter__return_value = MagicMock()
@@ -34,6 +36,8 @@ class TestQualityGateCheckCLI:
             "pa_formula": {"ok": True, "mismatches": []},
             "team_batting": {"ok": True, "mismatches": []},
             "team_pitching": {"ok": True, "mismatches": []},
+            "futures_batting": {"ok": True, "mismatches": []},
+            "futures_pitching": {"ok": True, "mismatches": []},
         }
         with patch("src.cli.quality_gate_check.SessionLocal") as mock_session:
             mock_session.return_value.__enter__return_value = MagicMock()
@@ -50,6 +54,8 @@ class TestQualityGateCheckCLI:
             "pa_formula": {"ok": True, "mismatches": []},
             "team_batting": {"ok": True, "mismatches": []},
             "team_pitching": {"ok": True, "mismatches": []},
+            "futures_batting": {"ok": True, "mismatches": []},
+            "futures_pitching": {"ok": True, "mismatches": []},
         }
         with patch("src.cli.quality_gate_check.SessionLocal") as mock_session:
             mock_session.return_value.__enter__return_value = MagicMock()
@@ -65,6 +71,8 @@ class TestQualityGateCheckCLI:
             "pa_formula": {"ok": True, "mismatches": []},
             "team_batting": {"ok": True, "mismatches": []},
             "team_pitching": {"ok": True, "mismatches": []},
+            "futures_batting": {"ok": True, "mismatches": []},
+            "futures_pitching": {"ok": True, "mismatches": []},
         }
         with patch("src.cli.quality_gate_check.SessionLocal") as mock_session:
             mock_session.return_value.__enter__return_value = MagicMock()

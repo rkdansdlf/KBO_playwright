@@ -19,6 +19,7 @@ from src.cli.data_integrity_checker import (
     check_games_exist,
     check_no_null_player_ids,
     check_scores_populated,
+    check_futures_daily_integrity,
     main,
     run_integrity_checks,
 )
@@ -307,3 +308,42 @@ def _date(year: int, month: int, day: int) -> Any:
     from datetime import date
 
     return date(year, month, day)
+
+
+class TestCheckFuturesDailyIntegrity:
+    def test_no_records_passes(self) -> None:
+        session = MagicMock()
+        # Mock empty queries for batting and pitching
+        session.query.return_value.filter.return_value.all.side_effect = [[], []]
+
+        result = check_futures_daily_integrity(session, _date(2026, 6, 24))
+        assert result.passed is True
+        assert "No Futures records updated" in result.message
+
+    def test_impossible_batting_stat_fails(self) -> None:
+        session = MagicMock()
+
+        # Mock batting record with AB > PA
+        bat_record = MagicMock()
+        bat_record.player_id = 999
+        bat_record.plate_appearances = 5
+        bat_record.at_bats = 10
+        bat_record.hits = 2
+        bat_record.doubles = 0
+        bat_record.triples = 0
+        bat_record.home_runs = 0
+        bat_record.strikeouts = 0
+        bat_record.walks = 0
+        bat_record.hbp = 0
+        bat_record.sacrifice_flies = 0
+        bat_record.avg = 0.200
+        bat_record.obp = 0.200
+        bat_record.slg = 0.200
+        bat_record.extra_stats = None
+
+        # Return mock batting record and empty pitching list
+        session.query.return_value.filter.return_value.all.side_effect = [[bat_record], []]
+
+        result = check_futures_daily_integrity(session, _date(2026, 6, 24))
+        assert result.passed is False
+        assert "Player 999 Batting: Impossible stats (PA=5, AB=10" in result.details["errors"][0]
