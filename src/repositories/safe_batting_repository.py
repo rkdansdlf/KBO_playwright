@@ -328,19 +328,18 @@ def cleanup_invalid_batting_data(session: Session | None = None) -> int:
             cleanup_session.close()
 
 
-def save_futures_batting(player_id_db: int, rows: list[dict], league: str = "FUTURES", level: str = "KBO2") -> int:
+def save_futures_batting(
+    player_id_db: int,
+    player_name: str | None,
+    rows: list[dict],
+    league: str = "FUTURES",
+    level: str = "KBO2",
+) -> int:
     """Save futures batting.
 
     Args:
         player_id_db: Player Id Db.
-        rows: Rows.
-        league: League.
-        level: Level.
-        player_id_db: Player Id Db.
-        rows: Rows.
-        league: League.
-        level: Level.
-        player_id_db: Player Id Db.
+        player_name: Player Name.
         rows: Rows.
         league: League.
         level: Level.
@@ -351,12 +350,22 @@ def save_futures_batting(player_id_db: int, rows: list[dict], league: str = "FUT
     """
     if not rows:
         return 0
+
+    if not player_name:
+        from src.models.player import PlayerBasic
+
+        with SessionLocal() as session:
+            basic = session.query(PlayerBasic).filter_by(player_id=player_id_db).first()
+            player_name = basic.name if basic else "Unknown"
+
     payloads = [
         {
             "player_id": player_id_db,
+            "player_name": player_name,
             "season": r.get("season"),
             "league": league,
             "level": level,
+            "team_code": r.get("team_code"),
             "games": r.get("G"),
             "at_bats": r.get("AB"),
             "runs": r.get("R"),
