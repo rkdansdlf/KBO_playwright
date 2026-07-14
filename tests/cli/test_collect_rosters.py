@@ -48,3 +48,34 @@ class TestCollectRostersCLI:
                 main()
             except SystemExit:
                 pass
+
+    def test_save_chunk_success(self):
+        from src.cli.collect_rosters import save_chunk
+
+        with (
+            patch("src.cli.collect_rosters.SessionLocal") as mock_session_local,
+            patch("src.cli.collect_rosters.TeamRepository") as mock_repo_cls,
+        ):
+            mock_session = MagicMock()
+            mock_session_local.return_value = mock_session
+            mock_repo = MagicMock()
+            mock_repo.save_daily_rosters.return_value = 4
+            mock_repo_cls.return_value = mock_repo
+            save_chunk([{"team": "SSG"}])
+            mock_repo.save_daily_rosters.assert_called_once()
+            mock_session.close.assert_called_once()
+
+    def test_save_chunk_handles_exception(self):
+        from src.cli.collect_rosters import save_chunk
+
+        with (
+            patch("src.cli.collect_rosters.SessionLocal") as mock_session_local,
+            patch("src.cli.collect_rosters.TeamRepository") as mock_repo_cls,
+        ):
+            mock_session = MagicMock()
+            mock_session_local.return_value = mock_session
+            mock_repo = MagicMock()
+            mock_repo.save_daily_rosters.side_effect = ValueError("boom")
+            mock_repo_cls.return_value = mock_repo
+            save_chunk([{"team": "SSG"}])
+            mock_session.close.assert_called_once()
