@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from bs4 import BeautifulSoup
@@ -11,6 +12,19 @@ if TYPE_CHECKING:
     from bs4.element import Tag
 
 ValueParser = Callable[[str, str], object | None]
+
+
+@dataclass(frozen=True)
+class TeamStatsParseContext:
+    """Static values needed to parse a team-stat table."""
+
+    season: int
+    league: str
+    team_mapping: dict[str, str]
+    header_map: dict[str, str]
+    stat_fields: set[str]
+    float_fields: set[str]
+    value_parser: ValueParser | None = None
 
 
 def get_cell_value(cells: list[Any], index: int) -> str | None:
@@ -131,43 +145,12 @@ def build_team_column_map(headers: list[str], header_map: dict[str, str]) -> dic
     return indexes
 
 
-def parse_team_stats_html(
-    html: str,
-    season: int,
-    league: str,
-    team_mapping: dict[str, str],
-    header_map: dict[str, str],
-    stat_fields: set[str],
-    float_fields: set[str],
-    *,
-    value_parser: ValueParser | None = None,
-) -> list[dict[str, Any]]:
+def parse_team_stats_html(html: str, context: TeamStatsParseContext) -> list[dict[str, Any]]:
     """Parse team stats html.
 
     Args:
         html: Html.
-        season: Season year.
-        league: League.
-        team_mapping: Team Mapping.
-        header_map: Header Map.
-        stat_fields: Stat Fields.
-        float_fields: Float Fields.
-        value_parser: Value Parser.
-        html: Html.
-        season: Season year.
-        league: League.
-        team_mapping: Team Mapping.
-        header_map: Header Map.
-        stat_fields: Stat Fields.
-        float_fields: Float Fields.
-        value_parser: Value Parser.
-        html: Raw HTML content.
-        season: Season year.
-        league: League identifier.
-        team_mapping: Team Mapping.
-        header_map: Header Map.
-        stat_fields: Stat Fields.
-        float_fields: Float Fields.
+        context: Static values needed to parse the table.
 
     Returns:
         List of results.
@@ -182,22 +165,13 @@ def parse_team_stats_html(
     if not header_cells:
         header_cells = table.select("tr th")
     headers = [cell.get_text(strip=True).lower() for cell in header_cells]
-    indexes = build_team_column_map(headers, header_map)
+    indexes = build_team_column_map(headers, context.header_map)
     if "team_name" not in indexes:
         return []
     stat_rows = extract_team_stat_rows(table)
     results: list[dict[str, Any]] = []
     for row in stat_rows:
-        payload = _parse_one_team_row(
-            row,
-            indexes,
-            season,
-            league,
-            team_mapping,
-            stat_fields,
-            float_fields,
-            value_parser,
-        )
+        payload = _parse_one_team_row(row, indexes, context)
         if payload is not None:
             results.append(payload)
     return results
@@ -206,40 +180,14 @@ def parse_team_stats_html(
 def _parse_one_team_row(
     row: Tag,
     indexes: dict[str, int],
-    season: int,
-    league: str,
-    team_mapping: dict[str, str],
-    stat_fields: set[str],
-    float_fields: set[str],
-    value_parser: ValueParser | None,
+    context: TeamStatsParseContext,
 ) -> dict[str, Any] | None:
     """Parse one team row.
 
     Args:
         row: Row.
         indexes: Indexes.
-        season: Season year.
-        league: League.
-        team_mapping: Team Mapping.
-        stat_fields: Stat Fields.
-        float_fields: Float Fields.
-        value_parser: Value Parser.
-        row: Row.
-        indexes: Indexes.
-        season: Season year.
-        league: League.
-        team_mapping: Team Mapping.
-        stat_fields: Stat Fields.
-        float_fields: Float Fields.
-        value_parser: Value Parser.
-        row: Row.
-        indexes: Indexes.
-        season: Season year.
-        league: League identifier.
-        team_mapping: Team Mapping.
-        stat_fields: Stat Fields.
-        float_fields: Float Fields.
-        value_parser: Value Parser.
+        context: Static values needed to parse the table.
 
     Returns:
         The result of the operation.
@@ -253,10 +201,10 @@ def _parse_one_team_row(
     if not team_name:
         return None
     payload: dict[str, Any] = {
-        "team_id": resolve_team_id(team_name, team_mapping) or team_name,
+        "team_id": resolve_team_id(team_name, context.team_mapping) or team_name,
         "team_name": team_name,
-        "season": season,
-        "league": league,
+        "season": context.season,
+        "league": context.league,
     }
     extras: dict[str, Any] = {}
     for header_key, idx in indexes.items():
@@ -265,13 +213,13 @@ def _parse_one_team_row(
         value_str = get_cell_value(cells, idx)
         if value_str is None:
             continue
-        if value_parser:
-            value = value_parser(header_key, value_str)
+        if context.value_parser:
+            value = context.value_parser(header_key, value_str)
         else:
-            value = parse_numeric(value_str, as_float=header_key in float_fields)
+            value = parse_numeric(value_str, as_float=header_key in context.float_fields)
         if value is None:
             continue
-        if header_key in stat_fields:
+        if header_key in context.stat_fields:
             payload[header_key] = value
         else:
             extras[header_key] = value

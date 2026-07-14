@@ -115,6 +115,9 @@ class TeamRepository:
             }
             stmt = stmt.on_duplicate_key_update(update_dict)
             self.session.execute(stmt)
+        elif dialect == "oracle":
+            for val in values:
+                self.session.merge(TeamDailyRoster(**val))
         else:
             stmt = pg_insert(TeamDailyRoster).values(values)
             update_dict = {

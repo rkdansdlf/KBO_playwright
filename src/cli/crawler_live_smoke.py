@@ -9,6 +9,7 @@ import io
 import json
 import logging
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from src.constants import DATE_STR_LEN
@@ -25,6 +26,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SCOPES = ("schedule", "detail", "relay", "all")
+
+
+@dataclass(frozen=True, slots=True)
+class LiveSmokeOptions:
+    """Optional crawler dependencies and target-selection settings."""
+
+    game_id: str | None = None
+    limit: int = 1
+    schedule_crawler: ScheduleCrawler | None = None
+    detail_crawler: GameDetailCrawler | None = None
+    relay_crawler: RelayCrawler | None = None
 
 
 def _network_allowed(*, allow_network: bool) -> bool:
@@ -100,47 +112,35 @@ async def _resolve_candidates(
     return _select_schedule_candidates(games, target_date=target_date, limit=limit)
 
 
-async def run_smoke(
-    *,
-    target_date: str,
-    scope: str,
-    game_id: str | None = None,
-    limit: int = 1,
-    schedule_crawler: ScheduleCrawler | None = None,
-    detail_crawler: GameDetailCrawler | None = None,
-    relay_crawler: RelayCrawler | None = None,
-) -> dict[str, Any]:
+async def run_smoke(target_date: str, scope: str, options: LiveSmokeOptions | None = None) -> dict[str, Any]:
     """Run smoke.
 
     Args:
         target_date: Target date for the operation.
         scope: Scope.
-        game_id: Game ID.
-        limit: Limit.
-        schedule_crawler: Schedule Crawler.
-        detail_crawler: Detail Crawler.
-        relay_crawler: Relay Crawler.
+        options: Crawler dependencies and target-selection settings.
 
     Returns:
         Dictionary result.
 
     """
+    options = options or LiveSmokeOptions()
     if scope not in SCOPES:
         msg = f"Unsupported scope: {scope}"
         raise ValueError(msg)
-    if limit < 1:
+    if options.limit < 1:
         msg = "--limit must be at least 1"
         raise ValueError(msg)
 
     result = _base_result(target_date, scope)
-    schedule = schedule_crawler or ScheduleCrawler()
-    detail = detail_crawler or GameDetailCrawler()
-    relay = relay_crawler or RelayCrawler()
+    schedule = options.schedule_crawler or ScheduleCrawler()
+    detail = options.detail_crawler or GameDetailCrawler()
+    relay = options.relay_crawler or RelayCrawler()
 
     candidates = await _resolve_candidates(
         target_date=target_date,
-        game_id=game_id,
-        limit=limit,
+        game_id=options.game_id,
+        limit=options.limit,
         schedule_crawler=schedule,
     )
     result["candidates"] = [item["game_id"] for item in candidates]
@@ -268,20 +268,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             with contextlib.redirect_stdout(io.StringIO()):
                 result = asyncio.run(
                     run_smoke(
-                        target_date=args.date,
-                        scope=args.scope,
-                        game_id=args.game_id,
-                        limit=args.limit,
+                        args.date,
+                        args.scope,
+                        LiveSmokeOptions(game_id=args.game_id, limit=args.limit),
                     ),
                 )
             logger.info(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             result = asyncio.run(
                 run_smoke(
-                    target_date=args.date,
-                    scope=args.scope,
-                    game_id=args.game_id,
-                    limit=args.limit,
+                    args.date,
+                    args.scope,
+                    LiveSmokeOptions(game_id=args.game_id, limit=args.limit),
                 ),
             )
             _print_human_summary(result)

@@ -29,6 +29,20 @@ class MetricConfig:
     min_ip_outs: int | None = None
 
 
+@dataclass(frozen=True)
+class RankingGenerationRequest:
+    """Input datasets and qualifying thresholds for ranking generation."""
+
+    season: int
+    fielding_stats: Iterable[dict[str, Any]] | None = None
+    baserunning_stats: Iterable[dict[str, Any]] | None = None
+    batting_stats: Iterable[dict[str, Any]] | None = None
+    pitching_stats: Iterable[dict[str, Any]] | None = None
+    persist: bool = True
+    min_pa: int | None = None
+    min_ip_outs: int | None = None
+
+
 FIELDING_METRICS: list[MetricConfig] = [
     MetricConfig(name="fielding_pct", source="FIELDING", value_key="fielding_pct"),
     MetricConfig(name="putouts", source="FIELDING", value_key="putouts"),
@@ -106,38 +120,11 @@ class RankingAggregator:
         """
         self.repository = repository or RankingRepository()
 
-    def generate_rankings(
-        self,
-        season: int,
-        *,
-        fielding_stats: Iterable[dict[str, Any]] | None = None,
-        baserunning_stats: Iterable[dict[str, Any]] | None = None,
-        batting_stats: Iterable[dict[str, Any]] | None = None,
-        pitching_stats: Iterable[dict[str, Any]] | None = None,
-        persist: bool = True,
-        min_pa: int | None = None,
-        min_ip_outs: int | None = None,
-    ) -> list[dict[str, Any]]:
+    def generate_rankings(self, request: RankingGenerationRequest) -> list[dict[str, Any]]:
         """Generate rankings.
 
         Args:
-            season: Season year.
-            fielding_stats: Fielding Stats.
-            baserunning_stats: Baserunning Stats.
-            batting_stats: Batting Stats.
-            pitching_stats: Pitching Stats.
-            persist: Persist.
-            min_pa: Min Pa.
-            min_ip_outs: Min Ip Outs.
-            season: Season year.
-            fielding_stats: Fielding Stats.
-            baserunning_stats: Baserunning Stats.
-            batting_stats: Batting Stats.
-            pitching_stats: Pitching Stats.
-            persist: Persist.
-            min_pa: Min Pa.
-            min_ip_outs: Min Ip Outs.
-            season: Season year.
+            request: Input datasets and qualifying thresholds.
 
         Returns:
             List of results.
@@ -145,20 +132,34 @@ class RankingAggregator:
         """
         rankings: list[dict[str, Any]] = []
 
-        if fielding_stats:
-            rankings.extend(self._build_rankings(season, fielding_stats, FIELDING_METRICS))
-        if baserunning_stats:
-            rankings.extend(self._build_rankings(season, baserunning_stats, BASERUNNING_METRICS))
+        if request.fielding_stats:
+            rankings.extend(self._build_rankings(request.season, request.fielding_stats, FIELDING_METRICS))
+        if request.baserunning_stats:
+            rankings.extend(self._build_rankings(request.season, request.baserunning_stats, BASERUNNING_METRICS))
 
-        if batting_stats:
-            batting_configs = self._build_batting_configs(batting_stats, min_pa)
-            rankings.extend(self._build_rankings(season, batting_stats, batting_configs, kbo_min_pa=min_pa))
+        if request.batting_stats:
+            batting_configs = self._build_batting_configs(request.batting_stats, request.min_pa)
+            rankings.extend(
+                self._build_rankings(
+                    request.season,
+                    request.batting_stats,
+                    batting_configs,
+                    kbo_min_pa=request.min_pa,
+                ),
+            )
 
-        if pitching_stats:
-            pitching_configs = self._build_pitching_configs(pitching_stats, min_ip_outs)
-            rankings.extend(self._build_rankings(season, pitching_stats, pitching_configs, kbo_min_ip_outs=min_ip_outs))
+        if request.pitching_stats:
+            pitching_configs = self._build_pitching_configs(request.pitching_stats, request.min_ip_outs)
+            rankings.extend(
+                self._build_rankings(
+                    request.season,
+                    request.pitching_stats,
+                    pitching_configs,
+                    kbo_min_ip_outs=request.min_ip_outs,
+                ),
+            )
 
-        if persist and rankings:
+        if request.persist and rankings:
             self.repository.save_rankings(rankings)
         return rankings
 

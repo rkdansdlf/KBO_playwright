@@ -65,7 +65,11 @@ class PlayerBasicRepository:
                 if not rows:
                     return 0
 
-                session.execute(self._build_upsert_stmt(rows))
+                if self.dialect == "oracle":
+                    for row in rows:
+                        session.merge(PlayerBasic(**row))
+                else:
+                    session.execute(self._build_upsert_stmt(rows))
                 session.commit()
                 return len(rows)
             except SQLAlchemyError:
@@ -90,7 +94,10 @@ class PlayerBasicRepository:
             return
 
         data = self._build_payload(player_data)
-        session.execute(self._build_upsert_stmt(data))
+        if self.dialect == "oracle":
+            session.merge(PlayerBasic(**data))
+        else:
+            session.execute(self._build_upsert_stmt(data))
 
     def _unique_payload_rows(self, players: list[dict[str, Any]]) -> list[dict[str, Any]]:
         unique_payload = {}

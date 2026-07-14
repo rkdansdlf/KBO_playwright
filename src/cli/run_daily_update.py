@@ -53,7 +53,7 @@ from src.services.game_collection_service import (
     crawl_and_save_game_details,
 )
 from src.services.game_write_contract import GameWriteContract
-from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
+from src.services.p0_readiness import P0ReadinessOptions, build_p0_readiness, format_p0_readiness_summary
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.postgame_reconciliation_service import (
     ReconciliationRequest,
@@ -75,6 +75,25 @@ from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.sentry import init_sentry
 from src.utils.team_codes import normalize_kbo_game_id
+
+
+@dataclass(frozen=True, slots=True)
+class DailyUpdateOptions:
+    """Optional execution settings for a daily update run."""
+
+    sync: bool = False
+    headless: bool = True
+    limit: int | None = None
+    step_runner: Callable[[Sequence[str]], None] | None = None
+    summary_dir: str | Path | None = None
+    seed_tomorrow_preview: bool = False
+    run_auto_healer: bool = True
+    run_postgame_reconciliation: bool = True
+    postgame_reconcile_lookback_days: int = 3
+    fix: bool = False
+    skip_season_stats: bool = False
+    skip_oci_supporting_sync: bool = False
+    run_p0_non_game: bool = True
 
 
 @dataclass
@@ -1366,11 +1385,13 @@ def _build_p0_readiness_for_context(ctx: _RunContext) -> dict[str, Any]:
         with SessionLocal() as p0_session:
             return build_p0_readiness(
                 p0_session,
-                target_date=ctx.target_date,
-                lookback_days=0,
-                lookahead_days=0,
-                oci_skip_counts=ctx.oci_skip_counts,
-                oci_skip_game_ids=ctx.oci_skip_game_ids,
+                P0ReadinessOptions(
+                    target_date=ctx.target_date,
+                    lookback_days=0,
+                    lookahead_days=0,
+                    oci_skip_counts=ctx.oci_skip_counts,
+                    oci_skip_game_ids=ctx.oci_skip_game_ids,
+                ),
             )
     except DB_STEP_EXCEPTIONS:
         logger.exception("   Error building P0 readiness summary")
@@ -1593,61 +1614,34 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
     }
 
 
-async def run_update(
-    target_date: str,
-    *,
-    sync: bool = False,
-    headless: bool = True,
-    limit: int | None = None,
-    step_runner: Callable[[Sequence[str]], None] | None = None,
-    summary_dir: str | Path | None = None,
-    seed_tomorrow_preview: bool = False,
-    run_auto_healer: bool = True,
-    run_postgame_reconciliation: bool = True,
-    postgame_reconcile_lookback_days: int = 3,
-    fix: bool = False,
-    skip_season_stats: bool = False,
-    skip_oci_supporting_sync: bool = False,
-    run_p0_non_game: bool = True,
-) -> dict[str, Any]:
+async def run_update(target_date: str, options: DailyUpdateOptions | None = None) -> dict[str, Any]:
     """Handle main orchestration logic for postgame finalize and daily reconciliation.
 
     Args:
         target_date: Target date for the operation.
-        sync: Whether to sync to remote database.
-        headless: Whether to run the browser in headless mode.
-        limit: Limit.
-        step_runner: Step Runner.
-        summary_dir: Summary Dir.
-        seed_tomorrow_preview: Seed Tomorrow Preview.
-        run_auto_healer: Run Auto Healer.
-        run_postgame_reconciliation: Run Postgame Reconciliation.
-        postgame_reconcile_lookback_days: Postgame Reconcile Lookback Days.
-        fix: Fix.
-        skip_season_stats: Skip Season Stats.
-        skip_oci_supporting_sync: Skip Oci Supporting Sync.
-        run_p0_non_game: Run P0 Non Game.
+        options: Optional execution settings.
 
     """
+    options = options or DailyUpdateOptions()
     ctx = _RunContext(
         target_date=target_date,
-        sync=sync,
+        sync=options.sync,
         year=int(target_date[:4]),
         month=int(target_date[4:6]),
         today_kst=_today_kst(),
-        runner=step_runner or _run_python_step,
+        runner=options.step_runner or _run_python_step,
         write_contract=GameWriteContract(run_label=f"daily_update:{target_date}", log=logger.info),
-        summary_dir=summary_dir,
-        seed_tomorrow_preview=seed_tomorrow_preview,
-        run_auto_healer=run_auto_healer,
-        run_postgame_reconciliation=run_postgame_reconciliation,
-        postgame_reconcile_lookback_days=postgame_reconcile_lookback_days,
-        fix=fix,
-        skip_season_stats=skip_season_stats,
-        skip_oci_supporting_sync=skip_oci_supporting_sync,
-        run_p0_non_game=run_p0_non_game,
-        headless=headless,
-        limit=limit,
+        summary_dir=options.summary_dir,
+        seed_tomorrow_preview=options.seed_tomorrow_preview,
+        run_auto_healer=options.run_auto_healer,
+        run_postgame_reconciliation=options.run_postgame_reconciliation,
+        postgame_reconcile_lookback_days=options.postgame_reconcile_lookback_days,
+        fix=options.fix,
+        skip_season_stats=options.skip_season_stats,
+        skip_oci_supporting_sync=options.skip_oci_supporting_sync,
+        run_p0_non_game=options.run_p0_non_game,
+        headless=options.headless,
+        limit=options.limit,
         detail_recovery_queue=RecoveryManager(checkpoint_path=DETAIL_RECOVERY_QUEUE_PATH),
     )
     ctx.detail_recovery_queue.purge_detail_recovery_queue()  # type: ignore[union-attr]
@@ -1796,18 +1790,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         res = asyncio.run(
             run_update(
                 target_date,
-                sync=args.sync,
-                headless=args.headless,
-                limit=args.limit,
-                summary_dir=args.summary_dir,
-                seed_tomorrow_preview=args.seed_tomorrow_preview,
-                run_auto_healer=not args.skip_auto_healer,
-                run_postgame_reconciliation=not args.skip_postgame_reconciliation,
-                postgame_reconcile_lookback_days=args.postgame_reconcile_lookback_days,
-                fix=args.fix or os.getenv("DAILY_AUTO_REMEDIATION", "0") == "1",
-                skip_season_stats=args.skip_season_stats,
-                skip_oci_supporting_sync=args.skip_oci_supporting_sync,
-                run_p0_non_game=not args.skip_p0_non_game,
+                DailyUpdateOptions(
+                    sync=args.sync,
+                    headless=args.headless,
+                    limit=args.limit,
+                    summary_dir=args.summary_dir,
+                    seed_tomorrow_preview=args.seed_tomorrow_preview,
+                    run_auto_healer=not args.skip_auto_healer,
+                    run_postgame_reconciliation=not args.skip_postgame_reconciliation,
+                    postgame_reconcile_lookback_days=args.postgame_reconcile_lookback_days,
+                    fix=args.fix or os.getenv("DAILY_AUTO_REMEDIATION", "0") == "1",
+                    skip_season_stats=args.skip_season_stats,
+                    skip_oci_supporting_sync=args.skip_oci_supporting_sync,
+                    run_p0_non_game=not args.skip_p0_non_game,
+                ),
             ),
         )
     finally:

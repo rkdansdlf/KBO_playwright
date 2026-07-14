@@ -35,6 +35,9 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True, slots=True)
 class StoryContext:
     """StoryContext class."""
@@ -43,7 +46,20 @@ class StoryContext:
     existing_summaries: dict[str, str | None]
 
 
-logger = logging.getLogger(__name__)
+@dataclass(frozen=True, slots=True)
+class StoryRegenerationOptions:
+    """Selection, persistence, and reporting settings for story regeneration."""
+
+    game_ids: Sequence[str] = ()
+    dates: Sequence[str] = ()
+    seasons: Sequence[int] = ()
+    apply: bool = False
+    sync_oci: bool = False
+    oci_url: str | None = None
+    report_out: Path | None = None
+    backup_out: Path | None = None
+    log: Callable[[str], object] = logger.info
+
 
 STORY_REGEN_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
@@ -398,40 +414,21 @@ def _mark_story_oci_status(rows: Sequence[StoryRegenReportRow], *, apply: bool, 
                 row.oci_status = "skipped_missing_oci_url"
 
 
-def regenerate_game_stories(
-    *,
-    game_ids: Sequence[str] | None = None,
-    dates: Sequence[str] | None = None,
-    seasons: Sequence[int] | None = None,
-    apply: bool = False,
-    sync_oci: bool = False,
-    oci_url: str | None = None,
-    report_out: Path | None = None,
-    backup_out: Path | None = None,
-    log: Callable[[str], object] = logger.info,
-) -> list[StoryRegenReportRow]:
+def regenerate_game_stories(options: StoryRegenerationOptions | None = None) -> list[StoryRegenReportRow]:
     """Handle the regenerate game stories operation.
 
     Args:
-        game_ids: Game Ids.
-        dates: Dates.
-        seasons: Seasons.
-        apply: Apply.
-        sync_oci: Sync Oci.
-        oci_url: Oci URL.
-        report_out: Report Out.
-        backup_out: Backup Out.
-        log: Logger instance.
+        options: Selection, persistence, and reporting settings.
 
     Returns:
         List of results.
 
     """
-    target_game_ids = list(game_ids or [])
-
-    target_dates = list(dates or [])
-    target_seasons = list(seasons or [])
-    report_path = report_out or _default_report_path()
+    options = options or StoryRegenerationOptions()
+    target_game_ids = list(options.game_ids)
+    target_dates = list(options.dates)
+    target_seasons = list(options.seasons)
+    report_path = options.report_out or _default_report_path()
     rows: list[StoryRegenReportRow] = []
 
     with SessionLocal() as session:
@@ -444,10 +441,10 @@ def regenerate_game_stories(
         games_by_id = {game.game_id: game for game in games}
         builder = GameStoryBuilder()
 
-        if apply:
-            backup_path = backup_out or _default_backup_path()
+        if options.apply:
+            backup_path = options.backup_out or _default_backup_path()
             _write_backup(session, [game.game_id for game in games], backup_path)  # type: ignore[misc]
-            log(f"Backed up existing game story summaries: {backup_path}")
+            options.log(f"Backed up existing game story summaries: {backup_path}")
 
         _append_missing_game_rows(rows, target_game_ids, games_by_id)  # type: ignore[arg-type]
         existing_summary_rows, existing_summaries = _load_existing_story_summaries(session, games)
@@ -457,24 +454,24 @@ def regenerate_game_stories(
             games,
             builder,
             ctx=story_ctx,
-            apply=apply,
+            apply=options.apply,
         )
         rows.extend(processed_rows)
 
-        if apply:
+        if options.apply:
             try:
                 session.commit()
             except STORY_REGEN_DB_EXCEPTIONS:
                 session.rollback()
                 raise
 
-    if sync_oci:
-        _mark_story_oci_status(rows, apply=apply, oci_url=oci_url)
-        if apply and oci_url:
-            _sync_story_summaries(sync_game_ids, rows, oci_url=oci_url, log=log)
+    if options.sync_oci:
+        _mark_story_oci_status(rows, apply=options.apply, oci_url=options.oci_url)
+        if options.apply and options.oci_url:
+            _sync_story_summaries(sync_game_ids, rows, oci_url=options.oci_url, log=options.log)
 
     _write_report(rows, report_path)
-    log(f"Game story regeneration report: {report_path}")
+    options.log(f"Game story regeneration report: {report_path}")
     return rows
 
 
@@ -514,14 +511,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("Provide at least one of --game-id, --game-ids-file, --date, or --season")
 
     rows = regenerate_game_stories(
-        game_ids=game_ids,
-        dates=args.date,
-        seasons=args.season,
-        apply=args.apply,
-        sync_oci=args.sync_oci,
-        oci_url=os.getenv("OCI_DB_URL"),
-        report_out=args.report_out,
-        backup_out=args.backup_out,
+        StoryRegenerationOptions(
+            game_ids=game_ids,
+            dates=args.date,
+            seasons=args.season,
+            apply=args.apply,
+            sync_oci=args.sync_oci,
+            oci_url=os.getenv("OCI_DB_URL"),
+            report_out=args.report_out,
+            backup_out=args.backup_out,
+        ),
     )
     status_counts: dict[str, int] = {}
     for row in rows:

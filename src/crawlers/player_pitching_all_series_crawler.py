@@ -1108,32 +1108,34 @@ def _collect_pitcher_basic2_additional(ctx: Basic2AdditionalContext) -> None:
         logger.info("   ✅ Basic2 %s 정렬 처리: %s행", display_name, total_processed)
 
 
-def crawl_pitcher_series(
-    year: int,
-    series_key: str,
-    limit: int | None = None,
-    *,
-    headless: bool = True,
-    save_to_db: bool = False,
-    by_team: bool = False,
-) -> list[PitcherStats]:
+@dataclass(frozen=True, slots=True)
+class PitchingSeriesCrawlRequest:
+    """Selection and persistence settings for a series pitching crawl."""
+
+    year: int
+    series_key: str
+    limit: int | None = None
+    headless: bool = True
+    save_to_db: bool = False
+    by_team: bool = False
+
+
+def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherStats]:
     """Crawl pitcher series.
 
     Args:
-        year: Season year.
-        series_key: Series Key.
-        limit: Limit.
-        headless: Whether to run the browser in headless mode.
-        save_to_db: Save To Db.
-        by_team: By Team.
-        year: Season year.
-        series_key: Series Key.
-        limit: Limit.
+        request: Selection and persistence settings.
 
     Returns:
         List of results.
 
     """
+    year = request.year
+    series_key = request.series_key
+    limit = request.limit
+    headless = request.headless
+    save_to_db = request.save_to_db
+    by_team = request.by_team
     if series_key not in SERIES_MAPPING:
         msg = f"지원하지 않는 시리즈 키: {series_key}"
         raise ValueError(msg)
@@ -1260,12 +1262,14 @@ def main() -> None:
     if args.series:
         # 특정 시리즈만 크롤링
         crawl_pitcher_series(
-            year=args.year,
-            series_key=args.series,
-            limit=args.limit,
-            headless=args.headless,
-            save_to_db=args.save,
-            by_team=args.by_team,
+            PitchingSeriesCrawlRequest(
+                year=args.year,
+                series_key=args.series,
+                limit=args.limit,
+                headless=args.headless,
+                save_to_db=args.save,
+                by_team=args.by_team,
+            ),
         )
     else:
         # 모든 시리즈 크롤링 (타자 크롤러와 동일한 패턴)
@@ -1273,12 +1277,14 @@ def main() -> None:
         for series_key, series_info in SERIES_MAPPING.items():
             logger.info("\n🚀 %s 시작...", series_info["name"])
             series_data = crawl_pitcher_series(
-                year=args.year,
-                series_key=series_key,
-                limit=args.limit,
-                headless=args.headless,
-                save_to_db=args.save,  # 각 시리즈별로 저장
-                by_team=args.by_team,
+                PitchingSeriesCrawlRequest(
+                    year=args.year,
+                    series_key=series_key,
+                    limit=args.limit,
+                    headless=args.headless,
+                    save_to_db=args.save,
+                    by_team=args.by_team,
+                ),
             )
             all_data[series_key] = series_data
             policy.delay()

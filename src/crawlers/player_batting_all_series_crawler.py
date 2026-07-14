@@ -1145,35 +1145,34 @@ def _handle_batting_fallback(
     return all_players_data
 
 
-def crawl_series_batting_stats(
-    year: int | None = None,
-    series_key: str = "regular",
-    limit: int | None = None,
-    *,
-    save_to_db: bool = False,
-    headless: bool = False,
-    by_team: bool = False,
-) -> list[dict]:
+@dataclass(frozen=True, slots=True)
+class BattingSeriesCrawlRequest:
+    """Selection and persistence settings for a series batting crawl."""
+
+    year: int | None = None
+    series_key: str = "regular"
+    limit: int | None = None
+    save_to_db: bool = False
+    headless: bool = False
+    by_team: bool = False
+
+
+def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]:
     """특정 시리즈의 타자 기록을 크롤링.
 
     Args:
-        year: Season year.
-        series_key: Series Key.
-        limit: Limit.
-        save_to_db: Save To Db.
-        headless: Whether to run the browser in headless mode.
-        by_team: By Team.
-        year: 시즌 연도
-        series_key: 시리즈 키 (regular, exhibition, wildcard, etc.)
-        limit: 수집할 선수 수 제한
-        save_to_db: DB에 저장할지 여부
-        by_team: 팀별로 순회하며 크롤링할지 여부 (규정타석 미달 선수 포함 위해)
+        request: Selection and persistence settings.
 
     Returns:
         수집된 타자 기록 리스트
 
     """
-    year = year or datetime.now(KST).year
+    year = request.year or datetime.now(KST).year
+    series_key = request.series_key
+    limit = request.limit
+    save_to_db = request.save_to_db
+    headless = request.headless
+    by_team = request.by_team
 
     series_mapping = get_series_mapping()
 
@@ -1303,12 +1302,14 @@ def crawl_all_series(
     for series_key, series_info in series_mapping.items():
         logger.info("\n🚀 %s 시작...", series_info["name"])
         series_data = crawl_series_batting_stats(
-            year,
-            series_key,
-            limit,
-            save_to_db=save_to_db,
-            headless=headless,
-            by_team=by_team,
+            BattingSeriesCrawlRequest(
+                year=year,
+                series_key=series_key,
+                limit=limit,
+                save_to_db=save_to_db,
+                headless=headless,
+                by_team=by_team,
+            ),
         )
         all_series_data[series_key] = series_data
 
@@ -1333,12 +1334,14 @@ def main() -> None:
     if args.series:
         # 특정 시리즈만 크롤링
         crawl_series_batting_stats(
-            args.year,
-            args.series,
-            args.limit,
-            save_to_db=args.save,
-            headless=args.headless,
-            by_team=args.by_team,
+            BattingSeriesCrawlRequest(
+                year=args.year,
+                series_key=args.series,
+                limit=args.limit,
+                save_to_db=args.save,
+                headless=args.headless,
+                by_team=args.by_team,
+            ),
         )
     else:
         # 모든 시리즈 크롤링

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path.cwd()))
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.sync.oci_sync import OCISync
+from src.sync.sync_base import SimpleTableSyncOptions
 
 
 def sync_2002_2009():
@@ -30,17 +31,21 @@ def sync_2002_2009():
         logger.info("🚀 Syncing 2002-2009 PlayerSeasonBatting...")
         syncer.sync_simple_table(
             PlayerSeasonBatting,
-            ["player_id", "season", "league", "level"],
-            exclude_cols=["created_at", "updated_at"],
-            filters=filters_batting,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season", "league", "level"],
+                exclude_cols=["created_at", "updated_at"],
+                filters=filters_batting,
+            ),
         )
 
         logger.info("🚀 Syncing 2002-2009 PlayerSeasonPitching...")
         syncer.sync_simple_table(
             PlayerSeasonPitching,
-            ["player_id", "season", "league", "level"],
-            exclude_cols=["created_at", "updated_at"],
-            filters=filters_pitching,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season", "league", "level"],
+                exclude_cols=["created_at", "updated_at"],
+                filters=filters_pitching,
+            ),
         )
         logger.info("✅ Finished syncing 2002-2009 stats")
 

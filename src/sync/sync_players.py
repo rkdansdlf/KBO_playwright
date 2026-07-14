@@ -25,7 +25,7 @@ from src.models.player import (
     PlayerIdentity,
     PlayerMovement,
 )
-from src.sync.sync_base import SyncBaseProtocol
+from src.sync.sync_base import BulkCopyUpsertOptions, SimpleTableSyncOptions, SyncBaseProtocol
 
 
 class PlayerSyncMixin(SyncBaseProtocol):
@@ -37,10 +37,12 @@ class PlayerSyncMixin(SyncBaseProtocol):
         """Sync master player records (players table) from SQLite to OCI using bulk COPY upsert."""
         return self.sync_simple_table(
             Player,
-            conflict_keys=["kbo_person_id"],
-            exclude_cols=["id"],
-            batch_size=5000,
-            update_timestamp=True,
+            SimpleTableSyncOptions(
+                conflict_keys=["kbo_person_id"],
+                exclude_cols=["id"],
+                batch_size=5000,
+                update_timestamp=True,
+            ),
         )
 
     def sync_player_identities(self) -> int:
@@ -57,10 +59,12 @@ class PlayerSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             PlayerIdentity,
-            conflict_keys=[],
-            exclude_cols=["created_at", "updated_at", "id"],
-            filters=[PlayerIdentity.player_id.in_(valid_ids)],
-            transform_fn=_map_player_id,
+            SimpleTableSyncOptions(
+                conflict_keys=[],
+                exclude_cols=["created_at", "updated_at", "id"],
+                filters=[PlayerIdentity.player_id.in_(valid_ids)],
+                transform_fn=_map_player_id,
+            ),
         )
 
     def _get_player_id_mapping(self) -> dict[int, int]:
@@ -100,13 +104,15 @@ class PlayerSyncMixin(SyncBaseProtocol):
         """
         return self.sync_simple_table(
             PlayerBasic,
-            conflict_keys=["player_id"],
-            exclude_cols=[
-                "created_at",
-                "updated_at",
-            ],  # Let OCI handle timestamps if possible, or include them if needed
-            filters=None,
-            batch_size=5000,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id"],
+                exclude_cols=[
+                    "created_at",
+                    "updated_at",
+                ],  # Let OCI handle timestamps if possible, or include them if needed
+                filters=None,
+                batch_size=5000,
+            ),
         )
 
     def sync_player_basic_by_ids(self, player_ids: list[int]) -> int:
@@ -163,9 +169,11 @@ class PlayerSyncMixin(SyncBaseProtocol):
 
         self._bulk_copy_upsert(
             PlayerBasic.__tablename__,
-            records,
-            unique_cols=["player_id"],
-            update_timestamp=True,
+            BulkCopyUpsertOptions(
+                records=records,
+                unique_cols=["player_id"],
+                update_timestamp=True,
+            ),
         )
 
         synced = len(records)
@@ -244,10 +252,12 @@ class PlayerSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             PlayerMovement,
-            conflict_keys=["movement_date", "team_code", "player_name", "section"],
-            exclude_cols=["created_at", "updated_at", "id"],
-            transform_fn=_fix_team_code,
-            update_timestamp=True,
+            SimpleTableSyncOptions(
+                conflict_keys=["movement_date", "team_code", "player_name", "section"],
+                exclude_cols=["created_at", "updated_at", "id"],
+                transform_fn=_fix_team_code,
+                update_timestamp=True,
+            ),
         )
 
     def sync_fa_contracts(self) -> int:
@@ -255,9 +265,11 @@ class PlayerSyncMixin(SyncBaseProtocol):
         Base.metadata.create_all(self.oci_engine)
         return self.sync_simple_table(
             FAContract,
-            conflict_keys=["player_name", "year", "fa_type", "new_team"],
-            exclude_cols=["created_at", "updated_at", "id"],
-            update_timestamp=True,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_name", "year", "fa_type", "new_team"],
+                exclude_cols=["created_at", "updated_at", "id"],
+                update_timestamp=True,
+            ),
         )
 
     def sync_crawl_runs(self) -> int:
@@ -269,7 +281,9 @@ class PlayerSyncMixin(SyncBaseProtocol):
         """
         return self.sync_simple_table(
             CrawlRun,
-            conflict_keys=["label", "started_at"],
-            exclude_cols=["created_at", "updated_at", "id"],
-            update_timestamp=True,
+            SimpleTableSyncOptions(
+                conflict_keys=["label", "started_at"],
+                exclude_cols=["created_at", "updated_at", "id"],
+                update_timestamp=True,
+            ),
         )
