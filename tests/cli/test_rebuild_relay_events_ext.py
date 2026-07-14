@@ -11,6 +11,7 @@ import pytest
 
 from src.cli.rebuild_relay_events import (
     RebuildReportRow,
+    RelayRebuildOptions,
     _batter_from_description,
     _build_orm_events,
     _build_report_index,
@@ -472,13 +473,15 @@ class TestRebuildRelayEventsIntegration:
             patch("src.cli.rebuild_relay_events._write_report"),
         ):
             rows = rebuild_relay_events(
-                seasons=[2023],
-                game_ids=[],
-                apply=False,
-                sync_oci=False,
-                min_events=20,
-                report_out=str(tmp_path / "report.csv"),
-                backup_out=str(tmp_path / "backup.csv"),
+                RelayRebuildOptions(
+                    seasons=[2023],
+                    game_ids=[],
+                    apply=False,
+                    sync_oci=False,
+                    min_events=20,
+                    report_out=str(tmp_path / "report.csv"),
+                    backup_out=str(tmp_path / "backup.csv"),
+                ),
             )
         assert rows == []
 
@@ -532,13 +535,15 @@ class TestRebuildRelayEventsIntegration:
             mock_session_factory.return_value.__exit__ = MagicMock(return_value=False)
 
             rows = rebuild_relay_events(
-                seasons=[2023],
-                game_ids=["20230625LGSS0"],
-                apply=False,
-                sync_oci=False,
-                min_events=20,
-                report_out=str(tmp_path / "report.csv"),
-                backup_out=str(tmp_path / "backup.csv"),
+                RelayRebuildOptions(
+                    seasons=[2023],
+                    game_ids=["20230625LGSS0"],
+                    apply=False,
+                    sync_oci=False,
+                    min_events=20,
+                    report_out=str(tmp_path / "report.csv"),
+                    backup_out=str(tmp_path / "backup.csv"),
+                ),
             )
         assert len(rows) == 1
         assert rows[0].game_id == "20230625LGSS0"
@@ -664,12 +669,14 @@ class TestRebuildRelayEventsApply:
         from src.cli.rebuild_relay_events import rebuild_relay_events
 
         rows = rebuild_relay_events(
-            seasons=[2026],
-            game_ids=["g1"],
-            apply=True,
-            sync_oci=False,
-            report_out=tmp_path / "report.csv",
-            backup_out=tmp_path / "backup.csv",
+            RelayRebuildOptions(
+                seasons=[2026],
+                game_ids=["g1"],
+                apply=True,
+                sync_oci=False,
+                report_out=tmp_path / "report.csv",
+                backup_out=tmp_path / "backup.csv",
+            ),
         )
 
         assert len(rows) == 1
@@ -700,12 +707,14 @@ class TestRebuildRelayEventsApply:
         from src.cli.rebuild_relay_events import rebuild_relay_events
 
         rows = rebuild_relay_events(
-            seasons=[2026],
-            game_ids=["g1"],
-            apply=True,
-            sync_oci=False,
-            report_out=tmp_path / "report.csv",
-            backup_out=tmp_path / "backup.csv",
+            RelayRebuildOptions(
+                seasons=[2026],
+                game_ids=["g1"],
+                apply=True,
+                sync_oci=False,
+                report_out=tmp_path / "report.csv",
+                backup_out=tmp_path / "backup.csv",
+            ),
         )
 
         assert len(rows) == 1
@@ -741,13 +750,15 @@ class TestRebuildRelayEventsApply:
         from src.cli.rebuild_relay_events import rebuild_relay_events
 
         rebuild_relay_events(
-            seasons=[2026],
-            game_ids=["g1"],
-            apply=True,
-            sync_oci=True,
-            oci_sync_mode="specific-game",
-            report_out=tmp_path / "report.csv",
-            backup_out=tmp_path / "backup.csv",
+            RelayRebuildOptions(
+                seasons=[2026],
+                game_ids=["g1"],
+                apply=True,
+                sync_oci=True,
+                oci_sync_mode="specific-game",
+                report_out=tmp_path / "report.csv",
+                backup_out=tmp_path / "backup.csv",
+            ),
         )
         mock_sync_games.assert_called_once()
         mock_sync_events.assert_not_called()
@@ -781,13 +792,15 @@ class TestRebuildRelayEventsApply:
         from src.cli.rebuild_relay_events import rebuild_relay_events
 
         rebuild_relay_events(
-            seasons=[2026],
-            game_ids=["g1"],
-            apply=True,
-            sync_oci=True,
-            oci_sync_mode="events",
-            report_out=tmp_path / "report.csv",
-            backup_out=tmp_path / "backup.csv",
+            RelayRebuildOptions(
+                seasons=[2026],
+                game_ids=["g1"],
+                apply=True,
+                sync_oci=True,
+                oci_sync_mode="events",
+                report_out=tmp_path / "report.csv",
+                backup_out=tmp_path / "backup.csv",
+            ),
         )
         mock_sync_games.assert_not_called()
         mock_sync_events.assert_called_once()
@@ -801,12 +814,12 @@ class TestRebuildRelayEventsCli:
         run(["--season", "2026", "--game-id", "2026LGSS0", "--apply", "--sync-oci", "--oci-sync-mode", "specific-game"])
 
         mock_rebuild.assert_called_once()
-        kwargs = mock_rebuild.call_args.kwargs
-        assert kwargs["seasons"] == [2026]
-        assert kwargs["game_ids"] == ["2026LGSS0"]
-        assert kwargs["apply"] is True
-        assert kwargs["sync_oci"] is True
-        assert kwargs["oci_sync_mode"] == "specific-game"
+        options = mock_rebuild.call_args.args[0]
+        assert options.seasons == [2026]
+        assert options.game_ids == ["2026LGSS0"]
+        assert options.apply is True
+        assert options.sync_oci is True
+        assert options.oci_sync_mode == "specific-game"
 
     @patch("src.cli.rebuild_relay_events.run")
     def test_main(self, mock_run):

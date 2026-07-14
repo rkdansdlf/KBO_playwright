@@ -1,9 +1,42 @@
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
+
+
+class FakeAsyncClient:
+    def __init__(self, response):
+        self.response = response
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url):
+        return self.response
+
+
+class ErrorAsyncClient(FakeAsyncClient):
+    async def get(self, url):
+        raise httpx.HTTPError("request failed")
+
+
+class FakeResponseContext:
+    def __init__(self, *, raises_timeout=False):
+        self.raises_timeout = raises_timeout
+
+    async def __aenter__(self):
+        if self.raises_timeout:
+            raise TimeoutError("response wait timed out")
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
 
 
 class TestMapTeamName:
@@ -44,6 +77,41 @@ class TestDedupeTransactions:
 
     def test_empty_input(self):
         assert self.crawler._dedupe_transactions([]) == []
+
+
+class TestRun:
+    @pytest.mark.asyncio
+    async def test_run_uses_mobile_results_and_saves(self):
+        crawler = RosterTransactionCrawler()
+        data = [{"player_name": "mobile result"}]
+
+        with (
+            patch.object(crawler, "_crawl_mobile_page", new=AsyncMock(return_value=data)) as mobile,
+            patch.object(crawler, "_crawl_desktop_page", new=AsyncMock()) as desktop,
+            patch.object(crawler, "_save_to_db") as save,
+        ):
+            result = await crawler.run(save=True, target_date="2025-06-15")
+
+        assert result == data
+        mobile.assert_awaited_once_with(date(2025, 6, 15))
+        desktop.assert_not_awaited()
+        save.assert_called_once_with(data)
+
+    @pytest.mark.asyncio
+    async def test_run_falls_back_to_desktop_without_saving(self):
+        crawler = RosterTransactionCrawler()
+        data = [{"player_name": "desktop result"}]
+
+        with (
+            patch.object(crawler, "_crawl_mobile_page", new=AsyncMock(return_value=[])),
+            patch.object(crawler, "_crawl_desktop_page", new=AsyncMock(return_value=data)) as desktop,
+            patch.object(crawler, "_save_to_db") as save,
+        ):
+            result = await crawler.run(target_date="2025-06-15")
+
+        assert result == data
+        desktop.assert_awaited_once_with(date(2025, 6, 15))
+        save.assert_not_called()
 
 
 SAMPLE_MOBILE_HTML = """
@@ -146,6 +214,15 @@ class TestParseMobileHtml:
         result = self.crawler._parse_mobile_html(html, date(2025, 6, 15))
         assert len(result) == 0
 
+    def test_skips_unknown_team_blocks(self):
+        html = """
+        <h3>오늘자 선수 등록현황</h3>
+        <strong class="team">알 수 없는 팀</strong>
+        <ul><li><a href="?playerId=123">선수</a></li></ul>
+        """
+
+        assert self.crawler._parse_mobile_html(html, date(2025, 6, 15)) == []
+
 
 class TestParseAlternateMobile:
     def setup_method(self):
@@ -171,6 +248,58 @@ class TestParseAlternateMobile:
 
     def test_empty_alternate_returns_empty(self):
         result = self.crawler._parse_alternate_mobile("<html></html>", date(2025, 6, 15))
+        assert result == []
+
+
+class TestCrawlMobilePage:
+    @pytest.mark.asyncio
+    async def test_success_records_raw_page_and_parses_html(self):
+        crawler = RosterTransactionCrawler()
+        response = MagicMock(status_code=200, text="<html>mobile</html>")
+        parsed = [{"player_name": "parsed"}]
+
+        with (
+            patch("src.crawlers.roster_transaction_crawler.httpx.AsyncClient", return_value=FakeAsyncClient(response)),
+            patch("src.crawlers.roster_transaction_crawler.throttle.wait", new=AsyncMock()),
+            patch.object(crawler, "_parse_mobile_html", return_value=parsed) as parse,
+        ):
+            result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+
+        assert result == parsed
+        parse.assert_called_once_with("<html>mobile</html>", date(2025, 6, 15))
+        assert crawler._raw_pages == [
+            {
+                "source_key": "kbo_today_roster",
+                "url": "https://m.koreabaseball.com/Kbo/PlayerAdd.aspx?searchDate=2025-06-15",
+                "html": "<html>mobile</html>",
+                "status_code": 200,
+            },
+        ]
+
+    @pytest.mark.asyncio
+    async def test_non_ok_response_returns_empty(self):
+        crawler = RosterTransactionCrawler()
+        response = MagicMock(status_code=503, text="unavailable")
+
+        with (
+            patch("src.crawlers.roster_transaction_crawler.httpx.AsyncClient", return_value=FakeAsyncClient(response)),
+            patch("src.crawlers.roster_transaction_crawler.throttle.wait", new=AsyncMock()),
+        ):
+            result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+
+        assert result == []
+        assert crawler._raw_pages == []
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_empty(self):
+        crawler = RosterTransactionCrawler()
+
+        with (
+            patch("src.crawlers.roster_transaction_crawler.httpx.AsyncClient", return_value=ErrorAsyncClient(None)),
+            patch("src.crawlers.roster_transaction_crawler.throttle.wait", new=AsyncMock()),
+        ):
+            result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+
         assert result == []
 
 
@@ -250,3 +379,105 @@ class TestSaveToDb:
                     self.crawler._save_to_db(data)
 
         assert mock_repo.save.call_count == 1
+
+    def test_save_continues_after_individual_failure(self):
+        data = [
+            {"dedupe_key": "a", "player_name": "first"},
+            {"dedupe_key": "b", "player_name": "second"},
+        ]
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("src.crawlers.roster_transaction_crawler.SessionLocal", return_value=mock_session),
+            patch("src.crawlers.roster_transaction_crawler.save_raw_snapshots", return_value=0),
+            patch("src.crawlers.roster_transaction_crawler.RosterTransactionRepository") as mock_repo_cls,
+        ):
+            mock_repo = MagicMock()
+            mock_repo.save.side_effect = [None, RuntimeError("invalid transaction")]
+            mock_repo_cls.return_value = mock_repo
+            self.crawler._save_to_db(data)
+
+        assert mock_repo.save.call_count == 2
+        mock_session.commit.assert_called_once()
+        assert self.crawler._raw_pages == []
+
+
+class TestDesktopCrawl:
+    @pytest.mark.asyncio
+    async def test_crawls_all_teams_releases_and_closes_owned_pool(self):
+        crawler = RosterTransactionCrawler()
+        page = MagicMock()
+        page.goto = AsyncMock()
+        page.evaluate = AsyncMock()
+        page.wait_for_timeout = AsyncMock()
+        page.content = AsyncMock(return_value="<html>desktop</html>")
+        page.expect_response = MagicMock(return_value=FakeResponseContext())
+
+        pool = MagicMock()
+        pool.start = AsyncMock()
+        pool.acquire = AsyncMock(return_value=page)
+        pool.release = AsyncMock()
+        pool.close = AsyncMock()
+        team_results = [[{"player_id": 1, "player_name": "first"}], ValueError("team failed"), *([[]] * 8)]
+
+        with (
+            patch("src.crawlers.roster_transaction_crawler.AsyncPlaywrightPool", return_value=pool),
+            patch.object(crawler, "_extract_desktop_roster", new=AsyncMock(side_effect=team_results)),
+        ):
+            result = await crawler._crawl_desktop_page(date(2025, 6, 15))
+
+        assert len(result) == 1
+        pool.start.assert_awaited_once()
+        pool.release.assert_awaited_once_with(page)
+        pool.close.assert_awaited_once()
+        assert crawler._raw_pages[0]["source_key"] == "kbo_player_register"
+
+    @pytest.mark.asyncio
+    async def test_continues_when_calendar_response_times_out(self):
+        crawler = RosterTransactionCrawler()
+        page = MagicMock()
+        page.goto = AsyncMock()
+        page.evaluate = AsyncMock()
+        page.wait_for_timeout = AsyncMock()
+        page.content = AsyncMock(return_value="<html>desktop</html>")
+        page.expect_response = MagicMock(return_value=FakeResponseContext(raises_timeout=True))
+
+        pool = MagicMock()
+        pool.start = AsyncMock()
+        pool.acquire = AsyncMock(return_value=page)
+        pool.release = AsyncMock()
+        pool.close = AsyncMock()
+
+        with (
+            patch("src.crawlers.roster_transaction_crawler.AsyncPlaywrightPool", return_value=pool),
+            patch.object(crawler, "_extract_desktop_roster", new=AsyncMock(return_value=[])),
+        ):
+            result = await crawler._crawl_desktop_page(date(2025, 6, 15))
+
+        assert result == []
+        pool.release.assert_awaited_once_with(page)
+        pool.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_extract_desktop_roster_builds_transaction(self):
+        crawler = RosterTransactionCrawler()
+        page = MagicMock()
+        page.evaluate = AsyncMock(return_value=[{"player_id": "123", "player_name": "홍길동"}])
+
+        result = await crawler._extract_desktop_roster(page, "LG", date(2025, 6, 15))
+
+        assert result == [
+            {
+                "transaction_date": date(2025, 6, 15),
+                "team_id": "LG",
+                "player_id": 123,
+                "player_name": "홍길동",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+                "confidence": "high",
+                "dedupe_key": "2025-06-15_LG_홍길동_registered",
+            },
+        ]

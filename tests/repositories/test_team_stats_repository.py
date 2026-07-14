@@ -220,9 +220,7 @@ class TestTeamSeasonPitchingRepository:
         repo = TeamSeasonPitchingRepository()
         result = repo.upsert_many([{"team_id": "LG", "season": 2024, "league": "REGULAR", "era": 3.75}])
         assert result == 1
-        stmt_calls = [call[0][0] for call in mock_session.execute.call_args_list if "PRAGMA" not in str(call[0][0])]
-        assert len(stmt_calls) == 1
-        assert "ON CONFLICT" in str(stmt_calls[0])
+        assert mock_session.merge.call_count == 1
 
         mock_session.reset_mock()
         result_bulk = repo.upsert_many(
@@ -232,6 +230,7 @@ class TestTeamSeasonPitchingRepository:
             ]
         )
         assert result_bulk == 2
+        assert mock_session.merge.call_count == 2
 
     @patch("src.repositories.team_stats_repository.SessionLocal")
     @patch("src.repositories.team_stats_repository.Engine")

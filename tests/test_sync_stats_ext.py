@@ -31,9 +31,9 @@ def _make_syncer(session):
             self.synced_player_ids = []
             self.target_session = target or MagicMock()
 
-        def sync_simple_table(self, model, *, filters=None, **_kwargs):
+        def sync_simple_table(self, model, options):
             self.synced_player_ids = [
-                row.player_id for row in self.sqlite_session.query(model).filter(*(filters or [])).all()
+                row.player_id for row in self.sqlite_session.query(model).filter(*(options.filters or [])).all()
             ]
             return len(self.synced_player_ids)
 
@@ -67,7 +67,8 @@ def test_sync_pitcher_data_success_path():
                 self.sqlite_session = sess
                 self.target_session = target
 
-            def sync_simple_table(self, model, **_kwargs):
+            def sync_simple_table(self, model, options):
+                assert options.conflict_keys == ["player_id", "season", "league", "level"]
                 return 123
 
         syncer = _Syncer(session, MagicMock())
@@ -86,7 +87,8 @@ def test_sync_batting_data_success_path():
                 self.sqlite_session = sess
                 self.target_session = target
 
-            def sync_simple_table(self, model, **_kwargs):
+            def sync_simple_table(self, model, options):
+                assert options.conflict_keys == ["player_id", "season", "league", "level"]
                 return 500
 
         syncer = _Syncer(session, MagicMock())

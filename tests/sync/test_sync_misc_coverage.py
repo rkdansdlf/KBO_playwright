@@ -196,7 +196,7 @@ class TestMiscSyncMixinExtended:
         result = mixin.sync_teams()
 
         assert result == 1
-        records = mixin._bulk_copy_upsert.call_args.args[1]
+        records = mixin._bulk_copy_upsert.call_args.args[1].records
         assert records[0]["aliases"] == "{}"
 
     def test_sync_teams_without_franchise_id(self, mixin):
@@ -252,7 +252,7 @@ class TestMiscSyncMixinExtended:
     def test_sync_rag_chunks_transform_pads_short_embedding(self, mixin):
         mixin.sync_simple_table.return_value = 1
         mixin.sync_rag_chunks()
-        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+        transform_fn = mixin.sync_simple_table.call_args.args[1].transform_fn
 
         result = transform_fn({"embedding": "[1.0, 2.0]"})
 
@@ -263,7 +263,7 @@ class TestMiscSyncMixinExtended:
     def test_sync_rag_chunks_transform_truncates_and_normalizes_long_embedding(self, mixin):
         mixin.sync_simple_table.return_value = 1
         mixin.sync_rag_chunks()
-        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+        transform_fn = mixin.sync_simple_table.call_args.args[1].transform_fn
 
         result = transform_fn({"embedding": [1.0] * 300})
 
@@ -273,7 +273,7 @@ class TestMiscSyncMixinExtended:
     def test_sync_rag_chunks_transform_ignores_invalid_embedding_json(self, mixin):
         mixin.sync_simple_table.return_value = 1
         mixin.sync_rag_chunks()
-        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+        transform_fn = mixin.sync_simple_table.call_args.args[1].transform_fn
 
         result = transform_fn({"embedding": "not-json"})
 
@@ -318,7 +318,7 @@ class TestMiscSyncMixinExtended:
         result = getattr(mixin, method_name)()
 
         assert result == 2
-        assert mixin.sync_simple_table.call_args.kwargs["filters"] is None
+        assert mixin.sync_simple_table.call_args.args[1].filters is None
 
     def test_sync_stadium_realtime_all(self, mixin):
         mixin.sync_transit_times = MagicMock(return_value=1)
@@ -419,7 +419,7 @@ class TestMiscSyncMixinExtended:
         mixin._get_franchise_id_mapping.return_value = {1: 100}
         mixin.sync_simple_table.return_value = 4
         mixin.sync_team_code_map()
-        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+        transform_fn = mixin.sync_simple_table.call_args.args[1].transform_fn
 
         result = transform_fn({"franchise_id": None, "curr_code": "LG"})
 
@@ -428,7 +428,7 @@ class TestMiscSyncMixinExtended:
     def test_sync_team_code_map_transform_maps_known_franchise_id(self, mixin):
         mixin._get_franchise_id_mapping.return_value = {1: 100}
         mixin.sync_team_code_map()
-        transform_fn = mixin.sync_simple_table.call_args.kwargs["transform_fn"]
+        transform_fn = mixin.sync_simple_table.call_args.args[1].transform_fn
 
         result = transform_fn({"franchise_id": 1, "curr_code": "LG"})
 

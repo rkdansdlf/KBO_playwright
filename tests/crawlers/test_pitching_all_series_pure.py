@@ -6,6 +6,7 @@ import pytest
 
 from src.crawlers.player_pitching_all_series_crawler import (
     PitcherStats,
+    PitchingSeriesCrawlRequest,
     Basic2AdditionalContext,
     Basic2PageContext,
     PitcherBasic1Context,
@@ -537,7 +538,9 @@ class TestPitchingPageParsers:
             ),
             patch("src.crawlers.player_pitching_all_series_crawler.save_pitching_stats_to_db", return_value=1) as save,
         ):
-            result = crawl_pitcher_series(2025, "regular", save_to_db=True, headless=False)
+            result = crawl_pitcher_series(
+                PitchingSeriesCrawlRequest(year=2025, series_key="regular", save_to_db=True, headless=False),
+            )
 
         assert result == [stats]
         playwright.chromium.launch.assert_called_once_with(headless=False)
@@ -547,7 +550,7 @@ class TestPitchingPageParsers:
 
     def test_crawl_pitcher_series_rejects_unknown_series(self):
         with pytest.raises(ValueError, match="지원하지 않는 시리즈"):
-            crawl_pitcher_series(2025, "unknown")
+            crawl_pitcher_series(PitchingSeriesCrawlRequest(year=2025, series_key="unknown"))
 
     def test_team_option_helpers_select_available_team(self):
         page = MagicMock()

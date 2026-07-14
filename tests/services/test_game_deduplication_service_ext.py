@@ -7,6 +7,7 @@ import pytest
 from src.services.game_deduplication_service import (
     DEFAULT_PRIMARY_CODE_PREFERENCES,
     DeduplicationWindow,
+    PrimaryGameMarkOptions,
     _CandidateQuery,
     _load_candidates,
     _load_slots,
@@ -173,7 +174,7 @@ class TestMarkPrimaryGames:
         conn.commit()
         conn.close()
         window = DeduplicationWindow(label="w1", start_date="2024-03-15", end_date="2024-03-15")
-        result = mark_primary_games(db_path, windows=[window], reset_all=True)
+        result = mark_primary_games(db_path, PrimaryGameMarkOptions(windows=[window], reset_all=True))
         assert result.scanned_slots == 1
         assert result.marked_primary == 1
 
@@ -183,7 +184,7 @@ class TestMarkPrimaryGames:
         _add_stats(conn, "20240315LGSS1", 3)
         conn.commit()
         conn.close()
-        result = mark_primary_games(db_path, windows=None, reset_all=True)
+        result = mark_primary_games(db_path, PrimaryGameMarkOptions(windows=None, reset_all=True))
         assert result.scanned_slots >= 0
 
     def test_clear_year_resets_primary(self, db_path):
@@ -193,7 +194,7 @@ class TestMarkPrimaryGames:
         conn.commit()
         conn.close()
         window = DeduplicationWindow(label="w1", start_date="2024-03-15", end_date="2024-03-15", clear_year=2024)
-        result = mark_primary_games(db_path, windows=[window], reset_all=False)
+        result = mark_primary_games(db_path, PrimaryGameMarkOptions(windows=[window], reset_all=False))
         conn2 = sqlite3.connect(db_path)
         row = conn2.execute("SELECT is_primary FROM game WHERE game_id='20240315LGSS0'").fetchone()
         conn2.close()

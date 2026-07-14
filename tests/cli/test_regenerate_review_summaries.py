@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from src.cli.regenerate_review_summaries import (
     ReviewRegenReportRow,
+    ReviewRegenerationOptions,
     _append_missing_review_rows,
     _build_review_report_row,
     _collect_game_ids,
@@ -254,7 +255,9 @@ def test_regenerate_review_summaries_orchestrator_dry_run(tmp_path):
         patch("src.cli.regenerate_review_summaries._write_report") as mock_write,
     ):
         mock_session_local.return_value.__enter__.return_value = MagicMock()
-        rows = regenerate_review_summaries(game_ids=["G1"], report_out=report_path, log=MagicMock())
+        rows = regenerate_review_summaries(
+            ReviewRegenerationOptions(game_ids=["G1"], report_out=report_path, log=MagicMock()),
+        )
 
     assert rows == processed
     mock_write.assert_called_once_with(processed, report_path)
@@ -273,7 +276,12 @@ def test_regenerate_review_summaries_apply_commit_failure_rolls_back(tmp_path):
         mock_session_local.return_value.__enter__.return_value = session
         try:
             regenerate_review_summaries(
-                game_ids=["G1"], apply=True, report_out=tmp_path / "report.csv", log=MagicMock()
+                ReviewRegenerationOptions(
+                    game_ids=["G1"],
+                    apply=True,
+                    report_out=tmp_path / "report.csv",
+                    log=MagicMock(),
+                ),
             )
             raise AssertionError("expected RuntimeError")
         except RuntimeError:

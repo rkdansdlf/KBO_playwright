@@ -17,6 +17,13 @@ class TestSync20022009:
 
             sync_2002_2009()
             assert mock_syncer.sync_simple_table.call_count == 2
+            assert mock_syncer.sync_simple_table.call_args_list[0].args[1].conflict_keys == [
+                "player_id",
+                "season",
+                "league",
+                "level",
+            ]
+            assert mock_syncer.sync_simple_table.call_args_list[1].args[1].filters is not None
 
     def test_sync_no_url(self):
         with patch("scripts.sync_2002_2009.load_dotenv"), patch("scripts.sync_2002_2009.os.getenv", return_value=None):

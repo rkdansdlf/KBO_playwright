@@ -328,7 +328,7 @@ class TestTeamStatAggregatorMemCoverage:
             sacrifice_flies=1,
             gdp=0,
         )
-        results = TeamStatAggregator().aggregate_batting([p1, p2])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[p1, p2]))
         assert len(results) == 2
         by_team = {r["team_id"]: r for r in results}
         assert by_team["OB"]["hits"] == 10
@@ -383,7 +383,7 @@ class TestTeamStatAggregatorMemCoverage:
             sacrifice_flies=0,
             gdp=1,
         )
-        results = TeamStatAggregator().aggregate_batting([p1, p2])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[p1, p2]))
         assert len(results) == 2
 
     def test_batting_mem_skips_invalid_team_code(self):
@@ -415,7 +415,7 @@ class TestTeamStatAggregatorMemCoverage:
             sacrifice_flies=0,
             gdp=0,
         )
-        results = TeamStatAggregator().aggregate_batting([p1, p2, p3, p4, p5, p6])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[p1, p2, p3, p4, p5, p6]))
         assert len(results) == 1
         assert results[0]["team_id"] == "OB"
 
@@ -457,7 +457,7 @@ class TestTeamStatAggregatorMemCoverage:
             sacrifice_flies=0,
             gdp=0,
         )
-        results = TeamStatAggregator().aggregate_batting([p1, p2])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[p1, p2]))
         assert len(results) == 1
         assert results[0]["hits"] == 5
 
@@ -541,7 +541,7 @@ class TestTeamStatAggregatorMemCoverage:
             sacrifice_flies=0,
             gdp=1,
         )
-        results = TeamStatAggregator().aggregate_batting([p1, p2])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[p1, p2]))
         assert results[0]["games"] == 12
 
     def test_batting_mem_uses_default_team_names(self):
@@ -568,7 +568,7 @@ class TestTeamStatAggregatorMemCoverage:
             sacrifice_flies=0,
             gdp=0,
         )
-        results = TeamStatAggregator().aggregate_batting([p1])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[p1]))
         assert results[0]["team_name"] == "두산"
 
     def test_batting_mem_canonical_team_code_preferred(self):
@@ -596,7 +596,7 @@ class TestTeamStatAggregatorMemCoverage:
             sacrifice_flies=0,
             gdp=0,
         )
-        results = TeamStatAggregator().aggregate_batting([p1])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[p1]))
         assert results[0]["team_id"] == "SSG"
 
     def test_pitching_mem_multiple_teams(self):
@@ -640,7 +640,7 @@ class TestTeamStatAggregatorMemCoverage:
             hit_batters=1,
             strikeouts=18,
         )
-        results = TeamStatAggregator().aggregate_pitching([p1, p2])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[p1, p2]))
         assert len(results) == 2
 
     def test_pitching_mem_skips_invalid_team_code(self):
@@ -667,7 +667,7 @@ class TestTeamStatAggregatorMemCoverage:
             hit_batters=0,
             strikeouts=15,
         )
-        results = TeamStatAggregator().aggregate_pitching([p1, p2, p3, p4])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[p1, p2, p3, p4]))
         assert len(results) == 1
         assert results[0]["team_id"] == "OB"
 
@@ -702,7 +702,7 @@ class TestTeamStatAggregatorMemCoverage:
             hit_batters=0,
             strikeouts=15,
         )
-        results = TeamStatAggregator().aggregate_pitching([p1, p2])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[p1, p2]))
         assert len(results) == 1
 
     def test_pitching_mem_uses_team_games_map(self):
@@ -773,7 +773,7 @@ class TestTeamStatAggregatorMemCoverage:
             hit_batters=1,
             strikeouts=20,
         )
-        results = TeamStatAggregator().aggregate_pitching([p1, p2])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[p1, p2]))
         assert results[0]["games"] == 7
 
     def test_pitching_mem_uses_default_team_names(self):
@@ -797,7 +797,7 @@ class TestTeamStatAggregatorMemCoverage:
             hit_batters=0,
             strikeouts=15,
         )
-        results = TeamStatAggregator().aggregate_pitching([p1])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[p1]))
         assert results[0]["team_name"] == "롯데"
 
     def test_pitching_mem_canonical_team_code_preferred(self):
@@ -822,7 +822,7 @@ class TestTeamStatAggregatorMemCoverage:
             hit_batters=0,
             strikeouts=15,
         )
-        results = TeamStatAggregator().aggregate_pitching([p1])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[p1]))
         assert results[0]["team_id"] == "SSG"
 
     def test_pitching_mem_ties_default_zero(self):
@@ -846,15 +846,15 @@ class TestTeamStatAggregatorMemCoverage:
             hit_batters=0,
             strikeouts=15,
         )
-        results = TeamStatAggregator().aggregate_pitching([p1])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[p1]))
         assert results[0]["ties"] == 0
 
     def test_batting_mem_empty_list(self):
-        results = TeamStatAggregator().aggregate_batting([])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[]))
         assert results == []
 
     def test_pitching_mem_empty_list(self):
-        results = TeamStatAggregator().aggregate_pitching([])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[]))
         assert results == []
 
     def test_batting_mem_all_invalid_team_codes(self):
@@ -886,7 +886,7 @@ class TestTeamStatAggregatorMemCoverage:
             triples=0,
             home_runs=0,
         )
-        results = TeamStatAggregator().aggregate_batting([p1, p2])
+        results = TeamStatAggregator().aggregate_batting(TeamAggregationQuery(rows=[p1, p2]))
         assert results == []
 
     def test_pitching_mem_all_invalid_team_codes(self):
@@ -910,7 +910,7 @@ class TestTeamStatAggregatorMemCoverage:
             hit_batters=0,
             home_runs_allowed=0,
         )
-        results = TeamStatAggregator().aggregate_pitching([p1, p2])
+        results = TeamStatAggregator().aggregate_pitching(TeamAggregationQuery(rows=[p1, p2]))
         assert results == []
 
 
@@ -918,21 +918,21 @@ class TestTeamStatAggregatorQueryDispatch:
     def test_aggregate_batting_with_int_season_requires_session(self):
         aggregator = TeamStatAggregator(session=None)
         with pytest.raises(ValueError, match="Database session is required"):
-            aggregator.aggregate_batting(2025)
+            aggregator.aggregate_batting(TeamAggregationQuery(season=2025))
 
     def test_aggregate_pitching_with_int_season_requires_session(self):
         aggregator = TeamStatAggregator(session=None)
         with pytest.raises(ValueError, match="Database session is required"):
-            aggregator.aggregate_pitching(2025)
+            aggregator.aggregate_pitching(TeamAggregationQuery(season=2025))
 
     def test_aggregate_batting_with_no_rows_raises(self):
         aggregator = TeamStatAggregator(session=None)
-        with pytest.raises(ValueError, match="Either an integer season or rows iterable must be provided"):
+        with pytest.raises(ValueError, match="TeamAggregationQuery requires season or rows"):
             aggregator.aggregate_batting(TeamAggregationQuery())
 
     def test_aggregate_pitching_with_no_rows_raises(self):
         aggregator = TeamStatAggregator(session=None)
-        with pytest.raises(ValueError, match="Either an integer season or rows iterable must be provided"):
+        with pytest.raises(ValueError, match="TeamAggregationQuery requires season or rows"):
             aggregator.aggregate_pitching(TeamAggregationQuery())
 
     def test_aggregate_batting_with_query_object(self):
