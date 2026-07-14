@@ -17,6 +17,12 @@ class TestFastSyncStats:
 
             fast_sync_stats()
             assert mock_syncer.sync_simple_table.call_count == 2
+            assert mock_syncer.sync_simple_table.call_args_list[0].args[1].conflict_keys == [
+                "player_id",
+                "season",
+                "league",
+                "level",
+            ]
 
     def test_fast_sync_stats_no_url(self):
         with (

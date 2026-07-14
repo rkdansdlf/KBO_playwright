@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.sync.sync_base import (
     GAME_SIGNATURE_CHILD_TABLES,
+    BulkCopyUpsertOptions,
     OCISyncBase,
     GameSyncEligibility,
+    SimpleTableSyncOptions,
     SyncBatchConfig,
     _build_composite_signature_query,
     _dedupe_records_for_conflict_keys,
@@ -152,12 +154,18 @@ class TestOCISyncBaseGetFranchiseIdMapping:
 
 class TestOCISyncBaseBulkCopyUpsert:
     def test_empty_records_returns_none(self, sync_base):
-        result = sync_base._bulk_copy_upsert("test_table", [], ["id"])
+        result = sync_base._bulk_copy_upsert(
+            "test_table",
+            BulkCopyUpsertOptions(records=[], unique_cols=["id"]),
+        )
         assert result is None
 
     def test_success(self, sync_base):
         sync_base._do_bulk_copy_upsert = MagicMock()
-        sync_base._bulk_copy_upsert("test_table", [{"id": 1, "name": "test"}], ["id"])
+        sync_base._bulk_copy_upsert(
+            "test_table",
+            BulkCopyUpsertOptions(records=[{"id": 1, "name": "test"}], unique_cols=["id"]),
+        )
         sync_base._do_bulk_copy_upsert.assert_called_once()
 
     def test_retry_then_success(self, sync_base):
@@ -166,7 +174,10 @@ class TestOCISyncBaseBulkCopyUpsert:
         sync_base._do_bulk_copy_upsert = do_bulk
         sync_base._reconnect_oci = MagicMock()
         with patch("src.sync.sync_base.time.sleep"):
-            sync_base._bulk_copy_upsert("test_table", [{"id": 1}], ["id"])
+            sync_base._bulk_copy_upsert(
+                "test_table",
+                BulkCopyUpsertOptions(records=[{"id": 1}], unique_cols=["id"]),
+            )
             assert do_bulk.call_count == 2
             sync_base._reconnect_oci.assert_called_once()
 
@@ -179,7 +190,10 @@ class TestOCISyncBaseBulkCopyUpsert:
             patch("src.sync.sync_base.time.sleep"),
             pytest.raises(OperationalError),
         ):
-            sync_base._bulk_copy_upsert("test_table", [{"id": 1}], ["id"])
+            sync_base._bulk_copy_upsert(
+                "test_table",
+                BulkCopyUpsertOptions(records=[{"id": 1}], unique_cols=["id"]),
+            )
         assert do_bulk.call_count == 3
         assert sync_base._reconnect_oci.call_count == 2
 
@@ -465,7 +479,7 @@ class TestOCISyncBaseSyncSimpleTable:
         sync_base._target_table_exists = MagicMock(return_value=False)
         model = MagicMock()
         model.__tablename__ = "test"
-        result = sync_base.sync_simple_table(model, ["id"])
+        result = sync_base.sync_simple_table(model, SimpleTableSyncOptions(conflict_keys=["id"]))
         assert result == 0
 
     def test_no_compatible_columns_returns_zero(self, sync_base):
@@ -473,7 +487,7 @@ class TestOCISyncBaseSyncSimpleTable:
         sync_base._resolve_sync_columns = MagicMock(return_value=[])
         model = MagicMock()
         model.__tablename__ = "test"
-        result = sync_base.sync_simple_table(model, ["id"])
+        result = sync_base.sync_simple_table(model, SimpleTableSyncOptions(conflict_keys=["id"]))
         assert result == 0
 
     def test_empty_query_result_returns_zero(self, sync_base):
@@ -482,7 +496,7 @@ class TestOCISyncBaseSyncSimpleTable:
         sync_base.sqlite_session.query.return_value.count.return_value = 0
         model = MagicMock()
         model.__tablename__ = "test"
-        result = sync_base.sync_simple_table(model, ["id"])
+        result = sync_base.sync_simple_table(model, SimpleTableSyncOptions(conflict_keys=["id"]))
         assert result == 0
 
     def test_with_filters_applies_filter_to_query(self, sync_base):
@@ -493,7 +507,10 @@ class TestOCISyncBaseSyncSimpleTable:
         model = MagicMock()
         model.__tablename__ = "test"
         my_filter = MagicMock()
-        result = sync_base.sync_simple_table(model, ["id"], filters=[my_filter])
+        result = sync_base.sync_simple_table(
+            model,
+            SimpleTableSyncOptions(conflict_keys=["id"], filters=[my_filter]),
+        )
         assert result == 1
         sync_base.sqlite_session.query.return_value.filter.assert_called_once_with(my_filter)
 
@@ -504,7 +521,10 @@ class TestOCISyncBaseSyncSimpleTable:
         sync_base._sync_in_batches = MagicMock(return_value=1)
         model = MagicMock()
         model.__tablename__ = "test"
-        result = sync_base.sync_simple_table(model, ["id"], dedupe_keys=["a", "b"])
+        result = sync_base.sync_simple_table(
+            model,
+            SimpleTableSyncOptions(conflict_keys=["id"], dedupe_keys=["a", "b"]),
+        )
         assert result == 1
 
     def test_exclude_cols_without_id_appends_it(self, sync_base):
@@ -513,7 +533,10 @@ class TestOCISyncBaseSyncSimpleTable:
         sync_base.sqlite_session.query.return_value.count.return_value = 0
         model = MagicMock()
         model.__tablename__ = "test"
-        sync_base.sync_simple_table(model, ["id"], exclude_cols=["other"])
+        sync_base.sync_simple_table(
+            model,
+            SimpleTableSyncOptions(conflict_keys=["id"], exclude_cols=["other"]),
+        )
         sync_base._resolve_sync_columns.assert_called_with(model, ["other", "id"])
 
     def test_update_timestamp_explicit_false(self, sync_base):
@@ -523,7 +546,10 @@ class TestOCISyncBaseSyncSimpleTable:
         sync_base._sync_in_batches = MagicMock(return_value=1)
         model = MagicMock()
         model.__tablename__ = "test"
-        result = sync_base.sync_simple_table(model, ["id"], update_timestamp=False)
+        result = sync_base.sync_simple_table(
+            model,
+            SimpleTableSyncOptions(conflict_keys=["id"], update_timestamp=False),
+        )
         assert result == 1
 
 
@@ -863,12 +889,9 @@ class TestOCISyncBaseConcurrentSync:
             # We have 10 rows total, batch size 3, so offsets: 0, 3, 6, 9 (4 chunks)
             assert result == 4
             assert mock_copy.call_count == 4
-            # reconnect_on_fail should be False in thread worker
-            mock_copy.assert_any_call(
-                "player_season_batting",
-                ANY,
-                ["player_id", "season", "league", "level"],
-                update_timestamp=True,
-                connection=ANY,
-                reconnect_on_fail=False,
-            )
+            # Each thread worker passes its COPY settings as one options object.
+            options = mock_copy.call_args_list[0].args[1]
+            assert options.unique_cols == ["player_id", "season", "league", "level"]
+            assert options.update_timestamp is True
+            assert options.connection is not None
+            assert options.reconnect_on_fail is False

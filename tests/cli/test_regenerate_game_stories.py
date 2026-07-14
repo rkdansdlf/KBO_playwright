@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from src.cli.regenerate_game_stories import (
     StoryContext,
     StoryGameContext,
+    StoryRegenerationOptions,
     StoryRegenReportRow,
     _collect_game_ids,
     _events_by_game,
@@ -265,7 +266,9 @@ class TestRegenerateGameStoriesOrchestrator:
             patch("src.cli.regenerate_game_stories._write_report") as mock_write,
         ):
             mock_session_local.return_value.__enter__.return_value = MagicMock()
-            rows = regenerate_game_stories(game_ids=["g1"], report_out=report_path, log=MagicMock())
+            rows = regenerate_game_stories(
+                StoryRegenerationOptions(game_ids=["g1"], report_out=report_path, log=MagicMock()),
+            )
 
         assert rows == processed
         mock_write.assert_called_once_with(processed, report_path)
@@ -283,7 +286,9 @@ class TestRegenerateGameStoriesOrchestrator:
         ):
             mock_session_local.return_value.__enter__.return_value = session
             try:
-                regenerate_game_stories(game_ids=["g1"], apply=True, report_out=report_path, log=MagicMock())
+                regenerate_game_stories(
+                    StoryRegenerationOptions(game_ids=["g1"], apply=True, report_out=report_path, log=MagicMock()),
+                )
                 raise AssertionError("expected RuntimeError")
             except RuntimeError:
                 pass

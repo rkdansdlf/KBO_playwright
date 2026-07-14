@@ -86,49 +86,12 @@ def _mock_db_session_for_agg(query_rows, team_rows=None):
     return mock_session
 
 
-class TestBuildAggregationQuery:
-    def setup_method(self):
-        self.agg = TeamStatAggregator()
-
-    def test_passthrough_team_aggregation_query(self):
-        q = TeamAggregationQuery(season=2025, team_id="OB")
-        result = self.agg._build_aggregation_query(q)
-        assert result is q
-
-    def test_int_season(self):
-        result = self.agg._build_aggregation_query(
-            2025,
-            team_id="OB",
-            rows=None,
-            team_names={"OB": "두산"},
-            team_games_map={(2025, "OB"): 144},
-            dry_run=True,
-        )
-        assert isinstance(result, TeamAggregationQuery)
-        assert result.season == 2025
-        assert result.team_id == "OB"
-        assert result.team_names == {"OB": "두산"}
-        assert result.team_games_map == {(2025, "OB"): 144}
-        assert result.dry_run is True
-
-    def test_iterable_rows(self):
-        rows = [_make_batting()]
-        result = self.agg._build_aggregation_query(
-            rows,
-            team_id="OB",
-            team_names={"OB": "두산"},
-        )
-        assert isinstance(result, TeamAggregationQuery)
-        assert result.season is None
-        assert result.rows is rows
-
-
 class TestAggregateBattingDispatch:
     def setup_method(self):
         self.agg = TeamStatAggregator()
 
     def test_raises_when_no_season_or_rows(self):
-        with pytest.raises(ValueError, match="Either an integer season or rows iterable"):
+        with pytest.raises(ValueError, match="TeamAggregationQuery requires season or rows"):
             self.agg.aggregate_batting(TeamAggregationQuery())
 
     def test_dispatches_to_db_for_season(self):
@@ -142,7 +105,7 @@ class TestAggregateBattingDispatch:
     def test_dispatches_to_mem_for_rows(self):
         rows = [_make_batting()]
         with patch.object(self.agg, "_aggregate_batting_mem", return_value=[]) as m:
-            result = self.agg.aggregate_batting(rows)
+            result = self.agg.aggregate_batting(TeamAggregationQuery(rows=rows))
             m.assert_called_once()
             assert result == []
 
@@ -150,7 +113,7 @@ class TestAggregateBattingDispatch:
         mock_session = MagicMock()
         agg = TeamStatAggregator(mock_session)
         with patch.object(agg, "_aggregate_batting_db", return_value=[]) as m:
-            agg.aggregate_batting(2025, team_id="OB")
+            agg.aggregate_batting(TeamAggregationQuery(season=2025, team_id="OB"))
             m.assert_called_once_with(2025, "OB", dry_run=False)
 
 
@@ -159,7 +122,7 @@ class TestAggregatePitchingDispatch:
         self.agg = TeamStatAggregator()
 
     def test_raises_when_no_season_or_rows(self):
-        with pytest.raises(ValueError, match="Either an integer season or rows iterable"):
+        with pytest.raises(ValueError, match="TeamAggregationQuery requires season or rows"):
             self.agg.aggregate_pitching(TeamAggregationQuery())
 
     def test_dispatches_to_db_for_season(self):
@@ -173,7 +136,7 @@ class TestAggregatePitchingDispatch:
     def test_dispatches_to_mem_for_rows(self):
         rows = [_make_pitching()]
         with patch.object(self.agg, "_aggregate_pitching_mem", return_value=[]) as m:
-            result = self.agg.aggregate_pitching(rows)
+            result = self.agg.aggregate_pitching(TeamAggregationQuery(rows=rows))
             m.assert_called_once()
             assert result == []
 

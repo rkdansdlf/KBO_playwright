@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.cli.run_daily_update as daily
-from src.cli.run_daily_update import main
+from src.cli.run_daily_update import DailyUpdateOptions, main
 from src.models.game import Game
 from src.services.game_write_contract import GameWriteContract
 from src.services.recovery_manager import RecoveryManager
@@ -44,18 +44,7 @@ class TestRunDailyUpdateCLI:
             assert result == mock_update.return_value
             mock_update.assert_called_once_with(
                 "20251015",
-                sync=False,
-                headless=True,
-                limit=None,
-                summary_dir=None,
-                seed_tomorrow_preview=False,
-                run_auto_healer=True,
-                run_postgame_reconciliation=True,
-                postgame_reconcile_lookback_days=3,
-                fix=False,
-                skip_season_stats=False,
-                skip_oci_supporting_sync=False,
-                run_p0_non_game=True,
+                DailyUpdateOptions(),
             )
 
     def test_main_with_sync(self):
@@ -63,18 +52,7 @@ class TestRunDailyUpdateCLI:
             main(["--date", "20251015", "--sync"])
             mock_update.assert_called_once_with(
                 "20251015",
-                sync=True,
-                headless=True,
-                limit=None,
-                summary_dir=None,
-                seed_tomorrow_preview=False,
-                run_auto_healer=True,
-                run_postgame_reconciliation=True,
-                postgame_reconcile_lookback_days=3,
-                fix=False,
-                skip_season_stats=False,
-                skip_oci_supporting_sync=False,
-                run_p0_non_game=True,
+                DailyUpdateOptions(sync=True),
             )
 
 

@@ -1,8 +1,10 @@
 from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
+import src.crawlers.ticket_crawler as ticket_module
 from src.crawlers.ticket_crawler import TEAM_TICKET_INFO, TicketCrawler
 
 
@@ -20,6 +22,11 @@ class FakeAsyncClient:
     async def get(self, url):
         self.urls.append(url)
         return self.response
+
+
+class ErrorAsyncClient(FakeAsyncClient):
+    async def get(self, url):
+        raise httpx.HTTPError("request failed")
 
 
 class TestAltToTeamCode:
@@ -172,6 +179,27 @@ class TestSaveToDb:
         assert mock_price.save.call_count == 2
         mock_session.commit.assert_called_once()
 
+    def test_save_handles_individual_rule_failure(self):
+        rules = [{"team_id": "LG"}, {"team_id": "HH"}]
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("src.crawlers.ticket_crawler.SessionLocal", return_value=mock_session),
+            patch("src.crawlers.ticket_crawler.save_raw_snapshots", return_value=0),
+            patch("src.crawlers.ticket_crawler.TicketPriceRepository"),
+            patch("src.crawlers.ticket_crawler.TicketOpenRuleRepository") as mock_rule_cls,
+        ):
+            mock_rule = MagicMock()
+            mock_rule.save.side_effect = [None, RuntimeError("invalid rule")]
+            mock_rule_cls.return_value = mock_rule
+            self.crawler._save_to_db([], rules)
+
+        assert mock_rule.save.call_count == 2
+        mock_session.commit.assert_called_once()
+        assert self.crawler._raw_pages == []
+
 
 class TestCrawlKboTicketMap:
     @pytest.mark.asyncio
@@ -232,16 +260,130 @@ class TestCrawlKboTicketMap:
 
     @pytest.mark.asyncio
     async def test_http_error_returns_empty(self):
-        import httpx
-
         crawler = TicketCrawler()
 
-        mock_client = AsyncMock()
-        mock_client.get = AsyncMock(side_effect=httpx.HTTPError("fail"))
+        with (
+            patch("src.crawlers.ticket_crawler.httpx.AsyncClient", return_value=ErrorAsyncClient(None)),
+            patch("src.crawlers.ticket_crawler.throttle.wait", new=AsyncMock()),
+        ):
+            result = await crawler._crawl_kbo_ticket_map()
 
-        with patch("src.crawlers.ticket_crawler.httpx.AsyncClient", return_value=mock_client):
-            with patch("src.crawlers.ticket_crawler.throttle.wait"):
-                result = await crawler._crawl_kbo_ticket_map()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_missing_team_view_falls_back_to_lg_page(self):
+        crawler = TicketCrawler()
+        response = MagicMock(status_code=200, text="<html></html>")
+        lg_prices = [{"seat_type": "LG"}]
+
+        with (
+            patch("src.crawlers.ticket_crawler.httpx.AsyncClient", return_value=FakeAsyncClient(response)),
+            patch("src.crawlers.ticket_crawler.throttle.wait", new=AsyncMock()),
+            patch.object(crawler, "_crawl_team_ticket_pages", new=AsyncMock(return_value=[])),
+            patch.object(crawler, "_crawl_lg_ticket_page", new=AsyncMock(return_value=lg_prices)) as lg_page,
+        ):
+            result = await crawler._crawl_kbo_ticket_map()
+
+        assert result == lg_prices
+        lg_page.assert_awaited_once()
+
+
+class TestRun:
+    @pytest.mark.asyncio
+    async def test_run_keeps_map_prices_without_lg_fallback(self):
+        crawler = TicketCrawler()
+        prices = [{"seat_type": "map"}]
+
+        with (
+            patch.object(crawler, "_crawl_kbo_ticket_map", new=AsyncMock(return_value=prices)) as map_page,
+            patch.object(crawler, "_crawl_lg_ticket_page", new=AsyncMock()) as lg_page,
+        ):
+            result = await crawler.run()
+
+        assert result == prices
+        map_page.assert_awaited_once()
+        lg_page.assert_not_awaited()
+        assert crawler.current_season >= 2000
+
+
+class TestCrawlTeamTicketPages:
+    @pytest.mark.asyncio
+    async def test_crawls_available_pages_skips_missing_and_non_ok(self):
+        crawler = TicketCrawler()
+        responses = [
+            FakeAsyncClient(MagicMock(status_code=200, text="good html")),
+            FakeAsyncClient(MagicMock(status_code=503, text="bad html")),
+            ErrorAsyncClient(None),
+        ]
+        team_info = {
+            "LG": {"ticket_url": "https://lg.example"},
+            "HH": {"ticket_url": None},
+            "SS": {"ticket_url": "https://ss.example"},
+            "KT": {"ticket_url": "https://kt.example"},
+            "HT": {"ticket_url": "https://ht.example"},
+        }
+
+        with (
+            patch.object(ticket_module, "TEAM_TICKET_INFO", team_info),
+            patch("src.crawlers.ticket_crawler.httpx.AsyncClient", side_effect=responses),
+            patch("src.crawlers.ticket_crawler.throttle.wait", new=AsyncMock()),
+            patch("src.crawlers.ticket_crawler.parse_ticket_page", return_value=[{"seat_type": "SS"}]) as parse,
+        ):
+            result = await crawler._crawl_team_ticket_pages()
+
+        assert result == [{"seat_type": "SS"}]
+        parse.assert_called_once_with("good html", "samsung_lions_ticket", {"season": crawler.current_season})
+        assert [page["source_key"] for page in crawler._raw_pages] == ["samsung_lions_ticket"]
+
+
+class TestCrawlLgTicketPage:
+    @pytest.mark.asyncio
+    async def test_success_parses_and_records_lg_page(self):
+        crawler = TicketCrawler()
+        response = MagicMock(status_code=200, text="lg html")
+
+        with (
+            patch("src.crawlers.ticket_crawler.httpx.AsyncClient", return_value=FakeAsyncClient(response)),
+            patch("src.crawlers.ticket_crawler.throttle.wait", new=AsyncMock()),
+            patch("src.crawlers.ticket_crawler.parse_ticket_page", return_value=[{"seat_type": "LG"}]) as parse,
+        ):
+            result = await crawler._crawl_lg_ticket_page()
+
+        assert result == [{"seat_type": "LG"}]
+        parse.assert_called_once_with("lg html", "lg_twins_ticket", {"season": crawler.current_season})
+        assert crawler._raw_pages[0]["source_key"] == "lg_twins_ticket"
+
+    @pytest.mark.asyncio
+    async def test_missing_lg_url_returns_empty(self):
+        crawler = TicketCrawler()
+
+        with patch.object(ticket_module, "TEAM_TICKET_INFO", {"LG": {"ticket_url": None}}):
+            result = await crawler._crawl_lg_ticket_page()
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_non_ok_lg_response_returns_empty(self):
+        crawler = TicketCrawler()
+        response = MagicMock(status_code=404, text="not found")
+
+        with (
+            patch("src.crawlers.ticket_crawler.httpx.AsyncClient", return_value=FakeAsyncClient(response)),
+            patch("src.crawlers.ticket_crawler.throttle.wait", new=AsyncMock()),
+        ):
+            result = await crawler._crawl_lg_ticket_page()
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_http_error_lg_response_returns_empty(self):
+        crawler = TicketCrawler()
+
+        with (
+            patch("src.crawlers.ticket_crawler.httpx.AsyncClient", return_value=ErrorAsyncClient(None)),
+            patch("src.crawlers.ticket_crawler.throttle.wait", new=AsyncMock()),
+        ):
+            result = await crawler._crawl_lg_ticket_page()
 
         assert result == []
 

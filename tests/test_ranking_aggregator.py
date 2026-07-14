@@ -2,7 +2,7 @@ import pytest
 
 pytest.importorskip("sqlalchemy")
 
-from src.aggregators.ranking_aggregator import RankingAggregator
+from src.aggregators.ranking_aggregator import RankingAggregator, RankingGenerationRequest
 
 pytestmark = pytest.mark.integration
 
@@ -42,12 +42,14 @@ def test_ranking_aggregator_batting_pitching_filters():
 
     # Test with PA filter (Qualified limit)
     rankings = aggregator.generate_rankings(
-        season=2024,
-        batting_stats=batting_stats,
-        pitching_stats=pitching_stats,
-        min_pa=446,
-        min_ip_outs=432,
-        persist=False,
+        RankingGenerationRequest(
+            season=2024,
+            batting_stats=batting_stats,
+            pitching_stats=pitching_stats,
+            min_pa=446,
+            min_ip_outs=432,
+            persist=False,
+        ),
     )
 
     # Batting AVG check
@@ -97,9 +99,7 @@ def test_ranking_aggregator_handles_ties_and_sources():
     ]
 
     rankings = aggregator.generate_rankings(
-        season=2023,
-        fielding_stats=fielding_stats,
-        persist=True,
+        RankingGenerationRequest(season=2023, fielding_stats=fielding_stats, persist=True),
     )
 
     assert repo.saved

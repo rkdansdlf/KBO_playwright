@@ -31,8 +31,8 @@ class TestSyncFranchises:
 
         calls = []
 
-        def fakesync_simple_table(model, conflict_keys, **kw):
-            calls.append((model, conflict_keys, kw))
+        def fakesync_simple_table(model, options):
+            calls.append((model, options))
             return 5
 
         syncer.sync_simple_table = fakesync_simple_table
@@ -40,9 +40,9 @@ class TestSyncFranchises:
         result = syncer.sync_franchises()
         assert result == 5
         assert len(calls) == 1
-        model, conflict_keys, kw = calls[0]
+        model, options = calls[0]
         assert model is Franchise
-        assert conflict_keys == ["original_code"]
+        assert options.conflict_keys == ["original_code"]
 
     def test_returns_zero_when_no_data(self):
         syncer = object.__new__(OCISync)
@@ -97,8 +97,8 @@ class TestSyncTeams:
 
         calls = []
 
-        def fake_bulk_copy_upsert(table_name, records, unique_cols, **kw):
-            calls.append((table_name, records, unique_cols, kw))
+        def fake_bulk_copy_upsert(table_name, options):
+            calls.append((table_name, options))
 
         syncer._bulk_copy_upsert = fake_bulk_copy_upsert
 
@@ -108,9 +108,10 @@ class TestSyncTeams:
         result = syncer.sync_teams()
         assert result == 3
         assert len(calls) == 1
-        table_name, records, unique_cols, _ = calls[0]
+        table_name, options = calls[0]
         assert table_name == "teams"
-        assert unique_cols == ["team_id"]
+        assert options.unique_cols == ["team_id"]
+        records = options.records
         assert len(records) == 3
 
         r0 = next(r for r in records if r["team_id"] == "TT")
@@ -132,8 +133,8 @@ class TestSyncAwards:
 
         calls = []
 
-        def fake(model, conflict_keys, **kw):
-            calls.append((model, conflict_keys, kw))
+        def fake(model, options):
+            calls.append((model, options))
             return 3
 
         syncer.sync_simple_table = fake
@@ -141,9 +142,9 @@ class TestSyncAwards:
         result = syncer.sync_awards()
         assert result == 3
         assert len(calls) == 1
-        model, conflict_keys, kw = calls[0]
+        model, options = calls[0]
         assert model is Award
-        assert conflict_keys == ["year", "award_type", "category", "player_name", "team_name"]
+        assert options.conflict_keys == ["year", "award_type", "category", "player_name", "team_name"]
 
 
 class TestSyncTeamHistory:
@@ -161,16 +162,17 @@ class TestSyncTeamHistory:
 
         calls = []
 
-        def fake(table_name, records, unique_cols, **kw):
-            calls.append((table_name, records, unique_cols, kw))
+        def fake(table_name, options):
+            calls.append((table_name, options))
 
         syncer._bulk_copy_upsert = fake
 
         result = syncer.sync_team_history()
         assert result == 1
         assert len(calls) == 1
-        _, records, unique_cols, _ = calls[0]
-        assert unique_cols == ["id"]
+        _, options = calls[0]
+        assert options.unique_cols == ["id"]
+        records = options.records
         assert records[0]["franchise_id"] == 100
         assert records[0]["id"] == 10
 
@@ -188,12 +190,12 @@ class TestSyncTeamCodeMap:
 
         calls = []
 
-        def fake(model, conflict_keys, **kw):
-            calls.append((model, conflict_keys, kw))
-            if kw.get("transform_fn"):
+        def fake(model, options):
+            calls.append((model, options))
+            if options.transform_fn:
                 # Apply transform to verify mapping
                 data = {"franchise_id": 1}
-                kw["transform_fn"](data)
+                options.transform_fn(data)
                 assert data["franchise_id"] == 100
             return 1
 
@@ -202,10 +204,10 @@ class TestSyncTeamCodeMap:
         result = syncer.sync_team_code_map()
         assert result == 1
         assert len(calls) == 1
-        model, conflict_keys, kw = calls[0]
+        model, options = calls[0]
         assert model is TeamCodeMap
-        assert conflict_keys == ["season", "curr_code"]
-        assert "transform_fn" in kw
+        assert options.conflict_keys == ["season", "curr_code"]
+        assert options.transform_fn is not None
 
     def test_returns_zero_when_no_data(self):
         syncer = object.__new__(OCISync)
@@ -213,8 +215,8 @@ class TestSyncTeamCodeMap:
 
         calls = []
 
-        def fake(model, conflict_keys, **kw):
-            calls.append((model, conflict_keys, kw))
+        def fake(model, options):
+            calls.append((model, options))
             return 0
 
         syncer.sync_simple_table = fake
@@ -249,15 +251,16 @@ class TestSyncTeamHistoryEdgeCases:
 
         calls = []
 
-        def fake(table_name, records, unique_cols, **kw):
-            calls.append((table_name, records, unique_cols, kw))
+        def fake(table_name, options):
+            calls.append((table_name, options))
 
         syncer._bulk_copy_upsert = fake
 
         result = syncer.sync_team_history()
         assert result == 1
         assert len(calls) == 1
-        _, records, _, _ = calls[0]
+        _, options = calls[0]
+        records = options.records
         assert len(records) == 1
         assert records[0]["id"] == 10
         assert records[0]["franchise_id"] == 100
@@ -271,8 +274,8 @@ class TestSyncTeamEvents:
 
         calls = []
 
-        def fake(model, conflict_keys, **kw):
-            calls.append((model, conflict_keys, kw))
+        def fake(model, options):
+            calls.append((model, options))
             return 8
 
         syncer.sync_simple_table = fake
@@ -280,6 +283,6 @@ class TestSyncTeamEvents:
         result = syncer.sync_team_events()
         assert result == 8
         assert len(calls) == 1
-        model, conflict_keys, kw = calls[0]
+        model, options = calls[0]
         assert model is TeamEvent
-        assert conflict_keys == ["team_id", "title", "source_url"]
+        assert options.conflict_keys == ["team_id", "title", "source_url"]

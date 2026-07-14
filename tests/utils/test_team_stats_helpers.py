@@ -10,6 +10,7 @@ from src.utils.team_stats_helpers import (
     parse_numeric,
     parse_team_stats_html,
     resolve_team_id,
+    TeamStatsParseContext,
 )
 
 
@@ -99,12 +100,7 @@ class TestParseTeamStatsHtml:
         assert (
             parse_team_stats_html(
                 "<html><body>No stats</body></html>",
-                2025,
-                "KBO",
-                {},
-                {},
-                set(),
-                set(),
+                TeamStatsParseContext(2025, "KBO", {}, {}, set(), set()),
             )
             == []
         )
@@ -121,12 +117,14 @@ class TestParseTeamStatsHtml:
 
         result = parse_team_stats_html(
             html,
-            2025,
-            "KBO",
-            {"LG트윈스": "LG"},
-            {"팀": "team_name", "avg": "avg", "hr": "home_runs", "ops": "ops"},
-            {"avg", "home_runs"},
-            {"avg", "ops"},
+            TeamStatsParseContext(
+                2025,
+                "KBO",
+                {"LG트윈스": "LG"},
+                {"팀": "team_name", "avg": "avg", "hr": "home_runs", "ops": "ops"},
+                {"avg", "home_runs"},
+                {"avg", "ops"},
+            ),
         )
 
         assert result == [
@@ -152,12 +150,14 @@ class TestParseTeamStatsHtml:
 
         result = parse_team_stats_html(
             html,
-            2025,
-            "KBO",
-            {"SSG": "SSG"},
-            {"팀": "team_name", "승": "wins"},
-            {"wins"},
-            set(),
+            TeamStatsParseContext(
+                2025,
+                "KBO",
+                {"SSG": "SSG"},
+                {"팀": "team_name", "승": "wins"},
+                {"wins"},
+                set(),
+            ),
         )
 
         assert result == [
@@ -185,13 +185,15 @@ class TestParseTeamStatsHtml:
 
         result = parse_team_stats_html(
             html,
-            2025,
-            "KBO",
-            {},
-            {"팀": "team_name", "폼": "form", "메모": "memo"},
-            {"form"},
-            set(),
-            value_parser=parser,
+            TeamStatsParseContext(
+                2025,
+                "KBO",
+                {},
+                {"팀": "team_name", "폼": "form", "메모": "memo"},
+                {"form"},
+                set(),
+                value_parser=parser,
+            ),
         )
 
         assert result == [

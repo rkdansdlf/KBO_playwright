@@ -7,7 +7,7 @@ from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session, declarative_base
 
-from src.sync.sync_base import OCISyncBase, _serialize_records, _serialize_scalar
+from src.sync.sync_base import SimpleTableSyncOptions, OCISyncBase, _serialize_records, _serialize_scalar
 
 _Base = declarative_base()
 
@@ -374,15 +374,15 @@ class TestBaseSyncSimpleTable:
         syncer.sqlite_session = session
         captured = {}
 
-        def fake_bulk_copy_upsert(table_name, records, unique_cols, **kwargs):
-            captured.update(table_name=table_name, records=records, unique_cols=unique_cols, kwargs=kwargs)
+        def fake_bulk_copy_upsert(table_name, options):
+            captured.update(table_name=table_name, options=options)
 
         syncer._bulk_copy_upsert = fake_bulk_copy_upsert
 
-        assert syncer.sync_simple_table(_SampleModel, ["name"]) == 1
+        assert syncer.sync_simple_table(_SampleModel, SimpleTableSyncOptions(conflict_keys=["name"])) == 1
         assert captured["table_name"] == "base_sample_table"
-        assert captured["unique_cols"] == ["name"]
-        record = captured["records"][0]
+        assert captured["options"].unique_cols == ["name"]
+        record = captured["options"].records[0]
         assert record["name"] == "sample"
         assert isinstance(record["updated_at"], datetime)
         assert "id" not in record

@@ -189,8 +189,8 @@ class TestTeamStatAggregatorPure(unittest.TestCase):
             earned_runs=0,
         )
 
-        bat_res = self.aggregator.aggregate_batting([p_bat])
-        pit_res = self.aggregator.aggregate_pitching([p_pit])
+        bat_res = self.aggregator.aggregate_batting(TeamAggregationQuery(rows=[p_bat]))
+        pit_res = self.aggregator.aggregate_pitching(TeamAggregationQuery(rows=[p_pit]))
 
         self.assertEqual(bat_res[0]["avg"], 0.0)
         self.assertEqual(bat_res[0]["obp"], 0.0)
@@ -206,7 +206,7 @@ class TestTeamStatAggregatorPure(unittest.TestCase):
         p3 = PlayerSeasonBatting(id=3, season=2025, team_code="TOTAL")
         p4 = PlayerSeasonBatting(id=4, season=2025, team_code="OB", at_bats=10, hits=3)
 
-        results = self.aggregator.aggregate_batting([p1, p2, p3, p4])
+        results = self.aggregator.aggregate_batting(TeamAggregationQuery(rows=[p1, p2, p3, p4]))
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["team_id"], "OB")
 
@@ -232,7 +232,9 @@ class TestTeamStatAggregatorPure(unittest.TestCase):
             league="REGULAR",
         )
 
-        results = self.aggregator.aggregate_batting([raw_legacy, canonical], team_names={"DB": "두산"})
+        results = self.aggregator.aggregate_batting(
+            TeamAggregationQuery(rows=[raw_legacy, canonical], team_names={"DB": "두산"}),
+        )
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["team_id"], "DB")

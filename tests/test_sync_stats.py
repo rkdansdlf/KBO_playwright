@@ -19,9 +19,9 @@ def test_player_season_batting_sync_filters_missing_player_basic_refs():
             self.sqlite_session = session
             self.synced_player_ids = []
 
-        def sync_simple_table(self, model, *, filters=None, **_kwargs):
+        def sync_simple_table(self, model, options):
             self.synced_player_ids = [
-                row.player_id for row in self.sqlite_session.query(model).filter(*(filters or [])).all()
+                row.player_id for row in self.sqlite_session.query(model).filter(*(options.filters or [])).all()
             ]
             return len(self.synced_player_ids)
 

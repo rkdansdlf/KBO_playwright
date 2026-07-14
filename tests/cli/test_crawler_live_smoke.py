@@ -4,6 +4,7 @@ import pytest
 
 from src.cli.crawler_live_smoke import (
     SCOPES,
+    LiveSmokeOptions,
     _base_result,
     _candidate,
     _detail_complete,
@@ -182,7 +183,7 @@ class TestRunSmoke:
         result = await run_smoke(
             target_date="20250615",
             scope="schedule",
-            schedule_crawler=mock_schedule,
+            options=LiveSmokeOptions(schedule_crawler=mock_schedule),
         )
         assert result["ok"] is True
 
@@ -194,7 +195,7 @@ class TestRunSmoke:
     @pytest.mark.asyncio
     async def test_invalid_limit_raises(self):
         with pytest.raises(ValueError, match="at least 1"):
-            await run_smoke(target_date="20250615", scope="all", limit=0)
+            await run_smoke(target_date="20250615", scope="all", options=LiveSmokeOptions(limit=0))
 
     @pytest.mark.asyncio
     async def test_no_candidates(self):
@@ -203,7 +204,7 @@ class TestRunSmoke:
         result = await run_smoke(
             target_date="20250615",
             scope="all",
-            schedule_crawler=mock_schedule,
+            options=LiveSmokeOptions(schedule_crawler=mock_schedule),
         )
         assert result["ok"] is False
         assert "no_detail_candidates" in result["failure_reasons"]["schedule"]
@@ -222,8 +223,7 @@ class TestRunSmoke:
         result = await run_smoke(
             target_date="20250615",
             scope="detail",
-            schedule_crawler=mock_schedule,
-            detail_crawler=mock_detail,
+            options=LiveSmokeOptions(schedule_crawler=mock_schedule, detail_crawler=mock_detail),
         )
         assert result["ok"] is True
 
@@ -237,8 +237,7 @@ class TestRunSmoke:
         result = await run_smoke(
             target_date="20250615",
             scope="detail",
-            schedule_crawler=mock_schedule,
-            detail_crawler=mock_detail,
+            options=LiveSmokeOptions(schedule_crawler=mock_schedule, detail_crawler=mock_detail),
         )
         assert result["ok"] is False
         assert "G1" in result["failure_reasons"]

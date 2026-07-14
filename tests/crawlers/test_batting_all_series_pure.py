@@ -6,6 +6,7 @@ import pytest
 
 from src.crawlers.player_batting_all_series_crawler import (
     BattingRowData,
+    BattingSeriesCrawlRequest,
     _build_batting_data,
     _extract_basic2_stat_by_header,
     _extract_player_id_from_href,
@@ -690,7 +691,9 @@ class TestBattingPageParsers:
             patch("src.crawlers.player_batting_all_series_crawler._finalize_batting_summary", return_value=crawled),
             patch("src.crawlers.player_batting_all_series_crawler._save_batting_if_needed") as save,
         ):
-            result = crawl_series_batting_stats(2025, "regular", save_to_db=True, headless=True)
+            result = crawl_series_batting_stats(
+                BattingSeriesCrawlRequest(year=2025, series_key="regular", save_to_db=True, headless=True),
+            )
 
         assert result == crawled
         playwright.chromium.launch.assert_called_once_with(headless=True)
@@ -699,7 +702,7 @@ class TestBattingPageParsers:
 
     def test_crawl_series_rejects_unknown_series_before_browser_start(self):
         with patch("src.crawlers.player_batting_all_series_crawler.sync_playwright") as browser:
-            result = crawl_series_batting_stats(2025, "unknown")
+            result = crawl_series_batting_stats(BattingSeriesCrawlRequest(year=2025, series_key="unknown"))
 
         assert result == []
         browser.assert_not_called()

@@ -9,6 +9,7 @@ from src.crawlers.team_batting_stats_crawler import (
     parse_team_batting_html,
 )
 from src.utils.team_stats_helpers import (
+    TeamStatsParseContext,
     _parse_one_team_row as _parse_stat_row,
     build_team_column_map as _build_column_map,
     extract_team_stat_rows as _extract_stat_rows,
@@ -154,7 +155,18 @@ class TestParseTeamBattingRow:
         soup = BeautifulSoup(html, "html.parser")
         row = soup.find("tr")
 
-        result = _parse_stat_row(row, indexes, 2025, "REGULAR", mapping, BATTING_FIELDS, FLOAT_FIELDS, None)
+        result = _parse_stat_row(
+            row,
+            indexes,
+            TeamStatsParseContext(
+                season=2025,
+                league="REGULAR",
+                team_mapping=mapping,
+                header_map=HEADER_MAP,
+                stat_fields=BATTING_FIELDS,
+                float_fields=FLOAT_FIELDS,
+            ),
+        )
         assert result is not None
         assert result["team_id"] == "LG"
         assert result["games"] == 144
@@ -170,7 +182,18 @@ class TestParseTeamBattingRow:
         soup = BeautifulSoup(html, "html.parser")
         row = soup.find("tr")
 
-        result = _parse_stat_row(row, indexes, 2025, "REGULAR", {}, BATTING_FIELDS, FLOAT_FIELDS, None)
+        result = _parse_stat_row(
+            row,
+            indexes,
+            TeamStatsParseContext(
+                season=2025,
+                league="REGULAR",
+                team_mapping={},
+                header_map=HEADER_MAP,
+                stat_fields=BATTING_FIELDS,
+                float_fields=FLOAT_FIELDS,
+            ),
+        )
         assert result is None
 
     def test_too_few_cells_returns_none(self):
@@ -183,7 +206,18 @@ class TestParseTeamBattingRow:
         soup = BeautifulSoup(html, "html.parser")
         row = soup.find("tr")
 
-        result = _parse_stat_row(row, indexes, 2025, "REGULAR", {}, BATTING_FIELDS, FLOAT_FIELDS, None)
+        result = _parse_stat_row(
+            row,
+            indexes,
+            TeamStatsParseContext(
+                season=2025,
+                league="REGULAR",
+                team_mapping={},
+                header_map=HEADER_MAP,
+                stat_fields=BATTING_FIELDS,
+                float_fields=FLOAT_FIELDS,
+            ),
+        )
         assert result is None
 
 

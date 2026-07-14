@@ -40,9 +40,9 @@ def _seed(session, records: list[dict]):
 def _spy_bulk_copy(syncer):
     calls = []
 
-    def _fake_insert(tbl, recs, keys, **kw):
-        calls.append((tbl, recs, keys, kw))
-        for rec in recs:
+    def _fake_insert(table_name, options):
+        calls.append((table_name, options))
+        for rec in options.records:
             syncer.target_session.add(GameSummary(**rec))
         syncer.target_session.flush()
 
@@ -99,7 +99,7 @@ class TestSyncGameSummaryRows:
         remaining = target.query(GameSummary).count()
         assert remaining == 1001
         assert len(calls) == 1
-        assert len(calls[0][1]) == 1001
+        assert len(calls[0][1].records) == 1001
 
     def test_delete_scoped_by_summary_type(self, env):
         syncer, local, target = env
@@ -113,8 +113,8 @@ class TestSyncGameSummaryRows:
         syncer._sync_game_summary_rows(summary_type="리뷰")
 
         assert len(calls) == 1
-        assert len(calls[0][1]) == 1
-        assert calls[0][1][0]["summary_type"] == "리뷰"
+        assert len(calls[0][1].records) == 1
+        assert calls[0][1].records[0]["summary_type"] == "리뷰"
 
         remaining = target.query(GameSummary).order_by(GameSummary.summary_type).all()
         assert len(remaining) == 2
@@ -139,7 +139,7 @@ class TestSyncGameSummaryRows:
         )
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows()
-        assert len(calls[0][1]) == 1
+        assert len(calls[0][1].records) == 1
 
     def test_deduplicates_by_full_text(self, env):
         syncer, local, target = env
@@ -152,7 +152,7 @@ class TestSyncGameSummaryRows:
         )
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows()
-        assert len(calls[0][1]) == 2
+        assert len(calls[0][1].records) == 2
 
     def test_replace_game_ids_scopes_delete(self, env):
         syncer, local, target = env
@@ -172,7 +172,7 @@ class TestSyncGameSummaryRows:
         syncer._sync_game_summary_rows(replace_game_ids=["G001"])
 
         assert len(calls) == 1
-        assert len(calls[0][1]) == 2
+        assert len(calls[0][1].records) == 2
 
         old_rows = target.query(GameSummary).filter(GameSummary.player_name == "OLD1").count()
         assert old_rows == 0
@@ -182,7 +182,7 @@ class TestSyncGameSummaryRows:
         _seed(local, [{"game_id": "G001", "summary_type": "T", "player_name": "A"}])
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows()
-        record = calls[0][1][0]
+        record = calls[0][1].records[0]
         assert "id" not in record
         assert "created_at" not in record
         assert "updated_at" not in record
@@ -200,10 +200,10 @@ class TestSyncGameSummaryRows:
         _seed(local, [{"game_id": "G001", "summary_type": "T", "player_name": "A"}])
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows()
-        tbl, recs, keys, kw = calls[0]
+        tbl, options = calls[0]
         assert tbl == "game_summary"
-        assert keys == []
-        assert kw.get("update_timestamp") is False
+        assert options.unique_cols == []
+        assert options.update_timestamp is False
 
     def test_commits_delete(self, env):
         syncer, local, target = env
@@ -228,8 +228,8 @@ class TestSyncGameSummaryRows:
         )
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows(summary_type="프리뷰")
-        assert len(calls[0][1]) == 1
-        assert calls[0][1][0]["summary_type"] == "프리뷰"
+        assert len(calls[0][1].records) == 1
+        assert calls[0][1].records[0]["summary_type"] == "프리뷰"
 
     def test_filters_passthrough(self, env):
         syncer, local, target = env
@@ -242,8 +242,8 @@ class TestSyncGameSummaryRows:
         )
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows(filters=[GameSummary.game_id == "G001"])
-        assert len(calls[0][1]) == 1
-        assert calls[0][1][0]["game_id"] == "G001"
+        assert len(calls[0][1].records) == 1
+        assert calls[0][1].records[0]["game_id"] == "G001"
 
     def test_returns_inserted_count(self, env):
         syncer, local, target = env
@@ -263,6 +263,6 @@ class TestSyncGameSummaryRows:
         _seed(local, [{"game_id": "G001", "summary_type": "T"}])
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows()
-        record = calls[0][1][0]
+        record = calls[0][1].records[0]
         assert record["game_id"] == "G001"
         assert record["summary_type"] == "T"

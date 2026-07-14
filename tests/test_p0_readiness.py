@@ -23,7 +23,7 @@ from src.models.player import PlayerBasic
 from src.models.roster_transaction import RosterTransaction
 from src.models.source_registry import DataSource
 from src.models.team import Team, TeamDailyRoster
-from src.services.p0_readiness import build_p0_readiness
+from src.services.p0_readiness import P0ReadinessOptions, build_p0_readiness
 
 
 def _build_session_factory():
@@ -221,7 +221,10 @@ def test_build_p0_readiness_reports_clean_operational_window():
         _add_roster(session, date(2025, 1, 2))
         session.commit()
 
-        readiness = build_p0_readiness(session, target_date="20250102", lookback_days=1, lookahead_days=1)
+        readiness = build_p0_readiness(
+            session,
+            P0ReadinessOptions(target_date="20250102", lookback_days=1, lookahead_days=1),
+        )
 
     assert readiness["summary"]["ok"] is True
     assert readiness["summary"]["critical_failure_count"] == 0
@@ -249,7 +252,10 @@ def test_build_p0_readiness_reports_dataset_failures():
         )
         session.commit()
 
-        readiness = build_p0_readiness(session, target_date="20250101", lookback_days=0, lookahead_days=0)
+        readiness = build_p0_readiness(
+            session,
+            P0ReadinessOptions(target_date="20250101", lookback_days=0, lookahead_days=0),
+        )
 
     failures = {(failure["dataset"], failure["game_id"], failure["reason"]) for failure in readiness["failures"]}
     assert ("postgame", game_id, "missing_final_score") in failures
@@ -280,7 +286,10 @@ def test_build_p0_readiness_marks_future_broadcast_as_not_announced():
         _add_metadata(session, game_id)
         session.commit()
 
-        readiness = build_p0_readiness(session, target_date="20250101", lookback_days=0, lookahead_days=1)
+        readiness = build_p0_readiness(
+            session,
+            P0ReadinessOptions(target_date="20250101", lookback_days=0, lookahead_days=1),
+        )
 
     assert readiness["broadcast"]["skip_counts"] == {"broadcast_not_announced": 1}
     assert readiness["broadcast"]["skip_game_ids"] == {"broadcast_not_announced": [game_id]}
@@ -309,7 +318,10 @@ def test_build_p0_readiness_handles_legacy_game_schema_without_lifecycle_column(
         _add_roster(session, date(2025, 1, 3))
         session.commit()
 
-        readiness = build_p0_readiness(session, target_date="20250103", lookback_days=0, lookahead_days=0)
+        readiness = build_p0_readiness(
+            session,
+            P0ReadinessOptions(target_date="20250103", lookback_days=0, lookahead_days=0),
+        )
 
     assert readiness["schedule"]["games"] == 1
     assert readiness["schedule"]["with_stadium"] == 1
