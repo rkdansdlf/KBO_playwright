@@ -24,6 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.db.engine import Engine, SessionLocal
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+from src.repositories.oracle_upsert import upsert_model_by_unique_keys
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 if TYPE_CHECKING:
@@ -329,8 +330,7 @@ def _upsert_player_stats(
                 )
                 session.execute(stmt)
             elif dialect == "oracle":
-                obj = model(**data)
-                session.merge(obj)
+                upsert_model_by_unique_keys(session, model, data, conflict_keys)
             else:
                 from sqlalchemy.dialects.mysql import insert as my_insert
 

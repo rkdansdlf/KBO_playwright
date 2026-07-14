@@ -11,6 +11,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.models.player import PlayerBasic
 from src.models.team import TeamDailyRoster
+from src.repositories.oracle_upsert import upsert_model_by_unique_keys
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -117,7 +118,12 @@ class TeamRepository:
             self.session.execute(stmt)
         elif dialect == "oracle":
             for val in values:
-                self.session.merge(TeamDailyRoster(**val))
+                upsert_model_by_unique_keys(
+                    self.session,
+                    TeamDailyRoster,
+                    val,
+                    ("roster_date", "team_code", "player_id"),
+                )
         else:
             stmt = pg_insert(TeamDailyRoster).values(values)
             update_dict = {
