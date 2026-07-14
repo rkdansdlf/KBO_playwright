@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
-from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
+from src.services.p0_readiness import P0ReadinessOptions, build_p0_readiness, format_p0_readiness_summary
 from src.utils.alerting import SlackWebhookClient
 
 if TYPE_CHECKING:
@@ -236,7 +236,10 @@ def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
 
     target_date = (datetime.now(KST).date() - timedelta(days=1)).strftime("%Y%m%d")
     with SessionLocal() as session:
-        readiness = build_p0_readiness(session, target_date=target_date, lookback_days=0, lookahead_days=1)
+        readiness = build_p0_readiness(
+            session,
+            P0ReadinessOptions(target_date=target_date, lookback_days=0, lookahead_days=1),
+        )
 
     logger.info("P0 readiness: %s", format_p0_readiness_summary(readiness))
     for failure in readiness.get("failures", []):

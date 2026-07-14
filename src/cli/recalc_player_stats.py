@@ -318,6 +318,7 @@ def _upsert_player_stats(
                     index_elements=conflict_keys,
                     set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
                 )
+                session.execute(stmt)
             elif dialect == "postgresql":
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -326,12 +327,16 @@ def _upsert_player_stats(
                     index_elements=conflict_keys,
                     set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
                 )
+                session.execute(stmt)
+            elif dialect == "oracle":
+                obj = model(**data)
+                session.merge(obj)
             else:
                 from sqlalchemy.dialects.mysql import insert as my_insert
 
                 stmt = my_insert(model).values(**data)  # type: ignore[assignment]
                 stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})  # type: ignore[attr-defined]
-            session.execute(stmt)
+                session.execute(stmt)
             saved += 1
         except SQLAlchemyError as e:
             logger.warning("%s upsert failed for player %s: %s", stat_label, data.get("player_id"), e)

@@ -57,21 +57,25 @@ class BaseStatsUpsertRepository:
                 if db_type == "sqlite":
                     session.execute(text("PRAGMA foreign_keys = OFF"))
 
-                # Group records by their column key-set so we can bulk-execute
-                # each group in one statement instead of one-per-record.
-                groups: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
-                for payload in cleaned:
-                    groups[tuple(sorted(payload.keys()))].append(payload)
+                if self.dialect == "oracle":
+                    for payload in cleaned:
+                        session.merge(self.model(**payload))
+                else:
+                    # Group records by their column key-set so we can bulk-execute
+                    # each group in one statement instead of one-per-record.
+                    groups: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
+                    for payload in cleaned:
+                        groups[tuple(sorted(payload.keys()))].append(payload)
 
-                for group in groups.values():
-                    # Build stmt from the first record (representative shape)
-                    stmt = self._build_insert_stmt(group[0])
-                    if len(group) == 1:
-                        session.execute(stmt)
-                    else:
-                        # Re-build as VALUES-list stmt for bulk insert
-                        bulk_stmt = self._build_bulk_insert_stmt(group)
-                        session.execute(bulk_stmt)
+                    for group in groups.values():
+                        # Build stmt from the first record (representative shape)
+                        stmt = self._build_insert_stmt(group[0])
+                        if len(group) == 1:
+                            session.execute(stmt)
+                        else:
+                            # Re-build as VALUES-list stmt for bulk insert
+                            bulk_stmt = self._build_bulk_insert_stmt(group)
+                            session.execute(bulk_stmt)
 
                 session.commit()
                 return len(cleaned)

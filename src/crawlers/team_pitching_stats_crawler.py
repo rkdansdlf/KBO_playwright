@@ -19,6 +19,7 @@ from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.team_stats_helpers import (
+    TeamStatsParseContext,
     _parse_one_team_row,
     get_cell_value,
     parse_numeric,
@@ -249,13 +250,15 @@ def parse_team_pitching_html(
     """
     return parse_team_stats_html(
         html,
-        season,
-        league,
-        team_mapping,
-        HEADER_MAP,
-        PITCHING_FIELDS,
-        FLOAT_FIELDS,
-        value_parser=_parse_pitching_value,
+        TeamStatsParseContext(
+            season=season,
+            league=league,
+            team_mapping=team_mapping,
+            header_map=HEADER_MAP,
+            stat_fields=PITCHING_FIELDS,
+            float_fields=FLOAT_FIELDS,
+            value_parser=_parse_pitching_value,
+        ),
     )
 
 
@@ -291,12 +294,15 @@ def _parse_team_pitching_row(
     return _parse_one_team_row(
         row,
         indexes,
-        season,
-        league,
-        team_mapping,
-        PITCHING_FIELDS,
-        FLOAT_FIELDS,
-        _parse_pitching_value,
+        TeamStatsParseContext(
+            season=season,
+            league=league,
+            team_mapping=team_mapping,
+            header_map=HEADER_MAP,
+            stat_fields=PITCHING_FIELDS,
+            float_fields=FLOAT_FIELDS,
+            value_parser=_parse_pitching_value,
+        ),
     )
 
 

@@ -9,6 +9,7 @@ import csv
 import io
 import json
 import logging
+import os
 import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,22 @@ from psycopg2 import Error as PsycopgError
 from sqlalchemy import bindparam, create_engine, inspect, text
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Query, Session, sessionmaker
+
+try:
+    import oracledb
+
+    OracleError = oracledb.Error
+except ImportError:
+    OracleError = None
+
+if OracleError is not None:
+    DBAPI_EXCEPTIONS = (PsycopgError, OracleError, SQLAlchemyError, OSError, RuntimeError)
+    DBAPI_EXCEPTIONS_VAL = (PsycopgError, OracleError, SQLAlchemyError, OSError, RuntimeError, ValueError)
+    DBAPI_EXCEPTIONS_SQLITE = (PsycopgError, OracleError, sqlite3.Error, SQLAlchemyError, OSError, RuntimeError)
+else:
+    DBAPI_EXCEPTIONS = (PsycopgError, SQLAlchemyError, OSError, RuntimeError)
+    DBAPI_EXCEPTIONS_VAL = (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError)
+    DBAPI_EXCEPTIONS_SQLITE = (PsycopgError, sqlite3.Error, SQLAlchemyError, OSError, RuntimeError)
 
 from src.constants import KST
 from src.models.game import (
@@ -65,14 +82,7 @@ class SyncBaseProtocol(Protocol):
     def sync_simple_table(
         self,
         model: type[Base],
-        conflict_keys: list[str],
-        exclude_cols: list[str] | None = ...,
-        filters: list[Any] | None = ...,
-        transform_fn: Callable[..., Any] | None = ...,
-        batch_size: int = ...,
-        *,
-        update_timestamp: bool | None = ...,
-        dedupe_keys: list[str] | None = ...,
+        options: SimpleTableSyncOptions,
     ) -> int:
         """Sync a simple table with upsert semantics."""
         ...
@@ -80,11 +90,7 @@ class SyncBaseProtocol(Protocol):
     def _bulk_copy_upsert(
         self,
         table_name: str,
-        records: list[dict[str, Any]],
-        unique_cols: list[str],
-        *,
-        update_timestamp: bool = ...,
-        connection: Any | None = ...,  # noqa: ANN401
+        options: BulkCopyUpsertOptions,
     ) -> None: ...
     def _ensure_table(self, model: type[Base]) -> None: ...
     def _target_table_exists(self, model: type[Base]) -> bool: ...
@@ -191,6 +197,42 @@ class SyncBatchConfig:
     dedupe_keys: list[str] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SimpleTableSyncOptions:
+    """Column, conflict, and batch settings for one table sync."""
+
+    conflict_keys: list[str]
+    exclude_cols: list[str] | None = None
+    filters: list[Any] | None = None
+    transform_fn: Callable[..., Any] | None = None
+    batch_size: int = 5000
+    update_timestamp: bool | None = None
+    dedupe_keys: list[str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BulkCopyUpsertOptions:
+    """COPY upsert payload and connection settings."""
+
+    records: list[dict[str, Any]]
+    unique_cols: list[str]
+    update_timestamp: bool = True
+    connection: RawConnection | None = None
+    reconnect_on_fail: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class CopyFallbackOptions:
+    """Connection and diagnostic settings for a batch COPY fallback."""
+
+    records: list[dict[str, Any]]
+    connection: RawConnection | None
+    copy_label: str
+    fallback_label: str
+    failure_context: str
+    reconnect_on_fail: bool
+
+
 def _serialize_scalar(value: object) -> Any:  # noqa: ANN401
     if value is None:
         return None
@@ -208,6 +250,17 @@ def _serialize_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             else json.dumps(value, ensure_ascii=False)
             if isinstance(value, (dict, list))
             else value
+            for key, value in record.items()
+        }
+        for record in records
+    ]
+
+
+def _serialize_records_oracle(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert records to the values expected by Oracle SQL MERGE/INSERT."""
+    return [
+        {
+            key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
             for key, value in record.items()
         }
         for record in records
@@ -617,29 +670,56 @@ class OCISyncBase:
             sqlite_session: Active SQLite session to read from
 
         """
+        if not oci_url:
+            from sqlalchemy.exc import ArgumentError
+
+            msg = "Could not parse rfc1738 URL from None"
+            raise ArgumentError(msg)
+
         self.sqlite_session = sqlite_session
         self.concurrency = 4
 
         # Create OCI engine
-        # pool_recycle: force connection refresh every 5 min to beat cloud DB idle-timeout (OCI typically kills
-        # idle TCP sockets after ~5-10 min). pool_pre_ping alone is not enough when the engine is long-lived.
-        self.oci_engine = create_engine(
-            oci_url,
-            echo=False,
-            pool_pre_ping=True,
-            pool_recycle=240,  # recycle connections every 4 minutes
-            pool_timeout=30,
-            connect_args={
-                "connect_timeout": 60,
-                "application_name": "KBO_Crawler_Sync",
-                "keepalives": 1,
-                "keepalives_idle": 60,
-                "keepalives_interval": 10,
-                "keepalives_count": 5,
-                "options": "-c statement_timeout=180000",
-                "tcp_user_timeout": 60000,
-            },
-        )
+        # pool_recycle: force connection refresh every 5 min to beat cloud DB idle-timeout
+        if oci_url.startswith("oracle"):
+            tns_admin = os.getenv("TNS_ADMIN")
+            connect_args: dict[str, Any] = {}
+            if tns_admin:
+                connect_args["config_dir"] = tns_admin
+                connect_args["wallet_location"] = tns_admin
+                try:
+                    auth_part = oci_url.split("oracle+oracledb://")[1].rsplit("@", 1)[0]
+                    if ":" in auth_part:
+                        _, password = auth_part.split(":", 1)
+                        connect_args["wallet_password"] = password
+                except (IndexError, ValueError):
+                    logger.debug("Could not parse Oracle wallet credentials from URL")
+            self.oci_engine = create_engine(
+                oci_url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_recycle=240,
+                pool_timeout=30,
+                connect_args=connect_args,
+            )
+        else:
+            self.oci_engine = create_engine(
+                oci_url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_recycle=240,  # recycle connections every 4 minutes
+                pool_timeout=30,
+                connect_args={
+                    "connect_timeout": 60,
+                    "application_name": "KBO_Crawler_Sync",
+                    "keepalives": 1,
+                    "keepalives_idle": 60,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
+                    "options": "-c statement_timeout=180000",
+                    "tcp_user_timeout": 60000,
+                },
+            )
 
         # Create OCI session
         target_session_factory = sessionmaker(bind=self.oci_engine)
@@ -716,13 +796,13 @@ class OCISyncBase:
         """Test OCI connection."""
         try:
             self.target_session.execute(text("SELECT 1"))
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
+        except DBAPI_EXCEPTIONS as e:
             logger.exception("❌ OCI connection failed")
             self._rollback_target_session(label="test_connection")
             if self._is_transient_oci_error(e):
                 try:
                     self._reconnect_oci()
-                except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as reconnect_exc:
+                except DBAPI_EXCEPTIONS as reconnect_exc:
                     logger.warning("OCI reconnect after connection test failed: %s", reconnect_exc)
             return False
         else:
@@ -783,28 +863,40 @@ class OCISyncBase:
     def _bulk_copy_upsert(
         self,
         table_name: str,
-        records: list[dict[str, Any]],
-        unique_cols: list[str],
-        *,
-        update_timestamp: bool = True,
-        connection: Any | None = None,  # noqa: ANN401
-        reconnect_on_fail: bool = True,
+        options: BulkCopyUpsertOptions,
     ) -> None:
-        if not records:
+        if not options.records:
             return
 
-        serialized_records = _serialize_records(records)
+        dialect_name = self.oci_engine.dialect.name if self.oci_engine is not None else "postgresql"
+        if dialect_name == "oracle":
+            serialized_records = _serialize_records_oracle(options.records)
+            self._execute_with_retry(
+                lambda active_connection: self._do_bulk_merge_oracle(
+                    table_name,
+                    serialized_records,
+                    options.unique_cols,
+                    update_timestamp=options.update_timestamp,
+                    connection=active_connection,
+                ),
+                table_name=table_name,
+                connection=options.connection,
+                reconnect_on_fail=options.reconnect_on_fail,
+            )
+            return
+
+        serialized_records = _serialize_records(options.records)
         self._execute_with_retry(
             lambda active_connection: self._do_bulk_copy_upsert(
                 table_name,
                 serialized_records,
-                unique_cols,
-                update_timestamp=update_timestamp,
+                options.unique_cols,
+                update_timestamp=options.update_timestamp,
                 connection=active_connection,
             ),
             table_name=table_name,
-            connection=connection,
-            reconnect_on_fail=reconnect_on_fail,
+            connection=options.connection,
+            reconnect_on_fail=options.reconnect_on_fail,
         )
 
     def _close_raw_connection(self, connection: RawConnection | None, *, label: str) -> None:
@@ -812,7 +904,7 @@ class OCISyncBase:
             return
         try:
             connection.close()
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
+        except DBAPI_EXCEPTIONS as exc:
             logger.warning("Failed to close OCI connection label=%s: %s", label, exc)
 
     def _retry_copy_connection(
@@ -842,7 +934,7 @@ class OCISyncBase:
         for attempt in range(1, max_attempts + 1):
             try:
                 operation(connection)
-            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
+            except DBAPI_EXCEPTIONS as exc:
                 last_exception = exc
                 if attempt == max_attempts:
                     break
@@ -875,7 +967,7 @@ class OCISyncBase:
         try:
             self.target_session.close()
             self.oci_engine.dispose()
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
+        except DBAPI_EXCEPTIONS as e:
             logger.warning("Ignore exception during OCI reconnection cleanup: %s", e)
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
@@ -916,12 +1008,22 @@ class OCISyncBase:
             try:
                 conn = self.oci_engine.raw_connection()
                 try:
-                    cursor = conn.cursor()
-                    cursor.execute("SET statement_timeout = 600000;")
-                    cursor.close()
-                except (PsycopgError, SQLAlchemyError, sqlite3.Error, OSError, RuntimeError) as set_timeout_exc:
+                    is_oracle = False
+                    if self.oci_engine is not None:
+                        dialect = getattr(self.oci_engine, "dialect", None)
+                        if (
+                            dialect is not None
+                            and hasattr(dialect, "name")
+                            and getattr(dialect, "name", None) == "oracle"
+                        ):
+                            is_oracle = True
+                    if not is_oracle:
+                        cursor = conn.cursor()
+                        cursor.execute("SET statement_timeout = 600000;")
+                        cursor.close()
+                except DBAPI_EXCEPTIONS_SQLITE as set_timeout_exc:
                     logger.warning("Failed to set statement_timeout on OCI connection: %s", set_timeout_exc)
-            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
+            except DBAPI_EXCEPTIONS as exc:
                 transient = self._is_transient_oci_error(exc)
 
                 if not transient or attempt >= max_attempts:
@@ -953,7 +1055,7 @@ class OCISyncBase:
     def _rollback_target_session(self, *, label: str) -> None:
         try:
             self.target_session.rollback()
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as rollback_exc:
+        except DBAPI_EXCEPTIONS as rollback_exc:
             logger.warning("OCI rollback failed label=%s error=%s", label, rollback_exc)
 
     def _run_target_session_with_retries(
@@ -970,7 +1072,7 @@ class OCISyncBase:
         for attempt in range(1, max_attempts + 1):
             try:
                 return operation()
-            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
+            except DBAPI_EXCEPTIONS as exc:
                 transient = self._is_transient_oci_error(exc)
                 self._rollback_target_session(label=label)
 
@@ -1044,19 +1146,13 @@ class OCISyncBase:
     def sync_simple_table(
         self,
         model: type[Base],
-        conflict_keys: list[str],
-        exclude_cols: list[str] | None = None,
-        filters: list[Any] | None = None,
-        transform_fn: Callable[..., Any] | None = None,
-        batch_size: int = 5000,
-        *,
-        update_timestamp: bool | None = None,
-        dedupe_keys: list[str] | None = None,
+        options: SimpleTableSyncOptions,
     ) -> int:
         """Sync simple table using Batched UPSERT or COPY.
 
         Generic sync parameter for simple tables.
         """
+        exclude_cols = list(options.exclude_cols) if options.exclude_cols is not None else None
         if exclude_cols is None:
             exclude_cols = ["id"]
         elif "id" not in exclude_cols:
@@ -1072,15 +1168,16 @@ class OCISyncBase:
             return 0
 
         query = self.sqlite_session.query(*[getattr(model, column) for column in columns])
-        if filters:
-            query = query.filter(*filters)
+        if options.filters:
+            query = query.filter(*options.filters)
 
         total_count = query.count()
         if total_count == 0:
             logger.info("[info] No records for %s", model.__tablename__)
             return 0
 
-        logger.info("🚚 Syncing %s (%s rows, batch=%s)...", model.__tablename__, total_count, batch_size)
+        logger.info("🚚 Syncing %s (%s rows, batch=%s)...", model.__tablename__, total_count, options.batch_size)
+        update_timestamp = options.update_timestamp
         if update_timestamp is None:
             update_timestamp = "updated_at" not in exclude_cols
 
@@ -1090,11 +1187,11 @@ class OCISyncBase:
                 query=query,
                 total_count=total_count,
                 columns=columns,
-                conflict_keys=conflict_keys,
-                transform_fn=transform_fn,
-                batch_size=batch_size,
+                conflict_keys=options.conflict_keys,
+                transform_fn=options.transform_fn,
+                batch_size=options.batch_size,
                 update_timestamp=update_timestamp,
-                dedupe_keys=dedupe_keys,
+                dedupe_keys=options.dedupe_keys,
             ),
         )
 
@@ -1136,48 +1233,43 @@ class OCISyncBase:
                     connection=connection,
                 )
                 synced += 1
-            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as exc:
+            except DBAPI_EXCEPTIONS_VAL as exc:
                 logger.warning("Skipping bad row in %s: %s", config.model.__tablename__, exc)
         return synced
 
     def _sync_records_with_fallback(
         self,
         config: SyncBatchConfig,
-        records: list[dict[str, Any]],
-        *,
-        connection: RawConnection | None,
-        copy_label: str,
-        fallback_label: str,
-        failure_context: str,
-        reconnect_on_fail: bool,
+        options: CopyFallbackOptions,
     ) -> tuple[int, str]:
         try:
             self._bulk_copy_upsert(
                 config.model.__tablename__,
-                records,
-                config.conflict_keys,
-                update_timestamp=config.update_timestamp,
-                connection=connection,
-                reconnect_on_fail=reconnect_on_fail,
+                BulkCopyUpsertOptions(
+                    records=options.records,
+                    unique_cols=config.conflict_keys,
+                    update_timestamp=config.update_timestamp,
+                    connection=options.connection,
+                    reconnect_on_fail=options.reconnect_on_fail,
+                ),
             )
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as exc:
+        except DBAPI_EXCEPTIONS_VAL as exc:
             logger.warning(
                 "Batch COPY failed for %s%s, falling back to row-by-row: %s",
                 config.model.__tablename__,
-                failure_context,
+                options.failure_context,
                 exc,
             )
-            self._close_raw_connection(connection, label=copy_label)
-            connection = None
-            fallback_connection = self._raw_oci_connection_with_retries(label=fallback_label)
+            self._close_raw_connection(options.connection, label=options.copy_label)
+            fallback_connection = self._raw_oci_connection_with_retries(label=options.fallback_label)
             try:
-                return self._sync_records_row_by_row(config, records, fallback_connection), "row-by-row"
+                return self._sync_records_row_by_row(config, options.records, fallback_connection), "row-by-row"
             finally:
-                self._close_raw_connection(fallback_connection, label=fallback_label)
+                self._close_raw_connection(fallback_connection, label=options.fallback_label)
         else:
-            return len(records), "COPY"
+            return len(options.records), "COPY"
         finally:
-            self._close_raw_connection(connection, label=copy_label)
+            self._close_raw_connection(options.connection, label=options.copy_label)
 
     def _sync_sequential(self, config: SyncBatchConfig) -> int:
         synced = 0
@@ -1191,12 +1283,14 @@ class OCISyncBase:
             )
             synced_batch, method = self._sync_records_with_fallback(
                 config,
-                records,
-                connection=connection,
-                copy_label=f"{table_name}.sync",
-                fallback_label=f"{table_name}.sync.fallback",
-                failure_context="",
-                reconnect_on_fail=True,
+                CopyFallbackOptions(
+                    records=records,
+                    connection=connection,
+                    copy_label=f"{table_name}.sync",
+                    fallback_label=f"{table_name}.sync.fallback",
+                    failure_context="",
+                    reconnect_on_fail=True,
+                ),
             )
             synced += synced_batch
             logger.info("   Synced %s/%s rows via %s...", synced, config.total_count, method)
@@ -1214,12 +1308,14 @@ class OCISyncBase:
             connection = self._raw_oci_connection_with_retries(label=f"{table_name}.sync.thread")
             synced, _ = self._sync_records_with_fallback(
                 config,
-                records,
-                connection=connection,
-                copy_label=f"{table_name}.sync.thread",
-                fallback_label=f"{table_name}.sync.fallback.thread",
-                failure_context=f" at offset {offset}",
-                reconnect_on_fail=False,
+                CopyFallbackOptions(
+                    records=records,
+                    connection=connection,
+                    copy_label=f"{table_name}.sync.thread",
+                    fallback_label=f"{table_name}.sync.fallback.thread",
+                    failure_context=f" at offset {offset}",
+                    reconnect_on_fail=False,
+                ),
             )
             return synced
         finally:
@@ -1295,7 +1391,7 @@ class OCISyncBase:
             cursor.execute(f"DROP TABLE {temp_table}")
             connection.commit()
 
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
+        except DBAPI_EXCEPTIONS:
             logger.exception("Bulk COPY-INSERT failed for %s", table_name)
             connection.rollback()
             raise
@@ -1314,6 +1410,17 @@ class OCISyncBase:
         connection: Any,  # noqa: ANN401
     ) -> None:
         """Perform a single direct SQL INSERT with ON CONFLICT UPDATE/DO NOTHING."""
+        bind = self.target_session.get_bind()
+        if bind.dialect.name == "oracle":
+            self._direct_insert_upsert_oracle(
+                table_name,
+                record,
+                conflict_keys,
+                update_timestamp=update_timestamp,
+                connection=connection,
+            )
+            return
+
         cursor = connection.cursor()
         try:
             keys = list(record.keys())
@@ -1336,11 +1443,122 @@ class OCISyncBase:
             sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) {conflict_action}"  # noqa: S608
             cursor.execute(sql, record)
             connection.commit()
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
+        except DBAPI_EXCEPTIONS:
             connection.rollback()
             raise
         finally:
             cursor.close()
+
+    def _direct_insert_upsert_oracle(
+        self,
+        table_name: str,
+        record: dict[str, Any],
+        conflict_keys: list[str],
+        *,
+        update_timestamp: bool,
+        connection: Any,  # noqa: ANN401
+    ) -> None:
+        """Perform a single direct SQL MERGE for Oracle Database."""
+        cursor = connection.cursor()
+        try:
+            # Serialize json values in the record
+            serialized_record = {
+                key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
+                for key, value in record.items()
+            }
+
+            keys = list(serialized_record.keys())
+
+            if not conflict_keys:
+                cols_str = ", ".join([f'"{k}"' for k in keys])
+                vals_str = ", ".join([f":{k}" for k in keys])
+                sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({vals_str})"  # noqa: S608
+            else:
+                on_clause = " AND ".join([f't."{k}" = :{k}' for k in conflict_keys])
+                update_cols = [k for k in keys if k not in conflict_keys and k not in ("created_at", "id")]
+
+                update_clause = ""
+                if update_cols:
+                    set_parts = [f't."{k}" = :{k}' for k in update_cols]
+                    if update_timestamp and "updated_at" not in keys:
+                        set_parts.append('t."updated_at" = CURRENT_TIMESTAMP')
+                    update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(set_parts)
+
+                cols_str = ", ".join([f'"{k}"' for k in keys])
+                vals_str = ", ".join([f":{k}" for k in keys])
+                insert_clause = f"WHEN NOT MATCHED THEN INSERT ({cols_str}) VALUES ({vals_str})"  # noqa: S608
+
+                sql = f"""
+                    MERGE INTO {table_name} t
+                    USING DUAL s
+                    ON ({on_clause})
+                    {update_clause}
+                    {insert_clause}
+                """
+
+            cursor.execute(sql, serialized_record)
+            connection.commit()
+        except DBAPI_EXCEPTIONS:
+            connection.rollback()
+            raise
+        finally:
+            cursor.close()
+
+    def _do_bulk_merge_oracle(
+        self,
+        table_name: str,
+        records: list[dict[str, Any]],
+        unique_cols: list[str],
+        *,
+        update_timestamp: bool,
+        connection: Any | None = None,  # noqa: ANN401
+    ) -> None:
+        """Perform bulk merge using Oracle SQL MERGE INTO DUAL statement."""
+        close_connection = connection is None
+        if connection is None:
+            connection = self.oci_engine.raw_connection()
+        cursor = connection.cursor()
+
+        try:
+            serialized_records = _serialize_records_oracle(records)
+            keys = list(serialized_records[0].keys())
+
+            if not unique_cols:
+                cols_str = ", ".join([f'"{k}"' for k in keys])
+                vals_str = ", ".join([f":{k}" for k in keys])
+                sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({vals_str})"  # noqa: S608
+            else:
+                on_clause = " AND ".join([f't."{k}" = :{k}' for k in unique_cols])
+                update_cols = [k for k in keys if k not in unique_cols and k not in ("created_at", "id")]
+
+                update_clause = ""
+                if update_cols:
+                    set_parts = [f't."{k}" = :{k}' for k in update_cols]
+                    if update_timestamp and "updated_at" not in keys:
+                        set_parts.append('t."updated_at" = CURRENT_TIMESTAMP')
+                    update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(set_parts)
+
+                cols_str = ", ".join([f'"{k}"' for k in keys])
+                vals_str = ", ".join([f":{k}" for k in keys])
+                insert_clause = f"WHEN NOT MATCHED THEN INSERT ({cols_str}) VALUES ({vals_str})"  # noqa: S608
+
+                sql = f"""
+                    MERGE INTO {table_name} t
+                    USING DUAL s
+                    ON ({on_clause})
+                    {update_clause}
+                    {insert_clause}
+                """
+
+            cursor.executemany(sql, serialized_records)
+            connection.commit()
+        except DBAPI_EXCEPTIONS:
+            connection.rollback()
+            raise
+        finally:
+            cursor.close()
+            if close_connection:
+                connection.close()
 
     def _ensure_table(self, model: type[Base]) -> None:
         """Create table on OCI if it doesn't exist."""

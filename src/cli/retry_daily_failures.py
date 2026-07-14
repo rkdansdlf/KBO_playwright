@@ -10,6 +10,7 @@ import subprocess
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,17 @@ logger = logging.getLogger(__name__)
 Command = list[str]
 Runner = Callable[[Sequence[str]], None]
 MAX_MONTH = 12
+
+
+@dataclass(frozen=True, slots=True)
+class RetryOptions:
+    """Execution and I/O settings for a retry run."""
+
+    summary_dir: str | Path | None = None
+    apply: bool = False
+    sync: bool = False
+    runner: Runner | None = None
+    python_bin: str = sys.executable
 
 
 def _summary_path(target_date: str, summary_dir: str | Path | None = None) -> Path:
@@ -186,48 +198,37 @@ def _default_runner(command: Sequence[str]) -> None:
     subprocess.run(list(command), check=True)
 
 
-def run_retry(
-    *,
-    target_date: str,
-    summary_dir: str | Path | None = None,
-    apply: bool = False,
-    sync: bool = False,
-    runner: Runner | None = None,
-    python_bin: str = sys.executable,
-) -> int:
+def run_retry(target_date: str, options: RetryOptions | None = None) -> int:
     """Run retry.
 
     Args:
         target_date: Target date for the operation.
-        summary_dir: Summary Dir.
-        apply: Apply.
-        sync: Whether to sync to remote database.
-        runner: Runner.
-        python_bin: Python Bin.
+        options: Execution and I/O settings.
 
     Returns:
         Integer result.
 
     """
-    summary_file = _summary_path(target_date, summary_dir)
+    options = options or RetryOptions()
+    summary_file = _summary_path(target_date, options.summary_dir)
 
     summary = load_daily_summary(summary_file)
-    commands = build_retry_commands(summary, sync=sync, python_bin=python_bin)
+    commands = build_retry_commands(summary, sync=options.sync, python_bin=options.python_bin)
 
     if not commands:
         logger.info("No retry candidates found in %s", summary_file)
         return 0
 
-    action = "apply" if apply else "dry-run"
+    action = "apply" if options.apply else "dry-run"
     logger.info("Daily failure retry %s: date=%s commands=%s", action, target_date, len(commands))
     for command in commands:
         logger.info("  $ %s", shlex.join(command))
 
-    if not apply:
+    if not options.apply:
         logger.info("Dry run only. Re-run with --apply to execute these commands.")
         return 0
 
-    command_runner = runner or _default_runner
+    command_runner = options.runner or _default_runner
     for command in commands:
         command_runner(command)
     logger.info("Retry commands completed.")
@@ -272,11 +273,13 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
 
     try:
         return run_retry(
-            target_date=args.date,
-            summary_dir=args.summary_dir,
-            apply=args.apply,
-            sync=args.sync,
-            runner=runner,
+            args.date,
+            RetryOptions(
+                summary_dir=args.summary_dir,
+                apply=args.apply,
+                sync=args.sync,
+                runner=runner,
+            ),
         )
     except (FileNotFoundError, ValueError):
         logger.exception("Retry command configuration error")

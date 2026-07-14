@@ -10,7 +10,7 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
@@ -107,6 +107,30 @@ def create_engine_for_url(
                 logger.warning("Failed to configure SQLite pragmas")
 
         return engine
+
+    if url.startswith("oracle"):
+        # Ensure we are using thin mode connect args for Oracle Wallet
+        tns_admin = os.getenv("TNS_ADMIN")
+        connect_args: dict[str, Any] = {}
+        if tns_admin:
+            connect_args["config_dir"] = tns_admin
+            connect_args["wallet_location"] = tns_admin
+            try:
+                auth_part = url.split("oracle+oracledb://")[1].rsplit("@", 1)[0]
+                if ":" in auth_part:
+                    _, password = auth_part.split(":", 1)
+                    connect_args["wallet_password"] = password
+            except (IndexError, ValueError):
+                logger.debug("Could not parse Oracle wallet credentials from URL")
+        return create_engine(
+            url,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+            echo=False,
+            connect_args=connect_args,
+        )
+
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
 
 
@@ -146,6 +170,8 @@ def get_database_type() -> str:
         return "mysql"
     if DATABASE_URL.startswith("postgresql"):
         return "postgresql"
+    if DATABASE_URL.startswith("oracle"):
+        return "oracle"
     return "unknown"
 
 

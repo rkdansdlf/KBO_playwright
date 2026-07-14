@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -27,6 +28,17 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from src.parsers.player_profile_parser import PlayerProfileParsed
+
+
+@dataclass(frozen=True, slots=True)
+class MovementPlayerResolutionContext:
+    """Evidence used to resolve an ambiguous player-movement record."""
+
+    session: Session
+    player_name: str
+    canonical_team_id: str | None
+    season: int
+    raw_position: str | None
 
 
 class PlayerRepository:
@@ -498,46 +510,51 @@ class PlayerRepository:
             return None
         if len(candidates) == 1:
             return candidates[0].player_id
-        return self._resolve_multi_candidate(candidates, session, player_name, canonical_team_id, season, raw_position)
+        return self._resolve_multi_candidate(
+            candidates,
+            MovementPlayerResolutionContext(
+                session=session,
+                player_name=player_name,
+                canonical_team_id=canonical_team_id,
+                season=season,
+                raw_position=raw_position,
+            ),
+        )
 
     def _resolve_multi_candidate(
         self,
         candidates: list,
-        session: Session,
-        player_name: str,
-        canonical_team_id: str | None,
-        season: int,
-        raw_position: str | None,
+        context: MovementPlayerResolutionContext,
     ) -> int | None:
         for narrower in (
-            lambda rows: self._narrow_by_position(rows, raw_position),
-            lambda rows: self._narrow_by_debut_timeline(rows, season),
-            lambda rows: self._narrow_by_profile(session, rows),
+            lambda rows: self._narrow_by_position(rows, context.raw_position),
+            lambda rows: self._narrow_by_debut_timeline(rows, context.season),
+            lambda rows: self._narrow_by_profile(context.session, rows),
         ):
             candidates, player_id = narrower(candidates)
             if player_id:
                 return player_id
 
         roster_player_id = self._unique_roster_movement_player_id(
-            session,
-            player_name,
-            canonical_team_id,
-            season,
+            context.session,
+            context.player_name,
+            context.canonical_team_id,
+            context.season,
             {c.player_id for c in candidates},
         )
         if roster_player_id:
             return roster_player_id
 
         franchise_season_player_id = self._unique_franchise_season_player_id(
-            session,
-            canonical_team_id,
-            season,
+            context.session,
+            context.canonical_team_id,
+            context.season,
             {c.player_id for c in candidates},
         )
         if franchise_season_player_id:
             return franchise_season_player_id
 
-        return self._unique_contextual_movement_player_id(session, candidates, canonical_team_id)
+        return self._unique_contextual_movement_player_id(context.session, candidates, context.canonical_team_id)
 
     def _unique_roster_movement_player_id(
         self,

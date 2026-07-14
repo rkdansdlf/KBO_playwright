@@ -46,7 +46,7 @@ from src.models.team import Team, TeamCodeMap, TeamDailyRoster
 from src.models.team_event import TeamEvent
 from src.models.team_history import TeamHistory
 from src.models.ticket_schedule import TicketSchedule
-from src.sync.sync_base import SyncBaseProtocol
+from src.sync.sync_base import BulkCopyUpsertOptions, SimpleTableSyncOptions, SyncBaseProtocol
 
 logger = logging.getLogger(__name__)
 EMBEDDING_NORMALIZATION_EPSILON = 1e-9
@@ -87,11 +87,11 @@ class MiscSyncMixin(SyncBaseProtocol):
 
     def sync_franchises(self) -> int:
         """Sync franchises from SQLite to OCI."""
-        return self.sync_simple_table(Franchise, ["original_code"])
+        return self.sync_simple_table(Franchise, SimpleTableSyncOptions(conflict_keys=["original_code"]))
 
     def sync_kbo_seasons(self) -> int:
         """Sync kbo_seasons reference table from SQLite to OCI."""
-        return self.sync_simple_table(KboSeason, ["season_id"])
+        return self.sync_simple_table(KboSeason, SimpleTableSyncOptions(conflict_keys=["season_id"]))
 
     def sync_teams(self) -> int:
         """Sync teams from SQLite to OCI."""
@@ -138,7 +138,10 @@ class MiscSyncMixin(SyncBaseProtocol):
                 },
             )
 
-        self._bulk_copy_upsert(Team.__tablename__, records, ["team_id"])
+        self._bulk_copy_upsert(
+            Team.__tablename__,
+            BulkCopyUpsertOptions(records=records, unique_cols=["team_id"]),
+        )
         logger.info("✅ Synced %s teams to OCI", len(records))
         return len(records)
 
@@ -147,8 +150,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(StadiumInfo)
         return self.sync_simple_table(
             StadiumInfo,
-            ["stadium_code"],
-            exclude_cols=["created_at"],
+            SimpleTableSyncOptions(
+                conflict_keys=["stadium_code"],
+                exclude_cols=["created_at"],
+            ),
         )
 
     def sync_awards(self) -> int:
@@ -166,8 +171,10 @@ class MiscSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             Award,
-            ["year", "award_type", "category", "player_name", "team_name"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["year", "award_type", "category", "player_name", "team_name"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_rag_chunks(self, batch_size: int = 1000) -> int:
@@ -226,10 +233,12 @@ class MiscSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             RagChunk,
-            ["source_table", "source_row_id"],
-            exclude_cols=["created_at", "id"],
-            transform_fn=transform_rag_chunk,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["source_table", "source_row_id"],
+                exclude_cols=["created_at", "id"],
+                transform_fn=transform_rag_chunk,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_ticket_schedules(self, batch_size: int = 1000) -> int:
@@ -249,9 +258,11 @@ class MiscSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             TicketSchedule,
-            ["game_date", "home_team", "platform"],
-            exclude_cols=["created_at", "id"],
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["game_date", "home_team", "platform"],
+                exclude_cols=["created_at", "id"],
+                batch_size=batch_size,
+            ),
         )
 
     def sync_stadium_foods(self, batch_size: int = 1000) -> int:
@@ -271,9 +282,11 @@ class MiscSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             StadiumFood,
-            ["stadium_name", "restaurant_name", "menu_item"],
-            exclude_cols=["created_at", "id"],
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["stadium_name", "restaurant_name", "menu_item"],
+                exclude_cols=["created_at", "id"],
+                batch_size=batch_size,
+            ),
         )
 
     def sync_game_broadcasts(self) -> int:
@@ -281,8 +294,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(GameBroadcast)
         return self.sync_simple_table(
             GameBroadcast,
-            ["game_id", "broadcaster"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["game_id", "broadcaster"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_stadium_regulations(self) -> int:
@@ -290,8 +305,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(StadiumRegulation)
         return self.sync_simple_table(
             StadiumRegulation,
-            ["id"],
-            exclude_cols=["created_at"],
+            SimpleTableSyncOptions(
+                conflict_keys=["id"],
+                exclude_cols=["created_at"],
+            ),
         )
 
     def sync_game_mvps(self) -> int:
@@ -299,8 +316,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(GameMvp)
         return self.sync_simple_table(
             GameMvp,
-            ["game_id", "mvp_type", "player_name"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["game_id", "mvp_type", "player_name"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_injury_entries(self) -> int:
@@ -308,8 +327,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(InjuryEntry)
         return self.sync_simple_table(
             InjuryEntry,
-            ["player_id", "il_placement_date"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "il_placement_date"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_foreign_player_changes(self) -> int:
@@ -317,8 +338,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(ForeignPlayerChange)
         return self.sync_simple_table(
             ForeignPlayerChange,
-            ["player_name", "team_id", "season", "change_type"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["player_name", "team_id", "season", "change_type"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_manager_changes(self) -> int:
@@ -326,8 +349,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(ManagerChange)
         return self.sync_simple_table(
             ManagerChange,
-            ["team_id", "season", "new_manager"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["team_id", "season", "new_manager"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_team_rivalries(self) -> int:
@@ -335,8 +360,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(TeamRivalry)
         return self.sync_simple_table(
             TeamRivalry,
-            ["team_id_a", "team_id_b"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["team_id_a", "team_id_b"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_cheer_songs(self) -> int:
@@ -344,8 +371,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(CheerSong)
         return self.sync_simple_table(
             CheerSong,
-            ["team_id", "song_name", "song_type"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["team_id", "song_name", "song_type"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_cheer_chants(self) -> int:
@@ -353,8 +382,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(CheerChant)
         return self.sync_simple_table(
             CheerChant,
-            ["team_id", "chant_text"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["team_id", "chant_text"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_team_events(self) -> int:
@@ -362,8 +393,10 @@ class MiscSyncMixin(SyncBaseProtocol):
         self._ensure_table(TeamEvent)
         return self.sync_simple_table(
             TeamEvent,
-            ["team_id", "title", "source_url"],
-            exclude_cols=["created_at", "id"],
+            SimpleTableSyncOptions(
+                conflict_keys=["team_id", "title", "source_url"],
+                exclude_cols=["created_at", "id"],
+            ),
         )
 
     def sync_phase1_all(self) -> dict[str, int]:
@@ -409,10 +442,12 @@ class MiscSyncMixin(SyncBaseProtocol):
             filters = [StadiumTransitTime.game_date == game_date]
         count = self.sync_simple_table(
             StadiumTransitTime,
-            ["stadium_code", "origin_label", "transport_mode", "measured_at"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["stadium_code", "origin_label", "transport_mode", "measured_at"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
         logger.info("✅ Synced %s transit time records to OCI", count)
         return count
@@ -440,10 +475,12 @@ class MiscSyncMixin(SyncBaseProtocol):
             filters = [StadiumCongestion.game_date == game_date]
         count = self.sync_simple_table(
             StadiumCongestion,
-            ["stadium_code", "location_label", "measured_at"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["stadium_code", "location_label", "measured_at"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
         logger.info("✅ Synced %s congestion records to OCI", count)
         return count
@@ -471,10 +508,12 @@ class MiscSyncMixin(SyncBaseProtocol):
             filters = [StadiumOperationNotice.game_date == game_date]
         count = self.sync_simple_table(
             StadiumOperationNotice,
-            ["stadium_code", "source_name", "external_id"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["stadium_code", "source_name", "external_id"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
         logger.info("✅ Synced %s operation notice records to OCI", count)
         return count
@@ -529,10 +568,12 @@ class MiscSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             TeamDailyRoster,
-            ["roster_date", "team_code", "player_id"],
-            filters=filters or None,
-            transform_fn=self._transform_daily_roster_row,
-            batch_size=1000,
+            SimpleTableSyncOptions(
+                conflict_keys=["roster_date", "team_code", "player_id"],
+                filters=filters or None,
+                transform_fn=self._transform_daily_roster_row,
+                batch_size=1000,
+            ),
         )
 
     def _transform_daily_roster_row(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -596,7 +637,10 @@ class MiscSyncMixin(SyncBaseProtocol):
             logger.info("[info] No team history to sync.")
             return 0
 
-        self._bulk_copy_upsert(TeamHistory.__tablename__, records, ["id"])
+        self._bulk_copy_upsert(
+            TeamHistory.__tablename__,
+            BulkCopyUpsertOptions(records=records, unique_cols=["id"]),
+        )
         logger.info("✅ Synced %s team history records to OCI", len(records))
         return len(records)
 
@@ -624,8 +668,10 @@ class MiscSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             TeamCodeMap,
-            ["season", "curr_code"],
-            transform_fn=transform,
+            SimpleTableSyncOptions(
+                conflict_keys=["season", "curr_code"],
+                transform_fn=transform,
+            ),
         )
 
     def sync_matchups(self, year: int | None = None, batch_size: int = 10000) -> dict[str, int]:
@@ -647,56 +693,70 @@ class MiscSyncMixin(SyncBaseProtocol):
 
         results["batter_team"] = self.sync_simple_table(
             BatterTeamSplit,
-            ["season_year", "league_type_code", "player_id", "team_code", "opponent_team_code"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["season_year", "league_type_code", "player_id", "team_code", "opponent_team_code"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
         results["pitcher_team"] = self.sync_simple_table(
             PitcherTeamSplit,
-            ["season_year", "league_type_code", "player_id", "team_code", "opponent_team_code"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["season_year", "league_type_code", "player_id", "team_code", "opponent_team_code"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
         results["batter_stadium"] = self.sync_simple_table(
             BatterStadiumSplit,
-            ["season_year", "league_type_code", "player_id", "team_code", "stadium_name"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["season_year", "league_type_code", "player_id", "team_code", "stadium_name"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
         results["batter_vs_starter"] = self.sync_simple_table(
             BatterVsStarter,
-            ["season_year", "league_type_code", "player_id", "pitcher_name"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["season_year", "league_type_code", "player_id", "pitcher_name"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
         results["matchup_bvp"] = self.sync_simple_table(
             MatchupBvP,
-            ["batter_id", "pitcher_id"],
-            exclude_cols=["created_at", "id"],
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["batter_id", "pitcher_id"],
+                exclude_cols=["created_at", "id"],
+                batch_size=batch_size,
+            ),
         )
 
         results["batter_splits"] = self.sync_simple_table(
             BatterSplit,
-            ["player_id", "season_year", "split_type"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season_year", "split_type"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
         results["pitcher_splits"] = self.sync_simple_table(
             PitcherSplit,
-            ["player_id", "season_year", "split_type"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season_year", "split_type"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
         logger.info("✅ Matchup Splits Sync Summary: %s", results)

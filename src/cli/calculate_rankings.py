@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 
-from src.aggregators.ranking_aggregator import RankingAggregator
+from src.aggregators.ranking_aggregator import RankingAggregator, RankingGenerationRequest
 from src.db.engine import SessionLocal
 from src.models.player import (
     PlayerBasic,
@@ -189,14 +189,16 @@ def rebuild_rankings(season: int) -> int:
 
     aggregator = RankingAggregator()
     rankings = aggregator.generate_rankings(
-        season=season,
-        fielding_stats=fielding_dicts,
-        baserunning_stats=baserunning_dicts,
-        batting_stats=batting_dicts,
-        pitching_stats=pitching_dicts,
-        min_pa=min_pa,
-        min_ip_outs=min_ip_outs,
-        persist=True,  # Saves to DB inside RankingRepository
+        RankingGenerationRequest(
+            season=season,
+            fielding_stats=fielding_dicts,
+            baserunning_stats=baserunning_dicts,
+            batting_stats=batting_dicts,
+            pitching_stats=pitching_dicts,
+            min_pa=min_pa,
+            min_ip_outs=min_ip_outs,
+            persist=True,
+        ),
     )
 
     if not rankings:
