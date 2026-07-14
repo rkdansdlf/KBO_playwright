@@ -677,14 +677,22 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage expansion**: Added `tests/crawlers/test_futures_profile_ext.py` (futures/profile.py 73%→87%), `tests/crawlers/test_team_history_crawler_ext.py` (team_history_crawler.py 71%→94%), `tests/crawlers/test_team_stats_crawler_orchestration.py` (team batting/pitching crawlers 55%→68% / 68%→81%); `tests/scripts/test_backfill_futures_team_codes.py`, `tests/scripts/test_run_futures_backfill_batch.py`.
 - **Verification**: `ruff check src/ tests/ scripts/` and `ruff check migrations/` clean; `ruff format --check .` clean (1,071 files); unit suite (`-m "not integration and not slow and not oci"`) **9,296 passed, 24 skipped, 1 xfailed**.
 
-### Current Verification Baseline (2026-07-14)
+### Phase 60 Complete (2026-07-15) — C901 enforcement + CLI branch-coverage push
+
+- **C901 complexity enforcement**: Added `C901` to the default ruff `select` and relaxed it for `tests/**` (intentionally complex test setup). `src/` and `scripts/` are at 0 complexity violations; closes the gap where complexity was only checked out-of-band (`ruff check --select C901 src/`).
+- **Branch-coverage push (small CLI modules)**:
+  - `ingest_schedule_html.py`: added missing-dir `SystemExit`, parse+save, and empty-parse branches (61% → 100%).
+  - `collect_rosters.py`: covered `save_chunk` success and exception paths (80% → 100%).
+  - `recalc_season_stats.py`: covered save loops, `all` series, and `pitching`-only type (80% → 97%).
+
+### Current Verification Baseline (2026-07-15)
 
 - GitHub Actions: lint, Python 3.12 test, and integration-test jobs passing (last observed green run prior to this phase).
 - `ruff check src/ tests/ scripts/` = 0 errors.
 - `ruff check migrations/` = 0 errors.
 - `ruff format --check .` = 1,071 files already formatted.
-- `ruff check --select C901 src/ scripts/` = 0 violations.
+- `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
-- `venv/bin/python -m pytest -m "not integration and not slow and not oci" --tb=line -q` = **9,296 passed**, 24 skipped, 1 xfailed.
+- `venv/bin/python -m pytest -m "not integration and not slow and not oci" --tb=line -q` = **9,447 passed**, 24 skipped, 1 xfailed.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
