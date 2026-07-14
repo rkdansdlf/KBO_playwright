@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from sqlalchemy.exc import SQLAlchemyError
+
 import pytest
 
 from src.cli.crawl_staff_register import main, run_crawler
@@ -84,3 +86,63 @@ class TestRunCrawler:
 
         assert result == 0
         crawler.save_to_db.assert_called_once_with([{"player_id": "123"}], dry_run=True)
+
+    @pytest.mark.asyncio
+    async def test_run_crawler_no_team_selection_returns_error(self):
+        args = MagicMock(all_teams=False, team=None, dry_run=False, sync_oci=False)
+        with patch("src.cli.crawl_staff_register.StaffRegisterCrawler") as crawler_cls:
+            result = await run_crawler(args)
+        assert result == 1
+        crawler_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sync_oci_skips_when_url_missing(self):
+        args = MagicMock(all_teams=False, team="LG", dry_run=False, sync_oci=True)
+        crawler = MagicMock()
+        crawler.crawl_all_teams = AsyncMock(return_value=[{"player_id": "x"}])
+        with (
+            patch("src.cli.crawl_staff_register.StaffRegisterCrawler", return_value=crawler),
+            patch("src.db.engine.get_oci_url", return_value=None),
+        ):
+            result = await run_crawler(args)
+        assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_sync_oci_success(self):
+        args = MagicMock(all_teams=False, team="LG", dry_run=False, sync_oci=True)
+        crawler = MagicMock()
+        crawler.crawl_all_teams = AsyncMock(return_value=[{"player_id": "x"}])
+        with (
+            patch("src.cli.crawl_staff_register.StaffRegisterCrawler", return_value=crawler),
+            patch("src.db.engine.get_oci_url", return_value="postgresql://h/db"),
+            patch("src.db.engine.SessionLocal") as mock_sf,
+            patch("src.sync.oci_sync.OCISync") as mock_sync_cls,
+        ):
+            mock_sf.return_value.__enter__.return_value = MagicMock()
+            mock_sf.return_value.__exit__.return_value = False
+            syncer = MagicMock()
+            mock_sync_cls.return_value = syncer
+            result = await run_crawler(args)
+        assert result == 0
+        syncer.sync_player_basic_by_ids.assert_called_once_with(["x"])
+        syncer.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sync_oci_failure_logs_exception(self):
+        args = MagicMock(all_teams=False, team="LG", dry_run=False, sync_oci=True)
+        crawler = MagicMock()
+        crawler.crawl_all_teams = AsyncMock(return_value=[{"player_id": "x"}])
+        with (
+            patch("src.cli.crawl_staff_register.StaffRegisterCrawler", return_value=crawler),
+            patch("src.db.engine.get_oci_url", return_value="postgresql://h/db"),
+            patch("src.db.engine.SessionLocal") as mock_sf,
+            patch("src.sync.oci_sync.OCISync") as mock_sync_cls,
+        ):
+            mock_sf.return_value.__enter__.return_value = MagicMock()
+            mock_sf.return_value.__exit__.return_value = False
+            syncer = MagicMock()
+            syncer.sync_player_basic_by_ids.side_effect = SQLAlchemyError("boom")
+            mock_sync_cls.return_value = syncer
+            result = await run_crawler(args)
+        assert result == 0
+        syncer.close.assert_called_once()
