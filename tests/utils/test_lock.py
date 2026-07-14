@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,51 @@ def test_lock_context_manager(tmp_path: Path) -> None:
     lock2 = ProcessLock(lock_name, lock_dir=tmp_path, blocking=False)
     assert lock2.acquire() is True
     lock2.release()
+
+
+def test_shared_singleton_blocking_acquire_across_threads(tmp_path: Path) -> None:
+    """A single shared ProcessLock instance must serialize (not spuriously fail) across threads.
+
+    Regression test for the scheduler ``sqlite_writer`` failure: when a
+    module-level singleton lock was held by one APScheduler worker thread and a
+    second worker thread attempted a *blocking* acquire on the same instance,
+    the instance-level ``thread_lock_acquired`` flag made the second thread
+    return immediately (raising ``LockAcquisitionError``) instead of blocking
+    until the first thread released. Per-thread state must fix this.
+    """
+    shared_lock = ProcessLock("test_shared_singleton", lock_dir=tmp_path)
+
+    order: list[str] = []
+    errors: list[Exception] = []
+    started = threading.Event()
+
+    def holder() -> None:
+        with shared_lock:
+            order.append("holder-acquired")
+            started.set()
+            # Hold the lock long enough for the waiter to attempt acquisition.
+            time.sleep(0.3)
+            order.append("holder-releasing")
+
+    def waiter() -> None:
+        started.wait(timeout=2)
+        try:
+            # Blocking acquire on the SAME shared instance from another thread.
+            with shared_lock:
+                order.append("waiter-acquired")
+        except (LockAcquisitionError, OSError, RuntimeError) as exc:
+            errors.append(exc)
+
+    t_holder = threading.Thread(target=holder)
+    t_waiter = threading.Thread(target=waiter)
+    t_holder.start()
+    t_waiter.start()
+    t_holder.join(timeout=5)
+    t_waiter.join(timeout=5)
+
+    assert errors == [], f"blocking acquire from another thread should not fail: {errors}"
+    # The waiter must only acquire after the holder released.
+    assert order == ["holder-acquired", "holder-releasing", "waiter-acquired"]
 
 
 def test_lock_non_blocking_fails_when_locked(tmp_path: Path) -> None:
