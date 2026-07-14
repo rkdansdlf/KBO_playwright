@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from src.cli.live_boxscore import (
     _build_game_payload,
+    _configure_cli_logging,
     _fetch_inning_scores,
     _fetch_live_games,
     _format_text,
@@ -126,3 +127,92 @@ class TestMain:
     def test_invalid_date_returns_1(self) -> None:
         result = main(["--date", "invalid"])
         assert result == 1
+
+    def test_default_uses_today(self) -> None:
+        result = _resolve_target_date(None)
+        assert isinstance(result, date_cls)
+
+    def test_configure_cli_logging_adds_handler_when_missing(self) -> None:
+        import logging as log_mod
+
+        saved = list(log_mod.getLogger().handlers)
+        log_mod.getLogger().handlers.clear()
+        try:
+            _configure_cli_logging()
+        finally:
+            log_mod.getLogger().handlers[:] = saved
+        assert log_mod.getLogger().handlers
+
+    def test_main_no_games_text(self) -> None:
+        with patch("src.cli.live_boxscore.SessionLocal") as mock_session_factory:
+            session = MagicMock()
+            mock_session_factory.return_value.__enter__.return_value = session
+            mock_session_factory.return_value.__exit__.return_value = False
+            session.execute.return_value.scalars.return_value.all.return_value = []
+
+            result = main(["--date", "20260627"])
+        assert result == 0
+
+    def test_main_with_games_json(self) -> None:
+        game = MagicMock()
+        game.game_id = "20260627HTOB0"
+        game.game_date = date_cls(2026, 6, 27)
+        game.game_status = "LIVE"
+        game.away_team = "KIA"
+        game.home_team = "DB"
+        game.away_score = 1
+        game.home_score = 2
+        game.stadium = "잠실"
+        with patch("src.cli.live_boxscore.SessionLocal") as mock_session_factory:
+            session = MagicMock()
+            mock_session_factory.return_value.__enter__.return_value = session
+            mock_session_factory.return_value.__exit__.return_value = False
+            session.execute.return_value.scalars.return_value.all.side_effect = [[game], []]
+
+            result = main(["--date", "20260627", "--json"])
+        assert result == 0
+
+    def test_main_with_games_text(self) -> None:
+        game = MagicMock()
+        game.game_id = "20260627HTOB0"
+        game.game_date = date_cls(2026, 6, 27)
+        game.game_status = "LIVE"
+        game.away_team = "KIA"
+        game.home_team = "DB"
+        game.away_score = 1
+        game.home_score = 2
+        game.stadium = "잠실"
+        with patch("src.cli.live_boxscore.SessionLocal") as mock_session_factory:
+            session = MagicMock()
+            mock_session_factory.return_value.__enter__.return_value = session
+            mock_session_factory.return_value.__exit__.return_value = False
+            session.execute.return_value.scalars.return_value.all.side_effect = [[game], []]
+
+            result = main(["--date", "20260627"])
+        assert result == 0
+
+
+class TestFetchLiveGames:
+    def test_game_id_filter_is_applied(self) -> None:
+        session = MagicMock()
+        game = MagicMock()
+        session.execute.return_value.scalars.return_value.all.return_value = [game]
+
+        result = _fetch_live_games(session, "20260627", "20260627HTOB0", 20, ("live",))
+
+        assert result == [game]
+
+
+class TestFetchInningScores:
+    def test_empty_game_ids_returns_empty(self) -> None:
+        assert _fetch_inning_scores(MagicMock(), []) == {}
+
+    def test_groups_rows_by_game(self) -> None:
+        session = MagicMock()
+        row1 = MagicMock(game_id="g1", team_side="away")
+        row2 = MagicMock(game_id="g1", team_side="home")
+        session.execute.return_value.scalars.return_value.all.return_value = [row1, row2]
+
+        result = _fetch_inning_scores(session, ["g1"])
+
+        assert set(result.keys()) == {"g1"}
