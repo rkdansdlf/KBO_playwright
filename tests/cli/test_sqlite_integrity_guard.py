@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
+from src.cli import sqlite_integrity_guard as module
 from src.cli.sqlite_integrity_guard import main
 from src.db.sqlite_integrity import check_sqlite_database, sqlite_path_from_url
 
@@ -160,3 +162,23 @@ class TestSqliteIntegrityGuardCli:
 
         assert exit_code == 0
         assert payload["status"] == "quarantined"
+
+    def test_cli_human_output_includes_paths(self, monkeypatch, capsys):
+        report = SimpleNamespace(
+            database_url="sqlite:///broken.db",
+            database_path="broken.db",
+            status="quarantined",
+            ok=True,
+            reason="moved to archive",
+            quarantine_dir="archive/123",
+        )
+        monkeypatch.setattr(module, "check_sqlite_database", lambda *_args, **_kwargs: report)
+        monkeypatch.setattr(module, "sqlite_guard_exit_code", lambda *_args, **_kwargs: 0)
+
+        exit_code = main(["--database-url", "sqlite:///broken.db"])
+        output = capsys.readouterr().out
+
+        assert exit_code == 0
+        assert "quarantined: moved to archive" in output
+        assert "database_path=broken.db" in output
+        assert "quarantine_dir=archive/123" in output

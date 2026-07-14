@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, exc
 from sqlalchemy.orm import sessionmaker
 
 from src.aggregators.clutch_aggregator import ClutchAggregator
-from src.aggregators.ranking_aggregator import MetricConfig, RankingAggregator
+from src.aggregators.ranking_aggregator import MetricConfig, RankingAggregator, RankingGenerationRequest
 from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
 from src.models.game import Game, GameEvent
 from src.models.player import PlayerBasic, PlayerSeasonBaserunning, PlayerSeasonBatting, PlayerSeasonFielding
@@ -223,7 +223,7 @@ class TestRankingAggregatorEdgeBranches:
                 "errors": 2,
             }
         ]
-        results = agg.generate_rankings(2025, fielding_stats=rows, persist=True)
+        results = agg.generate_rankings(RankingGenerationRequest(season=2025, fielding_stats=rows, persist=True))
         assert len(results) >= 1
         assert fake_repo.called
 

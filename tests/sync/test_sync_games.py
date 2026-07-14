@@ -84,18 +84,21 @@ class TestGameSyncMixin:
         result = mixin.sync_games(limit=100)
         assert result == 5
         mixin.sync_simple_table.assert_called_once()
+        assert mixin.sync_simple_table.call_args.args[1].conflict_keys == ["game_id"]
 
     def test_sync_player_game_batting(self, mixin):
         mixin.sync_simple_table.return_value = 3
         result = mixin.sync_player_game_batting()
         assert result == 3
         mixin.sync_simple_table.assert_called_once()
+        assert mixin.sync_simple_table.call_args.args[1].conflict_keys == ["game_id", "player_id"]
 
     def test_sync_player_game_pitching(self, mixin):
         mixin.sync_simple_table.return_value = 2
         result = mixin.sync_player_game_pitching()
         assert result == 2
         mixin.sync_simple_table.assert_called_once()
+        assert mixin.sync_simple_table.call_args.args[1].conflict_keys == ["game_id", "player_id"]
 
     def test_sync_all_game_data(self, mixin):
         mixin.sync_game_schedules = MagicMock(return_value=1)
@@ -162,9 +165,9 @@ class TestGameSyncMixin:
         mixin.target_session.query.assert_any_call(GameEvent)
 
         calls_by_model = {call.args[0]: call for call in mixin.sync_simple_table.call_args_list}
-        assert calls_by_model[GameLineup].kwargs["dedupe_keys"] == ["game_id", "player_id"]
-        assert calls_by_model[GameBattingStat].kwargs["dedupe_keys"] == ["game_id", "player_id"]
-        assert calls_by_model[GamePitchingStat].kwargs["dedupe_keys"] == ["game_id", "player_id"]
+        assert calls_by_model[GameLineup].args[1].dedupe_keys == ["game_id", "player_id"]
+        assert calls_by_model[GameBattingStat].args[1].dedupe_keys == ["game_id", "player_id"]
+        assert calls_by_model[GamePitchingStat].args[1].dedupe_keys == ["game_id", "player_id"]
 
     def test_transform_game_lineup_keeps_starter_batting_order(self, mixin):
         data = {"is_starter": True, "batting_order": 2, "appearance_seq": 2}

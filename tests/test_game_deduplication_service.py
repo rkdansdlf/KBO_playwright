@@ -9,6 +9,7 @@ import pytest
 from src.services.game_deduplication_service import (
     DEFAULT_PRIMARY_CODE_PREFERENCES,
     DeduplicationWindow,
+    PrimaryGameMarkOptions,
     _CandidateQuery,
     _load_candidates,
     _load_slots,
@@ -231,7 +232,9 @@ class TestMarkPrimaryGames:
 
         result = mark_primary_games(
             db_path,
-            windows=[DeduplicationWindow(label="test", start_date="2024-10-15", end_date="2024-10-16")],
+            PrimaryGameMarkOptions(
+                windows=[DeduplicationWindow(label="test", start_date="2024-10-15", end_date="2024-10-16")],
+            ),
         )
         assert result.scanned_slots == 2
         assert result.marked_primary > 0
@@ -244,8 +247,10 @@ class TestMarkPrimaryGames:
 
         result = mark_primary_games(
             db_path,
-            windows=[DeduplicationWindow(label="t", start_date="2024-10-15", end_date="2024-10-15")],
-            clear_years=[2024],
+            PrimaryGameMarkOptions(
+                windows=[DeduplicationWindow(label="t", start_date="2024-10-15", end_date="2024-10-15")],
+                clear_years=[2024],
+            ),
         )
         # G2024 reset to 0, then re-marked to 1 (only game in slot)
         assert result.scanned_slots == 1
@@ -262,7 +267,11 @@ class TestMarkPrimaryGames:
 
         result = mark_primary_games(
             db_path,
-            windows=[DeduplicationWindow(label="t", start_date="2024-10-15", end_date="2024-10-15", clear_year=2024)],
+            PrimaryGameMarkOptions(
+                windows=[
+                    DeduplicationWindow(label="t", start_date="2024-10-15", end_date="2024-10-15", clear_year=2024),
+                ],
+            ),
         )
         assert result.marked_primary == 1
 
@@ -276,7 +285,9 @@ class TestMarkPrimaryGames:
 
         result = mark_primary_games(
             db_path,
-            windows=[DeduplicationWindow(label="test", start_date="2024-10-15", end_date="2024-10-15")],
+            PrimaryGameMarkOptions(
+                windows=[DeduplicationWindow(label="test", start_date="2024-10-15", end_date="2024-10-15")],
+            ),
         )
         assert result.scanned_slots == 1
         assert result.marked_primary == 1
@@ -293,7 +304,7 @@ class TestMarkPrimaryGames:
         conn.commit()
         conn.close()
 
-        result = mark_primary_games(db_path, windows=None)
+        result = mark_primary_games(db_path, PrimaryGameMarkOptions(windows=None))
         assert result.scanned_slots > 0
         assert result.marked_primary > 0
 
@@ -304,7 +315,7 @@ class TestMarkPrimaryGames:
         conn.commit()
         conn.close()
 
-        mark_primary_games(db_path, windows=None, remove_extreme_dates=True)
+        mark_primary_games(db_path, PrimaryGameMarkOptions(windows=None, remove_extreme_dates=True))
         conn2 = sqlite3.connect(db_path)
         rows = conn2.execute("SELECT game_id, is_primary FROM game ORDER BY game_id").fetchall()
         assert dict(rows)["G_EXTREME_0"] == 0
@@ -322,7 +333,9 @@ class TestMarkPrimaryGames:
 
         mark_primary_games(
             db_path,
-            windows=[DeduplicationWindow(label="t", start_date="2024-10-15", end_date="2024-10-15")],
+            PrimaryGameMarkOptions(
+                windows=[DeduplicationWindow(label="t", start_date="2024-10-15", end_date="2024-10-15")],
+            ),
         )
         conn2 = sqlite3.connect(db_path)
         primary = conn2.execute("SELECT game_id FROM game WHERE is_primary = 1").fetchall()

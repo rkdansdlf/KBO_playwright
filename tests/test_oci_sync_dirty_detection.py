@@ -328,8 +328,8 @@ def test_sync_game_play_by_play_resets_target_sequence_before_replace(monkeypatc
         syncer.oci_engine = session.bind
         monkeypatch.setattr(OCISync, "_reset_target_sequence_for_table", _reset_sequence)
 
-        def _fake_bulk_copy_upsert(_self, table_name, records, unique_cols, **kwargs):
-            calls.append(("insert", len(records)))
+        def _fake_bulk_copy_upsert(_self, table_name, options):
+            calls.append(("insert", len(options.records)))
 
         monkeypatch.setattr(OCISync, "_bulk_copy_upsert", _fake_bulk_copy_upsert)
 
@@ -467,7 +467,8 @@ def test_sync_pregame_game_syncs_player_basic_before_lineups(monkeypatch):
         def commit(self):
             calls.append("commit")
 
-    def sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+    def sync_simple_table(_self, model, options):
+        assert options.conflict_keys
         calls.append(model.__tablename__)
         return 1
 
@@ -533,7 +534,8 @@ def test_sync_pregame_game_retries_stale_lineup_delete(monkeypatch):
         def rollback(self):
             calls.append("rollback")
 
-    def sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+    def sync_simple_table(_self, model, options):
+        assert options.conflict_keys
         calls.append(model.__tablename__)
         return 1
 
@@ -590,7 +592,8 @@ def test_sync_specific_game_syncs_player_basic_before_child_replacement(monkeypa
         def commit(self):
             calls.append("commit")
 
-    def sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+    def sync_simple_table(_self, model, options):
+        assert options.conflict_keys
         calls.append(model.__tablename__)
         return 1
 
@@ -656,7 +659,8 @@ def test_sync_specific_game_skips_missing_optional_validation_metrics_table(monk
         def commit(self):
             calls.append("commit")
 
-    def sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+    def sync_simple_table(_self, model, options):
+        assert options.conflict_keys
         calls.append(model.__tablename__)
         return 1
 
@@ -1057,8 +1061,8 @@ def test_sync_game_details_filters_child_datasets_by_eligibility(monkeypatch):
         )
         monkeypatch.setattr(OCISync, "test_connection", lambda _self: True)
 
-        def _count_table(_self, model, _conflict_keys, filters=None, **_kwargs):
-            return session.query(model).filter(*(filters or [])).count()
+        def _count_table(_self, model, options):
+            return session.query(model).filter(*(options.filters or [])).count()
 
         monkeypatch.setattr(OCISync, "sync_simple_table", _count_table)
         monkeypatch.setattr(

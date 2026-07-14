@@ -137,14 +137,14 @@ class TestSyncPlayerGameBatting:
         result = mixin.sync_player_game_batting(year=2025)
         assert result == 10
         call_args = mixin.sync_simple_table.call_args
-        assert call_args[1]["filters"] is not None
+        assert call_args.args[1].filters is not None
 
     def test_without_year_filter(self, mixin):
         mixin.sync_simple_table = MagicMock(return_value=5)
         result = mixin.sync_player_game_batting()
         assert result == 5
         call_args = mixin.sync_simple_table.call_args
-        assert call_args[1]["filters"] is None
+        assert call_args.args[1].filters is None
 
 
 class TestSyncPlayerGamePitching:

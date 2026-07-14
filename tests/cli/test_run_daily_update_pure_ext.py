@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.run_daily_update import (
+    DailyUpdateOptions,
     _RunContext,
     _build_pbp_failed_details,
     _build_pbp_recovery_blocks,
@@ -449,7 +450,12 @@ def test_finalize_run_update_and_run_update_orchestration(tmp_path: Path):
         stack.enter_context(patch("src.cli.run_daily_update._finalize_run_update", return_value=expected))
         for name in step_patches:
             stack.enter_context(patch(f"src.cli.run_daily_update.{name}", new=AsyncMock()))
-        assert asyncio.run(run_update("20260402", summary_dir=tmp_path, limit=3)) == expected
+        assert (
+            asyncio.run(
+                run_update("20260402", DailyUpdateOptions(summary_dir=tmp_path, limit=3)),
+            )
+            == expected
+        )
 
     queue.purge_detail_recovery_queue.assert_called_once()
     queue.get_due_detail_recovery_targets.assert_called_once()

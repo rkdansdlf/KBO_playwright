@@ -14,7 +14,7 @@ from src.models.game import (
 )
 from src.models.player import PlayerBasic
 from src.sync.oci_sync import OCISync
-from src.sync.sync_base import OCISyncBase
+from src.sync.sync_base import BulkCopyUpsertOptions, OCISyncBase
 
 #
 # ─── _bulk_copy_upsert retry ──────────────────────────────────────────────────
@@ -47,7 +47,10 @@ def test_bulk_copy_upsert_retries_on_transient_failure(monkeypatch):
     monkeypatch.setattr(OCISyncBase, "_do_bulk_copy_upsert", _fake_do_copy)
     monkeypatch.setattr(OCISyncBase, "_reconnect_oci", lambda _self: reconnect_log.append("reconnect"))
 
-    syncer._bulk_copy_upsert("game_play_by_play", [{"id": 1}], ["id"])
+    syncer._bulk_copy_upsert(
+        "game_play_by_play",
+        BulkCopyUpsertOptions(records=[{"id": 1}], unique_cols=["id"]),
+    )
 
     assert len(attempt_log) == 3
     assert len(reconnect_log) == 2
@@ -67,7 +70,10 @@ def test_bulk_copy_upsert_raises_on_persistent_failure(monkeypatch):
     monkeypatch.setattr(OCISyncBase, "_reconnect_oci", lambda _self: reconnect_log.append("reconnect"))
 
     with pytest.raises(RuntimeError, match="connection lost"):
-        syncer._bulk_copy_upsert("game_play_by_play", [{"id": 1}], ["id"])
+        syncer._bulk_copy_upsert(
+            "game_play_by_play",
+            BulkCopyUpsertOptions(records=[{"id": 1}], unique_cols=["id"]),
+        )
 
     assert len(attempt_log) == 3
     assert len(reconnect_log) == 2
@@ -83,7 +89,10 @@ def test_bulk_copy_upsert_skips_when_no_records(monkeypatch):
 
     monkeypatch.setattr(OCISyncBase, "_do_bulk_copy_upsert", _fake_do_copy)
 
-    syncer._bulk_copy_upsert("game_play_by_play", [], ["id"])
+    syncer._bulk_copy_upsert(
+        "game_play_by_play",
+        BulkCopyUpsertOptions(records=[], unique_cols=["id"]),
+    )
     assert not called
 
 
@@ -106,7 +115,10 @@ def test_bulk_copy_upsert_reconnect_on_each_retry(monkeypatch):
     monkeypatch.setattr(OCISyncBase, "_reconnect_oci", _fake_reconnect)
 
     with pytest.raises(RuntimeError, match="connection lost"):
-        syncer._bulk_copy_upsert("game_play_by_play", [{"id": 1}], ["id"])
+        syncer._bulk_copy_upsert(
+            "game_play_by_play",
+            BulkCopyUpsertOptions(records=[{"id": 1}], unique_cols=["id"]),
+        )
 
     assert reconnect_calls == 2
     assert syncer.target_session is not first_session
