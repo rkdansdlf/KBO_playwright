@@ -33,6 +33,26 @@ class LockAcquisitionError(Exception):
     """Raised when a lock cannot be acquired."""
 
 
+class _LockState(threading.local):
+    """Per-thread acquisition state for a ProcessLock instance.
+
+    A single ProcessLock instance is frequently shared as a module-level
+    singleton across APScheduler's thread pool. The underlying threading.Lock
+    (stored in ``_thread_locks``) already provides correct cross-thread mutual
+    exclusion, but the acquisition bookkeeping (whether *this* thread currently
+    holds the lock, its file descriptor and DB connection) must be tracked
+    per-thread. Otherwise one thread acquiring the lock would make every other
+    thread believe the lock is already held by itself and return early instead
+    of blocking, raising a spurious LockAcquisitionError.
+    """
+
+    def __init__(self) -> None:
+        self.file_fd: IO[str] | None = None
+        self.thread_lock_acquired = False
+        self.acquire_count = 0
+        self.db_connection = None
+
+
 class ProcessLock:
     """A cross-process and cross-thread lock supporting local fcntl and PG advisory locks."""
 
@@ -64,10 +84,44 @@ class ProcessLock:
                 _thread_locks[name] = threading.Lock()
             self.thread_lock = _thread_locks[name]
 
-        self.file_fd: IO[str] | None = None
-        self.thread_lock_acquired = False
-        self.acquire_count = 0
-        self.db_connection = None
+        # Per-thread acquisition state (see _LockState docstring).
+        self._state = _LockState()
+
+    @property
+    def file_fd(self) -> IO[str] | None:
+        """Return the current thread's lock file descriptor."""
+        return self._state.file_fd
+
+    @file_fd.setter
+    def file_fd(self, value: IO[str] | None) -> None:
+        self._state.file_fd = value
+
+    @property
+    def thread_lock_acquired(self) -> bool:
+        """Return whether the current thread owns the lock."""
+        return self._state.thread_lock_acquired
+
+    @thread_lock_acquired.setter
+    def thread_lock_acquired(self, value: bool) -> None:
+        self._state.thread_lock_acquired = value
+
+    @property
+    def acquire_count(self) -> int:
+        """Return the current thread's nested acquisition count."""
+        return self._state.acquire_count
+
+    @acquire_count.setter
+    def acquire_count(self, value: int) -> None:
+        self._state.acquire_count = value
+
+    @property
+    def db_connection(self) -> object | None:
+        """Return the current thread's advisory-lock connection."""
+        return self._state.db_connection
+
+    @db_connection.setter
+    def db_connection(self, value: object | None) -> None:
+        self._state.db_connection = value
 
     def _get_lock_id(self) -> int:
         """Hash the lock name to a 64-bit signed integer for pg_advisory_lock."""
@@ -115,7 +169,7 @@ class ProcessLock:
 
             conn = engine.connect() if not isinstance(engine, Connection) else engine  # type: ignore[attr-defined]
 
-            self.db_connection = conn  # type: ignore[assignment]
+            self._state.db_connection = conn  # type: ignore[assignment]
             lock_id = self._get_lock_id()
 
             if effective_blocking:
@@ -132,7 +186,7 @@ class ProcessLock:
                         self.name,
                     )
                     conn.close()
-                    self.db_connection = None
+                    self._state.db_connection = None
                     return True
         except (SQLAlchemyError, OSError, RuntimeError) as e:
             logger.warning(
@@ -140,17 +194,17 @@ class ProcessLock:
                 self.name,
                 e,
             )
-            if self.db_connection is not None:
+            if self._state.db_connection is not None:
                 with contextlib.suppress(Exception):
-                    self.db_connection.close()
-                self.db_connection = None
+                    self._state.db_connection.close()
+                self._state.db_connection = None
             success = True
 
         return success
 
     def acquire(self, *, blocking: bool | None = None) -> bool:
         """Acquire the lock."""
-        if self.thread_lock_acquired:
+        if self._state.thread_lock_acquired:
             logger.debug("ProcessLock is already held by this instance: %s", self.name)
             return False
 
@@ -162,18 +216,18 @@ class ProcessLock:
             logger.debug("Failed to acquire thread lock for: %s", self.name)
             return False
 
-        self.thread_lock_acquired = True
-        self.acquire_count = 1
+        self._state.thread_lock_acquired = True
+        self._state.acquire_count = 1
 
         # 2. Try acquiring PostgreSQL advisory lock
         if not self._acquire_pg_lock(effective_blocking=effective_blocking):
             self.thread_lock.release()
-            self.thread_lock_acquired = False
-            self.acquire_count = 0
+            self._state.thread_lock_acquired = False
+            self._state.acquire_count = 0
             logger.debug("Failed to acquire PostgreSQL advisory lock (held by other process) for: %s", self.name)
             return False
 
-        if self.db_connection is not None:
+        if self._state.db_connection is not None:
             return True
 
         # 3. Fallback to process-level file lock
@@ -184,69 +238,69 @@ class ProcessLock:
         success = False
         try:
             self.lock_dir.mkdir(parents=True, exist_ok=True)
-            self.file_fd = self.lock_file_path.open("w")
+            self._state.file_fd = self.lock_file_path.open("w")
 
             flags = fcntl.LOCK_EX
             if not effective_blocking:
                 flags |= fcntl.LOCK_NB
 
-            fcntl.flock(self.file_fd, flags)
+            fcntl.flock(self._state.file_fd, flags)
             success = True
-            self.file_fd.write(f"{os.getpid()}\n")
-            self.file_fd.flush()
+            self._state.file_fd.write(f"{os.getpid()}\n")
+            self._state.file_fd.flush()
             logger.debug("Successfully acquired ProcessLock: %s", self.name)
         except OSError as e:
             logger.debug("Failed to acquire ProcessLock: %s. Error: %s", self.name, e)
-            if self.file_fd:
-                self.file_fd.close()
-                self.file_fd = None
+            if self._state.file_fd:
+                self._state.file_fd.close()
+                self._state.file_fd = None
             self.thread_lock.release()
-            self.thread_lock_acquired = False
-            self.acquire_count = 0
+            self._state.thread_lock_acquired = False
+            self._state.acquire_count = 0
 
         return success
 
     def release(self) -> None:
         """Release the lock."""
-        if not self.thread_lock_acquired:
+        if not self._state.thread_lock_acquired:
             return
 
         # 1. Release PostgreSQL advisory lock
-        if self.db_connection is not None:
+        if self._state.db_connection is not None:
             try:
                 from sqlalchemy import text
 
                 lock_id = self._get_lock_id()
-                self.db_connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_id})
+                self._state.db_connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_id})
                 logger.debug("Released PostgreSQL advisory lock for: %s", self.name)
             except (OSError, RuntimeError) as e:
                 logger.warning("Error releasing PostgreSQL advisory lock for %s: %s", self.name, e)
             finally:
                 with contextlib.suppress(Exception):
-                    self.db_connection.close()
-                self.db_connection = None
+                    self._state.db_connection.close()
+                self._state.db_connection = None
 
         # 2. Release process-level file lock
-        if HAS_FCNTL and self.file_fd:
+        if HAS_FCNTL and self._state.file_fd:
             try:
-                fcntl.flock(self.file_fd, fcntl.LOCK_UN)
+                fcntl.flock(self._state.file_fd, fcntl.LOCK_UN)
             except (OSError, ValueError) as e:
                 logger.warning("Error releasing process lock for %s: %s", self.name, e)
             finally:
                 with contextlib.suppress(OSError, ValueError):
-                    self.file_fd.close()
-                self.file_fd = None
+                    self._state.file_fd.close()
+                self._state.file_fd = None
 
         # 3. Release thread-level lock
-        if self.thread_lock_acquired:
+        if self._state.thread_lock_acquired:
             try:
                 self.thread_lock.release()
             except RuntimeError:
                 # Handle case where lock is already released or owned by another thread
                 pass
             finally:
-                self.thread_lock_acquired = False
-                self.acquire_count = 0
+                self._state.thread_lock_acquired = False
+                self._state.acquire_count = 0
             logger.debug("Released ProcessLock: %s", self.name)
 
     def __enter__(self) -> Self:
