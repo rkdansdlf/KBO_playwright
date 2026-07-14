@@ -662,12 +662,29 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Sync test stabilization**: `sync_simple_table` batching tests now pin test syncers to the sequential path, keeping the test focused on batch splitting rather than concurrent COPY behavior.
 - **Verification**: `ruff check src/ tests/ scripts/` passes; `ruff format --check` passes on touched files; targeted relay/sync suite passes (`145 passed`); full unit pytest passes with `8880 passed, 26 skipped, 263 deselected, 1 xfailed`.
 
-### Current Verification Baseline (2026-07-12)
+### Phase 59 Complete (2026-07-14) — Lint-ignore cleanup, Ruff expansion, coverage + data-quality hardening
 
-- GitHub Actions [Test Suite run 29180252264](https://github.com/rkdansdlf/KBO_playwright/actions/runs/29180252264) passed: lint, Python 3.12 test, and integration-test jobs all succeeded.
+- **PLR0913 cleanup**: Removed 16 `src/` file-level PLR0913 ignores, added 22 function-level `# noqa: PLR0913` on compatibility-sensitive public/crawler/CLI signatures; verified 0 violations even with per-file ignores stripped (`ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'`).
+- **Stale per-file-ignore removal**: Removed 12 `src/` file-level ignores already compliant — `RUF012`, `TRY300`, `TRY301`, `FURB171` (also marked mutable class constants as `ClassVar` where applicable).
+- **FBT003 fixes**: Corrected 4 positional-boolean call sites (`recalc_player_stats.py`, `game_helpers.py`, `game_save.py`) to keyword args; removed the file-level ignore.
+- **S608 narrowing**: Reduced 14 `src/` file-level S608 ignores to 30 expression-level `# noqa: S608` on safe dynamic-SQL identifier/table-name concatenations; all bound values remain parameterized.
+- **Ruff rule expansion**: Enabled 50 verified zero-violation rules (`D101`, `D107`, `D200`, `D201`, `D215`, `PLC0105`, `PLC0131`, `PLC0132`, `PLC0205`, `PLC1802`, `PLR0124`, `PLR0133`, `PLR0206`, `PLR1716`, `PLR1730`, `PLR1733`, `PLR1736`, `PLR2004`, `PLR2044`, `PLW0120/0128/0129/0131/0133/0177/0211/0406/0604/0642/0711/1501/1507/1508/1641/2101/3301`, `RUF010/051/053/057/058/060/061/064/101/102/103/104/200`, `TRY002`); preview-only rules excluded.
+- **Lint hygiene**: Removed `RUF100` from global ignore and fully enabled it (0 unused `noqa` under `--ignore E402,COM812,G004,PLC0415`); fixed `D212` in `migrations/sqlite/005_deletion_anomaly_integrity.py` and `032_fix_team_season_fielding_float_columns.py` (CI lint previously skipped migrations).
+- **Futures team-code backfill**: `scripts/maintenance/backfill_futures_team_codes.py` rewritten to Futures/KBO2 scope with evidence-based, ambiguous-skip resolution; returns `TeamCodeResolution`/`BackfillReport`, `--dry-run` default, `--apply` writes only. Added `run_futures_backfill_batch.py` wrapper + tests.
+- **Freshness/gap-report stale detection**: `monitor_data_freshness.py` now always returns findings (alerts suppressed only in dry-run); added `_table_staleness_message` (timestamp + season policy) and `ticket_open_rules` domain. `gap_report.py` honors the populated-stale vs missing distinction.
+- **Integrity checks**: `data_integrity_checker.check_duplicate_games` uses canonical `normalize_kbo_game_id` slot (doubleheaders no longer false positives); `audit_daily_completeness.py` accepts complete official 5-inning shortened games.
+- **Scoped regression gate**: `data_quality_regression_pack.py` supports `--date`, `--year`, `--require-schema`, `--output`; fixed `avg` column reference; daily workflow runs local preflight + OCI post-sync gates with JSON artifacts.
+- **Coverage expansion**: Added `tests/crawlers/test_futures_profile_ext.py` (futures/profile.py 73%→87%), `tests/crawlers/test_team_history_crawler_ext.py` (team_history_crawler.py 71%→94%), `tests/crawlers/test_team_stats_crawler_orchestration.py` (team batting/pitching crawlers 55%→68% / 68%→81%); `tests/scripts/test_backfill_futures_team_codes.py`, `tests/scripts/test_run_futures_backfill_batch.py`.
+- **Verification**: `ruff check src/ tests/ scripts/` and `ruff check migrations/` clean; `ruff format --check .` clean (1,071 files); unit suite (`-m "not integration and not slow and not oci"`) **9,296 passed, 24 skipped, 1 xfailed**.
+
+### Current Verification Baseline (2026-07-14)
+
+- GitHub Actions: lint, Python 3.12 test, and integration-test jobs passing (last observed green run prior to this phase).
 - `ruff check src/ tests/ scripts/` = 0 errors.
-- `ruff format --check .` = 1,066 files already formatted.
+- `ruff check migrations/` = 0 errors.
+- `ruff format --check .` = 1,071 files already formatted.
 - `ruff check --select C901 src/ scripts/` = 0 violations.
 - `ruff check --select PLR0913 src/` = 0 violations.
-- `venv/bin/python -m pytest --tb=line -q --cov=src --cov-report=term --cov-report=xml:coverage.xml` = **9,210 passed**, 24 skipped, 1 xfailed; total coverage **86.60%** (70% gate passed).
+- `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
+- `venv/bin/python -m pytest -m "not integration and not slow and not oci" --tb=line -q` = **9,296 passed**, 24 skipped, 1 xfailed.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
