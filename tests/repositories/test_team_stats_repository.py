@@ -216,11 +216,12 @@ class TestTeamSeasonPitchingRepository:
         MockSessionLocal.return_value.__enter__.return_value = mock_session
         MockSessionLocal.return_value.__exit__.return_value = None
         MockEngine.dialect.name = "oracle"
+        mock_session.execute.return_value.scalars.return_value.first.return_value = None
 
         repo = TeamSeasonPitchingRepository()
         result = repo.upsert_many([{"team_id": "LG", "season": 2024, "league": "REGULAR", "era": 3.75}])
         assert result == 1
-        assert mock_session.merge.call_count == 1
+        assert mock_session.add.call_count == 1
 
         mock_session.reset_mock()
         result_bulk = repo.upsert_many(
@@ -230,7 +231,7 @@ class TestTeamSeasonPitchingRepository:
             ]
         )
         assert result_bulk == 2
-        assert mock_session.merge.call_count == 2
+        assert mock_session.add.call_count == 2
 
     @patch("src.repositories.team_stats_repository.SessionLocal")
     @patch("src.repositories.team_stats_repository.Engine")
