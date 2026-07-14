@@ -1,7 +1,14 @@
 from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from src.constants import KST
 
 from datetime import datetime
+
+import httpx
+import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.operation_notice_common import classify_notice as _classify_notice, is_urgent as _is_urgent
 from src.crawlers.operation_notice_lg_crawler import (
@@ -166,3 +173,110 @@ class TestParsePage:
         notices, hit_stop = self.crawler._parse_page(html, None)
         assert len(notices) == 1
         assert "lgtwins.com" in notices[0]["source_url"]
+
+    def test_strips_session_id_and_skips_incomplete_rows(self):
+        html = """
+        <ul class="news_list">
+            <li>링크 없음</li>
+            <li><a href="/announcement;jsessionid=abc.123?idx=4001"></a></li>
+            <li><a href="/announcement;jsessionid=abc.123?idx=4002">날씨 안내</a></li>
+        </ul>
+        """
+
+        notices, hit_stop = self.crawler._parse_page(html, None)
+
+        assert hit_stop is False
+        assert len(notices) == 1
+        assert notices[0]["source_url"] == "https://www.lgtwins.com/announcement?idx=4002"
+        assert notices[0]["published_at"] is None
+        assert notices[0]["notice_type"] == "WEATHER"
+
+
+class TestOperationNoticeLGCrawlerRun:
+    @staticmethod
+    def _client(response_or_error):
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=None)
+        client.get = AsyncMock(return_value=response_or_error)
+        return client
+
+    @pytest.mark.asyncio
+    async def test_run_collects_notices_records_raw_page_and_calls_save(self):
+        html = """
+        <ul class="news_list">
+            <li><a href="?idx=5001">[긴급] 경기 취소</a><span class="date">2026.06.03</span></li>
+        </ul>
+        """
+        client = self._client(MagicMock(status_code=200, text=html))
+        crawler = OperationNoticeLGCrawler(max_pages=1)
+        crawler._save_to_db = MagicMock()
+
+        with (
+            patch("src.crawlers.operation_notice_lg_crawler.httpx.AsyncClient", return_value=client),
+            patch("src.crawlers.operation_notice_lg_crawler.throttle.wait", new=AsyncMock()) as wait,
+        ):
+            notices = await crawler.run(save=True)
+
+        assert [notice["external_id"] for notice in notices] == ["5001"]
+        assert crawler._raw_pages == [
+            {
+                "source_key": "lg_twins_notices",
+                "url": "https://www.lgtwins.com/twins/feed/news?page=1",
+                "html": html,
+                "status_code": 200,
+            },
+        ]
+        wait.assert_awaited_once_with("www.lgtwins.com")
+        crawler._save_to_db.assert_called_once_with(notices)
+
+    @pytest.mark.asyncio
+    async def test_run_stops_on_http_error_or_non_success_response(self):
+        crawler = OperationNoticeLGCrawler(max_pages=2)
+        client = self._client(MagicMock(status_code=503, text=""))
+
+        with (
+            patch("src.crawlers.operation_notice_lg_crawler.httpx.AsyncClient", return_value=client),
+            patch("src.crawlers.operation_notice_lg_crawler.throttle.wait", new=AsyncMock()),
+        ):
+            assert await crawler.run() == []
+
+        client.get.side_effect = httpx.HTTPError("unavailable")
+        with (
+            patch("src.crawlers.operation_notice_lg_crawler.httpx.AsyncClient", return_value=client),
+            patch("src.crawlers.operation_notice_lg_crawler.throttle.wait", new=AsyncMock()),
+        ):
+            assert await crawler.run() == []
+
+    def test_save_to_db_commits_and_clears_raw_pages(self):
+        crawler = OperationNoticeLGCrawler()
+        crawler._raw_pages = [{"url": "https://example.test"}]
+        session = MagicMock()
+        repository = MagicMock()
+        repository.bulk_upsert.return_value = (2, 1)
+
+        with (
+            patch("src.crawlers.operation_notice_lg_crawler.SessionLocal") as session_local,
+            patch("src.crawlers.operation_notice_lg_crawler.OperationNoticeRepository", return_value=repository),
+        ):
+            session_local.return_value.__enter__.return_value = session
+            crawler._save_to_db([{"external_id": "1"}])
+
+        repository.bulk_upsert.assert_called_once_with([{"external_id": "1"}])
+        session.commit.assert_called_once()
+        assert crawler._raw_pages == []
+
+    def test_save_to_db_rolls_back_database_error(self):
+        crawler = OperationNoticeLGCrawler()
+        session = MagicMock()
+        repository = MagicMock()
+        repository.bulk_upsert.side_effect = SQLAlchemyError("write failed")
+
+        with (
+            patch("src.crawlers.operation_notice_lg_crawler.SessionLocal") as session_local,
+            patch("src.crawlers.operation_notice_lg_crawler.OperationNoticeRepository", return_value=repository),
+        ):
+            session_local.return_value.__enter__.return_value = session
+            crawler._save_to_db([{"external_id": "1"}])
+
+        session.rollback.assert_called_once()

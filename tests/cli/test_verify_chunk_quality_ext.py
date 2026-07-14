@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,6 +14,10 @@ from src.cli.verify_chunk_quality import (
     count_stub_chunks,
     find_duplicates,
     keyword_coverage,
+    load_chunks,
+    main,
+    print_report,
+    remove_duplicate_chunks,
     chunks_per_source,
 )
 
@@ -193,3 +198,107 @@ class TestChunksPerSource:
         chunks = [{"source_table": None, "meta": {}}]
         result = chunks_per_source(chunks)
         assert result == {"unknown": 1}
+
+
+class TestChunkQualityDatabaseAndReporting:
+    def test_load_chunks_handles_metadata_and_source_filter(self):
+        session = MagicMock()
+        session.execute.return_value.fetchall.return_value = [
+            SimpleNamespace(
+                id=1,
+                source_table="rulebook",
+                source_row_id="1",
+                content="content",
+                metadata='{"category": "rules", "keywords": ["KBO"]}',
+            ),
+            SimpleNamespace(
+                id=2,
+                source_table=None,
+                source_row_id=None,
+                content=None,
+                metadata="not-json",
+            ),
+        ]
+
+        chunks = load_chunks(session, "rules")
+
+        assert chunks == [
+            {
+                "id": 1,
+                "source_table": "rulebook",
+                "source_row_id": "1",
+                "content": "content",
+                "meta": {"category": "rules", "keywords": ["KBO"]},
+            },
+            {"id": 2, "source_table": "", "source_row_id": "", "content": "", "meta": {}},
+        ]
+        assert "WHERE source_table" in str(session.execute.call_args.args[0])
+        assert session.execute.call_args.args[1] == {"src": "rules"}
+
+    def test_percentile_returns_zero_for_empty_values(self):
+        assert _percentile([], 95) == 0
+
+    def test_find_duplicates_reports_one_identifier_once_for_many_rows(self):
+        count, duplicate_ids = find_duplicates(
+            [
+                {"source_row_id": "same", "content": "first"},
+                {"source_row_id": "same", "content": "second"},
+                {"source_row_id": "same", "content": "third"},
+            ],
+        )
+
+        assert count == 1
+        assert duplicate_ids == ["same"]
+
+    def test_print_report_handles_passing_and_failing_quality_checks(self):
+        passing = [
+            {
+                "content": "a" * 100,
+                "source_row_id": str(index),
+                "source_table": "rulebook",
+                "meta": {"category": "rules", "keywords": ["KBO"]},
+            }
+            for index in range(3)
+        ]
+        failing = [
+            {"content": "", "source_row_id": "duplicate", "source_table": "rulebook", "meta": {}},
+            {"content": "short", "source_row_id": "duplicate", "source_table": "rulebook", "meta": {}},
+        ]
+
+        assert print_report(passing, "rulebook") is True
+        assert print_report(failing, None) is False
+        assert print_report([], None) is False
+
+    def test_remove_duplicate_chunks_commits_and_returns_deleted_count(self):
+        session = MagicMock()
+        session.execute.return_value.rowcount = 3
+
+        assert remove_duplicate_chunks(session) == 3
+
+        session.commit.assert_called_once()
+
+    def test_main_fix_duplicates_json_reloads_and_exits_successfully(self):
+        session = MagicMock()
+        args = SimpleNamespace(source="rulebook", fix_duplicates=True, json=True)
+        chunks = [
+            {
+                "content": "a" * 100,
+                "source_row_id": "1",
+                "source_table": "rulebook",
+                "meta": {"category": "rules", "keywords": ["KBO"]},
+            },
+        ]
+        with (
+            patch("argparse.ArgumentParser.parse_args", return_value=args),
+            patch("src.cli.verify_chunk_quality.get_db_session") as get_session,
+            patch("src.cli.verify_chunk_quality.load_chunks", side_effect=[[], chunks]) as load,
+            patch("src.cli.verify_chunk_quality.remove_duplicate_chunks", return_value=2) as remove,
+        ):
+            get_session.return_value.__enter__.return_value = session
+
+            with pytest.raises(SystemExit) as exc:
+                main()
+
+        assert exc.value.code == 0
+        assert load.call_count == 2
+        remove.assert_called_once_with(session)

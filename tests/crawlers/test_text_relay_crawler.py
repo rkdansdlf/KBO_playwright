@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pandas as pd
 import pytest
 
+import src.crawlers.text_relay_crawler as text_relay_crawler
 from src.crawlers.text_relay_crawler import (
     RelayCrawlResult,
     RelayRow,
     TextRelayCrawler,
+    crawl_text_relay,
+    crawl_text_relays,
 )
 
 
@@ -358,3 +364,180 @@ class TestTextRelayCrawlerIsAuthRedirect:
             url = "https://www.koreabaseball.com/Game/LiveText.aspx"
 
         assert self.crawler._is_auth_redirect(FakePage()) is False  # type: ignore[arg-type]
+
+
+class TestTextRelayCrawlerOrchestration:
+    def test_prepare_stops_when_compliance_rejects_url(self, monkeypatch):
+        crawler = TextRelayCrawler()
+        page = MagicMock()
+        monkeypatch.setattr(text_relay_crawler.compliance, "is_allowed", AsyncMock(return_value=False))
+
+        result = asyncio.run(crawler._prepare_live_text_page(page, "20260412", "https://example.test/relay"))
+
+        assert result is False
+        page.goto.assert_not_called()
+
+    def test_prepare_warms_up_scoreboard_before_relay_navigation(self, monkeypatch):
+        crawler = TextRelayCrawler()
+        crawler.policy.delay_async = AsyncMock()
+        page = MagicMock()
+        page.goto = AsyncMock()
+        monkeypatch.setattr(text_relay_crawler.compliance, "is_allowed", AsyncMock(return_value=True))
+        monkeypatch.setattr(text_relay_crawler.asyncio, "sleep", AsyncMock())
+
+        result = asyncio.run(crawler._prepare_live_text_page(page, "20260412", "https://example.test/relay"))
+
+        assert result is True
+        assert page.goto.await_count == 2
+        assert page.goto.await_args_list[0].args[0].endswith("gameDate=20260412")
+        assert page.goto.await_args_list[1].kwargs["referer"].endswith("gameDate=20260412")
+
+    def test_wait_marks_no_data_page_as_empty(self):
+        crawler = TextRelayCrawler()
+        page = MagicMock()
+        page.wait_for_selector = AsyncMock(side_effect=TimeoutError())
+        page.content = AsyncMock(return_value="데이터가 없습니다")
+
+        assert asyncio.run(crawler._wait_for_relay_container(page, "game")) is False
+        assert crawler.last_failure_reason == "empty"
+
+    def test_wait_allows_non_empty_page_after_selector_timeout(self):
+        crawler = TextRelayCrawler()
+        page = MagicMock()
+        page.wait_for_selector = AsyncMock(side_effect=TimeoutError())
+        page.content = AsyncMock(return_value="temporary markup")
+
+        assert asyncio.run(crawler._wait_for_relay_container(page, "game")) is True
+
+    def test_extract_returns_empty_rows_when_evaluation_fails(self):
+        crawler = TextRelayCrawler()
+        page = MagicMock()
+        page.evaluate = AsyncMock(side_effect=RuntimeError("page closed"))
+
+        assert asyncio.run(crawler._extract_relay_rows(page)) == []
+
+    def test_crawl_success_saves_and_releases_injected_pool(self, tmp_path):
+        pool = MagicMock()
+        page = MagicMock()
+        pool.acquire = AsyncMock(return_value=page)
+        pool.release = AsyncMock()
+        pool.close = AsyncMock()
+        crawler = TextRelayCrawler(pool=pool, output_dir=str(tmp_path))
+        crawler._prepare_live_text_page = AsyncMock(return_value=True)
+        crawler._wait_for_relay_container = AsyncMock(return_value=True)
+        crawler._extract_relay_rows = AsyncMock(return_value=[RelayRow(inning=1, batter_name="김하성", result="안타")])
+        crawler._is_auth_redirect = MagicMock(return_value=False)
+
+        result = asyncio.run(crawler.crawl_game_relay("20260412SKLG0", save=True))
+
+        assert result.status == "success"
+        assert result.rows[0].batter_name == "김하성"
+        assert (tmp_path / "20260412SKLG0_text_relay.csv").exists()
+        pool.release.assert_awaited_once_with(page)
+        pool.close.assert_not_awaited()
+
+    def test_crawl_creates_and_closes_pool_when_compliance_blocks_page(self, monkeypatch):
+        pool = MagicMock()
+        page = MagicMock()
+        pool.start = AsyncMock()
+        pool.close = AsyncMock()
+        pool.acquire = AsyncMock(return_value=page)
+        pool.release = AsyncMock()
+        monkeypatch.setattr(text_relay_crawler, "AsyncPlaywrightPool", MagicMock(return_value=pool))
+        crawler = TextRelayCrawler()
+        crawler._prepare_live_text_page = AsyncMock(return_value=False)
+
+        result = asyncio.run(crawler.crawl_game_relay("20260412SKLG0"))
+
+        assert result.status == "blocked"
+        assert result.error_message == "compliance_blocked"
+        pool.start.assert_awaited_once()
+        pool.release.assert_awaited_once_with(page)
+        pool.close.assert_awaited_once()
+
+    def test_crawl_retries_after_auth_redirect(self):
+        pool = MagicMock()
+        initial_page = MagicMock()
+        retry_page = MagicMock()
+        pool.acquire = AsyncMock(side_effect=[initial_page, retry_page])
+        pool.release = AsyncMock()
+        pool.close = AsyncMock()
+        pool.start = AsyncMock()
+        crawler = TextRelayCrawler(pool=pool)
+        crawler._prepare_live_text_page = AsyncMock(return_value=True)
+        crawler._wait_for_relay_container = AsyncMock(return_value=True)
+        crawler._extract_relay_rows = AsyncMock(return_value=[RelayRow(result="안타")])
+        crawler._is_auth_redirect = MagicMock(side_effect=[True, False])
+
+        result = asyncio.run(crawler.crawl_game_relay("20260412SKLG0"))
+
+        assert result.status == "success"
+        assert pool.acquire.await_count == 2
+        pool.close.assert_awaited_once()
+        pool.start.assert_awaited_once()
+        pool.release.assert_awaited_once_with(retry_page)
+
+    def test_crawl_marks_empty_when_no_relay_container_exists(self):
+        pool = MagicMock()
+        page = MagicMock()
+        pool.acquire = AsyncMock(return_value=page)
+        pool.release = AsyncMock()
+        crawler = TextRelayCrawler(pool=pool)
+        crawler._prepare_live_text_page = AsyncMock(return_value=True)
+        crawler._wait_for_relay_container = AsyncMock(return_value=False)
+        crawler._is_auth_redirect = MagicMock(return_value=False)
+
+        result = asyncio.run(crawler.crawl_game_relay("20260412SKLG0"))
+
+        assert result.status == "empty"
+        assert result.error_message == "no_data"
+
+    def test_crawl_marks_pool_errors(self):
+        pool = MagicMock()
+        pool.acquire = AsyncMock(side_effect=RuntimeError("pool unavailable"))
+        crawler = TextRelayCrawler(pool=pool)
+
+        result = asyncio.run(crawler.crawl_game_relay("20260412SKLG0"))
+
+        assert result.status == "error"
+        assert result.error_message == "crawl_exception"
+        assert crawler.last_failure_reason == "error"
+
+    def test_crawl_games_returns_each_game_result(self):
+        crawler = TextRelayCrawler()
+        crawler.crawl_game_relay = AsyncMock(
+            side_effect=[
+                RelayCrawlResult("G1", "20260412", status="success"),
+                RelayCrawlResult("G2", "20260412", status="empty"),
+            ],
+        )
+
+        results = asyncio.run(crawler.crawl_games(["G1", "G2"], save=True))
+
+        assert [result.status for result in results] == ["success", "empty"]
+        assert crawler.crawl_game_relay.await_args_list[0].kwargs["save"] is True
+
+    def test_convenience_functions_return_successful_data_and_paths(self, tmp_path):
+        successful = RelayCrawlResult(
+            "G1",
+            "20260412",
+            rows=[RelayRow(inning=1, batter_name="김하성", result="안타")],
+            status="success",
+        )
+        failed = RelayCrawlResult("G2", "20260412", status="empty", error_message="no_data")
+        successful.save_csv = MagicMock(return_value=tmp_path / "G1_text_relay.csv")
+
+        with patch("src.crawlers.text_relay_crawler.TextRelayCrawler") as crawler_class:
+            crawler = crawler_class.return_value
+            crawler.crawl_game_relay = AsyncMock(side_effect=[successful, failed])
+            crawler.crawl_games = AsyncMock(return_value=[successful, failed])
+
+            dataframe = asyncio.run(crawl_text_relay("G1", output_dir=str(tmp_path)))
+            no_dataframe = asyncio.run(crawl_text_relay("G2", output_dir=str(tmp_path)))
+            saved_paths = asyncio.run(crawl_text_relays(["G1", "G2"], output_dir=str(tmp_path)))
+
+        assert dataframe is not None
+        assert dataframe.iloc[0]["타자명"] == "김하성"
+        assert no_dataframe is None
+        assert saved_paths == [str(tmp_path / "G1_text_relay.csv")]
+        successful.save_csv.assert_called_once_with(str(tmp_path))

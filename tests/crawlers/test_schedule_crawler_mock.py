@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -133,3 +133,137 @@ class TestExtractGames:
         result = await crawler._extract_games(page, 2025, 6)
         if result:
             assert result[0]["url"].startswith("https://www.koreabaseball.com")
+
+    @pytest.mark.asyncio
+    @patch("src.crawlers.schedule_crawler.resolve_team_code", return_value=None)
+    @patch("src.crawlers.schedule_crawler.team_code_from_game_id_segment", return_value=None)
+    async def test_text_parsed_game_with_unresolved_team_is_skipped(self, _team_code, _resolve, crawler):
+        page = MagicMock()
+        page.evaluate = AsyncMock(
+            return_value=[
+                _make_raw_game(
+                    game_id=None,
+                    away_segment=None,
+                    home_segment=None,
+                    away_name="알 수 없는 원정팀",
+                    home_name="알 수 없는 홈팀",
+                    crawl_status="text_parsed",
+                    url_suffix="",
+                ),
+            ],
+        )
+        page.content = AsyncMock(return_value="<table class='tbl'></table>")
+
+        assert await crawler._extract_games(page, 2025, 6) == []
+
+    @pytest.mark.asyncio
+    async def test_extract_games_returns_empty_when_page_evaluation_fails(self, crawler):
+        page = MagicMock()
+        page.evaluate = AsyncMock(side_effect=RuntimeError("page closed"))
+
+        assert await crawler._extract_games(page, 2025, 6) == []
+
+    @pytest.mark.asyncio
+    async def test_empty_extraction_logs_table_sample_when_page_has_no_game_link(self, crawler):
+        page = MagicMock()
+        page.evaluate = AsyncMock(side_effect=[[], ["04.01 18:30 LG vs SS"]])
+        page.content = AsyncMock(return_value="<table class='tbl'></table>")
+
+        assert await crawler._extract_games(page, 2025, 6) == []
+        assert page.evaluate.await_count == 2
+
+
+class TestCrawlerOrchestration:
+    @staticmethod
+    def _pool(page):
+        pool = MagicMock()
+        pool.start = AsyncMock()
+        pool.acquire = AsyncMock(return_value=page)
+        pool.release = AsyncMock()
+        pool.close = AsyncMock()
+        return pool
+
+    @pytest.mark.asyncio
+    async def test_crawl_schedule_releases_injected_pool_without_closing_it(self):
+        page = MagicMock()
+        pool = self._pool(page)
+        crawler = ScheduleCrawler(pool=pool)
+        crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20250625LGSS0"}])
+
+        games = await crawler.crawl_schedule(2025, 6)
+
+        assert games == [{"game_id": "20250625LGSS0"}]
+        pool.start.assert_awaited_once()
+        pool.release.assert_awaited_once_with(page)
+        pool.close.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch("src.crawlers.schedule_crawler.AsyncPlaywrightPool")
+    async def test_crawl_schedule_returns_empty_after_error_and_closes_owned_pool(self, mock_pool_class):
+        page = MagicMock()
+        pool = self._pool(page)
+        mock_pool_class.return_value = pool
+        crawler = ScheduleCrawler()
+        crawler._crawl_month = AsyncMock(side_effect=RuntimeError("navigation failed"))
+
+        assert await crawler.crawl_schedule(2025, 6) == []
+        pool.release.assert_awaited_once_with(page)
+        pool.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_crawl_season_reuses_page_and_applies_request_delay_per_month(self):
+        page = MagicMock()
+        pool = self._pool(page)
+        policy = MagicMock()
+        policy.delay_async = AsyncMock()
+        crawler = ScheduleCrawler(pool=pool, policy=policy)
+        crawler._crawl_month = AsyncMock(side_effect=[[{"game_id": "march"}], [{"game_id": "april"}]])
+
+        games = await crawler.crawl_season(2025, months=[3, 4], series_id="0")
+
+        assert games == [{"game_id": "march"}, {"game_id": "april"}]
+        assert policy.delay_async.await_count == 2
+        assert crawler._crawl_month.await_args_list[0].kwargs == {"series_id": "0"}
+        pool.release.assert_awaited_once_with(page)
+
+    @pytest.mark.asyncio
+    async def test_navigation_wait_and_select_report_expected_failure_reasons(self, crawler, monkeypatch):
+        page = MagicMock()
+        crawler.policy.run_with_retry_async = AsyncMock(side_effect=RuntimeError("blocked by page"))
+        monkeypatch.setattr("src.crawlers.schedule_crawler.compliance.is_allowed", AsyncMock(return_value=False))
+
+        assert await crawler._navigate_schedule_page(page) == (False, "blocked")
+
+        monkeypatch.setattr("src.crawlers.schedule_crawler.compliance.is_allowed", AsyncMock(return_value=True))
+        assert await crawler._navigate_schedule_page(page) == (False, "schedule_navigation_failed")
+
+        page.wait_for_selector = AsyncMock(side_effect=TimeoutError())
+        assert await crawler._wait_for_schedule_table(page) == (False, "schedule_empty")
+
+        assert await crawler._select_option_with_retry(page, "#ddlYear", "2025", label="year") == (
+            False,
+            "schedule_navigation_failed",
+        )
+
+    @pytest.mark.asyncio
+    async def test_crawl_month_continues_after_one_series_selection_failure(self, crawler):
+        page = MagicMock()
+        page.eval_on_selector_all = AsyncMock(return_value=[{"value": "0"}, {"value": "1"}])
+        crawler._navigate_schedule_page = AsyncMock(return_value=(True, "ok"))
+        crawler._select_year_month = AsyncMock(return_value=(True, "ok"))
+        crawler._wait_for_schedule_table = AsyncMock(return_value=(True, "ok"))
+        crawler._select_option_with_retry = AsyncMock(side_effect=[(False, "series failed"), (True, "ok")])
+        crawler._extract_games = AsyncMock(return_value=[{"game_id": "20250625LGSS0"}])
+
+        games = await crawler._crawl_month(page, 2025, 6)
+
+        assert games == [{"game_id": "20250625LGSS0"}]
+        assert crawler.get_last_failure_reason("2025-06:all") == "series failed"
+
+    @pytest.mark.asyncio
+    async def test_select_year_month_returns_failure_from_changed_year_or_month(self, crawler):
+        page = MagicMock()
+        page.eval_on_selector = AsyncMock(side_effect=["2024", "05"])
+        crawler._select_option_with_retry = AsyncMock(side_effect=[(True, "ok"), (False, "month failed")])
+
+        assert await crawler._select_year_month(page, 2025, 6) == (False, "month failed")
