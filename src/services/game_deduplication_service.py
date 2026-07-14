@@ -36,15 +36,21 @@ class DeduplicationResult:
     marked_primary: int
 
 
+@dataclass(frozen=True)
+class PrimaryGameMarkOptions:
+    """Candidate-selection settings for marking primary game rows."""
+
+    windows: Iterable[DeduplicationWindow] | None = None
+    reset_all: bool = True
+    clear_years: Iterable[int] | None = None
+    suffixes: Sequence[str] = DEFAULT_REGULAR_SUFFIXES
+    preferred_codes: Sequence[str] = DEFAULT_PRIMARY_CODE_PREFERENCES
+    remove_extreme_dates: bool = False
+
+
 def mark_primary_games(
     db_path: str | Path = DEFAULT_DB_PATH,
-    *,
-    windows: Iterable[DeduplicationWindow] | None = None,
-    reset_all: bool = True,
-    clear_years: Iterable[int] | None = None,
-    suffixes: Sequence[str] = DEFAULT_REGULAR_SUFFIXES,
-    preferred_codes: Sequence[str] = DEFAULT_PRIMARY_CODE_PREFERENCES,
-    remove_extreme_dates: bool = False,
+    options: PrimaryGameMarkOptions | None = None,
 ) -> DeduplicationResult:
     """Mark one primary game per date/franchise/doubleheader slot.
 
@@ -53,28 +59,17 @@ def mark_primary_games(
 
     Args:
         db_path: Db file path.
-        windows: Windows.
-        reset_all: Reset All.
-        clear_years: Clear Years.
-        suffixes: Suffixes.
-        preferred_codes: Preferred Codes.
-        remove_extreme_dates: Remove Extreme Dates.
-        db_path: Db file path.
-        windows: Windows.
-        reset_all: Reset All.
-        clear_years: Clear Years.
-        suffixes: Suffixes.
-        preferred_codes: Preferred Codes.
-        remove_extreme_dates: Remove Extreme Dates.
+        options: Candidate-selection settings.
 
     """
+    options = options or PrimaryGameMarkOptions()
     conn = sqlite3.connect(db_path)
 
     try:
         cursor = conn.cursor()
-        if reset_all:
+        if options.reset_all:
             cursor.execute("UPDATE game SET is_primary = 0")
-        for year in clear_years or ():
+        for year in options.clear_years or ():
             cursor.execute(
                 "UPDATE game SET is_primary = 0 WHERE strftime('%Y', game_date) = ?",
                 (str(year),),
@@ -82,8 +77,8 @@ def mark_primary_games(
 
         scanned = 0
         marked = 0
-        if windows:
-            for window in windows:
+        if options.windows:
+            for window in options.windows:
                 if window.clear_year is not None:
                     cursor.execute(
                         "UPDATE game SET is_primary = 0 WHERE strftime('%Y', game_date) = ?",
@@ -93,8 +88,8 @@ def mark_primary_games(
                     cursor,
                     start_date=window.start_date,
                     end_date=window.end_date,
-                    suffixes=suffixes,
-                    preferred_codes=preferred_codes,
+                    suffixes=options.suffixes,
+                    preferred_codes=options.preferred_codes,
                 )
                 scanned += window_result.scanned_slots
                 marked += window_result.marked_primary
@@ -103,13 +98,13 @@ def mark_primary_games(
                 cursor,
                 start_date=None,
                 end_date=None,
-                suffixes=suffixes,
-                preferred_codes=preferred_codes,
+                suffixes=options.suffixes,
+                preferred_codes=options.preferred_codes,
             )
             scanned += result.scanned_slots
             marked += result.marked_primary
 
-        if remove_extreme_dates:
+        if options.remove_extreme_dates:
             current_year = datetime.now(KST).year
             cursor.execute(
                 """

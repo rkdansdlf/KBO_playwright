@@ -17,7 +17,7 @@ from src.models.player import (
 )
 from src.models.rankings import StatRanking
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
-from src.sync.sync_base import SyncBaseProtocol, _serialize_scalar
+from src.sync.sync_base import SimpleTableSyncOptions, SyncBaseProtocol, _serialize_scalar
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -56,16 +56,20 @@ class StatsSyncMixin(SyncBaseProtocol):
         """새로운 player_season_pitching 테이블의 투수 데이터를 OCI로 동기화 (고속 Batch COPY)."""
         return self.sync_simple_table(
             PlayerSeasonPitching,
-            conflict_keys=["player_id", "season", "league", "level"],
-            exclude_cols=["id", "created_at"],
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season", "league", "level"],
+                exclude_cols=["id", "created_at"],
+            ),
         )
 
     def sync_batting_data(self) -> int:
         """타자 데이터를 OCI로 동기화 (고속 Batch COPY)."""
         return self.sync_simple_table(
             PlayerSeasonBatting,
-            conflict_keys=["player_id", "season", "league", "level"],
-            exclude_cols=["id", "created_at"],
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season", "league", "level"],
+                exclude_cols=["id", "created_at"],
+            ),
         )
 
     def verify_pitcher_sync(self, expected_count: int) -> None:
@@ -266,10 +270,12 @@ class StatsSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             PlayerSeasonBatting,
-            conflict_keys=["player_id", "season", "league", "level"],
-            exclude_cols=["id", "created_at"],  # Include updated_at
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season", "league", "level"],
+                exclude_cols=["id", "created_at"],  # Include updated_at
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_player_season_pitching(
@@ -305,10 +311,12 @@ class StatsSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             PlayerSeasonPitching,
-            conflict_keys=["player_id", "season", "league", "level"],
-            exclude_cols=["id", "created_at"],  # Include updated_at
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season", "league", "level"],
+                exclude_cols=["id", "created_at"],  # Include updated_at
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_all_player_data(self) -> dict[str, int]:
@@ -346,10 +354,12 @@ class StatsSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             TeamSeasonBatting,
-            conflict_keys=["team_id", "season", "league"],
-            exclude_cols=["id", "created_at"],  # Include updated_at
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["team_id", "season", "league"],
+                exclude_cols=["id", "created_at"],  # Include updated_at
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_team_season_pitching(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
@@ -376,10 +386,12 @@ class StatsSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             TeamSeasonPitching,
-            conflict_keys=["team_id", "season", "league"],
-            exclude_cols=["id", "created_at"],  # Include updated_at
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["team_id", "season", "league"],
+                exclude_cols=["id", "created_at"],  # Include updated_at
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_standings(self, year: int | None = None, days: int | None = None, batch_size: int = 10000) -> int:
@@ -413,10 +425,12 @@ class StatsSyncMixin(SyncBaseProtocol):
 
         return self.sync_simple_table(
             TeamStandingsDaily,
-            ["standings_date", "team_code"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["standings_date", "team_code"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_stat_rankings(
@@ -439,10 +453,12 @@ class StatsSyncMixin(SyncBaseProtocol):
         """
         return self.sync_simple_table(
             StatRanking,
-            ["season", "metric", "entity_id", "entity_type"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["season", "metric", "entity_id", "entity_type"],
+                exclude_cols=["created_at", "id"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_fielding_stats(self, year: int | None = None, batch_size: int = 10000, *, force: bool = False) -> int:
@@ -467,10 +483,12 @@ class StatsSyncMixin(SyncBaseProtocol):
         filters = self._add_existing_player_basic_filter(PlayerSeasonFielding, filters)
         return self.sync_simple_table(
             PlayerSeasonFielding,
-            ["player_id", "team_id", "year", "position_id"],
-            exclude_cols=["created_at", "id"],  # Include updated_at
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "team_id", "year", "position_id"],
+                exclude_cols=["created_at", "id"],  # Include updated_at
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_baserunning_stats(self, year: int | None = None, batch_size: int = 10000, *, force: bool = False) -> int:
@@ -495,10 +513,12 @@ class StatsSyncMixin(SyncBaseProtocol):
         filters = self._add_existing_player_basic_filter(PlayerSeasonBaserunning, filters)
         return self.sync_simple_table(
             PlayerSeasonBaserunning,
-            ["player_id", "team_id", "year"],
-            exclude_cols=["created_at", "id"],  # Include updated_at
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "team_id", "year"],
+                exclude_cols=["created_at", "id"],  # Include updated_at
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_team_season_fielding(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
@@ -524,10 +544,12 @@ class StatsSyncMixin(SyncBaseProtocol):
         filters = [TeamSeasonFielding.season == year] if year else None
         return self.sync_simple_table(
             TeamSeasonFielding,
-            conflict_keys=["season", "team_code"],
-            exclude_cols=["id", "created_at"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["season", "team_code"],
+                exclude_cols=["id", "created_at"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def sync_team_season_baserunning(
@@ -559,10 +581,12 @@ class StatsSyncMixin(SyncBaseProtocol):
         filters = [TeamSeasonBaserunning.season == year] if year else None
         return self.sync_simple_table(
             TeamSeasonBaserunning,
-            conflict_keys=["season", "team_code"],
-            exclude_cols=["id", "created_at"],
-            filters=filters,
-            batch_size=batch_size,
+            SimpleTableSyncOptions(
+                conflict_keys=["season", "team_code"],
+                exclude_cols=["id", "created_at"],
+                filters=filters,
+                batch_size=batch_size,
+            ),
         )
 
     def purge_season_stats(self, year: int, type: str = "all") -> None:

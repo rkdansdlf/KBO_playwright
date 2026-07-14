@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -48,6 +49,40 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
+
+
+@dataclass(frozen=True, slots=True)
+class P0ReadinessFailure:
+    """A single missing-data condition in a P0 readiness report."""
+
+    dataset: str
+    reason: str
+    game_id: str | None = None
+    game_date: str | None = None
+    severity: str = "warning"
+
+    def to_dict(self) -> dict[str, str | None]:
+        """Return the JSON-serializable report payload."""
+        return {
+            "dataset": self.dataset,
+            "game_id": self.game_id,
+            "game_date": self.game_date,
+            "reason": self.reason,
+            "severity": self.severity,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class P0ReadinessOptions:
+    """Date-window and OCI reconciliation settings for a P0 report."""
+
+    target_date: str | date | datetime | None = None
+    lookback_days: int = 7
+    lookahead_days: int = 1
+    oci_skip_counts: dict[str, int] | None = None
+    oci_skip_game_ids: dict[str, list[str]] | None = None
+
+
 P0_READINESS_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
@@ -277,22 +312,9 @@ def _rows_by_date(session: Session, _model: type[Any], date_column: object, date
 
 def _add_failure(
     failures: list[dict[str, Any]],
-    *,
-    dataset: str,
-    reason: str,
-    game_id: str | None = None,
-    game_date: str | None = None,
-    severity: str = "warning",
+    failure: P0ReadinessFailure,
 ) -> None:
-    failures.append(
-        {
-            "dataset": dataset,
-            "game_id": game_id,
-            "game_date": game_date,
-            "reason": reason,
-            "severity": severity,
-        },
-    )
+    failures.append(failure.to_dict())
 
 
 def _coverage(ok: int, total: int) -> float:
@@ -357,36 +379,44 @@ def _check_schedule_completeness(
         if not _has_text(game.home_team) or not _has_text(game.away_team):
             _add_failure(
                 failures,
-                dataset="schedule",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_team",
-                severity="critical",
+                P0ReadinessFailure(
+                    dataset="schedule",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_team",
+                    severity="critical",
+                ),
             )
         if not _has_text(game.game_status):
             _add_failure(
                 failures,
-                dataset="schedule",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_status",
-                severity="critical",
+                P0ReadinessFailure(
+                    dataset="schedule",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_status",
+                    severity="critical",
+                ),
             )
         if not _meta_has_start_time(meta):
             _add_failure(
                 failures,
-                dataset="schedule",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_start_time",
+                P0ReadinessFailure(
+                    dataset="schedule",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_start_time",
+                ),
             )
         if not _meta_has_stadium(game, meta):
             _add_failure(
                 failures,
-                dataset="schedule",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_stadium",
+                P0ReadinessFailure(
+                    dataset="schedule",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_stadium",
+                ),
             )
 
 
@@ -407,10 +437,12 @@ def _check_pregame_completeness(
         else:
             _add_failure(
                 failures,
-                dataset="pregame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_starter",
+                P0ReadinessFailure(
+                    dataset="pregame",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_starter",
+                ),
             )
 
         if {"away", "home"} <= lineup_sides.get(game.game_id, set()):
@@ -418,19 +450,23 @@ def _check_pregame_completeness(
         else:
             _add_failure(
                 failures,
-                dataset="pregame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_lineup",
+                P0ReadinessFailure(
+                    dataset="pregame",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_lineup",
+                ),
             )
 
         if game.game_id not in preview_ids:
             _add_failure(
                 failures,
-                dataset="pregame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_preview",
+                P0ReadinessFailure(
+                    dataset="pregame",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_preview",
+                ),
             )
 
     return {"starters_complete": starters_complete, "lineups_complete": lineups_complete, "preview_ids": preview_ids}
@@ -459,18 +495,22 @@ def _check_live_completeness(
         if not has_relay:
             _add_failure(
                 failures,
-                dataset="live",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_live_relay",
+                P0ReadinessFailure(
+                    dataset="live",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_live_relay",
+                ),
             )
         if not _score_present(game):
             _add_failure(
                 failures,
-                dataset="live",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_live_score",
+                P0ReadinessFailure(
+                    dataset="live",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_live_score",
+                ),
             )
 
 
@@ -492,11 +532,13 @@ def _check_postgame_completeness(
         else:
             _add_failure(
                 failures,
-                dataset="postgame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_final_score",
-                severity="critical",
+                P0ReadinessFailure(
+                    dataset="postgame",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_final_score",
+                    severity="critical",
+                ),
             )
 
         has_batting = {"away", "home"} <= batting_sides.get(game.game_id, set())
@@ -506,11 +548,13 @@ def _check_postgame_completeness(
         else:
             _add_failure(
                 failures,
-                dataset="postgame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_boxscore_detail",
-                severity="critical",
+                P0ReadinessFailure(
+                    dataset="postgame",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_boxscore_detail",
+                    severity="critical",
+                ),
             )
 
         if inning_counts.get(game.game_id, 0) > 0:
@@ -518,10 +562,12 @@ def _check_postgame_completeness(
         else:
             _add_failure(
                 failures,
-                dataset="postgame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_inning_score",
+                P0ReadinessFailure(
+                    dataset="postgame",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_inning_score",
+                ),
             )
 
         if game.game_id in decision_ids:
@@ -529,10 +575,12 @@ def _check_postgame_completeness(
         else:
             _add_failure(
                 failures,
-                dataset="postgame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_pitcher_decision",
+                P0ReadinessFailure(
+                    dataset="postgame",
+                    game_id=game.game_id,
+                    game_date=game_date,
+                    reason="missing_pitcher_decision",
+                ),
             )
 
     return counts
@@ -556,11 +604,13 @@ def _check_relay_completeness(
             severity = "critical" if game and _status(game.game_status) in COMPLETED_LIKE_GAME_STATUSES else "warning"
             _add_failure(
                 failures,
-                dataset="relay",
-                game_id=game_id,
-                game_date=game_date,
-                reason="missing_relay",
-                severity=severity,
+                P0ReadinessFailure(
+                    dataset="relay",
+                    game_id=game_id,
+                    game_date=game_date,
+                    reason="missing_relay",
+                    severity=severity,
+                ),
             )
     return relay_ok
 
@@ -580,7 +630,10 @@ def _check_roster_completeness(
         if daily_roster_rows.get(key, 0) > 0:
             roster_dates_ok += 1
         else:
-            _add_failure(failures, dataset="roster", game_date=key, reason="missing_daily_roster")
+            _add_failure(
+                failures,
+                P0ReadinessFailure(dataset="roster", game_date=key, reason="missing_daily_roster"),
+            )
     return {
         "roster_dates": roster_dates,
         "daily_roster_rows": daily_roster_rows,
@@ -608,45 +661,30 @@ def _check_broadcast_completeness(
             skip_game_ids.setdefault(reason, []).append(str(game.game_id))
             _add_failure(
                 failures,
-                dataset="broadcast",
-                game_id=game.game_id,
-                game_date=_date_key(game.game_date),
-                reason=reason,
+                P0ReadinessFailure(
+                    dataset="broadcast",
+                    game_id=game.game_id,
+                    game_date=_date_key(game.game_date),
+                    reason=reason,
+                ),
             )
     return {"broadcast_ok": broadcast_ok, "skip_counts": skip_counts, "skip_game_ids": skip_game_ids}
 
 
-def build_p0_readiness(
-    session: Session,
-    *,
-    target_date: str | date | datetime | None = None,
-    lookback_days: int = 7,
-    lookahead_days: int = 1,
-    oci_skip_counts: dict[str, int] | None = None,
-    oci_skip_game_ids: dict[str, list[str]] | None = None,
-) -> dict[str, Any]:
+def build_p0_readiness(session: Session, options: P0ReadinessOptions | None = None) -> dict[str, Any]:
     """Build a JSON-serializable P0 readiness report for a date window.
 
     Args:
         session: Session.
-        target_date: Target date for the operation.
-        lookback_days: Lookback Days.
-        lookahead_days: Lookahead Days.
-        oci_skip_counts: Oci Skip Counts.
-        oci_skip_game_ids: Oci Skip Game Ids.
-        session: Session.
-        target_date: Target date for the operation.
-        lookback_days: Lookback Days.
-        lookahead_days: Lookahead Days.
-        oci_skip_counts: Oci Skip Counts.
-        oci_skip_game_ids: Oci Skip Game Ids.
+        options: Date-window and OCI reconciliation settings.
 
     """
-    target = normalize_yyyymmdd(target_date)
+    options = options or P0ReadinessOptions()
+    target = normalize_yyyymmdd(options.target_date)
 
     target_day = _date_from_yyyymmdd(target)
-    start_day = target_day - timedelta(days=max(0, int(lookback_days or 0)))
-    end_day = target_day + timedelta(days=max(0, int(lookahead_days or 0)))
+    start_day = target_day - timedelta(days=max(0, int(options.lookback_days or 0)))
+    end_day = target_day + timedelta(days=max(0, int(options.lookahead_days or 0)))
 
     games = _query_games(session, start_day, end_day)
     game_ids = [game.game_id for game in games if game.game_id]
@@ -683,7 +721,7 @@ def build_p0_readiness(
     oci_sync_enabled = _env_enabled("P0_OCI_READINESS_EXPECT_SYNC", "0") or bool(os.getenv("OCI_DB_URL"))
     oci_target_present = bool(os.getenv("OCI_DB_URL"))
     if oci_sync_enabled and not oci_target_present:
-        _add_failure(failures, dataset="oci", reason="sync_not_ready")
+        _add_failure(failures, P0ReadinessFailure(dataset="oci", reason="sync_not_ready"))
 
     return {
         "generated_at": datetime.now(KST).isoformat(),
@@ -691,8 +729,8 @@ def build_p0_readiness(
         "start_date": start_day.strftime("%Y%m%d"),
         "end_date": end_day.strftime("%Y%m%d"),
         "window": {
-            "lookback_days": max(0, int(lookback_days or 0)),
-            "lookahead_days": max(0, int(lookahead_days or 0)),
+            "lookback_days": max(0, int(options.lookback_days or 0)),
+            "lookahead_days": max(0, int(options.lookahead_days or 0)),
         },
         "schedule": {
             "games": len(games),
@@ -751,8 +789,8 @@ def build_p0_readiness(
         "oci": {
             "sync_enabled": oci_sync_enabled,
             "target_url_present": oci_target_present,
-            "skip_counts": dict(sorted((oci_skip_counts or {}).items())),
-            "skip_game_ids": {key: sorted(set(value)) for key, value in (oci_skip_game_ids or {}).items()},
+            "skip_counts": dict(sorted((options.oci_skip_counts or {}).items())),
+            "skip_game_ids": {key: sorted(set(value)) for key, value in (options.oci_skip_game_ids or {}).items()},
         },
         "failures": failures,
         "summary": {

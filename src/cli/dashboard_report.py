@@ -92,7 +92,7 @@ def _build_park_factor(session: Session, year: int) -> dict[str, Any]:
 
 
 def _build_rankings(session: Session, year: int) -> dict[str, Any]:
-    from src.aggregators.ranking_aggregator import RankingAggregator
+    from src.aggregators.ranking_aggregator import RankingAggregator, RankingGenerationRequest
     from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
     agg = RankingAggregator()
@@ -115,7 +115,14 @@ def _build_rankings(session: Session, year: int) -> dict[str, Any]:
         )
         .all()
     ]
-    rankings = agg.generate_rankings(year, batting_stats=batting, pitching_stats=pitching, persist=False)
+    rankings = agg.generate_rankings(
+        RankingGenerationRequest(
+            season=year,
+            batting_stats=batting,
+            pitching_stats=pitching,
+            persist=False,
+        ),
+    )
 
     top5: dict[str, list] = {}
     for r in rankings:

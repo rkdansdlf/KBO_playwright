@@ -38,6 +38,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, declarative_base
 
 from src.sync.oci_sync import OCISync
+from src.sync.sync_base import BulkCopyUpsertOptions, SimpleTableSyncOptions
 
 _BenchBase = declarative_base()
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -106,8 +107,8 @@ def _install_bulk_copy_spy(syncer):
     calls = []
     original = syncer._bulk_copy_upsert
 
-    def _spy(table_name, records, unique_cols, **kwargs):
-        calls.append((table_name, len(records)))
+    def _spy(table_name, options):
+        calls.append((table_name, len(options.records)))
 
     syncer._bulk_copy_upsert = _spy
     return calls, original
@@ -205,7 +206,14 @@ def bench_table_sweep(quick: bool = False) -> BenchSuite:
                 calls, _ = _install_bulk_copy_spy(syncer)
 
                 start = time.perf_counter()
-                syncer.sync_simple_table(_BenchModel, ["name"], batch_size=batch_size, exclude_cols=["id"])
+                syncer.sync_simple_table(
+                    _BenchModel,
+                    SimpleTableSyncOptions(
+                        conflict_keys=["name"],
+                        batch_size=batch_size,
+                        exclude_cols=["id"],
+                    ),
+                )
                 elapsed = time.perf_counter() - start
 
             suite.add(f"n={n_records}", elapsed, rows=n_records, batch_size=batch_size)
@@ -222,7 +230,14 @@ def bench_table_sweep(quick: bool = False) -> BenchSuite:
             calls, _ = _install_bulk_copy_spy(syncer)
 
             start = time.perf_counter()
-            syncer.sync_simple_table(_BenchModel, ["name"], batch_size=fixed_batch, exclude_cols=["id"])
+            syncer.sync_simple_table(
+                _BenchModel,
+                SimpleTableSyncOptions(
+                    conflict_keys=["name"],
+                    batch_size=fixed_batch,
+                    exclude_cols=["id"],
+                ),
+            )
             elapsed = time.perf_counter() - start
 
         suite.add(f"batch={fixed_batch}", elapsed, rows=n_records, batch_size=fixed_batch)
@@ -319,7 +334,10 @@ def bench_copy_engine(oci_url: str, quick: bool = False) -> BenchSuite:
 
             start = time.perf_counter()
             try:
-                syncer._bulk_copy_upsert("bench_table", records, ["name"])
+                syncer._bulk_copy_upsert(
+                    "bench_table",
+                    BulkCopyUpsertOptions(records=records, unique_cols=["name"]),
+                )
             except BENCHMARK_EXCEPTIONS as e:
                 elapsed = time.perf_counter() - start
                 suite.add(f"n={n}", elapsed, rows=n, note=f"ERROR: {e}")

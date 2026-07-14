@@ -22,7 +22,12 @@ from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching
-from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary, normalize_yyyymmdd
+from src.services.p0_readiness import (
+    P0ReadinessOptions,
+    build_p0_readiness,
+    format_p0_readiness_summary,
+    normalize_yyyymmdd,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -561,9 +566,11 @@ def _run_p0_readiness_check(args: argparse.Namespace) -> None:
     with SessionLocal() as session:
         readiness = build_p0_readiness(
             session,
-            target_date=target_date,
-            lookback_days=args.lookback_days,
-            lookahead_days=args.lookahead_days,
+            P0ReadinessOptions(
+                target_date=target_date,
+                lookback_days=args.lookback_days,
+                lookahead_days=args.lookahead_days,
+            ),
         )
     if args.json_output:
         logger.info(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str))

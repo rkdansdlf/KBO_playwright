@@ -20,6 +20,7 @@ from src.models.game import Game, GameEvent
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
 from src.sync.oci_sync import OCISync
+from src.sync.sync_base import SimpleTableSyncOptions
 from src.utils.relay_text import (
     detect_relay_event_type,
     is_relay_noise_text,
@@ -53,50 +54,56 @@ class RebuildReportRow:
     oci_status: str = "not_requested"
 
 
-def rebuild_relay_events(
-    *,
-    seasons: Sequence[int] = DEFAULT_SEASONS,
-    game_ids: Sequence[str] | None = None,
-    apply: bool = False,
-    sync_oci: bool = False,
-    oci_sync_mode: str = "events",
-    min_events: int = DEFAULT_MIN_EVENTS,
-    report_out: str | Path | None = None,
-    backup_out: str | Path | None = None,
-    oci_url: str | None = None,
-    log: Callable[..., Any] = logger.info,
-) -> list[RebuildReportRow]:
+@dataclass(frozen=True, slots=True)
+class RelayRebuildOptions:
+    """Selection, persistence, and reporting settings for relay rebuilding."""
+
+    seasons: Sequence[int] = DEFAULT_SEASONS
+    game_ids: Sequence[str] = ()
+    apply: bool = False
+    sync_oci: bool = False
+    oci_sync_mode: str = "events"
+    min_events: int = DEFAULT_MIN_EVENTS
+    report_out: str | Path | None = None
+    backup_out: str | Path | None = None
+    oci_url: str | None = None
+    log: Callable[..., Any] = logger.info
+
+
+def rebuild_relay_events(options: RelayRebuildOptions | None = None) -> list[RebuildReportRow]:
     """Handle the rebuild relay events operation.
 
     Args:
-        seasons: Seasons.
-        game_ids: Game Ids.
-        apply: Apply.
-        sync_oci: Sync Oci.
-        oci_sync_mode: Oci Sync Mode.
-        min_events: Min Events.
-        report_out: Report Out.
-        backup_out: Backup Out.
-        oci_url: Oci URL.
-        log: Logger instance.
+        options: Selection, persistence, and reporting settings.
 
     Returns:
         List of results.
 
     """
-    season_values = tuple(int(season) for season in seasons)
+    options = options or RelayRebuildOptions()
+    season_values = tuple(int(season) for season in options.seasons)
 
     timestamp = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
-    report_path = Path(report_out) if report_out else DEFAULT_REPORT_DIR / f"relay_event_rebuild_report_{timestamp}.csv"
-    backup_path = Path(backup_out) if backup_out else DEFAULT_REPORT_DIR / f"relay_event_rebuild_backup_{timestamp}.csv"
+    report_path = (
+        Path(options.report_out)
+        if options.report_out
+        else DEFAULT_REPORT_DIR / f"relay_event_rebuild_report_{timestamp}.csv"
+    )
+    backup_path = (
+        Path(options.backup_out)
+        if options.backup_out
+        else DEFAULT_REPORT_DIR / f"relay_event_rebuild_backup_{timestamp}.csv"
+    )
 
     with SessionLocal() as session:
-        candidate_game_ids = _load_candidate_game_ids(session, season_values, game_ids=game_ids)
-        log(f"[INFO] Relay event rebuild targets={len(candidate_game_ids)} seasons={','.join(map(str, season_values))}")
+        candidate_game_ids = _load_candidate_game_ids(session, season_values, game_ids=options.game_ids)
+        options.log(
+            f"[INFO] Relay event rebuild targets={len(candidate_game_ids)} seasons={','.join(map(str, season_values))}",
+        )
 
-        if apply and candidate_game_ids:
+        if options.apply and candidate_game_ids:
             _backup_existing_events(session, candidate_game_ids, backup_path)
-            log(f"[INFO] Existing game_events backup written to {backup_path}")
+            options.log(f"[INFO] Existing game_events backup written to {backup_path}")
 
         report_rows: list[RebuildReportRow] = []
         changed_game_ids: list[str] = []
@@ -110,19 +117,19 @@ def rebuild_relay_events(
                 .all()
             )
             rebuilt_events = _rebuild_events_for_game(old_events, calculator=calculator)
-            status, notes = _validate_rebuilt_events(game, rebuilt_events, min_events=min_events)
+            status, notes = _validate_rebuilt_events(game, rebuilt_events, min_events=options.min_events)
             row = RebuildReportRow(
                 game_id=game_id,
                 status=status,
                 old_rows=len(old_events),
                 new_rows=len(rebuilt_events),
                 notes=notes,
-                backup_path=str(backup_path) if apply else "",
-                oci_status="not_requested" if sync_oci else "disabled",
+                backup_path=str(backup_path) if options.apply else "",
+                oci_status="not_requested" if options.sync_oci else "disabled",
             )
 
             if status == "READY":
-                if apply:
+                if options.apply:
                     session.query(GameEvent).filter(GameEvent.game_id == game_id).delete()
                     session.add_all(_build_orm_events(game_id, rebuilt_events))
                     session.commit()
@@ -135,19 +142,19 @@ def rebuild_relay_events(
                 session.rollback()
 
             report_rows.append(row)
-            log(
+            options.log(
                 f"[{index}/{len(candidate_game_ids)}] {game_id} {row.status} "
                 f"old={row.old_rows} new={row.new_rows} {row.notes}",
             )
 
-    if apply and sync_oci and changed_game_ids:
-        if oci_sync_mode == "specific-game":
-            _sync_changed_games(changed_game_ids, report_rows, oci_url=oci_url, log=log)
+    if options.apply and options.sync_oci and changed_game_ids:
+        if options.oci_sync_mode == "specific-game":
+            _sync_changed_games(changed_game_ids, report_rows, oci_url=options.oci_url, log=options.log)
         else:
-            _sync_changed_events(changed_game_ids, report_rows, oci_url=oci_url, log=log)
+            _sync_changed_events(changed_game_ids, report_rows, oci_url=options.oci_url, log=options.log)
 
     _write_report(report_path, report_rows)
-    log(f"[INFO] Rebuild report written to {report_path}")
+    options.log(f"[INFO] Rebuild report written to {report_path}")
     return report_rows
 
 
@@ -374,9 +381,11 @@ def _sync_changed_events(
                 syncer.target_session.commit()
             synced = syncer.sync_simple_table(
                 GameEvent,
-                ["game_id", "event_seq"],
-                exclude_cols=["id", "created_at"],
-                filters=[GameEvent.game_id.in_(list(game_ids))],
+                SimpleTableSyncOptions(
+                    conflict_keys=["game_id", "event_seq"],
+                    exclude_cols=["id", "created_at"],
+                    filters=[GameEvent.game_id.in_(list(game_ids))],
+                ),
             )
             for game_id in game_ids:
                 report_by_game_id[game_id].oci_status = f"synced_events:{synced}"
@@ -515,15 +524,17 @@ def run(argv: Sequence[str] | None = None) -> int:
     seasons = args.season or list(DEFAULT_SEASONS)
     game_ids = _dedupe_game_ids([*args.game_id, *_load_game_ids_from_file(args.game_ids_file)])
     rebuild_relay_events(
-        seasons=seasons,
-        game_ids=game_ids,
-        apply=bool(args.apply),
-        sync_oci=bool(args.sync_oci),
-        oci_sync_mode=args.oci_sync_mode,
-        min_events=args.min_events,
-        report_out=args.report_out,
-        backup_out=args.backup_out,
-        log=logger.info,
+        RelayRebuildOptions(
+            seasons=seasons,
+            game_ids=game_ids,
+            apply=bool(args.apply),
+            sync_oci=bool(args.sync_oci),
+            oci_sync_mode=args.oci_sync_mode,
+            min_events=args.min_events,
+            report_out=args.report_out,
+            backup_out=args.backup_out,
+            log=logger.info,
+        ),
     )
     return 0
 

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path.cwd()))
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.sync.oci_sync import OCISync
+from src.sync.sync_base import SimpleTableSyncOptions
 
 
 def fast_sync_stats():
@@ -26,15 +27,19 @@ def fast_sync_stats():
         logger.info("🚀 Fast Syncing PlayerSeasonBatting...")
         syncer.sync_simple_table(
             PlayerSeasonBatting,
-            ["player_id", "season", "league", "level"],
-            exclude_cols=["created_at", "updated_at"],
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season", "league", "level"],
+                exclude_cols=["created_at", "updated_at"],
+            ),
         )
 
         logger.info("🚀 Fast Syncing PlayerSeasonPitching...")
         syncer.sync_simple_table(
             PlayerSeasonPitching,
-            ["player_id", "season", "league", "level"],
-            exclude_cols=["created_at", "updated_at"],
+            SimpleTableSyncOptions(
+                conflict_keys=["player_id", "season", "league", "level"],
+                exclude_cols=["created_at", "updated_at"],
+            ),
         )
         logger.info("✅ Finished fast sync of stats")
 
