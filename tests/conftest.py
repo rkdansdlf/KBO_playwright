@@ -22,7 +22,8 @@ sqlite3.register_adapter(datetime, lambda value: value.isoformat())
 # Use a separate test database to avoid corrupting the production DB
 worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
 if worker_id:
-    TEST_DB_PATH = ROOT / "data" / f"test_runtime_{worker_id}.db"
+    # Include the controller PID so concurrent xdist invocations cannot share a DB.
+    TEST_DB_PATH = ROOT / "data" / f"test_runtime_{os.getppid()}_{worker_id}.db"
 else:
     TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
@@ -63,11 +64,7 @@ def _clean_test_db(request):
     if request.node.get_closest_marker("integration"):
         yield
         return
-    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
-    if worker_id:
-        test_db = ROOT / "data" / f"test_runtime_{worker_id}.db"
-    else:
-        test_db = ROOT / "data" / "test_runtime.db"
+    test_db = TEST_DB_PATH
     if test_db.exists():
         test_db.unlink()
     # Also clean up WAL/SHM files
