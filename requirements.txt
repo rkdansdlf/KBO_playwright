@@ -14,6 +14,7 @@ pypdf>=4.0.0
 SQLAlchemy>=2.0.0
 psycopg2-binary>=2.9.9    # PostgreSQL adapter (for OCI)
 mysql-connector-python>=8.0.33
+oracledb>=2.0.0           # Oracle Database driver (for OCI Wallet)
 python-dotenv>=1.0.0
 
 # Scheduling
