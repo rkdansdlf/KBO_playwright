@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import Engine, SessionLocal, get_database_type
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
+from src.repositories.oracle_upsert import upsert_model_by_unique_keys
 
 
 class BaseStatsUpsertRepository:
@@ -59,7 +60,7 @@ class BaseStatsUpsertRepository:
 
                 if self.dialect == "oracle":
                     for payload in cleaned:
-                        session.merge(self.model(**payload))
+                        upsert_model_by_unique_keys(session, self.model, payload, self.unique_keys)
                 else:
                     # Group records by their column key-set so we can bulk-execute
                     # each group in one statement instead of one-per-record.
