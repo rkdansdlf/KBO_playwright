@@ -687,19 +687,28 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
   - `calculate_sabermetrics.py`: covered empty-input, per-metric branches (73% → 100%).
   - `crawl_staff_register.py`: covered parse + save + empty branches (76% → 100%).
   - `crawl_operation_notices.py`: covered parse + save + empty branches (78% → 100%).
-  - `live_boxscore.py`: covered payload assembly, inning-loop, and render branches (75% → 99%; only unreachable `if max_innings > 0:` at line 181 remains, flagged).
+  - `live_boxscore.py`: covered payload assembly, inning-loop, and render branches (75% → 99%; unreachable `if max_innings > 0:` at line 181 flagged for follow-up).
   - `morning_pbp_report.py`: covered default-date resolution, summary parse success/error, validation query rows/fallback/exception, relay/affected >10 sample caps, non-dry-run Slack send paths, and PBP CSV read success/error (77% → 100%).
 - **Supabase scripts**: `scripts/supabase/**` (complexity 13–15) added to the C901 per-file-ignore so the new default-select enforcement stays green; `ruff check` clean.
 - **AGENTS.md**: added Phase 59 + Phase 60 sections and refreshed the Current Verification Baseline below.
 
-### Current Verification Baseline (2026-07-15)
+### Phase 61 Complete (2026-07-16) — Monitoring CLI branch-coverage + skip triage
+
+- **`live_boxscore.py` unreachable-branch fix**: Replaced the unreachable `if max_innings > 0:` guard (line 181) with `if away_ls or home_ls:` so the empty-line-score path is covered; added `test_empty_line_score_omits_inning_box`. Coverage 99% → 100%.
+- **Branch-coverage push (larger monitoring/CLI modules, Tier-2)**:
+  - `check_data_status.py`: added `tests/cli/test_check_data_status_ext.py` covering non-empty DB branches, pregame-pitcher OCI-config branches, schedules operational fallback, and P0 JSON/failure output (74% → 100%).
+  - `auto_healer.py`: added `tests/cli/test_auto_healer_ext.py` covering non-str PBP payloads, targeted-mode JSON parse, `all_found`-empty early return, zero-inconsistency branch, and cancelled recovery outcome (96% → 100%).
+  - `live_crawler.py`: added `tests/cli/test_live_crawler_ext.py` covering shard selection, lifecycle resolution/evaluation, dynamic delay scaling, OCI sync failure handling, Naver status fetch, fallback-healing no-op guards, and relay/snapshot save paths (73% → 81%; remaining gaps are live-network crawl/cycle execution paths that require integration-style mocking).
+- **Skip/xfail triage**: Confirmed all 24 skips + 1 xfail are legitimate, not obsolete — `test_text_parser_parsed.py` (23) is gated on unimplemented `parse_play_details` (verified absent in `src/`), `test_stadium_food.py:97` (1) requires missing `data/stadium_foods.csv`, and `test_game_mvp_crawler.py:25` xfail tracks a known MVP-name parser-ordering bug.
+
+### Current Verification Baseline (2026-07-16)
 
 - GitHub Actions: lint, Python 3.12 test, and integration-test jobs passing (last observed green run prior to this phase).
 - `ruff check src/ tests/ scripts/` = 0 errors.
 - `ruff check migrations/` = 0 errors.
-- `ruff format --check .` = 1,071 files already formatted.
+- `ruff format --check .` = clean.
 - `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` and `scripts/supabase/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
-- `venv/bin/python -m pytest -m "not integration and not slow and not oci" --tb=line -q` = **9,548 passed**, 24 skipped, 1 xfailed.
+- `venv/bin/python -m pytest -m "not integration and not slow and not oci" -o "addopts=" -q` = **9,637 passed**, 24 skipped, 272 deselected, 1 xfailed; 67.94s.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
