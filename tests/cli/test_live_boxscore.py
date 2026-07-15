@@ -112,6 +112,18 @@ class TestFormatText:
         result = _format_text(payload)
         assert "-" in result
 
+    def test_empty_line_score_omits_inning_box(self) -> None:
+        payload = {
+            "game_id": "20260627HTOB0",
+            "game_status": "SCHEDULED",
+            "away": {"code": "KIA", "runs": 0, "line_score": []},
+            "home": {"code": "DB", "runs": 0, "line_score": []},
+        }
+        result = _format_text(payload)
+        assert "20260627HTOB0" in result
+        assert "KIA 0 vs DB 0" in result
+        assert len(result.splitlines()) == 1
+
 
 class TestMain:
     def test_json_output(self) -> None:
