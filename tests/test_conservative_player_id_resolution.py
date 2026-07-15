@@ -376,6 +376,44 @@ def test_role_and_uniform_filter_narrows_to_single_candidate():
         session.close()
 
 
+def test_seasonless_group_uses_name_and_uniform_candidates():
+    session = _make_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO player_basic(player_id, name, uniform_no)
+                VALUES (2001, '시즌없는선수', '22')
+                """,
+            ),
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_batting(player_id, season, team_code)
+                VALUES (2001, 2024, 'KIA')
+                """,
+            ),
+        )
+        session.commit()
+
+        result = choose_candidate_ids(
+            session,
+            table_name="game_batting_stats",
+            season=None,
+            team_code=None,
+            player_name="시즌없는선수",
+            uniform_nos=["22"],
+            alias_map={},
+            overrides={},
+        )
+
+        assert result["candidate_ids"] == [2001]
+        assert result["resolution_method"] == "season_team_name"
+    finally:
+        session.close()
+
+
 def test_lineup_order_values_are_not_used_as_uniform_filter():
     session = _make_session()
     try:
