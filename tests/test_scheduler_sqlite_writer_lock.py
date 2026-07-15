@@ -14,7 +14,7 @@ def test_sqlite_writer_lock_acquires_for_sqlite(monkeypatch):
     with scheduler._sqlite_writer_lock() as acquired:
         assert acquired is True
 
-    mock_lock.acquire.assert_called_once_with(blocking=True)
+    mock_lock.acquire.assert_called_once_with(blocking=True, timeout=None)
     mock_lock.release.assert_called_once()
 
 
@@ -39,7 +39,7 @@ def test_sqlite_writer_lock_nonblocking_skips_when_held(monkeypatch):
     with scheduler._sqlite_writer_lock(blocking=False) as acquired:
         assert acquired is False
 
-    mock_lock.acquire.assert_called_once_with(blocking=False)
+    mock_lock.acquire.assert_called_once_with(blocking=False, timeout=None)
     mock_lock.release.assert_not_called()
 
 
@@ -56,7 +56,7 @@ def test_scheduler_job_lock_nests_tier_and_sqlite_locks(monkeypatch):
 
     tier_lock.__enter__.assert_called_once()
     tier_lock.__exit__.assert_called_once()
-    sqlite_lock.acquire.assert_called_once_with(blocking=True)
+    sqlite_lock.acquire.assert_called_once_with(blocking=True, timeout=scheduler.SQLITE_WRITE_LOCK_TIMEOUT_SECONDS)
     sqlite_lock.release.assert_called_once()
 
 
@@ -82,7 +82,7 @@ def test_crawl_congestion_skips_when_sqlite_lock_contended(monkeypatch):
 
     scheduler.crawl_congestion_job()
 
-    sqlite_lock.acquire.assert_called_once_with(blocking=False)
+    sqlite_lock.acquire.assert_called_once_with(blocking=False, timeout=None)
     sqlite_lock.release.assert_not_called()
 
 

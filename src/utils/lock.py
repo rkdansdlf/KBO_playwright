@@ -8,6 +8,7 @@ import logging
 import os
 import struct
 import threading
+import time
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, ClassVar, Self, cast
 
@@ -149,11 +150,12 @@ class ProcessLock:
                 cls._pg_engines[url] = create_engine(url, pool_pre_ping=True)
             return cls._pg_engines[url]
 
-    def _acquire_pg_lock(self, *, effective_blocking: bool) -> bool:
+    def _acquire_pg_lock(self, *, effective_blocking: bool, timeout: float | None = None) -> bool:
         """Acquire PostgreSQL advisory lock if configured.
 
         Returns True if lock acquired or not needed.
-        Returns False only if lock is held by another process and should NOT fall back.
+        Returns False only if lock is held by another process (or not acquired
+        within ``timeout``) and the caller should NOT fall back.
         """
         pg_url = self._get_postgres_url()
         if not pg_url:
@@ -172,7 +174,24 @@ class ProcessLock:
             self._state.db_connection = conn  # type: ignore[assignment]
             lock_id = self._get_lock_id()
 
-            if effective_blocking:
+            if effective_blocking and timeout is not None:
+                deadline = time.monotonic() + timeout
+                while True:
+                    res = conn.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": lock_id}).scalar()
+                    if res:
+                        success = True
+                        break
+                    if time.monotonic() >= deadline:
+                        logger.warning(
+                            "PostgreSQL advisory lock timed out for %s after %.1fs",
+                            self.name,
+                            timeout,
+                        )
+                        conn.close()
+                        self._state.db_connection = None
+                        return False
+                    time.sleep(0.05)
+            elif effective_blocking:
                 conn.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_id})
                 success = True
             else:
@@ -202,8 +221,15 @@ class ProcessLock:
 
         return success
 
-    def acquire(self, *, blocking: bool | None = None) -> bool:
-        """Acquire the lock."""
+    def acquire(self, *, blocking: bool | None = None, timeout: float | None = None) -> bool:
+        """Acquire the lock.
+
+        Args:
+            blocking: Override the instance ``blocking`` flag.
+            timeout: Maximum seconds to wait when ``blocking`` is True. ``None``
+                means wait indefinitely. Ignored when ``blocking`` is False.
+
+        """
         if self._state.thread_lock_acquired:
             logger.debug("ProcessLock is already held by this instance: %s", self.name)
             return False
@@ -211,16 +237,16 @@ class ProcessLock:
         effective_blocking = self.blocking if blocking is None else blocking
 
         # 1. Acquire thread-level lock
-        acquired = self.thread_lock.acquire(blocking=effective_blocking)
+        acquired = self._acquire_thread_lock(blocking=effective_blocking, timeout=timeout)
         if not acquired:
-            logger.debug("Failed to acquire thread lock for: %s", self.name)
+            logger.debug("Failed to acquire thread lock for: %s (timed out)", self.name)
             return False
 
         self._state.thread_lock_acquired = True
         self._state.acquire_count = 1
 
         # 2. Try acquiring PostgreSQL advisory lock
-        if not self._acquire_pg_lock(effective_blocking=effective_blocking):
+        if not self._acquire_pg_lock(effective_blocking=effective_blocking, timeout=timeout):
             self.thread_lock.release()
             self._state.thread_lock_acquired = False
             self._state.acquire_count = 0
@@ -231,17 +257,53 @@ class ProcessLock:
             return True
 
         # 3. Fallback to process-level file lock
+        return self._acquire_process_file_lock(blocking=effective_blocking, timeout=timeout)
+
+    def _acquire_thread_lock(self, *, blocking: bool, timeout: float | None) -> bool:
+        if blocking and timeout is not None:
+            return self.thread_lock.acquire(blocking=True, timeout=timeout)
+        return self.thread_lock.acquire(blocking=blocking)
+
+    def _acquire_process_file_lock(self, *, blocking: bool, timeout: float | None) -> bool:
         if not HAS_FCNTL:
-            # Fallback when fcntl is not available (e.g. Windows)
             return True
 
+        if not blocking:
+            acquired = self._acquire_file_lock(blocking=False)
+            if not acquired:
+                self._release_thread_lock()
+            return acquired
+
+        if timeout is None:
+            acquired = self._acquire_file_lock(blocking=True)
+            if not acquired:
+                self._release_thread_lock()
+            return acquired
+
+        deadline = time.monotonic() + timeout
+        while not self._acquire_file_lock(blocking=False):
+            if time.monotonic() >= deadline:
+                logger.debug("Timed out acquiring file lock for: %s", self.name)
+                self._release_thread_lock()
+                return False
+            time.sleep(0.05)
+        return True
+
+    def _release_thread_lock(self) -> None:
+        with contextlib.suppress(RuntimeError):
+            self.thread_lock.release()
+        self._state.thread_lock_acquired = False
+        self._state.acquire_count = 0
+
+    def _acquire_file_lock(self, *, blocking: bool) -> bool:
+        """Try to acquire the fcntl file lock. Returns True on success."""
         success = False
         try:
             self.lock_dir.mkdir(parents=True, exist_ok=True)
             self._state.file_fd = self.lock_file_path.open("w")
 
             flags = fcntl.LOCK_EX
-            if not effective_blocking:
+            if not blocking:
                 flags |= fcntl.LOCK_NB
 
             fcntl.flock(self._state.file_fd, flags)
@@ -254,10 +316,6 @@ class ProcessLock:
             if self._state.file_fd:
                 self._state.file_fd.close()
                 self._state.file_fd = None
-            self.thread_lock.release()
-            self._state.thread_lock_acquired = False
-            self._state.acquire_count = 0
-
         return success
 
     def release(self) -> None:
@@ -330,7 +388,7 @@ class ForceProcessLock(ProcessLock):
     acquisition is retried exactly once before giving up.
     """
 
-    def acquire(self, *, blocking: bool | None = None) -> bool:
+    def acquire(self, *, blocking: bool | None = None, timeout: float | None = None) -> bool:
         """Acquire the lock, clearing stale file locks if needed."""
         if self._state.thread_lock_acquired:
             # Already held by this thread (re-entrancy): never force-clear a
@@ -338,7 +396,11 @@ class ForceProcessLock(ProcessLock):
             logger.debug("ForceProcessLock already held by this thread: %s", self.name)
             return False
 
-        acquired = super().acquire(blocking=blocking)
+        base_acquire = super().acquire
+        if timeout is None:
+            acquired = base_acquire(blocking=blocking)
+        else:
+            acquired = base_acquire(blocking=blocking, timeout=timeout)
         if acquired:
             return True
 
@@ -347,7 +409,9 @@ class ForceProcessLock(ProcessLock):
         # Attempt to clear the stale lock and retry once before giving up.
         logger.warning("Normal lock acquisition failed for %s, attempting force-acquire", self.name)
         self._clear_stale_lock()
-        return super().acquire(blocking=blocking)
+        if timeout is None:
+            return base_acquire(blocking=blocking)
+        return base_acquire(blocking=blocking, timeout=timeout)
 
     def _clear_stale_lock(self) -> None:
         """Remove stale lock file if the owning process is no longer running."""
