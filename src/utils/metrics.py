@@ -38,6 +38,13 @@ KBO_OCI_SYNC_ERRORS_TOTAL = Counter(
     "Total count of OCI sync errors",
 )
 
+# Lock contention metrics
+KBO_SCHEDULER_LOCK_SKIP_TOTAL = Counter(
+    "kbo_scheduler_lock_skip_total",
+    "Total count of scheduler jobs skipped due to lock contention",
+    ["job_id", "lock"],  # lock: sqlite_writer | live_refresh
+)
+
 
 def start_metrics_server(port: int) -> None:
     """Start the Prometheus metrics exporter HTTP server."""

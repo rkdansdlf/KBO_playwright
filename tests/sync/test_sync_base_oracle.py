@@ -42,6 +42,109 @@ def test_normalize_oracle_url_preserves_non_oracle_url() -> None:
     assert normalize_oracle_url(url) == url
 
 
+@pytest.mark.parametrize("identifier", ["game_events", "payload_2"])
+def test_quote_identifier_accepts_valid_table_and_column_identifiers(identifier) -> None:
+    assert OCISyncBase._quote_identifier(identifier) == f'"{identifier}"'
+
+
+@pytest.mark.parametrize("table_name", ["game_events;DROP_TABLE", "game-events"])
+def test_direct_oracle_insert_rejects_invalid_table_name_before_execute(oracle_sync, table_name) -> None:
+    connection, cursor = _connection()
+    oracle_sync._oracle_columns = MagicMock(return_value={"id"})
+
+    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+        oracle_sync._direct_insert_upsert_oracle(
+            table_name,
+            {"id": 1},
+            [],
+            update_timestamp=True,
+            connection=connection,
+        )
+
+    cursor.execute.assert_not_called()
+
+
+@pytest.mark.parametrize("table_name", ["game_events;DROP_TABLE", "game-events"])
+def test_bulk_oracle_merge_rejects_invalid_table_name_before_executemany(oracle_sync, table_name) -> None:
+    connection, cursor = _connection()
+    oracle_sync._oracle_columns = MagicMock(return_value={"id"})
+
+    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+        oracle_sync._do_bulk_merge_oracle(
+            table_name,
+            [{"id": 1}],
+            [],
+            update_timestamp=True,
+            connection=connection,
+        )
+
+    cursor.executemany.assert_not_called()
+
+
+def test_direct_oracle_insert_rejects_invalid_record_key_before_execute(oracle_sync) -> None:
+    connection, cursor = _connection()
+    oracle_sync._oracle_columns = MagicMock(return_value={"id", "name"})
+
+    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+        oracle_sync._direct_insert_upsert_oracle(
+            "game_events",
+            {"id": 1, "name;DROP_TABLE": "value"},
+            ["id"],
+            update_timestamp=True,
+            connection=connection,
+        )
+
+    cursor.execute.assert_not_called()
+
+
+def test_bulk_oracle_merge_rejects_invalid_record_key_before_executemany(oracle_sync) -> None:
+    connection, cursor = _connection()
+    oracle_sync._oracle_columns = MagicMock(return_value={"id", "name"})
+
+    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+        oracle_sync._do_bulk_merge_oracle(
+            "game_events",
+            [{"id": 1, "name;DROP_TABLE": "value"}],
+            ["id"],
+            update_timestamp=True,
+            connection=connection,
+        )
+
+    cursor.executemany.assert_not_called()
+
+
+def test_direct_oracle_insert_rejects_invalid_conflict_key_before_execute(oracle_sync) -> None:
+    connection, cursor = _connection()
+    oracle_sync._oracle_columns = MagicMock(return_value={"id", "name"})
+
+    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+        oracle_sync._direct_insert_upsert_oracle(
+            "game_events",
+            {"id": 1, "name": "value"},
+            ["id;DROP_TABLE"],
+            update_timestamp=True,
+            connection=connection,
+        )
+
+    cursor.execute.assert_not_called()
+
+
+def test_bulk_oracle_merge_rejects_invalid_unique_key_before_executemany(oracle_sync) -> None:
+    connection, cursor = _connection()
+    oracle_sync._oracle_columns = MagicMock(return_value={"id", "name"})
+
+    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+        oracle_sync._do_bulk_merge_oracle(
+            "game_events",
+            [{"id": 1, "name": "value"}],
+            ["id;DROP_TABLE"],
+            update_timestamp=True,
+            connection=connection,
+        )
+
+    cursor.executemany.assert_not_called()
+
+
 def test_oracle_initialization_normalizes_url_and_wallet_credentials(monkeypatch) -> None:
     sqlite_session = MagicMock()
     oracle_url = "oracle+oracledb://user:p%40ss%3Aword@db.example/service"

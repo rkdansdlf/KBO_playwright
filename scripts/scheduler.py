@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -91,6 +92,7 @@ from src.utils.metrics import (
     KBO_OCI_SYNC_LAG_SECONDS,
     KBO_OCI_LAST_SYNC_TIMESTAMP_SECONDS,
     KBO_OCI_SYNC_ERRORS_TOTAL,
+    KBO_SCHEDULER_LOCK_SKIP_TOTAL,
 )
 
 # Stadium real-time data job functions (imported lazily inside job bodies to avoid startup overhead)
@@ -142,13 +144,13 @@ def _scheduler_uses_sqlite_database() -> bool:
 
 
 @contextmanager
-def _sqlite_writer_lock(*, blocking: bool = True) -> Iterator[bool]:
+def _sqlite_writer_lock(*, blocking: bool = True, timeout: float | None = None) -> Iterator[bool]:
     """Guard SQLite writes with the shared ``sqlite_writer`` lock.
 
     Yields ``True`` when the caller may proceed (PostgreSQL backend, or the
     SQLite writer lock was acquired). Yields ``False`` when running on SQLite
-    and the lock could not be acquired in ``blocking=False`` mode, signalling
-    the caller to skip the write and let a later cycle retry.
+    and the lock could not be acquired, signalling the caller to skip the write
+    and let a later cycle retry.
 
     This prevents high-frequency jobs (e.g. congestion, transit) from blocking
     a worker thread indefinitely when a long-running job holds the lock.
@@ -157,7 +159,7 @@ def _sqlite_writer_lock(*, blocking: bool = True) -> Iterator[bool]:
         yield True
         return
 
-    if not SQLITE_WRITE_LOCK.acquire(blocking=blocking):
+    if not SQLITE_WRITE_LOCK.acquire(blocking=blocking, timeout=timeout):
         logger.info(
             "Skipping SQLite write: %s lock is held by another job",
             SQLITE_WRITE_LOCK.name,
@@ -171,9 +173,38 @@ def _sqlite_writer_lock(*, blocking: bool = True) -> Iterator[bool]:
         SQLITE_WRITE_LOCK.release()
 
 
+class _LockSkipped(Exception):
+    """Internal control-flow signal: a scheduler job was skipped due to a lock timeout."""
+
+
+def _with_lock_skip_guard(func: object) -> object:
+    """Wrap a scheduler job so a lock-timeout skip is logged, not alerted as a failure."""
+
+    @functools.wraps(func)
+    def wrapper(*args: object, **kwargs: object) -> object:
+        try:
+            return func(*args, **kwargs)
+        except _LockSkipped:
+            logger.warning("Job %s skipped: sqlite_writer lock timed out", getattr(func, "__name__", "unknown"))
+            return None
+
+    return wrapper
+
+
+# Maximum time a tier-locked (daily/maintenance) job waits for the SQLite writer
+# lock before skipping. Prevents a stuck writer from exhausting the worker pool.
+SQLITE_WRITE_LOCK_TIMEOUT_SECONDS = 60.0
+
+
 @contextmanager
-def _scheduler_job_lock(lock: ProcessLock) -> Iterator[None]:
-    with lock, _sqlite_writer_lock():
+def _scheduler_job_lock(
+    lock: ProcessLock,
+    *,
+    sqlite_timeout: float | None = SQLITE_WRITE_LOCK_TIMEOUT_SECONDS,
+) -> Iterator[None]:
+    with lock, _sqlite_writer_lock(blocking=True, timeout=sqlite_timeout) as acquired:
+        if not acquired:
+            raise _LockSkipped
         yield
 
 
@@ -480,6 +511,7 @@ def _run_hydration(year: int, target_date: str | None = None):
     wait=wait_exponential(multiplier=1, min=30, max=300),
     retry_error_callback=alert_failure,
 )
+@_with_lock_skip_guard
 def crawl_daily_games():
     """Daily job: Run unified daily update entrypoint.
 
@@ -1003,6 +1035,7 @@ def crawl_live_refresh():
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
+@_with_lock_skip_guard
 def crawl_retired_players_job(limit: int | None = None):
     """Monthly job: Crawl retired/inactive player statistics.
 
@@ -1047,6 +1080,7 @@ def crawl_retired_players_job(limit: int | None = None):
     wait=wait_exponential(multiplier=1, min=60, max=300),
     retry_error_callback=alert_failure,
 )
+@_with_lock_skip_guard
 def crawl_p1p2_data_job():
     """P1/P2 Crawlers: seat sections, parking, stadium food.
     Runs daily at 06:30 KST (after Phase 1 extra crawlers).
@@ -1101,6 +1135,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+@_with_lock_skip_guard
 def sync_from_oci_job():
     """Sync job: Hydrate local DB from OCI after GitHub Actions run window.
     Runs daily at 05:00 KST.
@@ -1118,6 +1153,7 @@ def sync_from_oci_job():
     wait=wait_exponential(multiplier=1, min=60, max=300),
     retry_error_callback=alert_failure,
 )
+@_with_lock_skip_guard
 def _crawl_team_info_history():
     """Weekly job: Refresh team info and team history data."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -1138,6 +1174,7 @@ def _crawl_team_info_history():
             logger.exception("Team info/history refresh failed")
 
 
+@_with_lock_skip_guard
 def weekly_sla_report_job():
     """Weekly SLA report job: computes past 7 days SLA and alerts.
     Runs weekly on Monday at 06:00 KST.
@@ -1152,6 +1189,7 @@ def weekly_sla_report_job():
         logger.info("=== Weekly SLA Report Generation Completed ===")
 
 
+@_with_lock_skip_guard
 def crawl_phase1_extra_job():
     """Phase 1: Supplementary crawlers (broadcast, MVP, injury, foreign players, manager changes).
     Runs daily at 06:00 KST (after daily game crawl and standings compute).
@@ -1167,6 +1205,7 @@ def crawl_phase1_extra_job():
             logger.exception("Phase 1 extra crawlers failed")
 
 
+@_with_lock_skip_guard
 def compute_standings_job():
     """Compute daily standings with home/away splits, recent 10, weekly trends.
     Runs daily at 03:30 KST (after game crawl at 03:00).
@@ -1183,6 +1222,7 @@ def compute_standings_job():
             logger.exception("Standings computation failed")
 
 
+@_with_lock_skip_guard
 def aggregate_team_defense_job():
     """Aggregate team-level fielding and baserunning stats.
     Runs daily at 03:45 KST (after standings).
@@ -1204,6 +1244,7 @@ def aggregate_team_defense_job():
             logger.exception("Team defense aggregation failed")
 
 
+@_with_lock_skip_guard
 def compute_rankings_job():
     """Compute sabermetric rankings (wOBA, wRC+, WAR, OPS+).
     Runs daily at 04:00 KST.
@@ -1220,6 +1261,7 @@ def compute_rankings_job():
             logger.exception("Rankings computation failed")
 
 
+@_with_lock_skip_guard
 def heal_unverified_pbp_job():
     """PBP Healer: scan for unverified PBP games and re-crawl from KBO official site.
     Runs daily at 04:30 KST (after rankings, before OCI sync).
@@ -1242,6 +1284,7 @@ def heal_unverified_pbp_job():
             logger.exception("PBP Auto-Healer job failed")
 
 
+@_with_lock_skip_guard
 def compute_park_factor_job():
     """Compute park factor for all stadiums.
     Runs weekly Sunday at 05:30 KST.
@@ -1283,6 +1326,7 @@ def crawl_transit_time_job():
     """
     if not LIVE_LOCK.acquire(blocking=False):
         logger.info("Skipping transit time because LIVE_LOCK is already held")
+        KBO_SCHEDULER_LOCK_SKIP_TOTAL.labels(job_id="crawl_transit_time", lock="live_refresh").inc()
         return
     try:
         logger.info("[Transit] Starting transit time measurement")
@@ -1291,6 +1335,7 @@ def crawl_transit_time_job():
         with _sqlite_writer_lock(blocking=False) as acquired:
             if not acquired:
                 logger.info("[Transit] Skipping save; sqlite_writer lock contended")
+                KBO_SCHEDULER_LOCK_SKIP_TOTAL.labels(job_id="crawl_transit_time", lock="sqlite_writer").inc()
                 return
             asyncio.run(TransitTimeCrawler().run(save=True))
         logger.info("[Transit] Transit time measurement completed")
@@ -1307,6 +1352,7 @@ def crawl_congestion_job():
     """
     if not LIVE_LOCK.acquire(blocking=False):
         logger.info("Skipping congestion because LIVE_LOCK is already held")
+        KBO_SCHEDULER_LOCK_SKIP_TOTAL.labels(job_id="crawl_congestion", lock="live_refresh").inc()
         return
     try:
         logger.info("[Congestion] Starting congestion data collection")
@@ -1315,6 +1361,7 @@ def crawl_congestion_job():
         with _sqlite_writer_lock(blocking=False) as acquired:
             if not acquired:
                 logger.info("[Congestion] Skipping save; sqlite_writer lock contended")
+                KBO_SCHEDULER_LOCK_SKIP_TOTAL.labels(job_id="crawl_congestion", lock="sqlite_writer").inc()
                 return
             asyncio.run(CongestionCrawler().run(save=True))
         logger.info("[Congestion] Congestion data collection completed")
@@ -1324,6 +1371,7 @@ def crawl_congestion_job():
         LIVE_LOCK.release()
 
 
+@_with_lock_skip_guard
 def crawl_operation_notices_job():
     """Operation notice job: crawl LG Twins and Doosan Bears official notices
     once daily at 09:00 KST (before gates open for evening games).
@@ -1341,6 +1389,7 @@ def crawl_operation_notices_job():
             logger.exception("Operation notices job failed")
 
 
+@_with_lock_skip_guard
 def crawl_operation_notices_naver_job():
     """Naver Search-based operation notice job.
     Queries Naver News API for real-time KBO/stadium notices.
@@ -1357,6 +1406,7 @@ def crawl_operation_notices_naver_job():
             logger.exception("Naver operation notices job failed")
 
 
+@_with_lock_skip_guard
 def crawl_fan_culture_job():
     """Fan culture data job: crawl cheer songs, chants, and rivalries from
     Namuwiki. Runs weekly on Saturday 04:00 KST. Uses MAINTENANCE_LOCK.
@@ -1372,6 +1422,7 @@ def crawl_fan_culture_job():
             logger.exception("Fan culture job failed")
 
 
+@_with_lock_skip_guard
 def crawl_p0_non_game_job():
     """P0 non-game job: crawl team events, roster transactions, and ticket info.
     Runs daily before the freshness monitor. Uses MAINTENANCE_LOCK.

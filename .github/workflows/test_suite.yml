@@ -59,7 +59,7 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./data/kbo_dev.db
       - name: Run tests
-        run: pytest --tb=short -v --durations=10 --cov=src --cov-report=term-missing --cov-report=xml:coverage.xml 2>&1
+        run: COVERAGE_FILE="$RUNNER_TEMP/kbo.coverage" pytest --tb=short -v --durations=10 --cov=src --cov-report=term-missing --cov-report=xml:coverage.xml 2>&1
 
       - name: Upload coverage artifact
         if: always()

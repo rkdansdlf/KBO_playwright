@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import os
+import re
 import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -71,6 +72,7 @@ if TYPE_CHECKING:
 RawConnection = Any  # psycopg2 connection, typed loosely to avoid heavy deps
 SYNC_LOG_SAMPLE_LIMIT = 10
 LEGACY_OCI_VARCHAR_MAX_LENGTH = 255
+SQL_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class SyncBaseProtocol(Protocol):
@@ -750,17 +752,24 @@ class OCISyncBase:
             return True
 
     @staticmethod
-    def _quote_identifier(identifier: str) -> str:
+    def _validate_identifier(identifier: str) -> str:
         if not identifier:
             msg = "identifier must not be empty"
             raise ValueError(msg)
-        if not (identifier[0].isalpha() or identifier[0] == "_"):
+        if not isinstance(identifier, str) or not SQL_IDENTIFIER_PATTERN.fullmatch(identifier):
             msg = f"unsafe SQL identifier: {identifier!r}"
             raise ValueError(msg)
-        if not all(char.isalnum() or char == "_" for char in identifier):
-            msg = f"unsafe SQL identifier: {identifier!r}"
-            raise ValueError(msg)
-        return f'"{identifier}"'
+        return identifier
+
+    @staticmethod
+    def _validate_oracle_identifiers(table_name: str, identifiers: tuple[str, ...]) -> None:
+        OCISyncBase._validate_identifier(table_name)
+        for identifier in identifiers:
+            OCISyncBase._validate_identifier(identifier)
+
+    @staticmethod
+    def _quote_identifier(identifier: str) -> str:
+        return f'"{OCISyncBase._validate_identifier(identifier)}"'
 
     def _reset_target_sequence_for_table(self, table_name: str, column_name: str = "id") -> bool:
         """Align a PostgreSQL serial/identity sequence with MAX(id).
@@ -1466,6 +1475,8 @@ class OCISyncBase:
         connection: Any,  # noqa: ANN401
     ) -> None:
         """Perform a single direct SQL MERGE for Oracle Database."""
+        self._validate_oracle_identifiers(table_name, (*record.keys(), *conflict_keys))
+
         cursor = connection.cursor()
         try:
             # Inspect target columns to detect created_at / updated_at existence
@@ -1479,7 +1490,7 @@ class OCISyncBase:
 
             keys = list(serialized_record.keys())
 
-            insert_cols = [f'"{k.upper()}"' for k in keys]
+            insert_cols = [self._quote_identifier(k.upper()) for k in keys]
             insert_vals = [f":{k}" for k in keys]
 
             if "created_at" in target_cols and "created_at" not in keys:
@@ -1495,12 +1506,12 @@ class OCISyncBase:
             if not conflict_keys:
                 sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({vals_str})"  # noqa: S608
             else:
-                on_clause = " AND ".join([f't."{k.upper()}" = :{k}' for k in conflict_keys])
+                on_clause = " AND ".join([f"t.{self._quote_identifier(k.upper())} = :{k}" for k in conflict_keys])
                 update_cols = [k for k in keys if k not in conflict_keys and k not in ("created_at", "id")]
 
                 update_clause = ""
                 if update_cols:
-                    set_parts = [f't."{k.upper()}" = :{k}' for k in update_cols]
+                    set_parts = [f"t.{self._quote_identifier(k.upper())} = :{k}" for k in update_cols]
                     if update_timestamp and "updated_at" in target_cols and "updated_at" not in keys:
                         set_parts.append('t."UPDATED_AT" = CURRENT_TIMESTAMP')
                     update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(set_parts)
@@ -1533,6 +1544,10 @@ class OCISyncBase:
         connection: Any | None = None,  # noqa: ANN401
     ) -> None:
         """Perform bulk merge using Oracle SQL MERGE INTO DUAL statement."""
+        serialized_records = _serialize_records_oracle(records)
+        keys = list(serialized_records[0].keys())
+        self._validate_oracle_identifiers(table_name, (*keys, *unique_cols))
+
         close_connection = connection is None
         if connection is None:
             connection = self.oci_engine.raw_connection()
@@ -1541,10 +1556,7 @@ class OCISyncBase:
         try:
             target_cols = self._oracle_columns(table_name)
 
-            serialized_records = _serialize_records_oracle(records)
-            keys = list(serialized_records[0].keys())
-
-            insert_cols = [f'"{k.upper()}"' for k in keys]
+            insert_cols = [self._quote_identifier(k.upper()) for k in keys]
             insert_vals = [f":{k}" for k in keys]
 
             if "created_at" in target_cols and "created_at" not in keys:
@@ -1560,12 +1572,12 @@ class OCISyncBase:
             if not unique_cols:
                 sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({vals_str})"  # noqa: S608
             else:
-                on_clause = " AND ".join([f't."{k.upper()}" = :{k}' for k in unique_cols])
+                on_clause = " AND ".join([f"t.{self._quote_identifier(k.upper())} = :{k}" for k in unique_cols])
                 update_cols = [k for k in keys if k not in unique_cols and k not in ("created_at", "id")]
 
                 update_clause = ""
                 if update_cols:
-                    set_parts = [f't."{k.upper()}" = :{k}' for k in update_cols]
+                    set_parts = [f"t.{self._quote_identifier(k.upper())} = :{k}" for k in update_cols]
                     if update_timestamp and "updated_at" in target_cols and "updated_at" not in keys:
                         set_parts.append('t."UPDATED_AT" = CURRENT_TIMESTAMP')
                     update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(set_parts)
