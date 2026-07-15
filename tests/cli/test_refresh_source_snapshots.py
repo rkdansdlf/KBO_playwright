@@ -59,6 +59,51 @@ def test_dry_run_outputs_selected_source(monkeypatch, capsys):
     assert not session.committed
 
 
+def test_dry_run_does_not_fetch_or_write(monkeypatch):
+    source = _source("preview_only")
+    session = _SessionContext()
+
+    class Repo:
+        def __init__(self, _session):
+            pass
+
+        def get_all_active(self):
+            return [source]
+
+    fetch = AsyncMock()
+    save = MagicMock()
+    monkeypatch.setattr(module, "SessionLocal", lambda: session)
+    monkeypatch.setattr(module, "DataSourceRepository", Repo)
+    monkeypatch.setattr(module, "_fetch_source", fetch)
+    monkeypatch.setattr(module, "save_raw_snapshots", save)
+
+    result = module.main(["--all", "--dry-run"])
+
+    assert result == 0
+    fetch.assert_not_awaited()
+    save.assert_not_called()
+    assert not session.committed
+
+
+def test_source_key_not_found_is_a_successful_noop(monkeypatch, capsys):
+    session = _SessionContext()
+
+    class Repo:
+        def __init__(self, _session):
+            pass
+
+        def get_by_key(self, _key):
+            return None
+
+    monkeypatch.setattr(module, "SessionLocal", lambda: session)
+    monkeypatch.setattr(module, "DataSourceRepository", Repo)
+
+    result = module.main(["--source-key", "missing", "--json"])
+
+    assert result == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "[]"
+
+
 def test_refresh_saves_successful_snapshot(monkeypatch):
     source = _source()
     session = _SessionContext()
@@ -91,6 +136,34 @@ def test_refresh_saves_successful_snapshot(monkeypatch):
     assert result == 0
     assert session.committed
     assert calls == [True]
+
+
+def test_refresh_success_honors_no_playwright_fallback(monkeypatch):
+    source = _source("http_only")
+    session = _SessionContext()
+    calls = []
+
+    class Repo:
+        def __init__(self, _session):
+            pass
+
+        def get_all_active(self):
+            return [source]
+
+    async def fake_fetch(_source_obj, _client, *, use_playwright_fallback):
+        calls.append(use_playwright_fallback)
+        return module.FetchedPage(source.source_key, source.base_url, "body", 204, "httpx")
+
+    monkeypatch.setattr(module, "SessionLocal", lambda: session)
+    monkeypatch.setattr(module, "DataSourceRepository", Repo)
+    monkeypatch.setattr(module, "_fetch_source", fake_fetch)
+    monkeypatch.setattr(module, "save_raw_snapshots", lambda _session, _pages: 0)
+
+    result = module.main(["--all", "--no-playwright-fallback"])
+
+    assert result == 0
+    assert calls == [False]
+    assert session.committed
 
 
 def test_refresh_returns_failure_for_bad_source(monkeypatch):
@@ -201,6 +274,15 @@ async def test_fetch_with_playwright_releases_resources(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_fetch_with_playwright_rejects_empty_url():
+    source = _source()
+    source.base_url = ""
+
+    with pytest.raises(ValueError, match="base_url is empty"):
+        await module._fetch_with_playwright(source)
+
+
+@pytest.mark.asyncio
 async def test_fetch_source_handles_httpx_error_and_status_fallback(monkeypatch):
     source = _source()
     client = MagicMock()
@@ -228,6 +310,37 @@ async def test_fetch_source_handles_httpx_error_and_status_fallback(monkeypatch)
     assert result.status_code == 403
     result = await module._fetch_source(source, client, use_playwright_fallback=True)
     assert result == fallback_page
+
+
+@pytest.mark.asyncio
+async def test_fetch_source_returns_non_fallback_http_status(monkeypatch):
+    source = _source()
+    client = MagicMock()
+
+    async def return_not_found(*_args, **_kwargs):
+        return module.FetchedPage(source.source_key, source.base_url, "missing", 404, "httpx")
+
+    fallback = AsyncMock()
+    monkeypatch.setattr(module, "_fetch_with_httpx", return_not_found)
+    monkeypatch.setattr(module, "_fetch_with_playwright", fallback)
+
+    result = await module._fetch_source(source, client, use_playwright_fallback=True)
+
+    assert result.status_code == 404
+    fallback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_source_returns_successful_http_page(monkeypatch):
+    source = _source()
+    expected = module.FetchedPage(source.source_key, source.base_url, "ok", 200, "httpx")
+    fetch = AsyncMock(return_value=expected)
+    monkeypatch.setattr(module, "_fetch_with_httpx", fetch)
+
+    result = await module._fetch_source(source, MagicMock(), use_playwright_fallback=True)
+
+    assert result == expected
+    fetch.assert_awaited_once()
 
 
 def test_refresh_rolls_back_fetch_errors_and_writes_log_output(monkeypatch, caplog):
@@ -266,3 +379,27 @@ def test_refresh_rolls_back_fetch_errors_and_writes_log_output(monkeypatch, capl
     assert "saved" in caplog.text
     assert "preview" in caplog.text
     assert "failed" in caplog.text
+
+
+def test_refresh_rolls_back_playwright_dependency_errors(monkeypatch):
+    source = _source("browser_error")
+    session = _SessionContext()
+
+    class Repo:
+        def __init__(self, _session):
+            pass
+
+        def get_all_active(self):
+            return [source]
+
+    async def failing_fetch(*_args, **_kwargs):
+        raise module.PlaywrightTimeoutError("browser timed out")
+
+    monkeypatch.setattr(module, "SessionLocal", lambda: session)
+    monkeypatch.setattr(module, "DataSourceRepository", Repo)
+    monkeypatch.setattr(module, "_fetch_source", failing_fetch)
+
+    result = module.main(["--all"])
+
+    assert result == 1
+    assert session.rolled_back

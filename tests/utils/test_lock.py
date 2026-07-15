@@ -4,10 +4,11 @@ import sys
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from src.utils.lock import LockAcquisitionError, ProcessLock
+from src.utils.lock import ForceProcessLock, LockAcquisitionError, ProcessLock
 
 
 @pytest.fixture(autouse=True)
@@ -250,3 +251,67 @@ def test_postgresql_advisory_lock_fallback_on_failure(tmp_path: Path) -> None:
         assert lock.acquire() is True
         assert lock.lock_file_path.exists()
         lock.release()
+
+
+def test_force_process_lock_retries_after_stale_clear(tmp_path: Path) -> None:
+    """When the base acquire fails, ForceProcessLock must clear a stale lock and retry once."""
+    lock = ForceProcessLock("test_force_retry", lock_dir=tmp_path)
+
+    with (
+        patch.object(ForceProcessLock, "_clear_stale_lock") as clear_mock,
+        patch.object(ProcessLock, "acquire", side_effect=[False, True]) as acquire_mock,
+    ):
+        assert lock.acquire(blocking=False) is True
+
+    clear_mock.assert_called_once()
+    assert acquire_mock.call_count == 2
+
+
+def test_force_process_lock_reentry_does_not_force_clear(tmp_path: Path) -> None:
+    """A same-thread re-acquire must return False without attempting a force-clear."""
+    lock = ForceProcessLock("test_force_reentry", lock_dir=tmp_path)
+    assert lock.acquire() is True
+
+    with patch.object(ForceProcessLock, "_clear_stale_lock") as clear_mock:
+        assert lock.acquire(blocking=False) is False
+
+    clear_mock.assert_not_called()
+    lock.release()
+
+
+def test_force_process_lock_succeeds_after_stale_file_present(tmp_path: Path) -> None:
+    """A stale lock file (dead PID) must not block acquisition."""
+    lock = ForceProcessLock("test_force_stale", lock_dir=tmp_path)
+    lock.lock_file_path.write_text("999999\n", encoding="utf-8")
+
+    assert lock.acquire(blocking=False) is True
+    lock.release()
+    assert lock.acquire(blocking=False) is True
+    lock.release()
+
+
+def test_multiple_threads_serialize_on_shared_lock(tmp_path: Path) -> None:
+    """Three threads sharing one lock instance must acquire strictly one-at-a-time."""
+    shared = ProcessLock("test_multi_thread", lock_dir=tmp_path)
+    order: list[int] = []
+    errors: list[Exception] = []
+    gate = threading.Barrier(3)
+
+    def worker(wid: int) -> None:
+        gate.wait(timeout=5)
+        try:
+            with shared:
+                order.append(wid)
+                time.sleep(0.1)
+        except (LockAcquisitionError, OSError, RuntimeError) as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+
+    assert errors == [], f"concurrent acquire should not fail: {errors}"
+    assert sorted(order) == [0, 1, 2]
+    assert len(order) == 3

@@ -45,6 +45,7 @@ else:
     DBAPI_EXCEPTIONS_SQLITE = (PsycopgError, sqlite3.Error, SQLAlchemyError, OSError, RuntimeError)
 
 from src.constants import KST
+from src.db.engine import normalize_oracle_url
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -691,17 +692,22 @@ class OCISyncBase:
                     auth_part = oci_url.split("oracle+oracledb://")[1].rsplit("@", 1)[0]
                     if ":" in auth_part:
                         _, password = auth_part.split(":", 1)
-                        connect_args["wallet_password"] = password
+                        from urllib.parse import unquote
+
+                        connect_args["wallet_password"] = unquote(password)
                 except (IndexError, ValueError):
                     logger.debug("Could not parse Oracle wallet credentials from URL")
+            normalized_url = normalize_oracle_url(oci_url)
             self.oci_engine = create_engine(
-                oci_url,
+                normalized_url,
                 echo=False,
                 pool_pre_ping=True,
                 pool_recycle=240,
                 pool_timeout=30,
                 connect_args=connect_args,
             )
+            if not hasattr(self.oci_engine.dialect, "_json_deserializer"):
+                self.oci_engine.dialect._json_deserializer = None  # noqa: SLF001
         else:
             self.oci_engine = create_engine(
                 oci_url,
@@ -728,6 +734,7 @@ class OCISyncBase:
         # Performance: caches for mapping queries called multiple times per sync
         self._season_map_cache: dict[tuple[Any, ...], int] | None = None
         self._franchise_id_mapping_cache: dict[int, int] | None = None
+        self._oracle_columns_cache: dict[str, set[str]] = {}
         self._temp_table_counter = count(1)
 
     @staticmethod
@@ -1461,6 +1468,9 @@ class OCISyncBase:
         """Perform a single direct SQL MERGE for Oracle Database."""
         cursor = connection.cursor()
         try:
+            # Inspect target columns to detect created_at / updated_at existence
+            target_cols = self._oracle_columns(table_name)
+
             # Serialize json values in the record
             serialized_record = {
                 key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
@@ -1469,23 +1479,32 @@ class OCISyncBase:
 
             keys = list(serialized_record.keys())
 
+            insert_cols = [f'"{k.upper()}"' for k in keys]
+            insert_vals = [f":{k}" for k in keys]
+
+            if "created_at" in target_cols and "created_at" not in keys:
+                insert_cols.append('"CREATED_AT"')
+                insert_vals.append("CURRENT_TIMESTAMP")
+            if "updated_at" in target_cols and "updated_at" not in keys:
+                insert_cols.append('"UPDATED_AT"')
+                insert_vals.append("CURRENT_TIMESTAMP")
+
+            cols_str = ", ".join(insert_cols)
+            vals_str = ", ".join(insert_vals)
+
             if not conflict_keys:
-                cols_str = ", ".join([f'"{k}"' for k in keys])
-                vals_str = ", ".join([f":{k}" for k in keys])
                 sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({vals_str})"  # noqa: S608
             else:
-                on_clause = " AND ".join([f't."{k}" = :{k}' for k in conflict_keys])
+                on_clause = " AND ".join([f't."{k.upper()}" = :{k}' for k in conflict_keys])
                 update_cols = [k for k in keys if k not in conflict_keys and k not in ("created_at", "id")]
 
                 update_clause = ""
                 if update_cols:
-                    set_parts = [f't."{k}" = :{k}' for k in update_cols]
-                    if update_timestamp and "updated_at" not in keys:
-                        set_parts.append('t."updated_at" = CURRENT_TIMESTAMP')
+                    set_parts = [f't."{k.upper()}" = :{k}' for k in update_cols]
+                    if update_timestamp and "updated_at" in target_cols and "updated_at" not in keys:
+                        set_parts.append('t."UPDATED_AT" = CURRENT_TIMESTAMP')
                     update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(set_parts)
 
-                cols_str = ", ".join([f'"{k}"' for k in keys])
-                vals_str = ", ".join([f":{k}" for k in keys])
                 insert_clause = f"WHEN NOT MATCHED THEN INSERT ({cols_str}) VALUES ({vals_str})"  # noqa: S608
 
                 sql = f"""
@@ -1520,26 +1539,37 @@ class OCISyncBase:
         cursor = connection.cursor()
 
         try:
+            target_cols = self._oracle_columns(table_name)
+
             serialized_records = _serialize_records_oracle(records)
             keys = list(serialized_records[0].keys())
 
+            insert_cols = [f'"{k.upper()}"' for k in keys]
+            insert_vals = [f":{k}" for k in keys]
+
+            if "created_at" in target_cols and "created_at" not in keys:
+                insert_cols.append('"CREATED_AT"')
+                insert_vals.append("CURRENT_TIMESTAMP")
+            if "updated_at" in target_cols and "updated_at" not in keys:
+                insert_cols.append('"UPDATED_AT"')
+                insert_vals.append("CURRENT_TIMESTAMP")
+
+            cols_str = ", ".join(insert_cols)
+            vals_str = ", ".join(insert_vals)
+
             if not unique_cols:
-                cols_str = ", ".join([f'"{k}"' for k in keys])
-                vals_str = ", ".join([f":{k}" for k in keys])
                 sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({vals_str})"  # noqa: S608
             else:
-                on_clause = " AND ".join([f't."{k}" = :{k}' for k in unique_cols])
+                on_clause = " AND ".join([f't."{k.upper()}" = :{k}' for k in unique_cols])
                 update_cols = [k for k in keys if k not in unique_cols and k not in ("created_at", "id")]
 
                 update_clause = ""
                 if update_cols:
-                    set_parts = [f't."{k}" = :{k}' for k in update_cols]
-                    if update_timestamp and "updated_at" not in keys:
-                        set_parts.append('t."updated_at" = CURRENT_TIMESTAMP')
+                    set_parts = [f't."{k.upper()}" = :{k}' for k in update_cols]
+                    if update_timestamp and "updated_at" in target_cols and "updated_at" not in keys:
+                        set_parts.append('t."UPDATED_AT" = CURRENT_TIMESTAMP')
                     update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(set_parts)
 
-                cols_str = ", ".join([f'"{k}"' for k in keys])
-                vals_str = ", ".join([f":{k}" for k in keys])
                 insert_clause = f"WHEN NOT MATCHED THEN INSERT ({cols_str}) VALUES ({vals_str})"  # noqa: S608
 
                 sql = f"""
@@ -1559,6 +1589,15 @@ class OCISyncBase:
             cursor.close()
             if close_connection:
                 connection.close()
+
+    def _oracle_columns(self, table_name: str) -> set[str]:
+        """Return cached lowercase Oracle column names for a table."""
+        columns = self._oracle_columns_cache.get(table_name)
+        if columns is None:
+            inspector = inspect(self.oci_engine)
+            columns = {column["name"].lower() for column in inspector.get_columns(table_name)}
+            self._oracle_columns_cache[table_name] = columns
+        return columns
 
     def _ensure_table(self, model: type[Base]) -> None:
         """Create table on OCI if it doesn't exist."""
