@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 MISSING_PLAYER_GAME_SAMPLE_LIMIT = 5
 MISSING_PLAYER_ID_SAMPLE_LIMIT = 20
 
-from src.models.base import Base
 from src.models.crawl import CrawlRun
 from src.models.fa_contract import FAContract
 from src.models.game import (
@@ -262,7 +261,7 @@ class PlayerSyncMixin(SyncBaseProtocol):
 
     def sync_fa_contracts(self) -> int:
         """Sync fa_contracts from SQLite to OCI using bulk COPY upsert."""
-        Base.metadata.create_all(self.oci_engine)
+        self._ensure_table(FAContract)
         return self.sync_simple_table(
             FAContract,
             SimpleTableSyncOptions(

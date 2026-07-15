@@ -245,7 +245,7 @@ class TestMiscSyncMixinExtended:
 
     def test_sync_rag_chunks_metadata_error(self, mixin):
         mixin.sync_simple_table.return_value = 0
-        with patch("src.sync.sync_misc.Base.metadata.create_all", side_effect=SQLAlchemyError("fail")):
+        with patch.object(mixin, "_ensure_table", side_effect=SQLAlchemyError("fail")):
             result = mixin.sync_rag_chunks()
         assert result == 0
 
@@ -286,7 +286,7 @@ class TestMiscSyncMixinExtended:
     def test_metadata_create_all_error_handlers(self, mixin, method_name, expected):
         mixin.sync_simple_table.return_value = expected
 
-        with patch("src.sync.sync_misc.Base.metadata.create_all", side_effect=SQLAlchemyError("fail")):
+        with patch.object(mixin, "_ensure_table", side_effect=SQLAlchemyError("fail")):
             result = getattr(mixin, method_name)()
 
         assert result == expected
