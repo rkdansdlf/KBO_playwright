@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -149,6 +150,9 @@ def test_get_live_poll_interval_seconds_scheduled_games(monkeypatch):
 
 def test_crawl_live_refresh_fast_exit(monkeypatch):
     calls = []
+    live_lock = MagicMock()
+    live_lock.acquire.return_value = True
+    monkeypatch.setattr(scheduler, "LIVE_LOCK", live_lock)
 
     # Mock dynamic interval helper to return 10s
     monkeypatch.setattr(scheduler, "_get_live_poll_interval_seconds", lambda: 10)
