@@ -315,3 +315,11 @@ def test_multiple_threads_serialize_on_shared_lock(tmp_path: Path) -> None:
     assert errors == [], f"concurrent acquire should not fail: {errors}"
     assert sorted(order) == [0, 1, 2]
     assert len(order) == 3
+
+
+def test_blocking_acquire_without_timeout_uses_lock_default(tmp_path: Path) -> None:
+    """A blocking acquire without timeout must not pass ``None`` to ``Lock.acquire``."""
+    lock = ProcessLock("test_blocking_default_timeout", lock_dir=tmp_path)
+
+    assert lock.acquire() is True
+    lock.release()
