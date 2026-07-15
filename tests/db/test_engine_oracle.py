@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy import Column, ForeignKeyConstraint, Integer, MetaData, Table
+from sqlalchemy.dialects import oracle
+from sqlalchemy.schema import CreateTable
+
 from src.db.engine import normalize_oracle_url
 
 
@@ -65,3 +69,48 @@ def test_install_oracle_json_compiler_patches_missing_visit_json(monkeypatch) ->
     engine._install_oracle_json_compiler()
 
     assert OracleTypeCompiler.visit_JSON(object(), object()) == "CLOB"
+
+
+def test_oracle_fk_restrict_is_omitted_and_constraint_is_restored() -> None:
+    from src.db import engine
+
+    metadata = MetaData()
+    Table("parents", metadata, Column("id", Integer, primary_key=True))
+    child = Table("children", metadata, Column("parent_id", Integer))
+    constraint = ForeignKeyConstraint(
+        ["parent_id"],
+        ["parents.id"],
+        ondelete="RESTRICT",
+    )
+    child.append_constraint(constraint)
+
+    ddl = str(CreateTable(child).compile(dialect=oracle.dialect()))
+
+    assert "ON DELETE RESTRICT" not in ddl.upper()
+    assert constraint.ondelete == "RESTRICT"
+    engine._install_oracle_fk_restrict_compiler()
+
+
+def test_oracle_fk_cascade_is_preserved() -> None:
+    metadata = MetaData()
+    Table("parents", metadata, Column("id", Integer, primary_key=True))
+    child = Table("children", metadata, Column("parent_id", Integer))
+    child.append_constraint(
+        ForeignKeyConstraint(["parent_id"], ["parents.id"], ondelete="CASCADE"),
+    )
+
+    ddl = str(CreateTable(child).compile(dialect=oracle.dialect()))
+
+    assert "ON DELETE CASCADE" in ddl.upper()
+
+
+def test_oracle_fk_compiler_installation_is_idempotent() -> None:
+    from sqlalchemy.dialects.oracle.base import OracleDDLCompiler
+
+    from src.db import engine
+
+    patched = OracleDDLCompiler.visit_foreign_key_constraint
+
+    engine._install_oracle_fk_restrict_compiler()
+
+    assert OracleDDLCompiler.visit_foreign_key_constraint is patched

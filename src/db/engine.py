@@ -15,7 +15,7 @@ from urllib.parse import quote_plus, unquote
 
 from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
-from sqlalchemy import create_engine, event
+from sqlalchemy import ForeignKeyConstraint, create_engine, event
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -53,6 +53,36 @@ def _install_oracle_json_compiler() -> None:
 
 
 _install_oracle_json_compiler()
+
+
+def _install_oracle_fk_restrict_compiler() -> None:
+    """Ignore ON DELETE RESTRICT clause for Oracle foreign keys (Oracle's default)."""
+    try:
+        from sqlalchemy.dialects.oracle.base import OracleDDLCompiler
+    except ImportError:
+        logger.debug("Oracle dialect is unavailable")
+        return
+
+    current_visit_fk = OracleDDLCompiler.visit_foreign_key_constraint
+    if getattr(current_visit_fk, "_kbo_fk_restrict_patch", False):
+        return
+
+    orig_visit_fk = current_visit_fk
+
+    def patch_visit_fk(compiler: object, constraint: ForeignKeyConstraint, **kw: object) -> str:
+        old_ondelete = constraint.ondelete
+        if isinstance(old_ondelete, str) and old_ondelete.upper() == "RESTRICT":
+            constraint.ondelete = None
+        try:
+            return orig_visit_fk(compiler, constraint, **kw)
+        finally:
+            constraint.ondelete = old_ondelete
+
+    patch_visit_fk._kbo_fk_restrict_patch = True  # noqa: SLF001  # type: ignore[attr-defined]
+    OracleDDLCompiler.visit_foreign_key_constraint = patch_visit_fk  # type: ignore[method-assign]
+
+
+_install_oracle_fk_restrict_compiler()
 
 
 def get_oci_url() -> str | None:
