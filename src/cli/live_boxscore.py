@@ -177,8 +177,8 @@ def _format_text(payload: dict[str, Any]) -> str:
     )
     away_ls = away["line_score"]
     home_ls = home["line_score"]
-    max_innings = max(len(away_ls), len(home_ls), 9)
-    if max_innings > 0:
+    if away_ls or home_ls:
+        max_innings = max(len(away_ls), len(home_ls), 9)
         header = "      " + " ".join(f"{i + 1:>3}" for i in range(max_innings)) + "  R"
         lines.append(header)
         for side, ls, score in (
