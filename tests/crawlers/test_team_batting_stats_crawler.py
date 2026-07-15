@@ -2,10 +2,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import src.crawlers.team_batting_stats_crawler as batting_module
 from src.crawlers.team_batting_stats_crawler import (
     BATTING_FIELDS,
     FLOAT_FIELDS,
     HEADER_MAP,
+    TeamBattingStatsCrawler,
+    _add_batting_values,
+    _parse_team_batting_row,
+    main,
     parse_team_batting_html,
 )
 from src.utils.team_stats_helpers import (
@@ -313,3 +318,139 @@ class TestHeaderMap:
         assert HEADER_MAP["경기"] == "games"
         assert HEADER_MAP["g"] == "games"
         assert HEADER_MAP["타율"] == "avg"
+
+
+class TestTeamBattingStatsCrawlerOrchestration:
+    def test_collect_returns_empty_after_all_urls_fail(self, monkeypatch):
+        page = MagicMock()
+        context = MagicMock()
+        context.new_page.return_value = page
+        browser = MagicMock()
+        browser.new_context.return_value = context
+        playwright = MagicMock()
+        playwright.chromium.launch.return_value = browser
+        manager = MagicMock()
+        manager.__enter__.return_value = playwright
+        manager.__exit__.return_value = False
+        policy = MagicMock()
+        policy.build_context_kwargs.return_value = {}
+        policy.run_with_retry.side_effect = lambda operation, *args, **kwargs: operation(*args, **kwargs)
+        parser = MagicMock(side_effect=RuntimeError("malformed response"))
+        crawler = TeamBattingStatsCrawler(policy=policy)
+
+        monkeypatch.setattr(batting_module, "sync_playwright", lambda: manager)
+        monkeypatch.setattr(batting_module, "install_sync_resource_blocking", MagicMock())
+        monkeypatch.setattr(batting_module, "parse_team_batting_html", parser)
+        monkeypatch.setattr(crawler, "_select_season", MagicMock(return_value=True))
+
+        assert crawler._collect_from_site(2026, {"LG": "LG"}, headless=False) == []
+        assert page.goto.call_count == len(batting_module.TEAM_BATTING_URLS)
+        assert parser.call_count == len(batting_module.TEAM_BATTING_URLS)
+        context.close.assert_called_once_with()
+        browser.close.assert_called_once_with()
+
+    def test_select_season_tries_next_selector_after_playwright_error(self):
+        page = MagicMock()
+        page.query_selector.side_effect = [object(), object()]
+        page.select_option.side_effect = [batting_module.PlaywrightError("stale dropdown"), None]
+
+        assert TeamBattingStatsCrawler._select_season(page, 2026) is True
+        assert page.select_option.call_count == 2
+        page.wait_for_load_state.assert_called_once_with("networkidle")
+
+    def test_select_season_returns_false_when_no_dropdown_exists(self):
+        page = MagicMock()
+        page.query_selector.return_value = None
+
+        assert TeamBattingStatsCrawler._select_season(page, 2026) is False
+        page.select_option.assert_not_called()
+
+    def test_fallback_continues_when_standings_recalculation_fails(self, monkeypatch):
+        crawler = TeamBattingStatsCrawler()
+        crawler._collect_from_site = MagicMock(return_value=[])
+        session_factory = MagicMock()
+        aggregator = MagicMock()
+        aggregator.aggregate_batting.return_value = [{"team_id": "LG"}]
+        standings = MagicMock()
+        standings.return_value.calculate_year.side_effect = RuntimeError("standings unavailable")
+
+        monkeypatch.setattr(batting_module, "get_team_mapping_for_year", lambda _season: {"LG Twins": "LG"})
+        monkeypatch.setattr(batting_module, "SessionLocal", session_factory)
+        monkeypatch.setattr(batting_module, "TeamStatAggregator", MagicMock(return_value=aggregator))
+        monkeypatch.setattr("src.cli.calculate_standings.StandingsCalculator", standings)
+
+        assert crawler.crawl(2026, persist=False) == [{"team_id": "LG", "team_name": "LG Twins"}]
+        aggregator.aggregate_batting.assert_called_once()
+        standings.return_value.calculate_year.assert_called_once_with(2026)
+
+    def test_fallback_errors_are_propagated(self, monkeypatch):
+        crawler = TeamBattingStatsCrawler()
+        crawler._collect_from_site = MagicMock(return_value=[])
+        session_factory = MagicMock()
+        aggregator = MagicMock()
+        aggregator.aggregate_batting.side_effect = RuntimeError("aggregation failed")
+
+        monkeypatch.setattr(batting_module, "get_team_mapping_for_year", lambda _season: {})
+        monkeypatch.setattr(batting_module, "SessionLocal", session_factory)
+        monkeypatch.setattr(batting_module, "TeamStatAggregator", MagicMock(return_value=aggregator))
+
+        with pytest.raises(RuntimeError, match="aggregation failed"):
+            crawler.crawl(2026, persist=False)
+
+    def test_public_main_passes_save_and_browser_flags(self):
+        crawler = MagicMock()
+        crawler.crawl.return_value = [{"team_id": "LG"}]
+        crawler_class = MagicMock(return_value=crawler)
+
+        with (
+            patch.object(batting_module, "TeamBattingStatsCrawler", crawler_class),
+            patch(
+                "sys.argv",
+                ["team_batting_stats_crawler", "--season", "2026", "--league", "FUTURES", "--no-save", "--headed"],
+            ),
+        ):
+            main()
+
+        crawler_class.assert_called_once_with(league="FUTURES")
+        crawler.crawl.assert_called_once_with(2026, persist=False, headless=False)
+
+
+class TestTeamBattingRowHelpers:
+    def test_add_batting_values_separates_known_and_extra_fields(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table><tbody><tr><td>LG</td><td>144</td><td>0.269</td><td>7</td></tr></tbody></table>",
+            "html.parser",
+        )
+        cells = soup.find("tr").find_all("td")
+        payload = {}
+
+        extras = _add_batting_values(
+            payload,
+            cells,
+            {"team_name": 0, "games": 1, "avg": 2, "unknown_stat": 3, "missing": 10},
+        )
+
+        assert payload == {"games": 144, "avg": pytest.approx(0.269)}
+        assert extras == {"unknown_stat": 7}
+
+    def test_parse_team_batting_row_uses_batting_context(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table><tbody><tr><td>LG</td><td>144</td><td>0.269</td></tr></tbody></table>",
+            "html.parser",
+        )
+        indexes = {"team_name": 0, "games": 1, "avg": 2}
+
+        result = _parse_team_batting_row(soup.find("tr"), indexes, 2026, "REGULAR", {"LG": "LG"})
+
+        assert result == {
+            "team_id": "LG",
+            "team_name": "LG",
+            "season": 2026,
+            "league": "REGULAR",
+            "games": 144,
+            "avg": pytest.approx(0.269),
+        }

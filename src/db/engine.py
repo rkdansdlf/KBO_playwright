@@ -11,6 +11,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote_plus, unquote
 
 from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
@@ -32,6 +33,26 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
 DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 DB_SESSION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
+
+
+def _install_oracle_json_compiler() -> None:
+    """Provide JSON-to-CLOB compilation for SQLAlchemy Oracle dialects."""
+    try:
+        from sqlalchemy.dialects.oracle.base import OracleTypeCompiler
+    except ImportError:
+        logger.debug("Oracle dialect is unavailable")
+        return
+
+    if hasattr(OracleTypeCompiler, "visit_JSON"):
+        return
+
+    def _visit_json(_compiler: object, _type: object, **_kwargs: object) -> str:
+        return "CLOB"
+
+    OracleTypeCompiler.visit_JSON = _visit_json  # type: ignore[attr-defined]
+
+
+_install_oracle_json_compiler()
 
 
 def get_oci_url() -> str | None:
@@ -59,6 +80,52 @@ def _normalize_sqlite_synchronous(value: str | None) -> str:
 
 
 SQLITE_SYNCHRONOUS = _normalize_sqlite_synchronous(os.getenv("SQLITE_SYNCHRONOUS", "NORMAL"))
+
+
+def normalize_oracle_url(url: str) -> str:
+    """Normalize an Oracle URL while preserving encoded credentials."""
+    if not url.startswith("oracle+oracledb://"):
+        return url
+    try:
+        rest = url.split("oracle+oracledb://", 1)[1]
+        auth_part, dsn = rest.rsplit("@", 1)
+        if ":" in auth_part:
+            user, password = auth_part.split(":", 1)
+            encoded_password = quote_plus(unquote(password))
+            return f"oracle+oracledb://{user}:{encoded_password}@{dsn}"
+    except (IndexError, ValueError):
+        logger.debug("Could not normalize Oracle URL")
+    return url
+
+
+def _oracle_connect_args(url: str) -> dict[str, Any]:
+    tns_admin = os.getenv("TNS_ADMIN")
+    if not tns_admin:
+        return {}
+
+    connect_args: dict[str, Any] = {"config_dir": tns_admin, "wallet_location": tns_admin}
+    try:
+        auth_part = url.split("oracle+oracledb://", 1)[1].rsplit("@", 1)[0]
+        if ":" in auth_part:
+            _, password = auth_part.split(":", 1)
+            connect_args["wallet_password"] = unquote(password)
+    except (IndexError, ValueError):
+        logger.debug("Could not parse Oracle wallet credentials from URL")
+    return connect_args
+
+
+def _create_oracle_engine(url: str) -> SQLAlchemyEngine:
+    engine = create_engine(
+        normalize_oracle_url(url),
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+        echo=False,
+        connect_args=_oracle_connect_args(url),
+    )
+    if not hasattr(engine.dialect, "_json_deserializer"):
+        engine.dialect._json_deserializer = None  # noqa: SLF001
+    return engine
 
 
 def create_engine_for_url(
@@ -109,27 +176,7 @@ def create_engine_for_url(
         return engine
 
     if url.startswith("oracle"):
-        # Ensure we are using thin mode connect args for Oracle Wallet
-        tns_admin = os.getenv("TNS_ADMIN")
-        connect_args: dict[str, Any] = {}
-        if tns_admin:
-            connect_args["config_dir"] = tns_admin
-            connect_args["wallet_location"] = tns_admin
-            try:
-                auth_part = url.split("oracle+oracledb://")[1].rsplit("@", 1)[0]
-                if ":" in auth_part:
-                    _, password = auth_part.split(":", 1)
-                    connect_args["wallet_password"] = password
-            except (IndexError, ValueError):
-                logger.debug("Could not parse Oracle wallet credentials from URL")
-        return create_engine(
-            url,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-            echo=False,
-            connect_args=connect_args,
-        )
+        return _create_oracle_engine(url)
 
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
 

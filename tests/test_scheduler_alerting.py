@@ -1,5 +1,6 @@
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -139,6 +140,9 @@ def test_pregame_refresh_queues_realtime_oci_sync_without_inline_sync(monkeypatc
 
     monkeypatch.setenv("OCI_DB_URL", "postgresql://oci-host/kbo")
     monkeypatch.setenv("PREGAME_SYNC_TO_OCI", "1")
+    live_lock = MagicMock()
+    live_lock.acquire.return_value = True
+    monkeypatch.setattr(scheduler, "LIVE_LOCK", live_lock)
     monkeypatch.setattr(scheduler, "_pregame_target_dates", lambda: ["20260605"])
     monkeypatch.setattr(scheduler, "alert_success", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
@@ -178,6 +182,9 @@ def test_live_refresh_queues_realtime_oci_sync_without_inline_sync(monkeypatch):
         }
 
     monkeypatch.setenv("OCI_DB_URL", "postgresql://oci-host/kbo")
+    live_lock = MagicMock()
+    live_lock.acquire.return_value = True
+    monkeypatch.setattr(scheduler, "LIVE_LOCK", live_lock)
     monkeypatch.setattr(scheduler, "_should_skip_live_for_pregame", lambda: False)
     monkeypatch.setattr(scheduler, "_get_live_poll_interval_seconds", lambda: 0)
     monkeypatch.setattr(scheduler, "_live_refresh_max_games_per_cycle", lambda: 1)
