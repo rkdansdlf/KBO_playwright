@@ -328,7 +328,7 @@ def _sync_corrected_to_oci(year: int, game_ids: list[str]) -> None:
         logger.exception("Error syncing to OCI")
 
 
-def auto_fix_year(year: int) -> int:
+def auto_fix_year(year: int, *, sync_oci: bool = False) -> int:
     game_ids = _get_violation_game_ids(year)
     if not game_ids:
         logger.info("No PA formula violations found for year %s.", year)
@@ -340,7 +340,10 @@ def auto_fix_year(year: int) -> int:
         if ratio_fixed:
             logger.info("Applied ratio-based fallback correction for %s: %s rows updated", year, ratio_fixed)
     _recalc_and_sync(year, game_ids)
-    _sync_corrected_to_oci(year, game_ids)
+    if sync_oci:
+        _sync_corrected_to_oci(year, game_ids)
+    else:
+        logger.info("OCI synchronization disabled; pass --sync-oci to enable it.")
     return len(game_ids)
 
 
@@ -369,7 +372,12 @@ def _build_arg_parser():
     parser.add_argument("--fix-year", type=int, help="Apply ratio-based fix for a season with missing SH/SF data")
     parser.add_argument("--fix-all", action="store_true", help="Apply ratio-based fix for 2020-2021")
     parser.add_argument(
-        "--auto-fix", action="store_true", help="Apply PBP-based correction and trigger stats recalc & OCI sync"
+        "--auto-fix", action="store_true", help="Apply PBP-based correction and trigger stats recalculation"
+    )
+    parser.add_argument(
+        "--sync-oci",
+        action="store_true",
+        help="Sync auto-fixed data to OCI. Disabled by default even when OCI_DB_URL is configured.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
@@ -380,7 +388,7 @@ def _run_auto_fix(args, start_time: float) -> None:
     years = list(range(2018, 2027)) if args.all_years else [args.year] if args.year else [2020, 2021, 2023]
     for y in years:
         logger.info("Auto-fix for year %s", y)
-        auto_fix_year(y)
+        auto_fix_year(y, sync_oci=args.sync_oci)
     logger.info("Total elapsed: %.2fs", time.time() - start_time)
 
 
