@@ -82,7 +82,7 @@ from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import DATABASE_URL, SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
-from src.utils.lock import ForceProcessLock, ProcessLock
+from src.utils.lock import ForceProcessLock, LockAcquisitionError, ProcessLock
 from src.utils.sentry import init_sentry
 from src.utils.metrics import (
     start_metrics_server,
@@ -120,6 +120,7 @@ SCHEDULER_JOB_EXCEPTIONS = (
     RequestException,
     asyncio.TimeoutError,
     json.JSONDecodeError,
+    LockAcquisitionError,
 )
 
 # Granular locking to prevent long-running batch jobs from blocking real-time updates
@@ -141,13 +142,33 @@ def _scheduler_uses_sqlite_database() -> bool:
 
 
 @contextmanager
-def _sqlite_writer_lock() -> Iterator[None]:
+def _sqlite_writer_lock(*, blocking: bool = True) -> Iterator[bool]:
+    """Guard SQLite writes with the shared ``sqlite_writer`` lock.
+
+    Yields ``True`` when the caller may proceed (PostgreSQL backend, or the
+    SQLite writer lock was acquired). Yields ``False`` when running on SQLite
+    and the lock could not be acquired in ``blocking=False`` mode, signalling
+    the caller to skip the write and let a later cycle retry.
+
+    This prevents high-frequency jobs (e.g. congestion, transit) from blocking
+    a worker thread indefinitely when a long-running job holds the lock.
+    """
     if not _scheduler_uses_sqlite_database():
-        yield
+        yield True
         return
 
-    with SQLITE_WRITE_LOCK:
-        yield
+    if not SQLITE_WRITE_LOCK.acquire(blocking=blocking):
+        logger.info(
+            "Skipping SQLite write: %s lock is held by another job",
+            SQLITE_WRITE_LOCK.name,
+        )
+        yield False
+        return
+
+    try:
+        yield True
+    finally:
+        SQLITE_WRITE_LOCK.release()
 
 
 @contextmanager
@@ -1267,7 +1288,10 @@ def crawl_transit_time_job():
         logger.info("[Transit] Starting transit time measurement")
         from src.crawlers.transit_time_crawler import TransitTimeCrawler
 
-        with _sqlite_writer_lock():
+        with _sqlite_writer_lock(blocking=False) as acquired:
+            if not acquired:
+                logger.info("[Transit] Skipping save; sqlite_writer lock contended")
+                return
             asyncio.run(TransitTimeCrawler().run(save=True))
         logger.info("[Transit] Transit time measurement completed")
     except SCHEDULER_JOB_EXCEPTIONS:
@@ -1288,7 +1312,10 @@ def crawl_congestion_job():
         logger.info("[Congestion] Starting congestion data collection")
         from src.crawlers.congestion_crawler import CongestionCrawler
 
-        with _sqlite_writer_lock():
+        with _sqlite_writer_lock(blocking=False) as acquired:
+            if not acquired:
+                logger.info("[Congestion] Skipping save; sqlite_writer lock contended")
+                return
             asyncio.run(CongestionCrawler().run(save=True))
         logger.info("[Congestion] Congestion data collection completed")
     except SCHEDULER_JOB_EXCEPTIONS:

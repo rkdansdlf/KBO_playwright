@@ -324,17 +324,28 @@ class ForceProcessLock(ProcessLock):
     """ProcessLock variant that force-acquires by clearing stale locks.
 
     Use this when you need to guarantee lock acquisition even if a previous
-    process crashed without releasing the lock.
+    process crashed without releasing the lock. If the normal (base-class)
+    ``acquire`` fails without this thread already holding the lock, the stale
+    lock file (owned by a process that is no longer running) is cleared and
+    acquisition is retried exactly once before giving up.
     """
 
     def acquire(self, *, blocking: bool | None = None) -> bool:
         """Acquire the lock, clearing stale file locks if needed."""
-        try:
-            return super().acquire(blocking=blocking)
-        except LockAcquisitionError:
-            logger.warning("Normal lock acquisition failed for %s, attempting force-acquire", self.name)
+        if self._state.thread_lock_acquired:
+            # Already held by this thread (re-entrancy): never force-clear a
+            # lock we ourselves own.
+            logger.debug("ForceProcessLock already held by this thread: %s", self.name)
+            return False
 
-        logger.warning("Force-acquiring ProcessLock: %s (clearing stale lock)", self.name)
+        acquired = super().acquire(blocking=blocking)
+        if acquired:
+            return True
+
+        # The base acquire returned False without granting this thread the
+        # lock (e.g. a stale lock file left behind by a crashed process).
+        # Attempt to clear the stale lock and retry once before giving up.
+        logger.warning("Normal lock acquisition failed for %s, attempting force-acquire", self.name)
         self._clear_stale_lock()
         return super().acquire(blocking=blocking)
 

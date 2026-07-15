@@ -266,7 +266,7 @@ class TestForceProcessLock:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise LockAcquisitionError("Simulated stale lock")
+                return False
             return original_acquire(self, blocking=blocking)
 
         with patch.object(ProcessLock, "acquire", counting_acquire):
