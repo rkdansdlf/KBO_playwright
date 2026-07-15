@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from src.models.base import Base
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -406,11 +407,10 @@ class StatsSyncMixin(SyncBaseProtocol):
             batch_size: Batch Size.
 
         """
-        from src.models.base import Base
         from src.models.standings import TeamStandingsDaily
 
         logger.info("📁 Ensure Standings table exists on OCI...")
-        Base.metadata.create_all(self.oci_engine)  # Ensure table exists
+        self._ensure_table(TeamStandingsDaily)  # Ensure table exists
 
         filters = []
         if year:
