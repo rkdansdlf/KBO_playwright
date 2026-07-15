@@ -18,7 +18,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.models.award import Award
-from src.models.base import Base
 from src.models.broadcast import GameBroadcast
 from src.models.fan_culture import CheerChant, CheerSong, TeamRivalry
 from src.models.foreign_player import ForeignPlayerChange
@@ -188,7 +187,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         logger.info("📁 Ensure RAG chunks table exists on OCI...")
 
         try:
-            Base.metadata.create_all(self.oci_engine)
+            self._ensure_table(RagChunk)
         except SQLAlchemyError:
             logger.exception("metadata create_all error (might already exist)")
 
@@ -252,7 +251,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         logger.info("📁 Ensure Ticket schedules table exists on OCI...")
 
         try:
-            Base.metadata.create_all(self.oci_engine)
+            self._ensure_table(TicketSchedule)
         except SQLAlchemyError:
             logger.exception("metadata create_all error (might already exist)")
 
@@ -276,7 +275,7 @@ class MiscSyncMixin(SyncBaseProtocol):
         logger.info("📁 Ensure Stadium foods table exists on OCI...")
 
         try:
-            Base.metadata.create_all(self.oci_engine)
+            self._ensure_table(StadiumFood)
         except SQLAlchemyError:
             logger.exception("metadata create_all error (might already exist)")
 
@@ -686,7 +685,16 @@ class MiscSyncMixin(SyncBaseProtocol):
         """
         logger.info("📁 Ensuring matchup tables exist on OCI...")
 
-        Base.metadata.create_all(self.oci_engine)
+        for m in (
+            BatterTeamSplit,
+            PitcherTeamSplit,
+            BatterStadiumSplit,
+            BatterVsStarter,
+            MatchupBvP,
+            BatterSplit,
+            PitcherSplit,
+        ):
+            self._ensure_table(m)
 
         results = {}
         filters = [text("season_year = :year").bindparams(year=year)] if year else None
