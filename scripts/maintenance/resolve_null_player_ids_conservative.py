@@ -246,13 +246,15 @@ def _existing_player_id(session, player_id: int) -> bool:
 
 
 def _lookup_group_override(
-    overrides: dict[tuple[str, int, str, str], OverrideEntry],
+    overrides: dict[tuple[str, int | None, str | None, str], OverrideEntry],
     *,
     table_name: str,
-    season: int,
-    team_code: str,
+    season: int | None,
+    team_code: str | None,
     player_name: str,
 ) -> OverrideEntry | None:
+    if season is None:
+        return None
     canonical_team = canonical_team_code(team_code)
     for candidate_team in (team_code, canonical_team):
         override = overrides.get((table_name, int(season), candidate_team, player_name))
@@ -265,7 +267,7 @@ def _existing_non_null_player_ids_for_group(
     session,
     *,
     table_name: str,
-    year: int,
+    year: int | None,
     team_code: str,
     player_name: str,
 ) -> list[int]:
@@ -289,12 +291,15 @@ def _candidate_ids_from_season_table(
     session,
     *,
     season_table: str,
-    season: int,
+    season: int | None,
     team_code: str | None,
     player_name: str,
 ) -> list[int]:
     team_filter = "AND ps.team_code = :team_code" if team_code else ""
-    params: dict[str, Any] = {"season": int(season), "player_name": player_name}
+    season_filter = "AND ps.season = :season" if season is not None else ""
+    params: dict[str, Any] = {"player_name": player_name}
+    if season is not None:
+        params["season"] = int(season)
     if team_code:
         params["team_code"] = team_code
     rows = session.execute(
@@ -303,8 +308,8 @@ def _candidate_ids_from_season_table(
             SELECT DISTINCT pb.player_id
             FROM {season_table} ps
             JOIN player_basic pb ON pb.player_id = ps.player_id
-            WHERE ps.season = :season
-              AND pb.name = :player_name
+            WHERE pb.name = :player_name
+              {season_filter}
               {team_filter}
             """,
         ),
@@ -386,7 +391,7 @@ def _resolve_via_existing_group(existing_group_ids) -> dict[str, Any] | None:
 
 
 def _resolve_via_season_preferred(
-    session, table_name: str, season: int, canonical_team: str, canonical_name: str, uniform_nos: list[str]
+    session, table_name: str, season: int | None, canonical_team: str, canonical_name: str, uniform_nos: list[str]
 ) -> dict[str, Any] | None:
     preferred = (
         ("player_season_pitching",)
@@ -445,12 +450,12 @@ def choose_candidate_ids(
     session,
     *,
     table_name: str,
-    season: int,
-    team_code: str,
+    season: int | None,
+    team_code: str | None,
     player_name: str,
     uniform_nos: list[str],
     alias_map: dict[str, str],
-    overrides: dict[tuple[str, int, str, str], OverrideEntry],
+    overrides: dict[tuple[str, int | None, str, str], OverrideEntry],
 ) -> dict[str, Any]:
     canonical_team = canonical_team_code(team_code)
     existing_group_ids = _existing_non_null_player_ids_for_group(
