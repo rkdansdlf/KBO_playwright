@@ -16,7 +16,7 @@ class ManagerChange(Base, TimestampMixin):
     __tablename__ = "manager_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
+    team_id: Mapped[str] = mapped_column(String(10), nullable=False, comment="Team code")
     season: Mapped[int] = mapped_column(Integer, nullable=False, comment="Season year")
     previous_manager: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Previous manager name")
     new_manager: Mapped[str] = mapped_column(String(100), nullable=False, comment="New manager name")

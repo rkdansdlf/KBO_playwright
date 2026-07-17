@@ -1159,6 +1159,23 @@ class OCISyncBase:
                 logger.info("[info] Skipping game_metadata.source_payload for legacy OCI varchar column")
         return columns
 
+    @staticmethod
+    def _normalize_simple_table_exclude_cols(
+        exclude_cols: list[str] | None,
+        dialect_name: str,
+    ) -> list[str]:
+        if dialect_name == "oracle":
+            if exclude_cols is None:
+                return []
+            if "id" in exclude_cols:
+                exclude_cols.remove("id")
+            return exclude_cols
+        if exclude_cols is None:
+            return ["id"]
+        if "id" not in exclude_cols:
+            exclude_cols.append("id")
+        return exclude_cols
+
     def sync_simple_table(
         self,
         model: type[Base],
@@ -1169,10 +1186,9 @@ class OCISyncBase:
         Generic sync parameter for simple tables.
         """
         exclude_cols = list(options.exclude_cols) if options.exclude_cols is not None else None
-        if exclude_cols is None:
-            exclude_cols = ["id"]
-        elif "id" not in exclude_cols:
-            exclude_cols.append("id")
+        oci_engine = getattr(self, "oci_engine", None)
+        dialect_name = oci_engine.dialect.name if oci_engine is not None else "postgresql"
+        exclude_cols = self._normalize_simple_table_exclude_cols(exclude_cols, dialect_name)
 
         if not self._target_table_exists(model):
             logger.info("[info] Skipping missing OCI table: %s", model.__tablename__)

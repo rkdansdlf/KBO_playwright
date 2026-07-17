@@ -1760,11 +1760,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, *, acquire_lock: bool = True) -> int:
     """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
+        acquire_lock: When True, self-guard with a ``daily_update`` ProcessLock
+            to prevent concurrent CLI invocations. When called from the scheduler
+            job that already holds ``DAILY_LOCK``, pass False to avoid a nested
+            re-entrancy failure on the shared ``threading.Lock``.
 
     """
     init_sentry()
@@ -1781,10 +1785,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from src.utils.lock import ProcessLock
 
-    lock = ProcessLock("daily_update", blocking=False)
-    if not lock.acquire():
-        logger.warning("⚠️ Another instance of run_daily_update is already running. Exiting.")
-        return 1
+    lock = None
+    if acquire_lock:
+        lock = ProcessLock("daily_update", blocking=False)
+        if not lock.acquire():
+            logger.warning("⚠️ Another instance of run_daily_update is already running. Exiting.")
+            return 1
 
     try:
         res = asyncio.run(

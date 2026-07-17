@@ -20,7 +20,7 @@ APScheduler focuses on real-time and local-only jobs:
 === Daily Jobs ===
   - crawl_phase1_extra: Daily at 06:00 KST (DAILY_LOCK)
   - crawl_p0_non_game: Daily at 06:20 KST (DAILY_LOCK)
-  - crawl_p1p2_data: Daily at 06:30 KST (DAILY_LOCK)
+  - crawl_p1p2_data: Daily at 06:45 KST (DAILY_LOCK)
   - startup backfill (run_daily_update) on first scheduler start
 
 === Weekly Jobs ===
@@ -42,6 +42,7 @@ APScheduler focuses on real-time and local-only jobs:
 from __future__ import annotations
 
 import argparse
+import atexit
 import asyncio
 import functools
 import json
@@ -127,7 +128,7 @@ SCHEDULER_JOB_EXCEPTIONS = (
 
 # Granular locking to prevent long-running batch jobs from blocking real-time updates
 LIVE_LOCK = ProcessLock("live_refresh")
-DAILY_LOCK = ProcessLock("daily_update")
+DAILY_LOCK = ForceProcessLock("daily_update")
 MAINTENANCE_LOCK = ForceProcessLock("maintenance")
 REALTIME_OCI_SYNC_LOCK = ProcessLock("realtime_oci_sync")
 SQLITE_WRITE_LOCK = ForceProcessLock("sqlite_writer")
@@ -195,17 +196,43 @@ def _with_lock_skip_guard(func: object) -> object:
 # lock before skipping. Prevents a stuck writer from exhausting the worker pool.
 SQLITE_WRITE_LOCK_TIMEOUT_SECONDS = 60.0
 
+# Alert threshold: number of lock-skips per monitor interval that triggers a
+# warning. Sustained skipping indicates the SQLite writer lock is contended and
+# real-time data (congestion/transit) may be going stale.
+LOCK_SKIP_ALERT_THRESHOLD = float(os.getenv("LOCK_SKIP_ALERT_THRESHOLD", "5"))
+
+# Last observed cumulative skip totals, keyed by (job_id, lock), for delta computation.
+_LAST_LOCK_SKIP: dict[tuple[str, str], float] = {}
+
 
 @contextmanager
 def _scheduler_job_lock(
     lock: ProcessLock,
     *,
     sqlite_timeout: float | None = SQLITE_WRITE_LOCK_TIMEOUT_SECONDS,
+    lock_timeout: float | None = SQLITE_WRITE_LOCK_TIMEOUT_SECONDS,
 ) -> Iterator[None]:
-    with lock, _sqlite_writer_lock(blocking=True, timeout=sqlite_timeout) as acquired:
-        if not acquired:
+    """Guard a scheduler job with the tier lock plus the SQLite writer lock.
+
+    ``lock_timeout`` bounds how long the tier lock (e.g. DAILY_LOCK) waits
+    before giving up. When it cannot be acquired within the deadline the job is
+    skipped (``_LockSkipped``) rather than crashing the scheduler with a
+    ``LockAcquisitionError``.
+    """
+    try:
+        if not lock.acquire(blocking=True, timeout=lock_timeout):
+            logger.warning("Job skipped: %s lock not acquired within %.1fs", lock.name, lock_timeout or 0)
             raise _LockSkipped
-        yield
+    except LockAcquisitionError:
+        logger.warning("Job skipped: failed to acquire %s lock", lock.name)
+        raise _LockSkipped from None
+    try:
+        with _sqlite_writer_lock(blocking=True, timeout=sqlite_timeout) as acquired:
+            if not acquired:
+                raise _LockSkipped
+            yield
+    finally:
+        lock.release()
 
 
 def _live_refresh_max_games_per_cycle() -> int | None:
@@ -545,7 +572,7 @@ def crawl_daily_games():
             else:
                 logger.info("Auto-remediation disabled (DAILY_AUTO_REMEDIATION=0)")
 
-            update_result = run_daily_update_main(args)
+            update_result = run_daily_update_main(args, acquire_lock=False)
 
             logger.info("=== Daily Games Crawl Completed Successfully ===")
             alert_success("crawl_daily_games", format_stability_alert_summary(update_result))
@@ -1076,8 +1103,8 @@ def crawl_retired_players_job(limit: int | None = None):
 
 
 @retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=60, max=300),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=300, max=1800),
     retry_error_callback=alert_failure,
 )
 @_with_lock_skip_guard
@@ -1497,6 +1524,47 @@ def _query_max_updated_at(url: str | None) -> datetime | None:
         return None
 
 
+def lock_skip_monitor_job() -> None:
+    """Monitor lock-skip metrics and alert when the skip rate is abnormally high.
+
+    Reads the in-process ``kbo_scheduler_lock_skip_total`` counter, compares it
+    against the previous interval, and warns (Slack) when any (job, lock) pair
+    skipped more than ``LOCK_SKIP_ALERT_THRESHOLD`` times. High skip rates mean
+    the SQLite writer lock is contended and real-time data may be going stale.
+    """
+    global _LAST_LOCK_SKIP
+
+    try:
+        totals: dict[tuple[str, str], float] = {}
+        for metric in KBO_SCHEDULER_LOCK_SKIP_TOTAL.collect():
+            for sample in metric.samples:
+                if not sample.name.endswith("_total"):
+                    continue
+                job_id = sample.labels.get("job_id")
+                lock_name = sample.labels.get("lock")
+                if job_id is not None and lock_name is not None:
+                    totals[(job_id, lock_name)] = float(sample.value)
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("Failed to read lock-skip metrics: %s", e)
+        return
+
+    for key, value in totals.items():
+        previous = _LAST_LOCK_SKIP.get(key, 0.0)
+        delta = value - previous
+        _LAST_LOCK_SKIP[key] = value
+        if delta >= LOCK_SKIP_ALERT_THRESHOLD:
+            job_id, lock_name = key
+            msg = (
+                f"⚠️ KBO lock skip rate high: job={job_id} lock={lock_name} "
+                f"skips={int(delta)} in last interval (threshold={int(LOCK_SKIP_ALERT_THRESHOLD)})"
+            )
+            logger.warning(msg)
+            try:
+                SlackWebhookClient.send_alert(msg)
+            except ALERT_EXCEPTIONS:
+                logger.exception("Failed to send lock-skip alert for %s/%s", job_id, lock_name)
+
+
 def update_oci_sync_lag_metrics() -> None:
     try:
         with SessionLocal() as sqlite_session:
@@ -1519,6 +1587,54 @@ def update_oci_sync_lag_metrics() -> None:
 
 
 _SCHEDULER_REF: BlockingScheduler | None = None
+
+# Single-instance guard: only one scheduler process may hold this PID file at a
+# time. Prevents duplicate scheduler containers/processes from contending for
+# the same tier locks (which previously caused immediate LockAcquisitionError).
+_SCHEDULER_PID_FILE = Path(__file__).resolve().parent.parent / "data" / "locks" / "scheduler.pid"
+
+
+def _ensure_single_scheduler_instance() -> None:
+    """Exit if another live scheduler process already holds the PID file.
+
+    Stale PID files (process no longer running) are cleared automatically.
+    """
+    try:
+        if _SCHEDULER_PID_FILE.exists():
+            stale = False
+            try:
+                pid_str = _SCHEDULER_PID_FILE.read_text().strip().split("\n")[0]
+                if pid_str.isdigit():
+                    os.kill(int(pid_str), 0)
+                else:
+                    stale = True
+            except (OSError, ProcessLookupError):
+                stale = True
+            if stale:
+                logger.warning("Removing stale scheduler PID file")
+                _SCHEDULER_PID_FILE.unlink(missing_ok=True)
+            else:
+                logger.error(
+                    "Another scheduler instance (PID %s) is already running. Exiting to avoid lock contention.",
+                    pid_str,
+                )
+                sys.exit(1)
+        _SCHEDULER_PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SCHEDULER_PID_FILE.write_text(f"{os.getpid()}\n")
+        atexit.register(_release_scheduler_pid_file)
+    except OSError as e:
+        logger.warning("Could not set up scheduler PID file guard: %s", e)
+
+
+def _release_scheduler_pid_file() -> None:
+    """Remove the scheduler PID file on clean shutdown."""
+    try:
+        if _SCHEDULER_PID_FILE.exists():
+            content = _SCHEDULER_PID_FILE.read_text().strip().split("\n")[0]
+            if content == str(os.getpid()):
+                _SCHEDULER_PID_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _shutdown_handler(signum: int, frame: object) -> None:
@@ -1566,7 +1682,7 @@ def _start_scheduler(args):
         (crawl_phase1_extra_job, CronTrigger(hour=6, minute=0), "crawl_phase1_extra", "Phase 1 Extra Crawlers", 7200),
         (
             crawl_p1p2_data_job,
-            CronTrigger(hour=6, minute=30),
+            CronTrigger(hour=6, minute=45),
             "crawl_p1p2_data",
             "P1/P2 Seat/Parking/Food Crawlers",
             7200,
@@ -1719,6 +1835,14 @@ def _start_scheduler(args):
         misfire_grace_time=300,
         max_instances=1,
     )
+    scheduler.add_job(
+        lock_skip_monitor_job,
+        trigger=CronTrigger(minute="*/15"),
+        id="lock_skip_monitor",
+        name="Lock Skip Rate Monitor",
+        misfire_grace_time=300,
+        max_instances=1,
+    )
 
     if os.getenv("STARTUP_RUN", "1") == "1" and not args.no_startup_run:
         try:
@@ -1739,7 +1863,7 @@ def _start_scheduler(args):
         "Daily Games Crawl (03:00)",
         "Phase 1 Extra (06:00)",
         "P0 Non-Game (06:20)",
-        "P1/P2 Seat/Parking/Food (06:30)",
+        "P1/P2 Seat/Parking/Food (06:45)",
         "Pregame Refresh (Every 15m, 10:00-23:45)",
         "Live Refresh (Every 10s, 12:00-23:30)",
         "Park Factor (Sunday 05:30)",
@@ -1756,6 +1880,7 @@ def _start_scheduler(args):
         "PBP Healer (04:30)",
         "OCI Hydration (05:00)",
         "Team Info/History (Sunday 06:00)",
+        "Lock Skip Monitor (Every 15m)",
     ]
     logger.info("\nScheduled Jobs:\n%s\n", "\n".join(f"  {i + 1}. {name}" for i, name in enumerate(job_names)))
     logger.info("%s\n", "=" * 60)
@@ -1773,6 +1898,7 @@ def main(argv: Sequence[str] | None = None):
     args = parser.parse_args(argv)
     if _dispatch_single_run(args):
         return
+    _ensure_single_scheduler_instance()
     init_sentry()
     start_metrics_server(_env_int("PROMETHEUS_PORT", 8000))
     _start_scheduler(args)

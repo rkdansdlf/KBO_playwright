@@ -48,7 +48,12 @@ class TestScheduler:
     def test_main(self):
         import scripts.scheduler as mod
 
-        with patch.object(mod, "BlockingScheduler") as mock_sched_cls, patch.object(mod, "load_dotnet"):
+        with (
+            patch.object(mod, "BlockingScheduler") as mock_sched_cls,
+            patch.object(mod, "load_dotnet"),
+            patch.object(mod, "_ensure_single_scheduler_instance", create=True),
+            patch.object(mod, "start_metrics_server", create=True),
+        ):
             mock_sched = MagicMock()
             mock_sched_cls.return_value = mock_sched
             with patch("sys.argv", ["script", "--no-startup-run"]):
@@ -57,7 +62,12 @@ class TestScheduler:
     def test_main_adds_jobs(self):
         import scripts.scheduler as mod
 
-        with patch.object(mod, "BlockingScheduler") as mock_sched_cls, patch.object(mod, "load_dotnet"):
+        with (
+            patch.object(mod, "BlockingScheduler") as mock_sched_cls,
+            patch.object(mod, "load_dotnet"),
+            patch.object(mod, "_ensure_single_scheduler_instance", create=True),
+            patch.object(mod, "start_metrics_server", create=True),
+        ):
             mock_sched = MagicMock()
             mock_sched_cls.return_value = mock_sched
             with patch("sys.argv", ["script", "--no-startup-run"]):

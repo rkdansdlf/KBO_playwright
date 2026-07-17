@@ -14,12 +14,11 @@ class GameMvp(Base, TimestampMixin):
     __tablename__ = "game_mvps"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    game_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    game_id: Mapped[str] = mapped_column(String(20), nullable=False)
     player_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
         nullable=True,
-        index=True,
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="MVP player name")
     team_id: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="MVP team code")
