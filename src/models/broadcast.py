@@ -16,7 +16,7 @@ class GameBroadcast(Base, TimestampMixin):
     __tablename__ = "game_broadcasts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    game_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    game_id: Mapped[str] = mapped_column(String(20), nullable=False)
     broadcaster: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

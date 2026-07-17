@@ -23,7 +23,7 @@ def test_crawl_congestion_skips_under_real_lock_contention(
     another thread (not a mock), asserting the job returns without raising
     ``LockAcquisitionError`` and records a skip metric.
     """
-    real_lock = ProcessLock("sqlite_writer", lock_dir=tmp_path, blocking=False)
+    real_lock = ProcessLock(f"sqlite_writer_{tmp_path.name}", lock_dir=tmp_path, blocking=False)
 
     held = threading.Event()
 
@@ -59,7 +59,7 @@ def test_sqlite_writer_lock_yields_true_when_real_lock_free(
     monkeypatch,
 ) -> None:
     """When no other job holds sqlite_writer, the helper yields True (proceed)."""
-    real_lock = ProcessLock("sqlite_writer_free", lock_dir=tmp_path, blocking=True)
+    real_lock = ProcessLock(f"sqlite_writer_free_{tmp_path.name}", lock_dir=tmp_path, blocking=True)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///data/kbo_dev.db")
     monkeypatch.setattr(scheduler, "SQLITE_WRITE_LOCK", real_lock)
 
@@ -69,7 +69,7 @@ def test_sqlite_writer_lock_yields_true_when_real_lock_free(
 
 def test_acquire_times_out_when_held_by_other_thread(tmp_path: Path) -> None:
     """A blocking acquire must give up after ``timeout`` when another thread holds it."""
-    lock = ProcessLock("test_timeout", lock_dir=tmp_path, blocking=True)
+    lock = ProcessLock(f"test_timeout_{tmp_path.name}", lock_dir=tmp_path, blocking=True)
 
     held = threading.Event()
 
@@ -97,7 +97,7 @@ def test_scheduler_job_lock_raises_skip_on_sqlite_timeout(
     monkeypatch,
 ) -> None:
     """_scheduler_job_lock raises _LockSkipped when sqlite_writer times out."""
-    real_lock = ProcessLock("sqlite_writer", lock_dir=tmp_path, blocking=True)
+    real_lock = ProcessLock(f"sqlite_writer_timeout_{tmp_path.name}", lock_dir=tmp_path, blocking=True)
 
     held = threading.Event()
 
@@ -145,3 +145,70 @@ def test_tier_job_skips_on_lock_timeout(monkeypatch) -> None:
     monkeypatch.setattr(scheduler, "_scheduler_job_lock", _raising_lock)
 
     assert scheduler.crawl_operation_notices_job() is None
+
+
+def test_lock_skip_monitor_alerts_when_threshold_exceeded(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    sample = SimpleNamespace(
+        name="kbo_scheduler_lock_skip_total",
+        labels={"job_id": "crawl_congestion", "lock": "sqlite_writer"},
+        value=10.0,
+    )
+    metric = SimpleNamespace(samples=[sample])
+    mock_counter = MagicMock()
+    mock_counter.collect.return_value = [metric]
+    monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", mock_counter)
+    monkeypatch.setattr(scheduler, "_LAST_LOCK_SKIP", {})
+    monkeypatch.setattr(scheduler, "LOCK_SKIP_ALERT_THRESHOLD", 5.0)
+    alert = MagicMock()
+    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", alert)
+
+    scheduler.lock_skip_monitor_job()
+
+    alert.assert_called_once()
+
+
+def test_lock_skip_monitor_no_alert_below_threshold(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    sample = SimpleNamespace(
+        name="kbo_scheduler_lock_skip_total",
+        labels={"job_id": "crawl_congestion", "lock": "sqlite_writer"},
+        value=2.0,
+    )
+    metric = SimpleNamespace(samples=[sample])
+    mock_counter = MagicMock()
+    mock_counter.collect.return_value = [metric]
+    monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", mock_counter)
+    monkeypatch.setattr(scheduler, "_LAST_LOCK_SKIP", {})
+    monkeypatch.setattr(scheduler, "LOCK_SKIP_ALERT_THRESHOLD", 5.0)
+    alert = MagicMock()
+    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", alert)
+
+    scheduler.lock_skip_monitor_job()
+
+    alert.assert_not_called()
+
+
+def test_lock_skip_monitor_ignores_counter_created_sample(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    labels = {"job_id": "crawl_congestion", "lock": "sqlite_writer"}
+    metric = SimpleNamespace(
+        samples=[
+            SimpleNamespace(name="kbo_scheduler_lock_skip_total", labels=labels, value=2.0),
+            SimpleNamespace(name="kbo_scheduler_lock_skip_created", labels=labels, value=999.0),
+        ],
+    )
+    mock_counter = MagicMock()
+    mock_counter.collect.return_value = [metric]
+    monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", mock_counter)
+    monkeypatch.setattr(scheduler, "_LAST_LOCK_SKIP", {})
+    monkeypatch.setattr(scheduler, "LOCK_SKIP_ALERT_THRESHOLD", 5.0)
+    alert = MagicMock()
+    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", alert)
+
+    scheduler.lock_skip_monitor_job()
+
+    alert.assert_not_called()

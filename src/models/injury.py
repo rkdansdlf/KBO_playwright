@@ -20,10 +20,9 @@ class InjuryEntry(Base, TimestampMixin):
         Integer,
         ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
         nullable=True,
-        index=True,
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Player name")
-    team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
+    team_id: Mapped[str] = mapped_column(String(10), nullable=False, comment="Team code")
     body_part: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="Body part injured")
     injury_type: Mapped[str | None] = mapped_column(
         String(100),

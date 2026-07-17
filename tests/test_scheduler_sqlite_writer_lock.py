@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from unittest.mock import MagicMock
 
 from scripts import scheduler
@@ -54,10 +55,26 @@ def test_scheduler_job_lock_nests_tier_and_sqlite_locks(monkeypatch):
     with scheduler._scheduler_job_lock(tier_lock):
         pass
 
-    tier_lock.__enter__.assert_called_once()
-    tier_lock.__exit__.assert_called_once()
+    tier_lock.acquire.assert_called_once_with(blocking=True, timeout=scheduler.SQLITE_WRITE_LOCK_TIMEOUT_SECONDS)
+    tier_lock.release.assert_called_once()
     sqlite_lock.acquire.assert_called_once_with(blocking=True, timeout=scheduler.SQLITE_WRITE_LOCK_TIMEOUT_SECONDS)
     sqlite_lock.release.assert_called_once()
+
+
+def test_scheduler_job_lock_skips_when_tier_lock_times_out(monkeypatch):
+    tier_lock = MagicMock()
+    tier_lock.acquire.return_value = False
+    sqlite_lock = MagicMock()
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///data/kbo_dev.db")
+    monkeypatch.setattr(scheduler, "SQLITE_WRITE_LOCK", sqlite_lock)
+
+    with pytest.raises(scheduler._LockSkipped):
+        with scheduler._scheduler_job_lock(tier_lock):
+            pass
+
+    tier_lock.acquire.assert_called_once()
+    tier_lock.release.assert_not_called()
+    sqlite_lock.acquire.assert_not_called()
 
 
 def test_crawl_congestion_skips_when_live_lock_held(monkeypatch):

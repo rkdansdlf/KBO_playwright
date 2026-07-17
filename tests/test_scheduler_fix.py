@@ -6,12 +6,13 @@ so that the function body executes fully in test.
 """
 
 from contextlib import contextmanager
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
-@contextmanager
 def _noop_lock():
-    yield
+    lock = MagicMock()
+    lock.acquire.return_value = True
+    return lock
 
 
 def _make_patches(extra_patches=None):
@@ -53,7 +54,7 @@ def test_includes_fix_when_enabled(monkeypatch):
 
     captured: list[list] = []
 
-    def fake_main(args):
+    def fake_main(args, *args_, **kwargs):
         captured.append(list(args))
         return {}
 
@@ -80,7 +81,7 @@ def test_excludes_fix_when_disabled(monkeypatch):
 
     captured: list[list] = []
 
-    def fake_main(args):
+    def fake_main(args, *args_, **kwargs):
         captured.append(list(args))
         return {}
 
@@ -107,7 +108,7 @@ def test_includes_fix_by_default(monkeypatch):
 
     captured: list[list] = []
 
-    def fake_main(args):
+    def fake_main(args, *args_, **kwargs):
         captured.append(list(args))
         return {}
 
@@ -134,7 +135,7 @@ def test_includes_sync_and_fix_together(monkeypatch):
 
     captured: list[list] = []
 
-    def fake_main(args):
+    def fake_main(args, *args_, **kwargs):
         captured.append(list(args))
         return {}
 
@@ -164,7 +165,7 @@ def test_includes_scoped_p0_flags_when_enabled(monkeypatch):
 
     captured: list[list] = []
 
-    def fake_main(args):
+    def fake_main(args, *args_, **kwargs):
         captured.append(list(args))
         return {}
 

@@ -21,10 +21,9 @@ class ForeignPlayerChange(Base, TimestampMixin):
         Integer,
         ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
         nullable=True,
-        index=True,
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Foreign player name")
-    team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
+    team_id: Mapped[str] = mapped_column(String(10), nullable=False, comment="Team code")
     season: Mapped[int] = mapped_column(Integer, nullable=False, comment="Season year")
     change_type: Mapped[str] = mapped_column(
         String(20),
