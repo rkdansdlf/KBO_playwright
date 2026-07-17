@@ -10,7 +10,7 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
-def test_scheduler_signal_shutdown() -> None:
+def test_scheduler_signal_shutdown(tmp_path, monkeypatch) -> None:
     """Test that scheduler registers SIGTERM/SIGINT and gracefully shuts down and releases locks."""
     mock_scheduler = MagicMock()
     registered_handlers = {}
@@ -21,6 +21,7 @@ def test_scheduler_signal_shutdown() -> None:
     # Backup STARTUP_RUN environment
     old_startup_run = os.environ.get("STARTUP_RUN")
     os.environ["STARTUP_RUN"] = "0"
+    monkeypatch.setattr(scheduler, "_SCHEDULER_PID_FILE", tmp_path / "scheduler.pid")
 
     try:
         with (

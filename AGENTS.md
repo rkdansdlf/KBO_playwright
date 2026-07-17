@@ -711,6 +711,12 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **D3 verification**: The serial all-test run passed **9,925 tests**, with 27 legitimate skips and 1 known xfail. Sync/Oracle regression tests passed 22/22. `ruff check src/ tests/ scripts/`, `ruff check migrations/`, and `ruff format --check .` all pass.
 - **Runtime DB hygiene**: `data/test_runtime*.db*` is already covered by the existing `/data/*` ignore rule; generated test database files are removed after the active test process finishes.
 
+### Phase 63 Complete (2026-07-18) — Index cleanup and scheduler operational verification
+
+- **Index/schema audit**: Confirmed the removed model-level `index=True` declarations were duplicated by named `idx_*` indexes already present in SQLite, OCI, and Supabase migrations. Added idempotent cleanup migrations `sqlite/046_remove_redundant_phase1_indexes.sql`, `oci/047_remove_redundant_phase1_indexes.sql`, and `supabase/027_remove_redundant_phase1_indexes.sql` to remove only the stale implicit `ix_*` indexes.
+- **Scheduler smoke coverage**: Added PID-file stale/live-owner handling, owner-safe release, lock metric counter reset/error handling, and tier-lock exception conversion tests. Scheduler regression set passes 39 tests.
+- **Regression fix**: Isolated scheduler PID files in existing alerting/shutdown tests so the single-instance guard cannot leak state between tests.
+
 ### Current Verification Baseline (2026-07-18)
 
 - GitHub Actions: lint, Python 3.12 test, and integration-test jobs passing (last observed green run prior to this phase).
@@ -720,6 +726,6 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` and `scripts/supabase/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
-- `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,925 passed**, 27 skipped, 1 xfailed; 0 failures in the verified serial run.
+- `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,932 passed**, 27 skipped, 1 xfailed; 0 failures in the verified serial run.
 - `venv/bin/python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` = **259 passed**, 1 intentional OCI skip, 9,693 deselected.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.

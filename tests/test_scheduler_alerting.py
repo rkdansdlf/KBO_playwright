@@ -324,7 +324,7 @@ def test_health_and_freshness_checks_use_canonical_table_names():
     assert TeamStandingsDaily.__tablename__ in health_tables
 
 
-def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
+def test_main_registers_morning_jobs_with_expected_cron(monkeypatch, tmp_path):
     scheduled = []
 
     class _FakeTrigger:
@@ -351,6 +351,7 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
     monkeypatch.setattr(scheduler, "crawl_live_refresh", lambda: None)
     monkeypatch.setattr(scheduler, "crawl_phase1_extra_job", lambda: None)
     monkeypatch.setattr(scheduler, "crawl_p0_non_game_job", lambda: None)
+    monkeypatch.setattr(scheduler, "_SCHEDULER_PID_FILE", tmp_path / "scheduler.pid")
 
     scheduler.main(["--no-startup-run"])
 
