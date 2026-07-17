@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock, call
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.models.award import Award
 from src.models.franchise import Franchise
+from src.models.source_registry import DataSource
 from src.models.team import Team, TeamCodeMap
 from src.models.team_event import TeamEvent
 from src.models.team_history import TeamHistory
@@ -270,7 +273,7 @@ class TestSyncTeamEvents:
     def test_callssync_simple_table(self):
         syncer = object.__new__(OCISync)
         syncer.sqlite_session = _build_memory_session()
-        syncer._ensure_table = lambda model: None
+        syncer._ensure_table = MagicMock()
 
         calls = []
 
@@ -286,3 +289,4 @@ class TestSyncTeamEvents:
         model, options = calls[0]
         assert model is TeamEvent
         assert options.conflict_keys == ["team_id", "title", "source_url"]
+        assert syncer._ensure_table.call_args_list == [call(DataSource), call(TeamEvent)]
