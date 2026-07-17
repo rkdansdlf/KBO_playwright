@@ -36,6 +36,7 @@ from src.models.matchup import (
 )
 from src.models.rag_chunk import RagChunk
 from src.models.season import KboSeason
+from src.models.source_registry import DataSource
 from src.models.stadium_congestion import StadiumCongestion
 from src.models.stadium_food import StadiumFood
 from src.models.stadium_info import StadiumInfo, StadiumRegulation
@@ -389,6 +390,7 @@ class MiscSyncMixin(SyncBaseProtocol):
 
     def sync_team_events(self) -> int:
         """Sync team_events from SQLite to OCI."""
+        self._ensure_table(DataSource)
         self._ensure_table(TeamEvent)
         return self.sync_simple_table(
             TeamEvent,
