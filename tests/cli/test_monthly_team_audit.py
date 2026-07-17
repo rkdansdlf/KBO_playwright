@@ -83,8 +83,7 @@ class TestCrawlMonthlyTeamAuditJob:
             mock_dt.now.return_value = datetime(2026, 1, 1)
             mock_run.return_value = mock_result
             mock_path.return_value.mkdir.return_value = None
-            mock_path.return_value.__truediv__ = lambda self, other: Path(f"/tmp/{other}")
-            mock_path.return_value.open = MagicMock()
+            mock_path.return_value.__truediv__.return_value = mock_path.return_value
 
             with caplog.at_level(logging.INFO):
                 crawl_monthly_team_audit_job()
@@ -122,8 +121,7 @@ class TestCrawlMonthlyTeamAuditJob:
             mock_dt.now.return_value = datetime(2026, 1, 1)
             mock_run.return_value = mock_result
             mock_path.return_value.mkdir.return_value = None
-            mock_path.return_value.__truediv__ = lambda self, other: Path(f"/tmp/{other}")
-            mock_path.return_value.open = MagicMock()
+            mock_path.return_value.__truediv__.return_value = mock_path.return_value
 
             with pytest.raises(RuntimeError, match="batting=1 mismatches"):
                 crawl_monthly_team_audit_job()

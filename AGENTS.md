@@ -131,6 +131,9 @@ These modules are operational or diagnostic entrypoints that are less frequently
   - **`MAINTENANCE_LOCK`**: Long-running maintenance jobs (futures profile crawl, OCI sync, season stat recalc, report generation).
 - Always use the appropriate lock when adding new scheduled jobs or long-running maintenance tasks.
 - All data save logic uses **UPSERT** for idempotency; failed jobs can be safely re-run.
+- **`ProcessLock` is a thread-safe singleton with thread-local state.** `ProcessLock` (and `ForceProcessLock`) instances such as `SQLITE_WRITE_LOCK` are shared as module-level singletons across APScheduler's thread pool. Per-acquisition state (`thread_lock_acquired`, `file_fd`, `db_connection`) lives on a `threading.local` (`_LockState`) so each worker thread tracks its own ownership; the shared `threading.Lock` in `_thread_locks` still provides correct cross-thread mutual exclusion. Do **not** move this state back to instance attributes — that reintroduces a spurious `LockAcquisitionError` when two jobs contend for the same singleton lock (see `crawl_congestion` incident, 2026-07).
+- **SQLite writer lock (`SQLITE_WRITE_LOCK`)** serializes all SQLite writes. High-frequency jobs (`crawl_congestion`, `crawl_transit_time`) acquire it **non-blocking** and skip their save (emitting `kbo_scheduler_lock_skip_total`) when contended, so they never block a worker thread. Tier-locked jobs (daily/maintenance) acquire it **blocking with a `SQLITE_WRITE_LOCK_TIMEOUT_SECONDS` (default 60s) deadline**; on timeout the job is skipped via `_LockSkipped` (caught by `@_with_lock_skip_guard`) rather than hanging the worker pool. `LockAcquisitionError` is part of `SCHEDULER_JOB_EXCEPTIONS`.
+- **Lock-skip monitoring**: `lock_skip_monitor_job` runs every 15 minutes and warns (Slack) when any `(job_id, lock)` pair's skip count exceeds `LOCK_SKIP_ALERT_THRESHOLD` (env, default 5) per interval — a signal that the SQLite writer lock is contended and real-time data may be going stale.
 
 ## GitHub Actions Automation
 
@@ -701,7 +704,14 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
   - `live_crawler.py`: added `tests/cli/test_live_crawler_ext.py` covering shard selection, lifecycle resolution/evaluation, dynamic delay scaling, OCI sync failure handling, Naver status fetch, fallback-healing no-op guards, and relay/snapshot save paths (73% → 81%; remaining gaps are live-network crawl/cycle execution paths that require integration-style mocking).
 - **Skip/xfail triage**: Confirmed all 24 skips + 1 xfail are legitimate, not obsolete — `test_text_parser_parsed.py` (23) is gated on unimplemented `parse_play_details` (verified absent in `src/`), `test_stadium_food.py:97` (1) requires missing `data/stadium_foods.csv`, and `test_game_mvp_crawler.py:25` xfail tracks a known MVP-name parser-ordering bug.
 
-### Current Verification Baseline (2026-07-16)
+### Phase 62 Complete (2026-07-18) — Local SQLite integration stabilization
+
+- **D1 test-isolation stabilization**: The serial full suite exposed two failures in `sync_simple_table` caused by lightweight `OCISync` test doubles without `oci_engine`. The dialect lookup now uses `getattr`, while preserving Oracle `id` exclusion and PostgreSQL behavior; exclusion normalization is isolated in a helper to keep C901 at zero.
+- **D2 local integration verification**: `python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` passed **259 tests** with **1 intentional skip** (`tests/test_oci_connection.py:20`, OCI connectivity requires `KBO_RUN_OCI_INTEGRATION=1`); no live network/OCI execution was enabled.
+- **D3 verification**: The serial all-test run passed **9,925 tests**, with 27 legitimate skips and 1 known xfail. Sync/Oracle regression tests passed 22/22. `ruff check src/ tests/ scripts/`, `ruff check migrations/`, and `ruff format --check .` all pass.
+- **Runtime DB hygiene**: `data/test_runtime*.db*` is already covered by the existing `/data/*` ignore rule; generated test database files are removed after the active test process finishes.
+
+### Current Verification Baseline (2026-07-18)
 
 - GitHub Actions: lint, Python 3.12 test, and integration-test jobs passing (last observed green run prior to this phase).
 - `ruff check src/ tests/ scripts/` = 0 errors.
@@ -710,5 +720,6 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` and `scripts/supabase/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
-- `venv/bin/python -m pytest -m "not integration and not slow and not oci" -o "addopts=" -q` = **9,637 passed**, 24 skipped, 272 deselected, 1 xfailed; 67.94s.
+- `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,925 passed**, 27 skipped, 1 xfailed; 0 failures in the verified serial run.
+- `venv/bin/python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` = **259 passed**, 1 intentional OCI skip, 9,693 deselected.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.

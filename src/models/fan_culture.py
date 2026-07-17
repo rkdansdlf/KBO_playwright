@@ -37,7 +37,7 @@ class CheerSong(Base, TimestampMixin):
     __tablename__ = "cheer_songs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
+    team_id: Mapped[str] = mapped_column(String(10), nullable=False, comment="Team code")
     player_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("player_basic.player_id", ondelete="SET NULL"),
@@ -67,7 +67,7 @@ class CheerChant(Base, TimestampMixin):
     __tablename__ = "cheer_chants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
+    team_id: Mapped[str] = mapped_column(String(10), nullable=False, comment="Team code")
     chant_text: Mapped[str] = mapped_column(String(500), nullable=False, comment="Cheer chant text")
     situation: Mapped[str | None] = mapped_column(
         String(100),
