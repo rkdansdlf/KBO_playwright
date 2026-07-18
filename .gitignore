@@ -104,3 +104,4 @@ coverage.xml
 coverage.json
 coverage_report.txt
 /.opencode
+/data

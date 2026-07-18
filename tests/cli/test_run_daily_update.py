@@ -94,6 +94,21 @@ class TestRunDailyUpdateCLI:
         assert result == mock_update.return_value
         assert created == []
 
+    def test_main_no_crash_when_acquire_lock_false_releases_nothing(self):
+        """Regression: with acquire_lock=False the inner lock stays None, and the
+        finally block must skip lock.release() instead of raising
+        ``AttributeError: 'NoneType' object has no attribute 'release'``.
+
+        This is the real-world crash path used by the scheduler's
+        ``crawl_daily_games`` job (which already holds DAILY_LOCK). The test runs
+        the genuine None-lock path (no ProcessLock patch) so the original bug
+        would fail loudly here.
+        """
+        with patch("src.cli.run_daily_update.run_update", new_callable=AsyncMock) as mock_update:
+            result = main(["--date", "20251015"], acquire_lock=False)
+
+        assert result == mock_update.return_value
+
 
 def _build_run_context(tmp_path, *, target_date: str, today_kst: date) -> daily._RunContext:
     return daily._RunContext(
