@@ -91,9 +91,9 @@ These modules are operational or diagnostic entrypoints that are less frequently
 | --- | --- |
 | Data collection | `collect_profiles`, `collect_rosters`, `crawl_congestion`, `crawl_operation_notices`, `crawl_parking`, `crawl_retire`, `crawl_seat_sections`, `crawl_stadium_food`, `crawl_staff_register`, `crawl_text_relay`, `crawl_transit_time` |
 | Pipeline / jobs | `run_all_crawlers`, `run_advanced_daily`, `daily_highlight_batch`, `daily_review_batch`, `daily_story_batch`, `crawl_phase1_extra`, `run_pipeline_demo` |
-| Repair / backfill | `auto_healer`, `backfill_advanced_stats`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `retry_daily_failures` |
+| Repair / backfill | `audit_completeness_2009_2025`, `auto_healer`, `backfill_advanced_stats`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `recovery_pipeline`, `retry_daily_failures` |
 | Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
-| Monitoring / reports | `check_data_status`, `crawler_live_smoke`, `crawler_selector_gate`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `historical_coverage_report`, `monitor_data_freshness`, `morning_pbp_report`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
+| Monitoring / reports | `check_data_status`, `crawler_live_smoke`, `crawler_selector_gate`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `historical_coverage_report`, `monitor_data_freshness`, `morning_pbp_report`, `probe_oci_counts`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
 | Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `verify_chunk_quality`, `verify_sync_consistency`, `load_text_relay` |
 
 ## Code Quality & Linting
@@ -819,3 +819,11 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage report**: Added `src.cli.historical_coverage_report`, a read-only JSON/text report that compares parent games with lineup, boxscore, player-game, `game_events`, and `game_play_by_play` distinct-game coverage and lists missing IDs by series/status.
 - **2001 detail pilot**: `20010405LTHU0` timed out; `20010412OBHD1` returned only 2 hitters/2 pitchers/4 summaries; `20010412OBHD2` returned empty hitter/pitcher arrays. No probe used `--save` and no game rows were written.
 - **PBP source probe**: Naver relay returned HTTP 404 / `relay_not_found` for `20010412OBHD1`; historical PBP batch backfill is blocked pending an alternate source and completeness contract.
+
+### Phase 74 Complete (2026-07-19) — Completeness audit and safe recovery planning
+
+- **Completeness audit**: Added `scripts.maintenance.audit_completeness_2009_2025`, a read-only 2009-2025 census combining historical coverage, parent-game heuristics, player-game/season aggregate checks, regression pack, quality gate, and team-code NULL checks. The local audit reported **154 checks, 134 defects, and 12 source-limited known limitations**.
+- **Audit correctness**: Season aggregate checks now scope player-game rows to the target season instead of accumulating earlier seasons; fully populated team-code seasons are omitted from residual findings.
+- **Recovery orchestration**: Added `scripts.maintenance.recovery_pipeline` with explicit `--dry-run` support, resumable phases, scheduler-lock guard, and no automatic apply. Do not use `--apply` until each defect category has a source-specific remediation decision.
+- **OCI probe**: Added `scripts.maintenance.probe_oci_counts` for read-only local/PostgreSQL row-count comparison; it skips cleanly when `TARGET_DATABASE_URL` is absent.
+- **Weekly automation**: Historical completeness is emitted as a non-blocking artifact; daily quality/gap gates remain the operational blockers.
