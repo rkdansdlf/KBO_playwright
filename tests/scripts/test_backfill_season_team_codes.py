@@ -74,16 +74,36 @@ def test_batting_resolver_falls_back_to_unique_same_season_roster() -> None:
     assert resolution == TeamCodeResolution("KH", "same_season_roster")
 
 
-def test_batting_resolver_rejects_conflicting_same_season_roster() -> None:
+def test_batting_resolver_rescues_ambiguous_roster_via_current_team() -> None:
+    # Conflicting roster evidence is overridden by the player's current team
+    # (best-effort last resort) when it yields a single canonical code.
     session = MagicMock()
     session.execute.side_effect = [
         _query_result(),
         _query_result(rows=[("KH",), ("LT",)]),
+        _query_result(row=("두산",)),
     ]
 
-    resolution = _resolve_batting_team_code(session, 20, 2025)
+    resolution = _resolve_batting_team_code(session, 52204, 2026)
+
+    assert resolution == TeamCodeResolution("DB", "current_team")
+    # game, roster, team -> 3 execute calls (career is skipped when roster is set).
+    assert session.execute.call_count == 3
+
+
+def test_batting_resolver_preserves_ambiguous_roster_without_current_team() -> None:
+    # When even the current team is unknown, the ambiguous reason is preserved.
+    session = MagicMock()
+    session.execute.side_effect = [
+        _query_result(),
+        _query_result(rows=[("KH",), ("LT",)]),
+        _query_result(row=(None,)),
+    ]
+
+    resolution = _resolve_batting_team_code(session, 665, 2025)
 
     assert resolution == TeamCodeResolution(None, "ambiguous_same_season_roster")
+    assert session.execute.call_count == 3
 
 
 def test_batting_resolver_uses_exact_career_period_when_no_game_or_roster() -> None:

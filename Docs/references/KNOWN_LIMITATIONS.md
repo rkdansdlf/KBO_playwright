@@ -13,15 +13,15 @@ This document tracks known data quality issues and their current status.
 | Game season_id | ✅ Resolved | 100% (0 orphan) |
 | Game team codes | ✅ Resolved | 100% (0 legacy) |
 | game_metadata stadium_code | ✅ Resolved | 100% (0 NULL) |
-| player_season team_code | ⚠️ Known gap | 99.98% (2 NULL batting, 0 pitching; dry-run leaves 김택연 665/2025 without evidence and 이병헌 52204/2026 with conflicting roster evidence) |
+| player_season team_code | ⚠️ 1 accepted residual | 99.99% (1 NULL batting = 김택연 665/2025, accepted; 이병헌 52204/2026 resolves to DB via player_basic.team evidence) |
 
 ---
 
-## player_season NULL team_code (2 batting rows remaining)
+## player_season NULL team_code (1 accepted residual)
 
-**Status**: Known gap, acceptable for analysis
+**Status**: 1 intentional residual (김택연 665/2025); 이병헌 52204/2026 resolvable
 
-**Affected**: 2 `player_season_batting` rows (both REGULAR/KBO1); `player_season_pitching` fully resolved. The current dry-run resolves neither row: **김택연 (665, 2025)** has no team evidence, while **이병헌 (52204, 2026)** has conflicting same-season roster codes and is conservatively skipped.
+**Affected**: After the backfill enhancement (`feat: player_season 팀코드 백필에 player_basic.team 최후 증거 추가`, commit `1b0ee693`), `player_season_pitching` is fully resolved and `player_season_batting` has a single remaining NULL: **김택연 (665, 2025)**, which has no team evidence of any kind and is accepted as an intentional residual.
 
 **History**:
 - Originally 1,248 NULL rows (6%, 620 players) across 2010-2026.
@@ -29,24 +29,22 @@ This document tracks known data quality issues and their current status.
   resolved all rows with a single, unambiguous team code from
   `player_game_batting` / `player_game_pitching` (same season) → `team_daily_roster`
   (same year) → `player_basic.career` → `player_basic.team` (current team, last resort).
-  It resolved **4 pitching rows** and left the remaining **2 batting rows** unresolved
-  because they had no unique team evidence. The current dry-run makes no changes:
-  **이병헌 (52204, 2026)** has conflicting roster evidence and **김택연 (665, 2025)**
-  has neither a team nor career record (team=None, career=None).
+- The backfill previously left 2 batting rows unresolved: **김택연 (665, 2025)** had no
+  evidence at all, and **이병헌 (52204, 2026)** had conflicting same-season roster codes.
+  The `_resolve_from_player_team` helper (commit `1b0ee693`) now treats a populated
+  `player_basic.team` (normalized via `FULL_TEAM_MAP`) as a last-resort, non-ambiguous
+  evidence: 이병헌's `player_basic.team='두산'` yields `DB`, so running `--apply` resolves
+  it. 김택연 has `team=None` and `career=None`, so no evidence exists and it stays NULL.
 
 **Root cause (residual gap)**:
 - **김택연 (665, 2025)**: has a season-level batting record but no corresponding
   `player_game_batting` data for 2025, no `team_daily_roster` entry, an empty
-  `player_basic.career`, and a NULL `player_basic.team`. There is no usable evidence,
-  so the backfill (correctly) leaves it NULL.
-- **이병헌 (52204, 2026)**: has no same-season game evidence, career text contains
-  only school history, and roster evidence contains six team codes (`DB`, `KH`, `KIA`,
-  `LT`, `NC`, `SSG`). The resolver correctly classifies this as ambiguous rather than
-  applying the current `player_basic.team` value.
+  `player_basic.career`, and a NULL `player_basic.team`. There is genuinely no usable
+  evidence, so the row is **accepted as an intentional residual** rather than force-assigned.
 - The backfill intentionally **skips** ambiguous or evidence-less rows rather than
-  inventing a team code.
+  inventing a team code. 김택연 is the sole remaining such row.
 
-**Impact**: Minimal - 2 edge-case rows out of ~19,600 batting rows. No rows were changed by the dry-run.
+**Impact**: Minimal - 1 edge-case row out of ~19,600 batting rows.
 
 **Mitigation**: When aggregating player stats by team, filter out NULL team_code rows:
 ```sql
@@ -56,7 +54,7 @@ WHERE team_code IS NOT NULL
 GROUP BY team_code;
 ```
 
-**Monitoring**: `gap_report` SEASON_TEAM_CODE check reports `ok = (batting_null == 0 and pitching_null == 0)`. The current dry-run leaves both batting rows NULL, so the check remains `False` by design. Do not use `--apply` until the conflicting roster evidence for 이병헌 (52204, 2026) is reviewed. The threshold-based alert (NULL rate > 10%) remains aspirational/monitored out-of-band.
+**Monitoring**: `gap_report` SEASON_TEAM_CODE check reports `ok = (batting_null == 0 and pitching_null == 0)`. After `--apply` for 이병헌, only 김택연 (665/2025) remains NULL, so the check stays `False` by design and is accepted. The threshold-based alert (NULL rate > 10%) remains aspirational/monitored out-of-band.
 
 ---
 
