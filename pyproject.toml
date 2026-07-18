@@ -109,6 +109,16 @@ select = [
     "PLR0915", # too-many-statements
     "PLR0911", # too-many-return-statements
     "PLR5501", # if-stmt-min-max
+    "ASYNC100", # cancel-scope-no-checkpoint
+    "ASYNC105", # trio-sync-call
+    "ASYNC110", # async-busy-wait
+    "ASYNC115", # async-zero-sleep
+    "ASYNC116", # long-sleep-not-forever
+    "ASYNC210", # blocking-http-call-in-async-function
+    "ASYNC220", # create-subprocess-in-async-function
+    "ASYNC222", # wait-for-process-in-async-function
+    "ASYNC250", # blocking-input-in-async-function
+    "ASYNC251", # blocking-sleep-in-async-function
     "ISC",     # implicit-string-concatenation
     "PGH",     # pygrep-hooks
     "FURB132", # for-loop-with-temporary-variable
