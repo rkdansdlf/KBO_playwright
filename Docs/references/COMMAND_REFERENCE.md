@@ -691,6 +691,19 @@ python3 -m src.cli.data_quality_regression_pack
 python3 -m src.cli.data_quality_regression_pack --database-url sqlite:///data/kbo_dev.db --json
 ```
 
+### 10. 역사 경기 상세 커버리지
+연도별 부모 경기와 lineup, boxscore, player-game, `game_events`/PBP 테이블의 distinct 경기 coverage를 비교하고 누락 `game_id`를 시리즈·상태별로 출력합니다. Read-only 명령입니다.
+
+```bash
+# 2001-2009 커버리지 요약
+python3 -m src.cli.historical_coverage_report --start-year 2001 --end-year 2009
+
+# 누락 경기 ID를 포함한 JSON 아티팩트 생성
+python3 -m src.cli.historical_coverage_report \
+  --start-year 2001 --end-year 2009 --json \
+  --output logs/historical_coverage_2001_2009.json
+```
+
 ---
 
 ## 🚨 문제 해결
