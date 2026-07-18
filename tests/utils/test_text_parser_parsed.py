@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-pytestmark = pytest.mark.skip(reason="parse_play_details not yet implemented")
-
 from src.utils.text_parser import KBOTextParser
 
 
