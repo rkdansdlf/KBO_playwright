@@ -735,6 +735,13 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Bug caught by new tests**: `run_daily_update_main` with `acquire_lock=False` left `lock = None` but the `finally` block called `lock.release()`, raising `AttributeError` and crashing the scheduler's daily finalize (`crawl_daily_games`). Fixed with `if lock is not None: lock.release()`.
 - **Verification**: `ruff check src/ tests/ scripts/`, `ruff format --check .`, and the lock/scheduler test set all pass. PID guard verified end-to-end on the local launchd-managed scheduler (single instance starts, second blocked, stale PID cleared, graceful shutdown removes the file). `ForceProcessLock` self-heal of stale `daily_update.lock`/`sqlite_writer.lock` confirmed.
 
+### Phase 65 Complete (2026-07-18) — OCI sync hardening and migration verification expansion
+
+- **OCI sync hardening**: Added transient connection markers (`closed the connection`, `connection closed`, `DPY-4011`), guarded `_ensure_table` for lightweight test doubles/non-table models, ensured simple-table sync creates its target table first, converted Oracle game metadata `time` values to `datetime`, and pre-created all game detail tables before Oracle sync/purge.
+- **Migration verification**: Added SQLite in-memory idempotency coverage for SQLite/OCI/Supabase redundant-index cleanup migrations plus Python migrations `005_deletion_anomaly_integrity.py` and `032_fix_team_season_fielding_float_columns.py` (dry-run delegation, data preservation, type conversion, and rerun behavior).
+- **CI alignment**: Existing `test_suite.yml` pytest job automatically collects `tests/migrations`; no separate workflow step is needed for the local SQLite migration contracts. OCI application remains gated by `apply_oci_migrations.py` and an available `OCI_DB_URL`.
+- **Verification**: Sync/migration targeted tests pass (248 sync/migration cases), scheduler/run-daily targeted tests pass (33 cases), and the isolated serial full suite passes **9,956 tests** with 27 legitimate skips and 1 known xfail.
+
 ### Current Verification Baseline (2026-07-18)
 
 - GitHub Actions: lint, Python 3.12 test, and integration-test jobs passing (last observed green run prior to this phase).
@@ -744,7 +751,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` and `scripts/supabase/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
-- `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,932 passed**, 27 skipped, 1 xfailed; 0 failures in the verified serial run.
+- `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,956 passed**, 27 skipped, 1 xfailed; 0 failures in the verified serial run with external OCI URLs disabled.
 - `venv/bin/python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` = **259 passed**, 1 intentional OCI skip, 9,693 deselected.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
 - `python3 scripts/diagnose_scheduler_locks.py` reads stale lock files + duplicate scheduler processes (exit 0=clean, 1=problem); pairs with the PID guard in `scripts/scheduler.py`.
