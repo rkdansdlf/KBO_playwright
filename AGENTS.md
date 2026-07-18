@@ -813,3 +813,9 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Text parser**: Implemented `KBOTextParser.parse_play_details` and activated 23 previously skipped parser cases in `tests/utils/test_text_parser_parsed.py`.
 - **Worker benchmark**: `-n 2` passed **9,730** tests in **103.07s**; `-n auto` also passed but took **108.98s** and emitted more warnings. Keep the default worker pool at `-n 2`.
 - **Gap report threshold**: `SEASON_TEAM_CODE_GAP_ALERT_RATE` (default 10%) now suppresses alerts for accepted low-rate residuals while keeping the gap visible in the structured report.
+
+### Phase 73 Complete (2026-07-19) — Historical detail/PBP source probe
+
+- **Coverage report**: Added `src.cli.historical_coverage_report`, a read-only JSON/text report that compares parent games with lineup, boxscore, player-game, `game_events`, and `game_play_by_play` distinct-game coverage and lists missing IDs by series/status.
+- **2001 detail pilot**: `20010405LTHU0` timed out; `20010412OBHD1` returned only 2 hitters/2 pitchers/4 summaries; `20010412OBHD2` returned empty hitter/pitcher arrays. No probe used `--save` and no game rows were written.
+- **PBP source probe**: Naver relay returned HTTP 404 / `relay_not_found` for `20010412OBHD1`; historical PBP batch backfill is blocked pending an alternate source and completeness contract.

@@ -85,6 +85,24 @@ The detail/stat rows therefore cover only a subset of the new parent schedule ro
 `game_events` has no matching rows for these seasons. Do not run a full historical stat
 recalculation until a separate detail/stat/PBP backfill plan is reviewed.
 
+**Source probe (2026-07-19)**: A read-only `GameDetailCrawler` pilot against missing 2001
+games was inconclusive. `20010405LTHU0` timed out waiting for boxscore selectors;
+`20010412OBHD1` returned a partial payload (2 hitters, 2 pitchers, 4 summaries); and
+`20010412OBHD2` returned a payload with empty hitter/pitcher arrays. None of these probes
+saved game rows. The Naver relay API returned HTTP 404 and `relay_not_found` for
+`20010412OBHD1`. Do not start a batch detail or PBP backfill from these results without
+an explicit completeness predicate and an alternate historical source.
+
+**Public-source probe (2026-07-19)**:
+- One missing terminal game from each season (2001-2009) was checked with
+  `scripts/fetch_kbo_pbp.py --dry-run`.
+- KBO and Naver legacy paths were classified as unsupported/timeout for every sample;
+  import and manual manifests had no matching entries.
+- A direct GameCenter detail attempt for `20010405LTHU0` returned the common shell but
+  no boxscore selectors and saved no detail rows.
+- No bulk historical crawl should run until an archive payload or import manifest is
+  available. The sample probe report is kept outside the repository runtime data tree.
+
 ---
 
 ## Team Code Normalization
