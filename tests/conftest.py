@@ -19,15 +19,21 @@ if str(ROOT) not in sys.path:
 sqlite3.register_adapter(date, lambda value: value.isoformat())
 sqlite3.register_adapter(datetime, lambda value: value.isoformat())
 
-# Use a separate test database to avoid corrupting the production DB
-worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
-if worker_id:
-    # Include the controller PID so concurrent xdist invocations cannot share a DB.
-    TEST_DB_PATH = ROOT / "data" / f"test_runtime_{os.getppid()}_{worker_id}.db"
+# Use a separate SQLite test database by default, while preserving an explicit
+# non-SQLite URL for PostgreSQL integration jobs.
+configured_database_url = os.environ.get("DATABASE_URL", "")
+if configured_database_url and not configured_database_url.startswith("sqlite:"):
+    TEST_DB_PATH: Path | None = None
 else:
-    TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
-os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
-os.environ["OCI_DB_URL"] = ""
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
+    if worker_id:
+        # Include the controller PID so concurrent xdist invocations cannot share a DB.
+        TEST_DB_PATH = ROOT / "data" / f"test_runtime_{os.getppid()}_{worker_id}.db"
+    else:
+        TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
+    os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
+if "OCI_DB_URL" not in os.environ:
+    os.environ["OCI_DB_URL"] = ""
 
 import logging
 
@@ -61,7 +67,7 @@ def _clean_test_db(request):
 
     Integration tests manage their own DB lifecycle, so skip cleanup for them.
     """
-    if request.node.get_closest_marker("integration"):
+    if request.node.get_closest_marker("integration") or TEST_DB_PATH is None:
         yield
         return
     test_db = TEST_DB_PATH
