@@ -75,8 +75,8 @@ jobs:
         if: github.event.inputs.game_id != ''
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}/data:/app/data \
-            -v ${{ github.workspace }}/logs:/app/logs \
+            -v "${{ github.workspace }}/data:/app/data" \
+            -v "${{ github.workspace }}/logs:/app/logs" \
             -e KBO_REQUEST_DELAY_MIN=1.5 \
             -e KBO_REQUEST_DELAY_MAX=2.5 \
             kbo-text-relay:latest \
@@ -114,18 +114,18 @@ jobs:
             -e KBO_REQUEST_DELAY_MIN=1.5 \
             -e KBO_REQUEST_DELAY_MAX=2.5 \
             kbo-text-relay:latest \
-            --season $YEAR \
-            --month $MONTH \
+            --season "$YEAR" \
+            --month "$MONTH" \
             --save \
             --output-dir /app/data
 
       - name: List collected files
         run: |
           echo "=== Collected Text Relay Files ==="
-          ls -la data/*_text_relay.csv 2>/dev/null || echo "No text relay files found"
+          find data -maxdepth 1 -type f -name '*_text_relay.csv' -print
           echo ""
           echo "=== File Count ==="
-          ls data/*_text_relay.csv 2>/dev/null | wc -l
+          find data -maxdepth 1 -type f -name '*_text_relay.csv' -print | wc -l
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
