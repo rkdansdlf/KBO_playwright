@@ -780,16 +780,28 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage verification**: The CI-equivalent coverage run completed with `coverage report --fail-under=75` at **90%**.
 - **Integration verification**: SQLite integration tests pass (**262 passed, 1 skipped**) alongside the PostgreSQL integration baseline (**262 passed, 1 skipped**).
 
+### Phase 71 Complete (2026-07-18) — Local timeout hardening and dual-backend rerun
+
+- **External DB isolation**: `tests/conftest.py` now pins an unset `TARGET_DATABASE_URL` to an empty value, and lock tests clear all three database URL variables before exercising the local-lock path. This prevents `.env` loading during collection from causing accidental PostgreSQL connection waits.
+- **Worker policy**: `pytest.ini` caps the default xdist pool at two workers. Larger local pools were slower and intermittently waited on SQLite/ORM fixture and worker teardown contention. Integration workflow steps use one worker because scheduler lock tests share process-lock files.
+- **CI timeout**: The test job timeout increased from 5 to 8 minutes, and the coverage command explicitly uses `-n 2`. The local CI-equivalent rerun completed in **185.37s** with **9722 passed, 24 skipped, 1 xfailed** and **90.28%** coverage, exceeding the 75% gate.
+- **SQLite integration**: Isolated local SQLite rerun with one worker passed **262 tests** with **1 intentional skip** in **74.63s**.
+- **PostgreSQL integration**: A temporary PostgreSQL 16 Docker container passed **262 tests** with **1 intentional skip** in **33.50s**. All **33/33** OCI migrations applied, idempotent re-apply skipped them, and `--check` reported all migrations in sync. The temporary container was removed afterward.
+- **Workflow validation**: `actionlint` passes after shellcheck-safe quoting and file-listing fixes in the smart-polling and text-relay workflows.
+- **Test DB cleanup**: The CI test job removes stale `data/test_runtime*.db*` files before running tests; the local rerun left **0** such files.
+- **Data preservation**: The user-managed `data/` tree was not reverted or deleted.
+
 ### Current Verification Baseline (2026-07-18)
 
 - GitHub Actions: lint, Python 3.12 test, SQLite integration-test, PostgreSQL integration-test, and PostgreSQL migration-apply jobs configured; migration and seed flows reproduced locally against PostgreSQL 16.
-- `ruff check src/ tests/ scripts/` = 0 errors.
-- `ruff check migrations/` = 0 errors.
-- `ruff format --check .` = clean.
+- `pytest.ini` default worker pool = `-n 2`; coverage workflow uses `-n 2`; SQLite/PostgreSQL integration workflow steps use `-n 1`.
+- `ruff check src/ tests/ scripts/` = 0 errors; `ruff check migrations/` = 0 errors; `ruff format --check src/ tests/ scripts/ migrations/` = clean.
+- `git diff --check` passes; concurrent changes in `src/db/engine.py` and `src/sync/sync_base.py` remain unstaged and were not modified in this task.
 - `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` and `scripts/supabase/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
-- `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,964 passed**, 27 skipped, 1 xfailed; external OCI URLs disabled.
-- `venv/bin/python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` = **262 passed**, 1 intentional OCI skip, 9,730 deselected on PostgreSQL; the historical SQLite baseline remains 259 passed.
+- `env OCI_DB_URL= TARGET_DATABASE_URL= venv/bin/python -m pytest tests/ -m "not integration and not slow and not oci" -n 2 -q` = **9722 passed**, 24 skipped, 1 xfailed in **190.92s**.
+- CI-equivalent coverage with `--cov=src --cov-report=term-missing --cov-report=xml:coverage.xml -n 2` = **90.28%**, gate 75% passed, **335.67s**.
+- SQLite integration with `-n 1` = **262 passed, 1 skipped**; PostgreSQL integration with `-n 1` = **262 passed, 1 skipped**.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
 - `python3 scripts/diagnose_scheduler_locks.py` reads stale lock files + duplicate scheduler processes (exit 0=clean, 1=problem); pairs with the PID guard in `scripts/scheduler.py`.
