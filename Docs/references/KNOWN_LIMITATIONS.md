@@ -56,6 +56,8 @@ GROUP BY team_code;
 
 **Monitoring**: `gap_report` SEASON_TEAM_CODE check reports `ok = (batting_null == 0 and pitching_null == 0)`. After `--apply` for 이병헌, only 김택연 (665/2025) remains NULL, so the check stays `False` by design and is accepted. Alerts are suppressed below `SEASON_TEAM_CODE_GAP_ALERT_RATE` (default 10%), while the residual remains visible in the report.
 
+**OCI propagation**: The backfill is now dialect-agnostic (roster lookup uses SQLAlchemy `extract` instead of SQLite `strftime`), so it runs against both local SQLite and OCI. To resolve 이병헌 in OCI, dispatch the manual `backfill_season_team_codes` GitHub Actions workflow with `table=batting` (dry-run first, then `apply=true`); CI reaches OCI via `secrets.OCI_DB_URL`. The local dev SQLite already has the fix applied via `--apply`.
+
 ---
 
 ## Historical Data Coverage (2001-2009)
