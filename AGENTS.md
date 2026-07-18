@@ -740,7 +740,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **OCI sync hardening**: Added transient connection markers (`closed the connection`, `connection closed`, `DPY-4011`), guarded `_ensure_table` for lightweight test doubles/non-table models, ensured simple-table sync creates its target table first, converted Oracle game metadata `time` values to `datetime`, and pre-created all game detail tables before Oracle sync/purge.
 - **Migration verification**: Added SQLite in-memory idempotency coverage for SQLite/OCI/Supabase redundant-index cleanup migrations plus Python migrations `005_deletion_anomaly_integrity.py` and `032_fix_team_season_fielding_float_columns.py` (dry-run delegation, data preservation, type conversion, and rerun behavior).
 - **CI alignment**: Existing `test_suite.yml` pytest job automatically collects `tests/migrations`; no separate workflow step is needed for the local SQLite migration contracts. OCI application remains gated by `apply_oci_migrations.py` and an available `OCI_DB_URL`.
-- **Verification**: Sync/migration targeted tests pass (248 sync/migration cases), scheduler/run-daily targeted tests pass (33 cases), and the isolated serial full suite passes **9,956 tests** with 27 legitimate skips and 1 known xfail.
+- **Verification**: Migration tests pass (5 cases), sync hardening/coverage tests pass (248 cases), scheduler/run-daily targeted tests pass (33 cases), and the isolated serial full suite passes **9,956 tests** with 27 legitimate skips and 1 known xfail.
 
 ### Current Verification Baseline (2026-07-18)
 
