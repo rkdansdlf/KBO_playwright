@@ -256,6 +256,13 @@ git status --short
 # 스케줄만 월 단위 반영
 ./venv/bin/python3 -m src.cli.crawl_schedule --year 2025 --months 10
 
+# 2001-2009 역사 일정 백필 (UPSERT, 시범/정규/포스트시즌 포함)
+for year in 2001 2002 2003 2004 2005 2006 2007 2008 2009; do
+    ./venv/bin/python3 -m src.cli.crawl_schedule \
+        --year "$year" --months 3-10 --delay 1.2
+done
+# 주의: 이 명령은 부모 일정만 보강한다. 상세 통계/PBP 완전성은 별도 검증한다.
+
 # 수동 상세 수집(월 단위 대상 필터; 기존 상세/릴레이는 기본 스킵)
 ./venv/bin/python3 -m src.cli.collect_games --year 2025 --month 10
 
@@ -626,8 +633,11 @@ python3 -m src.cli.quality_dashboard --days 30
 # 전체 갭 리포트
 python3 -m src.cli.gap_report
 
-# 특정 카테고리
-python3 -m src.cli.gap_report --categories relay profile
+# 알림 없이 확인
+python3 -m src.cli.gap_report --dry-run --no-alert
+
+# 시즌 팀코드 NULL 비율이 10%를 넘을 때만 해당 갭 알림
+SEASON_TEAM_CODE_GAP_ALERT_RATE=10 python3 -m src.cli.gap_report
 ```
 
 ### 6. PlayerGame 통계 재계산

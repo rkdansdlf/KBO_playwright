@@ -805,3 +805,11 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - SQLite integration with `-n 1` = **262 passed, 1 skipped**; PostgreSQL integration with `-n 1` = **262 passed, 1 skipped**.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
 - `python3 scripts/diagnose_scheduler_locks.py` reads stale lock files + duplicate scheduler processes (exit 0=clean, 1=problem); pairs with the PID guard in `scripts/scheduler.py`.
+
+### Phase 72 Complete (2026-07-19) — Historical schedule backfill and residual quality cleanup
+
+- **Historical schedule backfill**: Re-ran `src.cli.crawl_schedule` for 2001-2009 with `--months 3-10`; parent game rows increased from **1,430 to 4,688**. Annual counts are now 504-544, with 0 duplicate game IDs and 0 NULL game dates. Detail/stat/PBP completeness remains a separate limitation.
+- **Season team codes**: Applied the conservative `player_basic.team` last-resort evidence for 이병헌 (52204/2026), leaving only 김택연 (665/2025) as the accepted NULL batting row. The dry-run now reports 1 unresolved batting row and 0 unresolved pitching rows.
+- **Text parser**: Implemented `KBOTextParser.parse_play_details` and activated 23 previously skipped parser cases in `tests/utils/test_text_parser_parsed.py`.
+- **Worker benchmark**: `-n 2` passed **9,730** tests in **103.07s**; `-n auto` also passed but took **108.98s** and emitted more warnings. Keep the default worker pool at `-n 2`.
+- **Gap report threshold**: `SEASON_TEAM_CODE_GAP_ALERT_RATE` (default 10%) now suppresses alerts for accepted low-rate residuals while keeping the gap visible in the structured report.

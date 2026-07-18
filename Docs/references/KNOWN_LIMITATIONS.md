@@ -54,20 +54,22 @@ WHERE team_code IS NOT NULL
 GROUP BY team_code;
 ```
 
-**Monitoring**: `gap_report` SEASON_TEAM_CODE check reports `ok = (batting_null == 0 and pitching_null == 0)`. After `--apply` for 이병헌, only 김택연 (665/2025) remains NULL, so the check stays `False` by design and is accepted. The threshold-based alert (NULL rate > 10%) remains aspirational/monitored out-of-band.
+**Monitoring**: `gap_report` SEASON_TEAM_CODE check reports `ok = (batting_null == 0 and pitching_null == 0)`. After `--apply` for 이병헌, only 김택연 (665/2025) remains NULL, so the check stays `False` by design and is accepted. Alerts are suppressed below `SEASON_TEAM_CODE_GAP_ALERT_RATE` (default 10%), while the residual remains visible in the report.
 
 ---
 
 ## Historical Data Coverage (2001-2009)
 
-**Status**: Incomplete but usable
+**Status**: Schedule coverage backfilled; detail/stat completeness remains unverified
 
-**Issue**: Years 2001-2009 contain 126-246 games/year (normal: 600-900)
+**Result**: The 2026-07-19 schedule backfill increased parent game rows from 1,430 to
+4,688 across 2001-2009. Annual counts are now 504-544, with no duplicate game IDs and
+no NULL game dates. `ScheduleCrawler` with no series filter traverses exhibition,
+regular-season, and postseason series.
 
-**Root cause**: Initial crawling scope was limited to regular season games
-
-**Resolution**: These years provide partial data suitable for historical trend analysis
-but should not be used for complete statistical calculations.
+**Remaining limitation**: This pass backfilled schedule parent rows only. Historical
+boxscore detail, player game stats, and PBP coverage still require a separate audit and
+should not yet be treated as complete for full statistical calculations.
 
 ---
 
