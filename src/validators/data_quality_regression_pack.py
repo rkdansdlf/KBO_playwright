@@ -263,14 +263,28 @@ _CHECKS: tuple[_SqlCheck, ...] = (
     ),
     _SqlCheck(
         check_id="era_range",
-        description="Season ERA should be between 0.0 and 30.0",
+        description="Season ERA should be non-negative and have a positive innings basis",
         table="player_season_pitching",
-        required_columns=("era",),
-        count_sql="SELECT COUNT(*) FROM player_season_pitching WHERE era < 0 OR era > 30.0",
+        required_columns=("era", "innings_pitched", "innings_outs"),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM player_season_pitching
+            WHERE era < 0
+               OR (
+                   era > 30.0
+                   AND COALESCE(innings_outs, 0) <= 0
+                   AND COALESCE(innings_pitched, 0) <= 0
+               )
+        """,
         sample_sql="""
             SELECT COALESCE(CAST(player_id AS TEXT), ''), era
             FROM player_season_pitching
-            WHERE era < 0 OR era > 30.0
+            WHERE era < 0
+               OR (
+                   era > 30.0
+                   AND COALESCE(innings_outs, 0) <= 0
+                   AND COALESCE(innings_pitched, 0) <= 0
+               )
             LIMIT 5
         """,
     ),

@@ -32,6 +32,9 @@ class TestNormHeader:
         assert _norm_header("볼넷") == "BB"
         assert _norm_header("삼진") == "SO"
         assert _norm_header("도루") == "SB"
+        assert _norm_header("타석") == "PA"
+        assert _norm_header("희생번트") == "SH"
+        assert _norm_header("희생플라이") == "SF"
 
     def test_english_stats(self):
         assert _norm_header("avg") == "AVG"
@@ -73,6 +76,16 @@ class TestComputeMissing:
         row = {"H": 10, "BB": 5, "HBP": 2, "AB": 40, "OBP": 0.350}
         result = _compute_missing(row)
         assert result["OBP"] == 0.350
+
+    def test_plate_appearances_computed_from_components(self):
+        row = {"AB": 40, "BB": 5, "HBP": 2, "SH": 1, "SF": 2}
+        result = _compute_missing(row)
+        assert result["PA"] == 50
+
+    def test_plate_appearances_not_overwritten(self):
+        row = {"PA": 49, "AB": 40, "BB": 5, "HBP": 2, "SH": 1, "SF": 2}
+        result = _compute_missing(row)
+        assert result["PA"] == 49
 
     def test_zero_ab_no_slg(self):
         row = {"H": 0, "2B": 0, "3B": 0, "HR": 0, "AB": 0}
@@ -134,6 +147,14 @@ class TestParseBattingRow:
         assert row["AVG"] == 0.3
         assert row["G"] == 120
         assert row["AB"] == 450
+
+    def test_plate_appearance_components(self):
+        headers = ["season", "PA", "AB", "BB", "HBP", "SH", "SF"]
+        cells = ["2023", "20", "15", "3", "1", "0", "1"]
+        row = _parse_batting_row(headers, cells)
+        assert row["PA"] == 20
+        assert row["SH"] == 0
+        assert row["SF"] == 1
 
     def test_season_with_text(self):
         headers = ["season"]

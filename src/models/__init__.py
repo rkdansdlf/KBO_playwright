@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from .award import Award as Award
 from .broadcast import GameBroadcast as GameBroadcast
+from .crawl import CrawlRun as CrawlRun
 from .embedding_cache import EmbeddingCache as EmbeddingCache
 from .fa_contract import FAContract as FAContract
 from .fan_culture import CheerChant as CheerChant
 from .fan_culture import CheerSong as CheerSong
 from .fan_culture import TeamRivalry as TeamRivalry
 from .foreign_player import ForeignPlayerChange as ForeignPlayerChange
+from .franchise import Franchise as Franchise
 from .game import Game as Game
 from .game import GameBattingStat as GameBattingStat
 from .game import GameEvent as GameEvent
@@ -25,10 +27,20 @@ from .game import GameValidationMetrics as GameValidationMetrics
 from .game_mvp import GameMvp as GameMvp
 from .injury import InjuryEntry as InjuryEntry
 from .manager_change import ManagerChange as ManagerChange
+from .matchup import BatterHomeAwaySplit as BatterHomeAwaySplit
+from .matchup import BatterSplit as BatterSplit
+from .matchup import BatterStadiumSplit as BatterStadiumSplit
+from .matchup import BatterTeamSplit as BatterTeamSplit
+from .matchup import BatterVsStarter as BatterVsStarter
+from .matchup import MatchupBvP as MatchupBvP
+from .matchup import PitcherHomeAwaySplit as PitcherHomeAwaySplit
+from .matchup import PitcherSplit as PitcherSplit
+from .matchup import PitcherTeamSplit as PitcherTeamSplit
 from .parking_fee_rule import ParkingFeeRule as ParkingFeeRule
 from .parking_lot import ParkingLot as ParkingLot
 from .player import PlayerBasic as PlayerBasic
 from .rag_chunk import RagChunk as RagChunk
+from .rankings import StatRanking as StatRanking
 from .roster_transaction import RosterTransaction as RosterTransaction
 from .season import KboSeason as KboSeason
 from .sla_metrics import SlaMetrics as SlaMetrics
@@ -47,6 +59,9 @@ from .standings import TeamStandingsDaily as TeamStandingsDaily
 from .team import TeamSeasonBaserunning as TeamSeasonBaserunning
 from .team import TeamSeasonFielding as TeamSeasonFielding
 from .team_event import TeamEvent as TeamEvent
+from .team_history import TeamHistory as TeamHistory
+from .team_stats import TeamSeasonBatting as TeamSeasonBatting
+from .team_stats import TeamSeasonPitching as TeamSeasonPitching
 from .ticket_open_rule import TicketOpenRule as TicketOpenRule
 from .ticket_price import TicketPrice as TicketPrice
 from .ticket_schedule import TicketSchedule as TicketSchedule

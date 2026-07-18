@@ -74,6 +74,8 @@ data/kbo_dev.db
 !/data/player_id_row_overrides.csv
 !/data/seed/
 !/data/seed/team_rivalries.csv
+!/data/pa_manual_overrides_2020.csv
+!/data/pa_manual_overrides_2020.csv
 data/kbo_auth_state.json
 
 # Secret/key files (supplemental patterns from .ignore)
@@ -104,4 +106,9 @@ coverage.xml
 coverage.json
 coverage_report.txt
 /.opencode
-/data
+/data/*
+!/data/game_status_overrides.csv
+!/data/player_id_overrides.csv
+!/data/player_id_row_overrides.csv
+!/data/seed/
+!/data/seed/team_rivalries.csv

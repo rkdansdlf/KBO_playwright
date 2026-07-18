@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.validators.quality_gate import AGGREGATE_TEAM_CODES, INVALID_TEAM_CODES, QualityGate
+from src.validators.quality_gate import AGGREGATE_TEAM_CODES, INVALID_TEAM_CODES, QualityGate, _round_stat_half_up
 from src.validators.standings_integrity import validate_standings_integrity
 
 
@@ -22,6 +22,9 @@ class TestQualityGateConstants:
             assert code in INVALID_TEAM_CODES
         assert "EA" in INVALID_TEAM_CODES
         assert "WE" in INVALID_TEAM_CODES
+
+    def test_stat_rounding_uses_half_up(self) -> None:
+        assert _round_stat_half_up(10.125) == 10.13
 
 
 class TestQualityGateResult:
