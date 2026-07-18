@@ -167,6 +167,17 @@ select = [
     "ASYNC230", # blocking-open-call-in-async-function
     "FURB161", # bit-count
     "FURB177", # implicit-cwd
+    "FURB105", # print-empty-string
+    "FURB116", # f-string-number-format
+    "FURB122", # for-loop-writes
+    "FURB129", # readlines-in-for
+    "FURB136", # if-expr-min-max
+    "FURB163", # redundant-log-base
+    "FURB166", # int-on-sliced-str
+    "FURB168", # isinstance-type-none
+    "FURB169", # type-none-comparison
+    "FURB181", # hashlib-digest-hex
+    "FURB187", # list-reverse-copy
     "A002",    # builtin-argument-shadowing
     "A004",    # builtin-import-shadowing
      "S324",    # hashlib-insecure-hash-function
