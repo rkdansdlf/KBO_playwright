@@ -773,11 +773,12 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **CLI-only migration check**: No pre-commit migration CLI hook was added; `apply_oci_migrations.py --check` remains a CI/operational verification step.
 - **Verification**: PostgreSQL seed plus all 33 OCI migrations passed locally; PostgreSQL integration tests pass (**262 passed, 1 skipped**), seed/workflow targeted tests pass (**24 passed**), and ruff/format/YAML checks pass.
 
-### Phase 70 In Progress (2026-07-18) — Full-suite timeout diagnosis and coverage verification
+### Phase 70 Complete (2026-07-18) — Full-suite timeout diagnosis and coverage verification
 
 - **Timeout root cause**: `tests/utils/test_lock_pure.py::TestAcquirePgLock::test_no_pg_url_returns_true` did not clear `TARGET_DATABASE_URL`, so an inherited PostgreSQL URL caused a real connection attempt and approximately 115 seconds of waiting. The test now clears `OCI_DB_URL`, `TARGET_DATABASE_URL`, and `DATABASE_URL` together.
 - **Stable partition verification**: Root tests (1,309 passed, 3 skipped), CLI/crawler/parser tests (3,454 passed, 1 xfailed), aggregator/database/model/monitoring/repository tests (1,386 passed), API/migration/service/source/sync tests (1,846 passed), validator tests (111 passed), and utility tests (1,619 passed, 23 skipped) complete with xdist workers.
-- **Remaining verification**: The monolithic coverage run was not completed because concurrent pytest processes consumed the local runner; CI remains the authoritative check for the new 75% gate.
+- **Coverage verification**: The CI-equivalent coverage run completed with `coverage report --fail-under=75` at **90%**.
+- **Integration verification**: SQLite integration tests pass (**262 passed, 1 skipped**) alongside the PostgreSQL integration baseline (**262 passed, 1 skipped**).
 
 ### Current Verification Baseline (2026-07-18)
 
