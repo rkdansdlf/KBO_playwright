@@ -763,9 +763,18 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Entrypoint chown optimization**: `docker/entrypoint.sh` recursively chowned the ~1GB `/ms-playwright` named volume on **every** start, delaying startup/crash-recovery by minutes. Now it chowns `/ms-playwright` only when top-level ownership differs from `TARGET_UID` (verified: first run chowns `0 → 1000`, subsequent runs on the persisted named volume **skip**). Bind-mounted `data`/`logs` still get a full recursive chown (host UID may differ).
 - **Verification**: `ruff check scripts/scheduler.py` clean; scheduler regression set (`test_scheduler_operational_smoke.py`, `test_scheduler_fix.py`, `test_scheduler_sqlite_writer_lock.py`) = **22 passed**. `ForceProcessLock` self-heal confirmed via flock release on container death.
 
+### Phase 69 Complete (2026-07-18) — Dual-backend integration CI and seed compatibility
+
+- **Core seed compatibility**: Default season seeding now uses PostgreSQL `ON CONFLICT DO NOTHING`, SQLite/MySQL-compatible insert-ignore variants, and an ORM fallback for other dialects. Team and stadium-food seed paths remain ORM-based; the DataSource registry is seeded through `src.cli.seed_data_sources`.
+- **Parallel integration CI**: Preserved the SQLite `integration-test` job and added an independent `integration-test-postgres` job with a PostgreSQL 16 service. Both run after `test` and can execute in parallel; the PostgreSQL job initializes models and applies OCI migrations first.
+- **Test fixture routing**: `tests/conftest.py` continues to isolate default SQLite tests while preserving an explicit non-SQLite URL for PostgreSQL integration runs.
+- **Coverage gate**: Raised both `pyproject.toml` and the GitHub Actions coverage gate from 70% to 75%.
+- **CLI-only migration check**: No pre-commit migration CLI hook was added; `apply_oci_migrations.py --check` remains a CI/operational verification step.
+- **Verification**: PostgreSQL seed plus all 33 OCI migrations passed locally; PostgreSQL integration tests pass (**262 passed, 1 skipped**), seed/workflow targeted tests pass (**24 passed**), and ruff/format/YAML checks pass.
+
 ### Current Verification Baseline (2026-07-18)
 
-- GitHub Actions: lint, Python 3.12 test, integration-test, and PostgreSQL migration-apply jobs configured; the new migration job has been reproduced locally against PostgreSQL 16.
+- GitHub Actions: lint, Python 3.12 test, SQLite integration-test, PostgreSQL integration-test, and PostgreSQL migration-apply jobs configured; migration and seed flows reproduced locally against PostgreSQL 16.
 - `ruff check src/ tests/ scripts/` = 0 errors.
 - `ruff check migrations/` = 0 errors.
 - `ruff format --check .` = clean.
@@ -773,6 +782,6 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
 - `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,964 passed**, 27 skipped, 1 xfailed; external OCI URLs disabled.
-- `venv/bin/python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` = **259 passed**, 1 intentional OCI skip, 9,693 deselected.
+- `venv/bin/python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` = **262 passed**, 1 intentional OCI skip, 9,730 deselected on PostgreSQL; the historical SQLite baseline remains 259 passed.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
 - `python3 scripts/diagnose_scheduler_locks.py` reads stale lock files + duplicate scheduler processes (exit 0=clean, 1=problem); pairs with the PID guard in `scripts/scheduler.py`.

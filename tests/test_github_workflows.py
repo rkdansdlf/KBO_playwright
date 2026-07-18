@@ -362,6 +362,10 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert "ruff format --check src/ tests/ scripts/ 2>&1" in workflow
     assert "scripts/lint_bare_except.py" in workflow
     assert "pytest --tb=short -v --durations=10" in workflow
+    assert "if line_rate < 75:" in workflow
+    assert "migration-apply" in workflow
+    assert "integration-test-postgres" in workflow
+    assert "image: postgres:16" in workflow
     assert "matrix:" in workflow
     assert 'python-version: ["3.12"]' in workflow
     assert "cancel-in-progress: false" in workflow
@@ -377,6 +381,11 @@ def test_test_suite_runs_lint_and_test_matrix():
     jobs = dict(_job_blocks(workflow))
     assert "lint" in jobs
     assert "test" in jobs
+    assert "migration-apply" in jobs
+    assert "integration-test" in jobs
+    assert "integration-test-postgres" in jobs
+    assert "needs: test" in jobs["integration-test"]
+    assert "needs: test" in jobs["integration-test-postgres"]
     assert workflow.index("  lint:\n") < workflow.index("  test:\n")
 
 
