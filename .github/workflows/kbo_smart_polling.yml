@@ -66,13 +66,17 @@ jobs:
             SHOULD_PROCEED=$(python3 -c "import json,sys; d=json.load(open('gate_output.json')); print('true' if d.get('should_proceed') else 'false')")
             HAS_GAMES=$(python3 -c "import json,sys; d=json.load(open('gate_output.json')); print('true' if d.get('has_games_today') else 'false')")
             REASON=$(python3 -c "import json,sys; d=json.load(open('gate_output.json')); print(d.get('reason', 'unknown'))")
-            echo "should_proceed=${SHOULD_PROCEED}" >> $GITHUB_OUTPUT
-            echo "has_games=${HAS_GAMES}" >> $GITHUB_OUTPUT
-            echo "reason=${REASON}" >> $GITHUB_OUTPUT
+            {
+              echo "should_proceed=${SHOULD_PROCEED}"
+              echo "has_games=${HAS_GAMES}"
+              echo "reason=${REASON}"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "should_proceed=false" >> $GITHUB_OUTPUT
-            echo "has_games=false" >> $GITHUB_OUTPUT
-            echo "reason=gate_script_error" >> $GITHUB_OUTPUT
+            {
+              echo "should_proceed=false"
+              echo "has_games=false"
+              echo "reason=gate_script_error"
+            } >> "$GITHUB_OUTPUT"
           fi
           if [ "${GATE_EXIT}" = "1" ]; then
             echo "⏳ Gate returned skip (exit 1) — games still in progress or no games today"
@@ -85,9 +89,11 @@ jobs:
       - name: "[Layer 1] Skip gate (forced run)"
         if: ${{ github.event.inputs.skip_gate == 'true' }}
         run: |
-          echo "should_proceed=true" >> $GITHUB_OUTPUT
-          echo "has_games=true" >> $GITHUB_OUTPUT
-          echo "reason=gate_skipped_forced" >> $GITHUB_OUTPUT
+          {
+            echo "should_proceed=true"
+            echo "has_games=true"
+            echo "reason=gate_skipped_forced"
+          } >> "$GITHUB_OUTPUT"
           echo "⏭️ Gate skipped by user request — forcing crawl"
 
       - name: Report gate decision
@@ -135,7 +141,7 @@ jobs:
           python3 -m src.cli.run_daily_update \
             --date "${{ needs.polling_gate.outputs.target_date }}" \
             --sync 2>&1 | tee daily_update.log
-          exit ${PIPESTATUS[0]}
+          exit "${PIPESTATUS[0]}"
 
       - name: Commit and Push Updated Data
         if: success()
@@ -143,9 +149,10 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data/
-          git diff --quiet && git diff --staged --quiet || \
-            (git commit -m "⚾ KBO daily data auto-update (${{ needs.polling_gate.outputs.target_date }})" && \
-             git push)
+          if ! git diff --quiet || ! git diff --staged --quiet; then
+            git commit -m "⚾ KBO daily data auto-update (${{ needs.polling_gate.outputs.target_date }})"
+            git push
+          fi
 
       - name: Upload Local DB as Artifact
         if: always()
@@ -187,7 +194,7 @@ jobs:
           python3 -m src.cli.data_integrity_checker \
             --date "${{ needs.polling_gate.outputs.target_date }}" \
             --json 2>&1 | tee integrity_report.json
-          exit ${PIPESTATUS[0]}
+          exit "${PIPESTATUS[0]}"
 
       - name: Upload Integrity Report Artifact
         if: always()
