@@ -1605,7 +1605,15 @@ def _ensure_single_scheduler_instance() -> None:
             try:
                 pid_str = _SCHEDULER_PID_FILE.read_text().strip().split("\n")[0]
                 if pid_str.isdigit():
-                    os.kill(int(pid_str), 0)
+                    pid = int(pid_str)
+                    # A PID matching the current process means this is the same
+                    # instance (or the file was left by a prior crash of a
+                    # PID-1 container where the previous container also ran as
+                    # PID 1). Treat it as self/own-stale and re-acquire.
+                    if pid == os.getpid():
+                        stale = True
+                    else:
+                        os.kill(pid, 0)
                 else:
                     stale = True
             except (OSError, ProcessLookupError):
