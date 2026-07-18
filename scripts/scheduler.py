@@ -49,6 +49,7 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -1102,6 +1103,26 @@ def crawl_retired_players_job(limit: int | None = None):
             raise
 
 
+P1P2_RUN_MARKER = Path("data/last_runs/p1p2_data.json")
+
+
+def _write_p1p2_run_marker(status: str) -> None:
+    """Record the last P1/P2 job run so the lock-health check can verify it ran today.
+
+    ``status`` is ``"ok"`` on success or ``"error"`` on failure. Failures here
+    are non-fatal: a missing marker only makes the health check report
+    "marker missing" rather than crash the scheduler.
+    """
+    try:
+        P1P2_RUN_MARKER.parent.mkdir(parents=True, exist_ok=True)
+        P1P2_RUN_MARKER.write_text(
+            json.dumps({"ts": datetime.now(KST).isoformat(), "status": status}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        logger.exception("Failed to write P1/P2 run marker")
+
+
 @retry(
     stop=stop_after_attempt(4),
     wait=wait_exponential(multiplier=1, min=300, max=1800),
@@ -1110,7 +1131,9 @@ def crawl_retired_players_job(limit: int | None = None):
 @_with_lock_skip_guard
 def crawl_p1p2_data_job():
     """P1/P2 Crawlers: seat sections, parking, stadium food.
-    Runs daily at 06:30 KST (after Phase 1 extra crawlers).
+
+    Runs daily at 06:45 KST (after Phase 1 extra crawlers). On completion it
+    writes a run marker used by the lock-health check.
     """
     with _scheduler_job_lock(DAILY_LOCK):
         logger.info("=== Starting P1/P2 Data Crawlers ===")
@@ -1127,8 +1150,40 @@ def crawl_p1p2_data_job():
             food_main(["--save"])
             logger.info("=== P1/P2 Data Crawlers Completed Successfully ===")
             alert_success("crawl_p1p2_data_job")
+            _write_p1p2_run_marker("ok")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("P1/P2 data crawlers failed")
+            _write_p1p2_run_marker("error")
+
+
+def lock_health_check_job():
+    """Post-run lock-health verification for the 06:45 P1/P2 job.
+
+    Runs at 06:50 KST, after ``crawl_p1p2_data``. It invokes the standalone
+    check script with ``--require-run`` and alerts (Telegram/Slack) on failure.
+    This job is intentionally lock-free: it must never contend with the daily
+    tier locks it is verifying.
+    """
+    logger.info("=== Starting Scheduler Lock Health Check ===")
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/check_p1p2_lock_health.py", "--require-run"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        logger.exception("Scheduler lock health check failed to launch")
+        alert_warning("lock_health_check", details=f"Could not run check script: {exc}")
+        return
+
+    output = f"{result.stdout or ''}{result.stderr or ''}"
+    for line in output.splitlines():
+        logger.info("[lock_health] %s", line)
+    if result.returncode != 0:
+        alert_warning("lock_health_check", details=output[-1500:])
+        logger.warning("Scheduler lock health check reported problems (alert sent).")
+    else:
+        logger.info("=== Scheduler Lock Health Check Passed ===")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -1694,6 +1749,13 @@ def _start_scheduler(args):
             "crawl_p1p2_data",
             "P1/P2 Seat/Parking/Food Crawlers",
             7200,
+        ),
+        (
+            lock_health_check_job,
+            CronTrigger(hour=6, minute=50),
+            "lock_health_check",
+            "Scheduler Lock Health Check (post P1/P2)",
+            600,
         ),
         (
             crawl_p0_non_game_job,
