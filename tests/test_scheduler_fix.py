@@ -1,7 +1,7 @@
 """Tests to verify that crawl_daily_games() correctly passes --fix to run_daily_update_main
 based on the DAILY_AUTO_REMEDIATION environment variable.
 
-Strategy: patch DAILY_LOCK, run_daily_update_main, _previous_day_kst, and alert_success/alert_failure
+Strategy: patch DAILY_LOCK, SQLITE_WRITE_LOCK, run_daily_update_main, _previous_day_kst, and alert_success/alert_failure
 so that the function body executes fully in test.
 """
 
@@ -19,6 +19,7 @@ def _make_patches(extra_patches=None):
     """Return a list of patches needed to isolate crawl_daily_games."""
     patches = [
         patch("scripts.scheduler.DAILY_LOCK", _noop_lock()),
+        patch("scripts.scheduler.SQLITE_WRITE_LOCK", _noop_lock()),
         patch("scripts.scheduler._previous_day_kst", return_value="20250401"),
         patch("scripts.scheduler.alert_success"),
         patch("scripts.scheduler.alert_failure"),

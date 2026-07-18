@@ -427,15 +427,18 @@ class TestSaveFuturesBatting:
                 "league": "FUTURES",
                 "level": "KBO2",
                 "games": 10,
+                "plate_appearances": 32,
                 "at_bats": 30,
                 "hits": 9,
                 "avg": 0.300,
             }
         ]
         mock_filter.return_value = (payloads, Counter())
-        rows = [{"season": 2024, "G": 10, "AB": 30, "H": 9, "AVG": 0.300}]
+        rows = [{"season": 2024, "G": 10, "PA": 32, "AB": 30, "H": 9, "AVG": 0.300}]
         result = save_futures_batting(1, "A", rows)
         assert result == 1
+        saved = session.query(PlayerSeasonBatting).one()
+        assert saved.plate_appearances == 32
 
     @patch("src.repositories.safe_batting_repository.filter_valid_season_stat_payloads")
     def test_multiple_rows(self, mock_filter, session):
