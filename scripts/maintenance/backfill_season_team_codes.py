@@ -67,6 +67,18 @@ class TeamCodeResolution:
     reason: str
 
 
+# Reasons from the game/roster/career resolvers that mean "no usable evidence"
+# (rather than "conflicting evidence"). Only these fall through to the
+# player_basic.team last-resort path; ambiguous/unknown reasons are preserved.
+_NO_EVIDENCE_REASONS = frozenset(
+    {
+        "missing_player_profile",
+        "missing_career_evidence",
+        "no_matching_career_period",
+    }
+)
+
+
 @dataclass(frozen=True, slots=True)
 class BackfillReport:
     """Summarize one season team-code backfill pass."""
@@ -166,6 +178,30 @@ def _resolve_from_player_career(session: Session, player_id: int, season: int) -
     return TeamCodeResolution(None, reason)
 
 
+def _resolve_from_player_team(session: Session, player_id: int, season: int) -> TeamCodeResolution:
+    """Last-resort evidence: the player's current registered team.
+
+    ``player_basic.team`` is a human team name (e.g. "두산"); normalize it via
+    ``FULL_TEAM_MAP`` to a canonical code. This only fires when the game,
+    roster, and career evidence all failed, so it never overrides stronger
+    signals. It is a best-effort fill for an otherwise-NULL season row and
+    remains overridable by a manual review when the player was traded.
+    """
+    basic_row = session.execute(
+        text("SELECT team FROM player_basic WHERE player_id = :pid"),
+        {"pid": player_id},
+    ).fetchone()
+    if not basic_row:
+        return TeamCodeResolution(None, "missing_player_profile")
+    team = basic_row[0]
+    if not team:
+        return TeamCodeResolution(None, "missing_team_evidence")
+    code = FULL_TEAM_MAP.get(str(team).strip())
+    if code:
+        return TeamCodeResolution(code, "current_team")
+    return TeamCodeResolution(None, "unknown_team_name")
+
+
 def _resolve_unique_evidence(codes: set[str], source: str) -> TeamCodeResolution | None:
     if len(codes) == 1:
         return TeamCodeResolution(codes.pop(), source)
@@ -195,7 +231,12 @@ def _resolve_batting_team_code(session: Session, player_id: int, season: int) ->
         ),
         "same_season_roster",
     )
-    return roster_evidence or _resolve_from_player_career(session, player_id, season)
+    resolution = roster_evidence
+    if resolution is None:
+        resolution = _resolve_from_player_career(session, player_id, season)
+    if resolution is not None and resolution.code is None and resolution.reason in _NO_EVIDENCE_REASONS:
+        resolution = _resolve_from_player_team(session, player_id, season)
+    return resolution
 
 
 def _resolve_pitching_team_code(session: Session, player_id: int, season: int) -> TeamCodeResolution:
@@ -219,7 +260,12 @@ def _resolve_pitching_team_code(session: Session, player_id: int, season: int) -
         ),
         "same_season_roster",
     )
-    return roster_evidence or _resolve_from_player_career(session, player_id, season)
+    resolution = roster_evidence
+    if resolution is None:
+        resolution = _resolve_from_player_career(session, player_id, season)
+    if resolution is not None and resolution.code is None and resolution.reason in _NO_EVIDENCE_REASONS:
+        resolution = _resolve_from_player_team(session, player_id, season)
+    return resolution
 
 
 def _run_backfill(

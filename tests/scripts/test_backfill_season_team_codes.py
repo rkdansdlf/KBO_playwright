@@ -9,6 +9,7 @@ from scripts.maintenance.backfill_season_team_codes import (
     PITCHING_MISSING_QUERY,
     TeamCodeResolution,
     _resolve_batting_team_code,
+    _resolve_from_player_team,
     _resolve_pitching_team_code,
     _run_backfill,
     parse_career_team,
@@ -182,3 +183,46 @@ def test_run_backfill_filters_by_year_when_requested() -> None:
     assert report.total == 1
     assert report.resolved == 1
     resolver.assert_called_once_with(session, 20, 2025)
+
+
+def test_resolve_from_player_team_normalizes_current_team_name() -> None:
+    session = MagicMock()
+    session.execute.return_value.fetchone.return_value = ("두산",)
+
+    resolution = _resolve_from_player_team(session, 52204, 2026)
+
+    assert resolution == TeamCodeResolution("DB", "current_team")
+
+
+def test_resolve_from_player_team_handles_unknown_name() -> None:
+    session = MagicMock()
+    session.execute.return_value.fetchone.return_value = ("UNKNOWN_TEAM",)
+
+    resolution = _resolve_from_player_team(session, 99, 2025)
+
+    assert resolution == TeamCodeResolution(None, "unknown_team_name")
+
+
+def test_resolve_from_player_team_handles_missing_team() -> None:
+    session = MagicMock()
+    session.execute.return_value.fetchone.return_value = (None,)
+
+    resolution = _resolve_from_player_team(session, 665, 2025)
+
+    assert resolution == TeamCodeResolution(None, "missing_team_evidence")
+
+
+def test_batting_resolver_falls_through_to_current_team() -> None:
+    # game + roster + career give no evidence; the player's current team resolves it.
+    session = MagicMock()
+    game_qr = _query_result(rows=[])
+    roster_qr = _query_result(rows=[])
+    career_qr = _query_result(row=(None,))
+    team_qr = _query_result(row=("두산",))
+    session.execute.side_effect = [game_qr, roster_qr, career_qr, team_qr]
+
+    resolution = _resolve_batting_team_code(session, 52204, 2026)
+
+    assert resolution == TeamCodeResolution("DB", "current_team")
+    # game, roster, career, team -> 4 execute calls in order.
+    assert session.execute.call_count == 4
