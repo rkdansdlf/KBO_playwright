@@ -103,6 +103,17 @@ an explicit completeness predicate and an alternate historical source.
 - No bulk historical crawl should run until an archive payload or import manifest is
   available. The sample probe report is kept outside the repository runtime data tree.
 
+**Future backfill acceptance gate**:
+- Boxscore/statistical backfill must contain both away/home hitter rows and both
+  away/home pitcher rows. Metadata-only or scoreboard-only recovery is not sufficient
+  for statistical aggregation.
+- PBP backfill must pass final-score validation and inning-continuity validation. A
+  minimum event-count threshold should be calibrated from a known-good payload before
+  it is applied to historical games.
+- Archive imports must use a manifest with matching season, capture timestamp, and
+  SHA-256 checksum. Failed source probes remain dry-run reports and must not write
+  partial rows.
+
 ---
 
 ## Team Code Normalization
