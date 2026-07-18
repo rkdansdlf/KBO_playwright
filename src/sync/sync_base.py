@@ -1271,6 +1271,8 @@ class OCISyncBase:
                 )
                 synced += 1
             except DBAPI_EXCEPTIONS_VAL as exc:
+                if self._is_transient_oci_error(exc):
+                    raise
                 logger.warning("Skipping bad row in %s: %s", config.model.__tablename__, exc)
         return synced
 
@@ -1641,7 +1643,27 @@ class OCISyncBase:
             return
         from src.models.base import Base
 
-        Base.metadata.create_all(oci_engine, tables=[model.__table__])  # type: ignore[list-item]
+        max_attempts = 5
+        backoff = 2
+        for attempt in range(1, max_attempts + 1):
+            try:
+                Base.metadata.create_all(oci_engine, tables=[model.__table__])  # type: ignore[list-item]
+                break
+            except Exception as e:
+                if self._is_transient_oci_error(e) and attempt < max_attempts:
+                    logger.warning(
+                        "⚠️ Transient error during _ensure_table for %s: %s. Retrying in %ss (attempt %s/%s)...",
+                        model.__tablename__,
+                        e,
+                        backoff,
+                        attempt,
+                        max_attempts,
+                    )
+                    time.sleep(backoff)
+                    backoff *= 2
+                    oci_engine.dispose()
+                else:
+                    raise
 
     def close(self) -> None:
         """Close OCI session."""
