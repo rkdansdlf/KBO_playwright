@@ -34,6 +34,8 @@ else:
     os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
 if "OCI_DB_URL" not in os.environ:
     os.environ["OCI_DB_URL"] = ""
+if "TARGET_DATABASE_URL" not in os.environ:
+    os.environ["TARGET_DATABASE_URL"] = ""
 
 import logging
 
