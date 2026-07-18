@@ -132,32 +132,35 @@ Use `-v` to print the OK state of every tier lock (`daily_update`, `live_refresh
 
 Daily post-fix verification (the 2026-07 `crawl_p1p2_data_job` lock fix):
 
-```bash
-# No nested-lock warning should appear after the fix:
-grep "Another instance of run_daily_update" logs/scheduler.log
+The operational scheduler writes all `logger` output to `logs/scheduler.launchd.err.log`
+(stdout under launchd), not `logs/scheduler.log` (which is stale). `check_p1p2_lock_health.py`
+scans the rotating error log tail for forbidden lock-error signatures (bounded to the last
+8 MB so the multi-MB log is never loaded whole).
 
-# The 06:45 P1/P2 job must run and complete without a lock error:
-grep "crawl_p1p2_data" logs/scheduler.log
-grep -E "LockAcquisitionError|_LockSkipped" logs/scheduler.log
+`crawl_p1p2_data_job` writes a run marker on every execution:
+
+```bash
+cat data/last_runs/p1p2_data.json
+# {"ts": "2026-07-18T06:30:04+09:00", "status": "ok"}
 ```
 
-Both checks are automated by `scripts/check_p1p2_lock_health.py`. Run the
-baseline anytime to confirm no forbidden lock-error signatures are present and
-`diagnose_scheduler_locks` is clean:
+Automated verification — a `lock_health_check` job runs daily at **06:50 KST** (after the
+06:45 `crawl_p1p2_data` job). It invokes `scripts/check_p1p2_lock_health.py --require-run`
+and sends a Telegram/Slack alert via `alert_warning` when the check fails. The job is
+intentionally lock-free so it never contends with the daily tier locks.
+
+Manual checks (equivalent to the automatic job):
 
 ```bash
+# Baseline anytime: no forbidden lock-error signatures + diagnose clean.
 python3 scripts/check_p1p2_lock_health.py
-```
 
-The morning after a 06:45 cycle, re-run with `--require-run` to also confirm
-the `crawl_p1p2_data_job` actually executed and left no lock error:
-
-```bash
+# Morning after a 06:45 cycle: also require today's P1/P2 run marker.
 python3 scripts/check_p1p2_lock_health.py --require-run
 ```
 
-- Exit `0` = clean (no forbidden signatures, job signatures present, diagnose clean).
-- Exit `1` = a problem was found (forbidden signature present, job signature missing, or diagnose non-zero).
+- Exit `0` = clean (no forbidden signatures, today's P1/P2 run marker present, diagnose clean).
+- Exit `1` = a problem was found (forbidden signature present, marker missing/stale/error, or diagnose non-zero).
 
 `DAILY_LOCK` and `MAINTENANCE_LOCK` are `ForceProcessLock`, so a stale lock file is auto-cleared on the next acquire. A single-instance PID guard (`data/locks/scheduler.pid`) blocks a second scheduler process (`exit 1`); a dead PID is treated as stale and cleared on startup.
 
