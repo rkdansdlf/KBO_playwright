@@ -63,6 +63,23 @@ jobs:
               tracker.print_weekly_report()
           "
 
+      - name: Run Historical Completeness Audit
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m scripts.maintenance.audit_completeness_2009_2025 \
+            --start-year 2009 --end-year 2025 \
+            --output-dir data/audit
+
+      - name: Upload Historical Completeness Audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-completeness-audit
+          path: data/audit/
+          if-no-files-found: warn
+
       - uses: ./.github/actions/notify
         if: always()
         with:
