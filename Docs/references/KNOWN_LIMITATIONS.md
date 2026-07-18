@@ -68,8 +68,20 @@ no NULL game dates. `ScheduleCrawler` with no series filter traverses exhibition
 regular-season, and postseason series.
 
 **Remaining limitation**: This pass backfilled schedule parent rows only. Historical
-boxscore detail, player game stats, and PBP coverage still require a separate audit and
-should not yet be treated as complete for full statistical calculations.
+boxscore detail, player game stats, and PBP coverage are not complete. A read-only audit
+found the following distinct-game coverage in the local SQLite database:
+
+| Season | Parent games | Boxscore detail | `game_events` | Player-game batting | Player-game pitching |
+|--------|--------------|-----------------|---------------|---------------------|----------------------|
+| 2001 | 544 | 166 | 0 | 164 | 163 |
+| 2002-2004 | 532 each | 133 each | 0 | 133 each | 133 each |
+| 2005-2007 | 504 each | 126 each | 0 | 126 each | 126 each |
+| 2008 | 504 | 231 | 0 | 231 | 231 |
+| 2009 | 532 | 246 | 0 | 246 | 246 |
+
+The detail/stat rows therefore cover only a subset of the new parent schedule rows, and
+`game_events` has no matching rows for these seasons. Do not run a full historical stat
+recalculation until a separate detail/stat/PBP backfill plan is reviewed.
 
 ---
 
