@@ -428,8 +428,11 @@ def _scope_predicate(
 ) -> tuple[str | None, dict[str, object], tuple[str, ...]]:
     game_tables = {"game_batting_stats", "game_pitching_stats", "game_lineups"}
     season_tables = {"player_season_batting", "player_season_pitching"}
-    if table in game_tables and target_date:
-        return "game_id LIKE :target_game_prefix", {"target_game_prefix": f"{target_date}%"}, ("game_id",)
+    if table in game_tables:
+        if target_date:
+            return "game_id LIKE :target_game_prefix", {"target_game_prefix": f"{target_date}%"}, ("game_id",)
+        if season is not None:
+            return "game_id LIKE :target_game_prefix", {"target_game_prefix": f"{season}%"}, ("game_id",)
     if table in season_tables and season is not None:
         return "season = :target_season", {"target_season": season}, ("season",)
     return None, {}, ()
