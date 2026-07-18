@@ -67,16 +67,12 @@ class TeamCodeResolution:
     reason: str
 
 
-# Reasons from the game/roster/career resolvers that mean "no usable evidence"
-# (rather than "conflicting evidence"). Only these fall through to the
-# player_basic.team last-resort path; ambiguous/unknown reasons are preserved.
-_NO_EVIDENCE_REASONS = frozenset(
-    {
-        "missing_player_profile",
-        "missing_career_evidence",
-        "no_matching_career_period",
-    }
-)
+# When the game/roster/career resolvers leave the season team code NULL (either
+# because there is no usable evidence or because the evidence is conflicting),
+# the player's current registered team (``player_basic.team``) is consulted as a
+# best-effort, last-resort fill. A definitive ``current_team`` code overrides an
+# otherwise-NULL resolution; when even that is unavailable the original
+# (ambiguous or missing) reason is preserved.
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,8 +230,10 @@ def _resolve_batting_team_code(session: Session, player_id: int, season: int) ->
     resolution = roster_evidence
     if resolution is None:
         resolution = _resolve_from_player_career(session, player_id, season)
-    if resolution is not None and resolution.code is None and resolution.reason in _NO_EVIDENCE_REASONS:
-        resolution = _resolve_from_player_team(session, player_id, season)
+    if resolution is not None and resolution.code is None:
+        player_team = _resolve_from_player_team(session, player_id, season)
+        if player_team.code is not None:
+            resolution = player_team
     return resolution
 
 
@@ -263,8 +261,10 @@ def _resolve_pitching_team_code(session: Session, player_id: int, season: int) -
     resolution = roster_evidence
     if resolution is None:
         resolution = _resolve_from_player_career(session, player_id, season)
-    if resolution is not None and resolution.code is None and resolution.reason in _NO_EVIDENCE_REASONS:
-        resolution = _resolve_from_player_team(session, player_id, season)
+    if resolution is not None and resolution.code is None:
+        player_team = _resolve_from_player_team(session, player_id, season)
+        if player_team.code is not None:
+            resolution = player_team
     return resolution
 
 
