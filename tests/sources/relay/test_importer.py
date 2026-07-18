@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -266,3 +267,35 @@ class TestImportRelayAdapter:
         result = await adapter.fetch_game("G")
         assert result.is_empty
         assert "Manifest entries found, but none yielded usable relay data" in (result.notes or "")
+
+    @pytest.mark.asyncio
+    async def test_fetch_game_verifies_archive_checksum(self, tmp_path):
+        payload = '{"events": [{"id": 1}], "raw_pbp_rows": []}'
+        payload_path = tmp_path / "archive.json"
+        payload_path.write_text(payload, encoding="utf-8")
+        entry = ManifestEntry(
+            game_id="GAME1",
+            source_type="json_archive",
+            format="normalized_events_json",
+            locator=payload_path.name,
+            sha256=hashlib.sha256(payload.encode()).hexdigest(),
+        )
+
+        result = await ImportRelayAdapter([entry], manifest_base_dir=tmp_path).fetch_game("GAME1")
+
+        assert len(result.events) == 1
+
+    @pytest.mark.asyncio
+    async def test_fetch_game_rejects_tampered_archive(self, tmp_path):
+        payload_path = tmp_path / "archive.json"
+        payload_path.write_text('{"events": [{"id": 1}], "raw_pbp_rows": []}', encoding="utf-8")
+        entry = ManifestEntry(
+            game_id="GAME1",
+            source_type="json_archive",
+            format="normalized_events_json",
+            locator=payload_path.name,
+            sha256=hashlib.sha256(b"different payload").hexdigest(),
+        )
+
+        with pytest.raises(ValueError, match="checksum"):
+            await ImportRelayAdapter([entry], manifest_base_dir=tmp_path).fetch_game("GAME1")
