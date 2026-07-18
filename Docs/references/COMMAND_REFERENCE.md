@@ -704,6 +704,25 @@ python3 -m src.cli.historical_coverage_report \
   --output logs/historical_coverage_2001_2009.json
 ```
 
+### 11. 2009-2025 전수 Completeness Audit
+상세 경기, player-game, season aggregate, regression, quality gate, team-code NULL을 통합 점검합니다. DB는 읽기 전용이며 결과 artifact만 생성합니다.
+
+```bash
+# 로컬 DB 전수 점검
+DATABASE_URL=sqlite:///./data/kbo_dev.db \
+python3 -m scripts.maintenance.audit_completeness_2009_2025 \
+  --start-year 2009 --end-year 2025 --output-dir data/audit
+
+# 복구 명령 계획만 출력
+python3 -m scripts.maintenance.recovery_pipeline \
+  --start-year 2009 --end-year 2025 --only-defect-years --dry-run
+
+# 로컬/PostgreSQL row count 비교(읽기 전용)
+python3 -m scripts.maintenance.probe_oci_counts
+```
+
+`recovery_pipeline --apply`는 자동 실행하지 않습니다. source availability와 completeness gate를 확인한 뒤 defect category별로 별도 승인해야 합니다.
+
 ---
 
 ## 🚨 문제 해결
