@@ -54,6 +54,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           playwright: "true"
           init-db: 'false'
+      - name: Prepare test data directory
+        run: mkdir -p data
       - name: Initialize test DB
         run: python -c "from src.db.engine import init_db; init_db()"
         env:
@@ -156,6 +158,8 @@ jobs:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
+      - name: Prepare test data directory
+        run: mkdir -p data
       - name: Initialize test DB
         run: python -c "from src.db.engine import init_db; init_db()"
         env:
