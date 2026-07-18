@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import SessionLocal, get_oci_url
+from src.db.engine import SessionLocal, create_engine_for_url, get_oci_url
 from src.models.game import Game
 from src.models.matchup import BatterTeamSplit
 from src.models.player import PlayerSeasonBatting
@@ -733,36 +733,35 @@ def main(argv: Iterable[str] | None = None) -> None:
     # New compare handling
     if getattr(args, "compare", False):
         logger.info("🔍 Comparing record counts between local DB and OCI...")
-        from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
-
-        from src.db.engine import SessionLocal
-        from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
         # Local session
         local_session = SessionLocal()
         # OCI session
-        oci_engine = create_engine(args.target_url)
+        oci_engine = create_engine_for_url(args.target_url)
         oci_session = sessionmaker(bind=oci_engine)()
 
-        local_batting = local_session.query(PlayerSeasonBatting).count()
-        local_pitching = local_session.query(PlayerSeasonPitching).count()
-        oci_batting = oci_session.query(PlayerSeasonBatting).count()
-        oci_pitching = oci_session.query(PlayerSeasonPitching).count()
-        logger.info(
-            "📊 Data counts comparison:\n   Local batting: %s, OCI batting: %s\n"
-            "   Local pitching: %s, OCI pitching: %s",
-            local_batting,
-            oci_batting,
-            local_pitching,
-            oci_pitching,
-        )
-        if getattr(args, "apply", False):
-            direction = getattr(args, "direction", "bidirectional")
-            logger.info("⚙️ Apply sync in direction: %s", direction)
-            # Placeholder: invoke existing sync flow or custom logic
-        local_session.close()
-        oci_session.close()
+        try:
+            local_batting = local_session.execute(text("SELECT COUNT(*) FROM player_season_batting")).scalar_one()
+            local_pitching = local_session.execute(text("SELECT COUNT(*) FROM player_season_pitching")).scalar_one()
+            oci_batting = oci_session.execute(text("SELECT COUNT(*) FROM player_season_batting")).scalar_one()
+            oci_pitching = oci_session.execute(text("SELECT COUNT(*) FROM player_season_pitching")).scalar_one()
+            logger.info(
+                "📊 Data counts comparison:\n   Local batting: %s, OCI batting: %s\n"
+                "   Local pitching: %s, OCI pitching: %s",
+                local_batting,
+                oci_batting,
+                local_pitching,
+                oci_pitching,
+            )
+            if getattr(args, "apply", False):
+                direction = getattr(args, "direction", "bidirectional")
+                logger.info("⚙️ Apply sync in direction: %s", direction)
+                # Placeholder: invoke existing sync flow or custom logic
+        finally:
+            local_session.close()
+            oci_session.close()
+            oci_engine.dispose()
         return
 
     sync_dispatch = _build_sync_dispatch()

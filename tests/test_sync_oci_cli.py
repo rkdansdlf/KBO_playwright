@@ -1,10 +1,31 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock, patch
 
 import scripts.maintenance.reset_oci_sequences as reset_oci_sequences
 import src.cli.sync_oci as sync_oci_cli
 from src.sync.sync_games import _compact_metadata_source_payload_for_limit
+
+
+def test_compare_uses_wallet_aware_target_engine_factory(monkeypatch):
+    local_session = MagicMock()
+    local_session.execute.return_value.scalar_one.side_effect = [10, 20]
+    oci_session = MagicMock()
+    oci_session.execute.return_value.scalar_one.side_effect = [8, 19]
+    oci_engine = MagicMock()
+    session_factory = MagicMock(return_value=oci_session)
+
+    monkeypatch.setattr(sync_oci_cli, "SessionLocal", MagicMock(return_value=local_session))
+    monkeypatch.setattr(sync_oci_cli, "create_engine_for_url", MagicMock(return_value=oci_engine))
+
+    with patch("sqlalchemy.orm.sessionmaker", return_value=session_factory) as sessionmaker:
+        sync_oci_cli.main(["--target-url", "oracle+oracledb://oci.example/kbo", "--compare"])
+
+    sync_oci_cli.create_engine_for_url.assert_called_once_with("oracle+oracledb://oci.example/kbo")
+    sessionmaker.assert_called_once_with(bind=oci_engine)
+    local_session.close.assert_called_once_with()
+    oci_session.close.assert_called_once_with()
 
 
 def test_game_metadata_source_payload_is_compacted_for_oci_varchar_limit():
