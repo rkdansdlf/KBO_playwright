@@ -742,16 +742,37 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **CI alignment**: Existing `test_suite.yml` pytest job automatically collects `tests/migrations`; no separate workflow step is needed for the local SQLite migration contracts. OCI application remains gated by `apply_oci_migrations.py` and an available `OCI_DB_URL`.
 - **Verification**: Migration tests pass (5 cases), sync hardening/coverage tests pass (248 cases), scheduler/run-daily targeted tests pass (33 cases), and the isolated serial full suite passes **9,956 tests** with 27 legitimate skips and 1 known xfail.
 
+### Phase 66 Complete (2026-07-18) — PostgreSQL migration CI verification and model registry audit
+
+- **CI migration job**: Added a `migration-apply` job to `.github/workflows/test_suite.yml` using a PostgreSQL 16 service. The job initializes only SQLAlchemy model tables, applies OCI migrations, re-applies them to verify idempotency, and runs `apply_oci_migrations.py --check`.
+- **Migration dependency fixes**: Updated OCI migration 029 to create `team_profiles` before its indexes, and made OCI migration 046 extended-column additions use `ADD COLUMN IF NOT EXISTS` so they remain safe when SQLAlchemy creates the model tables first.
+- **Model registry audit**: Registered previously omitted `crawl`, `franchise`, `matchup`, `rankings`, `team_history`, and `team_stats` models in `src/models/__init__.py`. Added a regression test for the OCI migration dependency tables.
+- **PostgreSQL verification**: On a clean PostgreSQL 16 container, `init_db()` succeeded, all 33 OCI migrations applied, a second apply skipped all migrations, and `--check` reported `33 local, 33 applied`.
+- **Seed isolation**: The CI migration job does not call the composite action's `seed_data` step because that utility currently emits SQLite-only `INSERT OR IGNORE` SQL against PostgreSQL; migration verification does not require seed data.
+- **Verification**: Model/migration targeted tests pass (236 cases), `ruff check src/ tests/ scripts/`, `ruff check migrations/`, and `ruff format --check .` pass. The serial full suite reached 9,963 passed, 27 skipped, and 1 xfailed; one unrelated scheduler smoke test fails because a concurrent `scripts/scheduler.py` change treats the current PID as stale.
+
+### Phase 67 Complete (2026-07-18) — Scheduler self-PID smoke contract
+
+- **Test alignment**: Updated `test_live_scheduler_pid_aborts_without_replacing_file` to cover the scheduler's intentional self-PID stale-file recovery behavior, including safe release after re-acquisition.
+- **Verification**: Scheduler operational smoke tests pass (7 cases), and the isolated serial full suite passes **9,964 tests** with 27 legitimate skips and 1 known xfail.
+
+### Phase 68 Complete (2026-07-18) — Docker crash-recovery verification + PID-1 guard fix
+
+- **Docker operational verification**: Built the scheduler image and reproduced the full `restart: always` crash-recovery cycle (start → SIGKILL → restart) against an **isolated** data volume (never the live host `data/`). A first attempt accidentally bind-mounted the live `./data`, causing the container scheduler to write a monthly-schedule UPSERT into the host DB and clobber `scheduler.pid`; the host DB (idempotent) and PID file were restored and the host launchd scheduler (PID 74273) stayed healthy. **Lesson: Docker scheduler verification must use an isolated volume.**
+- **PID-1 guard bug found + fixed**: In a container the scheduler runs as **PID 1**, so after a crash the stale `scheduler.pid` also contains `1`. `_ensure_single_scheduler_instance` called `os.kill(1, 0)`, which succeeds for the new container's own PID 1, so it logged "Another scheduler instance (PID 1) is already running" and `sys.exit(1)` — an **infinite restart loop** under `restart: always`. Reproduced end-to-end (container `Exited (1)`). Fix: treat `pid == os.getpid()` as self/own-stale and re-acquire. Post-fix, the restarted container stays **Up** and runs jobs. Covered by existing `test_own_scheduler_pid_is_treated_as_stale_and_reacquired`.
+- **Entrypoint chown optimization**: `docker/entrypoint.sh` recursively chowned the ~1GB `/ms-playwright` named volume on **every** start, delaying startup/crash-recovery by minutes. Now it chowns `/ms-playwright` only when top-level ownership differs from `TARGET_UID` (verified: first run chowns `0 → 1000`, subsequent runs on the persisted named volume **skip**). Bind-mounted `data`/`logs` still get a full recursive chown (host UID may differ).
+- **Verification**: `ruff check scripts/scheduler.py` clean; scheduler regression set (`test_scheduler_operational_smoke.py`, `test_scheduler_fix.py`, `test_scheduler_sqlite_writer_lock.py`) = **22 passed**. `ForceProcessLock` self-heal confirmed via flock release on container death.
+
 ### Current Verification Baseline (2026-07-18)
 
-- GitHub Actions: lint, Python 3.12 test, and integration-test jobs passing (last observed green run prior to this phase).
+- GitHub Actions: lint, Python 3.12 test, integration-test, and PostgreSQL migration-apply jobs configured; the new migration job has been reproduced locally against PostgreSQL 16.
 - `ruff check src/ tests/ scripts/` = 0 errors.
 - `ruff check migrations/` = 0 errors.
 - `ruff format --check .` = clean.
 - `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` and `scripts/supabase/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
-- `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,956 passed**, 27 skipped, 1 xfailed; 0 failures in the verified serial run with external OCI URLs disabled.
+- `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,964 passed**, 27 skipped, 1 xfailed; external OCI URLs disabled.
 - `venv/bin/python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` = **259 passed**, 1 intentional OCI skip, 9,693 deselected.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
 - `python3 scripts/diagnose_scheduler_locks.py` reads stale lock files + duplicate scheduler processes (exit 0=clean, 1=problem); pairs with the PID guard in `scripts/scheduler.py`.

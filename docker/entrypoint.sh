@@ -37,12 +37,26 @@ if [ "$(id -u)" = '0' ]; then
     fi
 
     # 볼륨 디렉토리 소유권 변경
-    for dir in "/app/data" "/app/logs" "/ms-playwright"; do
+    # /ms-playwright is a large (~1GB) named volume already owned by appuser from
+    # the image build; a recursive chown on every start needlessly delays startup
+    # (and, under restart: always, crash recovery). Only chown it when the top
+    # level ownership is actually wrong. Bind-mounted data/logs still get a full
+    # recursive chown because their host UID may differ.
+    for dir in "/app/data" "/app/logs"; do
         if [ -d "$dir" ]; then
             echo "🐳 Chowning $dir to appuser:appuser"
             chown -R appuser:appuser "$dir"
         fi
     done
+    if [ -d "/ms-playwright" ]; then
+        current_owner=$(stat -c '%u' /ms-playwright)
+        if [ "$current_owner" != "$TARGET_UID" ]; then
+            echo "🐳 Chowning /ms-playwright to appuser:appuser (owner $current_owner -> $TARGET_UID)"
+            chown -R appuser:appuser "/ms-playwright"
+        else
+            echo "🐳 Skipping /ms-playwright chown (already owned by $TARGET_UID)"
+        fi
+    fi
 
     # gosu로 appuser 권한으로 재실행
     if command -v gosu >/dev/null 2>&1; then

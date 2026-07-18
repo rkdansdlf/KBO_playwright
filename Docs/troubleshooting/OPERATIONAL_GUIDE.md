@@ -143,6 +143,13 @@ grep -E "LockAcquisitionError|_LockSkipped" logs/scheduler.log
 
 `DAILY_LOCK` and `MAINTENANCE_LOCK` are `ForceProcessLock`, so a stale lock file is auto-cleared on the next acquire. A single-instance PID guard (`data/locks/scheduler.pid`) blocks a second scheduler process (`exit 1`); a dead PID is treated as stale and cleared on startup.
 
+#### Docker crash-recovery (restart: always)
+
+The Docker scheduler runs `python -m scripts.scheduler` as **PID 1** inside the container. After a crash (`restart: always` → SIGKILL → restart), the stale `scheduler.pid` also contains `1`; the PID guard treats `pid == os.getpid()` as self/own-stale and re-acquires, so the container stays **Up** (no infinite restart loop). Tier locks self-heal because the dead container's `fcntl.flock` is released on death.
+
+- Always mount an **isolated** `data` volume for verification. Never bind-mount the live `./data` into a verification container — it shares the production SQLite DB and `scheduler.pid`, causing accidental writes and PID-file clobbering.
+- `docker/entrypoint.sh` chowns `/ms-playwright` (the ~1GB Playwright named volume) only when its top-level owner differs from the target UID. On the persisted named volume this chown is skipped after the first run, so crash recovery starts fast. Bind-mounted `data`/`logs` still get a full recursive chown.
+
 ### Read Daily Stability Summary
 ```bash
 cat logs/daily_update_summary/YYYYMMDD.json

@@ -21,15 +21,16 @@ def test_stale_scheduler_pid_is_replaced_and_released(tmp_path, monkeypatch) -> 
     assert not pid_file.exists()
 
 
-def test_live_scheduler_pid_aborts_without_replacing_file(tmp_path, monkeypatch) -> None:
+def test_own_scheduler_pid_is_treated_as_stale_and_reacquired(tmp_path, monkeypatch) -> None:
     pid_file = tmp_path / "scheduler.pid"
     pid_file.write_text(f"{os.getpid()}\n")
     monkeypatch.setattr(scheduler, "_SCHEDULER_PID_FILE", pid_file)
 
-    with pytest.raises(SystemExit, match="1"):
-        scheduler._ensure_single_scheduler_instance()
+    scheduler._ensure_single_scheduler_instance()
 
     assert pid_file.read_text() == f"{os.getpid()}\n"
+    scheduler._release_scheduler_pid_file()
+    assert not pid_file.exists()
 
 
 def test_scheduler_pid_release_keeps_another_process_file(tmp_path, monkeypatch) -> None:
