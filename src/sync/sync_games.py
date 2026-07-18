@@ -144,9 +144,20 @@ class GameSyncMixin(SyncBaseProtocol):
         return limit
 
     def _transform_game_metadata_for_target(self, data: dict[str, Any]) -> dict[str, Any]:
+        import datetime
+
         limit = self._game_metadata_source_payload_limit()
         if limit and "source_payload" in data:
             data["source_payload"] = _compact_metadata_source_payload_for_limit(data["source_payload"], limit)
+
+        oci_engine = getattr(self, "oci_engine", None)
+        dialect_name = oci_engine.dialect.name if oci_engine is not None else "postgresql"
+        if dialect_name == "oracle":
+            for col in ("start_time", "end_time"):
+                val = data.get(col)
+                if isinstance(val, datetime.time):
+                    data[col] = datetime.datetime.combine(datetime.date(1970, 1, 1), val)
+
         return data
 
     def _transform_game_lineup_for_target(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -529,6 +540,23 @@ class GameSyncMixin(SyncBaseProtocol):
         if not self.test_connection():
             logger.error("❌ OCI connection failed. Aborting sync_game_details.")
             return {}
+
+        # Ensure all game-related tables exist on Oracle before executing sync or purge
+        for model in (
+            Game,
+            GameMetadata,
+            GameInningScore,
+            GameLineup,
+            GameBattingStat,
+            GamePitchingStat,
+            GameSummary,
+            GameHighlight,
+            GameEvent,
+            GamePlayByPlay,
+            GameValidationMetrics,
+            GameIdAlias,
+        ):
+            self._ensure_table(model)
 
         filters, target_game_ids = self._game_detail_parent_scope(days, year, unsynced_only=unsynced_only)
         if unsynced_only and not target_game_ids:

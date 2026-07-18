@@ -1000,6 +1000,8 @@ class OCISyncBase:
         transient_markers = (
             "could not receive data from server",
             "server closed the connection",
+            "closed the connection",
+            "connection closed",
             "connection not open",
             "connection already closed",
             "operation timed out",
@@ -1007,6 +1009,7 @@ class OCISyncBase:
             "ssl syscall",
             "terminating connection",
             "connection reset",
+            "dpy-4011",
         )
         return any(marker in message for marker in transient_markers)
 
@@ -1189,6 +1192,8 @@ class OCISyncBase:
         oci_engine = getattr(self, "oci_engine", None)
         dialect_name = oci_engine.dialect.name if oci_engine is not None else "postgresql"
         exclude_cols = self._normalize_simple_table_exclude_cols(exclude_cols, dialect_name)
+
+        self._ensure_table(model)
 
         if not self._target_table_exists(model):
             logger.info("[info] Skipping missing OCI table: %s", model.__tablename__)
@@ -1629,9 +1634,14 @@ class OCISyncBase:
 
     def _ensure_table(self, model: type[Base]) -> None:
         """Create table on OCI if it doesn't exist."""
+        oci_engine = getattr(self, "oci_engine", None)
+        if oci_engine is None:
+            return
+        if not hasattr(model, "__table__"):
+            return
         from src.models.base import Base
 
-        Base.metadata.create_all(self.oci_engine, tables=[model.__table__])  # type: ignore[list-item]
+        Base.metadata.create_all(oci_engine, tables=[model.__table__])  # type: ignore[list-item]
 
     def close(self) -> None:
         """Close OCI session."""
