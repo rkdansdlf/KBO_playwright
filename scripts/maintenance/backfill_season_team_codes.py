@@ -19,10 +19,11 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from sqlalchemy import text
+from sqlalchemy import distinct, extract, select, text
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
+from src.models.team import TeamDailyRoster
 from src.parsers.player_profile_parser import TEAM_CODE_MAP
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -157,6 +158,22 @@ def _lookup_team_codes(session: Session, query: str, params: dict[str, int | str
     return {str(row[0]).strip() for row in rows if row and row[0]}
 
 
+def _roster_team_codes(session: Session, player_id: int, season: int) -> set[str]:
+    """Distinct roster team codes for a player in a season (dialect-agnostic).
+
+    Uses SQLAlchemy ``extract('year', ...)`` so the same code runs against both
+    SQLite (local) and Oracle (OCI) without ``strftime`` portability issues.
+    """
+    stmt = (
+        select(distinct(TeamDailyRoster.team_code))
+        .where(TeamDailyRoster.player_id == player_id)
+        .where(extract("year", TeamDailyRoster.roster_date) == season)
+        .where(TeamDailyRoster.team_code.isnot(None))
+    )
+    rows = session.execute(stmt).fetchall()
+    return {str(row[0]).strip() for row in rows if row and row[0]}
+
+
 def _resolve_from_player_career(session: Session, player_id: int, season: int) -> TeamCodeResolution:
     basic_row = session.execute(
         text("SELECT career FROM player_basic WHERE player_id = :pid"),
@@ -219,12 +236,7 @@ def _resolve_batting_team_code(session: Session, player_id: int, season: int) ->
     if game_evidence is not None:
         return game_evidence
     roster_evidence = _resolve_unique_evidence(
-        _lookup_team_codes(
-            session,
-            "SELECT DISTINCT team_code FROM team_daily_roster "
-            "WHERE player_id = :pid AND strftime('%Y', roster_date) = :yr AND team_code IS NOT NULL",
-            {"pid": player_id, "yr": str(season)},
-        ),
+        _roster_team_codes(session, player_id, season),
         "same_season_roster",
     )
     resolution = roster_evidence
@@ -250,12 +262,7 @@ def _resolve_pitching_team_code(session: Session, player_id: int, season: int) -
     if game_evidence is not None:
         return game_evidence
     roster_evidence = _resolve_unique_evidence(
-        _lookup_team_codes(
-            session,
-            "SELECT DISTINCT team_code FROM team_daily_roster "
-            "WHERE player_id = :pid AND strftime('%Y', roster_date) = :yr AND team_code IS NOT NULL",
-            {"pid": player_id, "yr": str(season)},
-        ),
+        _roster_team_codes(session, player_id, season),
         "same_season_roster",
     )
     resolution = roster_evidence

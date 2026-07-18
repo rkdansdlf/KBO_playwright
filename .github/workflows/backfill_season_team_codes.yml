@@ -1,0 +1,54 @@
+name: KBO Season Team Code Backfill (OCI)
+
+concurrency:
+  group: kbo-season-team-code-backfill
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      table:
+        description: 'Target table'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - batting
+          - pitching
+      apply:
+        description: 'Apply resolved team codes (false = dry-run only)'
+        type: boolean
+        default: true
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  DATABASE_URL: ${{ secrets.OCI_DB_URL }}
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/python-env
+        with:
+          init-db: 'false'
+          playwright: 'false'
+
+      - name: Dry-run Season Team Code Backfill
+        run: |
+          python3 -m scripts.maintenance.backfill_season_team_codes \
+            --table ${{ github.event.inputs.table }}
+
+      - name: Apply Season Team Code Backfill
+        if: ${{ github.event.inputs.apply == 'true' }}
+        run: |
+          python3 -m scripts.maintenance.backfill_season_team_codes \
+            --table ${{ github.event.inputs.table }} --apply
+
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          channels: telegram
