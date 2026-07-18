@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from src.cli import quality_gate_check
+from src.models.player import PlayerSeasonBatting
 from src.validators.quality_gate import run_quality_gate
 
 
@@ -332,6 +333,32 @@ def test_validate_futures_batting_impossible_stat():
         assert result["futures_batting"]["ok"] is False
         assert len(result["futures_batting"]["mismatches"]) == 1
         assert "Impossible batting stats" in result["futures_batting"]["mismatches"][0]["issue"]
+    finally:
+        session.close()
+
+
+def test_validate_futures_batting_skips_obp_without_sacrifice_fly_data():
+    session = _make_session()
+    try:
+        session.add(
+            PlayerSeasonBatting(
+                player_id=1000,
+                season=2025,
+                league="FUTURES",
+                level="KBO2",
+                team_code="SSG",
+                at_bats=30,
+                hits=9,
+                walks=5,
+                hbp=1,
+                plate_appearances=36,
+                obp=0.400,
+            ),
+        )
+        session.commit()
+
+        result = run_quality_gate(session, 2025)
+        assert result["futures_batting"]["ok"] is True
     finally:
         session.close()
 

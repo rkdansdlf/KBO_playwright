@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import func, or_, select, text
@@ -62,6 +63,11 @@ def _ip_to_outs_float(team_ip: float | None) -> int:
     if not team_ip:
         return 0
     return int(team_ip * 3 + 0.5)
+
+
+def _round_stat_half_up(value: float) -> float:
+    """Round a displayed statistical value using conventional half-up rounding."""
+    return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 class QualityGate:
@@ -747,7 +753,7 @@ class QualityGate:
                 diffs.append(f"AVG mismatch: recorded={avg}, expected={expected_avg}")
 
         obp_denom = ab + walks + hbp + sf
-        if obp_denom > 0 and obp is not None:
+        if player.sacrifice_flies is not None and obp_denom > 0 and obp is not None:
             expected_obp = round((hits + walks + hbp) / obp_denom, 3)
             if abs(obp - expected_obp) > FUTURES_BATTING_TOLERANCE:
                 diffs.append(f"OBP mismatch: recorded={obp}, expected={expected_obp}")
@@ -850,7 +856,7 @@ class QualityGate:
 
         diffs = []
         if outs > 0 and era is not None:
-            expected_era = round((er * 27) / outs, 2)
+            expected_era = _round_stat_half_up((er * 27) / outs)
             if abs(era - expected_era) > FUTURES_PITCHING_TOLERANCE:
                 diffs.append(f"ERA mismatch: recorded={era}, expected={expected_era}")
 

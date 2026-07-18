@@ -443,21 +443,46 @@ LEAGUE_TYPES = [
 
 
 def _seed_default_seasons(session: Session):
-    """Programmatically seed KBO season entries (1982-2030) using INSERT OR IGNORE."""
-    from sqlalchemy import text
+    """Programmatically seed KBO season entries (1982-2030) idempotently."""
+    dialect_name = session.get_bind().dialect.name
+    if dialect_name == "postgresql":
+        insert_sql = (
+            "INSERT INTO kbo_seasons "
+            "(season_id, season_year, league_type_code, league_type_name, created_at, updated_at) "
+            "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (season_id) DO NOTHING"
+        )
+    elif dialect_name in {"mysql", "mariadb"}:
+        insert_sql = (
+            "INSERT IGNORE INTO kbo_seasons "
+            "(season_id, season_year, league_type_code, league_type_name, created_at, updated_at) "
+            "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+    elif dialect_name == "sqlite":
+        insert_sql = (
+            "INSERT OR IGNORE INTO kbo_seasons "
+            "(season_id, season_year, league_type_code, league_type_name, created_at, updated_at) "
+            "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+    else:
+        insert_sql = None
 
     count = 0
     for year in range(1982, 2031):
         for code, name in LEAGUE_TYPES:
             sid = year * 100 + code
-            session.execute(
-                text(
-                    "INSERT OR IGNORE INTO kbo_seasons "
-                    "(season_id, season_year, league_type_code, league_type_name, created_at, updated_at) "
-                    "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                ),
-                {"sid": sid, "year": year, "code": code, "name": name},
-            )
+            values = {"sid": sid, "year": year, "code": code, "name": name}
+            if insert_sql is not None:
+                session.execute(text(insert_sql), values)
+            elif session.get(KboSeason, sid) is None:
+                session.add(
+                    KboSeason(
+                        season_id=sid,
+                        season_year=year,
+                        league_type_code=code,
+                        league_type_name=name,
+                    ),
+                )
             count += 1
     session.commit()
     logger.info(f"   ✅ Upserted {count} default season entries.")

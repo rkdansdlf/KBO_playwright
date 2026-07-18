@@ -33,6 +33,7 @@ FUTURES_KEYS = [
     "season",
     "AVG",
     "G",
+    "PA",
     "AB",
     "R",
     "H",
@@ -43,6 +44,8 @@ FUTURES_KEYS = [
     "SB",
     "BB",
     "HBP",
+    "SH",
+    "SF",
     "SO",
     "SLG",
     "OBP",
@@ -57,6 +60,8 @@ HEADER_MAP = {
     "year": "season",
     "경기": "G",
     "g": "G",
+    "타석": "PA",
+    "pa": "PA",
     "타수": "AB",
     "ab": "AB",
     "득점": "R",
@@ -78,6 +83,11 @@ HEADER_MAP = {
     "사구": "HBP",
     "hbp": "HBP",
     "죽사구": "HBP",
+    "희생타": "SH",
+    "희생번트": "SH",
+    "sh": "SH",
+    "희생플라이": "SF",
+    "sf": "SF",
     "삼진": "SO",
     "so": "SO",
     "타율": "AVG",
@@ -119,6 +129,10 @@ def _compute_missing(row: dict) -> dict[str, Any]:
     walks = row.get("BB")
     hit_by_pitch = row.get("HBP")
     sacrifice_flies = row.get("SF")
+    plate_appearances = row.get("PA")
+
+    if plate_appearances is None and at_bats is not None:
+        row["PA"] = sum(value or 0 for value in (at_bats, walks, hit_by_pitch, row.get("SH"), sacrifice_flies))
 
     # Compute SLG if missing
     if (
@@ -179,7 +193,7 @@ def _parse_batting_row(headers: list[str], cells: list[str]) -> dict[str, Any]:
             row["team_code"] = code
         elif key in ("AVG", "SLG", "OBP"):
             row[key] = safe_float_or_none(v)
-        elif key in ("G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SF"):
+        elif key in ("G", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SH", "SF", "SO"):
             row[key] = safe_int_or_none(v)
     return row
 

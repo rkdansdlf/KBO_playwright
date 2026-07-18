@@ -150,6 +150,40 @@ def test_regression_pack_skips_missing_optional_tables() -> None:
     assert all("missing table" in result.message for result in report.results)
 
 
+def test_regression_pack_allows_valid_high_era_but_flags_missing_innings() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE player_season_pitching (
+                    player_id INTEGER,
+                    era REAL,
+                    innings_pitched REAL,
+                    innings_outs INTEGER
+                )
+                """,
+            ),
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_pitching
+                    (player_id, era, innings_pitched, innings_outs)
+                VALUES
+                    (1, 135.0, 1.0, 3),
+                    (2, 40.5, NULL, NULL)
+                """,
+            ),
+        )
+
+        report = run_regression_pack(conn)
+
+    era_result = next(result for result in report.results if result.check_id == "era_range")
+    assert era_result.violation_count == 1
+    assert era_result.sample_ids == ("2",)
+
+
 def test_regression_pack_requires_schema_when_requested() -> None:
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
