@@ -34,13 +34,13 @@ class TestRunDailyUpdateCLI:
             mock_dt.timedelta = MagicMock(return_value=MagicMock())
             mock_dt.strptime = __import__("datetime").datetime.strptime
 
-            result = main([])
+            result = main([], acquire_lock=False)
             assert result == mock_update.return_value
             mock_update.assert_called_once()
 
     def test_main_with_date(self):
         with patch("src.cli.run_daily_update.run_update", new_callable=AsyncMock) as mock_update:
-            result = main(["--date", "20251015"])
+            result = main(["--date", "20251015"], acquire_lock=False)
             assert result == mock_update.return_value
             mock_update.assert_called_once_with(
                 "20251015",
@@ -49,7 +49,7 @@ class TestRunDailyUpdateCLI:
 
     def test_main_with_sync(self):
         with patch("src.cli.run_daily_update.run_update", new_callable=AsyncMock) as mock_update:
-            main(["--date", "20251015", "--sync"])
+            main(["--date", "20251015", "--sync"], acquire_lock=False)
             mock_update.assert_called_once_with(
                 "20251015",
                 DailyUpdateOptions(sync=True),
