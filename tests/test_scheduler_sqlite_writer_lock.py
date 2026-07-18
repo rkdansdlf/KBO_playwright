@@ -107,3 +107,26 @@ def test_sqlite_writer_lock_is_force_process_lock():
     from src.utils.lock import ForceProcessLock
 
     assert isinstance(scheduler.SQLITE_WRITE_LOCK, ForceProcessLock)
+
+
+def test_daily_lock_is_force_process_lock():
+    from src.utils.lock import ForceProcessLock
+
+    assert isinstance(scheduler.DAILY_LOCK, ForceProcessLock)
+
+
+def test_crawl_p1p2_data_job_retry_policy():
+    """crawl_p1p2_data_job must retry on lock contention with a longer backoff
+    than the original stop_after_attempt(2)/min=60 policy.
+    """
+    retry = scheduler.crawl_p1p2_data_job.retry
+    assert retry is not None
+
+    stop = retry.stop
+    assert isinstance(stop, type(stop))  # introspect stop_after_attempt
+    assert stop.max_attempt_number == 4
+
+    wait = retry.wait
+    # wait_exponential(min=300, max=1800)
+    assert wait.min == 300
+    assert wait.max == 1800

@@ -55,6 +55,45 @@ class TestRunDailyUpdateCLI:
                 DailyUpdateOptions(sync=True),
             )
 
+    def test_main_acquires_inner_lock_by_default(self):
+        """Direct CLI invocation keeps the self-guard (acquire_lock defaults True)."""
+        created: list[object] = []
+        inner_lock = MagicMock()
+        inner_lock.acquire.return_value = True
+
+        def _fake_process_lock(name, blocking=False):
+            created.append(name)
+            return inner_lock
+
+        with (
+            patch("src.cli.run_daily_update.run_update", new_callable=AsyncMock) as mock_update,
+            patch("src.utils.lock.ProcessLock", side_effect=_fake_process_lock),
+        ):
+            result = main(["--date", "20251015"])
+
+        assert result == mock_update.return_value
+        assert created == ["daily_update"]
+        inner_lock.acquire.assert_called_once_with()
+
+    def test_main_skips_inner_lock_when_acquire_lock_false(self):
+        """When called from the scheduler (already holding DAILY_LOCK), the inner
+        self-guard must be skipped to avoid a nested re-entrancy failure.
+        """
+        created: list[object] = []
+
+        def _fake_process_lock(name, blocking=False):
+            created.append(name)
+            raise AssertionError("inner ProcessLock should not be created when acquire_lock=False")
+
+        with (
+            patch("src.cli.run_daily_update.run_update", new_callable=AsyncMock) as mock_update,
+            patch("src.utils.lock.ProcessLock", side_effect=_fake_process_lock),
+        ):
+            result = main(["--date", "20251015"], acquire_lock=False)
+
+        assert result == mock_update.return_value
+        assert created == []
+
 
 def _build_run_context(tmp_path, *, target_date: str, today_kst: date) -> daily._RunContext:
     return daily._RunContext(
