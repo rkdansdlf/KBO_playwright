@@ -17,7 +17,9 @@ from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
 from sqlalchemy import ForeignKeyConstraint, create_engine, event
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.types import Time
 
 from src.db.sqlite_integrity import is_sqlite_corruption_error
 
@@ -83,6 +85,11 @@ def _install_oracle_fk_restrict_compiler() -> None:
 
 
 _install_oracle_fk_restrict_compiler()
+
+
+@compiles(Time, "oracle")
+def _compile_time_oracle(_type: Time, _compiler: object, **_kw: object) -> str:
+    return "DATE"
 
 
 def get_oci_url() -> str | None:
