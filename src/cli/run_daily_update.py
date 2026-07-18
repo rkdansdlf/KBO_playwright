@@ -1813,7 +1813,8 @@ def main(argv: Sequence[str] | None = None, *, acquire_lock: bool = True) -> int
             ),
         )
     finally:
-        lock.release()
+        if lock is not None:
+            lock.release()
     return res  # type: ignore[return-value]
 
 

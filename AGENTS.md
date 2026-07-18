@@ -127,9 +127,14 @@ These modules are operational or diagnostic entrypoints that are less frequently
 ## Concurrency & Scheduling
 - Automated tasks (`scripts/scheduler.py`) use a **3-stage locking mechanism** to prevent concurrent execution conflicts:
   - **`LIVE_LOCK`**: High-frequency real-time jobs (live refresh, pregame refresh).
-  - **`DAILY_LOCK`**: Core daily data pipeline (daily game crawl, postgame finalize).
-  - **`MAINTENANCE_LOCK`**: Long-running maintenance jobs (futures profile crawl, OCI sync, season stat recalc, report generation).
+  - **`DAILY_LOCK`**: Core daily data pipeline — `crawl_daily_games` (03:00, runs `run_daily_update`), `compute_standings` (03:30), `crawl_p0_non_game` (06:20), `crawl_p1p2_data` (06:45), `crawl_operation_notices` (09:00/11:30), `crawl_operation_notices_naver` (09:30/13:00). `DAILY_LOCK` is a **`ForceProcessLock`** so a stale lock file left by a crashed job is auto-cleared on the next acquire.
+  - **`MAINTENANCE_LOCK`**: Long-running maintenance jobs (futures profile crawl, OCI sync, season stat recalc, report generation). Also a `ForceProcessLock`.
+  - **`REALTIME_OCI_SYNC_LOCK`** / **`SQLITE_WRITE_LOCK`**: See writer-lock notes below.
+- **Single-instance guard**: `scripts/scheduler.py` enforces one scheduler process via `data/locks/scheduler.pid` (`_ensure_single_scheduler_instance`). A live PID blocks a second instance (`exit 1`); a dead PID is treated as stale and cleared. This prevents duplicate scheduler containers/processes from contending for the same tier locks (the root cause of the 2026-07 `crawl_p1p2_data_job` `LockAcquisitionError`).
+- **Nested-lock fix**: `run_daily_update_main` accepts `acquire_lock: bool = True`. The scheduler calls it with `acquire_lock=False` because `crawl_daily_games` already holds `DAILY_LOCK`; otherwise the inner `ProcessLock("daily_update")` collides with the scheduler's shared `threading.Lock` and falsely reports "Another instance already running". CLI/direct invocations keep the self-guard.
+- **Tier-lock acquisition now has a bounded timeout.** `_scheduler_job_lock` passes `lock_timeout=SQLITE_WRITE_LOCK_TIMEOUT_SECONDS` (default 60s) to the tier lock; on timeout it raises `_LockSkipped` (caught by `@_with_lock_skip_guard` → logs a warning, no crash) instead of a `LockAcquisitionError`. `crawl_p1p2_data_job` retry policy is `stop_after_attempt(4)` / `wait_exponential(min=300, max=1800)`.
 - Always use the appropriate lock when adding new scheduled jobs or long-running maintenance tasks.
+- Use `python3 scripts/diagnose_scheduler_locks.py` to read-only diagnose stale lock files and duplicate scheduler processes (exit 0 = clean, 1 = problem found).
 - All data save logic uses **UPSERT** for idempotency; failed jobs can be safely re-run.
 - **`ProcessLock` is a thread-safe singleton with thread-local state.** `ProcessLock` (and `ForceProcessLock`) instances such as `SQLITE_WRITE_LOCK` are shared as module-level singletons across APScheduler's thread pool. Per-acquisition state (`thread_lock_acquired`, `file_fd`, `db_connection`) lives on a `threading.local` (`_LockState`) so each worker thread tracks its own ownership; the shared `threading.Lock` in `_thread_locks` still provides correct cross-thread mutual exclusion. Do **not** move this state back to instance attributes — that reintroduces a spurious `LockAcquisitionError` when two jobs contend for the same singleton lock (see `crawl_congestion` incident, 2026-07).
 - **SQLite writer lock (`SQLITE_WRITE_LOCK`)** serializes all SQLite writes. High-frequency jobs (`crawl_congestion`, `crawl_transit_time`) acquire it **non-blocking** and skip their save (emitting `kbo_scheduler_lock_skip_total`) when contended, so they never block a worker thread. Tier-locked jobs (daily/maintenance) acquire it **blocking with a `SQLITE_WRITE_LOCK_TIMEOUT_SECONDS` (default 60s) deadline**; on timeout the job is skipped via `_LockSkipped` (caught by `@_with_lock_skip_guard`) rather than hanging the worker pool. `LockAcquisitionError` is part of `SCHEDULER_JOB_EXCEPTIONS`.
@@ -186,7 +191,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-07-05
+Last updated: 2026-07-18
 
 ### Historical Sprint (2026-06-30) — Data Quality & Sync
 
@@ -717,6 +722,19 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Scheduler smoke coverage**: Added PID-file stale/live-owner handling, owner-safe release, lock metric counter reset/error handling, and tier-lock exception conversion tests. Scheduler regression set passes 39 tests.
 - **Regression fix**: Isolated scheduler PID files in existing alerting/shutdown tests so the single-instance guard cannot leak state between tests.
 
+### Phase 64 Complete (2026-07-18) — crawl_p1p2_data_job LockAcquisitionError fix
+
+- **Root cause**: `crawl_p1p2_data_job` (06:30→06:45) failed with `Could not acquire ProcessLock: daily_update` because (a) `DAILY_LOCK` was a plain `ProcessLock` with no stale-lock auto-clear, (b) `run_daily_update_main` created its own `ProcessLock("daily_update")` that collided (re-entrancy) with the scheduler's shared `threading.Lock` when called from `crawl_daily_games`, and (c) duplicate scheduler processes/containers could both hold the lock.
+- **B1 nested lock**: `run_daily_update_main` now takes `acquire_lock: bool = True`; the scheduler calls it with `acquire_lock=False` so the inner self-guard is skipped when `DAILY_LOCK` is already held. CLI/direct invocations keep the self-guard.
+- **B2/B3 lock hardening**: `DAILY_LOCK` is now a `ForceProcessLock` (stale file auto-cleared on next acquire). `_scheduler_job_lock` now passes `lock_timeout=SQLITE_WRITE_LOCK_TIMEOUT_SECONDS` (60s) to the tier lock and raises `_LockSkipped` (warning, no crash) on timeout instead of `LockAcquisitionError`.
+- **B4 retry**: `crawl_p1p2_data_job` retry policy is `stop_after_attempt(4)` / `wait_exponential(min=300, max=1800)`.
+- **B5 schedule**: `crawl_p1p2_data` moved 06:30 → 06:45 KST to reduce contention with `crawl_p0_non_game` (06:20).
+- **B6 single-instance guard**: `scripts/scheduler.py` enforces one process via `data/locks/scheduler.pid` (`_ensure_single_scheduler_instance`, `atexit` cleanup). A live PID blocks a second instance (`exit 1`); a dead PID is cleared as stale.
+- **Track A diagnostic**: Added `scripts/diagnose_scheduler_locks.py` (read-only; exit 0=clean, 1=stale lock/duplicate scheduler) plus `tests/scripts/test_diagnose_scheduler_locks.py` (6 tests).
+- **Regression test hardening**: Added `test_dead_scheduler_pid_is_cleared_and_replaced` (operational smoke), `test_main_acquires_inner_lock_by_default` + `test_main_skips_inner_lock_when_acquire_lock_false` (run_daily_update), and `test_daily_lock_is_force_process_lock` + `test_crawl_p1p2_data_job_retry_policy` (sqlite_writer_lock).
+- **Bug caught by new tests**: `run_daily_update_main` with `acquire_lock=False` left `lock = None` but the `finally` block called `lock.release()`, raising `AttributeError` and crashing the scheduler's daily finalize (`crawl_daily_games`). Fixed with `if lock is not None: lock.release()`.
+- **Verification**: `ruff check src/ tests/ scripts/`, `ruff format --check .`, and the lock/scheduler test set all pass. PID guard verified end-to-end on the local launchd-managed scheduler (single instance starts, second blocked, stale PID cleared, graceful shutdown removes the file). `ForceProcessLock` self-heal of stale `daily_update.lock`/`sqlite_writer.lock` confirmed.
+
 ### Current Verification Baseline (2026-07-18)
 
 - GitHub Actions: lint, Python 3.12 test, and integration-test jobs passing (last observed green run prior to this phase).
@@ -729,3 +747,4 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - `venv/bin/python -m pytest -o "addopts=--asyncio-mode=auto" -q` = **9,932 passed**, 27 skipped, 1 xfailed; 0 failures in the verified serial run.
 - `venv/bin/python -m pytest -m integration -o "addopts=--asyncio-mode=auto" -q` = **259 passed**, 1 intentional OCI skip, 9,693 deselected.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
+- `python3 scripts/diagnose_scheduler_locks.py` reads stale lock files + duplicate scheduler processes (exit 0=clean, 1=problem); pairs with the PID guard in `scripts/scheduler.py`.
