@@ -42,6 +42,25 @@ def test_scheduler_pid_release_keeps_another_process_file(tmp_path, monkeypatch)
     assert pid_file.exists()
 
 
+def test_dead_scheduler_pid_is_cleared_and_replaced(tmp_path, monkeypatch) -> None:
+    """A pid file owned by a dead (non-running) numeric PID must be treated as stale.
+
+    This is the real-world crash scenario: a scheduler process died without
+    releasing the pid file, leaving a numeric PID that no longer maps to a live
+    process. The guard must clear it and write the current PID.
+    """
+    pid_file = tmp_path / "scheduler.pid"
+    # 999999 is overwhelmingly unlikely to be a live PID on the test host.
+    pid_file.write_text("999999\n")
+    monkeypatch.setattr(scheduler, "_SCHEDULER_PID_FILE", pid_file)
+
+    scheduler._ensure_single_scheduler_instance()
+
+    assert pid_file.read_text() == f"{os.getpid()}\n"
+    scheduler._release_scheduler_pid_file()
+    assert not pid_file.exists()
+
+
 def test_lock_skip_monitor_handles_counter_reset(monkeypatch) -> None:
     key = ("crawl_congestion", "sqlite_writer")
     sample = SimpleNamespace(

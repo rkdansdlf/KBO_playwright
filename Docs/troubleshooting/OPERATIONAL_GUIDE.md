@@ -115,6 +115,33 @@ If the same game still fails, wait for the KBO box score to finish publishing an
 - **Logs:** Located in `logs/scheduler.log`. These are automatically rotated (max 10MB, 5 backups).
 - **Alerts:** Critical errors in the scheduler are sent to the configured Telegram bot (or Slack as fallback) after 3 failed attempts.
 - **Daily summary:** `run_daily_update` prints detail failure reason counts, relay recovery target counts, and OCI publish skip counts at the end of each run. The same stability payload is written to `logs/daily_update_summary/YYYYMMDD.json` and embedded in the refresh manifest.
+- **Scheduler lock health:** Stale lock files (left by crashed jobs) and duplicate scheduler processes (the root cause of `crawl_p1p2_data_job` `LockAcquisitionError`) are diagnosed read-only by `scripts/diagnose_scheduler_locks.py`.
+
+### Monitor Scheduler Lock Health
+
+After any `LockAcquisitionError`, `_LockSkipped`, or suspected duplicate scheduler, run:
+
+```bash
+python3 scripts/diagnose_scheduler_locks.py
+```
+
+- Exit `0` = clean (no stale locks, at most one scheduler process).
+- Exit `1` = problem found (stale `*.lock` file owned by a dead PID, or more than one `scripts/scheduler.py` process). Each problem is listed with the offending file/PID.
+
+Use `-v` to print the OK state of every tier lock (`daily_update`, `live_refresh`, `maintenance`, `realtime_oci_sync`, `sqlite_writer`).
+
+Daily post-fix verification (the 2026-07 `crawl_p1p2_data_job` lock fix):
+
+```bash
+# No nested-lock warning should appear after the fix:
+grep "Another instance of run_daily_update" logs/scheduler.log
+
+# The 06:45 P1/P2 job must run and complete without a lock error:
+grep "crawl_p1p2_data" logs/scheduler.log
+grep -E "LockAcquisitionError|_LockSkipped" logs/scheduler.log
+```
+
+`DAILY_LOCK` and `MAINTENANCE_LOCK` are `ForceProcessLock`, so a stale lock file is auto-cleared on the next acquire. A single-instance PID guard (`data/locks/scheduler.pid`) blocks a second scheduler process (`exit 1`); a dead PID is treated as stale and cleared on startup.
 
 ### Read Daily Stability Summary
 ```bash
