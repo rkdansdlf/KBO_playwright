@@ -72,6 +72,7 @@ class TestAcquireRelease:
     def test_acquire_and_release_no_fcntl(self, tmp_path, monkeypatch):
         monkeypatch.setattr("src.utils.lock.HAS_FCNTL", False)
         monkeypatch.delenv("OCI_DB_URL", raising=False)
+        monkeypatch.delenv("TARGET_DATABASE_URL", raising=False)
         monkeypatch.delenv("DATABASE_URL", raising=False)
 
         lock = ProcessLock("test_acquire", lock_dir=str(tmp_path))
@@ -81,6 +82,7 @@ class TestAcquireRelease:
     def test_context_manager(self, tmp_path, monkeypatch):
         monkeypatch.setattr("src.utils.lock.HAS_FCNTL", False)
         monkeypatch.delenv("OCI_DB_URL", raising=False)
+        monkeypatch.delenv("TARGET_DATABASE_URL", raising=False)
         monkeypatch.delenv("DATABASE_URL", raising=False)
 
         with ProcessLock("test_ctx", lock_dir=str(tmp_path)) as lock:
@@ -89,6 +91,7 @@ class TestAcquireRelease:
     def test_context_manager_failure_raises(self, tmp_path, monkeypatch):
         monkeypatch.setattr("src.utils.lock.HAS_FCNTL", False)
         monkeypatch.delenv("OCI_DB_URL", raising=False)
+        monkeypatch.delenv("TARGET_DATABASE_URL", raising=False)
         monkeypatch.delenv("DATABASE_URL", raising=False)
 
         lock = ProcessLock("test_fail", lock_dir=str(tmp_path))
@@ -108,6 +111,7 @@ class TestAcquireRelease:
 class TestAcquirePgLock:
     def test_no_pg_url_returns_true(self, tmp_path, monkeypatch):
         monkeypatch.delenv("OCI_DB_URL", raising=False)
+        monkeypatch.delenv("TARGET_DATABASE_URL", raising=False)
         monkeypatch.delenv("DATABASE_URL", raising=False)
 
         lock = ProcessLock("test_pg", lock_dir=str(tmp_path))
