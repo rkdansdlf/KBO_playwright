@@ -141,6 +141,24 @@ grep "crawl_p1p2_data" logs/scheduler.log
 grep -E "LockAcquisitionError|_LockSkipped" logs/scheduler.log
 ```
 
+Both checks are automated by `scripts/check_p1p2_lock_health.py`. Run the
+baseline anytime to confirm no forbidden lock-error signatures are present and
+`diagnose_scheduler_locks` is clean:
+
+```bash
+python3 scripts/check_p1p2_lock_health.py
+```
+
+The morning after a 06:45 cycle, re-run with `--require-run` to also confirm
+the `crawl_p1p2_data_job` actually executed and left no lock error:
+
+```bash
+python3 scripts/check_p1p2_lock_health.py --require-run
+```
+
+- Exit `0` = clean (no forbidden signatures, job signatures present, diagnose clean).
+- Exit `1` = a problem was found (forbidden signature present, job signature missing, or diagnose non-zero).
+
 `DAILY_LOCK` and `MAINTENANCE_LOCK` are `ForceProcessLock`, so a stale lock file is auto-cleared on the next acquire. A single-instance PID guard (`data/locks/scheduler.pid`) blocks a second scheduler process (`exit 1`); a dead PID is treated as stale and cleared on startup.
 
 #### Docker crash-recovery (restart: always)
