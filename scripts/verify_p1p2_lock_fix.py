@@ -35,8 +35,51 @@ def _noop_main(argv=None):
     return 0
 
 
+def run_contention_scenario(acquire_lock, release_lock, run_job) -> int:
+    """Core contention check, injectable for unit testing.
+
+    Holds the daily lock (via ``acquire_lock``), runs ``run_job`` while held,
+    and reports whether it crashed with ``LockAcquisitionError``.
+
+    Returns:
+        0 - job ran without ``LockAcquisitionError`` (fix verified)
+        1 - job raised ``LockAcquisitionError`` (pre-fix behavior)
+        2 - could not acquire the lock for the simulation (skip)
+
+    """
+    acquired = acquire_lock()
+    if not acquired:
+        print("[SKIP] Could not acquire DAILY_LOCK for the simulation (lock busy?).")
+        return 2
+    print("[OK] Simulated crawl_daily_games holding DAILY_LOCK.")
+    crashed = False
+    try:
+        run_job()
+        print("[OK] crawl_p1p2_data_job ran without LockAcquisitionError.")
+    except scheduler.LockAcquisitionError:
+        crashed = True
+        print("[FAIL] LockAcquisitionError raised — pre-fix behavior reproduced.")
+    except Exception:
+        logger.exception("Unexpected exception during crawl_p1p2_data_job lock test")
+        print("[FAIL] Unexpected exception during lock test (see log).")
+        crashed = True
+    finally:
+        with contextlib.suppress(Exception):
+            release_lock()
+    if crashed:
+        return 1
+    print("[PASS] Lock fix verified: no LockAcquisitionError under DAILY_LOCK contention.")
+    return 0
+
+
 def main() -> int:
-    """Run the contention scenario and report pass/fail."""
+    """Run the contention scenario and report pass/fail.
+
+    Monkeypatches the heavy P1/P2 crawlers to no-ops so no operational DB
+    writes or Telegram alerts occur, then reproduces the 2026-07 lock
+    contention (``crawl_daily_games`` holding ``DAILY_LOCK``) and asserts
+    ``crawl_p1p2_data_job`` completes without ``LockAcquisitionError``.
+    """
     # Monkeypatch the heavy crawlers so no operational writes/alerts happen.
     import src.cli.crawl_parking as cp
     import src.cli.crawl_seat_sections as cs
@@ -48,34 +91,14 @@ def main() -> int:
     cf.main = _noop_main
 
     lock = scheduler.DAILY_LOCK
-    crashed = False
     try:
-        # 1. Hold DAILY_LOCK the way crawl_daily_games does.
-        acquired = lock.acquire(blocking=True, timeout=5)
-        if not acquired:
-            print("[SKIP] Could not acquire DAILY_LOCK for the simulation (lock busy?).")
-            return 2
-        print("[OK] Simulated crawl_daily_games holding DAILY_LOCK.")
-        try:
-            # 2. The 06:45 job requests the same lock while it is held.
-            scheduler.crawl_p1p2_data_job()
-            print("[OK] crawl_p1p2_data_job ran without LockAcquisitionError.")
-        except scheduler.LockAcquisitionError:
-            crashed = True
-            print("[FAIL] LockAcquisitionError raised — pre-fix behavior reproduced.")
-        except Exception:
-            logger.exception("Unexpected exception during crawl_p1p2_data_job lock test")
-            print("[FAIL] Unexpected exception during lock test (see log).")
-            crashed = True
+        return run_contention_scenario(
+            lambda: lock.acquire(blocking=True, timeout=5),
+            lock.release,
+            scheduler.crawl_p1p2_data_job,
+        )
     finally:
-        with contextlib.suppress(Exception):
-            lock.release()
         cp.main, cs.main, cf.main = saved
-
-    if crashed:
-        return 1
-    print("[PASS] Lock fix verified: no LockAcquisitionError under DAILY_LOCK contention.")
-    return 0
 
 
 if __name__ == "__main__":
