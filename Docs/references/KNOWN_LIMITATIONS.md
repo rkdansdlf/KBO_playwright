@@ -13,25 +13,33 @@ This document tracks known data quality issues and their current status.
 | Game season_id | ✅ Resolved | 100% (0 orphan) |
 | Game team codes | ✅ Resolved | 100% (0 legacy) |
 | game_metadata stadium_code | ✅ Resolved | 100% (0 NULL) |
-| player_season team_code | ⚠️ Known gap | 94% (1,248 NULL) |
+| player_season team_code | ⚠️ Known gap | 99.98% (2 NULL batting, 0 pitching) |
 
 ---
 
-## player_season NULL team_code (1,248 rows, 6%)
+## player_season NULL team_code (2 batting rows remaining)
 
 **Status**: Known gap, acceptable for analysis
 
-**Affected**: 620 distinct players across 2010-2026
+**Affected**: 2 `player_season_batting` rows (both REGULAR/KBO1); `player_season_pitching` fully resolved.
 
-**Root cause**:
+**History**:
+- Originally 1,248 NULL rows (6%, 620 players) across 2010-2026.
+- A conservative, evidence-based backfill (`scripts/maintenance/backfill_season_team_codes.py`)
+  resolved all rows with a single, unambiguous team code from
+  `player_game_batting` / `player_game_pitching` (same season) → `team_daily_roster`
+  (same year) → `player_basic.career`. It resolved **4 pitching rows** and left the
+  remaining **2 batting rows** unresolved because they have no unique team evidence
+  (one has no career text, the other appears on 6 distinct roster teams in that season).
+
+**Root cause (residual 2 rows)**:
 - These players have season-level batting records but no corresponding
-  `player_game_batting` data for the same season
-- Possible reasons:
-  - Player was registered but did not actually play
-  - Defensive/baserunning stats only (no plate appearances)
-  - Data collected from season summary pages but not game-level detail pages
+  `player_game_batting` data for the same season, no `team_daily_roster` entry with a
+  single team, and no parseable `player_basic.career`.
+- The backfill intentionally **skips** ambiguous or evidence-less rows rather than
+  inventing a team code.
 
-**Impact**: Minimal - these represent edge cases (players with very few games)
+**Impact**: Minimal - 2 edge-case rows out of ~19,600 batting rows.
 
 **Mitigation**: When aggregating player stats by team, filter out NULL team_code rows:
 ```sql
@@ -41,7 +49,7 @@ WHERE team_code IS NOT NULL
 GROUP BY team_code;
 ```
 
-**Monitoring**: Alert if NULL rate exceeds 10% via gap_report SEASON_TEAM_CODE check.
+**Monitoring**: `gap_report` SEASON_TEAM_CODE check reports `ok = (batting_null == 0 and pitching_null == 0)`; the 2 residual batting rows keep this `False` by design. The threshold-based alert (NULL rate > 10%) remains aspirational/monitored out-of-band.
 
 ---
 
