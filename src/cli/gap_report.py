@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -34,6 +35,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
+DEFAULT_SEASON_TEAM_CODE_ALERT_RATE = 10.0
+
+
+def _season_team_code_alert_rate() -> float:
+    """Return the NULL-rate percentage that triggers a season-team alert."""
+    raw_rate = os.getenv("SEASON_TEAM_CODE_GAP_ALERT_RATE", str(DEFAULT_SEASON_TEAM_CODE_ALERT_RATE))
+    try:
+        return max(0.0, float(raw_rate))
+    except ValueError:
+        logger.warning(
+            "Invalid SEASON_TEAM_CODE_GAP_ALERT_RATE=%r; using %.1f%%",
+            raw_rate,
+            DEFAULT_SEASON_TEAM_CODE_ALERT_RATE,
+        )
+        return DEFAULT_SEASON_TEAM_CODE_ALERT_RATE
 
 
 def check_relay_gaps() -> dict[str, Any]:
@@ -147,9 +163,12 @@ def check_season_stat_team_code_gaps() -> dict[str, Any]:
 
         batting_rate = (batting_null / batting_total * 100) if batting_total else 0
         pitching_rate = (pitching_null / pitching_total * 100) if pitching_total else 0
+        alert_threshold = _season_team_code_alert_rate()
 
         return {
             "ok": batting_null == 0 and pitching_null == 0,
+            "alert": batting_rate > alert_threshold or pitching_rate > alert_threshold,
+            "alert_threshold_rate": alert_threshold,
             "batting_null": batting_null,
             "batting_total": batting_total,
             "batting_null_rate": round(batting_rate, 1),
@@ -277,6 +296,8 @@ def _check_season_team_code(report: dict[str, Any]) -> None:
 def _gap_severity(gap: dict[str, Any]) -> str:
     if gap.get("error"):
         return "error"
+    if gap.get("alert") is False:
+        return "ok"
     if not gap.get("ok", True):
         return "warning"
     return "ok"
@@ -302,11 +323,23 @@ def _team_stats_summary_parts(gap_data: dict[str, Any]) -> list[str]:
     return summary_parts
 
 
+def _season_team_code_summary_parts(gap_data: dict[str, Any]) -> list[str]:
+    """Format season team-code NULL counts and the configured alert threshold."""
+    return [
+        f"{gap_data.get('total_null', 0)} NULL team_codes "
+        f"(batting={gap_data.get('batting_null_rate', 0):.1f}%, "
+        f"pitching={gap_data.get('pitching_null_rate', 0):.1f}%, "
+        f"alert_threshold={gap_data.get('alert_threshold_rate', DEFAULT_SEASON_TEAM_CODE_ALERT_RATE):.1f}%)",
+    ]
+
+
 def _gap_summary_parts(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
     if gap_type == "FRESHNESS":
         return _freshness_summary_parts(gap_data)
     if gap_type == "TEAM_STATS":
         return _team_stats_summary_parts(gap_data)
+    if gap_type == "SEASON_TEAM_CODE":
+        return _season_team_code_summary_parts(gap_data)
     if gap_data.get("error"):
         return [f"Error: {gap_data['error']}"]
     return _GAP_SUMMARY_FORMATTERS.get(gap_type, lambda _: [])(gap_data)

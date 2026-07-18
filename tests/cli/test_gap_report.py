@@ -16,6 +16,7 @@ from src.cli.gap_report import (
     _check_standings,
     _check_team_stats,
     _freshness_summary_parts,
+    _gap_severity,
     _gap_summary_parts,
     _pa_formula_detail_items,
     _team_stats_summary_parts,
@@ -351,6 +352,36 @@ class TestCheckSeasonStatTeamCodeGaps:
             assert result["total_null"] == 8
             assert result["batting_null_rate"] == 5.0
             assert result["pitching_null_rate"] == 3.0
+
+    def test_below_threshold_is_reported_without_alert(self, monkeypatch):
+        monkeypatch.setenv("SEASON_TEAM_CODE_GAP_ALERT_RATE", "10")
+        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_execute = MagicMock()
+            mock_execute.scalar.side_effect = [1, 100, 0, 100]
+            mock_session.execute.return_value = mock_execute
+
+            result = check_season_stat_team_code_gaps()
+
+        assert result["ok"] is False
+        assert result["alert"] is False
+        assert _gap_severity(result) == "ok"
+        assert "alert_threshold=10.0%" in _gap_summary_parts("SEASON_TEAM_CODE", result)[0]
+
+    def test_above_threshold_triggers_alert(self, monkeypatch):
+        monkeypatch.setenv("SEASON_TEAM_CODE_GAP_ALERT_RATE", "1")
+        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_execute = MagicMock()
+            mock_execute.scalar.side_effect = [2, 100, 0, 100]
+            mock_session.execute.return_value = mock_execute
+
+            result = check_season_stat_team_code_gaps()
+
+        assert result["alert"] is True
+        assert _gap_severity(result) == "warning"
 
     def test_zero_total_handling(self):
         with patch("src.cli.gap_report.SessionLocal") as mock_sf:
