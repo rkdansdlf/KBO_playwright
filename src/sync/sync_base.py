@@ -704,6 +704,8 @@ class OCISyncBase:
                 normalized_url,
                 echo=False,
                 pool_pre_ping=True,
+                pool_size=2,
+                max_overflow=2,
                 pool_recycle=240,
                 pool_timeout=30,
                 connect_args=connect_args,

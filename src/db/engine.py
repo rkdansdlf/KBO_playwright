@@ -155,8 +155,8 @@ def _create_oracle_engine(url: str) -> SQLAlchemyEngine:
     engine = create_engine(
         normalize_oracle_url(url),
         pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=2,
+        max_overflow=2,
         echo=False,
         connect_args=_oracle_connect_args(url),
     )
