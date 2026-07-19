@@ -32,9 +32,9 @@ from src.cli.auto_healer import run_healer_async
 from src.constants import DATE_STR_LEN
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.crawlers.player_batting_all_series_crawler import crawl_series_batting_stats
+from src.crawlers.player_batting_all_series_crawler import BattingSeriesCrawlRequest, crawl_series_batting_stats
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler
-from src.crawlers.player_pitching_all_series_crawler import crawl_pitcher_series
+from src.crawlers.player_pitching_all_series_crawler import PitchingSeriesCrawlRequest, crawl_pitcher_series
 from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.crawlers.team_event_crawler import TeamEventCrawler
@@ -1008,20 +1008,24 @@ async def _step_6_player_stats(ctx: _RunContext) -> None:
             logger.info("   [%s] Updating Batting Stats...", series_key)
             await asyncio.to_thread(
                 crawl_series_batting_stats,
-                year=ctx.year,
-                series_key=series_key,
-                save_to_db=True,
-                headless=ctx.headless,
-                limit=ctx.limit,
+                BattingSeriesCrawlRequest(
+                    year=ctx.year,
+                    series_key=series_key,
+                    save_to_db=True,
+                    headless=ctx.headless,
+                    limit=ctx.limit,
+                ),
             )
             logger.info("   [%s] Updating Pitching Stats...", series_key)
             await asyncio.to_thread(
                 crawl_pitcher_series,
-                year=ctx.year,
-                series_key=series_key,
-                save_to_db=True,
-                headless=ctx.headless,
-                limit=ctx.limit,
+                PitchingSeriesCrawlRequest(
+                    year=ctx.year,
+                    series_key=series_key,
+                    save_to_db=True,
+                    headless=ctx.headless,
+                    limit=ctx.limit,
+                ),
             )
         logger.info("   \u2705 Local cumulative stats for %s %s series updated", ctx.year, active_series)
     except RUNNER_EXCEPTIONS:
