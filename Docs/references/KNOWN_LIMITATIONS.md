@@ -103,6 +103,15 @@ an explicit completeness predicate and an alternate historical source.
 - No bulk historical crawl should run until an archive payload or import manifest is
   available. The sample probe report is kept outside the repository runtime data tree.
 
+**Coverage measurement and collector status**:
+- `src.cli.historical_coverage_report` is the read-only coverage tool for this gap. It
+  reports per-year and per-series terminal-game coverage, missing game IDs, and coverage
+  percentages for lineups, boxscores, player-game stats, events, and PBP.
+- `scripts/crawl_2009_game_details.py` is not an operational collector: its referenced
+  `LegacyGameDetailCrawler` and `save_game_detail` implementations are absent. Do not
+  use that legacy debug script for a batch backfill until a maintained collector and an
+  archive-backed source are available.
+
 **Future backfill acceptance gate**:
 - Boxscore/statistical backfill must contain both away/home hitter rows and both
   away/home pitcher rows. Metadata-only or scoreboard-only recovery is not sufficient
