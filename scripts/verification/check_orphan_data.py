@@ -14,7 +14,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import and_, column as sa_column, create_engine, exists, func, inspect, select, table as sa_table, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -410,6 +410,70 @@ def _sa_integrity_column_report(conn: Connection) -> CheckResult:
         row_count=len(missing),
         distinct_count=len(missing),
         samples=missing[:20],
+    )
+
+
+def _sa_native_fk_scan(conn: Connection, sample_limit: int) -> CheckResult:
+    """Portable FK orphan scan using SQLAlchemy introspection.
+
+    Equivalent to SQLite ``PRAGMA foreign_key_check`` for Oracle/PostgreSQL:
+    for every declared foreign key, counts child rows whose key has no matching
+    parent row. Uses a correlated ``NOT EXISTS`` query built with SQLAlchemy core
+    so it compiles correctly on any dialect (single- and composite-column FKs).
+    """
+    inspector = inspect(conn)
+    try:
+        table_names = inspector.get_table_names()
+    except CHECK_EXCEPTIONS as exc:
+        return CheckResult(
+            name=f"{conn.dialect.name} native FK orphan scan",
+            status="ERROR",
+            severity="warning",
+            error=str(exc),
+        )
+
+    total_orphans = 0
+    orphan_tables: set[str] = set()
+    samples: list[Any] = []
+    for child_table in table_names:
+        try:
+            fks = inspector.get_foreign_keys(child_table)
+        except CHECK_EXCEPTIONS:
+            continue
+        for fk in fks:
+            referred_table = fk.get("referred_table")
+            constrained = fk.get("constrained_columns") or []
+            referred = fk.get("referred_columns") or []
+            if not (referred_table and constrained and referred and len(constrained) == len(referred)):
+                continue
+            child_t = sa_table(child_table, *[sa_column(c) for c in constrained])
+            parent_t = sa_table(referred_table, *[sa_column(c) for c in referred])
+            child_cols = [child_t.c[c] for c in constrained]
+            parent_cols = [parent_t.c[c] for c in referred]
+            not_null = and_(*[cc.isnot(None) for cc in child_cols])
+            corr = and_(*[pc == cc for pc, cc in zip(parent_cols, child_cols, strict=True)])
+            exists_stmt = exists(select(1).select_from(parent_t).where(corr))
+            stmt = select(func.count()).select_from(child_t).where(not_null, ~exists_stmt)
+            try:
+                count = int(conn.execute(stmt).scalar() or 0)
+            except CHECK_EXCEPTIONS as exc:
+                logger.warning("FK scan skipped for %s -> %s: %s", child_table, referred_table, exc)
+                continue
+            if count:
+                total_orphans += count
+                orphan_tables.add(child_table)
+                if len(samples) < int(sample_limit):
+                    samples.append(
+                        f"{child_table}({', '.join(constrained)}) -> "
+                        f"{referred_table}({', '.join(referred)}) orphans={count}"
+                    )
+    status = "FAIL" if total_orphans else "PASS"
+    return CheckResult(
+        name=f"{conn.dialect.name} native FK orphan scan",
+        status=status,
+        row_count=total_orphans,
+        distinct_count=len(orphan_tables),
+        samples=samples,
     )
 
 
@@ -955,12 +1019,7 @@ def collect_database_url_report(db_url: str, sample_limit: int) -> dict[str, Any
     try:
         with engine.connect() as conn:
             results = [
-                CheckResult(
-                    name=f"{conn.dialect.name} native FK check",
-                    status="WARN",
-                    severity="warning",
-                    samples=["native FK scan is not implemented for this dialect; logical checks were executed"],
-                ),
+                _sa_native_fk_scan(conn, sample_limit),
                 _sa_integrity_column_report(conn),
                 _sa_declared_fk_report(conn),
                 _sa_cascade_fk_report(conn),

@@ -1,6 +1,6 @@
 import sqlite3
 
-from scripts.verification.check_orphan_data import collect_report
+from scripts.verification.check_orphan_data import _sa_native_fk_scan, collect_report
 
 
 def test_check_orphan_data_reports_missing_profiles_and_unknown_stubs(tmp_path):
@@ -95,3 +95,74 @@ def test_check_orphan_data_reports_roster_and_movement_integrity_gaps(tmp_path):
     assert checks["player_movements require canonical team"]["row_count"] == 1
     assert checks["player_movements unresolved player links"]["status"] == "WARN"
     assert checks["player_movements unresolved player links"]["row_count"] == 1
+
+
+def _sa_engine(db_path: object) -> object:
+    from sqlalchemy import create_engine
+
+    return create_engine(f"sqlite:///{db_path}")
+
+
+def test_sa_native_fk_scan_detects_orphans(tmp_path):
+    db_path = tmp_path / "fk_orphan.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE game (game_id TEXT PRIMARY KEY);
+        CREATE TABLE game_metadata (game_id TEXT PRIMARY KEY REFERENCES game(game_id));
+        INSERT INTO game_metadata (game_id) VALUES ('20250101LGSS0');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    with _sa_engine(db_path).connect() as sa_conn:
+        result = _sa_native_fk_scan(sa_conn, sample_limit=5)
+
+    assert result.status == "FAIL"
+    assert result.row_count == 1
+    assert result.distinct_count == 1
+    assert "game_metadata" in result.samples[0]
+
+
+def test_sa_native_fk_scan_passes_when_no_orphans(tmp_path):
+    db_path = tmp_path / "fk_clean.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE game (game_id TEXT PRIMARY KEY);
+        CREATE TABLE game_metadata (game_id TEXT PRIMARY KEY REFERENCES game(game_id));
+        INSERT INTO game (game_id) VALUES ('20250101LGSS0');
+        INSERT INTO game_metadata (game_id) VALUES ('20250101LGSS0');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    with _sa_engine(db_path).connect() as sa_conn:
+        result = _sa_native_fk_scan(sa_conn, sample_limit=5)
+
+    assert result.status == "PASS"
+    assert result.row_count == 0
+
+
+def test_sa_native_fk_scan_handles_composite_fk(tmp_path):
+    db_path = tmp_path / "fk_comp.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE parent (a TEXT, b TEXT, PRIMARY KEY (a, b));
+        CREATE TABLE child (a TEXT, b TEXT, FOREIGN KEY (a, b) REFERENCES parent(a, b));
+        INSERT INTO parent (a, b) VALUES ('x', '1');
+        INSERT INTO child (a, b) VALUES ('x', '1');
+        INSERT INTO child (a, b) VALUES ('y', '2');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    with _sa_engine(db_path).connect() as sa_conn:
+        result = _sa_native_fk_scan(sa_conn, sample_limit=5)
+
+    assert result.status == "FAIL"
+    assert result.row_count == 1
