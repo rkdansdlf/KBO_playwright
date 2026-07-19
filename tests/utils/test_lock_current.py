@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 import src.utils.lock as lock_module
 from src.utils.lock import ForceProcessLock, ProcessLock
@@ -229,6 +230,26 @@ def test_release_cleans_up_after_postgresql_unlock_failure(tmp_path: Path) -> No
     assert lock.db_connection is None
     assert lock.thread_lock_acquired is False
     assert lock.acquire_count == 0
+
+
+def test_release_cleans_up_after_sqlalchemy_unlock_failure(tmp_path: Path) -> None:
+    """A SQLAlchemy unlock failure must not mask the original job failure."""
+    mock_connection = MagicMock()
+    mock_connection.execute.side_effect = [None, SQLAlchemyError("connection closed")]
+    mock_engine = MagicMock()
+    mock_engine.connect.return_value = mock_connection
+    lock = ProcessLock("test_pg_sqlalchemy_unlock_failure", lock_dir=tmp_path)
+
+    with (
+        patch.object(ProcessLock, "_get_postgres_url", return_value="postgresql://localhost/db"),
+        patch.object(ProcessLock, "_get_pg_engine", return_value=mock_engine),
+    ):
+        assert lock.acquire() is True
+        lock.release()
+
+    mock_connection.close.assert_called_once()
+    assert lock.db_connection is None
+    assert lock.thread_lock_acquired is False
 
 
 def test_force_lock_retries_with_timeout_argument(tmp_path: Path) -> None:

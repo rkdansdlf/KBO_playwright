@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, ClassVar, Self, cast
 
+from sqlalchemy.exc import SQLAlchemyError
+
 if TYPE_CHECKING:
     from types import TracebackType
 
@@ -331,7 +333,7 @@ class ProcessLock:
                 lock_id = self._get_lock_id()
                 self._state.db_connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_id})
                 logger.debug("Released PostgreSQL advisory lock for: %s", self.name)
-            except (OSError, RuntimeError) as e:
+            except (OSError, RuntimeError, SQLAlchemyError) as e:
                 logger.warning("Error releasing PostgreSQL advisory lock for %s: %s", self.name, e)
             finally:
                 with contextlib.suppress(Exception):
