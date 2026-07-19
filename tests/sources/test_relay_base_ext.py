@@ -255,7 +255,17 @@ class TestReadManifestEntries:
         with path.open("w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=["game_id", "source_type", "locator", "format", "priority", "notes"],
+                fieldnames=[
+                    "game_id",
+                    "season",
+                    "source_type",
+                    "locator",
+                    "format",
+                    "priority",
+                    "sha256",
+                    "captured_at",
+                    "notes",
+                ],
             )
             writer.writeheader()
             for row in rows:
@@ -280,6 +290,49 @@ class TestReadManifestEntries:
         assert len(entries) == 1
         assert entries[0].game_id == "20260501DBLT"
         assert entries[0].priority == 10
+
+    def test_reads_archive_metadata(self, tmp_path: Path):
+        path = tmp_path / "manifest.csv"
+        self._write_csv(
+            path,
+            [
+                {
+                    "game_id": "20010405LTHU0",
+                    "season": "2001",
+                    "source_type": "json_archive",
+                    "locator": "20010405LTHU0.json",
+                    "format": "normalized_events_json",
+                    "priority": "1",
+                    "sha256": "a" * 64,
+                    "captured_at": "2026-07-19T02:00:00Z",
+                    "notes": "archive probe",
+                },
+            ],
+        )
+
+        entries = read_manifest_entries(path)
+
+        assert entries[0].season == 2001
+        assert entries[0].sha256 == "a" * 64
+        assert entries[0].captured_at == "2026-07-19T02:00:00Z"
+
+    def test_rejects_invalid_archive_checksum(self, tmp_path: Path):
+        path = tmp_path / "manifest.csv"
+        self._write_csv(
+            path,
+            [
+                {
+                    "game_id": "20010405LTHU0",
+                    "source_type": "json_archive",
+                    "locator": "archive.json",
+                    "format": "normalized_events_json",
+                    "sha256": "not-a-sha256",
+                },
+            ],
+        )
+
+        with pytest.raises(ValueError, match="sha256"):
+            read_manifest_entries(path)
 
     def test_skips_missing_file(self, tmp_path: Path):
         entries = read_manifest_entries(str(tmp_path / "missing.csv"))
