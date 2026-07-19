@@ -36,12 +36,15 @@ from src.cli.run_daily_update import (
     _set_candidate_sync_game_ids,
     _step_0_auto_healer,
     _step_1_schedule,
+    _step_6_player_stats,
     _summarize_pbp_failed_game,
     _write_daily_update_summary,
     _write_finalize_outputs,
     format_stability_alert_summary,
     run_update,
 )
+from src.crawlers.player_batting_all_series_crawler import BattingSeriesCrawlRequest
+from src.crawlers.player_pitching_all_series_crawler import PitchingSeriesCrawlRequest
 from src.services.game_write_contract import GameWriteContract
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_UNRESOLVED
 
@@ -67,6 +70,36 @@ def test_is_recoverable_detail_reason_normalizes_known_values():
     assert _is_recoverable_detail_reason("incomplete_detail") is True
     assert _is_recoverable_detail_reason("bad_status") is False
     assert _is_recoverable_detail_reason(None) is False
+
+
+def test_step_6_passes_series_request_objects_to_stats_crawlers():
+    ctx = _ctx()
+    ctx.daily_games = [{"season_type": "regular"}]
+    ctx.headless = True
+    ctx.limit = 7
+
+    with (
+        patch("src.cli.run_daily_update.crawl_series_batting_stats") as batting,
+        patch("src.cli.run_daily_update.crawl_pitcher_series") as pitching,
+    ):
+        asyncio.run(_step_6_player_stats(ctx))
+
+    batting_request = batting.call_args.args[0]
+    pitching_request = pitching.call_args.args[0]
+    assert batting_request == BattingSeriesCrawlRequest(
+        year=2026,
+        series_key="regular",
+        save_to_db=True,
+        headless=True,
+        limit=7,
+    )
+    assert pitching_request == PitchingSeriesCrawlRequest(
+        year=2026,
+        series_key="regular",
+        save_to_db=True,
+        headless=True,
+        limit=7,
+    )
 
 
 def test_format_counts_sorts_and_skips_zero_values():
