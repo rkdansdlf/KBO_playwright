@@ -47,8 +47,8 @@ def test_create_oracle_engine_uses_normalized_url_and_wallet_args(monkeypatch) -
     create.assert_called_once_with(
         "oracle+oracledb://user:p%40ss%2Bword@db/service",
         pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=2,
+        max_overflow=2,
         echo=False,
         connect_args={
             "config_dir": "/wallet",
