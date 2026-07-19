@@ -82,7 +82,7 @@ from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job
 from src.cli.run_daily_update import format_stability_alert_summary
 from src.cli.run_daily_update import main as run_daily_update_main
-from src.db.engine import DATABASE_URL, SessionLocal
+from src.db.engine import DATABASE_URL, SessionLocal, create_engine_for_url
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
 from src.utils.lock import ForceProcessLock, LockAcquisitionError, ProcessLock
@@ -1566,9 +1566,7 @@ def _query_max_updated_at(url: str | None) -> datetime | None:
     if not url:
         return None
     try:
-        from sqlalchemy import create_engine
-
-        engine = create_engine(url, pool_pre_ping=True)
+        engine = create_engine_for_url(url)
         with engine.connect() as conn:
             row = conn.execute(text("SELECT MAX(updated_at) FROM game")).scalar()
             return datetime.fromisoformat(row) if isinstance(row, str) else row
