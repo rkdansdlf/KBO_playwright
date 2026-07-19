@@ -8,6 +8,7 @@ from scripts.maintenance.backfill_season_team_codes import (
     BATTING_MISSING_QUERY,
     PITCHING_MISSING_QUERY,
     TeamCodeResolution,
+    _build_update_query,
     _resolve_batting_team_code,
     _resolve_from_player_team,
     _resolve_pitching_team_code,
@@ -246,3 +247,50 @@ def test_batting_resolver_falls_through_to_current_team() -> None:
     assert resolution == TeamCodeResolution("DB", "current_team")
     # game, roster, career, team -> 4 execute calls in order.
     assert session.execute.call_count == 4
+
+
+def test_batting_resolver_uses_oci_game_stats_when_player_game_table_is_missing() -> None:
+    session = MagicMock()
+    session.execute.return_value = _query_result(rows=[("KT",)])
+
+    with patch(
+        "scripts.maintenance.backfill_season_team_codes._available_tables",
+        return_value={"game_batting_stats", "player_basic"},
+    ):
+        resolution = _resolve_batting_team_code(session, 2365, 2021)
+
+    assert resolution == TeamCodeResolution("KT", "same_season_game")
+    session.execute.assert_called_once()
+    assert "game_batting_stats" in str(session.execute.call_args.args[0])
+
+
+def test_batting_resolver_skips_missing_oci_evidence_tables() -> None:
+    session = MagicMock()
+    session.execute.side_effect = [
+        _query_result(row=(None,)),
+        _query_result(row=("두산",)),
+    ]
+
+    with patch(
+        "scripts.maintenance.backfill_season_team_codes._available_tables",
+        return_value={"player_basic", "player_season_batting"},
+    ):
+        resolution = _resolve_batting_team_code(session, 60181, 2021)
+
+    assert resolution == TeamCodeResolution("DB", "current_team")
+    assert session.execute.call_count == 2
+
+
+def test_build_update_query_omits_missing_canonical_column() -> None:
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import Session
+
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE player_season_batting (id INTEGER, team_code TEXT, updated_at TEXT)"))
+    with Session(engine) as session:
+        query = _build_update_query(session, "player_season_batting")
+
+    assert "team_code = :code" in query
+    assert "updated_at = CURRENT_TIMESTAMP" in query
+    assert "canonical_team_code" not in query
