@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from src.constants import SHA256_HEX_LEN
 from src.services.wpa_transitions import event_has_wpa_state
 
 if TYPE_CHECKING:
@@ -54,6 +55,9 @@ class ManifestEntry:
     format: str
     priority: int = 100
     notes: str | None = None
+    season: int | None = None
+    sha256: str | None = None
+    captured_at: str | None = None
 
 
 @dataclass(slots=True)
@@ -346,7 +350,7 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
     """
     entries: list[ManifestEntry] = []
 
-    seen: set[tuple[str, str, str, str, int, str | None]] = set()
+    seen: set[tuple[str, str, str, str, int, str | None, int | None, str | None, str | None]] = set()
     for path in _coerce_manifest_paths(manifest_path):
         if not path.exists():
             continue
@@ -367,6 +371,8 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
                 if manifest_format not in ALLOWED_MANIFEST_FORMATS:
                     msg = f"Unsupported manifest format: {manifest_format}"
                     raise ValueError(msg)
+                season = _parse_manifest_season(row.get("season"), game_id)
+                sha256 = _parse_manifest_sha256(row.get("sha256"))
                 entry = ManifestEntry(
                     game_id=game_id,
                     source_type=source_type,
@@ -374,6 +380,9 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
                     format=manifest_format,
                     priority=int(row.get("priority") or 100),
                     notes=(row.get("notes") or "").strip() or None,
+                    season=season,
+                    sha256=sha256,
+                    captured_at=(row.get("captured_at") or "").strip() or None,
                 )
                 key = (
                     entry.game_id,
@@ -382,12 +391,41 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
                     entry.format,
                     entry.priority,
                     entry.notes,
+                    entry.season,
+                    entry.sha256,
+                    entry.captured_at,
                 )
                 if key in seen:
                     continue
                 seen.add(key)
                 entries.append(entry)
     return sorted(entries, key=lambda entry: (entry.game_id, entry.priority, entry.locator))
+
+
+def _parse_manifest_season(value: str | None, game_id: str) -> int | None:
+    season_text = str(value or "").strip()
+    if not season_text:
+        return None
+    try:
+        season = int(season_text)
+    except ValueError as exc:
+        message = f"Invalid manifest season: {season_text}"
+        raise ValueError(message) from exc
+    game_year = str(game_id)[:4]
+    if game_year.isdigit() and season != int(game_year):
+        message = f"Manifest season does not match game_id: {season_text} != {game_year}"
+        raise ValueError(message)
+    return season
+
+
+def _parse_manifest_sha256(value: str | None) -> str | None:
+    checksum = str(value or "").strip().lower()
+    if not checksum:
+        return None
+    if len(checksum) != SHA256_HEX_LEN or any(char not in "0123456789abcdef" for char in checksum):
+        message = f"Manifest sha256 must be a {SHA256_HEX_LEN}-character hexadecimal digest"
+        raise ValueError(message)
+    return checksum
 
 
 def load_capability_records(capability_path: str | Path) -> dict[tuple[str, str], CapabilityRecord]:

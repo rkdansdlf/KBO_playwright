@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from html import unescape
@@ -122,20 +123,33 @@ class ImportRelayAdapter(RelaySourceAdapter):
             return path
         return self.manifest_base_dir / path
 
-    def _read_text(self, locator: str) -> str:
-        path = self._resolve_locator(locator)
-        if path.exists():
-            return path.read_text(encoding="utf-8")
-        return locator
+    def _read_text(self, locator: str, *, expected_sha256: str | None = None) -> str:
+        payload = self._read_bytes(locator)
+        self._verify_checksum(payload, expected_sha256)
+        return payload.decode("utf-8")
 
-    def _read_json(self, locator: str) -> object:
+    def _read_json(self, locator: str, *, expected_sha256: str | None = None) -> object:
+        payload = self._read_bytes(locator)
+        self._verify_checksum(payload, expected_sha256)
+        return json.loads(payload.decode("utf-8"))
+
+    def _read_bytes(self, locator: str) -> bytes:
         path = self._resolve_locator(locator)
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-        return json.loads(locator)
+            return path.read_bytes()
+        return locator.encode("utf-8")
+
+    @staticmethod
+    def _verify_checksum(payload: bytes, expected_sha256: str | None) -> None:
+        if not expected_sha256:
+            return
+        actual_sha256 = hashlib.sha256(payload).hexdigest()
+        if actual_sha256 != expected_sha256:
+            message = f"Manifest checksum mismatch: expected {expected_sha256}, got {actual_sha256}"
+            raise ValueError(message)
 
     def _parse_normalized_events_json(self, entry: ManifestEntry) -> NormalizedRelayResult:
-        payload = self._read_json(entry.locator)
+        payload = self._read_json(entry.locator, expected_sha256=entry.sha256)
         if isinstance(payload, dict):
             events = list(payload.get("events") or [])
             raw_pbp_rows = list(payload.get("raw_pbp_rows") or [])
@@ -159,7 +173,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
         )
 
     def _parse_naver_json(self, entry: ManifestEntry) -> NormalizedRelayResult:
-        payload = self._read_json(entry.locator)
+        payload = self._read_json(entry.locator, expected_sha256=entry.sha256)
         if isinstance(payload, dict):
             relays = payload.get("result", {}).get("textRelayData", {}).get("textRelays", [])
             if not relays and isinstance(payload.get("textRelays"), list):
@@ -184,7 +198,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
         )
 
     def _parse_html_archive(self, entry: ManifestEntry) -> NormalizedRelayResult:
-        html = self._read_text(entry.locator)
+        html = self._read_text(entry.locator, expected_sha256=entry.sha256)
         text = unescape(re.sub(r"<[^>]+>", "\n", html))
         rows = self._lines_to_pbp_rows(text.splitlines())
         return NormalizedRelayResult(
@@ -198,7 +212,9 @@ class ImportRelayAdapter(RelaySourceAdapter):
         )
 
     def _parse_plain_text(self, entry: ManifestEntry) -> NormalizedRelayResult:
-        rows = self._lines_to_pbp_rows(self._read_text(entry.locator).splitlines())
+        rows = self._lines_to_pbp_rows(
+            self._read_text(entry.locator, expected_sha256=entry.sha256).splitlines(),
+        )
         return NormalizedRelayResult(
             game_id=entry.game_id,
             source_name=self.source_name,
