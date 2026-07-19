@@ -58,6 +58,14 @@ GROUP BY team_code;
 
 **OCI propagation**: The backfill is now dialect-agnostic (roster lookup uses SQLAlchemy `extract` instead of SQLite `strftime`), so it runs against both local SQLite and OCI. To resolve 이병헌 in OCI, dispatch the manual `backfill_season_team_codes` GitHub Actions workflow with `table=batting` (dry-run first, then `apply=true`); CI reaches OCI via `secrets.OCI_DB_URL`. The local dev SQLite already has the fix applied via `--apply`.
 
+**OCI verification (2026-07-20)**: The renewed mTLS wallet at
+`/Users/mac/keypair/Wallet_EFH9M9C9H109963K 2` restored OCI connectivity. OCI contained
+three NULL `player_season_batting.team_code` rows for 2021: 이대은 (2365), 김지용
+(60181), and 김건태 (60339). The OCI-aware backfill used `game_batting_stats` when
+`player_game_batting` was absent and applied two unambiguous current-team resolutions:
+이대은 → `KT`, 김지용 → `DB`. 김건태 remains the sole OCI residual because no team or
+career evidence exists. `player_season_pitching` had zero NULL team-code rows.
+
 ---
 
 ## Historical Data Coverage (2001-2009)
