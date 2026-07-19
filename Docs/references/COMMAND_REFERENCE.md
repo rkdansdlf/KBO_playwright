@@ -266,6 +266,12 @@ done
 # 수동 상세 수집(월 단위 대상 필터; 기존 상세/릴레이는 기본 스킵)
 ./venv/bin/python3 -m src.cli.collect_games --year 2025 --month 10
 
+# 역사 archive manifest 검증 (DB에 쓰지 않는 dry-run)
+./venv/bin/python3 -m src.cli.historical_import \
+    --manifest data/historical/2001_manifest.csv \
+    --dry-run --strict \
+    --report-out data/reports/2001_import_dry_run.json
+
 # 기존 상세/릴레이를 강제로 다시 수집
 ./venv/bin/python3 -m src.cli.collect_games --year 2025 --month 10 --force
 
