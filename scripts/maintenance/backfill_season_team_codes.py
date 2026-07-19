@@ -1,8 +1,9 @@
 """Backfill missing team_code in player_season batting/pitching tables.
 
 Resolves NULL ``team_code`` rows using a conservative, evidence-based cascade:
-``player_game_batting`` / ``player_game_pitching`` (same season) ->
-``team_daily_roster`` (same year) -> ``player_basic.career`` text.
+``player_game_batting`` / ``player_game_pitching`` (same season), or the OCI
+``game_batting_stats`` / ``game_pitching_stats`` fallback -> ``team_daily_roster``
+(same year, when present) -> ``player_basic.career`` text -> current team.
 
 Only rows with a single, unambiguous team code are resolved; ambiguous or
 evidence-less rows are skipped (never invented). Mirrors the resolver
@@ -19,7 +20,10 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from sqlalchemy import distinct, extract, select, text
+from sqlalchemy import distinct, extract, inspect as sa_inspect, select, text
+from sqlalchemy.engine import Connection as SAConnection
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
@@ -92,16 +96,20 @@ TeamCodeResolver = Callable[[Session, int, int], TeamCodeResolution]
 
 BATTING_MISSING_QUERY = "SELECT id, player_id, season FROM player_season_batting WHERE team_code IS NULL"
 PITCHING_MISSING_QUERY = "SELECT id, player_id, season FROM player_season_pitching WHERE team_code IS NULL"
-BATTING_UPDATE_QUERY = (
-    "UPDATE player_season_batting "
-    "SET team_code = :code, canonical_team_code = :code, updated_at = CURRENT_TIMESTAMP "
-    "WHERE id = :id"
-)
-PITCHING_UPDATE_QUERY = (
-    "UPDATE player_season_pitching "
-    "SET team_code = :code, canonical_team_code = :code, updated_at = CURRENT_TIMESTAMP "
-    "WHERE id = :id"
-)
+GAME_EVIDENCE_QUERIES = {
+    "batting": {
+        "player_game_batting": "SELECT DISTINCT team_code FROM player_game_batting "
+        "WHERE player_id = :pid AND game_id LIKE :pattern AND team_code IS NOT NULL",
+        "game_batting_stats": "SELECT DISTINCT team_code FROM game_batting_stats "
+        "WHERE player_id = :pid AND game_id LIKE :pattern AND team_code IS NOT NULL",
+    },
+    "pitching": {
+        "player_game_pitching": "SELECT DISTINCT team_code FROM player_game_pitching "
+        "WHERE player_id = :pid AND game_id LIKE :pattern AND team_code IS NOT NULL",
+        "game_pitching_stats": "SELECT DISTINCT team_code FROM game_pitching_stats "
+        "WHERE player_id = :pid AND game_id LIKE :pattern AND team_code IS NOT NULL",
+    },
+}
 
 
 def _team_code_for_name(team_name: str | None) -> str | None:
@@ -156,6 +164,35 @@ def parse_career_team(career: str, year: int) -> str | None:
 def _lookup_team_codes(session: Session, query: str, params: dict[str, int | str]) -> set[str]:
     rows = session.execute(text(query), params).fetchall()
     return {str(row[0]).strip() for row in rows if row and row[0]}
+
+
+def _available_tables(session: Session) -> set[str] | None:
+    """Return normalized table names, or None for lightweight test doubles."""
+    try:
+        bind = session.get_bind()
+        if not isinstance(bind, (Engine, SAConnection)):
+            return None
+        return {str(name).lower() for name in sa_inspect(bind).get_table_names()}
+    except (SQLAlchemyError, AttributeError, TypeError):
+        return None
+
+
+def _has_table(session: Session, table_name: str) -> bool:
+    tables = _available_tables(session)
+    return tables is None or table_name.lower() in tables
+
+
+def _game_team_codes(session: Session, player_id: int, season: int, stat_type: str) -> set[str]:
+    """Use player-game evidence, falling back to OCI game-stat tables."""
+    queries = GAME_EVIDENCE_QUERIES[stat_type]
+    table_name = next((name for name in queries if _has_table(session, name)), None)
+    if table_name is None:
+        return set()
+    return _lookup_team_codes(
+        session,
+        queries[table_name],
+        {"pid": player_id, "pattern": f"{season}%"},
+    )
 
 
 def _roster_team_codes(session: Session, player_id: int, season: int) -> set[str]:
@@ -225,19 +262,15 @@ def _resolve_unique_evidence(codes: set[str], source: str) -> TeamCodeResolution
 
 def _resolve_batting_team_code(session: Session, player_id: int, season: int) -> TeamCodeResolution:
     game_evidence = _resolve_unique_evidence(
-        _lookup_team_codes(
-            session,
-            "SELECT DISTINCT team_code FROM player_game_batting "
-            "WHERE player_id = :pid AND game_id LIKE :pattern AND team_code IS NOT NULL",
-            {"pid": player_id, "pattern": f"{season}%"},
-        ),
+        _game_team_codes(session, player_id, season, "batting"),
         "same_season_game",
     )
     if game_evidence is not None:
         return game_evidence
-    roster_evidence = _resolve_unique_evidence(
-        _roster_team_codes(session, player_id, season),
-        "same_season_roster",
+    roster_evidence = (
+        _resolve_unique_evidence(_roster_team_codes(session, player_id, season), "same_season_roster")
+        if _has_table(session, "team_daily_roster")
+        else None
     )
     resolution = roster_evidence
     if resolution is None:
@@ -251,19 +284,15 @@ def _resolve_batting_team_code(session: Session, player_id: int, season: int) ->
 
 def _resolve_pitching_team_code(session: Session, player_id: int, season: int) -> TeamCodeResolution:
     game_evidence = _resolve_unique_evidence(
-        _lookup_team_codes(
-            session,
-            "SELECT DISTINCT team_code FROM player_game_pitching "
-            "WHERE player_id = :pid AND game_id LIKE :pattern AND team_code IS NOT NULL",
-            {"pid": player_id, "pattern": f"{season}%"},
-        ),
+        _game_team_codes(session, player_id, season, "pitching"),
         "same_season_game",
     )
     if game_evidence is not None:
         return game_evidence
-    roster_evidence = _resolve_unique_evidence(
-        _roster_team_codes(session, player_id, season),
-        "same_season_roster",
+    roster_evidence = (
+        _resolve_unique_evidence(_roster_team_codes(session, player_id, season), "same_season_roster")
+        if _has_table(session, "team_daily_roster")
+        else None
     )
     resolution = roster_evidence
     if resolution is None:
@@ -275,11 +304,25 @@ def _resolve_pitching_team_code(session: Session, player_id: int, season: int) -
     return resolution
 
 
+def _build_update_query(session: Session, table_name: str) -> str:
+    """Build an update compatible with local and OCI season-stat schemas."""
+    assignments = ["team_code = :code"]
+    try:
+        columns = {str(column["name"]).lower() for column in sa_inspect(session.get_bind()).get_columns(table_name)}
+    except (SQLAlchemyError, AttributeError, TypeError):
+        columns = set()
+    if not columns or "canonical_team_code" in columns:
+        assignments.append("canonical_team_code = :code")
+    if not columns or "updated_at" in columns:
+        assignments.append("updated_at = CURRENT_TIMESTAMP")
+    return f"UPDATE {table_name} SET {', '.join(assignments)} WHERE id = :id"
+
+
 def _run_backfill(
     *,
     table_name: str,
     missing_query: str,
-    update_query: str,
+    update_query: str | None,
     resolver: TeamCodeResolver,
     apply: bool = False,
     year: int | None = None,
@@ -288,6 +331,7 @@ def _run_backfill(
     logger.info("Starting %s season team_code backfill (apply=%s, year=%s)...", table_name, apply, year)
     session = SessionLocal()
     try:
+        effective_update_query = update_query or _build_update_query(session, table_name)
         rows = session.execute(text(missing_query)).fetchall()
         if year is not None:
             rows = [r for r in rows if r[2] == year]
@@ -302,7 +346,7 @@ def _run_backfill(
                 continue
             resolved_count += 1
             if apply:
-                session.execute(text(update_query), {"code": resolution.code, "id": row_id})
+                session.execute(text(effective_update_query), {"code": resolution.code, "id": row_id})
                 applied_count += 1
         if apply:
             session.commit()
@@ -336,7 +380,7 @@ def backfill_batting_team_codes(*, apply: bool = False, year: int | None = None)
     return _run_backfill(
         table_name="player_season_batting",
         missing_query=BATTING_MISSING_QUERY,
-        update_query=BATTING_UPDATE_QUERY,
+        update_query=None,
         resolver=_resolve_batting_team_code,
         apply=apply,
         year=year,
@@ -348,7 +392,7 @@ def backfill_pitching_team_codes(*, apply: bool = False, year: int | None = None
     return _run_backfill(
         table_name="player_season_pitching",
         missing_query=PITCHING_MISSING_QUERY,
-        update_query=PITCHING_UPDATE_QUERY,
+        update_query=None,
         resolver=_resolve_pitching_team_code,
         apply=apply,
         year=year,
