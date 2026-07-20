@@ -6,6 +6,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import func, or_, select, text
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import load_only
 
 from src.constants import IP_FRAC_THIRD, IP_FRAC_TWO_THIRDS, MAX_OUTS
 from src.models.base import Base
@@ -17,6 +20,7 @@ from src.utils.team_codes import STANDARD_TEAM_CODES
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+    from sqlalchemy.sql.elements import ColumnElement
 
 AGGREGATE_TEAM_CODES = ("", "합계", "TOTAL", "ALL", "-")
 INVALID_TEAM_CODES = (*AGGREGATE_TEAM_CODES, "EA", "WE")
@@ -115,18 +119,47 @@ class QualityGate:
             "error": error,
         }
 
-    @staticmethod
-    def _valid_team_code_filters(model: type[Base]) -> tuple[Any, ...]:
-        team_expr = func.coalesce(
+    def _team_code_expression(self, model: type[Base]) -> ColumnElement[object]:
+        """Use canonical team code only when the target schema has that column."""
+        try:
+            bind = self.session.get_bind()
+            columns = {str(column["name"]).lower() for column in sa_inspect(bind).get_columns(model.__tablename__)}
+            if "canonical_team_code" not in columns:
+                return model.team_code  # type: ignore[attr-defined]
+        except (SQLAlchemyError, AttributeError, TypeError):
+            pass
+        return func.coalesce(
             model.canonical_team_code,  # type: ignore[attr-defined]
             model.team_code,  # type: ignore[attr-defined]
         )
+
+    def _is_oracle(self) -> bool:
+        """Return whether the active quality-gate connection uses Oracle."""
+        try:
+            return self.session.get_bind().dialect.name == "oracle"
+        except (AttributeError, TypeError):
+            return False
+
+    @staticmethod
+    def _valid_team_code_filters(
+        model: type[Base],
+        team_expr: ColumnElement[object] | None = None,
+        *,
+        exclude_empty_string: bool = False,
+    ) -> tuple[Any, ...]:
+        if team_expr is None:
+            team_expr = func.coalesce(
+                model.canonical_team_code,  # type: ignore[attr-defined]
+                model.team_code,  # type: ignore[attr-defined]
+            )
+        invalid_codes = tuple(code for code in INVALID_TEAM_CODES if not (exclude_empty_string and code == ""))
+        aggregate_codes = tuple(code for code in AGGREGATE_TEAM_CODES if not (exclude_empty_string and code == ""))
         return (
             team_expr.isnot(None),
-            team_expr.not_in(INVALID_TEAM_CODES),
+            team_expr.not_in(invalid_codes),
             or_(
                 model.team_code.is_(None),  # type: ignore[attr-defined]
-                model.team_code.not_in(AGGREGATE_TEAM_CODES),  # type: ignore[attr-defined]
+                model.team_code.not_in(aggregate_codes),  # type: ignore[attr-defined]
             ),
         )
 
@@ -463,11 +496,10 @@ class QualityGate:
             return self._result(season=season, league=league)
 
         # 2. Get player-level aggregates per team
+        team_code_expr = self._team_code_expression(PlayerSeasonBatting)
         player_agg = (
             select(
-                func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code).label(
-                    "team_code",
-                ),
+                team_code_expr.label("team_code"),
                 func.sum(PlayerSeasonBatting.games).label("games"),
                 func.sum(PlayerSeasonBatting.plate_appearances).label("plate_appearances"),
                 func.sum(PlayerSeasonBatting.at_bats).label("at_bats"),
@@ -490,9 +522,13 @@ class QualityGate:
             .where(
                 PlayerSeasonBatting.season == season,
                 PlayerSeasonBatting.league == league,
-                *self._valid_team_code_filters(PlayerSeasonBatting),
+                *self._valid_team_code_filters(
+                    PlayerSeasonBatting,
+                    team_code_expr,
+                    exclude_empty_string=self._is_oracle(),
+                ),
             )
-            .group_by(func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code))
+            .group_by(team_code_expr)
         )
         player_data = self.session.execute(player_agg).all()
         player_map = {r.team_code: r for r in player_data if r.team_code}
@@ -609,11 +645,10 @@ class QualityGate:
             return self._result(season=season, league=league)
 
         # 2. Get player-level aggregates per team
+        team_code_expr = self._team_code_expression(PlayerSeasonPitching)
         player_agg = (
             select(
-                func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code).label(
-                    "team_code",
-                ),
+                team_code_expr.label("team_code"),
                 func.sum(PlayerSeasonPitching.games).label("games"),
                 func.sum(PlayerSeasonPitching.wins).label("wins"),
                 func.sum(PlayerSeasonPitching.losses).label("losses"),
@@ -639,9 +674,13 @@ class QualityGate:
             .where(
                 PlayerSeasonPitching.season == season,
                 PlayerSeasonPitching.league == league,
-                *self._valid_team_code_filters(PlayerSeasonPitching),
+                *self._valid_team_code_filters(
+                    PlayerSeasonPitching,
+                    team_code_expr,
+                    exclude_empty_string=self._is_oracle(),
+                ),
             )
-            .group_by(func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code))
+            .group_by(team_code_expr)
         )
         player_data = self.session.execute(player_agg).all()
         player_map = {r.team_code: r for r in player_data if r.team_code}
@@ -781,6 +820,26 @@ class QualityGate:
 
         players = (
             self.session.query(PlayerSeasonBatting)
+            .options(
+                load_only(
+                    PlayerSeasonBatting.player_id,
+                    PlayerSeasonBatting.plate_appearances,
+                    PlayerSeasonBatting.at_bats,
+                    PlayerSeasonBatting.hits,
+                    PlayerSeasonBatting.doubles,
+                    PlayerSeasonBatting.triples,
+                    PlayerSeasonBatting.home_runs,
+                    PlayerSeasonBatting.strikeouts,
+                    PlayerSeasonBatting.walks,
+                    PlayerSeasonBatting.intentional_walks,
+                    PlayerSeasonBatting.hbp,
+                    PlayerSeasonBatting.sacrifice_flies,
+                    PlayerSeasonBatting.avg,
+                    PlayerSeasonBatting.obp,
+                    PlayerSeasonBatting.slg,
+                    PlayerSeasonBatting.extra_stats,
+                ),
+            )
             .filter(
                 PlayerSeasonBatting.season == season,
                 PlayerSeasonBatting.league == "FUTURES",
@@ -881,6 +940,29 @@ class QualityGate:
 
         players = (
             self.session.query(PlayerSeasonPitching)
+            .options(
+                load_only(
+                    PlayerSeasonPitching.player_id,
+                    PlayerSeasonPitching.games,
+                    PlayerSeasonPitching.innings_outs,
+                    PlayerSeasonPitching.innings_pitched,
+                    PlayerSeasonPitching.wins,
+                    PlayerSeasonPitching.losses,
+                    PlayerSeasonPitching.saves,
+                    PlayerSeasonPitching.holds,
+                    PlayerSeasonPitching.runs_allowed,
+                    PlayerSeasonPitching.earned_runs,
+                    PlayerSeasonPitching.hits_allowed,
+                    PlayerSeasonPitching.home_runs_allowed,
+                    PlayerSeasonPitching.walks_allowed,
+                    PlayerSeasonPitching.strikeouts,
+                    PlayerSeasonPitching.hit_batters,
+                    PlayerSeasonPitching.era,
+                    PlayerSeasonPitching.whip,
+                    PlayerSeasonPitching.fip,
+                    PlayerSeasonPitching.extra_stats,
+                ),
+            )
             .filter(
                 PlayerSeasonPitching.season == season,
                 PlayerSeasonPitching.league == "FUTURES",

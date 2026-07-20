@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect, text
 
+from src.db.engine import create_engine_for_url as create_engine
 from src.db.engine import get_oci_url
 
 if TYPE_CHECKING:
@@ -137,8 +138,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     database_url = args.database_url or os.getenv("DATABASE_URL") or get_oci_url()
     if not database_url:
         parser.error("database URL is required via --database-url, DATABASE_URL, or OCI_DB_URL")
-
-    from sqlalchemy import create_engine
 
     engine = create_engine(database_url)
     with engine.connect() as conn:
