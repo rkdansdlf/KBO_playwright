@@ -8,9 +8,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import create_engine
-
 from src.constants import DATE_STR_LEN
+from src.db.engine import create_engine_for_url as create_engine
 from src.db.engine import get_oci_url
 from src.validators.data_quality_regression_pack import (
     render_regression_report,

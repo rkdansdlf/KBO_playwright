@@ -394,7 +394,11 @@ def _run_check(
         target_date=options.target_date,
         season=options.season,
     )
-    missing_columns = [column for column in (*check.required_columns, *scope_columns) if column not in columns]
+    missing_columns = [
+        column
+        for column in (*check.required_columns, *scope_columns)
+        if column not in columns and not (column == "source" and "data_source" in columns)
+    ]
     if missing_columns:
         return QualityRegressionResult(
             check_id=check.check_id,
@@ -404,8 +408,13 @@ def _run_check(
             message=f"missing columns on {check.table}: {', '.join(missing_columns)}",
         )
 
-    count_sql = _append_scope_predicate(check.count_sql, predicate)
-    sample_sql = _append_scope_predicate(check.sample_sql, predicate)
+    count_sql = _adapt_schema_aliases(check.count_sql, columns)
+    sample_sql = _adapt_schema_aliases(check.sample_sql, columns)
+    count_sql = _append_scope_predicate(count_sql, predicate)
+    sample_sql = _adapt_limit_clause(
+        _append_scope_predicate(sample_sql, predicate),
+        conn.dialect.name,
+    )
     violation_count = int(conn.execute(text(count_sql), params).scalar_one())
     sample_ids = tuple(str(row[0]) for row in conn.execute(text(sample_sql), params).all())
     status = "pass" if violation_count == 0 else "fail"
@@ -445,3 +454,22 @@ def _append_scope_predicate(sql: str, predicate: str | None) -> str:
     if separator:
         return f"{query.rstrip()} AND {predicate}\nLIMIT{limit}"
     return f"{sql.rstrip()} AND {predicate}"
+
+
+def _adapt_limit_clause(sql: str, dialect: str) -> str:
+    """Translate SQLite/PostgreSQL sample SQL syntax for Oracle."""
+    if dialect != "oracle":
+        return sql
+    sql = sql.replace("CAST(game_id AS TEXT)", "TO_CHAR(game_id)")
+    sql = sql.replace("CAST(player_id AS TEXT)", "TO_CHAR(player_id)")
+    query, separator, limit = sql.rpartition("LIMIT")
+    if separator and limit.strip().isdigit():
+        return f"{query.rstrip()}\nFETCH FIRST {limit.strip()} ROWS ONLY"
+    return sql
+
+
+def _adapt_schema_aliases(sql: str, columns: set[str]) -> str:
+    """Adapt known local/OCI column aliases in invariant SQL."""
+    if "source" not in columns and "data_source" in columns:
+        return sql.replace("source", "data_source")
+    return sql
