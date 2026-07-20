@@ -10,9 +10,27 @@ from src.cli.data_quality_regression_pack import main as data_quality_regression
 from src.validators.data_quality_regression_pack import (
     QualityRegressionReport,
     QualityRegressionResult,
+    _adapt_limit_clause,
+    _adapt_schema_aliases,
     render_regression_report,
     run_regression_pack,
 )
+
+
+def test_adapt_limit_clause_uses_oracle_fetch_first() -> None:
+    sql = "SELECT CAST(game_id AS TEXT) FROM game_batting_stats LIMIT 5"
+
+    assert _adapt_limit_clause(sql, "oracle") == (
+        "SELECT TO_CHAR(game_id) FROM game_batting_stats\nFETCH FIRST 5 ROWS ONLY"
+    )
+    assert _adapt_limit_clause(sql, "sqlite") == sql
+
+
+def test_adapt_schema_aliases_maps_source_to_data_source() -> None:
+    sql = "SELECT * FROM player_season_batting WHERE source = 'AGGREGATED'"
+
+    assert "data_source = 'AGGREGATED'" in _adapt_schema_aliases(sql, {"data_source"})
+    assert _adapt_schema_aliases(sql, {"source"}) == sql
 
 
 def _create_quality_tables(conn) -> None:
