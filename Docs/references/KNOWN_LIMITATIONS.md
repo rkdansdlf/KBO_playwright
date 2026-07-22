@@ -76,6 +76,10 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
   player-season sums disagree substantially in OCI for 2021. This is a data-scope/source
   reconciliation issue, not a team-code backfill failure, and remains a separate audit
   item.
+- The read-only local game-level audit confirms that `player_game_pitching` is not a
+  complete 2021 source: it covers 50 games versus 1,440 games in `game_pitching_stats`,
+  with no duplicate `(game_id, player_id)` rows. It therefore cannot explain or repair
+  the official staging difference of 18 outs and 18 earned runs.
 - A read-only `recalc_team_stats --season 2021 --dry-run` confirmed that the OCI
   `team_season_*` rows are partial (roughly 30-65 games per team), while the
   `player_season_*` rollups contain near-full-season totals. OCI also lacks
@@ -97,6 +101,15 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
 - The pitcher collector now waits for the delayed team-filter postback and returns to
   page 1 before selecting the next team. The live 2021 probe verified complete team
   page traversal; no OCI player or team rows were changed during this audit.
+- A 2021 team-filter batting probe returned 362 split rows versus 394 global rows, so
+  those split rows are not complete enough to replace the exact global batting source.
+  The new SQLite migration 047 and OCI migration 048 add `team_code` to the logical
+  season-stat unique key, but only SQLite 047 has been applied locally; no OCI schema
+  or data change has been applied.
+- A read-only 2026 staging run collected 328 batting rows and 271 pitching rows. The
+  current-season team batting source exposes zero plate appearances, producing a
+  `35554` PA global difference; pitching differs by 30 outs and 17 earned runs.
+  2026 also remains `ready_for_sync = false`.
 
 ---
 
