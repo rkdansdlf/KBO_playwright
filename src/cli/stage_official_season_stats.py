@@ -251,8 +251,6 @@ def collect_stage_report(year: int, *, headless: bool = True) -> dict[str, objec
             series_key="regular",
             save_to_db=False,
             headless=headless,
-            by_team=True,
-            preserve_team_splits=True,
         ),
     )
     player_pitching = crawl_pitcher_series(
