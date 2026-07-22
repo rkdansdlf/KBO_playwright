@@ -36,7 +36,7 @@ services:
       - browserless
     environment:
       - TZ=Asia/Seoul
-      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000
+      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000/chromium/playwright
       # 크롤링 설정
       - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
       - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
@@ -103,7 +103,7 @@ services:
       - browserless
     environment:
       - TZ=Asia/Seoul
-      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000
+      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000/chromium/playwright
       - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
       - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}
@@ -139,7 +139,7 @@ services:
       - browserless
     environment:
       - TZ=Asia/Seoul
-      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000
+      - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000/chromium/playwright
       - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
       - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}
@@ -155,7 +155,7 @@ services:
       - scheduler
 
   browserless:
-    image: browserless/chrome:latest
+    image: ghcr.io/browserless/chromium:latest
     container_name: kbo-text-relay-browserless
     restart: always
     ports:

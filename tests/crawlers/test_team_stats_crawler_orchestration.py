@@ -41,7 +41,7 @@ def test_collect_tries_fallback_url_after_empty_primary_result(monkeypatch, modu
     policy = MagicMock()
     policy.build_context_kwargs.return_value = {}
     policy.run_with_retry.side_effect = lambda operation, *args, **kwargs: operation(*args, **kwargs)
-    parser = MagicMock(side_effect=[[], [{"team_id": "LG"}]])
+    parser = MagicMock(side_effect=[[] for _ in range(8)] + [[{"team_id": "LG"}]])
     crawler = crawler_cls(policy=policy)
     monkeypatch.setattr(module, "sync_playwright", lambda: manager)
     monkeypatch.setattr(module, "install_sync_resource_blocking", MagicMock())
@@ -50,10 +50,59 @@ def test_collect_tries_fallback_url_after_empty_primary_result(monkeypatch, modu
 
     result = crawler._collect_from_site(2026, {"LG": "LG"}, headless=True)
 
-    assert result == [{"team_id": "LG"}]
+    assert (
+        result
+        == [
+            {
+                "team_id": "LG",
+                "extra_stats": {"source": "kbo_team_page", "source_url": module.TEAM_BATTING_URLS[-1]},
+            },
+        ]
+        if crawler_cls is TeamBattingStatsCrawler
+        else [
+            {
+                "team_id": "LG",
+                "extra_stats": {"source": "kbo_team_page", "source_url": module.TEAM_PITCHING_URLS[-1]},
+            },
+        ]
+    )
     assert page.goto.call_count == 2
     context.close.assert_called_once()
     browser.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("module", "crawler_cls", "parser_name"),
+    [
+        (batting_module, TeamBattingStatsCrawler, "parse_team_batting_html"),
+        (pitching_module, TeamPitchingStatsCrawler, "parse_team_pitching_html"),
+    ],
+)
+def test_collect_skips_urls_when_season_selection_fails(monkeypatch, module, crawler_cls, parser_name) -> None:
+    page = MagicMock()
+    context = MagicMock()
+    context.new_page.return_value = page
+    browser = MagicMock()
+    browser.new_context.return_value = context
+    playwright = MagicMock()
+    playwright.chromium.launch.return_value = browser
+    manager = MagicMock()
+    manager.__enter__.return_value = playwright
+    manager.__exit__.return_value = False
+    policy = MagicMock()
+    policy.build_context_kwargs.return_value = {}
+    policy.run_with_retry.side_effect = lambda operation, *args, **kwargs: operation(*args, **kwargs)
+    parser = MagicMock()
+    crawler = crawler_cls(policy=policy)
+    monkeypatch.setattr(module, "sync_playwright", lambda: manager)
+    monkeypatch.setattr(module, "install_sync_resource_blocking", MagicMock())
+    monkeypatch.setattr(module, parser_name, parser)
+    monkeypatch.setattr(crawler, "_select_season", MagicMock(return_value=False))
+
+    assert crawler._collect_from_site(2021, {"LG": "LG"}, headless=True) == []
+    assert parser.call_count == 0
+    expected_urls = module.TEAM_BATTING_URLS if crawler_cls is TeamBattingStatsCrawler else module.TEAM_PITCHING_URLS
+    assert page.goto.call_count == len(expected_urls)
 
 
 @pytest.mark.parametrize(

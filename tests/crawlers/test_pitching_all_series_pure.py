@@ -7,12 +7,14 @@ import pytest
 from src.crawlers.player_pitching_all_series_crawler import (
     PitcherStats,
     PitchingSeriesCrawlRequest,
+    TEAM_FILTER_REFRESH_WAIT_MS,
     Basic2AdditionalContext,
     Basic2PageContext,
     PitcherBasic1Context,
     _collect_pitcher_basic2_additional,
     _collect_pitcher_basic1_loop,
     _get_pitcher_team_options,
+    _reset_pitcher_pagination,
     _select_pitcher_team_if_needed,
     _apply_sort_by_label,
     _extract_basic2_row_info,
@@ -478,7 +480,19 @@ class TestPitchingPageParsers:
             moved = go_to_next_page(page, 1)
 
         assert moved is True
+        assert page.query_selector.call_args_list[0].args[0] == 'td[id*="paging"], div.paging'
         page.click.assert_called_once_with('a[href*="btnNo2"]', timeout=15000)
+
+    def test_reset_pitcher_pagination_returns_to_first_page(self):
+        page = MagicMock()
+        page.query_selector.return_value = MagicMock()
+        policy = MagicMock()
+
+        with patch("src.crawlers.player_pitching_all_series_crawler.wait_for_table"):
+            _reset_pitcher_pagination(page, 2, policy=policy)
+
+        page.click.assert_called_once_with('a[href*="btnNo1"]', timeout=15000)
+        policy.delay.assert_called_once()
 
     def test_collect_basic1_loop_stops_when_player_limit_is_reached(self):
         pitchers = {123: PitcherStats(player_id=123, season=2025, league="REGULAR")}
@@ -564,6 +578,8 @@ class TestPitchingPageParsers:
         assert options == [{"value": "LG", "text": "LG"}]
         assert selected is True
         page.select_option.assert_called_once()
+        page.wait_for_timeout.assert_called_once_with(TEAM_FILTER_REFRESH_WAIT_MS)
+        page.wait_for_function.assert_called_once()
         policy.delay.assert_called_once()
 
     def test_apply_sort_by_label_clicks_visible_matching_header(self):

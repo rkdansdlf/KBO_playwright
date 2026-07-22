@@ -773,6 +773,12 @@ class OCISyncBase:
     def _quote_identifier(identifier: str) -> str:
         return f'"{OCISyncBase._validate_identifier(identifier)}"'
 
+    @staticmethod
+    def _oracle_bind_name(identifier: str) -> str:
+        if identifier.lower() == "level":
+            return "b_level"
+        return identifier
+
     def _reset_target_sequence_for_table(self, table_name: str, column_name: str = "id") -> bool:
         """Align a PostgreSQL serial/identity sequence with MAX(id).
 
@@ -1121,6 +1127,25 @@ class OCISyncBase:
         msg = "Unreachable: reconnect loop exited"
         raise RuntimeError(msg)
 
+    def _target_column_aliases(self, model: type[Base]) -> dict[str, str]:
+        if model.__tablename__ not in {"player_season_batting", "player_season_pitching"}:
+            return {}
+        if getattr(self, "oci_engine", None) is None:
+            return {}
+        try:
+            target_columns = {
+                column["name"].lower() for column in inspect(self.oci_engine).get_columns(model.__tablename__)
+            }
+        except SQLAlchemyError:
+            return {}
+        aliases = {"level": "league_level", "source": "data_source"}
+        model_columns = {column.key for column in model.__table__.columns}
+        return {
+            source: target
+            for source, target in aliases.items()
+            if source in model_columns and source not in target_columns and target in target_columns
+        }
+
     def _resolve_sync_columns(self, model: type[Base], exclude_cols: list[str]) -> list[str]:
         target_column_defs = {}
         target_columns = {c.key for c in model.__table__.columns}
@@ -1147,10 +1172,15 @@ class OCISyncBase:
         else:
             local_columns = {c.key for c in model.__table__.columns}
 
+        target_column_names = {str(column).lower() for column in target_columns}
+        local_column_names = {str(column).lower() for column in local_columns}
+        column_aliases = self._target_column_aliases(model)
         columns = [
             c.key
             for c in model.__table__.columns
-            if c.key not in exclude_cols and c.key in target_columns and c.key in local_columns
+            if c.key not in exclude_cols
+            and c.key in local_column_names
+            and (c.key in target_column_names or c.key in column_aliases)
         ]
         if (
             model.__tablename__ == "game_metadata"
@@ -1206,6 +1236,26 @@ class OCISyncBase:
             logger.info("[info] No compatible columns for %s", model.__tablename__)
             return 0
 
+        column_aliases = self._target_column_aliases(model)
+        conflict_keys = [
+            column_aliases.get(key, key) for key in options.conflict_keys if key in columns or key in column_aliases
+        ]
+        dedupe_keys = (
+            [column_aliases.get(key, key) for key in options.dedupe_keys if key in columns or key in column_aliases]
+            if options.dedupe_keys
+            else None
+        )
+
+        base_transform_fn = options.transform_fn
+        transform_fn = base_transform_fn
+        if column_aliases:
+
+            def transform_record(record: dict[str, Any]) -> dict[str, Any]:
+                transformed = base_transform_fn(record) if base_transform_fn else record
+                return {column_aliases.get(key, key): value for key, value in transformed.items()}
+
+            transform_fn = transform_record
+
         query = self.sqlite_session.query(*[getattr(model, column) for column in columns])
         if options.filters:
             query = query.filter(*options.filters)
@@ -1226,11 +1276,11 @@ class OCISyncBase:
                 query=query,
                 total_count=total_count,
                 columns=columns,
-                conflict_keys=options.conflict_keys,
-                transform_fn=options.transform_fn,
+                conflict_keys=conflict_keys,
+                transform_fn=transform_fn,
                 batch_size=options.batch_size,
                 update_timestamp=update_timestamp,
-                dedupe_keys=options.dedupe_keys,
+                dedupe_keys=dedupe_keys,
             ),
         )
 
@@ -1512,11 +1562,12 @@ class OCISyncBase:
                 key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
                 for key, value in record.items()
             }
+            bind_values = {self._oracle_bind_name(key): value for key, value in serialized_record.items()}
 
             keys = list(serialized_record.keys())
 
             insert_cols = [self._quote_identifier(k.upper()) for k in keys]
-            insert_vals = [f":{k}" for k in keys]
+            insert_vals = [f":{self._oracle_bind_name(k)}" for k in keys]
 
             if "created_at" in target_cols and "created_at" not in keys:
                 insert_cols.append('"CREATED_AT"')
@@ -1531,12 +1582,16 @@ class OCISyncBase:
             if not conflict_keys:
                 sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({vals_str})"  # noqa: S608
             else:
-                on_clause = " AND ".join([f"t.{self._quote_identifier(k.upper())} = :{k}" for k in conflict_keys])
+                on_clause = " AND ".join(
+                    [f"t.{self._quote_identifier(k.upper())} = :{self._oracle_bind_name(k)}" for k in conflict_keys],
+                )
                 update_cols = [k for k in keys if k not in conflict_keys and k not in ("created_at", "id")]
 
                 update_clause = ""
                 if update_cols:
-                    set_parts = [f"t.{self._quote_identifier(k.upper())} = :{k}" for k in update_cols]
+                    set_parts = [
+                        f"t.{self._quote_identifier(k.upper())} = :{self._oracle_bind_name(k)}" for k in update_cols
+                    ]
                     if update_timestamp and "updated_at" in target_cols and "updated_at" not in keys:
                         set_parts.append('t."UPDATED_AT" = CURRENT_TIMESTAMP')
                     update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(set_parts)
@@ -1551,7 +1606,7 @@ class OCISyncBase:
                     {insert_clause}
                 """
 
-            cursor.execute(sql, serialized_record)
+            cursor.execute(sql, bind_values)
             connection.commit()
         except DBAPI_EXCEPTIONS:
             connection.rollback()
@@ -1571,6 +1626,9 @@ class OCISyncBase:
         """Perform bulk merge using Oracle SQL MERGE INTO DUAL statement."""
         serialized_records = _serialize_records_oracle(records)
         keys = list(serialized_records[0].keys())
+        bind_records = [
+            {self._oracle_bind_name(key): value for key, value in record.items()} for record in serialized_records
+        ]
         self._validate_oracle_identifiers(table_name, (*keys, *unique_cols))
 
         close_connection = connection is None
@@ -1582,7 +1640,7 @@ class OCISyncBase:
             target_cols = self._oracle_columns(table_name)
 
             insert_cols = [self._quote_identifier(k.upper()) for k in keys]
-            insert_vals = [f":{k}" for k in keys]
+            insert_vals = [f":{self._oracle_bind_name(k)}" for k in keys]
 
             if "created_at" in target_cols and "created_at" not in keys:
                 insert_cols.append('"CREATED_AT"')
@@ -1597,12 +1655,16 @@ class OCISyncBase:
             if not unique_cols:
                 sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({vals_str})"  # noqa: S608
             else:
-                on_clause = " AND ".join([f"t.{self._quote_identifier(k.upper())} = :{k}" for k in unique_cols])
+                on_clause = " AND ".join(
+                    [f"t.{self._quote_identifier(k.upper())} = :{self._oracle_bind_name(k)}" for k in unique_cols],
+                )
                 update_cols = [k for k in keys if k not in unique_cols and k not in ("created_at", "id")]
 
                 update_clause = ""
                 if update_cols:
-                    set_parts = [f"t.{self._quote_identifier(k.upper())} = :{k}" for k in update_cols]
+                    set_parts = [
+                        f"t.{self._quote_identifier(k.upper())} = :{self._oracle_bind_name(k)}" for k in update_cols
+                    ]
                     if update_timestamp and "updated_at" in target_cols and "updated_at" not in keys:
                         set_parts.append('t."UPDATED_AT" = CURRENT_TIMESTAMP')
                     update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(set_parts)
@@ -1617,7 +1679,7 @@ class OCISyncBase:
                     {insert_clause}
                 """
 
-            cursor.executemany(sql, serialized_records)
+            cursor.executemany(sql, bind_records)
             connection.commit()
         except DBAPI_EXCEPTIONS:
             connection.rollback()

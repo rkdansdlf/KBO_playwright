@@ -6,12 +6,51 @@ import pytest
 
 from src.utils.team_stats_helpers import (
     build_team_column_map,
+    annotate_team_stats_source,
     get_cell_value,
+    has_complete_team_stats,
     parse_numeric,
     parse_team_stats_html,
     resolve_team_id,
     TeamStatsParseContext,
 )
+
+
+class TestHasCompleteTeamStats:
+    def test_requires_all_expected_teams(self):
+        rows = [{"team_id": "LG", "games": 144}]
+
+        assert not has_complete_team_stats(rows, expected_team_ids={"LG", "KT"}, season=2025, current_year=2026)
+
+    def test_rejects_partial_completed_season(self):
+        rows = [{"team_id": team_id, "games": 87} for team_id in ("LG", "KT")]
+
+        assert not has_complete_team_stats(rows, expected_team_ids={"LG", "KT"}, season=2025, current_year=2026)
+
+    def test_accepts_complete_completed_season(self):
+        rows = [{"team_id": team_id, "games": 144} for team_id in ("LG", "KT")]
+
+        assert has_complete_team_stats(rows, expected_team_ids={"LG", "KT"}, season=2025, current_year=2026)
+
+    def test_accepts_partial_current_season(self):
+        rows = [{"team_id": team_id, "games": 87} for team_id in ("LG", "KT")]
+
+        assert has_complete_team_stats(rows, expected_team_ids={"LG", "KT"}, season=2026, current_year=2026)
+
+
+def test_annotate_team_stats_source_preserves_existing_extras():
+    rows = [{"team_id": "LG", "extra_stats": {"tb": 100}}]
+
+    assert annotate_team_stats_source(rows, "https://example.test/team") == [
+        {
+            "team_id": "LG",
+            "extra_stats": {
+                "tb": 100,
+                "source": "kbo_team_page",
+                "source_url": "https://example.test/team",
+            },
+        },
+    ]
 
 
 class MockLocator:

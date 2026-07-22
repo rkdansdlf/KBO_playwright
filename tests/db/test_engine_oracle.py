@@ -56,7 +56,15 @@ def test_create_oracle_engine_uses_normalized_url_and_wallet_args(monkeypatch) -
             "wallet_password": "p@ss+word",
         },
     )
-    assert fake_engine.dialect._json_deserializer is None
+    assert fake_engine.dialect._json_deserializer is engine._custom_json_deserializer
+
+
+def test_custom_json_deserializer_handles_json_and_postgres_style_arrays() -> None:
+    from src.db import engine
+
+    assert engine._custom_json_deserializer('{"key": "value"}') == {"key": "value"}
+    assert engine._custom_json_deserializer('{"a", "b"}') == ["a", "b"]
+    assert engine._custom_json_deserializer("") == ""
 
 
 def test_install_oracle_json_compiler_patches_missing_visit_json(monkeypatch) -> None:

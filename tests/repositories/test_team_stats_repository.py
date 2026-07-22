@@ -91,10 +91,13 @@ class TestTeamSeasonBattingRepository:
         repo.upsert_many(
             [
                 {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144},
-                {"team_id": "SSG", "team_name": "SSG", "season": 2024, "league": "REGULAR", "games": 144},
+                {"team_id": "SSG", "team_name": "SSG", "season": 2024, "league": "REGULAR", "games": 140},
             ],
         )
         assert session.query(TeamSeasonBatting).count() == 2
+        rows = {row.team_id: row for row in session.query(TeamSeasonBatting).all()}
+        assert rows["LG"].games == 144
+        assert rows["SSG"].games == 140
 
 
 class TestTeamSeasonPitchingRepository:

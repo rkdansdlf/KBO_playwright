@@ -1,6 +1,6 @@
 # Known Data Limitations
 
-Last updated: 2026-07-19
+Last updated: 2026-07-23
 
 This document tracks known data quality issues and their current status.
 
@@ -76,6 +76,27 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
   player-season sums disagree substantially in OCI for 2021. This is a data-scope/source
   reconciliation issue, not a team-code backfill failure, and remains a separate audit
   item.
+- A read-only `recalc_team_stats --season 2021 --dry-run` confirmed that the OCI
+  `team_season_*` rows are partial (roughly 30-65 games per team), while the
+  `player_season_*` rollups contain near-full-season totals. OCI also lacks
+  `team_standings_daily`, so the dry-run cannot safely derive team W-L-T values. Do not
+  apply the team-stat recalculation until the source scope and standings source are fixed.
+- A live, no-write probe of the KBO legacy team pages returned complete 2021 batting and
+  pitching tables: 10 teams with 144 games each. The crawler previously accepted a
+  stale current-season table because the asynchronous season change was not awaited.
+  It now requires a successful season selection, complete team coverage, and completed
+  season game counts before accepting the page; accepted rows are marked
+  `extra_stats.source = kbo_team_page`.
+- The official team source is usable, but OCI player-season reconciliation is still
+  blocked. A read-only 2021 staging run now collects 394 batting rows and 308 pitching
+  rows. Batting global totals reconcile exactly with the official team table; pitching
+  differs by 18 outs and 18 earned runs (`37998/6243` team versus `37980/6261`
+  player). Team-level player splits also differ because the public player table does
+  not provide a safe multi-team season key for the existing `player_season_*` schema.
+  The staging report remains `ready_for_sync = false`.
+- The pitcher collector now waits for the delayed team-filter postback and returns to
+  page 1 before selecting the next team. The live 2021 probe verified complete team
+  page traversal; no OCI player or team rows were changed during this audit.
 
 ---
 

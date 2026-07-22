@@ -6,6 +6,7 @@ Supports both SQLite (dev) and MySQL (production).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sqlite3
@@ -29,6 +30,24 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Connection
 
 logger = logging.getLogger(__name__)
+
+os.environ["ORA_SDTZ"] = "+09:00"
+
+try:
+    from sqlalchemy.dialects.oracle.cx_oracle import OracleDialect_cx_oracle
+
+    OracleDialect_cx_oracle._detect_decimal_char = lambda *_: "."  # noqa: SLF001
+except ImportError:
+    pass
+
+try:
+    from sqlalchemy.dialects.oracle.oracledb import OracleDialect_oracledb
+
+    OracleDialect_oracledb._detect_decimal_char = lambda *_: "."  # noqa: SLF001
+except ImportError:
+    pass
+
+# outputtypehandler removed, using defer() strategy instead
 
 load_dotenv()
 
@@ -151,6 +170,29 @@ def _oracle_connect_args(url: str) -> dict[str, Any]:
     return connect_args
 
 
+def _custom_json_deserializer(val: object) -> object:
+    """Safely deserialize JSON string, falling back to postgres-style string array parsing."""
+    if not val:
+        return val
+    if isinstance(val, (str, bytes, bytearray)):
+        try:
+            return json.loads(val)
+        except json.JSONDecodeError:
+            pass
+    if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
+        inner = val[1:-1].strip()
+        if not inner:
+            return []
+        parts = []
+        for x in inner.split(","):
+            x = x.strip()
+            if (x.startswith('"') and x.endswith('"')) or (x.startswith("'") and x.endswith("'")):
+                x = x[1:-1]
+            parts.append(x)
+        return parts
+    return val
+
+
 def _create_oracle_engine(url: str) -> SQLAlchemyEngine:
     engine = create_engine(
         normalize_oracle_url(url),
@@ -160,8 +202,21 @@ def _create_oracle_engine(url: str) -> SQLAlchemyEngine:
         echo=False,
         connect_args=_oracle_connect_args(url),
     )
-    if not hasattr(engine.dialect, "_json_deserializer"):
-        engine.dialect._json_deserializer = None  # noqa: SLF001
+
+    if isinstance(engine, SQLAlchemyEngine):
+
+        @event.listens_for(engine, "connect")
+        def _oracle_connections(dbapi_con: Any, _: object) -> None:  # noqa: ANN401
+            try:
+                cursor = dbapi_con.cursor()
+                cursor.execute("ALTER SESSION SET TIME_ZONE = '+09:00'")
+                cursor.execute("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'")
+                cursor.execute("ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF'")
+                cursor.close()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Failed to set Oracle session time zone pragmas", exc_info=e)
+
+    engine.dialect._json_deserializer = _custom_json_deserializer  # noqa: SLF001
     return engine
 
 

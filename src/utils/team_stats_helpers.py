@@ -4,14 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from bs4 import BeautifulSoup
+
+from src.constants import KST
 
 if TYPE_CHECKING:
     from bs4.element import Tag
 
 ValueParser = Callable[[str, str], object | None]
+MIN_COMPLETED_TEAM_GAMES = 100
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,33 @@ class TeamStatsParseContext:
     stat_fields: set[str]
     float_fields: set[str]
     value_parser: ValueParser | None = None
+
+
+def has_complete_team_stats(
+    rows: list[dict[str, Any]],
+    *,
+    expected_team_ids: set[str],
+    season: int,
+    current_year: int | None = None,
+) -> bool:
+    """Return whether a parsed team-stat table covers the requested season."""
+    by_team = {str(row.get("team_id")): row for row in rows if row.get("team_id")}
+    if not expected_team_ids.issubset(by_team):
+        return False
+    if current_year is None:
+        current_year = datetime.now(KST).year
+    if season >= current_year:
+        return True
+    return all((by_team[team_id].get("games") or 0) >= MIN_COMPLETED_TEAM_GAMES for team_id in expected_team_ids)
+
+
+def annotate_team_stats_source(rows: list[dict[str, Any]], source_url: str) -> list[dict[str, Any]]:
+    """Attach source provenance to parsed team-stat rows."""
+    for row in rows:
+        extra_stats = dict(row.get("extra_stats") or {})
+        extra_stats.update({"source": "kbo_team_page", "source_url": source_url})
+        row["extra_stats"] = extra_stats
+    return rows
 
 
 def get_cell_value(cells: list[Any], index: int) -> str | None:

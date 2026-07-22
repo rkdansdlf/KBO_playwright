@@ -21,7 +21,9 @@ from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.team_stats_helpers import (
     TeamStatsParseContext,
     _parse_one_team_row,
+    annotate_team_stats_source,
     get_cell_value,
+    has_complete_team_stats,
     parse_numeric,
     parse_team_stats_html,
 )
@@ -97,6 +99,8 @@ BATTING_FIELDS = {
     "slg",
     "ops",
 }
+TEAM_STATS_REFRESH_ATTEMPTS = 8
+TEAM_STATS_REFRESH_WAIT_MS = 1000
 
 
 class TeamBattingStatsCrawler:
@@ -188,15 +192,25 @@ class TeamBattingStatsCrawler:
                 try:
                     self.policy.delay()
                     self.policy.run_with_retry(page.goto, url, wait_until="networkidle", timeout=LONG_TIMEOUT)
-                    self.policy.delay()
-                    self._select_season(page, season)
-                    self.policy.delay()
-                    html = page.content()
-                    stats = parse_team_batting_html(html, season, self.league, team_mapping)
-                    if stats:
-                        context.close()
-                        browser.close()
-                        return stats
+                    if not self._select_season(page, season):
+                        logger.warning("Could not select team batting season %s on %s", season, url)
+                        continue
+                    expected_team_ids = set(team_mapping.values())
+                    for attempt in range(TEAM_STATS_REFRESH_ATTEMPTS):
+                        self.policy.delay()
+                        html = page.content()
+                        stats = parse_team_batting_html(html, season, self.league, team_mapping)
+                        if has_complete_team_stats(
+                            stats,
+                            expected_team_ids=expected_team_ids,
+                            season=season,
+                        ):
+                            context.close()
+                            browser.close()
+                            return annotate_team_stats_source(stats, url)
+                        if attempt + 1 < TEAM_STATS_REFRESH_ATTEMPTS:
+                            page.wait_for_timeout(TEAM_STATS_REFRESH_WAIT_MS)
+                    logger.warning("Incomplete team batting table for season %s from %s", season, url)
                 except (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError) as exc:
                     logger.warning("Failed to parse %s: %s", url, exc)
             context.close()

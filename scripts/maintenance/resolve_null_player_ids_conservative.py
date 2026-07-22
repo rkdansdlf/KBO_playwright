@@ -390,6 +390,22 @@ def _resolve_via_existing_group(existing_group_ids) -> dict[str, Any] | None:
     return None
 
 
+def _filter_active_candidates(session, candidate_ids: list[int]) -> list[int]:
+    if len(candidate_ids) <= 1:
+        return candidate_ids
+    rows = session.execute(
+        text("SELECT player_id, status FROM player_basic WHERE player_id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        ),
+        {"ids": candidate_ids},
+    ).fetchall()
+    status_map = {int(row[0]): str(row[1] or "").strip().lower() for row in rows}
+    active_ids = [pid for pid in candidate_ids if status_map.get(pid) == "active"]
+    if len(active_ids) == 1:
+        return active_ids
+    return candidate_ids
+
+
 def _resolve_via_season_preferred(
     session, table_name: str, season: int | None, canonical_team: str, canonical_name: str, uniform_nos: list[str]
 ) -> dict[str, Any] | None:
@@ -403,9 +419,10 @@ def _resolve_via_season_preferred(
             session, season_table=season_table, season=season, team_code=canonical_team, player_name=canonical_name
         )
         uniform_filtered = _filter_by_uniform(session, candidate_ids, uniform_nos)
-        if is_group_resolvable(uniform_filtered):
-            method = "uniform_filter" if uniform_filtered != candidate_ids else "season_team_name"
-            return {"candidate_ids": uniform_filtered, "resolution_method": method, "resolution_reason": season_table}
+        active_filtered = _filter_active_candidates(session, uniform_filtered)
+        if is_group_resolvable(active_filtered):
+            method = "uniform_filter" if active_filtered != candidate_ids else "season_team_name"
+            return {"candidate_ids": active_filtered, "resolution_method": method, "resolution_reason": season_table}
         if candidate_ids and uniform_nos and not uniform_filtered:
             return {"candidate_ids": [], "resolution_method": "", "resolution_reason": "uniform_filter_no_match"}
     return None
@@ -421,10 +438,11 @@ def _resolve_via_season_without_team(session, canonical_name: str, uniform_nos: 
         )
     sorted_ids = sorted(season_candidates)
     uniform_filtered = _filter_by_uniform(session, sorted_ids, uniform_nos)
-    if is_group_resolvable(uniform_filtered):
-        method = "uniform_filter" if uniform_filtered != sorted_ids else "season_name_unique"
+    active_filtered = _filter_active_candidates(session, uniform_filtered)
+    if is_group_resolvable(active_filtered):
+        method = "uniform_filter" if active_filtered != sorted_ids else "season_name_unique"
         return {
-            "candidate_ids": uniform_filtered,
+            "candidate_ids": active_filtered,
             "resolution_method": method,
             "resolution_reason": "season_without_team",
         }
@@ -437,9 +455,10 @@ def _resolve_via_season_without_team(session, canonical_name: str, uniform_nos: 
 
 def _resolve_via_exact_name(session, canonical_name: str) -> dict[str, Any] | None:
     candidates = _unique_player_basic_exact_name(session, canonical_name)
-    if is_group_resolvable(candidates):
+    active_filtered = _filter_active_candidates(session, candidates)
+    if is_group_resolvable(active_filtered):
         return {
-            "candidate_ids": candidates,
+            "candidate_ids": active_filtered,
             "resolution_method": "unique_player_basic_exact_name",
             "resolution_reason": "single_exact_name_in_player_basic",
         }

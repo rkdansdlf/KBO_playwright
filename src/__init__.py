@@ -53,8 +53,26 @@ def _apply_playwright_patch() -> None:
         AsyncBrowserType.launch = _patched_async_launch  # type: ignore[assignment,method-assign]
         SyncBrowserType.launch = _patched_sync_launch  # type: ignore[assignment,method-assign]
         logger.info("[PLAYWRIGHT-PATCH] Playwright launch methods globally patched.")
-    except ImportError:
-        pass
+
+        # Additional debug patch for Connection.dispatch
+        from playwright._impl._connection import Connection
+
+        _original_dispatch = Connection.dispatch
+
+        def _patched_dispatch(self: Connection, msg: dict) -> None:
+            try:
+                _original_dispatch(self, msg)
+            except KeyError:
+                logger.exception(
+                    "[PLAYWRIGHT-PATCH-DEBUG] KeyError in dispatch! msg=%s",
+                    msg,
+                )
+                raise
+
+        Connection.dispatch = _patched_dispatch  # type: ignore[assignment]
+        logger.info("[PLAYWRIGHT-PATCH] Connection.dispatch successfully patched for debugging.")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PLAYWRIGHT-PATCH] Failed to apply playwright patches: %s", e)
 
 
 _apply_playwright_patch()

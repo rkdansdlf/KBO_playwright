@@ -12,6 +12,7 @@ from datetime import date as date_type
 from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import Executable, func, or_, text
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import get_database_type
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from sqlalchemy.orm import Session
+    from sqlalchemy.sql.elements import ColumnElement
 
 logger = logging.getLogger(__name__)
 
@@ -85,14 +87,18 @@ class TeamStatAggregator:
         start_date = date_type(year, 1, 1)
 
         end_date = date_type(year, 12, 31)
-        latest_standings = (
-            session.query(TeamStandingsDaily)
-            .filter(TeamStandingsDaily.team_code == team_id)
-            .filter(TeamStandingsDaily.standings_date >= start_date)
-            .filter(TeamStandingsDaily.standings_date <= end_date)
-            .order_by(TeamStandingsDaily.standings_date.desc())
-            .first()
-        )
+        try:
+            latest_standings = (
+                session.query(TeamStandingsDaily)
+                .filter(TeamStandingsDaily.team_code == team_id)
+                .filter(TeamStandingsDaily.standings_date >= start_date)
+                .filter(TeamStandingsDaily.standings_date <= end_date)
+                .order_by(TeamStandingsDaily.standings_date.desc())
+                .first()
+            )
+        except SQLAlchemyError:
+            logger.warning("Team standings unavailable for %s/%s; using player-derived game count", team_id, year)
+            return 0
         if latest_standings:
             return latest_standings.games_played
         return 0
@@ -110,14 +116,18 @@ class TeamStatAggregator:
         start_date = date_type(year, 1, 1)
 
         end_date = date_type(year, 12, 31)
-        latest_standings = (
-            session.query(TeamStandingsDaily)
-            .filter(TeamStandingsDaily.team_code == team_id)
-            .filter(TeamStandingsDaily.standings_date >= start_date)
-            .filter(TeamStandingsDaily.standings_date <= end_date)
-            .order_by(TeamStandingsDaily.standings_date.desc())
-            .first()
-        )
+        try:
+            latest_standings = (
+                session.query(TeamStandingsDaily)
+                .filter(TeamStandingsDaily.team_code == team_id)
+                .filter(TeamStandingsDaily.standings_date >= start_date)
+                .filter(TeamStandingsDaily.standings_date <= end_date)
+                .order_by(TeamStandingsDaily.standings_date.desc())
+                .first()
+            )
+        except SQLAlchemyError:
+            logger.warning("Team standings unavailable for %s/%s; using zero win-loss record", team_id, year)
+            return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
         if latest_standings:
             return {
                 "games": latest_standings.games_played,
@@ -188,6 +198,35 @@ class TeamStatAggregator:
             "pitching": pitching_results,
         }
 
+    def _team_code_expression(self, model: type[object]) -> ColumnElement[object]:
+        """Use canonical team codes only when the target schema provides them."""
+        if self.session is not None:
+            try:
+                bind = self.session.get_bind()
+                columns = {
+                    str(column["name"]).lower()
+                    for column in sa_inspect(bind).get_columns(model.__tablename__)  # type: ignore[attr-defined]
+                }
+            except (SQLAlchemyError, AttributeError, TypeError):
+                columns = set()
+            if "canonical_team_code" not in columns and columns:
+                return model.team_code  # type: ignore[attr-defined]
+
+        return func.coalesce(
+            model.canonical_team_code,  # type: ignore[attr-defined]
+            model.team_code,  # type: ignore[attr-defined]
+        )
+
+    def _team_code_exclusions(self) -> tuple[str, ...]:
+        """Return team-code placeholders without Oracle's empty-string NULL value."""
+        try:
+            is_oracle = self.session is not None and self.session.get_bind().dialect.name == "oracle"
+        except (AttributeError, TypeError):
+            is_oracle = False
+        if is_oracle:
+            return ("합계", "TOTAL", "ALL", "-")
+        return ("", "합계", "TOTAL", "ALL", "-")
+
     def _aggregate_batting_db(
         self,
         season: int,
@@ -200,7 +239,7 @@ class TeamStatAggregator:
             raise ValueError(msg)
 
         logger.info("Aggregating player batting stats via database query for season=%s, team_id=%s", season, team_id)
-        team_code_expr = func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code)
+        team_code_expr = self._team_code_expression(PlayerSeasonBatting)
 
         query = (
             self.session.query(
@@ -230,7 +269,7 @@ class TeamStatAggregator:
                 team_code_expr.isnot(None),
                 or_(
                     PlayerSeasonBatting.team_code.is_(None),
-                    PlayerSeasonBatting.team_code.not_in(["", "합계", "TOTAL", "ALL", "-"]),
+                    PlayerSeasonBatting.team_code.not_in(self._team_code_exclusions()),
                 ),
             )
         )
@@ -300,7 +339,7 @@ class TeamStatAggregator:
             raise ValueError(msg)
 
         logger.info("Aggregating player pitching stats via database query for season=%s, team_id=%s", season, team_id)
-        team_code_expr = func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code)
+        team_code_expr = self._team_code_expression(PlayerSeasonPitching)
 
         query = (
             self.session.query(
@@ -333,7 +372,7 @@ class TeamStatAggregator:
                 team_code_expr.isnot(None),
                 or_(
                     PlayerSeasonPitching.team_code.is_(None),
-                    PlayerSeasonPitching.team_code.not_in(["", "합계", "TOTAL", "ALL", "-"]),
+                    PlayerSeasonPitching.team_code.not_in(self._team_code_exclusions()),
                 ),
             )
         )
