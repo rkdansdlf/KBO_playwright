@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 LAST_FILTER_COUNTS: Counter = Counter()
+PITCHING_CONFLICT_KEYS = ["player_id", "season", "league", "level", "team_code"]
 
 
 def get_last_filter_counts() -> dict[str, int]:
@@ -79,8 +80,12 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
             data = _build_pitching_row(payload)
             stmt = _build_pitching_upsert_stmt(data, db_type)
             if stmt is None:
-                _merge_pitching_row(session, data)
-                saved_count += 1
+                try:
+                    _merge_pitching_row(session, data)
+                    saved_count += 1
+                except SQLAlchemyError:
+                    logger.exception("⚠️ 병합 실패 (player_id=%s)", data.get("player_id"))
+                    session.rollback()
                 continue
 
             try:
@@ -160,7 +165,9 @@ def _build_pitching_row(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_pitching_upsert_stmt(data: dict[str, Any], db_type: str) -> object | None:
-    key_fields = ["player_id", "season", "league", "level"]
+    if not data.get("team_code"):
+        return None
+    key_fields = PITCHING_CONFLICT_KEYS
     if db_type == "sqlite":
         stmt = sqlite_insert(PlayerSeasonPitching).values(**data)
         return stmt.on_conflict_do_update(
@@ -187,6 +194,11 @@ def _merge_pitching_row(session: Session, data: dict[str, Any]) -> None:
             season=data["season"],
             league=data["league"],
             level=data["level"],
+        )
+        .filter(
+            PlayerSeasonPitching.team_code.is_(None)
+            if not data.get("team_code")
+            else PlayerSeasonPitching.team_code == data["team_code"],
         )
         .first()
     )

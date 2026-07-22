@@ -67,7 +67,7 @@ class TestUniqueBattingPayloads:
         ]
         result = _unique_batting_payloads(payloads)
         assert len(result) == 1
-        assert result[(1, 2024, "REGULAR", "KBO1")]["games"] == 10
+        assert result[(1, 2024, "REGULAR", "KBO1", None)]["games"] == 10
 
     def test_skip_none_player_id(self):
         payloads = [{"player_id": None, "season": 2024, "league": "REGULAR"}]
@@ -80,7 +80,7 @@ class TestUniqueBattingPayloads:
     def test_default_level(self):
         payloads = [{"player_id": 1, "season": 2024, "league": "REGULAR"}]
         result = _unique_batting_payloads(payloads)
-        assert (1, 2024, "REGULAR", "KBO1") in result
+        assert (1, 2024, "REGULAR", "KBO1", None) in result
 
 
 class TestBattingRow:
@@ -136,16 +136,34 @@ class TestExecuteSingleUpsert:
 
         session.add(PlayerBasic(player_id=1, name="A"))
         session.commit()
-        stmt = sqlite_insert(PlayerSeasonBatting).values(player_id=1, season=2024, league="REGULAR", level="KBO1")
-        stmt = stmt.on_conflict_do_update(index_elements=["player_id", "season", "league", "level"], set_={"games": 5})
+        stmt = sqlite_insert(PlayerSeasonBatting).values(
+            player_id=1,
+            season=2024,
+            league="REGULAR",
+            level="KBO1",
+            team_code="LG",
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["player_id", "season", "league", "level", "team_code"],
+            set_={"games": 5},
+        )
         result = _execute_single_upsert(session, stmt, {"player_id": 1})
         assert result == 1
 
     def test_failure_returns_zero(self, session):
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-        stmt = sqlite_insert(PlayerSeasonBatting).values(player_id=None, season=None, league=None, level=None)
-        stmt = stmt.on_conflict_do_update(index_elements=["player_id", "season", "league", "level"], set_={"games": 5})
+        stmt = sqlite_insert(PlayerSeasonBatting).values(
+            player_id=None,
+            season=None,
+            league=None,
+            level=None,
+            team_code="LG",
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["player_id", "season", "league", "level", "team_code"],
+            set_={"games": 5},
+        )
         result = _execute_single_upsert(session, stmt, {"player_id": None})
         assert result == 0
 

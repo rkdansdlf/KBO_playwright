@@ -25,7 +25,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 LAST_FILTER_COUNTS: Counter = Counter()
-BATTING_CONFLICT_KEYS = ["player_id", "season", "league", "level"]
+BATTING_CONFLICT_KEYS = ["player_id", "season", "league", "level", "team_code"]
+BATTING_NULL_CONFLICT_KEYS = ["player_id", "season", "league", "level"]
 
 
 def get_last_filter_counts() -> dict[str, int]:
@@ -38,7 +39,7 @@ def get_last_filter_counts() -> dict[str, int]:
     return dict(LAST_FILTER_COUNTS)
 
 
-def _unique_batting_payloads(payloads: list[dict[str, Any]]) -> dict[tuple[Any, Any, Any, Any], dict[str, Any]]:
+def _unique_batting_payloads(payloads: list[dict[str, Any]]) -> dict[tuple[Any, Any, Any, Any, Any], dict[str, Any]]:
     unique_payloads = {}
     for payload in payloads:
         key = (
@@ -46,6 +47,7 @@ def _unique_batting_payloads(payloads: list[dict[str, Any]]) -> dict[tuple[Any, 
             payload.get("season"),
             payload.get("league"),
             payload.get("level", "KBO1"),
+            payload.get("team_code"),
         )
         if key[0] is None or key[1] is None:
             continue
@@ -188,6 +190,11 @@ def _save_generic_rows(session: Session, rows: list[dict[str, Any]]) -> int:
                 league=data["league"],
                 level=data["level"],
             )
+            .filter(
+                PlayerSeasonBatting.team_code.is_(None)
+                if not data.get("team_code")
+                else PlayerSeasonBatting.team_code == data["team_code"],
+            )
             .first()
         )
         if existing:
@@ -201,6 +208,17 @@ def _save_generic_rows(session: Session, rows: list[dict[str, Any]]) -> int:
 
 
 def _save_rows_by_database_type(session: Session, rows: list[dict[str, Any]], db_type: str) -> int:
+    rows_with_team = [row for row in rows if row.get("team_code")]
+    rows_without_team = [row for row in rows if not row.get("team_code")]
+    saved_count = 0
+    if rows_with_team:
+        saved_count += _save_rows_with_team_key(session, rows_with_team, db_type)
+    if rows_without_team:
+        saved_count += _save_generic_rows(session, rows_without_team)
+    return saved_count
+
+
+def _save_rows_with_team_key(session: Session, rows: list[dict[str, Any]], db_type: str) -> int:
     if db_type == "sqlite":
         return _save_sqlite_rows(session, rows)
     if db_type == "mysql":

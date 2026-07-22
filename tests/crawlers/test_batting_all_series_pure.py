@@ -7,6 +7,7 @@ import pytest
 from src.crawlers.player_batting_all_series_crawler import (
     BattingRowData,
     BattingSeriesCrawlRequest,
+    TEAM_FILTER_REFRESH_WAIT_MS,
     _build_batting_data,
     _extract_basic2_stat_by_header,
     _extract_player_id_from_href,
@@ -739,6 +740,8 @@ class TestBattingPageParsers:
         assert options == [{"value": "LG", "text": "LG"}]
         assert selected is True
         assert page.select_option.called
+        page.wait_for_function.assert_called_once()
+        page.wait_for_timeout.assert_called_once_with(TEAM_FILTER_REFRESH_WAIT_MS)
         assert page.click.called
 
     def test_collect_batting_loop_updates_duplicate_player_until_last_page(self):
@@ -771,6 +774,41 @@ class TestBattingPageParsers:
             _collect_batting_stats_loop(ctx)
 
         assert data == [{"player_id": 1, "avg": 0.3, "walks": 12}, {"player_id": 2, "avg": 0.2}]
+
+    def test_collect_batting_loop_preserves_team_split_rows(self):
+        page = MagicMock()
+        policy = MagicMock()
+        data = []
+        ctx = BattingCrawlContext(
+            page=page,
+            year=2021,
+            series_key="regular",
+            iteration_targets=[{"value": "LG", "text": "LG"}],
+            by_team=False,
+            limit=None,
+            policy=policy,
+            unique_players=set(),
+            all_players_data=data,
+            preserve_team_splits=True,
+        )
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler._apply_pa_sorting"),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.parse_batting_stats_table",
+                side_effect=[
+                    [{"player_id": 1, "team_code": "LG", "hits": 3}],
+                    [{"player_id": 1, "team_code": "KH", "hits": 2}],
+                ],
+            ),
+            patch("src.crawlers.player_batting_all_series_crawler.go_to_next_page", side_effect=[True, False]),
+        ):
+            _collect_batting_stats_loop(ctx)
+
+        assert data == [
+            {"player_id": 1, "team_code": "LG", "hits": 3},
+            {"player_id": 1, "team_code": "KH", "hits": 2},
+        ]
 
     def test_batting_fallback_marks_source_and_saves_payloads(self):
         rows = [{"player_id": 123, "source": "FALLBACK"}]

@@ -871,7 +871,7 @@ class TestOCISyncBaseConcurrentSync:
             query=mock_query,
             total_count=10,
             columns=["player_id", "season", "league", "level", "team_code", "games"],
-            conflict_keys=["player_id", "season", "league", "level"],
+            conflict_keys=["player_id", "season", "league", "level", "team_code"],
             transform_fn=None,
             update_timestamp=True,
             batch_size=3,
@@ -891,7 +891,7 @@ class TestOCISyncBaseConcurrentSync:
             assert mock_copy.call_count == 4
             # Each thread worker passes its COPY settings as one options object.
             options = mock_copy.call_args_list[0].args[1]
-            assert options.unique_cols == ["player_id", "season", "league", "level"]
+            assert options.unique_cols == ["player_id", "season", "league", "level", "team_code"]
             assert options.update_timestamp is True
             assert options.connection is not None
             assert options.reconnect_on_fail is False
