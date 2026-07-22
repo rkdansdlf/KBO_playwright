@@ -18,7 +18,7 @@ services:
       SQLITE_STARTUP_GUARD: ${SQLITE_STARTUP_GUARD:-1}
       SQLITE_CORRUPT_ACTION: ${SQLITE_CORRUPT_ACTION:-quarantine}
       SQLITE_SYNCHRONOUS: ${SQLITE_SYNCHRONOUS:-FULL}
-      PLAYWRIGHT_WS_ENDPOINT: ws://browserless:3000
+      PLAYWRIGHT_WS_ENDPOINT: ws://browserless:3000/chromium/playwright
     depends_on:
       - browserless
     volumes:
@@ -30,7 +30,7 @@ services:
     command: ["python", "-m", "scripts.scheduler"]
 
   browserless:
-    image: browserless/chrome:latest
+    image: ghcr.io/browserless/chromium:latest
     restart: always
     ports:
       - "3000:3000"

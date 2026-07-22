@@ -324,10 +324,16 @@ class GameSyncMixin(SyncBaseProtocol):
         def purge_child_rows() -> None:
             """Purge child rows."""
             for table_name in child_tables:
-                self.target_session.execute(
-                    text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),  # noqa: S608
-                    {"pattern": pattern},
-                )
+                try:
+                    self.target_session.execute(
+                        text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),  # noqa: S608
+                        {"pattern": pattern},
+                    )
+                except SQLAlchemyError as exc:
+                    if "ora-00942" in str(exc).lower() or "no such table" in str(exc).lower():
+                        logger.debug("Table %s does not exist on target; skipping purge", table_name)
+                    else:
+                        raise
             self.target_session.commit()
 
         self._run_target_session_with_retries(
@@ -1063,7 +1069,7 @@ class GameSyncMixin(SyncBaseProtocol):
         )
         return {"summary": synced, "games": len(target_game_ids)}
 
-    def _sync_game_summary_rows(
+    def _sync_game_summary_rows(  # noqa: C901
         self,
         filters: list[Any] | None = None,
         *,
@@ -1101,7 +1107,12 @@ class GameSyncMixin(SyncBaseProtocol):
             )
             self._reset_target_sequence_for_table(GameSummary.__tablename__)
 
-        columns = [c.key for c in GameSummary.__table__.columns if c.key not in {"id", "created_at", "updated_at"}]
+        # On Oracle/Postgres, we preserve and sync SQLite id values to avoid ORA-01400. On SQLite, we exclude 'id'
+        is_sqlite = self.target_session.bind.dialect.name == "sqlite"
+        exclude_cols = {"created_at", "updated_at"}
+        if is_sqlite:
+            exclude_cols.add("id")
+        columns = [c.key for c in GameSummary.__table__.columns if c.key not in exclude_cols]
         records = []
         seen = set()
         for row in rows:

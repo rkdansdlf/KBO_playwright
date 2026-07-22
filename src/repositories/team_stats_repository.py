@@ -134,7 +134,7 @@ class BaseStatsUpsertRepository:
         if self.dialect == "sqlite":
             stmt = sqlite_insert(self.model).values(payloads)
             first = payloads[0]
-            update_dict = {k: v for k, v in first.items() if k not in self.unique_keys}
+            update_dict = {k: stmt.excluded[k] for k in first if k not in self.unique_keys}
             return stmt.on_conflict_do_update(
                 index_elements=self.unique_keys,
                 set_=update_dict,
@@ -156,7 +156,7 @@ class BaseStatsUpsertRepository:
         # Fallback
         stmt = sqlite_insert(self.model).values(payloads)
         first = payloads[0]
-        update_dict = {k: v for k, v in first.items() if k not in self.unique_keys}
+        update_dict = {k: stmt.excluded[k] for k in first if k not in self.unique_keys}
         return stmt.on_conflict_do_update(
             index_elements=self.unique_keys,
             set_=update_dict,

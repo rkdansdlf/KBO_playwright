@@ -172,8 +172,8 @@ def phase_player_game(years: set[int], dry_run: bool, _report: dict[str, Any] | 
     rc = 0
     for year in sorted(years):
         cmd = ["src.cli.recalc_player_game_stats", "--season", str(year)]
-        if dry_run:
-            cmd.append("--dry-run")
+        # recalc_player_game_stats treats "no --save" as dry-run, so persist explicitly on apply.
+        cmd.append("--dry-run" if dry_run else "--save")
         rc = _run_cli(cmd, dry_run=dry_run)
         if rc != 0:
             return rc

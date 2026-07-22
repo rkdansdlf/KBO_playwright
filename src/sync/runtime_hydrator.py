@@ -359,9 +359,17 @@ class RuntimeHydrator:
         target_query.delete(synchronize_session=False)
 
     def _hydrate_spec(self, spec: HydrationSpec) -> tuple[int, dict[int, str]]:
+        from sqlalchemy.orm import defer
+
         source_query = self.source_session.query(spec.model)
         if spec.source_filters:
             source_query = source_query.filter(*spec.source_filters)
+
+        # Defer created_at and updated_at to bypass named timezone DPY-3022 thin mode crash
+        for col_name in ("created_at", "updated_at"):
+            if hasattr(spec.model, col_name):
+                source_query = source_query.options(defer(getattr(spec.model, col_name)))
+
         rows = source_query.all()
 
         if not rows:

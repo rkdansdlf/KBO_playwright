@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.models.player import PlayerSeasonBatting
 from src.sync.sync_base import BulkCopyUpsertOptions, OCISyncBase, normalize_oracle_url
 
 
@@ -45,6 +46,21 @@ def test_normalize_oracle_url_preserves_non_oracle_url() -> None:
 @pytest.mark.parametrize("identifier", ["game_events", "payload_2"])
 def test_quote_identifier_accepts_valid_table_and_column_identifiers(identifier) -> None:
     assert OCISyncBase._quote_identifier(identifier) == f'"{identifier}"'
+
+
+def test_legacy_player_season_columns_are_mapped_to_oracle_names(oracle_sync) -> None:
+    inspector = MagicMock()
+    inspector.get_columns.return_value = [
+        {"name": "PLAYER_ID"},
+        {"name": "LEAGUE_LEVEL"},
+        {"name": "DATA_SOURCE"},
+    ]
+
+    with patch("src.sync.sync_base.inspect", return_value=inspector):
+        assert oracle_sync._target_column_aliases(PlayerSeasonBatting) == {
+            "level": "league_level",
+            "source": "data_source",
+        }
 
 
 @pytest.mark.parametrize("table_name", ["game_events;DROP_TABLE", "game-events"])
@@ -236,6 +252,25 @@ def test_direct_oracle_merge_update_timestamp_false_omits_timestamp_update(oracl
     compact_sql = _compact_sql(cursor.execute.call_args.args[0])
     assert 'WHEN MATCHED THEN UPDATE SET t."NAME" = :name' in compact_sql
     assert "CURRENT_TIMESTAMP" not in compact_sql
+
+
+def test_direct_oracle_merge_uses_safe_bind_name_for_level(oracle_sync) -> None:
+    connection, cursor = _connection()
+    oracle_sync._oracle_columns = MagicMock(return_value={"player_id", "level", "name"})
+
+    oracle_sync._direct_insert_upsert_oracle(
+        "player_season_batting",
+        {"player_id": 1, "level": "1군", "name": "홍길동"},
+        ["player_id", "level"],
+        update_timestamp=True,
+        connection=connection,
+    )
+
+    sql, params = cursor.execute.call_args.args
+    compact_sql = _compact_sql(sql)
+    assert ":b_level" in compact_sql
+    assert ":level" not in compact_sql.replace(":b_level", "")
+    assert params["b_level"] == "1군"
 
 
 def test_direct_oracle_merge_without_update_columns_has_no_matched_clause(oracle_sync) -> None:

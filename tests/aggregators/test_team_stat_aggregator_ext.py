@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.team_stat_aggregator import (
     DEFAULT_TEAM_NAMES,
@@ -142,6 +143,42 @@ class TestAggregatePitchingDispatch:
 
 
 class TestAggregateBattingDB:
+    def test_team_code_expression_uses_legacy_column_when_canonical_is_missing(self):
+        session = MagicMock()
+        inspected = MagicMock()
+        inspected.get_columns.return_value = [{"name": "team_code"}]
+        session.get_bind.return_value = MagicMock()
+        agg = TeamStatAggregator(session)
+
+        with patch("src.aggregators.team_stat_aggregator.sa_inspect", return_value=inspected):
+            expression = agg._team_code_expression(PlayerSeasonBatting)
+
+        assert expression is PlayerSeasonBatting.team_code
+
+    def test_team_code_expression_coalesces_when_canonical_column_exists(self):
+        session = MagicMock()
+        inspected = MagicMock()
+        inspected.get_columns.return_value = [{"name": "team_code"}, {"name": "canonical_team_code"}]
+        session.get_bind.return_value = MagicMock()
+        agg = TeamStatAggregator(session)
+
+        with patch("src.aggregators.team_stat_aggregator.sa_inspect", return_value=inspected):
+            expression = agg._team_code_expression(PlayerSeasonBatting)
+
+        assert "coalesce" in str(expression).lower()
+
+    def test_team_code_exclusions_omit_empty_string_on_oracle(self):
+        session = MagicMock()
+        session.get_bind.return_value.dialect.name = "oracle"
+
+        assert TeamStatAggregator(session)._team_code_exclusions() == ("합계", "TOTAL", "ALL", "-")
+
+    def test_team_code_exclusions_include_empty_string_on_sqlite(self):
+        session = MagicMock()
+        session.get_bind.return_value.dialect.name = "sqlite"
+
+        assert TeamStatAggregator(session)._team_code_exclusions() == ("", "합계", "TOTAL", "ALL", "-")
+
     def test_raises_without_session(self):
         agg = TeamStatAggregator(None)
         with pytest.raises(ValueError, match="Database session is required"):
@@ -542,6 +579,18 @@ class TestGetTeamRecordFromStandings:
         mock_query.first.return_value = None
         mock_session.query.return_value = mock_query
         result = TeamStatAggregator._get_team_record_from_standings(mock_session, "OB", 2025)
+        assert result == {"games": 0, "wins": 0, "losses": 0, "ties": 0}
+
+    def test_returns_zeros_when_standings_table_is_unavailable(self):
+        mock_session = MagicMock()
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.side_effect = SQLAlchemyError("missing table")
+        mock_session.query.return_value = mock_query
+
+        result = TeamStatAggregator._get_team_record_from_standings(mock_session, "OB", 2025)
+
         assert result == {"games": 0, "wins": 0, "losses": 0, "ties": 0}
 
 

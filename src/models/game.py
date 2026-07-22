@@ -27,8 +27,10 @@ class Game(Base, TimestampMixin):
 
     __tablename__ = "game"
 
+    __table_args__ = (UniqueConstraint("game_id", name="uq_game_game_id"),)
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), nullable=False, unique=True, index=True)
+    game_id = Column(String(20), nullable=False)
     game_date = Column(Date, nullable=False, index=True)
     stadium = Column(String(50))
     home_team = Column(String(20))  # Team Code

@@ -652,6 +652,7 @@ class TestBattingPageParsers:
 
         assert moved is True
         policy.delay.assert_called_once()
+        assert page.query_selector.call_args_list[0].args[0] == 'td[id*="paging"], div.paging'
         page.click.assert_called_once_with('a[href*="btnNo2"]', timeout=15000)
 
     def test_navigate_to_basic2_returns_false_when_link_is_unavailable(self):

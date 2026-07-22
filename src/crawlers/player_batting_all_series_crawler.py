@@ -52,6 +52,7 @@ MIN_LEGACY_ROW_CELLS = 5
 PLAYER_NAME_CELL_INDEX = 1
 TEAM_NAME_CELL_INDEX = 2
 DEBUG_ROW_LIMIT = 3
+TEAM_FILTER_REFRESH_WAIT_MS = 3000
 
 
 @dataclass
@@ -469,7 +470,7 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
             desc = f"{next_page_num}페이지로 이동 (btnNo{relative_page_num})"
 
         # 빠른 종료: pagination 컨테이너 자체가 없으면 마지막 페이지
-        paging = page.query_selector('td[id*="paging"]')
+        paging = page.query_selector('td[id*="paging"], div.paging')
         if not paging:
             return False
 
@@ -483,6 +484,7 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
 
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+        page.wait_for_timeout(TEAM_FILTER_REFRESH_WAIT_MS)
     except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page_num)
         return False
@@ -1020,6 +1022,7 @@ def _select_team_if_needed(page: Page, tm: dict, *, by_team: bool, policy: Reque
                 tm["value"],
             )
             page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+            page.wait_for_timeout(TEAM_FILTER_REFRESH_WAIT_MS)
             policy.delay()
         except CRAWLER_EXCEPTIONS:
             logger.exception("⚠️ 팀 선택 실패 (%s)", tm["text"])

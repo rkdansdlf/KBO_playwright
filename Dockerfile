@@ -55,9 +55,10 @@ VOLUME /app/data
 
 # USER appuser
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD python -m src.cli.sqlite_integrity_guard --database-url "${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}" --action none --strict --json >/tmp/sqlite_healthcheck.json && \
-        python -c "from sqlalchemy import text; from src.db.engine import SessionLocal; s=SessionLocal(); s.execute(text('SELECT 1')); s.close()" || exit 1
+# Full SQLite integrity checks remain in the startup guard. Runtime healthchecks
+# stay lightweight so normal write contention does not mark the scheduler unhealthy.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "from sqlalchemy import text; from src.db.engine import SessionLocal; s=SessionLocal(); s.execute(text('SELECT 1')); s.close()" || exit 1
 
 ENTRYPOINT ["bash", "docker/entrypoint.sh"]
 CMD ["python", "-m", "scripts.scheduler"]

@@ -65,8 +65,20 @@ if TYPE_CHECKING:
 
 BASIC1_URL = PITCHER_BASIC1
 BASIC2_URL = PITCHER_BASIC2
+PITCHER_TEAM_SELECTOR = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
+PITCHER_TEAM_REFRESH_SCRIPT = """
+    ({ value, label }) => {
+        const selector = document.querySelector(
+            'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
+        );
+        if (!selector || selector.value !== value) return false;
+        const rows = Array.from(document.querySelectorAll('table.tData01 tbody tr'));
+        return rows.length > 0 && rows.every(row => row.textContent.includes(label));
+    }
+"""
 
 BASIC1_SORT_CODE = "G_CN"  # 'G' (경기) 헤더
+TEAM_FILTER_REFRESH_WAIT_MS = 3000
 
 # 정규시즌 Basic2에서는 NP(투구수)만 수집
 BASIC2_SORT_SEQUENCE = [
@@ -249,7 +261,7 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
             desc = f"{next_page}페이지로 이동 (btnNo{relative})"
 
         # 빠른 종료: pagination 컨테이너 자체가 없으면 마지막 페이지
-        paging = page.query_selector('td[id*="paging"]')
+        paging = page.query_selector('td[id*="paging"], div.paging')
         if not paging:
             return False
 
@@ -1032,10 +1044,16 @@ def _select_pitcher_team_if_needed(page: Page, tm: dict, *, by_team: bool, polic
         logger.info("🔍 팀 선택: %s (%s)", tm["text"], tm["value"])
         try:
             page.select_option(
-                'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
+                PITCHER_TEAM_SELECTOR,
                 tm["value"],
             )
+            page.wait_for_timeout(TEAM_FILTER_REFRESH_WAIT_MS)
             page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
+            page.wait_for_function(
+                PITCHER_TEAM_REFRESH_SCRIPT,
+                arg={"value": tm["value"], "label": tm["text"].strip()},
+                timeout=LONG_TIMEOUT,
+            )
             policy.delay()
         except CRAWLER_EXCEPTIONS:
             logger.exception("⚠️ 팀 선택 실패 (%s)", tm["text"])
@@ -1043,6 +1061,24 @@ def _select_pitcher_team_if_needed(page: Page, tm: dict, *, by_team: bool, polic
         else:
             return True
     return True
+
+
+def _reset_pitcher_pagination(page: Page, current_page: int, policy: RequestPolicy | None = None) -> None:
+    if current_page <= 1:
+        return
+
+    selector = 'a[href*="btnNo1"]'
+    try:
+        button = page.query_selector(selector)
+        if not button:
+            return
+        if policy:
+            policy.delay()
+        page.click(selector, timeout=SEL_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+        wait_for_table(page)
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("❌ 첫 페이지 복귀 실패")
 
 
 def _collect_pitcher_basic1_loop(ctx: PitcherBasic1Context) -> None:
@@ -1071,6 +1107,8 @@ def _collect_pitcher_basic1_loop(ctx: PitcherBasic1Context) -> None:
             if not go_to_next_page(ctx.page, page_number, policy=ctx.policy):
                 break
             page_number += 1
+
+        _reset_pitcher_pagination(ctx.page, page_number, policy=ctx.policy)
 
 
 def _collect_pitcher_basic2_additional(ctx: Basic2AdditionalContext) -> None:
