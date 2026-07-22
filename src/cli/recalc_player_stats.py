@@ -308,7 +308,7 @@ def _upsert_player_stats(
     if not records:
         return 0
 
-    conflict_keys = ["player_id", "season", "league", "level"]
+    conflict_keys = ["player_id", "season", "league", "level", "team_code"]
     saved = 0
 
     for data in records:

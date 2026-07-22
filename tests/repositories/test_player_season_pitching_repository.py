@@ -109,6 +109,24 @@ class TestSavePitchingStats:
         assert stats[0].wins == 6
 
     @patch("src.repositories.player_season_pitching_repository.filter_valid_season_stat_payloads")
+    def test_saves_same_player_as_two_team_rows(self, mock_filter, session):
+        session.add(PlayerBasic(player_id=1002, name="Split Pitcher"))
+        session.commit()
+
+        mock_filter.return_value = (
+            [
+                {"player_id": 1002, "season": 2021, "league": "REGULAR", "team_code": "LG", "wins": 2},
+                {"player_id": 1002, "season": 2021, "league": "REGULAR", "team_code": "KH", "wins": 1},
+            ],
+            Counter(),
+        )
+
+        result = save_pitching_stats_to_db([{}, {}])
+
+        assert result == 2
+        assert session.query(PlayerSeasonPitching).filter_by(player_id=1002).count() == 2
+
+    @patch("src.repositories.player_season_pitching_repository.filter_valid_season_stat_payloads")
     def test_extra_stats_promotion(self, mock_filter, session):
         session.add(PlayerBasic(player_id=2001, name="Test"))
         session.commit()
@@ -229,7 +247,7 @@ class TestSavePitchingStats:
         mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
 
         mock_filter.return_value = (
-            [{"player_id": 7001, "season": 2024, "league": "REGULAR", "games": 5}],
+            [{"player_id": 7001, "season": 2024, "league": "REGULAR", "team_code": "LG", "games": 5}],
             Counter(),
         )
 
@@ -247,7 +265,7 @@ class TestSavePitchingStats:
         mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
 
         mock_filter.return_value = (
-            [{"player_id": 8001, "season": 2024, "league": "REGULAR", "games": 5}],
+            [{"player_id": 8001, "season": 2024, "league": "REGULAR", "team_code": "LG", "games": 5}],
             Counter(),
         )
 

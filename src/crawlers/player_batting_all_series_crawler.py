@@ -53,6 +53,17 @@ PLAYER_NAME_CELL_INDEX = 1
 TEAM_NAME_CELL_INDEX = 2
 DEBUG_ROW_LIMIT = 3
 TEAM_FILTER_REFRESH_WAIT_MS = 3000
+BATTING_TEAM_SELECTOR = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
+BATTING_TEAM_REFRESH_SCRIPT = """
+    ({ value, label }) => {
+        const selector = document.querySelector(
+            'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
+        );
+        if (!selector || selector.value !== value) return false;
+        const rows = Array.from(document.querySelectorAll('table.tData01 tbody tr'));
+        return rows.length > 0 && rows.every(row => row.textContent.includes(label));
+    }
+"""
 
 
 @dataclass
@@ -68,6 +79,7 @@ class BattingCrawlContext:
     policy: RequestPolicy
     unique_players: set[int]
     all_players_data: list[dict]
+    preserve_team_splits: bool = False
 
 
 @dataclass
@@ -1018,11 +1030,16 @@ def _select_team_if_needed(page: Page, tm: dict, *, by_team: bool, policy: Reque
         logger.info("🔍 팀 선택: %s (%s)", tm["text"], tm["value"])
         try:
             page.select_option(
-                'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
+                BATTING_TEAM_SELECTOR,
                 tm["value"],
             )
             page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
             page.wait_for_timeout(TEAM_FILTER_REFRESH_WAIT_MS)
+            page.wait_for_function(
+                BATTING_TEAM_REFRESH_SCRIPT,
+                arg={"value": tm["value"], "label": tm["text"].strip()},
+                timeout=NAV_TIMEOUT,
+            )
             policy.delay()
         except CRAWLER_EXCEPTIONS:
             logger.exception("⚠️ 팀 선택 실패 (%s)", tm["text"])
@@ -1032,17 +1049,21 @@ def _select_team_if_needed(page: Page, tm: dict, *, by_team: bool, policy: Reque
     return True
 
 
-def _process_current_page_batting(
+def _process_current_page_batting(  # noqa: PLR0913
     page: Page,
     year: int,
     series_key: str,
     unique_players: set[int],
     all_players_data: list[dict],
+    *,
+    preserve_team_splits: bool = False,
 ) -> int:
     current_page_data = parse_batting_stats_table(page, series_key, year)
     for player_stat in current_page_data:
         pid = player_stat["player_id"]
-        if pid not in unique_players:
+        if preserve_team_splits:
+            all_players_data.append(player_stat)
+        elif pid not in unique_players:
             unique_players.add(pid)
             all_players_data.append(player_stat)
         else:
@@ -1069,6 +1090,7 @@ def _collect_batting_stats_loop(ctx: BattingCrawlContext) -> None:
                 series_key=ctx.series_key,
                 unique_players=ctx.unique_players,
                 all_players_data=ctx.all_players_data,
+                preserve_team_splits=ctx.preserve_team_splits,
             )
             total_collected += added
 
@@ -1088,6 +1110,17 @@ def _collect_batting_stats_loop(ctx: BattingCrawlContext) -> None:
 
             page_num += 1
             ctx.policy.delay()
+
+        if page_num > 1:
+            first_page = 'a[href*="btnNo1"]'
+            try:
+                if ctx.page.query_selector(first_page):
+                    ctx.policy.delay()
+                    ctx.page.click(first_page, timeout=SEL_TIMEOUT)
+                    ctx.page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+                    ctx.page.wait_for_timeout(TEAM_FILTER_REFRESH_WAIT_MS)
+            except CRAWLER_EXCEPTIONS:
+                logger.exception("❌ 타자 첫 페이지 복귀 실패")
 
 
 def _merge_basic2_data(
@@ -1158,6 +1191,7 @@ class BattingSeriesCrawlRequest:
     save_to_db: bool = False
     headless: bool = False
     by_team: bool = False
+    preserve_team_splits: bool = False
 
 
 def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]:
@@ -1176,6 +1210,7 @@ def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]
     save_to_db = request.save_to_db
     headless = request.headless
     by_team = request.by_team
+    preserve_team_splits = request.preserve_team_splits
 
     series_mapping = get_series_mapping()
 
@@ -1233,11 +1268,12 @@ def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]
                     policy=policy,
                     unique_players=unique_players,
                     all_players_data=all_players_data,
+                    preserve_team_splits=preserve_team_splits,
                 ),
             )
 
             # 정규시즌인 경우 Basic2 페이지에서 추가 데이터 수집
-            if series_key == "regular" and all_players_data:
+            if series_key == "regular" and all_players_data and not preserve_team_splits:
                 all_players_data = _merge_basic2_data(all_players_data, page, year, series_info, policy)
 
             logger.info("✅ %s 데이터 수집 완료", series_info["name"])

@@ -58,7 +58,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         return self.sync_simple_table(
             PlayerSeasonPitching,
             SimpleTableSyncOptions(
-                conflict_keys=["player_id", "season", "league", "level"],
+                conflict_keys=["player_id", "season", "league", "level", "team_code"],
                 exclude_cols=["id", "created_at"],
             ),
         )
@@ -68,7 +68,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         return self.sync_simple_table(
             PlayerSeasonBatting,
             SimpleTableSyncOptions(
-                conflict_keys=["player_id", "season", "league", "level"],
+                conflict_keys=["player_id", "season", "league", "level", "team_code"],
                 exclude_cols=["id", "created_at"],
             ),
         )
@@ -272,7 +272,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         return self.sync_simple_table(
             PlayerSeasonBatting,
             SimpleTableSyncOptions(
-                conflict_keys=["player_id", "season", "league", "level"],
+                conflict_keys=["player_id", "season", "league", "level", "team_code"],
                 exclude_cols=["id", "created_at"],  # Include updated_at
                 filters=filters,
                 batch_size=batch_size,
@@ -313,7 +313,7 @@ class StatsSyncMixin(SyncBaseProtocol):
         return self.sync_simple_table(
             PlayerSeasonPitching,
             SimpleTableSyncOptions(
-                conflict_keys=["player_id", "season", "league", "level"],
+                conflict_keys=["player_id", "season", "league", "level", "team_code"],
                 exclude_cols=["id", "created_at"],  # Include updated_at
                 filters=filters,
                 batch_size=batch_size,

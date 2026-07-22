@@ -68,7 +68,7 @@ def test_sync_pitcher_data_success_path():
                 self.target_session = target
 
             def sync_simple_table(self, model, options):
-                assert options.conflict_keys == ["player_id", "season", "league", "level"]
+                assert options.conflict_keys == ["player_id", "season", "league", "level", "team_code"]
                 return 123
 
         syncer = _Syncer(session, MagicMock())
@@ -88,7 +88,7 @@ def test_sync_batting_data_success_path():
                 self.target_session = target
 
             def sync_simple_table(self, model, options):
-                assert options.conflict_keys == ["player_id", "season", "league", "level"]
+                assert options.conflict_keys == ["player_id", "season", "league", "level", "team_code"]
                 return 500
 
         syncer = _Syncer(session, MagicMock())

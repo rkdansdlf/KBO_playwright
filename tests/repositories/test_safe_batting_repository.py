@@ -107,6 +107,24 @@ class TestSaveBattingStats:
         assert stats[0].hits == 30
 
     @patch("src.repositories.safe_batting_repository.filter_valid_season_stat_payloads")
+    def test_saves_same_player_as_two_team_rows(self, mock_filter, session):
+        session.add(PlayerBasic(player_id=1002, name="Split Hitter"))
+        session.commit()
+
+        mock_filter.return_value = (
+            [
+                {"player_id": 1002, "season": 2021, "league": "REGULAR", "team_code": "LG", "hits": 10},
+                {"player_id": 1002, "season": 2021, "league": "REGULAR", "team_code": "KH", "hits": 8},
+            ],
+            Counter(),
+        )
+
+        result = save_batting_stats_safe([{}, {}])
+
+        assert result == 2
+        assert session.query(PlayerSeasonBatting).filter_by(player_id=1002).count() == 2
+
+    @patch("src.repositories.safe_batting_repository.filter_valid_season_stat_payloads")
     def test_skip_null_player_id(self, mock_filter, session):
         mock_filter.return_value = (
             [

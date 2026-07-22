@@ -99,6 +99,7 @@ def summarize_candidate(target: LookupTarget, candidate: dict[str, object]) -> d
     selected_keys = (
         "player_id",
         "name",
+        "uniform_no",
         "team",
         "position",
         "birth_date",

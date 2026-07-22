@@ -42,8 +42,8 @@ TABLES_TO_VERIFY = [
     ("team_daily_roster", ["roster_date", "team_code", "player_id"]),
     ("players", ["kbo_person_id"]),
     ("game", ["game_id"]),
-    ("player_season_batting", ["player_id", "season", "league", "level"]),
-    ("player_season_pitching", ["player_id", "season", "league", "level"]),
+    ("player_season_batting", ["player_id", "season", "league", "level", "team_code"]),
+    ("player_season_pitching", ["player_id", "season", "league", "level", "team_code"]),
     ("kbo_seasons", ["season_id"]),
     ("player_basic", ["player_id"]),
 ]
