@@ -630,6 +630,33 @@ class TestValidateSeasonTeamPitching:
         result = gate.validate_season_team_pitching(2025)
         assert result["ok"] is True
 
+    def test_earned_runs_source_semantics_difference_is_non_blocking(self):
+        session = MagicMock()
+        team_row = MagicMock()
+        team_row.team_id = "DB"
+        team_row.innings_pitched = 300.0
+        team_row.innings_outs = 900
+        team_stats = {f: 100 for f in PITCHING_STAT_FIELDS if f != "innings_outs"}
+        team_stats["earned_runs"] = 80
+        _set_attrs(team_row, team_stats)
+        player_row = MagicMock()
+        player_row.team_code = "DB"
+        player_row.innings_outs = 900
+        player_stats = {f: 100 for f in PITCHING_STAT_FIELDS if f != "innings_outs"}
+        player_stats["earned_runs"] = 95
+        _set_attrs(player_row, player_stats)
+        session.execute.side_effect = [
+            _mock_execute_result([1]),
+            _mock_execute_result([team_row]),
+            _mock_execute_result([player_row]),
+        ]
+
+        result = QualityGate(session).validate_season_team_pitching(2025)
+
+        assert result["ok"] is True
+        assert result["mismatches"] == []
+        assert result["semantics_exempt_fields"] == ["earned_runs"]
+
     def test_innings_pitched_mismatch(self):
         session = MagicMock()
         team_row = MagicMock()

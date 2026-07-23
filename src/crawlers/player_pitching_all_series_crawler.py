@@ -103,7 +103,7 @@ class Basic2PageContext:
     page: Page
     season: int
     league: str
-    pitchers: dict[int, PitcherStats]
+    pitchers: dict[int | tuple[int, str | None], PitcherStats]
     sort_key: str
     max_players: int | None = None
 
@@ -119,7 +119,8 @@ class PitcherBasic1Context:
     by_team: bool
     limit: int | None
     policy: RequestPolicy
-    pitchers: dict[int, PitcherStats]
+    pitchers: dict[int | tuple[int, str | None], PitcherStats]
+    preserve_team_splits: bool = False
 
 
 @dataclass
@@ -132,7 +133,7 @@ class Basic2AdditionalContext:
     series_info: dict
     limit: int | None
     policy: RequestPolicy
-    pitchers: dict[int, PitcherStats]
+    pitchers: dict[int | tuple[int, str | None], PitcherStats]
 
 
 SERIES_MAPPING: dict[str, dict[str, str]] = {
@@ -492,12 +493,14 @@ def _get_and_validate_basic1_headers(page: Page) -> dict[str, int] | None:
     return header_index
 
 
-def _map_pitcher_basic1_stats(
+def _map_pitcher_basic1_stats(  # noqa: PLR0913
     row: dict,
     season: int,
     league: str,
-    pitchers: dict[int, PitcherStats],
+    pitchers: dict[int | tuple[int, str | None], PitcherStats],
     max_players: int | None,
+    *,
+    preserve_team_splits: bool = False,
 ) -> bool:
     player_id = row["player_id"]
     if max_players and player_id not in pitchers and len(pitchers) >= max_players:
@@ -508,11 +511,12 @@ def _map_pitcher_basic1_stats(
     raw = row["raw"]
 
     team_code = resolve_team_code(team_name, season) or team_name
+    key: int | tuple[int, str | None] = (player_id, team_code) if preserve_team_splits else player_id
 
-    stats = pitchers.get(player_id)
+    stats = pitchers.get(key)
     if not stats:
         stats = PitcherStats(player_id=player_id, season=season, league=league)
-        pitchers[player_id] = stats
+        pitchers[key] = stats
 
     stats.player_name = player_name
     stats.team_name = team_name
@@ -575,12 +579,14 @@ def _apply_basic1_extra_stats(stats: PitcherStats, raw: dict[str, str]) -> None:
         metrics["win_pct"] = win_pct
 
 
-def parse_basic1_page(
+def parse_basic1_page(  # noqa: PLR0913
     page: Page,
     season: int,
     league: str,
-    pitchers: dict[int, PitcherStats],
+    pitchers: dict[int | tuple[int, str | None], PitcherStats],
     max_players: int | None = None,
+    *,
+    preserve_team_splits: bool = False,
 ) -> int:
     """Parse basic1 page.
 
@@ -590,6 +596,7 @@ def parse_basic1_page(
         league: League.
         pitchers: Pitchers.
         max_players: Max Players.
+        preserve_team_splits: Preserve Team Splits.
         page: Page.
         season: Season year.
         league: League.
@@ -656,7 +663,14 @@ def parse_basic1_page(
         processed = 0
 
         for row in extracted_rows:
-            if _map_pitcher_basic1_stats(row, season, league, pitchers, max_players):
+            if _map_pitcher_basic1_stats(
+                row,
+                season,
+                league,
+                pitchers,
+                max_players,
+                preserve_team_splits=preserve_team_splits,
+            ):
                 processed += 1
 
     except CRAWLER_EXCEPTIONS:
@@ -1097,6 +1111,7 @@ def _collect_pitcher_basic1_loop(ctx: PitcherBasic1Context) -> None:
                 league=ctx.league_name,
                 pitchers=ctx.pitchers,
                 max_players=ctx.limit,
+                preserve_team_splits=ctx.preserve_team_splits,
             )
             logger.info("   ▶ Basic1 %s페이지: %s명 처리 (누적 %s명)", page_number, parsed, len(ctx.pitchers))
 
@@ -1156,6 +1171,7 @@ class PitchingSeriesCrawlRequest:
     headless: bool = True
     save_to_db: bool = False
     by_team: bool = False
+    preserve_team_splits: bool = False
 
 
 def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherStats]:
@@ -1174,6 +1190,7 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
     headless = request.headless
     save_to_db = request.save_to_db
     by_team = request.by_team
+    preserve_team_splits = request.preserve_team_splits or by_team
     if series_key not in SERIES_MAPPING:
         msg = f"지원하지 않는 시리즈 키: {series_key}"
         raise ValueError(msg)
@@ -1182,7 +1199,7 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
     league_name = series_info.get("league", "REGULAR")
     logger.info("\n📊 %s년 %s 수집 시작 (by_team=%s)", year, series_info["name"], by_team)
 
-    pitchers: dict[int, PitcherStats] = {}
+    pitchers: dict[int | tuple[int, str | None], PitcherStats] = {}
     policy = RequestPolicy()
 
     with sync_playwright() as playwright:
@@ -1211,6 +1228,7 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
                 limit=limit,
                 policy=policy,
                 pitchers=pitchers,
+                preserve_team_splits=preserve_team_splits,
             ),
         )
 

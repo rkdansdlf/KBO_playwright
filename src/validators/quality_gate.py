@@ -31,6 +31,7 @@ TEAM_STAT_ABSOLUTE_TOLERANCE = 5
 FUTURES_BATTING_TOLERANCE = 0.005
 FUTURES_PITCHING_TOLERANCE = 0.01
 FUTURES_FIP_TOLERANCE = 0.02
+OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS = frozenset({"earned_runs"})
 
 
 class PitchingCumulativeRow(Protocol):
@@ -49,6 +50,45 @@ def _batting_pa_mismatch(diff: int, cumulative_pa: int) -> bool:
 def _team_stat_mismatch(diff: int, threshold: int = TEAM_STAT_ABSOLUTE_TOLERANCE) -> bool:
     """Return True when absolute team/player stat difference exceeds threshold."""
     return abs(diff) > threshold
+
+
+def _team_pitching_stat_diffs(team_row: object, player_row: object) -> tuple[list[str], list[str]]:
+    """Compare team/player pitching fields and separate ER semantics differences."""
+    stat_fields = [
+        "wins",
+        "losses",
+        "saves",
+        "holds",
+        "runs_allowed",
+        "earned_runs",
+        "hits_allowed",
+        "home_runs_allowed",
+        "walks_allowed",
+        "strikeouts",
+        "intentional_walks",
+        "hit_batters",
+        "tbf",
+        "complete_games",
+        "shutouts",
+        "wild_pitches",
+        "balks",
+        "sacrifices_allowed",
+        "sacrifice_flies_allowed",
+    ]
+    diffs: list[str] = []
+    semantics_exempt_diffs: list[str] = []
+    for field in stat_fields:
+        team_value = getattr(team_row, field) or 0
+        player_value = getattr(player_row, field) or 0
+        diff = abs(team_value - player_value)
+        if not _team_stat_mismatch(diff):
+            continue
+        detail = f"{field}: team={team_value} player_sum={player_value} diff={diff}"
+        if field in OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS:
+            semantics_exempt_diffs.append(detail)
+        else:
+            diffs.append(detail)
+    return diffs, semantics_exempt_diffs
 
 
 def _pa_formula_expected(
@@ -697,35 +737,7 @@ class QualityGate:
                 )
                 continue
 
-            stat_fields = [
-                "wins",
-                "losses",
-                "saves",
-                "holds",
-                "runs_allowed",
-                "earned_runs",
-                "hits_allowed",
-                "home_runs_allowed",
-                "walks_allowed",
-                "strikeouts",
-                "innings_outs",
-                "intentional_walks",
-                "hit_batters",
-                "tbf",
-                "complete_games",
-                "shutouts",
-                "wild_pitches",
-                "balks",
-                "sacrifices_allowed",
-                "sacrifice_flies_allowed",
-            ]
-            diffs = []
-            for field in stat_fields:
-                t_val = getattr(team_r, field) or 0
-                p_val = getattr(player_r, field) or 0
-                diff = abs(t_val - p_val)
-                if _team_stat_mismatch(diff):
-                    diffs.append(f"{field}: team={t_val} player_sum={p_val} diff={diff}")
+            diffs, semantics_exempt_diffs = _team_pitching_stat_diffs(team_r, player_r)
 
             # Compare innings_pitched (special: float, not integer)
             team_ip = team_r.innings_pitched or 0.0
@@ -740,15 +752,18 @@ class QualityGate:
                         "team_id": team_id,
                         "issue": "Team pitching stats mismatch with player sum",
                         "diffs": diffs[:10],
+                        "semantics_exempt_diffs": semantics_exempt_diffs[:10],
                     },
                 )
 
-        return self._result(
+        result = self._result(
             season=season,
             league=league,
             checked_players=len(team_map),
             mismatches=mismatches,
         )
+        result["semantics_exempt_fields"] = sorted(OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS)
+        return result
 
     def _check_futures_batting_impossible(self, player: PlayerSeasonBatting) -> str | None:
         pa = player.plate_appearances or 0
