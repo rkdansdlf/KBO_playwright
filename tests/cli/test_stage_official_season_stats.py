@@ -50,6 +50,13 @@ def test_stage_report_is_ready_when_sources_reconcile():
 
     assert report["ready_for_sync"] is True
     assert report["invalid_era_rows"] == []
+    assert report["batting"]["global"]["unavailable_fields"] == [
+        "runs",
+        "doubles",
+        "triples",
+        "home_runs",
+        "rbi",
+    ]
 
 
 def test_stage_report_rejects_missing_team_coverage_and_era_basis():

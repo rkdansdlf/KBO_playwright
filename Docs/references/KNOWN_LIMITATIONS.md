@@ -94,9 +94,10 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
 - The official team source is usable, but OCI player-season reconciliation is still
   blocked. A read-only 2021 staging run now collects 394 batting rows and 308 pitching
   rows. Batting global totals reconcile exactly with the official team table; pitching
-  differs by 18 outs and 18 earned runs (`37998/6243` team versus `37980/6261`
-  player). Team-level player splits also differ because the public player table does
-  not provide a safe multi-team season key for the existing `player_season_*` schema.
+  innings now reconcile exactly after preserving the raw KBO innings notation, while
+  earned runs differ by 18 (`6243` team versus `6261` player). Team-level player
+  splits also differ because the public player table does not provide a safe multi-team
+  season key for the existing `player_season_*` schema.
   The staging report remains `ready_for_sync = false`.
 - The pitcher collector now waits for the delayed team-filter postback and returns to
   page 1 before selecting the next team. The live 2021 probe verified complete team
@@ -108,8 +109,10 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
   or data change has been applied.
 - A read-only 2026 staging run collected 328 batting rows and 271 pitching rows. The
   current-season team batting source exposes zero plate appearances, producing a
-  `35554` PA global difference; pitching differs by 30 outs and 17 earned runs.
-  2026 also remains `ready_for_sync = false`.
+  `plate_appearances` unavailable field; all other available global batting totals
+  reconcile. A bounded `BasicOld.aspx` probe confirms team pitching `23976` outs and
+  `4072` earned runs versus player pitching `23976` outs and `4089` earned runs.
+  The remaining 17 earned-run difference keeps 2026 at `ready_for_sync = false`.
 
 ---
 

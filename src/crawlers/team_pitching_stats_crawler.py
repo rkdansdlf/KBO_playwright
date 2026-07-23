@@ -27,7 +27,7 @@ from src.utils.team_stats_helpers import (
     parse_numeric,
     parse_team_stats_html,
 )
-from src.utils.type_helpers import parse_innings
+from src.utils.type_helpers import parse_innings, parse_innings_to_outs
 
 if TYPE_CHECKING:
     from bs4.element import Tag
@@ -35,8 +35,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TEAM_PITCHING_URLS = [
-    "https://www.koreabaseball.com/Record/Team/Pitcher/Basic.aspx",
     "https://www.koreabaseball.com/Record/Team/Pitcher/BasicOld.aspx",
+    "https://www.koreabaseball.com/Record/Team/Pitcher/Basic.aspx",
 ]
 
 HEADER_MAP = {
@@ -272,6 +272,7 @@ def parse_team_pitching_html(
             stat_fields=PITCHING_FIELDS,
             float_fields=FLOAT_FIELDS,
             value_parser=_parse_pitching_value,
+            postprocess=_postprocess_pitching_payload,
         ),
     )
 
@@ -280,6 +281,13 @@ def _parse_pitching_value(header_key: str, value_str: str) -> int | float | str 
     if header_key == "innings_pitched":
         return parse_innings(value_str)
     return parse_numeric(value_str, as_float=header_key in FLOAT_FIELDS)
+
+
+def _postprocess_pitching_payload(payload: dict[str, Any], raw_values: dict[str, str]) -> None:
+    innings_text = raw_values.get("innings_pitched")
+    innings_outs = parse_innings_to_outs(innings_text)
+    if innings_outs is not None:
+        payload["innings_outs"] = innings_outs
 
 
 def _add_pitching_values(payload: dict[str, Any], cells: list, indexes: dict[str, int]) -> dict[str, Any]:
@@ -316,6 +324,7 @@ def _parse_team_pitching_row(
             stat_fields=PITCHING_FIELDS,
             float_fields=FLOAT_FIELDS,
             value_parser=_parse_pitching_value,
+            postprocess=_postprocess_pitching_payload,
         ),
     )
 
