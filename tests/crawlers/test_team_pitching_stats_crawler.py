@@ -100,6 +100,7 @@ class TestParseTeamPitchingHtml:
         assert lg["games"] == 144
         assert lg["wins"] == 80
         assert lg["losses"] == 60
+        assert lg["innings_outs"] == 3601
         assert lg["era"] == pytest.approx(4.50)
 
     def test_no_table_returns_empty(self):

@@ -126,13 +126,18 @@ def _source_comparison(
     *,
     value_getter: Callable[[object, str], object] = _value,
 ) -> dict[str, object]:
-    team_totals = _sum_fields(team_rows, fields, value_getter=value_getter)
-    player_totals = _sum_fields(player_rows, fields, value_getter=value_getter)
+    available_fields = tuple(
+        field for field in fields if any(value_getter(row, field) is not None for row in team_rows)
+    )
+    unavailable_fields = [field for field in fields if field not in available_fields]
+    team_totals = _sum_fields(team_rows, available_fields, value_getter=value_getter)
+    player_totals = _sum_fields(player_rows, available_fields, value_getter=value_getter)
     return {
         "team_totals": team_totals,
         "player_totals": player_totals,
-        "diff": _diffs(team_totals, player_totals, fields),
-        "ok": not _diffs(team_totals, player_totals, fields),
+        "diff": _diffs(team_totals, player_totals, available_fields),
+        "unavailable_fields": unavailable_fields,
+        "ok": not _diffs(team_totals, player_totals, available_fields),
     }
 
 
@@ -145,12 +150,16 @@ def _team_comparison(
 ) -> dict[str, object]:
     team_by_id = _group_by_team(team_rows)
     player_by_id = _group_by_team(player_rows)
+    available_fields = tuple(
+        field for field in fields if any(value_getter(row, field) is not None for row in team_rows)
+    )
+    unavailable_fields = [field for field in fields if field not in available_fields]
     comparisons: dict[str, object] = {}
     for team_id in sorted(team_by_id):
-        team_totals = _sum_fields(team_by_id[team_id], fields, value_getter=value_getter)
-        player_totals = _sum_fields(player_by_id.get(team_id, []), fields, value_getter=value_getter)
-        diff = _diffs(team_totals, player_totals, fields)
-        comparisons[team_id] = {"diff": diff, "ok": not diff}
+        team_totals = _sum_fields(team_by_id[team_id], available_fields, value_getter=value_getter)
+        player_totals = _sum_fields(player_by_id.get(team_id, []), available_fields, value_getter=value_getter)
+        diff = _diffs(team_totals, player_totals, available_fields)
+        comparisons[team_id] = {"diff": diff, "unavailable_fields": unavailable_fields, "ok": not diff}
     return {
         "teams": comparisons,
         "ok": all(item["ok"] for item in comparisons.values() if isinstance(item, dict)),
@@ -251,8 +260,6 @@ def collect_stage_report(year: int, *, headless: bool = True) -> dict[str, objec
             series_key="regular",
             save_to_db=False,
             headless=headless,
-            by_team=True,
-            preserve_team_splits=True,
         ),
     )
     player_pitching = crawl_pitcher_series(

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from bs4.element import Tag
 
 ValueParser = Callable[[str, str], object | None]
+PostProcessor = Callable[[dict[str, Any], dict[str, str]], None]
 MIN_COMPLETED_TEAM_GAMES = 100
 
 
@@ -29,6 +30,7 @@ class TeamStatsParseContext:
     stat_fields: set[str]
     float_fields: set[str]
     value_parser: ValueParser | None = None
+    postprocess: PostProcessor | None = None
 
 
 def has_complete_team_stats(
@@ -237,13 +239,29 @@ def _parse_one_team_row(
         "season": context.season,
         "league": context.league,
     }
+    extras, raw_values = _parse_team_row_values(payload, cells, indexes, context)
+    if extras:
+        payload["extra_stats"] = extras
+    if context.postprocess:
+        context.postprocess(payload, raw_values)
+    return payload
+
+
+def _parse_team_row_values(
+    payload: dict[str, Any],
+    cells: list[Any],
+    indexes: dict[str, int],
+    context: TeamStatsParseContext,
+) -> tuple[dict[str, Any], dict[str, str]]:
     extras: dict[str, Any] = {}
+    raw_values: dict[str, str] = {}
     for header_key, idx in indexes.items():
         if header_key == "team_name":
             continue
         value_str = get_cell_value(cells, idx)
         if value_str is None:
             continue
+        raw_values[header_key] = value_str
         if context.value_parser:
             value = context.value_parser(header_key, value_str)
         else:
@@ -254,6 +272,4 @@ def _parse_one_team_row(
             payload[header_key] = value
         else:
             extras[header_key] = value
-    if extras:
-        payload["extra_stats"] = extras
-    return payload
+    return extras, raw_values
