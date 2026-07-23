@@ -77,7 +77,7 @@ class BattingCrawlContext:
     by_team: bool
     limit: int | None
     policy: RequestPolicy
-    unique_players: set[int]
+    unique_players: set[int | tuple[int, str | None]]
     all_players_data: list[dict]
     preserve_team_splits: bool = False
 
@@ -1053,7 +1053,7 @@ def _process_current_page_batting(  # noqa: PLR0913
     page: Page,
     year: int,
     series_key: str,
-    unique_players: set[int],
+    unique_players: set[int | tuple[int, str | None]],
     all_players_data: list[dict],
     *,
     preserve_team_splits: bool = False,
@@ -1062,7 +1062,15 @@ def _process_current_page_batting(  # noqa: PLR0913
     for player_stat in current_page_data:
         pid = player_stat["player_id"]
         if preserve_team_splits:
-            all_players_data.append(player_stat)
+            team_key = (pid, player_stat.get("team_code"))
+            if team_key not in unique_players:
+                unique_players.add(team_key)
+                all_players_data.append(player_stat)
+            else:
+                for existing in all_players_data:
+                    if (existing["player_id"], existing.get("team_code")) == team_key:
+                        existing.update(player_stat)
+                        break
         elif pid not in unique_players:
             unique_players.add(pid)
             all_players_data.append(player_stat)
@@ -1210,7 +1218,7 @@ def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]
     save_to_db = request.save_to_db
     headless = request.headless
     by_team = request.by_team
-    preserve_team_splits = request.preserve_team_splits
+    preserve_team_splits = request.preserve_team_splits or by_team
 
     series_mapping = get_series_mapping()
 
@@ -1220,7 +1228,7 @@ def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]
 
     series_info = series_mapping[series_key]
     all_players_data: list[dict] = []  # List of dicts
-    unique_players: set[int] = set()  # Track by ID
+    unique_players: set[int | tuple[int, str | None]] = set()  # Track by ID or team split
 
     policy = RequestPolicy()
 

@@ -117,3 +117,35 @@ def test_stage_report_normalizes_team_innings_to_outs():
     )
 
     assert report["pitching"]["global"]["diff"] == {}
+
+
+def test_stage_report_treats_official_earned_run_difference_as_non_blocking():
+    report = build_stage_report(
+        2025,
+        StageRows(
+            team_batting=[_batting_row("LG", plate_appearances=10, at_bats=8, hits=2)],
+            team_pitching=[_pitching_row("LG", hits_allowed=2, runs_allowed=2, earned_runs=1)],
+            player_batting=[{"team_code": "LG", "plate_appearances": 10, "at_bats": 8, "hits": 2}],
+            player_pitching=[
+                SimpleNamespace(
+                    team_code="LG",
+                    innings_outs=10,
+                    hits_allowed=2,
+                    runs_allowed=2,
+                    earned_runs=2,
+                    home_runs_allowed=0,
+                    walks_allowed=0,
+                    strikeouts=0,
+                    era=5.4,
+                    player_id=1,
+                ),
+            ],
+            expected_team_ids={"LG"},
+        ),
+        current_year=2026,
+    )
+
+    assert report["ready_for_sync"] is True
+    assert report["pitching"]["global"]["diff"] == {}
+    assert report["pitching"]["global"]["semantics_exempt_diff"] == {"earned_runs": 1}
+    assert report["source_semantics"]["non_blocking_fields"] == ["earned_runs"]

@@ -1,6 +1,8 @@
 import pytest
 
 from src.crawlers.player_pitching_all_series_crawler import (
+    _map_pitcher_basic1_stats,
+    PitcherStats,
     extract_player_id,
     normalize_header,
 )
@@ -87,3 +89,24 @@ class TestExtractPlayerId:
 
     def test_no_match_returns_none(self):
         assert extract_player_id("no-match") is None
+
+
+def test_by_team_preserves_one_pitching_row_per_player_team():
+    pitchers = {}
+    for team_name in ("LG", "DB"):
+        _map_pitcher_basic1_stats(
+            {
+                "player_id": 7,
+                "player_name": "Test",
+                "team_name": team_name,
+                "raw": {"G": "1", "IP": "1", "ERA": "0.00"},
+            },
+            2025,
+            "REGULAR",
+            pitchers,
+            None,
+            preserve_team_splits=True,
+        )
+
+    assert set(pitchers) == {(7, "LG"), (7, "DB")}
+    assert all(isinstance(stats, PitcherStats) for stats in pitchers.values())

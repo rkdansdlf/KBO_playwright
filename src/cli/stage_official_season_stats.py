@@ -39,6 +39,11 @@ CORE_PITCHING_FIELDS = (
     "walks_allowed",
     "strikeouts",
 )
+OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS = frozenset({"earned_runs"})
+OFFICIAL_SOURCE_SEMANTICS_NOTE = (
+    "Official team and player sources can use different earned-run attribution semantics; "
+    "earned_runs differences are reported but do not block synchronization."
+)
 MAX_REASONABLE_ERA = 30.0
 OFFICIAL_STAGE_REQUIRED = "Official team statistics could not be staged without fallback data"
 
@@ -125,6 +130,7 @@ def _source_comparison(
     fields: tuple[str, ...],
     *,
     value_getter: Callable[[object, str], object] = _value,
+    semantics_exempt_fields: frozenset[str] = frozenset(),
 ) -> dict[str, object]:
     available_fields = tuple(
         field for field in fields if any(value_getter(row, field) is not None for row in team_rows)
@@ -132,12 +138,17 @@ def _source_comparison(
     unavailable_fields = [field for field in fields if field not in available_fields]
     team_totals = _sum_fields(team_rows, available_fields, value_getter=value_getter)
     player_totals = _sum_fields(player_rows, available_fields, value_getter=value_getter)
+    comparable_fields = tuple(field for field in available_fields if field not in semantics_exempt_fields)
+    exempt_fields = tuple(field for field in available_fields if field in semantics_exempt_fields)
+    diff = _diffs(team_totals, player_totals, comparable_fields)
+    semantics_exempt_diff = _diffs(team_totals, player_totals, exempt_fields)
     return {
         "team_totals": team_totals,
         "player_totals": player_totals,
-        "diff": _diffs(team_totals, player_totals, available_fields),
+        "diff": diff,
+        "semantics_exempt_diff": semantics_exempt_diff,
         "unavailable_fields": unavailable_fields,
-        "ok": not _diffs(team_totals, player_totals, available_fields),
+        "ok": not diff,
     }
 
 
@@ -147,6 +158,7 @@ def _team_comparison(
     fields: tuple[str, ...],
     *,
     value_getter: Callable[[object, str], object] = _value,
+    semantics_exempt_fields: frozenset[str] = frozenset(),
 ) -> dict[str, object]:
     team_by_id = _group_by_team(team_rows)
     player_by_id = _group_by_team(player_rows)
@@ -158,8 +170,15 @@ def _team_comparison(
     for team_id in sorted(team_by_id):
         team_totals = _sum_fields(team_by_id[team_id], available_fields, value_getter=value_getter)
         player_totals = _sum_fields(player_by_id.get(team_id, []), available_fields, value_getter=value_getter)
-        diff = _diffs(team_totals, player_totals, available_fields)
-        comparisons[team_id] = {"diff": diff, "unavailable_fields": unavailable_fields, "ok": not diff}
+        comparable_fields = tuple(field for field in available_fields if field not in semantics_exempt_fields)
+        exempt_fields = tuple(field for field in available_fields if field in semantics_exempt_fields)
+        diff = _diffs(team_totals, player_totals, comparable_fields)
+        comparisons[team_id] = {
+            "diff": diff,
+            "semantics_exempt_diff": _diffs(team_totals, player_totals, exempt_fields),
+            "unavailable_fields": unavailable_fields,
+            "ok": not diff,
+        }
     return {
         "teams": comparisons,
         "ok": all(item["ok"] for item in comparisons.values() if isinstance(item, dict)),
@@ -198,6 +217,7 @@ def build_stage_report(
         rows.player_pitching,
         CORE_PITCHING_FIELDS,
         value_getter=_pitching_value,
+        semantics_exempt_fields=OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS,
     )
     batting_teams = _team_comparison(rows.team_batting, rows.player_batting, CORE_BATTING_FIELDS)
     pitching_teams = _team_comparison(
@@ -205,6 +225,7 @@ def build_stage_report(
         rows.player_pitching,
         CORE_PITCHING_FIELDS,
         value_getter=_pitching_value,
+        semantics_exempt_fields=OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS,
     )
     batting_complete = has_complete_team_stats(
         rows.team_batting,
@@ -227,12 +248,18 @@ def build_stage_report(
         "team_coverage": {"batting": batting_complete, "pitching": pitching_complete},
         "batting": {"global": batting_source, "by_team": batting_teams},
         "pitching": {"global": pitching_source, "by_team": pitching_teams},
+        "source_semantics": {
+            "non_blocking_fields": sorted(OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS),
+            "note": OFFICIAL_SOURCE_SEMANTICS_NOTE,
+        },
         "invalid_era_rows": invalid_era,
         "ready_for_sync": (
             batting_complete
             and pitching_complete
             and batting_source["ok"]
             and pitching_source["ok"]
+            and batting_teams["ok"]
+            and pitching_teams["ok"]
             and not invalid_era
         ),
     }
@@ -260,10 +287,19 @@ def collect_stage_report(year: int, *, headless: bool = True) -> dict[str, objec
             series_key="regular",
             save_to_db=False,
             headless=headless,
+            by_team=True,
+            preserve_team_splits=True,
         ),
     )
     player_pitching = crawl_pitcher_series(
-        PitchingSeriesCrawlRequest(year=year, series_key="regular", save_to_db=False, headless=headless, by_team=True),
+        PitchingSeriesCrawlRequest(
+            year=year,
+            series_key="regular",
+            save_to_db=False,
+            headless=headless,
+            by_team=True,
+            preserve_team_splits=True,
+        ),
     )
     return build_stage_report(
         year,

@@ -1,4 +1,6 @@
+from src.crawlers import player_batting_all_series_crawler as crawler
 from src.crawlers.player_batting_all_series_crawler import (
+    _process_current_page_batting,
     _extract_player_id_from_href,
     _is_basic2_headers,
     get_series_mapping,
@@ -60,3 +62,29 @@ class TestIsBasic2Headers:
 
     def test_empty_headers(self):
         assert _is_basic2_headers([]) is False
+
+
+def test_by_team_preserves_one_batting_row_per_player_team(monkeypatch):
+    rows = [
+        {"player_id": 7, "team_code": "LG", "hits": 1},
+        {"player_id": 7, "team_code": "LG", "hits": 2},
+        {"player_id": 7, "team_code": "DB", "hits": 3},
+    ]
+    monkeypatch.setattr(crawler, "parse_batting_stats_table", lambda *_args: rows)
+    output = []
+    seen = set()
+
+    _process_current_page_batting(
+        object(),
+        2025,
+        "regular",
+        seen,
+        output,
+        preserve_team_splits=True,
+    )
+
+    assert seen == {(7, "LG"), (7, "DB")}
+    assert output == [
+        {"player_id": 7, "team_code": "LG", "hits": 2},
+        {"player_id": 7, "team_code": "DB", "hits": 3},
+    ]
