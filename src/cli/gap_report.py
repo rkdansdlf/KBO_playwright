@@ -62,6 +62,7 @@ def check_relay_gaps() -> dict[str, Any]:
     with SessionLocal() as session:
         stmt = select(Game.game_id).where(
             Game.game_date >= start,
+            Game.is_primary.is_(True),
             Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
             ~Game.game_id.in_(select(GamePlayByPlay.game_id).distinct()),
         )
