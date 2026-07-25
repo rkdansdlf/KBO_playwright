@@ -17,7 +17,6 @@ python3 -m scripts.maintenance.discover_wayback_relay_captures --limit 10
 - **maintenance/** - Supported maintenance helpers used by schedulers/workflows
 - **diagnostic/** - Focused diagnostics and fixture capture utilities
 - **verification/** - Integrity and consistency verification commands
-- **supabase/** - Supabase-specific inspection and maintenance helpers
 
 ## Root-Level Scripts
 
