@@ -1,8 +1,24 @@
 # Known Data Limitations
 
-Last updated: 2026-07-23
+Last updated: 2026-07-25
 
 This document tracks known data quality issues and their current status.
+
+---
+
+## Supabase Migration Cleanup (2026-07-25)
+
+**Status**: Retired integration path removed from the repository.
+
+The runtime and CI pipeline use local SQLite and the OCI PostgreSQL-compatible target;
+there are no active references to `SUPABASE_DB_URL`, Supabase workflows, or the removed
+`scripts/supabase` helpers. The obsolete Supabase migration chain, inspection/fix
+scripts, and their tests were removed together so the repository does not present an
+unsupported second schema authority.
+
+This cleanup does not delete or modify any external Supabase project. If a historical
+Supabase database must be recovered, use the migration files from the pre-cleanup git
+history and treat that recovery as a separate migration project.
 
 ---
 
@@ -102,15 +118,17 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
 - Team-level player splits previously differed because the public player table did not
   have a safe multi-team season key in the existing schema. The player batting and
   pitching crawlers now preserve `(player_id, team_code)` rows when `by_team=True`, and
-  the season-stat unique key includes `team_code`.
+  the season-stat unique key includes `team_code`. OCI migrations 048, 049, and 050 are
+  applied to the PostgreSQL sync target; the legacy unique constraint/index that could
+  collapse team splits has been removed there.
 - The pitcher collector now waits for the delayed team-filter postback and returns to
   page 1 before selecting the next team. The live 2021 probe verified complete team
-  page traversal; no OCI player or team rows were changed during this audit.
+  page traversal; the subsequent approved local/OCI application is recorded below.
 - A 2021 team-filter batting probe returned 362 split rows versus 394 global rows. The
   crawler now preserves the complete `(player_id, team_code)` rows it receives rather
   than overwriting a player with the last team encountered; source coverage remains
-  visible in the staging report. SQLite migration 047 and OCI migration 048 add
-  `team_code` to the logical season-stat unique key.
+  visible in the staging report. SQLite migration 047 and OCI migrations 048-050 add
+  `team_code` to the logical season-stat unique key and remove conflicting legacy keys.
 - A read-only 2026 staging run collected 328 batting rows and 271 pitching rows. The
   current-season team batting source exposes zero plate appearances, producing a
   `plate_appearances` unavailable field; all other available global batting totals
@@ -119,6 +137,38 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
   The remaining 17 earned-run difference (`4072` team versus `4089` player) is treated
   as the same official-source semantics difference and does not independently keep
   2026 at `ready_for_sync = false`.
+
+### 2026 Team/Player Rollup Mismatch (investigated 2026-07-25)
+
+**Status**: Known source/duplication issue; do not force-recalculate team rows from the
+duplicated player-season table until the duplicate-row policy is fixed.
+
+The 2026 quality gate reports all 10 standard teams mismatching in both batting and
+pitching. The team rows are single regular-season snapshots from the official KBO team
+pages (`extra_stats.source = kbo_team_page`), while the player-season query sums every
+matching `REGULAR` row. The mismatch is not caused by postseason scope: the local
+player-season tables contain repeated logical keys for the same `(player_id, season,
+league, level)`.
+
+A read-only 2026-07-25 SQLite audit found:
+
+- `player_season_batting`: 1,001 regular rows but only 345 logical player keys; 325 keys
+  have duplicates.
+- `player_season_pitching`: 897 regular rows but only 340 logical player keys; 278 keys
+  have duplicates.
+- Duplicate sources include `AGGREGATED`, `CRAWLER`, `MANUAL_RECALC`, and
+  `FINAL_VERIFICATION`; repeated `AGGREGATED` rows commonly have `team_code=NULL` and
+  `canonical_team_code` populated.
+- The quality gate uses `COALESCE(canonical_team_code, team_code)` and does not select a
+  single source row per logical key, so duplicate player rows inflate sums to roughly
+  three times the official team totals.
+
+**Mitigation**: Keep the official `kbo_team_page` team rows as the current regular-season
+source, and do not apply `recalc_team_stats --season 2026` as a repair. Before removing
+the quality-gate finding, define one canonical player-season source or deduplicate the
+logical key with a migration/upsert policy that handles NULL `team_code`. Re-run the
+2026 quality gate after that policy is implemented; the existing 2020-2025 passing
+results are unaffected.
 
 ---
 
