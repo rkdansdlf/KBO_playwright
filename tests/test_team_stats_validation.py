@@ -101,6 +101,41 @@ def _insert_regular_season(session):
 
 
 class TestTeamBattingValidation:
+    def test_data_source_alias_uses_source_precedence(self):
+        session = _make_session()
+        try:
+            _insert_regular_season(session)
+            session.execute(text("ALTER TABLE player_season_batting RENAME COLUMN source TO data_source"))
+            session.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, league, data_source, team_code, canonical_team_code,
+                         plate_appearances, at_bats, runs, hits, home_runs)
+                    VALUES (1, 2025, 'REGULAR', 'CRAWLER', 'SSG', 'SSG', 5, 3, 2, 2, 1),
+                           (1, 2025, 'REGULAR', 'AGGREGATED', 'SSG', 'SSG', 99, 90, 20, 30, 9)
+                    """,
+                ),
+            )
+            session.execute(
+                text(
+                    """
+                    INSERT INTO team_season_batting
+                        (team_id, season, league, games, plate_appearances, at_bats,
+                         runs, hits, home_runs)
+                    VALUES ('SSG', 2025, 'REGULAR', 1, 5, 3, 2, 2, 1)
+                    """,
+                ),
+            )
+            session.commit()
+
+            result = QualityGate(session).validate_season_team_batting(2025)
+
+            assert result["ok"] is True
+            assert result["player_source"] == "PER_KEY"
+        finally:
+            session.close()
+
     def test_prefers_crawler_source_and_excludes_unavailable_fields(self):
         session = _make_session()
         try:
