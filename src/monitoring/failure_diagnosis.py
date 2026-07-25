@@ -153,8 +153,10 @@ _RULES: tuple[_DiagnosisRule, ...] = (
         ),
         message="SQLite database file corruption detected.",
         suggested_commands=(
-            "venv/bin/python -m src.cli.sqlite_integrity_guard "
-            "--database-url sqlite:///data/kbo_dev.db --action quarantine --json",
+            (
+                "venv/bin/python -m src.cli.sqlite_integrity_guard "
+                "--database-url sqlite:///data/kbo_dev.db --action quarantine --json"
+            ),
             "venv/bin/python -m src.cli.db_healthcheck",
         ),
     ),

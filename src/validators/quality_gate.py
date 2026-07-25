@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Protocol
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import load_only
@@ -32,6 +32,56 @@ FUTURES_BATTING_TOLERANCE = 0.005
 FUTURES_PITCHING_TOLERANCE = 0.01
 FUTURES_FIP_TOLERANCE = 0.02
 OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS = frozenset({"earned_runs"})
+BATTING_TEAM_STAT_FIELDS = (
+    "plate_appearances",
+    "at_bats",
+    "runs",
+    "hits",
+    "doubles",
+    "triples",
+    "home_runs",
+    "rbi",
+    "stolen_bases",
+    "caught_stealing",
+    "walks",
+    "strikeouts",
+    "intentional_walks",
+    "hbp",
+    "sacrifice_hits",
+    "sacrifice_flies",
+    "gdp",
+)
+PITCHING_TEAM_STAT_FIELDS = (
+    "wins",
+    "losses",
+    "saves",
+    "holds",
+    "runs_allowed",
+    "earned_runs",
+    "hits_allowed",
+    "home_runs_allowed",
+    "walks_allowed",
+    "strikeouts",
+    "intentional_walks",
+    "hit_batters",
+    "tbf",
+    "complete_games",
+    "shutouts",
+    "wild_pitches",
+    "balks",
+    "sacrifices_allowed",
+    "sacrifice_flies_allowed",
+)
+PLAYER_SEASON_SOURCE_PRIORITY = (
+    "CRAWLER",
+    "FINAL_VERIFICATION",
+    "MANUAL_RECALC",
+    "AGGREGATED",
+    "RECALC",
+    "PROFILE",
+    "FALLBACK_BACKFILL",
+    "ROLLUP",
+)
 
 
 class PitchingCumulativeRow(Protocol):
@@ -52,32 +102,18 @@ def _team_stat_mismatch(diff: int, threshold: int = TEAM_STAT_ABSOLUTE_TOLERANCE
     return abs(diff) > threshold
 
 
-def _team_pitching_stat_diffs(team_row: object, player_row: object) -> tuple[list[str], list[str]]:
+def _team_pitching_stat_diffs(
+    team_row: object,
+    player_row: object,
+    *,
+    unavailable_fields: frozenset[str] = frozenset(),
+) -> tuple[list[str], list[str]]:
     """Compare team/player pitching fields and separate ER semantics differences."""
-    stat_fields = [
-        "wins",
-        "losses",
-        "saves",
-        "holds",
-        "runs_allowed",
-        "earned_runs",
-        "hits_allowed",
-        "home_runs_allowed",
-        "walks_allowed",
-        "strikeouts",
-        "intentional_walks",
-        "hit_batters",
-        "tbf",
-        "complete_games",
-        "shutouts",
-        "wild_pitches",
-        "balks",
-        "sacrifices_allowed",
-        "sacrifice_flies_allowed",
-    ]
     diffs: list[str] = []
     semantics_exempt_diffs: list[str] = []
-    for field in stat_fields:
+    for field in PITCHING_TEAM_STAT_FIELDS:
+        if field in unavailable_fields:
+            continue
         team_value = getattr(team_row, field) or 0
         player_value = getattr(player_row, field) or 0
         diff = abs(team_value - player_value)
@@ -89,6 +125,22 @@ def _team_pitching_stat_diffs(team_row: object, player_row: object) -> tuple[lis
         else:
             diffs.append(detail)
     return diffs, semantics_exempt_diffs
+
+
+def _team_batting_stat_diffs(team_row: object, player_row: object) -> tuple[list[str], set[str]]:
+    """Compare team/player batting fields and return unavailable player fields."""
+    diffs: list[str] = []
+    unavailable_fields: set[str] = set()
+    for field in BATTING_TEAM_STAT_FIELDS:
+        player_value = getattr(player_row, field)
+        if player_value is None:
+            unavailable_fields.add(field)
+            continue
+        team_value = getattr(team_row, field) or 0
+        diff = abs(team_value - (player_value or 0))
+        if _team_stat_mismatch(diff):
+            diffs.append(f"{field}: team={team_value} player_sum={player_value} diff={diff}")
+    return diffs, unavailable_fields
 
 
 def _pa_formula_expected(
@@ -172,6 +224,60 @@ class QualityGate:
             model.canonical_team_code,  # type: ignore[attr-defined]
             model.team_code,  # type: ignore[attr-defined]
         )
+
+    def _player_source_filter(
+        self,
+        model: type[PlayerSeasonBatting | PlayerSeasonPitching],
+        season: int,
+        league: str,
+    ) -> tuple[ColumnElement[bool] | None, str | None]:
+        """Select the highest-priority source available for one season/league."""
+        try:
+            bind = self.session.get_bind()
+            columns = {str(column["name"]).lower() for column in sa_inspect(bind).get_columns(model.__tablename__)}
+        except (SQLAlchemyError, AttributeError, TypeError):
+            return None, None
+
+        if "source" not in columns:
+            return None, None
+
+        if "id" in columns:
+            source_rank = case(
+                *((model.source == source, rank) for rank, source in enumerate(PLAYER_SEASON_SOURCE_PRIORITY)),
+                else_=len(PLAYER_SEASON_SOURCE_PRIORITY),
+            )
+            partition_by = [model.player_id, model.season, model.league]
+            if "level" in columns:
+                partition_by.append(model.level)
+            partition_by.append(self._team_code_expression(model))
+            ranked_rows = (
+                select(
+                    model.id.label("source_row_id"),
+                    func.row_number()
+                    .over(
+                        partition_by=partition_by,
+                        order_by=(source_rank, model.id.desc()),
+                    )
+                    .label("source_rank"),
+                )
+                .where(model.season == season, model.league == league)
+                .subquery()
+            )
+            selected_rows = select(ranked_rows.c.source_row_id).where(ranked_rows.c.source_rank == 1)
+            return model.id.in_(selected_rows), "PER_KEY"
+
+        source_rows = (
+            self.session.execute(
+                select(model.source).where(model.season == season, model.league == league),
+            )
+            .scalars()
+            .all()
+        )
+        sources = {str(source).strip().upper() for source in source_rows if source}
+        selected = next((source for source in PLAYER_SEASON_SOURCE_PRIORITY if source in sources), None)
+        if selected is None:
+            return None, None
+        return model.source == selected, selected
 
     def _is_oracle(self) -> bool:
         """Return whether the active quality-gate connection uses Oracle."""
@@ -537,6 +643,18 @@ class QualityGate:
 
         # 2. Get player-level aggregates per team
         team_code_expr = self._team_code_expression(PlayerSeasonBatting)
+        source_filter, selected_source = self._player_source_filter(PlayerSeasonBatting, season, league)
+        player_filters = [
+            PlayerSeasonBatting.season == season,
+            PlayerSeasonBatting.league == league,
+            *self._valid_team_code_filters(
+                PlayerSeasonBatting,
+                team_code_expr,
+                exclude_empty_string=self._is_oracle(),
+            ),
+        ]
+        if source_filter is not None:
+            player_filters.append(source_filter)
         player_agg = (
             select(
                 team_code_expr.label("team_code"),
@@ -559,21 +677,14 @@ class QualityGate:
                 func.sum(PlayerSeasonBatting.sacrifice_flies).label("sacrifice_flies"),
                 func.sum(PlayerSeasonBatting.gdp).label("gdp"),
             )
-            .where(
-                PlayerSeasonBatting.season == season,
-                PlayerSeasonBatting.league == league,
-                *self._valid_team_code_filters(
-                    PlayerSeasonBatting,
-                    team_code_expr,
-                    exclude_empty_string=self._is_oracle(),
-                ),
-            )
+            .where(*player_filters)
             .group_by(team_code_expr)
         )
         player_data = self.session.execute(player_agg).all()
         player_map = {r.team_code: r for r in player_data if r.team_code}
 
         mismatches = []
+        unavailable_fields: set[str] = set()
         for team_id, team_r in team_map.items():
             player_r = player_map.get(team_id)
             if player_r is None:
@@ -585,32 +696,8 @@ class QualityGate:
                 )
                 continue
 
-            stat_fields = [
-                "plate_appearances",
-                "at_bats",
-                "runs",
-                "hits",
-                "doubles",
-                "triples",
-                "home_runs",
-                "rbi",
-                "stolen_bases",
-                "caught_stealing",
-                "walks",
-                "strikeouts",
-                "intentional_walks",
-                "hbp",
-                "sacrifice_hits",
-                "sacrifice_flies",
-                "gdp",
-            ]
-            diffs = []
-            for field in stat_fields:
-                t_val = getattr(team_r, field) or 0
-                p_val = getattr(player_r, field) or 0
-                diff = abs(t_val - p_val)
-                if _team_stat_mismatch(diff):
-                    diffs.append(f"{field}: team={t_val} player_sum={p_val} diff={diff}")
+            diffs, player_unavailable = _team_batting_stat_diffs(team_r, player_r)
+            unavailable_fields.update(player_unavailable)
 
             if diffs:
                 mismatches.append(
@@ -621,12 +708,15 @@ class QualityGate:
                     },
                 )
 
-        return self._result(
+        result = self._result(
             season=season,
             league=league,
             checked_players=len(team_map),
             mismatches=mismatches,
         )
+        result["player_source"] = selected_source
+        result["unavailable_fields"] = sorted(unavailable_fields)
+        return result
 
     def validate_season_team_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
         """Compare TeamSeasonPitching with PlayerSeasonPitching sum grouped by team.
@@ -686,6 +776,18 @@ class QualityGate:
 
         # 2. Get player-level aggregates per team
         team_code_expr = self._team_code_expression(PlayerSeasonPitching)
+        source_filter, selected_source = self._player_source_filter(PlayerSeasonPitching, season, league)
+        player_filters = [
+            PlayerSeasonPitching.season == season,
+            PlayerSeasonPitching.league == league,
+            *self._valid_team_code_filters(
+                PlayerSeasonPitching,
+                team_code_expr,
+                exclude_empty_string=self._is_oracle(),
+            ),
+        ]
+        if source_filter is not None:
+            player_filters.append(source_filter)
         player_agg = (
             select(
                 team_code_expr.label("team_code"),
@@ -711,21 +813,14 @@ class QualityGate:
                 func.sum(PlayerSeasonPitching.sacrifices_allowed).label("sacrifices_allowed"),
                 func.sum(PlayerSeasonPitching.sacrifice_flies_allowed).label("sacrifice_flies_allowed"),
             )
-            .where(
-                PlayerSeasonPitching.season == season,
-                PlayerSeasonPitching.league == league,
-                *self._valid_team_code_filters(
-                    PlayerSeasonPitching,
-                    team_code_expr,
-                    exclude_empty_string=self._is_oracle(),
-                ),
-            )
+            .where(*player_filters)
             .group_by(team_code_expr)
         )
         player_data = self.session.execute(player_agg).all()
         player_map = {r.team_code: r for r in player_data if r.team_code}
 
         mismatches = []
+        unavailable_fields: set[str] = set()
         for team_id, team_r in team_map.items():
             player_r = player_map.get(team_id)
             if player_r is None:
@@ -737,14 +832,27 @@ class QualityGate:
                 )
                 continue
 
-            diffs, semantics_exempt_diffs = _team_pitching_stat_diffs(team_r, player_r)
+            player_unavailable = frozenset(
+                field for field in PITCHING_TEAM_STAT_FIELDS if getattr(player_r, field) is None
+            )
+            unavailable_fields.update(player_unavailable)
+            diffs, semantics_exempt_diffs = _team_pitching_stat_diffs(
+                team_r,
+                player_r,
+                unavailable_fields=player_unavailable,
+            )
 
             # Compare innings_pitched (special: float, not integer)
             team_ip = team_r.innings_pitched or 0.0
-            player_outs = player_r.innings_outs or 0
-            expected_outs = int(team_ip * 3 + 0.5) if team_ip else 0
-            if abs(player_outs - expected_outs) > MAX_OUTS:
-                diffs.append(f"innings_pitched: team_ip={team_ip} ({expected_outs} outs) player_outs={player_outs}")
+            if player_r.innings_outs is None:
+                unavailable_fields.add("innings_pitched")
+            else:
+                player_outs = player_r.innings_outs
+                expected_outs = int(team_ip * 3 + 0.5) if team_ip else 0
+                if abs(player_outs - expected_outs) > MAX_OUTS:
+                    diffs.append(
+                        f"innings_pitched: team_ip={team_ip} ({expected_outs} outs) player_outs={player_outs}",
+                    )
 
             if diffs:
                 mismatches.append(
@@ -762,6 +870,8 @@ class QualityGate:
             checked_players=len(team_map),
             mismatches=mismatches,
         )
+        result["player_source"] = selected_source
+        result["unavailable_fields"] = sorted(unavailable_fields)
         result["semantics_exempt_fields"] = sorted(OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS)
         return result
 

@@ -29,6 +29,8 @@ CORE_BATTING_FIELDS = (
     "triples",
     "home_runs",
     "rbi",
+    "stolen_bases",
+    "caught_stealing",
 )
 CORE_PITCHING_FIELDS = (
     "innings_outs",
@@ -124,6 +126,22 @@ def _diffs(
     }
 
 
+def _available_fields(
+    team_rows: list[object],
+    player_rows: list[object],
+    fields: tuple[str, ...],
+    value_getter: Callable[[object, str], object],
+) -> tuple[tuple[str, ...], list[str]]:
+    available = tuple(
+        field
+        for field in fields
+        if any(value_getter(row, field) is not None for row in team_rows)
+        and any(value_getter(row, field) is not None for row in player_rows)
+    )
+    unavailable = [field for field in fields if field not in available]
+    return available, unavailable
+
+
 def _source_comparison(
     team_rows: list[object],
     player_rows: list[object],
@@ -132,10 +150,12 @@ def _source_comparison(
     value_getter: Callable[[object, str], object] = _value,
     semantics_exempt_fields: frozenset[str] = frozenset(),
 ) -> dict[str, object]:
-    available_fields = tuple(
-        field for field in fields if any(value_getter(row, field) is not None for row in team_rows)
+    available_fields, unavailable_fields = _available_fields(
+        team_rows,
+        player_rows,
+        fields,
+        value_getter,
     )
-    unavailable_fields = [field for field in fields if field not in available_fields]
     team_totals = _sum_fields(team_rows, available_fields, value_getter=value_getter)
     player_totals = _sum_fields(player_rows, available_fields, value_getter=value_getter)
     comparable_fields = tuple(field for field in available_fields if field not in semantics_exempt_fields)
@@ -162,10 +182,12 @@ def _team_comparison(
 ) -> dict[str, object]:
     team_by_id = _group_by_team(team_rows)
     player_by_id = _group_by_team(player_rows)
-    available_fields = tuple(
-        field for field in fields if any(value_getter(row, field) is not None for row in team_rows)
+    available_fields, unavailable_fields = _available_fields(
+        team_rows,
+        player_rows,
+        fields,
+        value_getter,
     )
-    unavailable_fields = [field for field in fields if field not in available_fields]
     comparisons: dict[str, object] = {}
     for team_id in sorted(team_by_id):
         team_totals = _sum_fields(team_by_id[team_id], available_fields, value_getter=value_getter)

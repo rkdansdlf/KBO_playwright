@@ -1658,6 +1658,8 @@ class OCISyncBase:
                 on_clause = " AND ".join(
                     [f"t.{self._quote_identifier(k.upper())} = :{self._oracle_bind_name(k)}" for k in unique_cols],
                 )
+                if "id" in keys and "id" not in unique_cols:
+                    on_clause = f'(({on_clause}) OR t."ID" = :id)'
                 update_cols = [k for k in keys if k not in unique_cols and k not in ("created_at", "id")]
 
                 update_clause = ""

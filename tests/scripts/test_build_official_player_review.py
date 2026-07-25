@@ -27,7 +27,7 @@ def test_render_review_includes_official_and_db_evidence(monkeypatch) -> None:
             },
         ],
     }
-    evidence = review.DbEvidence(14, (68043,), ("1",), ("투수",), (("game_pitching_stats", 14),))
+    evidence = review.DbEvidence(14, 0, (68043,), ("1",), ("투수",), (("game_pitching_stats", 14),))
     monkeypatch.setattr(review, "load_db_evidence", lambda _target: evidence)
 
     output = review.render_review_markdown(

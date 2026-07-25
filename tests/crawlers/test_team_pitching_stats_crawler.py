@@ -4,6 +4,7 @@ from src.crawlers.team_pitching_stats_crawler import (
     FLOAT_FIELDS,
     HEADER_MAP,
     PITCHING_FIELDS,
+    TeamPitchingStatsCrawler,
     _add_pitching_values,
     _parse_pitching_value,
     _parse_team_pitching_row,
@@ -205,3 +206,13 @@ class TestHeaderMap:
         assert HEADER_MAP["방어율"] == "era"
         assert HEADER_MAP["이닝"] == "innings_pitched"
         assert HEADER_MAP["승"] == "wins"
+
+    def test_select_season_rejects_selection_that_does_not_stick(self):
+        from unittest.mock import MagicMock
+
+        page = MagicMock()
+        page.query_selector.return_value = object()
+        page.locator.return_value.input_value.return_value = "2025"
+
+        assert TeamPitchingStatsCrawler._select_season(page, 2026) is False
+        assert page.select_option.call_count == 3

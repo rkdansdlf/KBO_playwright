@@ -353,10 +353,19 @@ class TestTeamBattingStatsCrawlerOrchestration:
         page = MagicMock()
         page.query_selector.side_effect = [object(), object()]
         page.select_option.side_effect = [batting_module.PlaywrightError("stale dropdown"), None]
+        page.locator.return_value.input_value.return_value = "2026"
 
         assert TeamBattingStatsCrawler._select_season(page, 2026) is True
         assert page.select_option.call_count == 2
-        page.wait_for_load_state.assert_called_once_with("networkidle")
+        page.wait_for_load_state.assert_called_once_with("networkidle", timeout=batting_module.LONG_TIMEOUT)
+
+    def test_select_season_rejects_selection_that_does_not_stick(self):
+        page = MagicMock()
+        page.query_selector.return_value = object()
+        page.locator.return_value.input_value.return_value = "2025"
+
+        assert TeamBattingStatsCrawler._select_season(page, 2026) is False
+        assert page.select_option.call_count == 3
 
     def test_select_season_returns_false_when_no_dropdown_exists(self):
         page = MagicMock()
@@ -413,6 +422,9 @@ class TestTeamBattingStatsCrawlerOrchestration:
 
         crawler_class.assert_called_once_with(league="FUTURES")
         crawler.crawl.assert_called_once_with(2026, persist=False, headless=False)
+
+    def test_team_batting_prefers_working_legacy_team_page(self):
+        assert batting_module.TEAM_BATTING_URLS[0].endswith("BasicOld.aspx")
 
 
 class TestTeamBattingRowHelpers:

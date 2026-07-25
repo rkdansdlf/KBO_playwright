@@ -185,7 +185,6 @@ class TestRunAllCrawlerAsyncAndRouting:
 
     def test_run_pipeline_sync_routes_and_handles_unknown(self, monkeypatch):
         monkeypatch.delenv("RUN_SYNC_OCI", raising=False)
-        monkeypatch.delenv("RUN_SYNC_SUPABASE", raising=False)
         with (
             patch("src.cli.run_all_crawlers.asyncio.run") as run_async,
             patch("src.cli.run_all_crawlers.run_static_pipeline", new=MagicMock(return_value="static")),
@@ -262,7 +261,6 @@ class TestRunAllCrawlerAsyncAndRouting:
 
     def test_run_realtime_pipeline_handles_empty_and_processes_chunks(self, monkeypatch):
         monkeypatch.delenv("RUN_SYNC_OCI", raising=False)
-        monkeypatch.delenv("RUN_SYNC_SUPABASE", raising=False)
         empty_crawler = MagicMock()
         empty_crawler.fetch_naver_news_headlines.return_value = []
         empty_crawler.fetch_mlbpark_bullpen_posts.return_value = []
