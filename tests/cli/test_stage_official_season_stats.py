@@ -150,7 +150,11 @@ def test_stage_report_treats_official_earned_run_difference_as_non_blocking():
     assert report["ready_for_sync"] is True
     assert report["pitching"]["global"]["diff"] == {}
     assert report["pitching"]["global"]["semantics_exempt_diff"] == {"earned_runs": 1}
-    assert report["source_semantics"]["non_blocking_fields"] == ["earned_runs"]
+    assert report["source_semantics"]["non_blocking_fields"] == [
+        "caught_stealing",
+        "earned_runs",
+        "stolen_bases",
+    ]
 
 
 def test_stage_report_excludes_player_fields_missing_from_official_payload():
@@ -198,3 +202,55 @@ def test_stage_report_excludes_player_fields_missing_from_official_payload():
         "stolen_bases",
         "caught_stealing",
     ]
+
+
+def test_stage_report_treats_stolen_base_differences_as_non_blocking():
+    report = build_stage_report(
+        2025,
+        StageRows(
+            team_batting=[
+                _batting_row(
+                    "LG",
+                    plate_appearances=10,
+                    at_bats=8,
+                    hits=2,
+                    stolen_bases=4,
+                    caught_stealing=1,
+                ),
+            ],
+            team_pitching=[_pitching_row("LG", hits_allowed=2, runs_allowed=1, earned_runs=1)],
+            player_batting=[
+                {
+                    "team_code": "LG",
+                    "plate_appearances": 10,
+                    "at_bats": 8,
+                    "hits": 2,
+                    "stolen_bases": 0,
+                    "caught_stealing": 0,
+                },
+            ],
+            player_pitching=[
+                SimpleNamespace(
+                    team_code="LG",
+                    innings_outs=10,
+                    hits_allowed=2,
+                    runs_allowed=1,
+                    earned_runs=1,
+                    home_runs_allowed=0,
+                    walks_allowed=0,
+                    strikeouts=0,
+                    era=2.7,
+                    player_id=1,
+                ),
+            ],
+            expected_team_ids={"LG"},
+        ),
+        current_year=2026,
+    )
+
+    assert report["ready_for_sync"] is True
+    assert report["batting"]["global"]["diff"] == {}
+    assert report["batting"]["global"]["semantics_exempt_diff"] == {
+        "caught_stealing": -1,
+        "stolen_bases": -4,
+    }

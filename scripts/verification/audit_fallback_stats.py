@@ -281,8 +281,9 @@ class StatAudit:
                 logger.info(f"   ⚠️ No official {title.lower()} stats found to compare.")
                 return
             calc_map_or_fn = calc_fn(session, year, series)
+            is_fielding = title == "FIELDING"
             mismatches = StatAudit._collect_mismatches(
-                official_stats, calc_map_or_fn, keys_to_check, extra_fields, session
+                official_stats, calc_map_or_fn, keys_to_check, extra_fields, session, is_fielding=is_fielding
             )
             mismatches_count = len(mismatches)
             if mismatches_count == 0:
@@ -422,6 +423,7 @@ class StatAudit:
                     SeasonStatAggregator.aggregate_baserunning_season(s, off.player_id, y, sr, source="AUDIT_FIX")
                     for off in s.query(PlayerSeasonBaserunning).filter(PlayerSeasonBaserunning.year == y).all()
                 ]
+                if c is not None and c.get("player_id")
             },
             ["stolen_bases", "caught_stealing"],
             {"off_sb": ("stolen_bases", "stolen_bases"), "off_cs": ("caught_stealing", "caught_stealing")},

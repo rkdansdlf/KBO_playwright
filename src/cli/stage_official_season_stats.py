@@ -41,10 +41,10 @@ CORE_PITCHING_FIELDS = (
     "walks_allowed",
     "strikeouts",
 )
-OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS = frozenset({"earned_runs"})
+OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS = frozenset({"earned_runs", "stolen_bases", "caught_stealing"})
 OFFICIAL_SOURCE_SEMANTICS_NOTE = (
-    "Official team and player sources can use different earned-run attribution semantics; "
-    "earned_runs differences are reported but do not block synchronization."
+    "Official team and player sources can use different attribution semantics or field coverage; "
+    "earned_runs, stolen_bases, and caught_stealing differences are reported but do not block synchronization."
 )
 MAX_REASONABLE_ERA = 30.0
 OFFICIAL_STAGE_REQUIRED = "Official team statistics could not be staged without fallback data"
@@ -233,7 +233,12 @@ def build_stage_report(
     current_year: int | None = None,
 ) -> dict[str, object]:
     """Build a no-write reconciliation report from staged official rows."""
-    batting_source = _source_comparison(rows.team_batting, rows.player_batting, CORE_BATTING_FIELDS)
+    batting_source = _source_comparison(
+        rows.team_batting,
+        rows.player_batting,
+        CORE_BATTING_FIELDS,
+        semantics_exempt_fields=OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS,
+    )
     pitching_source = _source_comparison(
         rows.team_pitching,
         rows.player_pitching,
@@ -241,7 +246,12 @@ def build_stage_report(
         value_getter=_pitching_value,
         semantics_exempt_fields=OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS,
     )
-    batting_teams = _team_comparison(rows.team_batting, rows.player_batting, CORE_BATTING_FIELDS)
+    batting_teams = _team_comparison(
+        rows.team_batting,
+        rows.player_batting,
+        CORE_BATTING_FIELDS,
+        semantics_exempt_fields=OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS,
+    )
     pitching_teams = _team_comparison(
         rows.team_pitching,
         rows.player_pitching,

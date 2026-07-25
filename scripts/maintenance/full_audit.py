@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -84,7 +84,7 @@ def table_exists(conn, table_name: str) -> bool:
                 {"table_name": table_name},
             ).first(),
         )
-    return bool(conn.execute(text("SELECT to_regclass(:table_name)"), {"table_name": table_name}).scalar())
+    return bool(inspect(conn).has_table(table_name))
 
 
 def table_columns(conn, table_name: str) -> set[str]:
@@ -98,18 +98,7 @@ def table_columns(conn, table_name: str) -> set[str]:
         cols = {str(row[1]) for row in conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
         _COLUMNS_CACHE[table_name] = cols
         return cols
-    rows = conn.execute(
-        text(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = :table_name
-              AND table_schema = CURRENT_SCHEMA()
-            """,
-        ),
-        {"table_name": table_name},
-    ).fetchall()
-    cols = {str(row[0]) for row in rows}
+    cols = {str(column["name"]).lower() for column in inspect(conn).get_columns(table_name)}
     _COLUMNS_CACHE[table_name] = cols
     return cols
 
@@ -199,10 +188,13 @@ def _distribution(
     required = (group_column, *condition_columns)
     if not _has_columns(conn, table_name, required):
         return {}
+    bucket_expression = (
+        f"TO_CHAR({group_column})" if _dialect_name(conn) == "oracle" else f"CAST({group_column} AS TEXT)"
+    )
     rows = _execute_rows(
         conn,
         f"""
-        SELECT COALESCE(CAST({group_column} AS TEXT), '') AS bucket, COUNT(*) AS count
+        SELECT COALESCE({bucket_expression}, '') AS bucket, COUNT(*) AS count
         FROM {table_name}
         WHERE {condition}
         GROUP BY {group_column}
@@ -431,15 +423,20 @@ def collect_audit_metrics(conn) -> dict[str, Any]:
 
     identity_missing = 0
     if _has_columns(conn, "player_basic", ("player_id",)) and _has_columns(conn, "players", ("id", "kbo_person_id")):
+        identity_match = (
+            "p.kbo_person_id = TO_CHAR(pb.player_id)"
+            if _dialect_name(conn) == "oracle"
+            else "CAST(p.kbo_person_id AS TEXT) = CAST(pb.player_id AS TEXT)"
+        )
         identity_missing = _execute_scalar(
             conn,
-            """
+            f"""
             SELECT COUNT(*)
             FROM player_basic pb
             WHERE NOT EXISTS (
                 SELECT 1
                 FROM players p
-                WHERE CAST(p.kbo_person_id AS TEXT) = CAST(pb.player_id AS TEXT)
+                WHERE {identity_match}
             )
             """,
         )

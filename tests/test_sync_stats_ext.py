@@ -296,6 +296,25 @@ def test_purge_season_stats_pitching():
         assert mock_target.execute.call_count == 2
 
 
+def test_purge_season_stats_uses_oracle_identifier_case():
+    engine, SessionLocal = _make_syncer_tables()
+    with SessionLocal() as session:
+        mock_target = MagicMock()
+        mock_target.get_bind.return_value.dialect.name = "oracle"
+
+        class _Syncer(StatsSyncMixin):
+            def __init__(self, sess, target):
+                self.sqlite_session = sess
+                self.target_session = target
+
+        syncer = _Syncer(session, mock_target)
+        syncer.purge_season_stats(2024, type="batting")
+
+        statements = [call.args[0].text for call in mock_target.execute.call_args_list]
+        assert 'DELETE FROM "PLAYER_SEASON_BATTING" WHERE "SEASON" = :year' in statements
+        assert 'DELETE FROM "TEAM_SEASON_BATTING" WHERE "SEASON" = :year' in statements
+
+
 def test_sync_all_player_data_returns_dict():
     engine, SessionLocal = _make_syncer_tables()
     with SessionLocal() as session:

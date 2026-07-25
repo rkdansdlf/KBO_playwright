@@ -59,6 +59,35 @@ def test_create_oracle_engine_uses_normalized_url_and_wallet_args(monkeypatch) -
     assert fake_engine.dialect._json_deserializer is engine._custom_json_deserializer
 
 
+def test_create_oracle_engine_uses_explicit_tns_dsn(monkeypatch) -> None:
+    from src.db import engine
+
+    fake_engine = MagicMock()
+    fake_engine.dialect = SimpleNamespace()
+    monkeypatch.setenv("TNS_ADMIN", "/wallet")
+    url = "oracle+oracledb://user:p%40ss+word@tns_alias"
+
+    with patch.object(engine, "create_engine", return_value=fake_engine) as create:
+        engine.create_engine_for_url(url)
+
+    create.assert_called_once_with(
+        "oracle+oracledb://@",
+        pool_pre_ping=True,
+        pool_size=2,
+        max_overflow=2,
+        echo=False,
+        connect_args={
+            "config_dir": "/wallet",
+            "wallet_location": "/wallet",
+            "user": "user",
+            "password": "p@ss+word",
+            "dsn": "tns_alias",
+            "wallet_password": "p@ss+word",
+        },
+    )
+    assert fake_engine.dialect._json_deserializer is engine._custom_json_deserializer
+
+
 def test_custom_json_deserializer_handles_json_and_postgres_style_arrays() -> None:
     from src.db import engine
 

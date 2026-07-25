@@ -111,10 +111,10 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
   batting rows and 308 pitching rows. Batting global totals reconcile exactly with the
   official team table; pitching innings now reconcile exactly after preserving the raw
   KBO innings notation. Earned runs differ by 18 (`6243` team versus `6261` player)
-  because the official team and player sources use different attribution semantics.
-  This difference is retained as `semantics_exempt_diff` and does not block the quality
-  gate or synchronization. Individual impossible-stat checks, including `ER > R`, still
-  block synchronization.
+   because the official team and player sources use different attribution semantics.
+   Earned runs, stolen bases, and caught stealing differences are retained as
+   `semantics_exempt_diff` and do not block the quality gate or synchronization.
+   Individual impossible-stat checks, including `ER > R`, still block synchronization.
 - Team-level player splits previously differed because the public player table did not
   have a safe multi-team season key in the existing schema. The player batting and
   pitching crawlers now preserve `(player_id, team_code)` rows when `by_team=True`, and
@@ -129,46 +129,69 @@ career evidence exists. `player_season_pitching` had zero NULL team-code rows.
   than overwriting a player with the last team encountered; source coverage remains
   visible in the staging report. SQLite migration 047 and OCI migrations 048-050 add
   `team_code` to the logical season-stat unique key and remove conflicting legacy keys.
-- A read-only 2026 staging run collected 328 batting rows and 271 pitching rows. The
-  current-season team batting source exposes zero plate appearances, producing a
-  `plate_appearances` unavailable field; all other available global batting totals
-  reconcile. A bounded `BasicOld.aspx` probe confirms team pitching `23976` outs and
-  `4072` earned runs versus player pitching `23976` outs and `4089` earned runs.
-  The remaining 17 earned-run difference (`4072` team versus `4089` player) is treated
-  as the same official-source semantics difference and does not independently keep
-  2026 at `ready_for_sync = false`.
+- A read-only 2026 staging probe on 2026-07-25 collected 297 batting rows and 271
+  pitching rows with complete 10-team coverage. Official pitching global totals
+  reconcile exactly for innings, hits, runs, home runs, walks, and strikeouts; the
+  earned-run difference is 17 (`4157` team versus `4174` player) and remains a
+  non-blocking source-semantics difference. Team-level pitching still has a 72-out
+  HH/KIA split discrepancy, so the staging result is not ready for synchronization.
+- Official batting staging is not ready: team totals exceed the collected player rows
+  substantially (for example, 31,610 team AB versus 28,434 player AB), and
+  `plate_appearances`, stolen bases, and caught stealing are unavailable from the
+  current-season team source. The probe wrote only `/tmp/kbo_official_2026_20260725.json`
+  and did not modify the database.
 
-### 2026 Team/Player Rollup Mismatch (investigated 2026-07-25)
+### 2026 Team/Player Rollup Source Policy (updated 2026-07-25)
 
-**Status**: Known source/duplication issue; do not force-recalculate team rows from the
-duplicated player-season table until the duplicate-row policy is fixed.
+**Status**: Local 2026 quality gates pass after aggregate-key remediation. The current
+`team_season_*` rows are derived operational rollups and are marked
+`extra_stats.source = player_rollup`; they are not treated as an independent official
+KBO source.
 
-The 2026 quality gate reports all 10 standard teams mismatching in both batting and
-pitching. The team rows are single regular-season snapshots from the official KBO team
-pages (`extra_stats.source = kbo_team_page`), while the player-season query sums every
-matching `REGULAR` row. The mismatch is not caused by postseason scope: the local
-player-season tables contain repeated logical keys for the same `(player_id, season,
-league, level)`.
+The original mismatch came from older `recalc_player_stats` payloads that populated only
+`canonical_team_code`. Because the logical UPSERT key includes nullable `team_code`,
+repeated runs inserted duplicate `AGGREGATED` rows. The repair now writes both team keys
+and removes only stale `AGGREGATED` rows from the target season when `team_code` is NULL
+and `canonical_team_code` is populated.
 
-A read-only 2026-07-25 SQLite audit found:
+The 2026 remediation removed 650 stale batting rows and 556 stale pitching rows, then
+upserted 325 batting and 278 pitching aggregates. No duplicate `AGGREGATED` logical key
+remains in the local 2026 regular-season tables. The quality gate and regression pack
+both pass after the repair.
 
-- `player_season_batting`: 1,001 regular rows but only 345 logical player keys; 325 keys
-  have duplicates.
-- `player_season_pitching`: 897 regular rows but only 340 logical player keys; 278 keys
-  have duplicates.
-- Duplicate sources include `AGGREGATED`, `CRAWLER`, `MANUAL_RECALC`, and
-  `FINAL_VERIFICATION`; repeated `AGGREGATED` rows commonly have `team_code=NULL` and
-  `canonical_team_code` populated.
-- The quality gate uses `COALESCE(canonical_team_code, team_code)` and does not select a
-  single source row per logical key, so duplicate player rows inflate sums to roughly
-  three times the official team totals.
+**Source policy**:
 
-**Mitigation**: Keep the official `kbo_team_page` team rows as the current regular-season
-source, and do not apply `recalc_team_stats --season 2026` as a repair. Before removing
-the quality-gate finding, define one canonical player-season source or deduplicate the
-logical key with a migration/upsert policy that handles NULL `team_code`. Re-run the
-2026 quality gate after that policy is implemented; the existing 2020-2025 passing
-results are unaffected.
+- `player_rollup` is the current derived operational source for local team-season rows.
+- Official KBO team-page results remain staging evidence from
+  `stage_official_season_stats`; they must not silently overwrite the derived rows.
+- A future official-source promotion requires complete team coverage, explicit handling
+  of unavailable fields, and a recorded comparison for earned-run semantics.
+- Do not use `--truncate` against OCI to remove pre-existing source rows during routine
+  season-stat synchronization; the 2026 OCI sync was an upsert and retained older rows.
+
+### 2026-07-25 Manual Collection Policy (confirmed 2026-07-25)
+
+**Status**: Manual confirmation and manual execution are required for same-day game
+collection. Automatic polling must not start the collection pipeline.
+
+Before collecting, confirm all target games are terminal and have scores in the local
+schedule. Then run the target-game pipeline explicitly:
+
+```bash
+venv/bin/python -m src.cli.data_integrity_checker --date 20260725 --json
+venv/bin/python -m src.cli.collect_games --year 2026 --game-ids "<completed-game-ids>"
+venv/bin/python -m src.cli.recalc_player_game_stats --date 20260725 --save
+venv/bin/python -m src.cli.recalc_player_stats --season 2026
+venv/bin/python -m src.cli.recalc_team_stats --season 2026 --save
+venv/bin/python -m src.cli.quality_gate_check --year 2026
+venv/bin/python -m src.cli.data_quality_regression_pack --year 2026 --json
+venv/bin/python -m src.cli.freshness_gate --days 7 --json
+venv/bin/python -m src.cli.sync_oci --season-stats --year 2026 --workers 1
+```
+
+The `player_rollup` team-stat policy remains in force during this pipeline. Do not
+promote official KBO staging rows or use OCI `--truncate` as part of the daily manual
+collection.
 
 ---
 

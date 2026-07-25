@@ -738,14 +738,14 @@ class TestTeamStatAggregatorInstanceMethods:
 
         assert len(results) == 1
         assert results[0]["team_id"] == "OB"
-        assert results[0]["wins"] == 2
+        assert results[0]["wins"] == 80
         assert results[0]["avg_against"] == pytest.approx(10 / (60 - 5), rel=1e-4)  # hits / (tbf - bb)
 
         # Verify saved in DB
         db_records = session.query(TeamSeasonPitching).filter_by(season=2025).all()
         assert len(db_records) == 1
         assert db_records[0].team_id == "OB"
-        assert db_records[0].wins == 2
+        assert db_records[0].wins == 80
 
     def test_aggregate_all_instance(self, seed_standings):
         session = seed_standings

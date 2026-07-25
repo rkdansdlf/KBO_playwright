@@ -5,7 +5,8 @@
 
 ## 결론
 
-ER(`earned_runs`) 차이는 의도한 공식 source semantics 차이로 비차단 처리한다.
+ER(`earned_runs`) 및 SB/CS(`stolen_bases`, `caught_stealing`) 차이는 의도한 공식
+source semantics 차이로 비차단 처리한다.
 그 외 불일치는 두 종류로 분리된다.
 
 1. OCI target의 `player_season_*`에 여러 source가 함께 남아 있어, quality gate가
@@ -22,8 +23,8 @@ ER(`earned_runs`) 차이는 의도한 공식 source semantics 차이로 비차�
 | OCI 2021 read-only audit | 2/10 teams mismatched | 10/10 teams mismatched | non-blocking |
 | OCI 2026 read-only audit | 1/10 teams mismatched | 0/10 teams mismatched | non-blocking |
 
-`team_pitching` 결과에는 `semantics_exempt_fields=["earned_runs"]`가 포함된다.
-나머지 필드 불일치는 계속 blocking 상태다.
+`team_*` 결과에는 ER/SB/CS 비차단 필드가 `semantics_exempt_fields`와
+`semantics_exempt_diffs`로 별도 보고된다. 나머지 필드 불일치는 계속 blocking 상태다.
 
 ## Source Decomposition
 
@@ -52,8 +53,8 @@ Raw key 수와 canonical team key 수의 차이는 2021 투수 기준 624 대 62
 
 현재 공식 player 타격 crawler의 정규시즌 Basic1 payload에는 SB/CS가 포함되지 않아
 `source=CRAWLER` row의 SB/CS 합계가 0이다. 반면 팀 페이지는 SB/CS를 제공한다.
-이 필드는 source contract상 unavailable로 표시하거나 해당 비교에서 제외해야 하며,
-0으로 저장해 실제 0으로 해석하면 안 된다.
+이 필드는 source contract상 unavailable로 표시하거나 non-blocking semantics 차이로
+보고하며, 0으로 저장해 실제 0으로 해석하면 안 된다.
 
 ### 타격 PA 범위 차이
 
@@ -68,7 +69,8 @@ team PA 3,256 대 player PA 3,619이다. 이는 선수 페이지의 자격/노�
    적용했다. `CRAWLER` row가 있는 키는 과거 `PROFILE`/`AGGREGATED` row와 중복
    합산하지 않고, 없는 키는 다음 우선 source로 fallback한다.
 2. Read-only staging report와 quality gate 모두 player payload에서 실제 값이 없는
-   필드를 `unavailable_fields`로 보고 비교에서 제외한다. SB/CS도 이 계약을 따른다.
+   필드를 `unavailable_fields`로 보고 비교에서 제외한다. 값이 있더라도 SB/CS 차이는
+   `semantics_exempt_diffs`로만 보고하며 blocking하지 않는다.
 3. Local SQLite 2021/2026 gate는 source precedence와 2026 aggregate-key remediation
    이후 통과한다. OCI quality gate도 `data_source` schema alias를 지원하도록 보정되어
    OCI 2026 pitching mismatch가 10개에서 0개로 줄었다.
@@ -76,11 +78,25 @@ team PA 3,256 대 player PA 3,619이다. 이는 선수 페이지의 자격/노�
    저장된 identity duplication이 남아 있다. 동일 선수 여부를 이름만으로 판정할 수
    없으므로 자동 삭제나 ID 병합은 보류한다. OCI 2021 batting 2개와 2026 batting
    1개는 소규모 PA/AB source-scope 차이로 별도 검토한다.
-5. OCI 2021/2026 audit은 실제 OCI 연결 dialect가 Oracle임을 확인했으며, 변경 없이
-   quality gate와 source-row 집계만 수행했다. OCI의 과거 `PROFILE`/`AGGREGATED` row는
-   백업과 dry-run diff 확인 전까지 삭제하지 않는다.
+5. OCI 2021/2026 audit은 실제 OCI 연결 dialect가 Oracle임을 확인했다. 지정한
+   정규시즌 legacy row의 broad cleanup은 quality regression 확인 후 백업에서 복원했고,
+   higher-priority source가 같은 logical key에 있는 경우만 삭제하는 safe cleanup으로
+   전환했다.
 
-이번 변경에서도 target data를 삭제하거나 과거 source row를 자동 정리하지 않았다.
+다른 source와 다른 league의 row는 삭제하지 않았다.
+
+## OCI Legacy Source Cleanup (2026-07-26)
+
+- Scope: `player_season_batting`/`player_season_pitching`, `league=REGULAR`,
+  seasons 2021 and 2026.
+- Cleanup scope: `PROFILE`, `AGGREGATED`, `ROLLUP` only.
+- Broad cleanup backup: `data/archive/oci_legacy_player_season_sources_2021_2026.json`.
+- Broad apply temporarily removed batting 18 and pitching 587 rows, then restored them
+  after 2026 pitching regressed because some legacy rows were the only fallback source.
+- Final safe cleanup dry-run found 0 rows with a higher-priority source for the same
+  logical key, so the final OCI state retains those fallback rows.
+- OCI gate remains blocked by 2021/2026 identity/scope differences; ER and SB/CS are
+  non-blocking.
 
 ## OCI Read-Only Audit (2026-07-25)
 
@@ -102,7 +118,8 @@ Automatically deleting one source or merging IDs would risk historical identity 
 
 The OCI regression pack passed all 10 checks for 2026. For 2021, 9 of 10 checks passed;
 the only failure was the existing `era_range` check for player IDs 73 and 1352, where
-the stored ERA has no positive innings basis. No repair was applied.
+the stored ERA has no positive innings basis. The subsequent 2026-07-26 migration
+repaired player 73 only; player 1352 remains unresolved.
 
 ## OCI 2021 Pitching Identity Audit
 
@@ -117,3 +134,34 @@ that pattern is not sufficient to prove identity for every historical homonym. N
 bulk identity override, source-row deletion, or player-ID merge was applied. Any future
 override must be backed by local game evidence, an official profile, or a dated roster
 record and must be recorded as a row-level or group-level override.
+
+## OCI 2021 Identity Pilot (2026-07-26)
+
+The pilot used the top three teams by duplicate-group impact (`LT`, `HH`, `SSG`) and
+produced `data/audit/oci_2021_identity_audit_20260726_pilot.json`. It covered 101
+duplicate `(team_code, player_name)` groups:
+
+| Classification | Count |
+|---|---:|
+| Exact local game evidence | 100 |
+| Ambiguous | 0 |
+| Unresolved | 1 |
+
+The unresolved group is `HH/박성웅`, with candidate IDs `2614` and `68703`. ID `68703`
+has local season-level evidence, but neither candidate has local 2021 game-level evidence,
+so it was not promoted to an override. The 100 exact candidates were exported to a
+separate review CSV and were not merged into `data/player_id_overrides.csv`.
+
+## OCI 2021 Innings Backfill (2026-07-26)
+
+The migration ran first in dry-run mode and then with `--apply` in one transaction.
+Only one row was applied:
+
+| Target | Evidence | Before | After | Status |
+|---|---|---|---|---|
+| `player_id=73`, target row `472738`, `KH` | local `player_id=50397`, exact `박관진/KH` game evidence | 0 outs / 0.0 IP | 2 outs / 0.6667 IP | applied |
+| `player_id=1352`, target row `472807`, `KIA` | local `강경학/HH`; team mismatch | 0 outs / 0.0 IP | unchanged | deferred |
+
+The apply report records the original values for rollback review. The post-apply 2021
+regression pack now has one remaining failure, `era_range` for player `1352`; no
+identity merge or cross-team override was applied.
