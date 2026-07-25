@@ -17,8 +17,10 @@ ER(`earned_runs`) 차이는 의도한 공식 source semantics 차이로 비차�
 
 | Season | Team batting | Team pitching | ER 처리 |
 |---|---:|---:|---|
-| 2021 | 8/10 teams mismatched | 10/10 teams mismatched | non-blocking |
-| 2026 | 10/10 teams mismatched | 10/10 teams mismatched | non-blocking |
+| Local 2021 | 0/10 teams mismatched | 0/10 teams mismatched | non-blocking |
+| Local 2026 | 0/10 teams mismatched | 0/10 teams mismatched | non-blocking |
+| OCI 2021 read-only audit | 2/10 teams mismatched | 10/10 teams mismatched | non-blocking |
+| OCI 2026 read-only audit | 1/10 teams mismatched | 0/10 teams mismatched | non-blocking |
 
 `team_pitching` 결과에는 `semantics_exempt_fields=["earned_runs"]`가 포함된다.
 나머지 필드 불일치는 계속 blocking 상태다.
@@ -67,10 +69,15 @@ team PA 3,256 대 player PA 3,619이다. 이는 선수 페이지의 자격/노�
    합산하지 않고, 없는 키는 다음 우선 source로 fallback한다.
 2. Read-only staging report와 quality gate 모두 player payload에서 실제 값이 없는
    필드를 `unavailable_fields`로 보고 비교에서 제외한다. SB/CS도 이 계약을 따른다.
-3. Local SQLite 2021/2026 gate는 중복 합산은 제거됐지만, 일부 오래된/불완전한
-   player row 때문에 아직 blocking mismatch가 남는다. OCI target에서 재실행해
-   남은 PA/AB/안타 차이를 팀별로 재분석해야 한다.
-4. OCI의 과거 `PROFILE`/`AGGREGATED` row는 백업과 dry-run diff 확인 전까지
-   삭제하지 않는다.
+3. Local SQLite 2021/2026 gate는 source precedence와 2026 aggregate-key remediation
+   이후 통과한다. OCI quality gate도 `data_source` schema alias를 지원하도록 보정되어
+   OCI 2026 pitching mismatch가 10개에서 0개로 줄었다.
+4. OCI 2021 pitching에는 `PROFILE`과 `MANUAL_RECALC`가 서로 다른 player ID 집합으로
+   저장된 identity duplication이 남아 있다. 동일 선수 여부를 이름만으로 판정할 수
+   없으므로 자동 삭제나 ID 병합은 보류한다. OCI 2021 batting 2개와 2026 batting
+   1개는 소규모 PA/AB source-scope 차이로 별도 검토한다.
+5. OCI 2021/2026 audit은 실제 OCI 연결 dialect가 Oracle임을 확인했으며, 변경 없이
+   quality gate와 source-row 집계만 수행했다. OCI의 과거 `PROFILE`/`AGGREGATED` row는
+   백업과 dry-run diff 확인 전까지 삭제하지 않는다.
 
 이번 변경에서도 target data를 삭제하거나 과거 source row를 자동 정리하지 않았다.
