@@ -326,10 +326,12 @@ def _team_stats_summary_parts(gap_data: dict[str, Any]) -> list[str]:
 def _season_team_code_summary_parts(gap_data: dict[str, Any]) -> list[str]:
     """Format season team-code NULL counts and the configured alert threshold."""
     return [
-        f"{gap_data.get('total_null', 0)} NULL team_codes "
-        f"(batting={gap_data.get('batting_null_rate', 0):.1f}%, "
-        f"pitching={gap_data.get('pitching_null_rate', 0):.1f}%, "
-        f"alert_threshold={gap_data.get('alert_threshold_rate', DEFAULT_SEASON_TEAM_CODE_ALERT_RATE):.1f}%)",
+        (
+            f"{gap_data.get('total_null', 0)} NULL team_codes "
+            f"(batting={gap_data.get('batting_null_rate', 0):.1f}%, "
+            f"pitching={gap_data.get('pitching_null_rate', 0):.1f}%, "
+            f"alert_threshold={gap_data.get('alert_threshold_rate', DEFAULT_SEASON_TEAM_CODE_ALERT_RATE):.1f}%)"
+        ),
     ]
 
 
@@ -352,10 +354,12 @@ _GAP_SUMMARY_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "PROFILE": lambda d: [f"{d.get('missing_count', 0)} players missing profiles"],
     "PA_FORMULA": lambda d: [f"{d.get('violation_count', 0)} PA formula violations"],
     "ID_RESOLUTION": lambda d: [
-        f"{d.get('total', 0)} NULL player_ids "
-        f"(batting={d.get('counts', {}).get('batting')}, "
-        f"pitching={d.get('counts', {}).get('pitching')}, "
-        f"lineups={d.get('counts', {}).get('lineups')})",
+        (
+            f"{d.get('total', 0)} NULL player_ids "
+            f"(batting={d.get('counts', {}).get('batting')}, "
+            f"pitching={d.get('counts', {}).get('pitching')}, "
+            f"lineups={d.get('counts', {}).get('lineups')})"
+        ),
     ],
 }
 
