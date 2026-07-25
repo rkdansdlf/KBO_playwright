@@ -697,7 +697,6 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
   - `crawl_operation_notices.py`: covered parse + save + empty branches (78% → 100%).
   - `live_boxscore.py`: covered payload assembly, inning-loop, and render branches (75% → 99%; unreachable `if max_innings > 0:` at line 181 flagged for follow-up).
   - `morning_pbp_report.py`: covered default-date resolution, summary parse success/error, validation query rows/fallback/exception, relay/affected >10 sample caps, non-dry-run Slack send paths, and PBP CSV read success/error (77% → 100%).
-- **Supabase scripts**: `scripts/supabase/**` (complexity 13–15) added to the C901 per-file-ignore so the new default-select enforcement stays green; `ruff check` clean.
 - **AGENTS.md**: added Phase 59 + Phase 60 sections and refreshed the Current Verification Baseline below.
 
 ### Phase 61 Complete (2026-07-16) — Monitoring CLI branch-coverage + skip triage
@@ -718,7 +717,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 
 ### Phase 63 Complete (2026-07-18) — Index cleanup and scheduler operational verification
 
-- **Index/schema audit**: Confirmed the removed model-level `index=True` declarations were duplicated by named `idx_*` indexes already present in SQLite, OCI, and Supabase migrations. Added idempotent cleanup migrations `sqlite/046_remove_redundant_phase1_indexes.sql`, `oci/047_remove_redundant_phase1_indexes.sql`, and `supabase/027_remove_redundant_phase1_indexes.sql` to remove only the stale implicit `ix_*` indexes.
+- **Index/schema audit**: Confirmed the removed model-level `index=True` declarations were duplicated by named `idx_*` indexes already present in SQLite and OCI migrations. Added idempotent cleanup migrations `sqlite/046_remove_redundant_phase1_indexes.sql` and `oci/047_remove_redundant_phase1_indexes.sql` to remove only the stale implicit `ix_*` indexes.
 - **Scheduler smoke coverage**: Added PID-file stale/live-owner handling, owner-safe release, lock metric counter reset/error handling, and tier-lock exception conversion tests. Scheduler regression set passes 39 tests.
 - **Regression fix**: Isolated scheduler PID files in existing alerting/shutdown tests so the single-instance guard cannot leak state between tests.
 
@@ -739,7 +738,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 ### Phase 65 Complete (2026-07-18) — OCI sync hardening and migration verification expansion
 
 - **OCI sync hardening**: Added transient connection markers (`closed the connection`, `connection closed`, `DPY-4011`), guarded `_ensure_table` for lightweight test doubles/non-table models, ensured simple-table sync creates its target table first, converted Oracle game metadata `time` values to `datetime`, and pre-created all game detail tables before Oracle sync/purge.
-- **Migration verification**: Added SQLite in-memory idempotency coverage for SQLite/OCI/Supabase redundant-index cleanup migrations plus Python migrations `005_deletion_anomaly_integrity.py` and `032_fix_team_season_fielding_float_columns.py` (dry-run delegation, data preservation, type conversion, and rerun behavior).
+- **Migration verification**: Added SQLite in-memory idempotency coverage for SQLite/OCI redundant-index cleanup migrations plus Python migrations `005_deletion_anomaly_integrity.py` and `032_fix_team_season_fielding_float_columns.py` (dry-run delegation, data preservation, type conversion, and rerun behavior).
 - **CI alignment**: Existing `test_suite.yml` pytest job automatically collects `tests/migrations`; no separate workflow step is needed for the local SQLite migration contracts. OCI application remains gated by `apply_oci_migrations.py` and an available `OCI_DB_URL`.
 - **Verification**: Migration tests pass (5 cases), sync hardening/coverage tests pass (248 cases), scheduler/run-daily targeted tests pass (33 cases), and the isolated serial full suite passes **9,956 tests** with 27 legitimate skips and 1 known xfail.
 
@@ -797,7 +796,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - `pytest.ini` default worker pool = `-n 2`; coverage workflow uses `-n 2`; SQLite/PostgreSQL integration workflow steps use `-n 1`.
 - `ruff check src/ tests/ scripts/` = 0 errors; `ruff check migrations/` = 0 errors; `ruff format --check src/ tests/ scripts/ migrations/` = clean.
 - `git diff --check` passes; concurrent changes in `src/db/engine.py` and `src/sync/sync_base.py` remain unstaged and were not modified in this task.
-- `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` and `scripts/supabase/**` relaxed).
+- `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
 - `env OCI_DB_URL= TARGET_DATABASE_URL= venv/bin/python -m pytest tests/ -m "not integration and not slow and not oci" -n 2 -q` = **9722 passed**, 24 skipped, 1 xfailed in **190.92s**.

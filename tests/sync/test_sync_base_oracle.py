@@ -371,6 +371,22 @@ def test_bulk_oracle_merge_update_timestamp_false_omits_timestamp_update(oracle_
     assert "CURRENT_TIMESTAMP" not in compact_sql
 
 
+def test_bulk_oracle_merge_uses_id_fallback_for_natural_key_misses(oracle_sync) -> None:
+    connection, cursor = _connection()
+    oracle_sync._oracle_columns = MagicMock(return_value={"id", "player_id", "season", "team_code"})
+
+    oracle_sync._do_bulk_merge_oracle(
+        "player_season_batting",
+        [{"id": 7, "player_id": 11, "season": 2026, "team_code": None}],
+        ["player_id", "season", "team_code"],
+        update_timestamp=True,
+        connection=connection,
+    )
+
+    compact_sql = _compact_sql(cursor.executemany.call_args.args[0])
+    assert 'OR t."ID" = :id' in compact_sql
+
+
 def test_bulk_oracle_merge_without_unique_columns_uses_insert(oracle_sync) -> None:
     connection, cursor = _connection()
     oracle_sync._oracle_columns = MagicMock(return_value={"id", "name"})

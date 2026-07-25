@@ -200,6 +200,7 @@ class TestBuildBattingPayloads:
         assert payload["league"] == "REGULAR"
         assert payload["level"] == "KBO1"
         assert payload["source"] == "AGGREGATED"
+        assert payload["team_code"] == "LG"
         assert payload["canonical_team_code"] == "LG"
         assert payload["plate_appearances"] == 458
         assert payload["avg"] == pytest.approx(0.300, abs=0.001)
@@ -207,6 +208,7 @@ class TestBuildBattingPayloads:
 
     def test_missing_team_maps_to_none(self) -> None:
         payload = _build_batting_payloads([_batting_row(player_id=9999)], 2025, "REGULAR", "KBO1", {})[0]
+        assert payload["team_code"] is None
         assert payload["canonical_team_code"] is None
 
     def test_none_aggregates_become_zero(self) -> None:
@@ -263,6 +265,7 @@ class TestBuildPitchingPayloads:
         payload = _build_pitching_payloads([_pitching_row()], 2025, "REGULAR", "KBO1", {2001: "SSG"})[0]
 
         assert payload["player_id"] == 2001
+        assert payload["team_code"] == "SSG"
         assert payload["canonical_team_code"] == "SSG"
         assert payload["innings_outs"] == 180
         assert payload["innings_pitched"] == 60.0
@@ -285,6 +288,7 @@ class TestBuildPitchingPayloads:
 
     def test_missing_team_maps_to_none(self) -> None:
         payload = _build_pitching_payloads([_pitching_row(player_id=9999)], 2025, "REGULAR", "KBO1", {})[0]
+        assert payload["team_code"] is None
         assert payload["canonical_team_code"] is None
 
     def test_none_aggregates_become_zero(self) -> None:

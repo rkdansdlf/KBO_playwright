@@ -30,6 +30,7 @@ class DbEvidence:
     """Aggregate database evidence for one player name and team."""
 
     row_count: int
+    null_row_count: int
     player_ids: tuple[int, ...]
     uniform_nos: tuple[str, ...]
     positions: tuple[str, ...]
@@ -83,6 +84,7 @@ def load_db_evidence(target: Mapping[str, object]) -> DbEvidence:
     positions: set[str] = set()
     table_counts: dict[str, int] = {}
     row_count = 0
+    null_row_count = 0
     with SessionLocal() as session:
         for table_name, model, position_column in _model_specs():
             rows = session.execute(
@@ -100,12 +102,15 @@ def load_db_evidence(target: Mapping[str, object]) -> DbEvidence:
             for player_id, uniform_no, position in rows:
                 if player_id is not None:
                     player_ids.add(int(player_id))
+                else:
+                    null_row_count += 1
                 if _text(uniform_no):
                     uniform_nos.add(_text(uniform_no))
                 if _text(position):
                     positions.add(_text(position))
     return DbEvidence(
         row_count=row_count,
+        null_row_count=null_row_count,
         player_ids=tuple(sorted(player_ids)),
         uniform_nos=tuple(sorted(uniform_nos)),
         positions=tuple(sorted(positions)),
@@ -155,8 +160,8 @@ def render_review_markdown(
         "",
         "## Summary",
         "",
-        "| Name | Team | Season | DB rows | DB player_ids | Uniforms | Positions | Resolver ID | Candidate count |",
-        "|---|---|---:|---:|---|---|---|---:|---:|",
+        "| Name | Team | Season | DB rows | DB NULL rows | DB player_ids | Uniforms | Positions | Resolver ID | Candidate count |",
+        "|---|---|---:|---:|---:|---|---|---|---:|---:|",
     ]
     details: list[str] = []
     for result in results:
@@ -172,6 +177,7 @@ def render_review_markdown(
                     _text(target.get("team_code")) or "-",
                     _text(target["season"]),
                     str(evidence.row_count),
+                    str(evidence.null_row_count),
                     ", ".join(map(str, evidence.player_ids)) or "-",
                     ", ".join(evidence.uniform_nos) or "-",
                     ", ".join(evidence.positions) or "-",
@@ -195,7 +201,7 @@ def _render_target_detail(
         f"### {_text(target['name'])} ({_text(target.get('team_code'))}, {target['season']})",
         "",
         f"- Official search: {_text(result.get('search_url'))}",
-        f"- DB rows: {evidence.row_count} ({', '.join(f'{name}={count}' for name, count in evidence.table_counts)})",
+        f"- DB rows: {evidence.row_count}; NULL player_id rows: {evidence.null_row_count} ({', '.join(f'{name}={count}' for name, count in evidence.table_counts)})",
         f"- DB player IDs: {', '.join(map(str, evidence.player_ids)) or '-'}",
         f"- DB uniforms: {', '.join(evidence.uniform_nos) or '-'}",
         f"- DB positions: {', '.join(evidence.positions) or '-'}",

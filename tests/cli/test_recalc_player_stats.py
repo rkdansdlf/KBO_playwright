@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.recalc_player_stats import (
+    _delete_stale_aggregated_rows,
     _get_player_teams,
     _get_regular_season_ids,
     _upsert_batting,
@@ -157,6 +158,17 @@ class TestUpsertPlayerStats:
         assert result == 1
         mock_session.rollback.assert_called_once()
         mock_session.commit.assert_called_once()
+
+
+class TestStaleAggregateCleanup:
+    def test_returns_deleted_row_count(self):
+        mock_session = MagicMock()
+        mock_session.execute.return_value.rowcount = 3
+
+        result = _delete_stale_aggregated_rows(mock_session, PlayerSeasonBatting, 2026)
+
+        assert result == 3
+        mock_session.execute.assert_called_once()
 
 
 class TestRecalcPlayerStatsEdgeCases:

@@ -47,8 +47,10 @@ def test_save_schedule_games_counts_saved_and_failed(monkeypatch):
     assert [game["game_id"] for game in result.failed_games] == ["20250402LGSS0"]
     assert warnings == [
         "[WARN] Failed to save schedule game: 20250402LGSS0",
-        "[WRITE-SUMMARY] run=schedule_collection games=0 field_updates=0 field_duplicates=0 "
-        "dataset_replacements=0 dataset_duplicates=0",
+        (
+            "[WRITE-SUMMARY] run=schedule_collection games=0 field_updates=0 field_duplicates=0 "
+            "dataset_replacements=0 dataset_duplicates=0"
+        ),
     ]
 
 

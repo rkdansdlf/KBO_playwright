@@ -493,6 +493,47 @@ class TestAggregateTeamBatting:
         results = TeamStatAggregator.aggregate_team_batting(db_session, 2025, "REGULAR")
         assert results == []
 
+    def test_db_rollup_prefers_highest_priority_source(self, seed_standings):
+        session = seed_standings
+        session.add_all(
+            [
+                PlayerSeasonBatting(
+                    id=105,
+                    player_id=5,
+                    season=2026,
+                    league="REGULAR",
+                    level="KBO1",
+                    source="CRAWLER",
+                    team_code=None,
+                    canonical_team_code="OB",
+                    games=1,
+                    plate_appearances=10,
+                    at_bats=8,
+                    hits=2,
+                ),
+                PlayerSeasonBatting(
+                    id=106,
+                    player_id=5,
+                    season=2026,
+                    league="REGULAR",
+                    level="KBO1",
+                    source="AGGREGATED",
+                    team_code=None,
+                    canonical_team_code="OB",
+                    games=1,
+                    plate_appearances=1000,
+                    at_bats=800,
+                    hits=200,
+                ),
+            ],
+        )
+        session.commit()
+
+        result = TeamStatAggregator(session)._aggregate_batting_db(2026, dry_run=True)
+
+        ob = next(row for row in result if row["team_id"] == "OB")
+        assert ob["plate_appearances"] == 10
+
 
 class TestAggregateTeamPitching:
     def seed_pitching_data(self, session):

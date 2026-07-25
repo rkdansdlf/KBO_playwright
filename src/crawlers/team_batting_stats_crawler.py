@@ -37,8 +37,8 @@ TEAM_BATTING_CRAWL_EXCEPTIONS = (PlaywrightError, PlaywrightTimeoutError, Runtim
 TEAM_BATTING_FALLBACK_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 TEAM_BATTING_URLS = [
-    "https://www.koreabaseball.com/Record/Team/Hitter/Basic.aspx",
     "https://www.koreabaseball.com/Record/Team/Hitter/BasicOld.aspx",
+    "https://www.koreabaseball.com/Record/Team/Hitter/Basic.aspx",
 ]
 
 HEADER_MAP = {
@@ -101,6 +101,7 @@ BATTING_FIELDS = {
 }
 TEAM_STATS_REFRESH_ATTEMPTS = 8
 TEAM_STATS_REFRESH_WAIT_MS = 1000
+PAGE_CONTENT_RETRY_ATTEMPTS = 3
 
 
 class TeamBattingStatsCrawler:
@@ -198,7 +199,7 @@ class TeamBattingStatsCrawler:
                     expected_team_ids = set(team_mapping.values())
                     for attempt in range(TEAM_STATS_REFRESH_ATTEMPTS):
                         self.policy.delay()
-                        html = page.content()
+                        html = _read_stable_page_content(page)
                         stats = parse_team_batting_html(html, season, self.league, team_mapping)
                         if has_complete_team_stats(
                             stats,
@@ -230,13 +231,35 @@ class TeamBattingStatsCrawler:
                 continue
             try:
                 page.select_option(selector, str(season))
-                page.wait_for_load_state("networkidle")
+                page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
+                selected_season = page.locator(selector).input_value()
+                if selected_season != str(season):
+                    logger.warning(
+                        "Season selection did not stick for %s: requested=%s selected=%s",
+                        selector,
+                        season,
+                        selected_season,
+                    )
+                    continue
             except (PlaywrightError, PlaywrightTimeoutError):
                 logger.warning("Failed to select season dropdown, trying next selector")
                 continue
             else:
                 return True
         return False
+
+
+def _read_stable_page_content(page: Page) -> str:
+    for attempt in range(PAGE_CONTENT_RETRY_ATTEMPTS):
+        try:
+            page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
+            return page.content()
+        except (PlaywrightError, PlaywrightTimeoutError):
+            if attempt + 1 >= PAGE_CONTENT_RETRY_ATTEMPTS:
+                raise
+            page.wait_for_timeout(TEAM_STATS_REFRESH_WAIT_MS)
+    msg = "Unable to read stable team batting page content"
+    raise RuntimeError(msg)
 
 
 def parse_team_batting_html(

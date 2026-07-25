@@ -9,7 +9,6 @@ ROOT = Path(__file__).resolve().parents[2]
 MIGRATION_PATHS = (
     ROOT / "migrations/sqlite/046_remove_redundant_phase1_indexes.sql",
     ROOT / "migrations/oci/047_remove_redundant_phase1_indexes.sql",
-    ROOT / "migrations/supabase/027_remove_redundant_phase1_indexes.sql",
 )
 INDEX_CONTRACT = {
     "game_broadcasts": ("ix_game_broadcasts_game_id", "idx_broadcast_game"),

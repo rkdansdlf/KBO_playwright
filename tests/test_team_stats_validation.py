@@ -50,7 +50,9 @@ def _make_session():
         conn.execute(
             text("""
             CREATE TABLE player_season_batting (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 player_id INTEGER, season INTEGER, league TEXT,
+                source TEXT, level TEXT,
                 team_code TEXT, canonical_team_code TEXT,
                 games INTEGER, plate_appearances INTEGER, at_bats INTEGER,
                 runs INTEGER, hits INTEGER, doubles INTEGER, triples INTEGER,
@@ -68,7 +70,9 @@ def _make_session():
         conn.execute(
             text("""
             CREATE TABLE player_season_pitching (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 player_id INTEGER, season INTEGER, league TEXT,
+                source TEXT, level TEXT,
                 team_code TEXT, canonical_team_code TEXT,
                 games INTEGER, wins INTEGER, losses INTEGER, saves INTEGER,
                 holds INTEGER, innings_outs INTEGER, innings_pitched FLOAT,
@@ -97,6 +101,39 @@ def _insert_regular_season(session):
 
 
 class TestTeamBattingValidation:
+    def test_prefers_crawler_source_and_excludes_unavailable_fields(self):
+        session = _make_session()
+        try:
+            _insert_regular_season(session)
+            session.execute(
+                text("""
+                    INSERT INTO player_season_batting
+                        (player_id, season, league, source, team_code, canonical_team_code,
+                         plate_appearances, at_bats, runs, hits, home_runs,
+                         stolen_bases, caught_stealing)
+                    VALUES (1, 2025, 'REGULAR', 'CRAWLER', 'SSG', 'SSG', 5, 3, 2, 2, 1, NULL, NULL),
+                           (1, 2025, 'REGULAR', 'AGGREGATED', 'SSG', 'SSG', 99, 90, 20, 30, 9, 12, 4)
+                """),
+            )
+            session.execute(
+                text("""
+                    INSERT INTO team_season_batting
+                        (team_id, season, league, games, plate_appearances, at_bats,
+                         runs, hits, home_runs, stolen_bases, caught_stealing)
+                    VALUES ('SSG', 2025, 'REGULAR', 1, 5, 3, 2, 2, 1, 12, 4)
+                """),
+            )
+            session.commit()
+
+            result = QualityGate(session).validate_season_team_batting(2025)
+
+            assert result["ok"] is True
+            assert result["player_source"] == "PER_KEY"
+            assert "stolen_bases" in result["unavailable_fields"]
+            assert "caught_stealing" in result["unavailable_fields"]
+        finally:
+            session.close()
+
     def test_matches_when_player_sum_equals_team_record(self):
         session = _make_session()
         try:

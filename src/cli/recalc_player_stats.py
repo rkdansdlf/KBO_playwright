@@ -17,7 +17,7 @@ import logging
 import sys
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import case, func, text
+from sqlalchemy import case, delete, func, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -120,6 +120,7 @@ def _build_batting_payloads(
                 "league": league,
                 "level": level,
                 "source": "AGGREGATED",
+                "team_code": team_map.get(player_id),
                 "canonical_team_code": team_map.get(player_id),
                 "games": row.games or 0,  # type: ignore[attr-defined]
                 "plate_appearances": row.plate_appearances or 0,  # type: ignore[attr-defined]
@@ -230,6 +231,7 @@ def _build_pitching_payloads(
                 "league": league,
                 "level": level,
                 "source": "AGGREGATED",
+                "team_code": team_map.get(player_id),
                 "canonical_team_code": team_map.get(player_id),
                 "games": row.games or 0,  # type: ignore[attr-defined]
                 "games_started": row.games_started or 0,  # type: ignore[attr-defined]
@@ -354,6 +356,25 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
     return _upsert_player_stats(session, PlayerSeasonPitching, records, dialect, "Pitching")
 
 
+def _delete_stale_aggregated_rows(session: Session, model: type[object], season: int) -> int:
+    """Remove null-team aggregate rows created by older recalc runs.
+
+    The aggregate upsert key includes ``team_code``. Older payloads only set
+    ``canonical_team_code``, so SQLite treated every run as a new NULL-key row.
+    Restrict cleanup to the generated source and target season.
+    """
+    stmt = delete(model).where(
+        model.season == season,  # type: ignore[attr-defined]
+        model.league == "REGULAR",  # type: ignore[attr-defined]
+        model.level == "KBO1",  # type: ignore[attr-defined]
+        model.source == "AGGREGATED",  # type: ignore[attr-defined]
+        model.team_code.is_(None),  # type: ignore[attr-defined]
+        model.canonical_team_code.isnot(None),  # type: ignore[attr-defined]
+    )
+    result = session.execute(stmt)
+    return int(result.rowcount or 0)
+
+
 def _print_batting_results(records: list[dict[str, Any]]) -> None:
     for r in sorted(records, key=lambda x: x["plate_appearances"], reverse=True)[:20]:
         logger.info(
@@ -423,6 +444,9 @@ def run_recalc(
                 logger.info("[DRY-RUN] Batting records that would be saved:")
                 _print_batting_results(batting_records)
             else:
+                removed = _delete_stale_aggregated_rows(session, PlayerSeasonBatting, season)
+                if removed:
+                    logger.info("  Removed %s stale null-team batting aggregates", removed)
                 saved = _upsert_batting(session, batting_records, dialect)
                 logger.info("  Upserted %s batting records", saved)
 
@@ -435,6 +459,9 @@ def run_recalc(
                 logger.info("[DRY-RUN] Pitching records that would be saved:")
                 _print_pitching_results(pitching_records)
             else:
+                removed = _delete_stale_aggregated_rows(session, PlayerSeasonPitching, season)
+                if removed:
+                    logger.info("  Removed %s stale null-team pitching aggregates", removed)
                 saved = _upsert_pitching(session, pitching_records, dialect)
                 logger.info("  Upserted %s pitching records", saved)
 

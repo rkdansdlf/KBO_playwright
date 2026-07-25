@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date as date_type
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import Executable, func, or_, text
+from sqlalchemy import Executable, case, func, or_, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -54,6 +54,17 @@ DEFAULT_TEAM_NAMES = {
     "KT": "KT",
     "NC": "NC",
 }
+
+PLAYER_SEASON_SOURCE_PRIORITY = (
+    "CRAWLER",
+    "FINAL_VERIFICATION",
+    "MANUAL_RECALC",
+    "AGGREGATED",
+    "RECALC",
+    "PROFILE",
+    "FALLBACK_BACKFILL",
+    "ROLLUP",
+)
 
 
 class TeamStatAggregator:
@@ -227,6 +238,35 @@ class TeamStatAggregator:
             return ("합계", "TOTAL", "ALL", "-")
         return ("", "합계", "TOTAL", "ALL", "-")
 
+    def _source_priority_filter(
+        self,
+        model: type[PlayerSeasonBatting | PlayerSeasonPitching],
+        season: int,
+    ) -> ColumnElement[bool]:
+        """Keep one highest-priority source row per player/team season key."""
+        source_rank = case(
+            *((model.source == source, rank) for rank, source in enumerate(PLAYER_SEASON_SOURCE_PRIORITY)),
+            else_=len(PLAYER_SEASON_SOURCE_PRIORITY),
+        )
+        partition_by = [model.player_id, model.season, model.league]
+        if hasattr(model, "level"):
+            partition_by.append(model.level)
+        partition_by.append(self._team_code_expression(model))
+        ranked_rows = (
+            select(
+                model.id.label("source_row_id"),
+                func.row_number()
+                .over(
+                    partition_by=partition_by,
+                    order_by=(source_rank, model.id.desc()),
+                )
+                .label("source_rank"),
+            )
+            .where(model.season == season, model.league == "REGULAR")
+            .subquery()
+        )
+        return model.id.in_(select(ranked_rows.c.source_row_id).where(ranked_rows.c.source_rank == 1))
+
     def _aggregate_batting_db(
         self,
         season: int,
@@ -265,6 +305,7 @@ class TeamStatAggregator:
             )
             .filter(PlayerSeasonBatting.season == season)
             .filter(PlayerSeasonBatting.league == "REGULAR")
+            .filter(self._source_priority_filter(PlayerSeasonBatting, season))
             .filter(
                 team_code_expr.isnot(None),
                 or_(
@@ -368,6 +409,7 @@ class TeamStatAggregator:
             )
             .filter(PlayerSeasonPitching.season == season)
             .filter(PlayerSeasonPitching.league == "REGULAR")
+            .filter(self._source_priority_filter(PlayerSeasonPitching, season))
             .filter(
                 team_code_expr.isnot(None),
                 or_(

@@ -187,7 +187,7 @@ def _embed_and_save_static_chunks(
     with get_db_session() as session:
         upserted = repo.upsert_chunks(session, all_chunks)
         logger.info("✅ Upserted %s RAG chunks to local DB.", upserted)
-        if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
+        if os.getenv("RUN_SYNC_OCI") == "1":
             _sync_static_chunks_to_oci(session)
 
 
@@ -251,7 +251,7 @@ async def run_dynamic_pipeline() -> None:
             logger.exception("⚠️ Roster crawler execution failure")
 
         # 3. Automatically sync to OCI if config allows
-        if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
+        if os.getenv("RUN_SYNC_OCI") == "1":
             logger.info("🚚 Syncing ticket schedules and daily rosters to OCI...")
             from src.sync.oci_sync import OCISync
 
@@ -318,7 +318,7 @@ async def run_realtime_pipeline() -> None:
             logger.info("✅ Upserted %s realtime RAG chunks to local DB.", upserted)
 
             # Automatically sync to OCI if config allows
-            if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
+            if os.getenv("RUN_SYNC_OCI") == "1":
                 logger.info("🚚 Syncing realtime RAG chunks to OCI...")
                 from src.sync.oci_sync import OCISync
 
@@ -370,7 +370,7 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
         pdf_path: Pdf file path.
 
     """
-    run_sync = os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1"
+    run_sync = os.getenv("RUN_SYNC_OCI") == "1"
 
     try:
         if pipeline_type == "static":

@@ -14,10 +14,21 @@ from src.crawlers.team_pitching_stats_crawler import TeamPitchingStatsCrawler
 def test_select_season_uses_later_selector_when_primary_is_missing(crawler_cls) -> None:
     page = MagicMock()
     page.query_selector.side_effect = [None, object()]
+    page.locator.return_value.input_value.return_value = "2026"
 
     assert crawler_cls._select_season(page, 2026) is True
     page.select_option.assert_called_once()
-    page.wait_for_load_state.assert_called_once_with("networkidle")
+    page.wait_for_load_state.assert_called_once_with("networkidle", timeout=60000)
+
+
+@pytest.mark.parametrize("module", [batting_module, pitching_module])
+def test_page_content_retries_during_delayed_postback(module) -> None:
+    page = MagicMock()
+    page.content.side_effect = [module.PlaywrightError("page is navigating"), "<html>stable</html>"]
+
+    assert module._read_stable_page_content(page) == "<html>stable</html>"
+    assert page.content.call_count == 2
+    assert page.wait_for_timeout.call_count == 1
 
 
 @pytest.mark.parametrize(
