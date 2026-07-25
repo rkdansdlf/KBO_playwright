@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Protocol
 
-from sqlalchemy import case, func, or_, select, text
+from sqlalchemy import case, column, func, or_, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import load_only
@@ -238,12 +238,16 @@ class QualityGate:
         except (SQLAlchemyError, AttributeError, TypeError):
             return None, None
 
-        if "source" not in columns:
+        if "source" in columns:
+            source_column = model.source
+        elif "data_source" in columns:
+            source_column = column("data_source")
+        else:
             return None, None
 
         if "id" in columns:
             source_rank = case(
-                *((model.source == source, rank) for rank, source in enumerate(PLAYER_SEASON_SOURCE_PRIORITY)),
+                *((source_column == source, rank) for rank, source in enumerate(PLAYER_SEASON_SOURCE_PRIORITY)),
                 else_=len(PLAYER_SEASON_SOURCE_PRIORITY),
             )
             partition_by = [model.player_id, model.season, model.league]
@@ -268,7 +272,7 @@ class QualityGate:
 
         source_rows = (
             self.session.execute(
-                select(model.source).where(model.season == season, model.league == league),
+                select(source_column).where(model.season == season, model.league == league),
             )
             .scalars()
             .all()
@@ -277,7 +281,7 @@ class QualityGate:
         selected = next((source for source in PLAYER_SEASON_SOURCE_PRIORITY if source in sources), None)
         if selected is None:
             return None, None
-        return model.source == selected, selected
+        return source_column == selected, selected
 
     def _is_oracle(self) -> bool:
         """Return whether the active quality-gate connection uses Oracle."""
