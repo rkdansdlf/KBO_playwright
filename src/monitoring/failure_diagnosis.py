@@ -130,8 +130,10 @@ _RULES: tuple[_DiagnosisRule, ...] = (
         ),
         message="Crawler selector or DOM contract likely changed.",
         suggested_commands=(
-            "venv/bin/python -m src.cli.crawler_selector_gate "
-            "--config Docs/references/crawler_selector_gate.json --json",
+            (
+                "venv/bin/python -m src.cli.crawler_selector_gate "
+                "--config Docs/references/crawler_selector_gate.json --json"
+            ),
         ),
     ),
     _DiagnosisRule(

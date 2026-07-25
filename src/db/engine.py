@@ -213,7 +213,7 @@ def _create_oracle_engine(url: str) -> SQLAlchemyEngine:
                 cursor.execute("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'")
                 cursor.execute("ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF'")
                 cursor.close()
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001, RUF100
                 logger.warning("Failed to set Oracle session time zone pragmas", exc_info=e)
 
     engine.dialect._json_deserializer = _custom_json_deserializer  # noqa: SLF001
