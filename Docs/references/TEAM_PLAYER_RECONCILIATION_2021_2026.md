@@ -103,3 +103,17 @@ Automatically deleting one source or merging IDs would risk historical identity 
 The OCI regression pack passed all 10 checks for 2026. For 2021, 9 of 10 checks passed;
 the only failure was the existing `era_range` check for player IDs 73 and 1352, where
 the stored ERA has no positive innings basis. No repair was applied.
+
+## OCI 2021 Pitching Identity Audit
+
+The read-only identity audit found 319 `(team_code, player_name)` groups in the OCI
+regular-season pitching table; 302 groups contain more than one `player_id` across
+`PROFILE` and `MANUAL_RECALC` rows. The target has no 2021 `game_pitching_stats` rows,
+no 2021 `player_game_pitching` rows, and no `team_daily_roster` table, so OCI alone
+cannot provide exact game or roster evidence for merging these IDs.
+
+The two sources often contain matching games and decisions under different IDs, but
+that pattern is not sufficient to prove identity for every historical homonym. No
+bulk identity override, source-row deletion, or player-ID merge was applied. Any future
+override must be backed by local game evidence, an official profile, or a dated roster
+record and must be recorded as a row-level or group-level override.
