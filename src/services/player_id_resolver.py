@@ -467,6 +467,12 @@ class PlayerIdResolver:
             ("타케다", "SSG", 2026, True): 56823,
             ("타케다", "SSG", 2026, False): 56823,
             ("타케다", "SSG", 2026, None): 56823,
+            # 2020 김재현 appears for both Samsung and SK; canonicalizing SK
+            # to SSG otherwise reuses the Samsung player ID.
+            ("김재현", "SS", 2020, False): 64499,
+            ("김재현", "SSG", 2020, False): 76869,
+            ("채태인", "SSG", 2020, False): 77463,
+            ("윤석민", "SSG", 2020, False): 74215,
         }
 
         override_key = (player_name, team_code, season, is_pitcher)

@@ -258,6 +258,27 @@ class TestResolveStaticOverrideHistorical:
         assert result == expected_id
 
 
+class TestResolveHistoricalTeamCollision:
+    @pytest.mark.parametrize(
+        ("name", "team", "expected_id"),
+        [
+            ("김재현", "SS", 64499),
+            ("김재현", "SSG", 76869),
+            ("채태인", "SSG", 77463),
+            ("윤석민", "SSG", 74215),
+        ],
+    )
+    def test_2020_kim_jaehyun_team_specific_ids(
+        self,
+        resolver: PlayerIdResolver,
+        name: str,
+        team: str,
+        expected_id: int,
+    ) -> None:
+        result = resolver._resolve_static_override(name, team, 2020, is_pitcher=False)
+        assert result == expected_id
+
+
 class TestResolveSamsungLeeSeunghyun:
     def test_uniform_57(self, resolver: PlayerIdResolver) -> None:
         result = resolver._resolve_samsung_lee_seunghyun("이승현", "SS", 2026, "57", is_pitcher=True)
