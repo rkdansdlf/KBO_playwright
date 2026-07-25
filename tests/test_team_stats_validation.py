@@ -466,18 +466,18 @@ class TestTeamPitchingValidation:
             session.execute(
                 text("""
                     INSERT INTO player_season_pitching
-                        (player_id, season, league, team_code, canonical_team_code,
-                         games, wins, innings_outs, strikeouts)
-                    VALUES (1, 2025, 'REGULAR', 'SSG', 'SSG',
-                            1, 1, 21, 5)
+                        (player_id, season, league, source, team_code, canonical_team_code,
+                         games, wins, innings_outs, strikeouts, hits_allowed)
+                    VALUES (1, 2025, 'REGULAR', 'official', 'SSG', 'SSG',
+                            1, 1, 21, 5, 10)
                 """),
             )
             session.execute(
                 text("""
                     INSERT INTO team_season_pitching
                         (team_id, season, league, games, wins,
-                         innings_pitched, strikeouts)
-                    VALUES ('SSG', 2025, 'REGULAR', 2, 7, 7.0, 10)
+                         innings_pitched, strikeouts, hits_allowed)
+                    VALUES ('SSG', 2025, 'REGULAR', 2, 7, 7.0, 10, 50)
                 """),
             )
             session.commit()
