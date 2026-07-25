@@ -81,3 +81,25 @@ team PA 3,256 대 player PA 3,619이다. 이는 선수 페이지의 자격/노�
    백업과 dry-run diff 확인 전까지 삭제하지 않는다.
 
 이번 변경에서도 target data를 삭제하거나 과거 source row를 자동 정리하지 않았다.
+
+## OCI Read-Only Audit (2026-07-25)
+
+The OCI target connection reports the Oracle dialect. The audit performed no writes or
+deletes.
+
+| Season | Table | Rows | Source distribution | Quality result |
+|---|---|---:|---|---|
+| 2021 | `player_season_batting` | 396 | MANUAL_RECALC 394, AGGREGATED 1, CRAWLER 1 | 2 team mismatches |
+| 2021 | `player_season_pitching` | 623 | MANUAL_RECALC 307, PROFILE 291, CRAWLER 18, AGGREGATED 7 | 10 team mismatches |
+| 2026 | `player_season_batting` | 351 | CRAWLER 320, AGGREGATED 17, FINAL_VERIFICATION 12, other 2 | 1 team mismatch |
+| 2026 | `player_season_pitching` | 341 | AGGREGATED 261, CRAWLER 27, PROFILE 28, other 25 | 0 team mismatches |
+
+The OCI quality gate now applies source precedence through the physical
+`data_source` column. This removed all 2026 pitching mismatches. The remaining 2021
+pitching difference is not an exact duplicate logical key: PROFILE and MANUAL_RECALC
+rows frequently use different player IDs for the same apparent player/team identity.
+Automatically deleting one source or merging IDs would risk historical identity loss.
+
+The OCI regression pack passed all 10 checks for 2026. For 2021, 9 of 10 checks passed;
+the only failure was the existing `era_range` check for player IDs 73 and 1352, where
+the stored ERA has no positive innings basis. No repair was applied.
