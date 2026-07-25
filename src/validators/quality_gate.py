@@ -31,7 +31,11 @@ TEAM_STAT_ABSOLUTE_TOLERANCE = 5
 FUTURES_BATTING_TOLERANCE = 0.005
 FUTURES_PITCHING_TOLERANCE = 0.01
 FUTURES_FIP_TOLERANCE = 0.02
-OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS = frozenset({"earned_runs"})
+# Team decisions and earned runs can differ from sums of player-season rows because
+# official team tables use different source semantics and decision attribution.
+OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS = frozenset(
+    {"earned_runs", "wins", "losses", "stolen_bases", "caught_stealing"},
+)
 BATTING_TEAM_STAT_FIELDS = (
     "plate_appearances",
     "at_bats",
@@ -82,6 +86,10 @@ PLAYER_SEASON_SOURCE_PRIORITY = (
     "FALLBACK_BACKFILL",
     "ROLLUP",
 )
+CUMULATIVE_SOURCE_PRIORITY = (
+    "AGGREGATED",
+    *(source for source in PLAYER_SEASON_SOURCE_PRIORITY if source != "AGGREGATED"),
+)
 
 
 class PitchingCumulativeRow(Protocol):
@@ -108,7 +116,7 @@ def _team_pitching_stat_diffs(
     *,
     unavailable_fields: frozenset[str] = frozenset(),
 ) -> tuple[list[str], list[str]]:
-    """Compare team/player pitching fields and separate ER semantics differences."""
+    """Compare team/player pitching fields and separate non-blocking differences."""
     diffs: list[str] = []
     semantics_exempt_diffs: list[str] = []
     for field in PITCHING_TEAM_STAT_FIELDS:
@@ -127,10 +135,14 @@ def _team_pitching_stat_diffs(
     return diffs, semantics_exempt_diffs
 
 
-def _team_batting_stat_diffs(team_row: object, player_row: object) -> tuple[list[str], set[str]]:
-    """Compare team/player batting fields and return unavailable player fields."""
+def _team_batting_stat_diffs(
+    team_row: object,
+    player_row: object,
+) -> tuple[list[str], set[str], list[str]]:
+    """Compare team/player batting fields and separate unavailable/non-blocking fields."""
     diffs: list[str] = []
     unavailable_fields: set[str] = set()
+    semantics_exempt_diffs: list[str] = []
     for field in BATTING_TEAM_STAT_FIELDS:
         player_value = getattr(player_row, field)
         if player_value is None:
@@ -139,8 +151,12 @@ def _team_batting_stat_diffs(team_row: object, player_row: object) -> tuple[list
         team_value = getattr(team_row, field) or 0
         diff = abs(team_value - (player_value or 0))
         if _team_stat_mismatch(diff):
-            diffs.append(f"{field}: team={team_value} player_sum={player_value} diff={diff}")
-    return diffs, unavailable_fields
+            detail = f"{field}: team={team_value} player_sum={player_value} diff={diff}"
+            if field in OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS:
+                semantics_exempt_diffs.append(detail)
+            else:
+                diffs.append(detail)
+    return diffs, unavailable_fields, semantics_exempt_diffs
 
 
 def _pa_formula_expected(
@@ -283,6 +299,23 @@ class QualityGate:
             return None, None
         return source_column == selected, selected
 
+    @staticmethod
+    def _cumulative_map(rows: list[object]) -> dict[object, object]:
+        """Prefer generated aggregates when multiple cumulative rows exist."""
+        source_rank = {source: rank for rank, source in enumerate(CUMULATIVE_SOURCE_PRIORITY)}
+        cumulative_map: dict[object, object] = {}
+        for row in rows:
+            player_id = getattr(row, "player_id", None)
+            current = cumulative_map.get(player_id)
+            if current is None:
+                cumulative_map[player_id] = row
+                continue
+            current_source = str(getattr(current, "source", "") or "").strip().upper()
+            row_source = str(getattr(row, "source", "") or "").strip().upper()
+            if source_rank.get(row_source, len(source_rank)) < source_rank.get(current_source, len(source_rank)):
+                cumulative_map[player_id] = row
+        return cumulative_map
+
     def _is_oracle(self) -> bool:
         """Return whether the active quality-gate connection uses Oracle."""
         try:
@@ -341,12 +374,13 @@ class QualityGate:
             PlayerSeasonBatting.hits,
             PlayerSeasonBatting.runs,
             PlayerSeasonBatting.home_runs,
+            PlayerSeasonBatting.source,
         ).where(
             PlayerSeasonBatting.season == season,
             PlayerSeasonBatting.league == league,
         )
         cumulative_data = self.session.execute(cumulative_stmt).all()
-        cumulative_map = {row.player_id: row for row in cumulative_data}
+        cumulative_map = self._cumulative_map(cumulative_data)
 
         # 2. Get transactional totals per player
         transactional_stmt = (
@@ -473,12 +507,13 @@ class QualityGate:
             PlayerSeasonPitching.extra_stats,
             PlayerSeasonPitching.wins,
             PlayerSeasonPitching.strikeouts,
+            PlayerSeasonPitching.source,
         ).where(
             PlayerSeasonPitching.season == season,
             PlayerSeasonPitching.league == league,
         )
         cumulative_data = self.session.execute(cumulative_stmt).all()
-        cumulative_map = {row.player_id: row for row in cumulative_data}
+        cumulative_map = self._cumulative_map(cumulative_data)
 
         transactional_stmt = (
             select(
@@ -689,6 +724,7 @@ class QualityGate:
 
         mismatches = []
         unavailable_fields: set[str] = set()
+        semantics_exempt_diffs: list[str] = []
         for team_id, team_r in team_map.items():
             player_r = player_map.get(team_id)
             if player_r is None:
@@ -700,8 +736,9 @@ class QualityGate:
                 )
                 continue
 
-            diffs, player_unavailable = _team_batting_stat_diffs(team_r, player_r)
+            diffs, player_unavailable, player_semantics_exempt = _team_batting_stat_diffs(team_r, player_r)
             unavailable_fields.update(player_unavailable)
+            semantics_exempt_diffs.extend(f"{team_id}: {detail}" for detail in player_semantics_exempt)
 
             if diffs:
                 mismatches.append(
@@ -720,6 +757,8 @@ class QualityGate:
         )
         result["player_source"] = selected_source
         result["unavailable_fields"] = sorted(unavailable_fields)
+        result["semantics_exempt_fields"] = sorted(OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS)
+        result["semantics_exempt_diffs"] = semantics_exempt_diffs[:10]
         return result
 
     def validate_season_team_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
@@ -825,6 +864,7 @@ class QualityGate:
 
         mismatches = []
         unavailable_fields: set[str] = set()
+        all_semantics_exempt_diffs: list[str] = []
         for team_id, team_r in team_map.items():
             player_r = player_map.get(team_id)
             if player_r is None:
@@ -845,6 +885,7 @@ class QualityGate:
                 player_r,
                 unavailable_fields=player_unavailable,
             )
+            all_semantics_exempt_diffs.extend(f"{team_id}: {detail}" for detail in semantics_exempt_diffs)
 
             # Compare innings_pitched (special: float, not integer)
             team_ip = team_r.innings_pitched or 0.0
@@ -877,6 +918,7 @@ class QualityGate:
         result["player_source"] = selected_source
         result["unavailable_fields"] = sorted(unavailable_fields)
         result["semantics_exempt_fields"] = sorted(OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS)
+        result["semantics_exempt_diffs"] = all_semantics_exempt_diffs[:10]
         return result
 
     def _check_futures_batting_impossible(self, player: PlayerSeasonBatting) -> str | None:

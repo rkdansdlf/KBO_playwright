@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -37,7 +37,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.maintenance.full_audit import collect_audit_metrics, flatten_gate_metrics
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal, create_engine_for_url
 
 BASELINE_KEYS = (
     "past_missing_runs_max",
@@ -297,7 +297,7 @@ def run_quality_gate(
     if oci_only:
         if not oci_url:
             raise RuntimeError("OCI_DB_URL is required for --oci-only")
-        oci_engine = create_engine(oci_url)
+        oci_engine = create_engine_for_url(oci_url)
         with oci_engine.connect() as oci_conn:
             oci_metrics = collect_metrics(oci_conn)
             oci_missing_ids = fetch_past_missing_game_ids(oci_conn)
@@ -316,7 +316,7 @@ def run_quality_gate(
         else:
             if not oci_url:
                 raise RuntimeError("OCI_DB_URL is required unless --skip-oci is used")
-            oci_engine = create_engine(oci_url)
+            oci_engine = create_engine_for_url(oci_url)
             with oci_engine.connect() as oci_conn:
                 oci_metrics = collect_metrics(oci_conn)
                 oci_missing_ids = fetch_past_missing_game_ids(oci_conn)

@@ -340,8 +340,8 @@ class TestAggregatePitchingDB:
     def test_pitching_db_with_standings_record(self):
         row = _mock_row(
             team_id="OB",
-            wins=70,
-            losses=60,
+            wins=1,
+            losses=2,
             saves=30,
             holds=50,
             innings_outs=3600,
@@ -376,6 +376,8 @@ class TestAggregatePitchingDB:
         r = result[0]
         assert r["team_id"] == "OB"
         assert r["games"] == 144
+        assert r["wins"] == 70
+        assert r["losses"] == 60
         assert r["ties"] == 14
         assert r["avg_against"] == pytest.approx(1200 / (5400 - 300 - 40 - 50 - 40), rel=1e-4)
 
@@ -579,6 +581,36 @@ class TestGetTeamRecordFromStandings:
         mock_query.first.return_value = None
         mock_session.query.return_value = mock_query
         result = TeamStatAggregator._get_team_record_from_standings(mock_session, "OB", 2025)
+        assert result == {"games": 0, "wins": 0, "losses": 0, "ties": 0}
+
+    def test_game_record_fallback_canonicalizes_historical_team_codes(self):
+        from types import SimpleNamespace
+
+        rows = [
+            SimpleNamespace(away_team="SK", home_team="WO", away_score=3, home_score=1),
+            SimpleNamespace(away_team="WO", home_team="SK", away_score=2, home_score=2),
+            SimpleNamespace(away_team="DB", home_team="SK", away_score=0, home_score=4),
+        ]
+
+        result = TeamStatAggregator._record_from_game_rows(rows, "SSG", 2009)
+
+        assert result == {"games": 3, "wins": 2, "losses": 0, "ties": 1}
+
+    def test_game_record_fallback_rejects_partial_season_score_coverage(self):
+        from types import SimpleNamespace
+
+        rows = [
+            SimpleNamespace(away_team="DB", home_team="HH", away_score=3, home_score=1),
+            SimpleNamespace(away_team="HH", home_team="DB", away_score=None, home_score=None),
+        ]
+        query = MagicMock()
+        query.filter.return_value = query
+        query.all.return_value = rows
+        session = MagicMock()
+        session.query.return_value = query
+
+        result = TeamStatAggregator._get_team_record_from_games(session, "DB", 2009)
+
         assert result == {"games": 0, "wins": 0, "losses": 0, "ties": 0}
 
     def test_returns_zeros_when_standings_table_is_unavailable(self):

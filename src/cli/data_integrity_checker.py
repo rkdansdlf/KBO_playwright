@@ -106,7 +106,7 @@ def check_games_exist(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    count = session.query(Game).filter(Game.game_date == target).count()
+    count = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).count()
     if count == 0:
         return CheckResult(
             name="games_exist",
@@ -132,7 +132,7 @@ def check_all_terminal_status(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    games = session.query(Game).filter(Game.game_date == target).all()
+    games = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).all()
     if not games:
         return CheckResult(
             name="all_terminal_status",
@@ -184,6 +184,7 @@ def check_child_stats_exist(session: Session, target: date) -> CheckResult:
         session.query(Game)
         .filter(
             Game.game_date == target,
+            Game.is_primary.is_(True),
             Game.game_status.in_(["COMPLETED", "DRAW"]),
         )
         .all()
@@ -249,7 +250,7 @@ def check_no_null_player_ids(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    games = session.query(Game).filter(Game.game_date == target).all()
+    games = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).all()
     if not games:
         return CheckResult(
             name="no_null_player_ids",
@@ -309,8 +310,16 @@ def check_game_status_populated(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    total = session.query(Game).filter(Game.game_date == target).count()
-    null_status = session.query(Game).filter(Game.game_date == target, Game.game_status.is_(None)).count()
+    total = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).count()
+    null_status = (
+        session.query(Game)
+        .filter(
+            Game.game_date == target,
+            Game.is_primary.is_(True),
+            Game.game_status.is_(None),
+        )
+        .count()
+    )
 
     if null_status > 0:
         return CheckResult(
@@ -342,6 +351,7 @@ def check_scores_populated(session: Session, target: date) -> CheckResult:
         session.query(Game)
         .filter(
             Game.game_date == target,
+            Game.is_primary.is_(True),
             Game.game_status.in_(["COMPLETED", "DRAW"]),
         )
         .all()
@@ -387,6 +397,7 @@ def check_winning_team_consistency(session: Session, target: date) -> CheckResul
         session.query(Game)
         .filter(
             Game.game_date == target,
+            Game.is_primary.is_(True),
             Game.game_status.in_(["COMPLETED", "DRAW"]),
         )
         .all()
@@ -440,7 +451,7 @@ def check_duplicate_games(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    games = session.query(Game).filter(Game.game_date == target).all()
+    games = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).all()
     games_by_slot: dict[str, list[str]] = {}
     for game in games:
         canonical_slot = normalize_kbo_game_id(game.game_id)

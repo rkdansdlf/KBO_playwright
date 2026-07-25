@@ -638,12 +638,16 @@ class TestValidateSeasonTeamPitching:
         team_row.innings_outs = 900
         team_stats = {f: 100 for f in PITCHING_STAT_FIELDS if f != "innings_outs"}
         team_stats["earned_runs"] = 80
+        team_stats["wins"] = 80
+        team_stats["losses"] = 80
         _set_attrs(team_row, team_stats)
         player_row = MagicMock()
         player_row.team_code = "DB"
         player_row.innings_outs = 900
         player_stats = {f: 100 for f in PITCHING_STAT_FIELDS if f != "innings_outs"}
         player_stats["earned_runs"] = 95
+        player_stats["wins"] = 95
+        player_stats["losses"] = 95
         _set_attrs(player_row, player_stats)
         session.execute.side_effect = [
             _mock_execute_result([1]),
@@ -655,7 +659,13 @@ class TestValidateSeasonTeamPitching:
 
         assert result["ok"] is True
         assert result["mismatches"] == []
-        assert result["semantics_exempt_fields"] == ["earned_runs"]
+        assert result["semantics_exempt_fields"] == [
+            "caught_stealing",
+            "earned_runs",
+            "losses",
+            "stolen_bases",
+            "wins",
+        ]
 
     def test_innings_pitched_mismatch(self):
         session = MagicMock()
@@ -685,13 +695,13 @@ class TestValidateSeasonTeamPitching:
         team_row.innings_pitched = 300.0
         team_row.innings_outs = 900
         team_stats = {f: 100 for f in PITCHING_STAT_FIELDS if f != "innings_outs"}
-        team_stats["wins"] = 200
+        team_stats["saves"] = 200
         _set_attrs(team_row, team_stats)
         player_row = MagicMock()
         player_row.team_code = "DB"
         player_row.innings_outs = 900
         player_stats = {f: 100 for f in PITCHING_STAT_FIELDS if f != "innings_outs"}
-        player_stats["wins"] = 50
+        player_stats["saves"] = 50
         _set_attrs(player_row, player_stats)
         session.execute.side_effect = [
             _mock_execute_result([1]),

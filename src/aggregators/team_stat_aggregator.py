@@ -16,10 +16,13 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import get_database_type
+from src.models.game import Game
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.standings import TeamStandingsDaily
 from src.models.team import Team
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.utils.team_history import canonical_code_for_team_code
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -65,6 +68,7 @@ PLAYER_SEASON_SOURCE_PRIORITY = (
     "FALLBACK_BACKFILL",
     "ROLLUP",
 )
+TEAM_RECORD_REQUIRES_COMPLETE_SCORE_COVERAGE = True
 
 
 class TeamStatAggregator:
@@ -108,11 +112,70 @@ class TeamStatAggregator:
                 .first()
             )
         except SQLAlchemyError:
-            logger.warning("Team standings unavailable for %s/%s; using player-derived game count", team_id, year)
-            return 0
+            logger.warning("Team standings unavailable for %s/%s; using game-derived record", team_id, year)
+            return TeamStatAggregator._get_team_record_from_games(session, team_id, year)["games"]
         if latest_standings:
             return latest_standings.games_played
-        return 0
+        return TeamStatAggregator._get_team_record_from_games(session, team_id, year)["games"]
+
+    @staticmethod
+    def _record_from_game_rows(rows: Iterable[Game], team_id: str, year: int) -> dict[str, int]:
+        """Aggregate a team's games into a season record using canonical team codes."""
+        record = {"games": 0, "wins": 0, "losses": 0, "ties": 0}
+        for game in rows:
+            away_code = canonical_code_for_team_code(game.away_team or "", year) or game.away_team
+            home_code = canonical_code_for_team_code(game.home_team or "", year) or game.home_team
+            is_away = away_code == team_id or game.away_team == team_id
+            is_home = home_code == team_id or game.home_team == team_id
+            if not (is_away or is_home) or game.away_score is None or game.home_score is None:
+                continue
+
+            record["games"] += 1
+            if game.away_score == game.home_score:
+                record["ties"] += 1
+            elif (is_away and game.away_score > game.home_score) or (is_home and game.home_score > game.away_score):
+                record["wins"] += 1
+            else:
+                record["losses"] += 1
+        return record
+
+    @staticmethod
+    def _get_team_record_from_games(session: Session, team_id: str, year: int) -> dict[str, int]:
+        """Derive a team record from completed game scores when standings are absent."""
+        try:
+            rows = (
+                session.query(Game)
+                .filter(
+                    Game.game_date >= date_type(year, 1, 1),
+                    Game.game_date <= date_type(year, 12, 31),
+                    Game.game_status.in_(COMPLETED_LIKE_GAME_STATUSES),
+                )
+                .all()
+            )
+        except SQLAlchemyError:
+            return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
+
+        coverage: dict[str, list[int]] = {}
+        for game in rows:
+            away_code = canonical_code_for_team_code(game.away_team or "", year) or game.away_team
+            home_code = canonical_code_for_team_code(game.home_team or "", year) or game.home_team
+            for team_code in {away_code, home_code}:
+                if team_code:
+                    coverage.setdefault(team_code, [0, 0])[0] += 1
+                    if game.away_score is not None and game.home_score is not None:
+                        coverage[team_code][1] += 1
+
+        record = TeamStatAggregator._record_from_game_rows(rows, team_id, year)
+        incomplete_teams = [team_code for team_code, counts in coverage.items() if counts[0] != counts[1]]
+        if TEAM_RECORD_REQUIRES_COMPLETE_SCORE_COVERAGE and incomplete_teams:
+            logger.warning(
+                "Incomplete season score coverage for %s/%s (%s teams); team record fallback disabled",
+                team_id,
+                year,
+                len(incomplete_teams),
+            )
+            return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
+        return record
 
     @staticmethod
     def _get_team_record_from_standings(session: Session, team_id: str, year: int) -> dict[str, int]:
@@ -137,8 +200,8 @@ class TeamStatAggregator:
                 .first()
             )
         except SQLAlchemyError:
-            logger.warning("Team standings unavailable for %s/%s; using zero win-loss record", team_id, year)
-            return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
+            logger.warning("Team standings unavailable for %s/%s; using game-derived record", team_id, year)
+            return TeamStatAggregator._get_team_record_from_games(session, team_id, year)
         if latest_standings:
             return {
                 "games": latest_standings.games_played,
@@ -146,7 +209,7 @@ class TeamStatAggregator:
                 "losses": latest_standings.losses,
                 "ties": latest_standings.draws,
             }
-        return {"games": 0, "wins": 0, "losses": 0, "ties": 0}
+        return TeamStatAggregator._get_team_record_from_games(session, team_id, year)
 
     def aggregate_batting(self, query: TeamAggregationQuery) -> list[dict[str, Any]]:
         """Aggregate batting stats from either a season query or in-memory rows.
@@ -436,9 +499,9 @@ class TeamStatAggregator:
             tc = row.team_id
             rec = self._get_team_record_from_standings(self.session, tc, season)
 
-            # wins/losses are aggregated from player rows, ties from standings
-            wins = int(row.wins or 0)
-            losses = int(row.losses or 0)
+            # Team decisions come from official standings when available.
+            wins = rec["wins"] if rec["games"] > 0 else int(row.wins or 0)
+            losses = rec["losses"] if rec["games"] > 0 else int(row.losses or 0)
             ties = rec["ties"] if rec["games"] > 0 else 0
             team_games = rec["games"] if rec["games"] > 0 else (row.max_player_games or 0)
 

@@ -614,10 +614,17 @@ class StatsSyncMixin(SyncBaseProtocol):
             tables.append("player_season_baserunning")
             tables.append("team_season_baserunning")
 
+        bind = self.target_session.get_bind()
+        is_oracle = getattr(getattr(bind, "dialect", None), "name", None) == "oracle"
         for table_name in tables:
             # player-level fielding/baserunning use 'year'; team-level and others use 'season'
             use_year_col = table_name in ("player_season_fielding", "player_season_baserunning")
             year_col = "year" if use_year_col else "season"
-            self.target_session.execute(text(f'DELETE FROM "{table_name}" WHERE "{year_col}" = :year'), {"year": year})  # noqa: S608
+            target_table = table_name.upper() if is_oracle else table_name
+            target_year_col = year_col.upper() if is_oracle else year_col
+            self.target_session.execute(
+                text(f'DELETE FROM "{target_table}" WHERE "{target_year_col}" = :year'),  # noqa: S608
+                {"year": year},
+            )
         self.target_session.commit()
         logger.info("🧹 Purged OCI season stats for %s (type=%s)", year, type)

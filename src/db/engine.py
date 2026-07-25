@@ -12,7 +12,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
-from urllib.parse import quote_plus, unquote
+from urllib.parse import quote_plus, unquote, urlsplit
 
 from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
@@ -161,10 +161,18 @@ def _oracle_connect_args(url: str) -> dict[str, Any]:
 
     connect_args: dict[str, Any] = {"config_dir": tns_admin, "wallet_location": tns_admin}
     try:
-        auth_part = url.split("oracle+oracledb://", 1)[1].rsplit("@", 1)[0]
-        if ":" in auth_part:
-            _, password = auth_part.split(":", 1)
-            connect_args["wallet_password"] = unquote(password)
+        parsed = urlsplit(url)
+        if parsed.password:
+            password = unquote(parsed.password)
+            connect_args["wallet_password"] = password
+        if parsed.username and parsed.password and parsed.hostname and parsed.path in {"", "/"}:
+            connect_args.update(
+                {
+                    "user": unquote(parsed.username),
+                    "password": password,
+                    "dsn": parsed.hostname,
+                },
+            )
     except (IndexError, ValueError):
         logger.debug("Could not parse Oracle wallet credentials from URL")
     return connect_args
@@ -194,13 +202,16 @@ def _custom_json_deserializer(val: object) -> object:
 
 
 def _create_oracle_engine(url: str) -> SQLAlchemyEngine:
+    normalized_url = normalize_oracle_url(url)
+    connect_args = _oracle_connect_args(url)
+    engine_url = "oracle+oracledb://@" if "dsn" in connect_args else normalized_url
     engine = create_engine(
-        normalize_oracle_url(url),
+        engine_url,
         pool_pre_ping=True,
         pool_size=2,
         max_overflow=2,
         echo=False,
-        connect_args=_oracle_connect_args(url),
+        connect_args=connect_args,
     )
 
     if isinstance(engine, SQLAlchemyEngine):

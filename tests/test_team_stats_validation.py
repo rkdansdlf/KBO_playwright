@@ -169,6 +169,38 @@ class TestTeamBattingValidation:
         finally:
             session.close()
 
+    def test_treats_stolen_base_differences_as_non_blocking(self):
+        session = _make_session()
+        try:
+            _insert_regular_season(session)
+            session.execute(
+                text("""
+                    INSERT INTO player_season_batting
+                        (player_id, season, league, source, team_code, canonical_team_code,
+                         plate_appearances, at_bats, runs, hits, stolen_bases, caught_stealing)
+                    VALUES (1, 2025, 'REGULAR', 'CRAWLER', 'SSG', 'SSG', 5, 3, 2, 2, 0, 0)
+                """),
+            )
+            session.execute(
+                text("""
+                    INSERT INTO team_season_batting
+                        (team_id, season, league, games, plate_appearances, at_bats,
+                         runs, hits, stolen_bases, caught_stealing)
+                    VALUES ('SSG', 2025, 'REGULAR', 1, 5, 3, 2, 2, 12, 10)
+                """),
+            )
+            session.commit()
+
+            result = QualityGate(session).validate_season_team_batting(2025)
+
+            assert result["ok"] is True
+            assert result["semantics_exempt_diffs"] == [
+                "SSG: stolen_bases: team=12 player_sum=0 diff=12",
+                "SSG: caught_stealing: team=10 player_sum=0 diff=10",
+            ]
+        finally:
+            session.close()
+
     def test_matches_when_player_sum_equals_team_record(self):
         session = _make_session()
         try:

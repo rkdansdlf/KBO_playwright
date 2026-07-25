@@ -729,6 +729,42 @@ python3 -m scripts.maintenance.probe_oci_counts
 
 `recovery_pipeline --apply`는 자동 실행하지 않습니다. source availability와 completeness gate를 확인한 뒤 defect category별로 별도 승인해야 합니다.
 
+### 12. OCI 2021 투수 Identity 파일럿 Audit
+OCI `player_season_pitching`의 동일 팀/이름 복수 `player_id`를 local game-level evidence와 비교합니다. 두 DB 모두 read-only이며, 기본 대상은 duplicate 영향도가 높은 상위 3개 팀입니다.
+
+```bash
+# 상위 3개 팀 파일럿 보고서 생성
+OCI_DB_URL="$OCI_DB_URL" DATABASE_URL="sqlite:///./data/kbo_dev.db" \
+./venv/bin/python -m scripts.maintenance.oci_2021_identity_audit \
+  --year 2021 --pilot-limit 3 \
+  --output data/audit/oci_2021_identity_audit_pilot.json \
+  --exact-overrides-output data/audit/oci_2021_identity_exact_candidates.csv
+
+# 특정 팀만 파일럿
+./venv/bin/python -m scripts.maintenance.oci_2021_identity_audit \
+  --year 2021 --team LT --team LG --team SSG \
+  --output data/audit/oci_2021_identity_pilot_3teams.json
+```
+
+`exact` 후보 CSV는 검토용 산출물이며 `data/player_id_overrides.csv`에 자동 병합하지 않습니다. `ambiguous`와 `unresolved`는 override로 승격하지 않습니다.
+
+### 13. OCI 이닝 보완 Migration
+local `player_season_pitching`의 양수 이닝을 동일 logical key로 우선 매칭하고, OCI legacy ID와 local ID가 다르면 정확히 하나의 local `(player_name, team_code)` game evidence가 있을 때만 fallback합니다. 기본은 dry-run입니다.
+
+```bash
+# 박관진/강경학 기본 대상 dry-run
+./venv/bin/python -m scripts.maintenance.backfill_oci_innings \
+  --year 2021 \
+  --output data/audit/oci_2021_innings_backfill.json
+
+# 보고서 확인 후 명시적으로 적용
+./venv/bin/python -m scripts.maintenance.backfill_oci_innings \
+  --year 2021 --apply \
+  --output data/audit/oci_2021_innings_backfill_apply.json
+```
+
+`--apply`는 단일 transaction으로 계획된 행만 수정합니다. 양수 target 값과 local 값이 다르거나 local identity가 여러 개면 `conflict`로 남기며, 보고서의 before/after/rollback 정보 없이는 자동 수정하지 않습니다.
+
 ---
 
 ## 🚨 문제 해결
