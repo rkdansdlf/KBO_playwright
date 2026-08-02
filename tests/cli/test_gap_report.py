@@ -53,6 +53,40 @@ class TestGapReport:
             result = main(["--dry-run"])
             assert result is None
 
+    def test_send_summary_cli(self):
+        with patch("src.cli.gap_report.run_gap_report") as mock:
+            mock.return_value = {"gaps": {}}
+            main(["--send-summary"])
+            mock.assert_called_once_with(alert=True, send_summary=True, dry_run=False)
+
+    def test_send_gap_summary_alert_formatting(self):
+        from src.utils.alerting import SlackWebhookClient
+
+        report = {
+            "generated_at": "2026-07-29T22:00:00 KST",
+            "gaps": {
+                "RELAY": {"ok": True, "missing_count": 0},
+                "PROFILE": {"ok": False, "missing_count": 2},
+                "ID_RESOLUTION": {"ok": True, "total": 0},
+                "FRESHNESS": {"ok": True, "total_issues": 0},
+                "STANDINGS": {"ok": True, "mismatches": 0},
+                "PA_FORMULA": {"ok": True, "violation_count": 0},
+                "TEAM_STATS": {"ok": True, "total": 0},
+                "STALENESS": {"ok": True, "stale_count": 0},
+                "SEASON_TEAM_CODE": {"ok": True, "total_null": 0},
+            },
+        }
+        with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_alert:
+            mock_alert.return_value = True
+            result = SlackWebhookClient.send_gap_summary_alert(report)
+            assert result is True
+            mock_alert.assert_called_once()
+            message = mock_alert.call_args[0][0]
+            assert "KBO 데이터 수율 (Gap Report) 일일 요약" in message
+            assert "문자중계 (RELAY)" in message
+            assert "선수 사진 (PROFILE)" in message
+            assert "NULL 선수 ID (ID_RESOLUTION)" in message
+
     def test_send_gap_alerts_formats_relay(self):
         report = {
             "gaps": {

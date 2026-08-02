@@ -59,8 +59,8 @@ def parse_game_detail_html(
 
     season_year = _season_year_from_game(game_date)
     teams = _build_team_info(scoreboard_df, game_id, season_year)
-    hitters = _build_hitter_payload(hitter_tables, teams, db_session)
-    pitchers = _build_pitcher_payload(pitcher_tables, teams, db_session)
+    hitters = _build_hitter_payload(hitter_tables, teams, db_session, season_year=season_year)
+    pitchers = _build_pitcher_payload(pitcher_tables, teams, db_session, season_year=season_year)
 
     metadata = _parse_metadata(soup)
 
@@ -168,6 +168,8 @@ def _build_hitter_payload(
     tables: list[pd.DataFrame],
     teams: dict[str, dict[str, Any]],
     db_session: Session | None = None,
+    *,
+    season_year: int | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     results: dict[str, list[dict[str, Any]]] = {"away": [], "home": []}
     team_cycle = ["away", "home"]
@@ -183,10 +185,16 @@ def _build_hitter_payload(
             if not name or name in {"팀합계", "합계"}:
                 continue
 
-            p_id = _safe_player_id(row.get("선수ID") or row.get("playerId"))
+            p_id = _safe_player_id(row.get("선수ID") or row.get("playerId") or row.get("player_id"))
             team_code = teams[team_side]["code"]
             if p_id is None and db_session:
-                p_id = _resolve_missing_player_id(db_session, name, team_code)
+                p_id = _resolve_missing_player_id(
+                    db_session,
+                    name,
+                    team_code,
+                    season_year=season_year,
+                    is_pitcher=False,
+                )
 
             entry = {
                 "player_id": p_id,
@@ -231,6 +239,8 @@ def _build_pitcher_payload(
     tables: list[pd.DataFrame],
     teams: dict[str, dict[str, Any]],
     db_session: Session | None = None,
+    *,
+    season_year: int | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     results: dict[str, list[dict[str, Any]]] = {"away": [], "home": []}
     team_cycle = ["away", "home"]
@@ -246,10 +256,16 @@ def _build_pitcher_payload(
             if not name or name in {"팀합계", "합계"}:
                 continue
 
-            p_id = _safe_player_id(row.get("선수ID") or row.get("playerId"))
+            p_id = _safe_player_id(row.get("선수ID") or row.get("playerId") or row.get("player_id"))
             team_code = teams[team_side]["code"]
             if p_id is None and db_session:
-                p_id = _resolve_missing_player_id(db_session, name, team_code)
+                p_id = _resolve_missing_player_id(
+                    db_session,
+                    name,
+                    team_code,
+                    season_year=season_year,
+                    is_pitcher=True,
+                )
 
             innings_text = str(row.get("이닝", "") or row.get("IP", "")).strip()
             entry = {
@@ -382,32 +398,7 @@ def _parse_duration_minutes(duration: str | None) -> int | None:
         return None
 
 
-def _resolve_missing_player_id(db_session: Session, player_name: str, team_code: str) -> int | None:
-    """Fallback resolution of player_id via name and team search.
-
-    Useful for exhibition games where IDs are missing from the HTML.
-
-    Args:
-        db_session: Db Session.
-        player_name: Player Name.
-        team_code: Team Code.
-        db_session: Db Session.
-        player_name: Player Name.
-        team_code: Team Code.
-
-    """
-    if not db_session or not player_name:
-        return None
-
-    # Try name + team match (team name in player_basic is often Korean)
-    # Mapping team_code to Korean name fragment might help but let's try direct first
-    text("""
-        SELECT player_id FROM player_basic
-        WHERE (name = :name OR name = :name_space)
-          AND (team LIKE :team OR team IS NULL OR :team_empty = 1)
-        LIMIT 2
-    """)
-    # Handle space variations (e.g. '김 태연' vs '김태연')
+def _sql_fallback_player_id(db_session: Session, player_name: str, team_code: str) -> int | None:
     name_no_space = player_name.replace(" ", "")
     name_with_space = (
         player_name
@@ -418,8 +409,6 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
     )
 
     try:
-        # We don't have a reliable code -> Korean name mapping here easily
-        # but let's try searching by name first and if multiple, filter by team
         rows = db_session.execute(
             text("SELECT player_id, team FROM player_basic WHERE name = :n1 OR name = :n2"),
             {"n1": name_no_space, "n2": name_with_space},
@@ -430,22 +419,48 @@ def _resolve_missing_player_id(db_session: Session, player_name: str, team_code:
         if len(rows) == 1:
             return int(rows[0][0])
 
-        # If multiple, try to find a team match
-        # This is a heuristic - KBO team names in player_basic vary (e.g. '한화 이글스')
         from src.utils.team_codes import TEAM_NAME_TO_CODE
 
         code_to_name = {v: k for k, v in TEAM_NAME_TO_CODE.items()}
         k_name = code_to_name.get(team_code, "")
         for r_id, r_team in rows:
-            if not r_team:
-                continue
-            if k_name and k_name in r_team:
+            if r_team and k_name and k_name in r_team:
                 return int(r_id)
 
-        # Last resort: just return first if we have to, but better to be safe
         return int(rows[0][0])
     except SQLAlchemyError:
         return None
+
+
+def _resolve_missing_player_id(
+    db_session: Session,
+    player_name: str,
+    team_code: str,
+    season_year: int | None = None,
+    *,
+    is_pitcher: bool | None = None,
+) -> int | None:
+    """Fallback resolution of player_id via name and team search."""
+    if not db_session or not player_name:
+        return None
+
+    if season_year is not None:
+        try:
+            from src.services.player_id_resolver import PlayerIdResolver
+
+            resolver = PlayerIdResolver(db_session, strict_game_resolution=False)
+            resolved = resolver.resolve_id(
+                player_name=player_name,
+                team_code=team_code,
+                season=season_year,
+                is_pitcher=is_pitcher,
+            )
+            if resolved:
+                return resolved
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError):
+            pass
+
+    return _sql_fallback_player_id(db_session, player_name, team_code)
 
 
 __all__ = ["parse_game_detail_html"]

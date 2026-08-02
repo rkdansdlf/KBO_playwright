@@ -748,8 +748,26 @@ OCI_DB_URL="$OCI_DB_URL" DATABASE_URL="sqlite:///./data/kbo_dev.db" \
 
 `exact` 후보 CSV는 검토용 산출물이며 `data/player_id_overrides.csv`에 자동 병합하지 않습니다. `ambiguous`와 `unresolved`는 override로 승격하지 않습니다.
 
+```bash
+# 전체 302개 그룹 확장 audit
+./venv/bin/python -m scripts.maintenance.oci_2021_identity_audit \
+  --year 2021 --pilot-limit 10 \
+  --output data/audit/oci_2021_identity_audit_full.json \
+  --exact-overrides-output data/audit/oci_2021_identity_exact_candidates_full.csv
+
+# Exact/season evidence 검토 CSV 생성
+./venv/bin/python -m scripts.maintenance.review_exact_candidates \
+  --audit-json data/audit/oci_2021_identity_audit_full.json \
+  --output-csv data/audit/oci_2021_identity_candidates_review.csv
+
+# 사람이 decision=approve로 표시한 행만 override에 append
+./venv/bin/python -m scripts.maintenance.review_exact_candidates \
+  --apply \
+  --approved-csv data/audit/oci_2021_identity_candidates_review.csv
+```
+
 ### 13. OCI 이닝 보완 Migration
-local `player_season_pitching`의 양수 이닝을 동일 logical key로 우선 매칭하고, OCI legacy ID와 local ID가 다르면 정확히 하나의 local `(player_name, team_code)` game evidence가 있을 때만 fallback합니다. 기본은 dry-run입니다.
+local `player_season_pitching`의 양수 이닝을 동일 logical key로 우선 매칭하고, OCI legacy ID와 local ID가 다르면 정확히 하나의 local `(player_name, team_code)` game 또는 season evidence가 있을 때만 fallback합니다. 기본은 dry-run입니다.
 
 ```bash
 # 박관진/강경학 기본 대상 dry-run
@@ -764,6 +782,9 @@ local `player_season_pitching`의 양수 이닝을 동일 logical key로 우선 
 ```
 
 `--apply`는 단일 transaction으로 계획된 행만 수정합니다. 양수 target 값과 local 값이 다르거나 local identity가 여러 개면 `conflict`로 남기며, 보고서의 before/after/rollback 정보 없이는 자동 수정하지 않습니다.
+
+### 14. Quality Gate Baseline
+OCI-only 운영 baseline과 local/OCI divergence 설명은 `Docs/references/QUALITY_GATE_BASELINE.md`에 기록합니다. baseline을 올려도 required-zero 검사와 regression-pack 실패는 계속 blocking입니다.
 
 ---
 

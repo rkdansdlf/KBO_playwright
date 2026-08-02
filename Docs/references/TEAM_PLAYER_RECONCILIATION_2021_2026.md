@@ -116,10 +116,8 @@ pitching difference is not an exact duplicate logical key: PROFILE and MANUAL_RE
 rows frequently use different player IDs for the same apparent player/team identity.
 Automatically deleting one source or merging IDs would risk historical identity loss.
 
-The OCI regression pack passed all 10 checks for 2026. For 2021, 9 of 10 checks passed;
-the only failure was the existing `era_range` check for player IDs 73 and 1352, where
-the stored ERA has no positive innings basis. The subsequent 2026-07-26 migration
-repaired player 73 only; player 1352 remains unresolved.
+The OCI regression pack passed all 10 checks for 2026. The 2026-08-02 rerun passed
+all 10 checks for 2021 after innings evidence was applied for players 73 and 1352.
 
 ## OCI 2021 Pitching Identity Audit
 
@@ -152,16 +150,30 @@ has local season-level evidence, but neither candidate has local 2021 game-level
 so it was not promoted to an override. The 100 exact candidates were exported to a
 separate review CSV and were not merged into `data/player_id_overrides.csv`.
 
+## OCI 2021 Full Identity Expansion (2026-08-02)
+
+The pilot logic was expanded to all 302 duplicate groups. Unique local season evidence
+was added as a lower-priority exact signal after game evidence:
+
+| Classification | Count |
+|---|---:|
+| Exact | 301 |
+| Ambiguous | 1 (`KT/오윤석`) |
+| Unresolved | 0 |
+
+The review workflow marked 301 candidates as `eligible` and kept the ambiguous group as
+`manual_review`. No candidate was automatically appended to the override CSV.
+
 ## OCI 2021 Innings Backfill (2026-07-26)
 
 The migration ran first in dry-run mode and then with `--apply` in one transaction.
-Only one row was applied:
+Both selected rows are now populated:
 
 | Target | Evidence | Before | After | Status |
 |---|---|---|---|---|
 | `player_id=73`, target row `472738`, `KH` | local `player_id=50397`, exact `박관진/KH` game evidence | 0 outs / 0.0 IP | 2 outs / 0.6667 IP | applied |
-| `player_id=1352`, target row `472807`, `KIA` | local `강경학/HH`; team mismatch | 0 outs / 0.0 IP | unchanged | deferred |
+| `player_id=1352`, target row `472807`, `KIA` | local `player_id=61700`, exact `강경학/KIA` season evidence | 0 outs / 0.0 IP | 2 outs / 0.6667 IP | applied |
 
 The apply report records the original values for rollback review. The post-apply 2021
-regression pack now has one remaining failure, `era_range` for player `1352`; no
-identity merge or cross-team override was applied.
+regression pack passes all 10 checks. No identity merge or cross-team override was
+applied; the season rows were supplemented only with positive innings evidence.

@@ -66,6 +66,7 @@ class TestCollectProfiles:
     @pytest.mark.asyncio
     async def test_collect_profiles_upserts_fetched_profile_and_closes_session(self):
         session = MagicMock()
+        session.__enter__.return_value = session
         session.execute.return_value.scalars.return_value.all.return_value = [
             SimpleNamespace(kbo_person_id="123", name_kor="홍길동"),
         ]
@@ -97,11 +98,12 @@ class TestCollectProfiles:
         assert parsed.player_name == "홍길동"
         assert parsed.height_cm == 180
         assert parsed.education_or_career_path == ["KBO High"]
-        session.close.assert_called_once()
+        session.__exit__.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_collect_profiles_skips_players_without_kbo_id(self):
         session = MagicMock()
+        session.__enter__.return_value = session
         session.execute.return_value.scalars.return_value.all.return_value = [
             SimpleNamespace(kbo_person_id=None, name_kor="미확인"),
         ]
@@ -120,11 +122,12 @@ class TestCollectProfiles:
             await collect_profiles(limit=1)
 
         crawler.crawl_player_profile.assert_not_awaited()
-        session.close.assert_called_once()
+        session.__exit__.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_collect_profiles_team_missing(self):
         session = MagicMock()
+        session.__enter__.return_value = session
         session.execute.return_value.scalars.return_value.all.return_value = [31003]
         mock_p = SimpleNamespace(name="김서원")
         session.query.return_value.filter_by.return_value.first.return_value = mock_p
@@ -157,4 +160,4 @@ class TestCollectProfiles:
         assert player_id == "31003"
         assert parsed.team == "울산"
         assert parsed.player_name == "김서원"
-        session.close.assert_called_once()
+        session.__exit__.assert_called_once()

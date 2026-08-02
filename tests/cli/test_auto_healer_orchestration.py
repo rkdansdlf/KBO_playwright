@@ -77,17 +77,19 @@ class TestDefaultHealerOrchestration:
         second = _game("G2", status="COMPLETED")
         monkeypatch.setattr(auto_healer, "_find_stuck_games", MagicMock(return_value=[second, first]))
         monkeypatch.setattr(auto_healer, "_find_inconsistent_games", MagicMock(return_value=[second]))
+        monkeypatch.setattr(auto_healer, "_find_pa_formula_inconsistent_games", MagicMock(return_value=[]))
 
-        all_found, stuck, inconsistent = auto_healer._find_recovery_targets(None)
+        all_found, stuck, inconsistent, pa_formula = auto_healer._find_recovery_targets(None)
 
         assert [game.game_id for game in all_found] == ["G1", "G2"]
         assert stuck == [second, first]
         assert inconsistent == [second]
+        assert pa_formula == []
 
     def test_clears_checkpoint_when_no_anomalies_exist(self, monkeypatch):
         manager = MagicMock()
         monkeypatch.setattr(auto_healer, "RecoveryManager", MagicMock(return_value=manager))
-        monkeypatch.setattr(auto_healer, "_find_recovery_targets", MagicMock(return_value=([], [], [])))
+        monkeypatch.setattr(auto_healer, "_find_recovery_targets", MagicMock(return_value=([], [], [], [])))
 
         assert asyncio.run(auto_healer.run_healer_async()) == 0
         manager.clear.assert_called_once()
@@ -96,7 +98,7 @@ class TestDefaultHealerOrchestration:
         manager = MagicMock()
         game = _game("G1")
         monkeypatch.setattr(auto_healer, "RecoveryManager", MagicMock(return_value=manager))
-        monkeypatch.setattr(auto_healer, "_find_recovery_targets", MagicMock(return_value=([game], [game], [])))
+        monkeypatch.setattr(auto_healer, "_find_recovery_targets", MagicMock(return_value=([game], [game], [], [])))
         monkeypatch.setattr(auto_healer, "_pending_recovery_candidates", MagicMock(return_value=(set(), [])))
 
         assert asyncio.run(auto_healer.run_healer_async()) == 0
@@ -108,7 +110,7 @@ class TestDefaultHealerOrchestration:
         summary = MagicMock()
         start_alert = MagicMock()
         monkeypatch.setattr(auto_healer, "RecoveryManager", MagicMock(return_value=manager))
-        monkeypatch.setattr(auto_healer, "_find_recovery_targets", MagicMock(return_value=([game], [game], [])))
+        monkeypatch.setattr(auto_healer, "_find_recovery_targets", MagicMock(return_value=([game], [game], [], [])))
         monkeypatch.setattr(auto_healer, "_pending_recovery_candidates", MagicMock(return_value=({"G1"}, [game])))
         monkeypatch.setattr(auto_healer, "_run_recovery", recovery)
         monkeypatch.setattr(auto_healer, "_log_healer_summary", summary)

@@ -10,6 +10,7 @@ import pytest
 from src.cli.auto_healer import (
     _apply_heal_outcome,
     _find_inconsistent_games,
+    _find_pa_formula_inconsistent_games,
     _find_recovery_targets,
     _find_stuck_games,
     _find_unverified_pbp_games,
@@ -325,46 +326,76 @@ class TestFindRecoveryTargets:
             mock_game.game_id = "G1"
             mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_game]
 
-            all_found, stuck, inconsistent = _find_recovery_targets(["G1"])
+            all_found, stuck, inconsistent, pa_formula = _find_recovery_targets(["G1"])
 
         assert len(all_found) == 1
         assert stuck == []
         assert inconsistent == []
+        assert pa_formula == []
 
     def test_without_targets_uses_find_functions(self):
-        with patch("src.cli.auto_healer._find_stuck_games", return_value=[]):
-            with patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]):
-                all_found, stuck, inconsistent = _find_recovery_targets(None)
+        with (
+            patch("src.cli.auto_healer._find_stuck_games", return_value=[]),
+            patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
+        ):
+            all_found, stuck, inconsistent, pa_formula = _find_recovery_targets(None)
 
         assert all_found == []
         assert stuck == []
         assert inconsistent == []
+        assert pa_formula == []
 
     def test_with_stuck_games(self):
         mock_game = _mock_game("G1")
-        with patch("src.cli.auto_healer._find_stuck_games", return_value=[mock_game]):
-            with patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]):
-                all_found, stuck, inconsistent = _find_recovery_targets(None)
+        with (
+            patch("src.cli.auto_healer._find_stuck_games", return_value=[mock_game]),
+            patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
+        ):
+            all_found, stuck, inconsistent, pa_formula = _find_recovery_targets(None)
 
         assert len(all_found) == 1
         assert len(stuck) == 1
         assert inconsistent == []
+        assert pa_formula == []
 
     def test_with_inconsistent_games(self):
         mock_game = _mock_game("G1", "COMPLETED")
-        with patch("src.cli.auto_healer._find_stuck_games", return_value=[]):
-            with patch("src.cli.auto_healer._find_inconsistent_games", return_value=[mock_game]):
-                all_found, stuck, inconsistent = _find_recovery_targets(None)
+        with (
+            patch("src.cli.auto_healer._find_stuck_games", return_value=[]),
+            patch("src.cli.auto_healer._find_inconsistent_games", return_value=[mock_game]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
+        ):
+            all_found, stuck, inconsistent, pa_formula = _find_recovery_targets(None)
 
         assert len(all_found) == 1
         assert stuck == []
         assert len(inconsistent) == 1
+        assert pa_formula == []
+
+    def test_with_pa_formula_games(self):
+        mock_game = _mock_game("G1", "COMPLETED")
+        with (
+            patch("src.cli.auto_healer._find_stuck_games", return_value=[]),
+            patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[mock_game]),
+        ):
+            all_found, stuck, inconsistent, pa_formula = _find_recovery_targets(None)
+
+        assert len(all_found) == 1
+        assert stuck == []
+        assert inconsistent == []
+        assert len(pa_formula) == 1
 
     def test_deduplicates_games(self):
         mock_game = _mock_game("G1")
-        with patch("src.cli.auto_healer._find_stuck_games", return_value=[mock_game]):
-            with patch("src.cli.auto_healer._find_inconsistent_games", return_value=[mock_game]):
-                all_found, stuck, inconsistent = _find_recovery_targets(None)
+        with (
+            patch("src.cli.auto_healer._find_stuck_games", return_value=[mock_game]),
+            patch("src.cli.auto_healer._find_inconsistent_games", return_value=[mock_game]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[mock_game]),
+        ):
+            all_found, stuck, inconsistent, pa_formula = _find_recovery_targets(None)
 
         assert len(all_found) == 1
 
@@ -471,15 +502,40 @@ class TestFindUnverifiedPbpGames:
             assert result[0]["error_reason"] == "unknown"
 
 
+class TestFindPaFormulaInconsistentGames:
+    def test_returns_empty_when_none(self):
+        with patch("src.cli.auto_healer.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_session.execute.return_value.scalars.return_value.all.return_value = []
+            result = _find_pa_formula_inconsistent_games()
+            assert result == []
+
+    def test_returns_games_when_pa_mismatch(self):
+        with patch("src.cli.auto_healer.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_game1 = _mock_game("G1", "COMPLETED")
+            mock_session.execute.return_value.scalars.return_value.all.side_effect = [
+                ["G1"],
+                [mock_game1],
+            ]
+            result = _find_pa_formula_inconsistent_games()
+            assert len(result) == 1
+            assert result[0].game_id == "G1"
+
+
 class TestRunHealerAsync:
     async def test_returns_zero_when_no_anomalies(self):
         with (
             patch("src.cli.auto_healer._find_stuck_games") as mock_stuck,
             patch("src.cli.auto_healer._find_inconsistent_games") as mock_incon,
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games") as mock_pa,
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
         ):
             mock_stuck.return_value = []
             mock_incon.return_value = []
+            mock_pa.return_value = []
             mock_mgr = MagicMock()
             mock_mgr_cls.return_value = mock_mgr
             result = await run_healer_async(dry_run=True)
@@ -491,6 +547,7 @@ class TestRunHealerAsync:
         with (
             patch("src.cli.auto_healer._find_stuck_games", return_value=[mock_game]),
             patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
         ):
             mock_mgr = MagicMock()
@@ -504,6 +561,7 @@ class TestRunHealerAsync:
         with (
             patch("src.cli.auto_healer._find_stuck_games", return_value=[mock_game]),
             patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
             patch("src.cli.auto_healer._run_recovery", new_callable=AsyncMock) as mock_recovery,
         ):
@@ -518,6 +576,7 @@ class TestRunHealerAsync:
         with (
             patch("src.cli.auto_healer._find_stuck_games", return_value=[]),
             patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
         ):
             mock_mgr = MagicMock()
@@ -531,7 +590,7 @@ class TestRunHealerAsync:
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
         ):
             mock_game = _mock_game("G1")
-            mock_find.return_value = ([mock_game], [], [])
+            mock_find.return_value = ([mock_game], [], [], [])
             mock_mgr = MagicMock()
             mock_mgr_cls.return_value = mock_mgr
             mock_mgr.get_pending_targets.return_value = []

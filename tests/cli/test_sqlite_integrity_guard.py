@@ -210,7 +210,8 @@ class TestSqliteIntegrityGuardCli:
                 "--json",
             ],
         )
-        payload = json.loads(capsys.readouterr().out)
+        out = capsys.readouterr().out.strip()
+        payload = json.loads(out.splitlines()[-1])
 
         assert exit_code == 0
         assert payload["status"] == "quarantined"
@@ -278,3 +279,23 @@ class TestSqliteIntegrityGuardCli:
 
         with pytest.raises(OSError, match="integrity helper unavailable"):
             main(["--database-url", "sqlite:///broken.db"])
+
+    def test_cli_sends_quarantine_alert_when_quarantined(self, monkeypatch):
+        report = SqliteIntegrityReport(
+            database_url="sqlite:///corrupt.db",
+            database_path="corrupt.db",
+            status="quarantined",
+            ok=True,
+            reason="quarantined successfully",
+            quarantine_dir="archive/20260729_000000",
+            moved_files=("archive/20260729_000000/corrupt.db",),
+        )
+        monkeypatch.setattr(module, "check_sqlite_database", MagicMock(return_value=report))
+        monkeypatch.setattr(module, "sqlite_guard_exit_code", MagicMock(return_value=0))
+        mock_send_alert = MagicMock(return_value=True)
+        monkeypatch.setattr("src.utils.alerting.SlackWebhookClient.send_quarantine_alert", mock_send_alert)
+
+        result = main(["--database-url", "sqlite:///corrupt.db", "--action", "quarantine"])
+
+        assert result == 0
+        mock_send_alert.assert_called_once_with(report)

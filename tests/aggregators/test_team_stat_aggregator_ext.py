@@ -493,8 +493,10 @@ class TestSaveRecords:
         mock_session.commit.assert_called_once()
 
     def test_save_batting_records_rollback_on_error(self):
+        from sqlalchemy.exc import SQLAlchemyError
+
         mock_session = MagicMock()
-        mock_session.execute.side_effect = Exception("DB error")
+        mock_session.execute.side_effect = SQLAlchemyError("DB error")
         agg = TeamStatAggregator(mock_session)
         mock_repo = MagicMock()
         mock_repo._filter_model_fields.side_effect = lambda x: x
@@ -502,7 +504,7 @@ class TestSaveRecords:
         mock_repo._build_insert_stmt.return_value = MagicMock()
         with patch("src.repositories.team_stats_repository.TeamSeasonBattingRepository", return_value=mock_repo):
             with patch("src.aggregators.team_stat_aggregator.get_database_type", return_value="postgresql"):
-                with pytest.raises(Exception, match="DB error"):
+                with pytest.raises(SQLAlchemyError, match="DB error"):
                     agg._save_batting_records([{"team_id": "OB", "season": 2025}])
         mock_session.rollback.assert_called_once()
 

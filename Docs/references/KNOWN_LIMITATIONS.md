@@ -242,10 +242,11 @@ an explicit completeness predicate and an alternate historical source.
 - `src.cli.historical_coverage_report` is the read-only coverage tool for this gap. It
   reports per-year and per-series terminal-game coverage, missing game IDs, and coverage
   percentages for lineups, boxscores, player-game stats, events, and PBP.
-- `scripts/crawl_2009_game_details.py` is not an operational collector: its referenced
-  `LegacyGameDetailCrawler` and `save_game_detail` implementations are absent. Do not
-  use that legacy debug script for a batch backfill until a maintained collector and an
-  archive-backed source are available.
+- `LegacyGameDetailCrawler` (`src/crawlers/legacy_game_detail_crawler.py`) and
+  `historical_boxscore_import` (`src/cli/historical_boxscore_import.py`) are now
+  fully implemented. They provide maintained HTML boxscore parsing and manifest-driven
+  backfill capabilities (`--dry-run` and `--save` with strict quality gates).
+- `scripts/crawl_2009_game_details.py` has been updated to use `LegacyGameDetailCrawler`.
 
 **Future backfill acceptance gate**:
 - Boxscore/statistical backfill must contain both away/home hitter rows and both
