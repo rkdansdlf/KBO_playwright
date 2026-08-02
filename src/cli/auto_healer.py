@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -89,6 +90,29 @@ def _find_inconsistent_games() -> list[Game]:
         return list(session.execute(stmt).scalars().all())
 
 
+def _find_pa_formula_inconsistent_games() -> list[Game]:
+    """Return completed/draw games where PA != AB + BB + HBP + SH + SF in game_batting_stats."""
+    query = text(
+        """
+        SELECT DISTINCT g.game_id
+        FROM game g
+        JOIN game_batting_stats b ON b.game_id = g.game_id
+        WHERE g.game_status IN ('COMPLETED', 'DRAW')
+          AND b.plate_appearances IS NOT NULL
+          AND b.plate_appearances != (
+              COALESCE(b.at_bats, 0) + COALESCE(b.walks, 0) + COALESCE(b.hbp, 0)
+              + COALESCE(b.sacrifice_hits, 0) + COALESCE(b.sacrifice_flies, 0)
+          )
+    """,
+    )
+    with SessionLocal() as session:
+        game_ids = session.execute(query).scalars().all()
+        if not game_ids:
+            return []
+        stmt = select(Game).where(Game.game_id.in_(list(game_ids)))
+        return list(session.execute(stmt).scalars().all())
+
+
 def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> str:
     """Apply status repair based on one shared collection result item.
 
@@ -114,21 +138,24 @@ def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> 
     return "unresolved"
 
 
-def _find_recovery_targets(target_game_ids: list[str] | None) -> tuple[list[Game], list[Game], list[Game]]:
+def _find_recovery_targets(
+    target_game_ids: list[str] | None,
+) -> tuple[list[Game], list[Game], list[Game], list[Game]]:
     if target_game_ids:
         with SessionLocal() as session:
             stmt = select(Game).where(Game.game_id.in_(target_game_ids))
             all_found = list(session.execute(stmt).scalars().all())
             logger.info("🎯 Target recovery requested for %s specific game(s).", len(all_found))
-            return all_found, [], []
+            return all_found, [], [], []
 
     stuck_games = _find_stuck_games()
     inconsistent_games = _find_inconsistent_games()
+    pa_formula_games = _find_pa_formula_inconsistent_games()
     all_found = sorted(
-        {game.game_id: game for game in (stuck_games + inconsistent_games)}.values(),
+        {game.game_id: game for game in (stuck_games + inconsistent_games + pa_formula_games)}.values(),
         key=lambda game: game.game_id,
     )
-    return all_found, stuck_games, inconsistent_games
+    return all_found, stuck_games, inconsistent_games, pa_formula_games
 
 
 def _pending_recovery_candidates(recovery_mgr: RecoveryManager, all_found: list[Game]) -> tuple[set[str], list[Game]]:
@@ -142,6 +169,7 @@ def _log_anomaly_summary(
     inconsistent_games: list[Game],
     pending_ids: set[str],
     anomaly_dates: list[Any],
+    pa_formula_games: list[Game] | None = None,
 ) -> None:
     stuck_games_filtered = [game for game in all_found if game.game_status == GAME_STATUS_SCHEDULED]
     if stuck_games_filtered:
@@ -152,6 +180,10 @@ def _log_anomaly_summary(
         incon_count = len([game for game in inconsistent_games if game.game_id in pending_ids])
         if incon_count:
             logger.warning("⚠️  Anomaly Detected: %s game(s) with score inconsistencies!", incon_count)
+    if pa_formula_games:
+        pa_count = len([game for game in pa_formula_games if game.game_id in pending_ids])
+        if pa_count:
+            logger.warning("⚠️  Anomaly Detected: %s game(s) with PA formula violations!", pa_count)
     for anomaly_date in anomaly_dates:
         logger.info("  - %s", anomaly_date)
 
@@ -161,12 +193,15 @@ def _send_healer_start_alert(
     stuck_games: list[Game],
     inconsistent_games: list[Game],
     anomaly_dates: list[Any],
+    pa_formula_games: list[Game] | None = None,
 ) -> None:
     summary_parts = []
     if stuck_games:
         summary_parts.append(f"*{len(stuck_games)}* stuck games")
     if inconsistent_games:
         summary_parts.append(f"*{len(inconsistent_games)}* inconsistent games")
+    if pa_formula_games:
+        summary_parts.append(f"*{len(pa_formula_games)}* PA formula violation games")
 
     date_range = f"`{anomaly_dates[0]}`" if len(anomaly_dates) == 1 else f"`{anomaly_dates[0]}` ~ `{anomaly_dates[-1]}`"
     SlackWebhookClient.send_alert(
@@ -186,6 +221,29 @@ def _send_healer_start_alert(
             },
         ],
     )
+
+
+AUTO_HEALER_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+
+
+def _apply_pa_formula_backfill(recovery_candidates: list[Game]) -> int:
+    from src.cli.recalc_player_game_stats import run_recalc as recalc_game_stats
+    from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
+
+    pa_fixed_count = 0
+    with SessionLocal() as session:
+        for game in recovery_candidates:
+            try:
+                updated_rows = apply_sh_sf_to_batting_stats(session, game.game_id)
+                if updated_rows > 0:
+                    session.commit()
+                    pa_fixed_count += 1
+                    recalc_game_stats(game_id=game.game_id, dry_run=False)
+                    logger.info("  ✅ PA formula backfilled & game stats recalculated for %s", game.game_id)
+            except (SQLAlchemyError, ValueError, RuntimeError) as e:
+                session.rollback()
+                logger.warning("  ⚠️ Error during PA formula backfill for %s: %s", game.game_id, e)
+    return pa_fixed_count
 
 
 async def _run_recovery(
@@ -229,6 +287,10 @@ async def _run_recovery(
             elif outcome == "unresolved":
                 recovery_mgr.mark_failed(game.game_id, item.failure_reason if item else "unknown")  # type: ignore[arg-type]
 
+        pa_fixed_count = _apply_pa_formula_backfill(recovery_candidates)
+        if pa_fixed_count > 0:
+            results["pa_formula_fixed"] = pa_fixed_count
+
         logger.info(write_contract.summary())
         return results
 
@@ -241,6 +303,16 @@ def _log_healer_summary(results: dict[str, int], *, dry_run: bool) -> None:
 
     if dry_run:
         return
+
+    from src.utils.metrics import KBO_AUTO_HEALER_RECOVERED_TOTAL, KBO_AUTO_HEALER_UNRESOLVED_TOTAL
+
+    completed = results.get("completed", 0)
+    unresolved = results.get("unresolved", 0)
+    if completed > 0:
+        KBO_AUTO_HEALER_RECOVERED_TOTAL.labels(type="stuck").inc(completed)
+    if unresolved > 0:
+        KBO_AUTO_HEALER_UNRESOLVED_TOTAL.labels(type="stuck").inc(unresolved)
+
     unresolved_count = results.get("unresolved", 0)
     if unresolved_count == 0:
         SlackWebhookClient.send_alert(f"✅ Auto-healing complete. {results['completed']} games recovered.")
@@ -273,8 +345,8 @@ async def run_healer_async(
     if reset_checkpoint:
         recovery_mgr.clear()
 
-    all_found, stuck_games, inconsistent_games = _find_recovery_targets(target_game_ids)
-    if not target_game_ids and not stuck_games and not inconsistent_games:
+    all_found, stuck_games, inconsistent_games, pa_formula_games = _find_recovery_targets(target_game_ids)
+    if not target_game_ids and not stuck_games and not inconsistent_games and not pa_formula_games:
         logger.info("✅ No anomalies detected. Pipeline is healthy.")
         recovery_mgr.clear()
         return 0
@@ -290,9 +362,11 @@ async def run_healer_async(
 
     total = len(recovery_candidates)
     anomaly_dates = sorted({g.game_date for g in recovery_candidates})
-    _log_anomaly_summary(all_found, inconsistent_games, pending_ids, anomaly_dates)
+    _log_anomaly_summary(all_found, inconsistent_games, pending_ids, anomaly_dates, pa_formula_games=pa_formula_games)
     if not dry_run:
-        _send_healer_start_alert(total, stuck_games, inconsistent_games, anomaly_dates)
+        _send_healer_start_alert(
+            total, stuck_games, inconsistent_games, anomaly_dates, pa_formula_games=pa_formula_games
+        )
 
     logger.info("\n🚀 Initiating self-recovery for %s game(s)...", total)
     results = await _run_recovery(recovery_candidates, anomaly_dates, recovery_mgr, dry_run=dry_run)
@@ -355,6 +429,15 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
                 },
             )
     return results
+
+
+def _record_pbp_healer_metrics(recovered: int, failed: int) -> None:
+    from src.utils.metrics import KBO_AUTO_HEALER_RECOVERED_TOTAL, KBO_AUTO_HEALER_UNRESOLVED_TOTAL
+
+    if recovered > 0:
+        KBO_AUTO_HEALER_RECOVERED_TOTAL.labels(type="pbp").inc(recovered)
+    if failed > 0:
+        KBO_AUTO_HEALER_UNRESOLVED_TOTAL.labels(type="pbp").inc(failed)
 
 
 async def run_pbp_healer_async(
@@ -514,6 +597,7 @@ async def run_pbp_healer_async(
     TelegramBotClient.send_message(result_msg)
     logger.info("\n📊 [PBP Healer] 완료 — 발견 %s, 복구 %s, 실패 %s", found, recovered, failed)
 
+    _record_pbp_healer_metrics(recovered, failed)
     return {"found": found, "recovered": recovered, "failed": failed, "skipped": 0}
 
 
@@ -575,6 +659,11 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
         help="PBP 검증 실패 게임 재크롤 모드 실행",
     )
     parser.add_argument(
+        "--pa-formula",
+        action="store_true",
+        help="PA 공식(PA = AB+BB+HBP+SH+SF) 검증 실패 게임 복구 모드 실행",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Report anomalies without fixing",
@@ -594,7 +683,7 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
         "--game-id",
         nargs="+",
         metavar="GAME_ID",
-        help="PBP 모드: 특정 game_id 강제 치유",
+        help="PBP/PA-Formula 모드: 특정 game_id 강제 치유",
     )
     args = parser.parse_args(argv)
 
@@ -608,7 +697,10 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
             ],
         )
 
-    return asyncio.run(run_healer_async(dry_run=args.dry_run, reset_checkpoint=args.reset))
+    kwargs: dict[str, Any] = {"dry_run": args.dry_run, "reset_checkpoint": args.reset}
+    if args.pa_formula and args.game_id:
+        kwargs["target_game_ids"] = args.game_id
+    return asyncio.run(run_healer_async(**kwargs))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

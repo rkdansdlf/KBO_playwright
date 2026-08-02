@@ -68,7 +68,12 @@ async def _profile_enrichment_step(profile_limit: int) -> None:
 
 
 async def _healthcheck_step() -> None:
-    healthcheck_main([])
+    try:
+        healthcheck_main([])
+    except SystemExit as e:
+        if e.code != 0:
+            msg = f"Database healthcheck failed with exit code {e.code}"
+            raise RuntimeError(msg) from e
     logger.info("   ✅ Healthcheck complete")
 
 
@@ -97,6 +102,35 @@ async def _resolve_roster_player_links_step() -> None:
         res = session.execute(text(sql), {"now": datetime.now(KST)})
         session.commit()
         logger.info("   ✅ Team daily roster player links resolved: %s updated", res.rowcount)  # type: ignore[attr-defined]
+
+
+async def _resolve_null_player_ids_step() -> None:
+    from scripts.maintenance.resolve_null_player_ids_conservative import (
+        DEFAULT_OUTPUT_DIR,
+        DEFAULT_OVERRIDES_CSV,
+        DEFAULT_ROW_OVERRIDES_CSV,
+        DEFAULT_TABLES,
+        DEFAULT_YEARS,
+        resolve_null_player_ids,
+    )
+
+    logger.info("   - Conservatively resolving NULL player_id values...")
+    result = resolve_null_player_ids(
+        years=DEFAULT_YEARS,
+        tables=DEFAULT_TABLES,
+        overrides_csv=DEFAULT_OVERRIDES_CSV,
+        row_overrides_csv=DEFAULT_ROW_OVERRIDES_CSV,
+        output_dir=DEFAULT_OUTPUT_DIR,
+        apply=True,
+        backup=False,
+        delete_duplicates=True,
+    )
+    logger.info(
+        "   ✅ NULL player_id resolution complete: %s groups resolved (%s rows updated, %s duplicates removed)",
+        result.get("resolved_groups", 0),
+        result.get("updated_rows", 0),
+        result.get("duplicate_null_rows", 0),
+    )
 
 
 async def _team_events_step() -> None:
@@ -188,6 +222,11 @@ async def run_weekly_maintenance(
         "🛠️  Step 2.6: Resolving NULL player_basic_id in team_daily_roster...",
         "Error during player_basic_id resolution",
         _resolve_roster_player_links_step,
+    )
+    await _run_weekly_step(
+        "🛠️  Step 2.7: Conservatively resolving NULL player_id values...",
+        "Error during NULL player_id resolution",
+        _resolve_null_player_ids_step,
     )
     await _run_weekly_step("📅 Step 3: Crawling Team Events & News...", "Error crawling team events", _team_events_step)
     await _run_weekly_step(

@@ -46,6 +46,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Emit a machine-readable JSON report.",
     )
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="Send Telegram/Slack notification when quarantine occurs or fails.",
+    )
     return parser
 
 
@@ -58,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
         action=args.action,
         quarantine_root=Path(args.quarantine_root),
     )
+
+    if report.status in ("quarantined", "quarantine_failed") or args.notify:
+        from src.utils.alerting import SlackWebhookClient
+
+        SlackWebhookClient.send_quarantine_alert(report)
 
     if args.json:
         sys.stdout.write(json.dumps(asdict(report), ensure_ascii=False, sort_keys=True) + "\n")

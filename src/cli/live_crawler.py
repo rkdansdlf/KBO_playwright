@@ -12,7 +12,7 @@ import asyncio
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from threading import Lock, Thread
@@ -66,8 +66,9 @@ class GameActivityState:
     active: bool
     active_playing: bool
     active_suspended: bool
-    last_active_time: datetime | None
-    now: datetime
+    active_cleaning: bool = False
+    last_active_time: datetime | None = None
+    now: datetime = field(default_factory=datetime.now)
 
 
 _LIVE_SHARD_CURSOR_BY_DATE: dict[str, int] = {}
@@ -858,7 +859,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             await asyncio.sleep(60)
 
 
-def _compute_base_dynamic_interval(
+def _compute_base_dynamic_interval(  # noqa: PLR0911
     *,
     state: GameActivityState,
     base_interval_minutes: int,
@@ -871,6 +872,8 @@ def _compute_base_dynamic_interval(
 
     """
     if state.active:
+        if state.active_cleaning:
+            return 60, "CLEANING_TIME (5th inning break)"
         if state.active_playing:
             return 10, "ACTIVE (Inning playing)"
         if state.active_suspended:
