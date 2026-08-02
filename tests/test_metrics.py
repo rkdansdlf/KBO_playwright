@@ -6,8 +6,11 @@ from src.utils.metrics import (
     KBO_OCI_LAST_SYNC_TIMESTAMP_SECONDS,
     KBO_OCI_SYNC_ERRORS_TOTAL,
     KBO_OCI_SYNC_LAG_SECONDS,
+    KBO_OCI_SYNCED_RECORDS_TOTAL,
+    KBO_OCI_TABLE_SYNC_LAG_SECONDS,
     KBO_SCHEDULER_JOB_DURATION_SECONDS,
     KBO_SCHEDULER_JOB_TOTAL,
+    record_oci_sync_metric,
     start_metrics_server,
 )
 
@@ -19,6 +22,21 @@ def test_metrics_definition() -> None:
     assert KBO_OCI_SYNC_LAG_SECONDS._name == "kbo_oci_sync_lag_seconds"
     assert KBO_OCI_LAST_SYNC_TIMESTAMP_SECONDS._name == "kbo_oci_last_sync_timestamp_seconds"
     assert KBO_OCI_SYNC_ERRORS_TOTAL._name == "kbo_oci_sync_errors"
+    assert KBO_OCI_SYNCED_RECORDS_TOTAL._name == "kbo_oci_synced_records"
+    assert KBO_OCI_TABLE_SYNC_LAG_SECONDS._name == "kbo_oci_table_sync_lag_seconds"
+
+
+def test_record_oci_sync_metric() -> None:
+    """Verify record_oci_sync_metric increments total synced counter and updates timestamp."""
+    val_before = KBO_OCI_SYNCED_RECORDS_TOTAL.labels(table="game")._value.get()
+    record_oci_sync_metric("game", 15)
+    val_after = KBO_OCI_SYNCED_RECORDS_TOTAL.labels(table="game")._value.get()
+    assert val_after == val_before + 15
+    assert KBO_OCI_LAST_SYNC_TIMESTAMP_SECONDS._value.get() > 0
+
+    # zero count should be no-op
+    record_oci_sync_metric("game", 0)
+    assert KBO_OCI_SYNCED_RECORDS_TOTAL.labels(table="game")._value.get() == val_after
 
 
 @patch("src.utils.metrics.start_http_server")

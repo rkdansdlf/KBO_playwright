@@ -59,3 +59,27 @@ class TestHydrateRuntimeFromOCICLI:
                 main(["--year", "2025"])
             except SystemExit:
                 pass
+
+    def test_main_triggers_hydration_alert_on_notify_or_quarantine(self):
+        with (
+            patch("src.cli.hydrate_runtime_from_oci.load_dotenv"),
+            patch("src.cli.hydrate_runtime_from_oci.create_engine_for_url"),
+            patch("src.cli.hydrate_runtime_from_oci.sessionmaker"),
+            patch("src.cli.hydrate_runtime_from_oci.SessionLocal"),
+            patch("src.cli.hydrate_runtime_from_oci.RuntimeHydrator") as MockHydrator,
+            patch("src.utils.alerting.SlackWebhookClient.send_hydration_alert") as mock_send_alert,
+        ):
+            mock_hydrator_instance = MagicMock()
+            mock_hydrator_instance.hydrate_year.return_value = {"game": 100, "player_basic": 500}
+            MockHydrator.return_value = mock_hydrator_instance
+
+            main(
+                ["--source-url", "postgresql://source", "--year", "2025", "--notify", "--quarantine-dir", "archive/123"]
+            )
+
+            mock_send_alert.assert_called_once_with(
+                2025,
+                {"game": 100, "player_basic": 500},
+                quarantine_dir="archive/123",
+                is_quarantine_recovery=True,
+            )

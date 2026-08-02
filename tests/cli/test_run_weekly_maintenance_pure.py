@@ -110,6 +110,16 @@ def test_sync_weekly_to_oci_skips_success_and_exception() -> None:
     failing_syncer.close.assert_called_once()
 
 
+def test_resolve_null_player_ids_step_invokes_resolver() -> None:
+    mock_resolve = MagicMock(return_value={"resolved_groups": 1, "updated_rows": 2, "duplicate_null_rows": 0})
+    with patch(
+        "scripts.maintenance.resolve_null_player_ids_conservative.resolve_null_player_ids",
+        mock_resolve,
+    ):
+        asyncio.run(weekly._resolve_null_player_ids_step())
+    mock_resolve.assert_called_once()
+
+
 def test_run_weekly_maintenance_routes_all_steps(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCI_DB_URL", "oci")
     with (
@@ -119,7 +129,7 @@ def test_run_weekly_maintenance_routes_all_steps(monkeypatch: pytest.MonkeyPatch
     ):
         asyncio.run(weekly.run_weekly_maintenance(profile_limit=3, sync=True))
 
-    assert run_step.await_count == 6
+    assert run_step.await_count == 7
     cleanup.assert_called_once_with("oci")
     sync.assert_called_once_with("oci")
 

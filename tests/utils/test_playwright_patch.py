@@ -75,3 +75,66 @@ def test_playwright_patch_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert AsyncBrowserType.launch == _original_async_launch
     assert SyncBrowserType.launch == _original_sync_launch
+
+
+def test_multi_endpoint_load_balancing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test round-robin endpoint selection with multiple endpoints."""
+    endpoints = "ws://ep1:3000/chromium/playwright, ws://ep2:3000/chromium/playwright"
+    monkeypatch.setenv("PLAYWRIGHT_WS_ENDPOINT", endpoints)
+    monkeypatch.setenv("BROWSERLESS_MAX_RETRIES", "1")
+    monkeypatch.setenv("BROWSERLESS_RETRY_BACKOFF_SEC", "0.01")
+
+    _apply_playwright_patch()
+
+    called_endpoints = []
+
+    async def fake_connect(endpoint: str, **kwargs):
+        called_endpoints.append(endpoint)
+        return MagicMock()
+
+    mock_connect = AsyncMock(side_effect=fake_connect)
+    with patch.object(AsyncBrowserType, "connect", mock_connect):
+        browser_type_mock = MagicMock(spec=AsyncBrowserType)
+        browser_type_mock.name = "chromium"
+        browser_type_mock.connect = mock_connect
+
+        import asyncio
+
+        asyncio.run(AsyncBrowserType.launch(browser_type_mock, headless=True))
+        asyncio.run(AsyncBrowserType.launch(browser_type_mock, headless=True))
+
+    assert len(called_endpoints) == 2
+    assert "ws://ep1:3000/chromium/playwright" in called_endpoints
+    assert "ws://ep2:3000/chromium/playwright" in called_endpoints
+
+
+def test_browserless_async_retry_and_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test async retry attempts and graceful fallback when all retries fail."""
+    endpoint = "ws://localhost:9999"
+    monkeypatch.setenv("PLAYWRIGHT_WS_ENDPOINT", endpoint)
+    monkeypatch.setenv("BROWSERLESS_MAX_RETRIES", "3")
+    monkeypatch.setenv("BROWSERLESS_RETRY_BACKOFF_SEC", "0.01")
+    monkeypatch.setenv("BROWSERLESS_ALLOW_LOCAL_FALLBACK", "true")
+
+    _apply_playwright_patch()
+
+    mock_connect = AsyncMock(side_effect=RuntimeError("WS connection error"))
+    mock_orig_launch = AsyncMock(return_value="local_browser")
+
+    with (
+        patch.object(AsyncBrowserType, "connect", mock_connect),
+        patch("src._original_async_launch", mock_orig_launch),
+    ):
+        browser_type_mock = MagicMock(spec=AsyncBrowserType)
+        browser_type_mock.name = "chromium"
+        browser_type_mock.connect = mock_connect
+
+        import asyncio
+
+        res = asyncio.run(AsyncBrowserType.launch(browser_type_mock, headless=True))
+
+        # Verify 3 connection attempts were made
+        assert mock_connect.call_count == 3
+        # Verify fallback to local launch
+        assert res == "local_browser"
+        assert mock_orig_launch.call_count == 1

@@ -81,7 +81,7 @@ class TestRunHealerEmptyAllFound:
     def test_returns_when_all_found_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         manager = MagicMock()
         monkeypatch.setattr(auto_healer, "RecoveryManager", MagicMock(return_value=manager))
-        monkeypatch.setattr(auto_healer, "_find_recovery_targets", MagicMock(return_value=([], [], [])))
+        monkeypatch.setattr(auto_healer, "_find_recovery_targets", MagicMock(return_value=([], [], [], [])))
         assert asyncio.run(run_healer_async(target_game_ids=["G1"])) == 0
 
 

@@ -15,11 +15,12 @@ from src.cli.data_integrity_checker import (
     check_all_terminal_status,
     check_child_stats_exist,
     check_duplicate_games,
+    check_futures_daily_integrity,
     check_game_status_populated,
     check_games_exist,
     check_no_null_player_ids,
+    check_pa_formula_integrity,
     check_scores_populated,
-    check_futures_daily_integrity,
     main,
     run_integrity_checks,
 )
@@ -347,3 +348,52 @@ class TestCheckFuturesDailyIntegrity:
         result = check_futures_daily_integrity(session, _date(2026, 6, 24))
         assert result.passed is False
         assert "Player 999 Batting: Impossible stats (PA=5, AB=10" in result.details["errors"][0]
+
+
+class TestCheckPaFormulaIntegrity:
+    def test_no_games_passes(self) -> None:
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = []
+
+        result = check_pa_formula_integrity(session, _date(2026, 6, 24))
+        assert result.passed is True
+        assert "vacuously true" in result.message
+
+    def test_valid_pa_formula_passes(self) -> None:
+        session = MagicMock()
+        game_mock = MagicMock()
+        game_mock.game_id = "20260624LGSS0"
+        query1 = MagicMock()
+        query1.filter.return_value.all.return_value = [game_mock]
+        query2 = MagicMock()
+        query2.filter.return_value.all.return_value = []
+        session.query.side_effect = [query1, query2]
+
+        result = check_pa_formula_integrity(session, _date(2026, 6, 24))
+        assert result.passed is True
+        assert "satisfy PA formula" in result.message
+
+    def test_violating_pa_formula_fails(self) -> None:
+        session = MagicMock()
+        game_mock = MagicMock()
+        game_mock.game_id = "20260624LGSS0"
+
+        stat_mock = MagicMock()
+        stat_mock.game_id = "20260624LGSS0"
+        stat_mock.plate_appearances = 4
+        stat_mock.at_bats = 3
+        stat_mock.walks = 0
+        stat_mock.hbp = 0
+        stat_mock.sacrifice_hits = 0
+        stat_mock.sacrifice_flies = 0
+
+        query1 = MagicMock()
+        query1.filter.return_value.all.return_value = [game_mock]
+        query2 = MagicMock()
+        query2.filter.return_value.all.return_value = [stat_mock]
+        session.query.side_effect = [query1, query2]
+
+        result = check_pa_formula_integrity(session, _date(2026, 6, 24))
+        assert result.passed is False
+        assert "PA formula violation" in result.message
+        assert result.details["violations"] == 1

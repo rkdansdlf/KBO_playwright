@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.db_healthcheck import main
@@ -31,8 +32,9 @@ class TestDbHealthcheckCLI:
         mock_engine = MagicMock()
         mock_engine.connect.side_effect = SQLAlchemyError("connection failed")
 
-        with patch("src.cli.db_healthcheck.Engine", mock_engine):
+        with patch("src.cli.db_healthcheck.Engine", mock_engine), pytest.raises(SystemExit) as exc_info:
             main([])
+        assert exc_info.value.code == 1
 
     def test_main_respects_argv(self):
         mock_conn = MagicMock()

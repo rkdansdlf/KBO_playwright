@@ -405,25 +405,25 @@ class GameDetailCrawler:
         self._last_failure_reason.pop(game_id, None)
 
         # Ensure resolver is available if not provided in __init__
-        close_session = False
         if not self.resolver:
             from src.services.player_id_resolver import PlayerIdResolver
 
-            session = SessionLocal()
-            self.resolver = PlayerIdResolver(
-                session,
-                strict_game_resolution=True,
-                allow_auto_register=False,
-            )
-            close_session = True
-
-        try:
-            result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}], lightweight=lightweight)
+            with SessionLocal() as session:
+                self.resolver = PlayerIdResolver(
+                    session,
+                    strict_game_resolution=True,
+                    allow_auto_register=False,
+                )
+                try:
+                    result = await self.crawl_games(
+                        [{"game_id": game_id, "game_date": game_date}], lightweight=lightweight
+                    )
+                finally:
+                    self.resolver = None
             return result[0] if result else None
-        finally:
-            if close_session and hasattr(self.resolver, "session"):
-                self.resolver.session.close()
-                self.resolver = None
+
+        result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}], lightweight=lightweight)
+        return result[0] if result else None
 
     async def crawl_games(
         self,

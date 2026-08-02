@@ -415,6 +415,65 @@ class TestMain:
         assert exc_info.value.code == 1
 
 
+class TestDiagnoseGameState:
+    def test_is_cleaning_time_detection(self) -> None:
+        g1 = {"statusInfo": "5회말 종료 클리닝타임"}
+        g2 = {"statusDescription": "클리닝 타임 진행중"}
+        g3 = {"relay": {"status": "5회 종료"}}
+        g4 = {"status": "RUNNING"}
+
+        assert gate_module._is_cleaning_time(g1) is True
+        assert gate_module._is_cleaning_time(g2) is True
+        assert gate_module._is_cleaning_time(g3) is True
+        assert gate_module._is_cleaning_time(g4) is False
+
+    def test_diagnose_game_detail_states(self) -> None:
+        terminal_g = {"status": "CANCELLED"}
+        result_g = {"status": "RESULT"}
+        cleaning_g = {"status": "RUNNING", "statusInfo": "클리닝타임"}
+        suspended_g = {"status": "SUSPENDED"}
+        running_g = {"status": "RUNNING"}
+        before_g = {"status": "BEFORE"}
+
+        assert gate_module.diagnose_game_detail(terminal_g)["diagnosed_state"] == "TERMINAL"
+        assert gate_module.diagnose_game_detail(result_g)["diagnosed_state"] == "RESULT_PENDING"
+        assert gate_module.diagnose_game_detail(cleaning_g)["diagnosed_state"] == "CLEANING_TIME"
+        assert gate_module.diagnose_game_detail(suspended_g)["diagnosed_state"] == "SUSPENDED"
+        assert gate_module.diagnose_game_detail(running_g)["diagnosed_state"] == "RUNNING"
+        assert gate_module.diagnose_game_detail(before_g)["diagnosed_state"] == "BEFORE"
+
+    def test_diagnose_today_games_intervals(self) -> None:
+        # 1. No games
+        state, interval, _ = gate_module.diagnose_today_games([])
+        assert state == "NO_GAMES"
+        assert interval == 1800
+
+        # 2. Running game
+        state, interval, _ = gate_module.diagnose_today_games([{"status": "RUNNING"}])
+        assert state == "GAMES_IN_PROGRESS"
+        assert interval == 10
+
+        # 3. Cleaning time game
+        state, interval, _ = gate_module.diagnose_today_games([{"status": "RUNNING", "statusInfo": "클리닝타임"}])
+        assert state == "CLEANING_TIME"
+        assert interval == 60
+
+        # 4. Suspended game
+        state, interval, _ = gate_module.diagnose_today_games([{"status": "SUSPENDED"}])
+        assert state == "GAME_SUSPENDED"
+        assert interval == 60
+
+        # 5. Cooldown / Result pending games
+        state, interval, _ = gate_module.diagnose_today_games([{"status": "RESULT"}, {"status": "CANCELLED"}])
+        assert state == "COOLDOWN"
+        assert interval == 60
+
+        # 6. All terminal games
+        state, interval, _ = gate_module.diagnose_today_games([{"status": "CANCELLED"}, {"status": "CANCEL"}])
+        assert state == "ALL_TERMINAL"
+        assert interval == 1800
+
+
 def _close_and_return(coro, value: int) -> int:
     coro.close()
     return value
