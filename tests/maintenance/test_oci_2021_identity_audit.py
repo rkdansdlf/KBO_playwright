@@ -186,6 +186,28 @@ def test_exact_candidates_are_written_as_reviewable_csv(tmp_path: Path) -> None:
     ]
 
 
+def test_audit_uses_unique_local_season_evidence() -> None:
+    target_engine = _target_engine()
+    local_engine = _local_engine()
+    _seed(target_engine, local_engine)
+    with local_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO player_season_pitching "
+                "(player_id, season, league, level, team_code, innings_outs, innings_pitched) "
+                "VALUES (5, 2021, 'REGULAR', 'KBO1', 'DB', 9, 3.0)"
+            ),
+        )
+
+    with target_engine.connect() as target_conn, local_engine.connect() as local_conn:
+        report = audit_identity(target_conn, local_conn, year=2021, teams=("DB",))
+
+    group = report["groups"][0]
+    assert group["classification"] == "exact"
+    assert group["resolved_player_id"] == 5
+    assert group["evidence_source"] == "local_player_season_pitching"
+
+
 def test_report_is_json_serializable() -> None:
     report = {
         "read_only": True,

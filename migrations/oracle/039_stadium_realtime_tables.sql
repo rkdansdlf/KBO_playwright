@@ -99,7 +99,14 @@ DECLARE
           FROM user_indexes
          WHERE index_name = UPPER(p_index_name);
         IF v_exists = 0 THEN
-            EXECUTE IMMEDIATE p_ddl;
+            BEGIN
+                EXECUTE IMMEDIATE p_ddl;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    IF SQLCODE != -1408 THEN
+                        RAISE;
+                    END IF;
+            END;
         END IF;
     END;
 BEGIN
