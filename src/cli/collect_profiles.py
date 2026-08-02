@@ -62,99 +62,96 @@ async def collect_profiles(
         team_missing: Target players with missing team in PlayerBasic.
 
     """
-    session = SessionLocal()
-
     repo = PlayerRepository()
     pool = AsyncPlaywrightPool(max_pages=1)
     crawler = PlayerProfileCrawler(request_delay=1.5, pool=pool)
 
-    try:
-        pids: list[str] = []
-        if target_ids:
-            pids = target_ids
-            logger.info("🎯 Targeted processing for %s IDs", len(pids))
-        elif team_missing:
-            stmt = (
-                select(PlayerBasic.player_id)
-                .where(
-                    and_(
-                        or_(PlayerBasic.team.is_(None), PlayerBasic.team == ""),
-                        PlayerBasic.player_id >= MIN_KBO_PLAYER_ID,
+    with SessionLocal() as session:
+        try:
+            pids: list[str] = []
+            if target_ids:
+                pids = target_ids
+                logger.info("🎯 Targeted processing for %s IDs", len(pids))
+            elif team_missing:
+                stmt = (
+                    select(PlayerBasic.player_id)
+                    .where(
+                        and_(
+                            or_(PlayerBasic.team.is_(None), PlayerBasic.team == ""),
+                            PlayerBasic.player_id >= MIN_KBO_PLAYER_ID,
+                        )
                     )
+                    .limit(limit)
                 )
-                .limit(limit)
-            )
-            results = session.execute(stmt).scalars().all()
-            pids = [str(r) for r in results]
-            logger.info("🎯 Found %s players with missing team in PlayerBasic", len(pids))
-        else:
-            stmt = select(Player).where(or_(Player.birth_date.is_(None), Player.debut_year.is_(None))).limit(limit)
-            target_players = session.execute(stmt).scalars().all()
-            pids = [str(p.kbo_person_id) for p in target_players if p.kbo_person_id]
+                results = session.execute(stmt).scalars().all()
+                pids = [str(r) for r in results]
+                logger.info("🎯 Found %s players with missing team in PlayerBasic", len(pids))
+            else:
+                stmt = select(Player).where(or_(Player.birth_date.is_(None), Player.debut_year.is_(None))).limit(limit)
+                target_players = session.execute(stmt).scalars().all()
+                pids = [str(p.kbo_person_id) for p in target_players if p.kbo_person_id]
 
-        if not pids:
-            logger.info("✅ No matching players found for profile collection.")
-            return
+            if not pids:
+                logger.info("✅ No matching players found for profile collection.")
+                return
 
-        logger.info("🎯 Processing %s player profiles...", len(pids))
+            logger.info("🎯 Processing %s player profiles...", len(pids))
 
-        async with pool:
-            for idx, pid in enumerate(pids, 1):
-                if not pid:
-                    continue
+            async with pool:
+                for idx, pid in enumerate(pids, 1):
+                    if not pid:
+                        continue
 
-                p_name = _get_player_name_or_default(session, pid)
+                    p_name = _get_player_name_or_default(session, pid)
 
-                logger.info(
-                    "[%s/%s] Crawling profile for %s (%s)",
-                    idx,
-                    len(pids),
-                    pid,
-                    p_name,
-                )
-
-                data = await crawler.crawl_player_profile(str(pid))
-                if data:
-                    logger.info("   ✅ Fetched profile for %s", pid)
-                    from src.parsers.player_profile_parser import PlayerProfileParsed
-
-                    # Manually populate parsed object since we already have parsed data
-                    parsed = PlayerProfileParsed(
-                        player_id=int(pid) if pid.isdigit() else None,
-                        player_name=data.get("name"),
-                        photo_url=data.get("photo_url"),
-                        batting_hand=data.get("bats"),
-                        throwing_hand=data.get("throws"),
-                        height_cm=data.get("height_cm"),
-                        weight_kg=data.get("weight_kg"),
-                        entry_year=data.get("debut_year"),
-                        salary_original=data.get("salary_original"),
-                        signing_bonus_original=data.get("signing_bonus_original"),
-                        salary_amount=data.get("salary_amount"),
-                        salary_currency=data.get("salary_currency"),
-                        signing_bonus_amount=data.get("signing_bonus_amount"),
-                        signing_bonus_currency=data.get("signing_bonus_currency"),
-                        draft_year=data.get("draft_year"),
-                        draft_round=data.get("draft_round"),
-                        draft_pick_overall=data.get("draft_pick_overall"),
-                        draft_type=data.get("draft_type"),
-                        education_or_career_path=data.get("education_path") or [],
-                        team=data.get("team"),
+                    logger.info(
+                        "[%s/%s] Crawling profile for %s (%s)",
+                        idx,
+                        len(pids),
+                        pid,
+                        p_name,
                     )
 
-                    # The repo.upsert_player_profile expects a PlayerProfileParsed object
-                    repo.upsert_player_profile(str(pid), parsed)
-                    logger.info("   ✅ Saved profile metadata for %s", pid)
-                else:
-                    logger.warning("   ⚠️  Crawl skipped or no data for %s", pid)
+                    data = await crawler.crawl_player_profile(str(pid))
+                    if data:
+                        logger.info("   ✅ Fetched profile for %s", pid)
+                        from src.parsers.player_profile_parser import PlayerProfileParsed
 
-                if idx % 5 == 0:
-                    await asyncio.sleep(1)
+                        # Manually populate parsed object since we already have parsed data
+                        parsed = PlayerProfileParsed(
+                            player_id=int(pid) if pid.isdigit() else None,
+                            player_name=data.get("name"),
+                            photo_url=data.get("photo_url"),
+                            batting_hand=data.get("bats"),
+                            throwing_hand=data.get("throws"),
+                            height_cm=data.get("height_cm"),
+                            weight_kg=data.get("weight_kg"),
+                            entry_year=data.get("debut_year"),
+                            salary_original=data.get("salary_original"),
+                            signing_bonus_original=data.get("signing_bonus_original"),
+                            salary_amount=data.get("salary_amount"),
+                            salary_currency=data.get("salary_currency"),
+                            signing_bonus_amount=data.get("signing_bonus_amount"),
+                            signing_bonus_currency=data.get("signing_bonus_currency"),
+                            draft_year=data.get("draft_year"),
+                            draft_round=data.get("draft_round"),
+                            draft_pick_overall=data.get("draft_pick_overall"),
+                            draft_type=data.get("draft_type"),
+                            education_or_career_path=data.get("education_path") or [],
+                            team=data.get("team"),
+                        )
 
-    except PROFILE_COLLECTION_EXCEPTIONS:
-        logger.exception("❌ Critical Error")
-    finally:
-        session.close()
+                        # The repo.upsert_player_profile expects a PlayerProfileParsed object
+                        repo.upsert_player_profile(str(pid), parsed)
+                        logger.info("   ✅ Saved profile metadata for %s", pid)
+                    else:
+                        logger.warning("   ⚠️  Crawl skipped or no data for %s", pid)
+
+                    if idx % 5 == 0:
+                        await asyncio.sleep(1)
+
+        except PROFILE_COLLECTION_EXCEPTIONS:
+            logger.exception("❌ Critical Error")
 
 
 def main() -> int:

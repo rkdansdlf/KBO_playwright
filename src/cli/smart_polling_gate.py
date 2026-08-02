@@ -240,6 +240,113 @@ async def _handle_no_games(
     return (False, False, _build_details("no_games_today", today_games=0, yesterday_active=0))
 
 
+def _is_cleaning_time(game: dict[str, Any]) -> bool:
+    """Check if the game is currently in cleaning time (5th inning end break)."""
+    text_sources = [
+        str(game.get(k) or "")
+        for k in (
+            "status",
+            "statusInfo",
+            "statusDescription",
+            "statusName",
+            "progressState",
+            "gameStatus",
+            "gameState",
+        )
+    ]
+    relay = game.get("relay") or {}
+    if isinstance(relay, dict):
+        text_sources.extend([str(relay.get(k) or "") for k in ("status", "statusInfo", "description")])
+
+    combined = " ".join(text_sources).lower()
+    keywords = ["클리닝타임", "클리닝 타임", "cleaning_time", "cleaning time", "5회말 종료", "5회 종료"]
+    return any(kw in combined for kw in keywords)
+
+
+def diagnose_game_detail(game: dict[str, Any], now_kst: datetime | None = None) -> dict[str, Any]:  # noqa: C901
+    """Diagnose fine-grained status and lifecycle for a single game.
+
+    Returns a dict with keys: label, raw_status, lifecycle, diagnosed_state, is_cleaning_time.
+    """
+    raw_status = _extract_game_status(game)
+    lifecycle = derive_lifecycle_from_naver_status(raw_status)
+    label = _format_game_label(game)
+    cleaning = _is_cleaning_time(game)
+
+    if lifecycle in TERMINAL_LIFECYCLE_STATES:
+        diagnosed_state = "TERMINAL"
+    elif cleaning:
+        diagnosed_state = "CLEANING_TIME"
+    elif lifecycle in ("suspended", "delayed"):
+        diagnosed_state = "SUSPENDED"
+    elif lifecycle == "result_pending_stabilization":
+        diagnosed_state = "RESULT_PENDING"
+    elif lifecycle == "running":
+        diagnosed_state = "RUNNING"
+    elif lifecycle == "before":
+        game_start_time_str = game.get("startTime") or game.get("gameStartTime") or ""
+        is_pregame = False
+        if game_start_time_str and now_kst:
+            try:
+                parts = game_start_time_str.split(":")
+                if len(parts) >= 2:  # noqa: PLR2004
+                    h, m = int(parts[0]), int(parts[1])
+                    game_dt = now_kst.replace(hour=h, minute=m, second=0, microsecond=0)
+                    diff = (game_dt - now_kst).total_seconds()
+                    if 0 <= diff <= 900:  # noqa: PLR2004
+                        is_pregame = True
+            except (ValueError, TypeError):
+                pass
+        diagnosed_state = "PREGAME" if is_pregame else "BEFORE"
+    else:
+        diagnosed_state = "UNKNOWN"
+
+    return {
+        "label": label,
+        "raw_status": raw_status,
+        "lifecycle": lifecycle,
+        "diagnosed_state": diagnosed_state,
+        "is_cleaning_time": cleaning,
+    }
+
+
+def diagnose_today_games(  # noqa: PLR0911
+    games: list[dict[str, Any]],
+    now_kst: datetime | None = None,
+) -> tuple[str, int, list[dict[str, Any]]]:
+    """Diagnose today's overall games state and compute recommended polling interval in seconds.
+
+    Returns:
+        (overall_diagnosed_state, recommended_interval_seconds, games_summary)
+
+    """
+    if now_kst is None:
+        now_kst = datetime.now(KST)
+
+    if not games:
+        return "NO_GAMES", 1800, []
+
+    summaries = [diagnose_game_detail(g, now_kst) for g in games]
+    states = [s["diagnosed_state"] for s in summaries]
+
+    if "RUNNING" in states:
+        return "GAMES_IN_PROGRESS", 10, summaries
+    if "CLEANING_TIME" in states:
+        return "CLEANING_TIME", 60, summaries
+    if "SUSPENDED" in states:
+        return "GAME_SUSPENDED", 60, summaries
+    if "RESULT_PENDING" in states:
+        return "COOLDOWN", 60, summaries
+    if "PREGAME" in states:
+        return "PREGAME", 60, summaries
+    if "BEFORE" in states:
+        return "BEFORE_GAMES", 300, summaries
+    if all(s == "TERMINAL" for s in states):
+        return "ALL_TERMINAL", 1800, summaries
+
+    return "GAMES_IN_PROGRESS", 30, summaries
+
+
 async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
     """Check if all of today's KBO games have reached a terminal state.
 
@@ -263,17 +370,40 @@ async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
             logger.info("[GATE] No games found for %s — checking if truly no games", today_str)
             result = await _handle_no_games(today_str, today_date, client)
             if result is not None:
-                return result
-            return (False, False, _build_details("no_games_today", today_games=0, yesterday_active=0))
+                should_p, has_g, d = result
+                d.update(
+                    {
+                        "diagnosed_state": "NO_GAMES",
+                        "recommended_polling_interval_seconds": 1800,
+                        "games_summary": [],
+                    }
+                )
+                return (should_p, has_g, d)
+            return (
+                False,
+                False,
+                _build_details(
+                    "no_games_today",
+                    today_games=0,
+                    yesterday_active=0,
+                    diagnosed_state="NO_GAMES",
+                    recommended_polling_interval_seconds=1800,
+                    games_summary=[],
+                ),
+            )
 
     terminal, active, unknown = _classify_games(games)
+    now_kst = datetime.now(KST)
+    diagnosed_state, rec_interval, games_summary = diagnose_today_games(games, now_kst)
 
     logger.info(
-        "[GAME] Classification: %d terminal, %d active, %d unknown out of %d total",
+        "[GAME] Classification: %d terminal, %d active, %d unknown out of %d total (diagnosed=%s, rec_interval=%ds)",
         len(terminal),
         len(active),
         len(unknown),
         len(games),
+        diagnosed_state,
+        rec_interval,
     )
     for game in games:
         label = _format_game_label(game)
@@ -283,8 +413,9 @@ async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
 
     if active:
         logger.info(
-            "[GATE] ⏳ %d game(s) still in progress — skipping this cycle",
+            "[GATE] ⏳ %d game(s) still in progress — skipping this cycle (rec_interval=%ds)",
             len(active),
+            rec_interval,
         )
         return (
             False,
@@ -295,12 +426,26 @@ async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
                 terminal_count=len(terminal),
                 unknown_count=len(unknown),
                 active_games=[_format_game_label(g) for g in active],
+                diagnosed_state=diagnosed_state,
+                recommended_polling_interval_seconds=rec_interval,
+                games_summary=games_summary,
             ),
         )
 
     if unknown and _unknown_games_are_today_or_future(unknown, today_date):
         logger.info("[GATE] ⏳ Unknown-status game(s) are today or future — skipping")
-        return (False, True, _build_details("unknown_status_games_today", unknown_count=len(unknown), active_count=0))
+        return (
+            False,
+            True,
+            _build_details(
+                "unknown_status_games_today",
+                unknown_count=len(unknown),
+                active_count=0,
+                diagnosed_state=diagnosed_state,
+                recommended_polling_interval_seconds=rec_interval,
+                games_summary=games_summary,
+            ),
+        )
 
     logger.info(
         "[GATE] ✅ All %d game(s) are terminal — proceeding to crawl",
@@ -309,7 +454,14 @@ async def check_all_games_finished() -> tuple[bool, bool, dict[str, Any]]:
     return (
         True,
         True,
-        _build_details("all_games_finished", total_games=len(games), terminal_count=len(terminal)),
+        _build_details(
+            "all_games_finished",
+            total_games=len(games),
+            terminal_count=len(terminal),
+            diagnosed_state=diagnosed_state,
+            recommended_polling_interval_seconds=rec_interval,
+            games_summary=games_summary,
+        ),
     )
 
 

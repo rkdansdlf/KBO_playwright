@@ -1204,6 +1204,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Run only one retired player crawl job immediately and exit.",
     )
     parser.add_argument(
+        "--run-auto-heal-once",
+        action="store_true",
+        help="Run only one auto-healer job (stuck/inconsistent games) immediately and exit.",
+    )
+    parser.add_argument(
+        "--run-integrity-check-once",
+        action="store_true",
+        help="Run only one data integrity check job immediately and exit.",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         default=None,
@@ -1344,6 +1354,31 @@ def compute_rankings_job():
 
 
 @_with_lock_skip_guard
+def auto_heal_games_job():
+    """Auto-Healer: scan for stuck SCHEDULED/UNRESOLVED games and score sum mismatches, re-crawling details.
+    Runs daily at 04:15 KST (after rankings, before PBP healer).
+    Uses MAINTENANCE_LOCK to avoid overlapping with other heavy jobs.
+    """
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Auto-Healer (Stuck & Inconsistent Games) ===")
+        try:
+            import asyncio
+
+            from src.cli.auto_healer import run_healer_async
+
+            unresolved_count = asyncio.run(run_healer_async(dry_run=False))
+            if unresolved_count == 0:
+                logger.info("=== Auto-Healer (Stuck & Inconsistent Games) Completed (0 unresolved) ===")
+            else:
+                logger.warning(
+                    "=== Auto-Healer Completed with unresolved games (count=%d) ===",
+                    unresolved_count,
+                )
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Auto-Healer (Stuck & Inconsistent Games) job failed")
+
+
+@_with_lock_skip_guard
 def heal_unverified_pbp_job():
     """PBP Healer: scan for unverified PBP games and re-crawl from KBO official site.
     Runs daily at 04:30 KST (after rankings, before OCI sync).
@@ -1364,6 +1399,31 @@ def heal_unverified_pbp_job():
                 logger.warning("=== PBP Auto-Healer Completed with some failures (exit_code=%d) ===", exit_code)
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("PBP Auto-Healer job failed")
+
+
+@_with_lock_skip_guard
+def data_integrity_check_job():
+    """Data Integrity Check: run post-crawl data integrity validation.
+    Runs daily at 04:45 KST (after auto-healers, before OCI hydration).
+    Uses MAINTENANCE_LOCK.
+    """
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Data Integrity Check ===")
+        try:
+            target_date = _previous_day_kst()
+            from src.cli.data_integrity_checker import run_integrity_checks
+
+            report = run_integrity_checks(target_date)
+            if report.failed_checks == 0:
+                logger.info("=== Data Integrity Check Passed (%d checks) ===", report.total_checks)
+            else:
+                logger.warning(
+                    "=== Data Integrity Check Failed (%d/%d checks failed) ===",
+                    report.failed_checks,
+                    report.total_checks,
+                )
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Data Integrity Check job failed")
 
 
 @_with_lock_skip_guard
@@ -1394,6 +1454,22 @@ def compute_park_factor_job():
 # ─────────────────────────────────────────────────────────────────────────────
 # Tier 3 — Unified Gap Report
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@_with_lock_skip_guard
+def daily_gap_report_job():
+    """Daily Gap Report Summary: run gap report and send summary notification at 07:00 KST.
+    Uses MAINTENANCE_LOCK.
+    """
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Daily Gap Report Summary Notification ===")
+        try:
+            from src.cli.gap_report import run_gap_report
+
+            run_gap_report(alert=True, send_summary=True)
+            logger.info("=== Daily Gap Report Summary Completed Successfully ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Daily Gap Report job failed")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1618,25 +1694,39 @@ def lock_skip_monitor_job() -> None:
                 logger.exception("Failed to send lock-skip alert for %s/%s", job_id, lock_name)
 
 
+_last_oci_auto_sync_trigger: float = 0.0
+
+
 def update_oci_sync_lag_metrics() -> None:
+    global _last_oci_auto_sync_trigger
+
     try:
-        with SessionLocal() as sqlite_session:
-            row = sqlite_session.execute(text("SELECT MAX(updated_at) FROM game")).scalar()
-            sqlite_max = datetime.fromisoformat(row) if isinstance(row, str) else row
+        from src.sync.lag_monitor import check_and_resync_lagging_tables
+
+        res = check_and_resync_lagging_tables()
+        logger.info("Updated OCI sync lag metrics & auto re-sync check: %s", res)
+
+        max_lag = float(res.get("max_overall_lag", 0.0)) if isinstance(res, dict) and "max_overall_lag" in res else 0.0
+        KBO_OCI_SYNC_LAG_SECONDS.set(max_lag)
+
+        threshold = float(_env_int("OCI_SYNC_LAG_AUTO_HEAL_THRESHOLD", 21600))
+        cooldown = float(_env_int("OCI_SYNC_LAG_AUTO_HEAL_COOLDOWN", 3600))
+        now = time.time()
+
+        if max_lag >= threshold and (now - _last_oci_auto_sync_trigger) >= cooldown:
+            logger.warning(
+                "⚠️ OCI overall sync lag (%.1fs) >= threshold (%.0fs). Auto-triggering OCI sync recovery...",
+                max_lag,
+                threshold,
+            )
+            _last_oci_auto_sync_trigger = now
+            try:
+                sync_from_oci_job()
+            except SCHEDULER_JOB_EXCEPTIONS:
+                logger.exception("Auto OCI sync recovery trigger failed")
     except Exception as e:
-        logger.exception("Failed to query SQLite max updated_at")
+        logger.exception("Failed to update OCI sync lag metrics")
         sentry_sdk.capture_exception(e)
-        return
-    if sqlite_max is None:
-        return
-    oci_max = _query_max_updated_at(os.getenv("OCI_DB_URL"))
-    if oci_max is None:
-        return
-    sqlite_max = sqlite_max if sqlite_max.tzinfo else sqlite_max.replace(tzinfo=KST)
-    oci_max = oci_max if oci_max.tzinfo else oci_max.replace(tzinfo=KST)
-    lag_seconds = max(0.0, (sqlite_max - oci_max).total_seconds())
-    KBO_OCI_SYNC_LAG_SECONDS.set(lag_seconds)
-    logger.info("Updated OCI sync lag metric: %.1f seconds", lag_seconds)
 
 
 _SCHEDULER_REF: BlockingScheduler | None = None
@@ -1723,6 +1813,12 @@ def _dispatch_single_run(args) -> bool:
     if args.run_retire_once:
         crawl_retired_players_job(limit=args.limit)
         return True
+    if args.run_auto_heal_once:
+        auto_heal_games_job()
+        return True
+    if args.run_integrity_check_once:
+        data_integrity_check_job()
+        return True
     return False
 
 
@@ -1790,6 +1886,13 @@ def _start_scheduler(args):
             "Monthly Unified Audit (PA + Team Stats)",
             3600,
         ),
+        (
+            daily_gap_report_job,
+            CronTrigger(hour=7, minute=0),
+            "daily_gap_report",
+            "Daily Gap Report Summary Notification (07:00 KST)",
+            3600,
+        ),
     ]
     for fn, trigger, job_id, name, grace in jobs:
         scheduler.add_job(fn, trigger=trigger, id=job_id, name=name, misfire_grace_time=grace, max_instances=1)
@@ -1825,7 +1928,9 @@ def _start_scheduler(args):
         (compute_standings_job, CronTrigger(hour=3, minute=30), "compute_standings", 7200),
         (aggregate_team_defense_job, CronTrigger(hour=3, minute=45), "aggregate_team_defense", 7200),
         (compute_rankings_job, CronTrigger(hour=4, minute=0), "compute_rankings", 7200),
+        (auto_heal_games_job, CronTrigger(hour=4, minute=15), "auto_heal_games", 7200),
         (heal_unverified_pbp_job, CronTrigger(hour=4, minute=30), "heal_pbp", 7200),
+        (data_integrity_check_job, CronTrigger(hour=4, minute=45), "data_integrity_check", 7200),
     ]
     for fn, trigger, job_id, grace in tier2_jobs:
         scheduler.add_job(fn, trigger=trigger, id=job_id, name=job_id, misfire_grace_time=grace, max_instances=1)
@@ -1945,9 +2050,12 @@ def _start_scheduler(args):
         "Standings (03:30)",
         "Team Defense (03:45)",
         "Rankings (04:00)",
+        "Auto-Healer (Stuck/Inconsistent Games) (04:15)",
         "PBP Healer (04:30)",
+        "Data Integrity Gate (04:45)",
         "OCI Hydration (05:00)",
         "Team Info/History (Sunday 06:00)",
+        "Daily Gap Report Summary (07:00)",
         "Lock Skip Monitor (Every 15m)",
     ]
     logger.info("\nScheduled Jobs:\n%s\n", "\n".join(f"  {i + 1}. {name}" for i, name in enumerate(job_names)))

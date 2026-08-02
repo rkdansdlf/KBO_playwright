@@ -444,11 +444,17 @@ def format_report_summary(report: dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
-def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
+def run_gap_report(
+    *,
+    alert: bool = True,
+    send_summary: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
     """Build and optionally alert the unified gap report.
 
     Args:
         alert: Alert.
+        send_summary: If True, send daily overall gap report summary notification.
         dry_run: If True, performs a dry run without persisting changes.
 
     """
@@ -461,8 +467,8 @@ def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, An
 
     for gap_type, gap_data in report.get("gaps", {}).items():
         sev = _gap_severity(gap_data)
-        emoji = GAP_EMOJI_MAP.get(gap_type, "\u2753")
-        icon = "\u2705" if sev == "ok" else "\u26a0\ufe0f" if sev == "warning" else "\u274c"
+        emoji = GAP_EMOJI_MAP.get(gap_type, "❓")
+        icon = "✅" if sev == "ok" else "⚠️" if sev == "warning" else "❌"
         count = ""
         if "missing_count" in gap_data:
             count = f" ({gap_data['missing_count']})"
@@ -479,6 +485,9 @@ def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, An
     if alert and not dry_run:
         send_gap_alerts(report)
 
+    if send_summary and not dry_run:
+        SlackWebhookClient.send_gap_summary_alert(report)
+
     return report
 
 
@@ -492,6 +501,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="KBO Unified Data Gap Report")
 
     parser.add_argument("--no-alert", action="store_true", help="Suppress Slack/Telegram alerts")
+    parser.add_argument(
+        "--send-summary",
+        "--notify-summary",
+        action="store_true",
+        help="Send daily overall gap report summary via Telegram/Slack",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print only, no alerts")
     return parser
 
@@ -506,7 +521,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = build_arg_parser()
 
     args = parser.parse_args(argv)
-    run_gap_report(alert=not args.no_alert, dry_run=args.dry_run)
+    run_gap_report(alert=not args.no_alert, send_summary=args.send_summary, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

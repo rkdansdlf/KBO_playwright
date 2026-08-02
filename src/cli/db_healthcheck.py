@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -44,7 +45,7 @@ def main(_argv: list[str] | None = None) -> None:
         logger.info("Connectivity: OK")
     except SQLAlchemyError:
         logger.exception("Connectivity: FAILED")
-        return
+        sys.exit(1)
 
     # 2. 테이블 목록 조회
     try:

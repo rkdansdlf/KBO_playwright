@@ -648,6 +648,54 @@ def check_futures_daily_integrity(session: Session, target: date) -> CheckResult
     )
 
 
+def check_pa_formula_integrity(session: Session, target: date) -> CheckResult:
+    """Verify PA = AB + BB + HBP + SH + SF formula for game_batting_stats on target date."""
+    from src.models.game import Game, GameBattingStat
+
+    games = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).all()
+    if not games:
+        return CheckResult(
+            name="pa_formula_integrity",
+            passed=True,
+            message="No games to check (vacuously true)",
+            details={"violations": 0},
+        )
+
+    game_ids = [g.game_id for g in games]
+    rows = (
+        session.query(GameBattingStat)
+        .filter(
+            GameBattingStat.game_id.in_(game_ids),
+            GameBattingStat.plate_appearances.isnot(None),
+            GameBattingStat.plate_appearances
+            != (
+                func.coalesce(GameBattingStat.at_bats, 0)
+                + func.coalesce(GameBattingStat.walks, 0)
+                + func.coalesce(GameBattingStat.hbp, 0)
+                + func.coalesce(GameBattingStat.sacrifice_hits, 0)
+                + func.coalesce(GameBattingStat.sacrifice_flies, 0)
+            ),
+        )
+        .all()
+    )
+
+    if rows:
+        invalid_game_ids = sorted({r.game_id for r in rows if r.game_id})
+        return CheckResult(
+            name="pa_formula_integrity",
+            passed=False,
+            message=f"Found {len(rows)} PA formula violation(s) across {len(invalid_game_ids)} game(s)",
+            details={"violations": len(rows), "violating_game_ids": invalid_game_ids},
+        )
+
+    return CheckResult(
+        name="pa_formula_integrity",
+        passed=True,
+        message="All game_batting_stats rows satisfy PA formula",
+        details={"violations": 0},
+    )
+
+
 CHECKS = [
     check_games_exist,
     check_game_status_populated,
@@ -658,6 +706,7 @@ CHECKS = [
     check_winning_team_consistency,
     check_duplicate_games,
     check_futures_daily_integrity,
+    check_pa_formula_integrity,
 ]
 
 
@@ -707,7 +756,7 @@ def run_integrity_checks(target_date: str) -> IntegrityReport:
                     result.name,
                     result.message,
                 )
-            except Exception as e:
+            except Exception as e:  # intentional: check runner must catch any exception to report failures gracefully
                 logger.exception("[ERROR] Check %s failed with exception", check_fn.__name__)
                 results.append(
                     CheckResult(
@@ -730,7 +779,7 @@ def run_integrity_checks(target_date: str) -> IntegrityReport:
             season_result.name,
             season_result.message,
         )
-    except Exception as e:
+    except Exception as e:  # intentional: check runner must catch any exception to report failures gracefully
         logger.exception("[ERROR] Check %s failed with exception", "season_stat_team_code")
         results.append(
             CheckResult(
