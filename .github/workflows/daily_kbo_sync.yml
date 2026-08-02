@@ -246,7 +246,7 @@ jobs:
           TELEGRAM_CHAT_ID_PROFILE: ${{ secrets.TELEGRAM_CHAT_ID_PROFILE || secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_ID_FRESHNESS: ${{ secrets.TELEGRAM_CHAT_ID_FRESHNESS || secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python3 -m src.cli.gap_report
+          python3 -m src.cli.gap_report --send-summary
 
       - name: Data Freshness Monitor
         run: |

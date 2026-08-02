@@ -610,7 +610,19 @@ files = [
 
 [[tool.mypy.overrides]]
 module = ["src.repositories.*"]
-ignore_errors = true
+# SQLAlchemy ORM false-positives:
+# - assignment/arg-type/var-annotated: Column-typed attribute mutation patterns
+# - attr-defined: dialect-specific attributes (Insert.inserted, on_duplicate_key_update, .excluded)
+# - index: Column-typed dict key access
+# - return-value: Column[T]|T return narrowing
+# - call-arg: dialect-specific kwarg (on_conflict_do_update constraint=)
+# - misc/call-overload: Optional-vs-required ORM patterns
+# Serious errors (name-defined, syntax, import) remain active.
+disable_error_code = [
+    "assignment", "arg-type", "var-annotated", "misc", "call-overload",
+    "attr-defined", "index", "return-value", "call-arg", "valid-type",
+    "unused-ignore",
+]
 
 [[tool.mypy.overrides]]
 # Legacy investigation and one-off scripts — excluded from ruff scope as well
