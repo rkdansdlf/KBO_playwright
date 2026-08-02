@@ -54,12 +54,19 @@ def read_boxscore_manifest_entries(manifest_path: Path) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for entry in entries:
         game_id = str(entry.get("game_id", "")).strip()
-        locator = str(entry.get("locator") or entry.get("file") or entry.get("path") or "").strip()
+        status = str(entry.get("status", "")).strip()
+        if status and status != "ok":
+            continue
+        locator = str(
+            entry.get("locator") or entry.get("file") or entry.get("path") or entry.get("site_game_id") or ""
+        ).strip()
         if not game_id or not locator:
             continue
 
         season_str = str(entry.get("season", "")).strip()
         season = int(season_str) if season_str.isdigit() else (int(game_id[:4]) if game_id[:4].isdigit() else None)
+
+        locator = f"{locator}.html" if not locator.endswith(".html") else locator
 
         normalized.append(
             {

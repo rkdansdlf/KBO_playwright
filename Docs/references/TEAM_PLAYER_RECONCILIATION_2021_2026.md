@@ -157,12 +157,14 @@ was added as a lower-priority exact signal after game evidence:
 
 | Classification | Count |
 |---|---:|
-| Exact | 301 |
-| Ambiguous | 1 (`KT/오윤석`) |
+| Exact | 302 |
+| Ambiguous | 0 |
 | Unresolved | 0 |
 
-The review workflow marked 301 candidates as `eligible` and kept the ambiguous group as
-`manual_review`. No candidate was automatically appended to the override CSV.
+The review workflow marked all 302 candidates as `eligible` after requiring positive
+local innings for season-only evidence. The resulting 302 reviewed rows were appended
+to `data/player_id_overrides.csv` with a timestamped backup. No source rows were deleted
+and no player IDs were merged.
 
 ## OCI 2021 Innings Backfill (2026-07-26)
 

@@ -292,6 +292,10 @@ def _candidate_evidence(
         int(detail["player_id"])
         for detail in details
         if int(detail["local_season"]["rows"]) > 0  # type: ignore[index]
+        and (
+            int(detail["local_season"]["innings_outs"]) > 0  # type: ignore[index]
+            or float(detail["local_season"]["innings_pitched"]) > 0  # type: ignore[index]
+        )
     ]
     return details, curated_ids, game_candidates, season_candidates
 

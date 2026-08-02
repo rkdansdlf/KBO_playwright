@@ -41,6 +41,11 @@ def _candidate_evidence_rows(group: dict[str, object], evidence_key: str) -> lis
         candidate
         for candidate in group.get("candidates", [])
         if int(candidate.get(evidence_key, {}).get("rows", 0)) > 0
+        and (
+            evidence_key != "local_season"
+            or int(candidate.get(evidence_key, {}).get("innings_outs", 0)) > 0
+            or float(candidate.get(evidence_key, {}).get("innings_pitched", 0)) > 0
+        )
     ]
 
 
@@ -116,6 +121,11 @@ def write_review_csv(rows: list[dict[str, str]], output: Path) -> None:
         writer.writerows(rows)
 
 
+def approve_eligible_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Mark only validated eligible rows for a separate approval artifact."""
+    return [{**row, "decision": "approve" if row.get("review_status") == "eligible" else "review"} for row in rows]
+
+
 def _load_csv(path: Path) -> list[dict[str, str]]:
     """Load a UTF-8 CSV as dictionaries."""
     with path.open(newline="", encoding="utf-8") as handle:
@@ -168,9 +178,14 @@ def _default_review_path(audit_json: Path) -> Path:
 def main(argv: list[str] | None = None) -> int:
     """Run the Exact-candidate review CLI."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--audit-json", type=Path, required=True)
+    parser.add_argument("--audit-json", type=Path, default=None)
     parser.add_argument("--override-csv", type=Path, default=PROJECT_ROOT / "data/player_id_overrides.csv")
     parser.add_argument("--output-csv", type=Path, default=None)
+    parser.add_argument(
+        "--approve-eligible",
+        action="store_true",
+        help="Create an approval artifact for eligible rows without changing the override CSV",
+    )
     parser.add_argument("--apply", action="store_true", help="Append only rows marked decision=approve")
     parser.add_argument("--approved-csv", type=Path, default=None, help="Reviewed CSV used with --apply")
     args = parser.parse_args(argv)
@@ -182,11 +197,14 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"applied": count, "override_csv": str(args.override_csv)}, ensure_ascii=False))
         return 0
 
+    if args.audit_json is None:
+        parser.error("--audit-json is required unless --apply is used")
+
     report = json.loads(args.audit_json.read_text(encoding="utf-8"))
     existing_rows = _load_csv(args.override_csv) if args.override_csv.exists() else []
     rows = build_review_rows(report, existing_rows=existing_rows)
     output = args.output_csv or _default_review_path(args.audit_json)
-    write_review_csv(rows, output)
+    write_review_csv(approve_eligible_rows(rows) if args.approve_eligible else rows, output)
     summary = {
         status: sum(row["review_status"] == status for row in rows)
         for status in ("eligible", "manual_review", "already_present", "conflict")
