@@ -10,6 +10,7 @@ from scripts.maintenance.apply_oci_migrations import (
     _execute_migration_statements,
     _migration_files,
     _split_migration_statements,
+    refresh_checksums,
 )
 
 
@@ -42,6 +43,61 @@ def test_migration_files_use_oracle_bundle() -> None:
 
     assert Path("migrations/oracle/022_add_source_to_advanced_stats.sql") in files
     assert all(path.parent == Path("migrations/oracle") for path in files)
+
+
+def test_oracle_schema_gap_bootstrap_precedes_source_migrations() -> None:
+    files = _migration_files("oracle")
+
+    assert files[0].name == "000_oracle_team_daily_roster_bootstrap.sql"
+    assert files.index(Path("migrations/oracle/000_oracle_team_daily_roster_bootstrap.sql")) < files.index(
+        Path("migrations/oracle/024_game_stat_partial_unique_indexes.sql")
+    )
+
+
+def test_migration_files_can_select_an_ordered_batch() -> None:
+    files = _migration_files(
+        "oracle",
+        only={
+            "000_oracle_team_daily_roster_bootstrap.sql",
+            "022_add_source_to_advanced_stats.sql",
+        },
+    )
+
+    assert [path.name for path in files] == [
+        "000_oracle_team_daily_roster_bootstrap.sql",
+        "022_add_source_to_advanced_stats.sql",
+    ]
+
+
+def test_migration_files_reject_unknown_selected_file() -> None:
+    with pytest.raises(ValueError, match=r"unknown\.sql"):
+        _migration_files("oracle", only={"unknown.sql"})
+
+
+def test_refresh_checksums_requires_explicit_selection(monkeypatch) -> None:
+    monkeypatch.setenv("OCI_DB_URL", "oracle+oracledb://placeholder")
+
+    with pytest.raises(ValueError, match="requires at least one"):
+        refresh_checksums("oracle")
+
+
+def test_oracle_roster_bootstrap_matches_model_schema_contract() -> None:
+    sql = Path("migrations/oracle/000_oracle_team_daily_roster_bootstrap.sql").read_text()
+
+    assert "CREATE TABLE TEAM_DAILY_ROSTER" in sql
+    for column in (
+        "ROSTER_DATE DATE NOT NULL",
+        "TEAM_CODE VARCHAR2(10) NOT NULL",
+        "PLAYER_ID NUMBER(10) NOT NULL",
+        "PLAYER_BASIC_ID NUMBER(10)",
+        "PERSON_TYPE VARCHAR2(16) DEFAULT 'player' NOT NULL",
+        "PLAYER_NAME VARCHAR2(50) NOT NULL",
+        "POSITION VARCHAR2(20)",
+        "BACK_NUMBER VARCHAR2(10)",
+    ):
+        assert column in sql
+    assert "REFERENCES TEAMS (TEAM_ID)" in sql
+    assert "REFERENCES PLAYER_BASIC (PLAYER_ID)" in sql
 
 
 def test_oracle_metadata_table_uses_oracle_ddl() -> None:

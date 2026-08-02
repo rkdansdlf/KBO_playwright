@@ -209,39 +209,63 @@ END;
 DECLARE
     v_exists NUMBER;
 
-    PROCEDURE create_index_if_missing(p_index_name VARCHAR2, p_ddl VARCHAR2) IS
+    PROCEDURE create_index_if_missing(
+        p_index_name VARCHAR2,
+        p_table_name VARCHAR2,
+        p_column_name VARCHAR2,
+        p_ddl VARCHAR2
+    ) IS
     BEGIN
         SELECT COUNT(*) INTO v_exists
           FROM user_indexes
          WHERE index_name = UPPER(p_index_name);
         IF v_exists = 0 THEN
-            EXECUTE IMMEDIATE p_ddl;
+            SELECT COUNT(*) INTO v_exists
+              FROM user_ind_columns candidate
+             WHERE candidate.table_name = UPPER(p_table_name)
+               AND candidate.column_name = UPPER(p_column_name)
+               AND candidate.column_position = 1
+               AND (
+                   SELECT COUNT(*)
+                     FROM user_ind_columns all_columns
+                    WHERE all_columns.index_name = candidate.index_name
+               ) = 1;
+            IF v_exists = 0 THEN
+                BEGIN
+                    EXECUTE IMMEDIATE p_ddl;
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        IF SQLCODE != -1408 THEN
+                            RAISE;
+                        END IF;
+                END;
+            END IF;
         END IF;
     END;
 BEGIN
-    create_index_if_missing('IDX_BROADCAST_GAME',
+    create_index_if_missing('IDX_BROADCAST_GAME', 'GAME_BROADCASTS', 'GAME_ID',
         'CREATE INDEX IDX_BROADCAST_GAME ON GAME_BROADCASTS (GAME_ID)');
-    create_index_if_missing('IDX_SREG_STADIUM',
+    create_index_if_missing('IDX_SREG_STADIUM', 'STADIUM_REGULATIONS', 'STADIUM_CODE',
         'CREATE INDEX IDX_SREG_STADIUM ON STADIUM_REGULATIONS (STADIUM_CODE)');
-    create_index_if_missing('IDX_MVP_GAME',
+    create_index_if_missing('IDX_MVP_GAME', 'GAME_MVPS', 'GAME_ID',
         'CREATE INDEX IDX_MVP_GAME ON GAME_MVPS (GAME_ID)');
-    create_index_if_missing('IDX_MVP_PLAYER',
+    create_index_if_missing('IDX_MVP_PLAYER', 'GAME_MVPS', 'PLAYER_ID',
         'CREATE INDEX IDX_MVP_PLAYER ON GAME_MVPS (PLAYER_ID)');
-    create_index_if_missing('IDX_INJURY_STATUS',
+    create_index_if_missing('IDX_INJURY_STATUS', 'INJURY_ENTRIES', 'STATUS',
         'CREATE INDEX IDX_INJURY_STATUS ON INJURY_ENTRIES (STATUS)');
-    create_index_if_missing('IDX_INJURY_TEAM',
+    create_index_if_missing('IDX_INJURY_TEAM', 'INJURY_ENTRIES', 'TEAM_ID',
         'CREATE INDEX IDX_INJURY_TEAM ON INJURY_ENTRIES (TEAM_ID)');
-    create_index_if_missing('IDX_INJURY_PLAYER',
+    create_index_if_missing('IDX_INJURY_PLAYER', 'INJURY_ENTRIES', 'PLAYER_ID',
         'CREATE INDEX IDX_INJURY_PLAYER ON INJURY_ENTRIES (PLAYER_ID)');
-    create_index_if_missing('IDX_FP_TEAM_SEASON',
+    create_index_if_missing('IDX_FP_TEAM_SEASON', 'FOREIGN_PLAYER_CHANGES', 'TEAM_ID',
         'CREATE INDEX IDX_FP_TEAM_SEASON ON FOREIGN_PLAYER_CHANGES (TEAM_ID, SEASON)');
-    create_index_if_missing('IDX_FP_PLAYER',
+    create_index_if_missing('IDX_FP_PLAYER', 'FOREIGN_PLAYER_CHANGES', 'PLAYER_ID',
         'CREATE INDEX IDX_FP_PLAYER ON FOREIGN_PLAYER_CHANGES (PLAYER_ID)');
-    create_index_if_missing('IDX_MGR_TEAM_SEASON',
+    create_index_if_missing('IDX_MGR_TEAM_SEASON', 'MANAGER_CHANGES', 'TEAM_ID',
         'CREATE INDEX IDX_MGR_TEAM_SEASON ON MANAGER_CHANGES (TEAM_ID, SEASON)');
-    create_index_if_missing('IDX_CHEER_SONG_TEAM',
+    create_index_if_missing('IDX_CHEER_SONG_TEAM', 'CHEER_SONGS', 'TEAM_ID',
         'CREATE INDEX IDX_CHEER_SONG_TEAM ON CHEER_SONGS (TEAM_ID)');
-    create_index_if_missing('IDX_CHEER_CHANT_TEAM',
+    create_index_if_missing('IDX_CHEER_CHANT_TEAM', 'CHEER_CHANTS', 'TEAM_ID',
         'CREATE INDEX IDX_CHEER_CHANT_TEAM ON CHEER_CHANTS (TEAM_ID)');
 END;
 /

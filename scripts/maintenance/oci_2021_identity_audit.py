@@ -254,7 +254,7 @@ def _candidate_evidence(
     team_code: str,
     player_name: str,
     override_path: Path,
-) -> tuple[list[dict[str, object]], set[int], list[int]]:
+) -> tuple[list[dict[str, object]], set[int], list[int], list[int]]:
     """Build evidence rows and identify exact local game candidates."""
     candidates = sorted({int(row["player_id"]) for row in rows})
     curated_ids = _load_curated_ids(override_path, year, team_code, player_name)
@@ -288,7 +288,12 @@ def _candidate_evidence(
         for detail in details
         if int(detail["local_game"]["rows"]) > 0  # type: ignore[index]
     ]
-    return details, curated_ids, game_candidates
+    season_candidates = [
+        int(detail["player_id"])
+        for detail in details
+        if int(detail["local_season"]["rows"]) > 0  # type: ignore[index]
+    ]
+    return details, curated_ids, game_candidates, season_candidates
 
 
 def _classify_group(
@@ -296,6 +301,7 @@ def _classify_group(
     candidate_ids: list[int],
     curated_ids: set[int],
     game_candidates: list[int],
+    season_candidates: list[int],
 ) -> tuple[str, int | None, str, str]:
     """Classify a group using only explicit or unique local game evidence."""
     matching_curated = sorted(curated_ids.intersection(candidate_ids))
@@ -305,6 +311,10 @@ def _classify_group(
         return "exact", game_candidates[0], "unique local game pitching evidence", "local_game_pitching_stats"
     if len(game_candidates) > 1:
         return "ambiguous", None, "multiple local candidates have game evidence", "local_game_pitching_stats"
+    if len(season_candidates) == 1:
+        return "exact", season_candidates[0], "unique local season pitching evidence", "local_player_season_pitching"
+    if len(season_candidates) > 1:
+        return "ambiguous", None, "multiple local candidates have season evidence", "local_player_season_pitching"
     return "unresolved", None, "no exact local game evidence", "none"
 
 
@@ -318,7 +328,7 @@ def _group_report(
 ) -> dict[str, object]:
     """Create one identity audit group report."""
     team_code, player_name = key
-    details, curated_ids, game_candidates = _candidate_evidence(
+    details, curated_ids, game_candidates, season_candidates = _candidate_evidence(
         rows,
         local_conn,
         year=year,
@@ -331,6 +341,7 @@ def _group_report(
         candidate_ids=candidate_ids,
         curated_ids=curated_ids,
         game_candidates=game_candidates,
+        season_candidates=season_candidates,
     )
     return {
         "team_code": team_code,

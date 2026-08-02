@@ -106,9 +106,11 @@ def collect_metrics(session_or_conn) -> dict[str, int]:
     audit_report = collect_audit_metrics(session_or_conn)
     metrics.update(flatten_gate_metrics(audit_report))
 
+    dialect_name = getattr(getattr(session_or_conn, "dialect", None), "name", "")
+    status_limit = "FETCH FIRST 1 ROWS ONLY" if dialect_name == "oracle" else "LIMIT 1"
     has_game_status = True
     try:
-        session_or_conn.execute(text("SELECT game_status FROM game LIMIT 1")).fetchall()
+        session_or_conn.execute(text(f"SELECT game_status FROM game {status_limit}")).fetchall()
     except SQLAlchemyError:
         has_game_status = False
 

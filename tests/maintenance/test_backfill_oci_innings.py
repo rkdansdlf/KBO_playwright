@@ -169,3 +169,39 @@ def test_falls_back_to_unique_local_game_identity_when_ids_differ() -> None:
 
     assert report["summary"]["planned"] == 1
     assert report["changes"][0]["source_player_id"] == 50397
+
+
+def test_falls_back_to_unique_local_season_identity_when_game_team_differs() -> None:
+    source_engine = _engine()
+    target_engine = _engine()
+    with source_engine.begin() as conn:
+        conn.execute(text("INSERT INTO player_basic (player_id, name) VALUES (61700, '강경학')"))
+        conn.execute(
+            text(
+                "INSERT INTO player_season_pitching "
+                "(id, player_id, season, league, level, team_code, innings_outs, innings_pitched, updated_at) "
+                "VALUES (1, 61700, 2021, 'REGULAR', 'KBO1', 'KIA', 2, 0.6666667, 'source')"
+            ),
+        )
+    with target_engine.begin() as conn:
+        conn.execute(text("INSERT INTO player_basic (player_id, name) VALUES (1352, '강경학')"))
+        conn.execute(
+            text(
+                "INSERT INTO player_season_pitching "
+                "(id, player_id, season, league, level, team_code, innings_outs, innings_pitched, updated_at) "
+                "VALUES (11, 1352, 2021, 'REGULAR', 'KBO1', 'KIA', 0, 0, 'target')"
+            ),
+        )
+
+    with source_engine.connect() as source_conn, target_engine.begin() as target_conn:
+        report = backfill_oci_innings(
+            source_conn,
+            target_conn,
+            year=2021,
+            player_ids=(1352,),
+            apply=False,
+        )
+
+    assert report["summary"]["planned"] == 1
+    assert report["changes"][0]["source_player_id"] == 61700
+    assert report["changes"][0]["evidence_source"] == "local_player_season_pitching_identity"

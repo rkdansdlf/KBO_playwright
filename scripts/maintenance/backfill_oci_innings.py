@@ -121,7 +121,8 @@ def _game_source_rows(conn: Connection, *, year: int) -> list[dict[str, object]]
                 COALESCE(SUM(g.innings_outs), 0) AS innings_outs,
                 COALESCE(SUM(g.innings_pitched), 0) AS innings_pitched,
                 COUNT(*) AS game_rows,
-                COUNT(DISTINCT g.game_id) AS games
+                COUNT(DISTINCT g.game_id) AS games,
+                'local_game_pitching_stats' AS evidence_source
             FROM game_pitching_stats g
             WHERE g.player_id IS NOT NULL
               AND SUBSTR(g.game_id, 1, 4) = :year
@@ -129,6 +130,34 @@ def _game_source_rows(conn: Connection, *, year: int) -> list[dict[str, object]]
             """,
         ),
         {"year": str(year)},
+    ).mappings()
+    return [dict(row) for row in rows]
+
+
+def _season_identity_rows(conn: Connection, *, year: int) -> list[dict[str, object]]:
+    """Aggregate local season pitching evidence by exact profile name/team."""
+    if not inspect(conn).has_table(TABLE_NAME) or not inspect(conn).has_table("player_basic"):
+        return []
+    columns = _columns(conn)
+    team_expression = _team_expression("s", columns)
+    rows = conn.execute(
+        text(
+            f"""
+            SELECT
+                s.player_id,
+                pb.name AS player_name,
+                {team_expression} AS team_code,
+                COALESCE(SUM(s.innings_outs), 0) AS innings_outs,
+                COALESCE(SUM(s.innings_pitched), 0) AS innings_pitched,
+                'local_player_season_pitching_identity' AS evidence_source
+            FROM {TABLE_NAME} s
+            JOIN player_basic pb ON pb.player_id = s.player_id
+            WHERE s.season = :year
+              AND COALESCE(s.league, 'REGULAR') = 'REGULAR'
+            GROUP BY s.player_id, pb.name, {team_expression}
+            """,
+        ),
+        {"year": year},
     ).mappings()
     return [dict(row) for row in rows]
 
@@ -190,7 +219,7 @@ def _source_for_target(
     candidates = identity_index.get(identity_key, [])
     candidate_ids = {int(row["player_id"]) for row in candidates}
     if len(candidate_ids) == 1:
-        return candidates[0], False, "local_game_pitching_stats"
+        return candidates[0], False, str(candidates[0].get("evidence_source") or "local_identity")
     if len(candidate_ids) > 1:
         return None, True, "local_game_identity"
     return None, False, "none"
@@ -295,7 +324,12 @@ def backfill_oci_innings(
     source_rows = _rows(source_conn, player_ids=player_ids, year=year, include_id=False)
     target_rows = _rows(target_conn, player_ids=player_ids, year=year, include_id=True)
     source_index, source_conflicts = _source_index(source_rows)
-    identity_index = _identity_source_index(_game_source_rows(source_conn, year=year))
+    identity_index = _identity_source_index(
+        [
+            *_game_source_rows(source_conn, year=year),
+            *_season_identity_rows(source_conn, year=year),
+        ],
+    )
     changes = [
         _plan_row(target, *_source_for_target(target, source_index, source_conflicts, identity_index))
         for target in target_rows

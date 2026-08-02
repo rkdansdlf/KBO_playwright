@@ -53,7 +53,7 @@ GATE_METRIC_KEYS = (
 )
 
 
-_COLUMNS_CACHE: dict[str, set[str]] = {}
+_COLUMNS_CACHE: dict[tuple[str, str], set[str]] = {}
 
 
 def _execute_scalar(conn, sql: str, params: Mapping[str, Any] | None = None) -> int:
@@ -88,18 +88,19 @@ def table_exists(conn, table_name: str) -> bool:
 
 
 def table_columns(conn, table_name: str) -> set[str]:
-    if table_name in _COLUMNS_CACHE:
-        return _COLUMNS_CACHE[table_name]
+    cache_key = (_dialect_name(conn), table_name)
+    if cache_key in _COLUMNS_CACHE:
+        return _COLUMNS_CACHE[cache_key]
     if not table_exists(conn, table_name):
-        _COLUMNS_CACHE[table_name] = set()
+        _COLUMNS_CACHE[cache_key] = set()
         return set()
     dialect = _dialect_name(conn)
     if dialect == "sqlite":
         cols = {str(row[1]) for row in conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
-        _COLUMNS_CACHE[table_name] = cols
+        _COLUMNS_CACHE[cache_key] = cols
         return cols
     cols = {str(column["name"]).lower() for column in inspect(conn).get_columns(table_name)}
-    _COLUMNS_CACHE[table_name] = cols
+    _COLUMNS_CACHE[cache_key] = cols
     return cols
 
 
