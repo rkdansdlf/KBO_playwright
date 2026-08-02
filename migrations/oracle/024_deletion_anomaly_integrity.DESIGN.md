@@ -1,8 +1,10 @@
 # Oracle Design: 024 Deletion Anomaly Integrity
 
-This migration is intentionally design-only. It performs data updates, trigger
+This migration is intentionally draft-only. The Oracle draft is protected by a
+runtime safety gate and is not applied. It performs data updates, trigger
 disable/enable operations, foreign-key teardown/rebuild, and constraint
-validation. It must not be generated as one automatic syntax translation.
+validation. It must not be activated without the required backup, census, and
+explicit approval.
 
 ## Planned Oracle Blocks
 
@@ -40,5 +42,7 @@ validation. It must not be generated as one automatic syntax translation.
 - The source migration uses PostgreSQL `UPDATE ... FROM`, regex operators,
   `IS DISTINCT FROM`, and `NOT VALID`; each needs a reviewed Oracle equivalent.
 
-The file may be converted only after the preflight SQL and rollback procedure
-are reviewed against the actual Oracle schema.
+The Oracle draft is `024_deletion_anomaly_integrity.sql`. It must be reviewed
+against the actual Oracle schema and its safety gate must remain in place until
+the preflight SQL, backup/restore procedure, and rollback procedure are
+approved.
