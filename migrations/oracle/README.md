@@ -6,18 +6,15 @@ PostgreSQL-compatible bundle used by CI and are not modified by this port.
 
 ## Current Status
 
-- Oracle-only bootstrap: 000_oracle_team_daily_roster_bootstrap.sql creates the
-  ORM-owned TEAM_DAILY_ROSTER table that is absent from the source migration
-  bundle.
-- Drafted files: 021, 022, 023, 024 partial unique indexes, 024 string-length
-  change, 025, 029, 030 safe no-op, 031, 033, 034, 035, 036, 039, 041, 042,
-  044, 047, 048, 049, and 050.
-- `024_deletion_anomaly_integrity.sql` remains design-only because it performs
-  large data updates, trigger disabling, and foreign-key rebuilds.
-- 15 selected Oracle migrations have been applied to the current OCI target;
-  no high-risk data-rewrite migration has been applied.
-- The `000` bootstrap is an Oracle schema-gap migration, not a PostgreSQL
-  source migration; it must be applied before the 024 integrity work.
+- Oracle-only bootstraps create the ORM-owned `TEAM_DAILY_ROSTER` and
+  `CRAWL_RUNS` tables, and repair the legacy batting `LEAGUE_LEVEL` drift.
+- 33 selected Oracle migrations have been applied to the current OCI target.
+- `024_deletion_anomaly_integrity.sql` is drafted but safety-gated because it
+  performs large data updates, trigger disabling, and foreign-key rebuilds.
+- 025-028 and 032 are drafted but not applied; they require separate data-review
+  approval.
+- The `000` bootstraps are Oracle schema-gap migrations, not PostgreSQL source
+  migrations; they must be applied before their dependent integrity work.
 - The Oracle runner now supports `--dialect oracle`, slash-delimited PL/SQL
   blocks, and the `KBO_SCHEMA_MIGRATIONS` metadata table.
 - Applied migration rows include the selected dialect and SHA-256 file
