@@ -26,5 +26,5 @@ def init_sentry() -> None:
             traces_sample_rate=1.0,
         )
         logger.info("Sentry SDK initialized successfully for environment: %s", env)
-    except Exception:
+    except Exception:  # intentional: Sentry init can raise unpredictably; we must not crash on monitoring failure
         logger.exception("Failed to initialize Sentry SDK")

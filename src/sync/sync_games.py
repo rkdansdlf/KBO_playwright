@@ -1112,7 +1112,7 @@ class GameSyncMixin(SyncBaseProtocol):
         exclude_cols = {"created_at", "updated_at"}
         if is_sqlite:
             exclude_cols.add("id")
-        columns = [c.key for c in GameSummary.__table__.columns if c.key not in exclude_cols]
+        columns = self._resolve_sync_columns(GameSummary, list(exclude_cols))
         records = []
         seen = set()
         for row in rows:

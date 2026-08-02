@@ -101,6 +101,12 @@ class SyncBaseProtocol(Protocol):
     def _get_season_map(self) -> dict[tuple[Any, ...], int]: ...
     def _reset_target_sequence_for_table(self, table_name: str, column_name: str = ...) -> bool: ...
     def _run_target_session_with_retries(self, *args: Any, **kwargs: Any) -> Any: ...  # noqa: ANN401
+    def _resolve_sync_columns(self, model: type[Base], exclude_cols: list[str]) -> list[str]: ...
+    def _get_target_table_columns(self, table_name: str) -> set[str]: ...
+    def record_sync_metric(self, table_name: str, count: int) -> None:
+        """Record Prometheus metrics for synced records on table."""
+        ...
+
     def test_connection(self) -> bool:
         """Test source and target database connectivity."""
         ...
@@ -739,7 +745,61 @@ class OCISyncBase:
         self._season_map_cache: dict[tuple[Any, ...], int] | None = None
         self._franchise_id_mapping_cache: dict[int, int] | None = None
         self._oracle_columns_cache: dict[str, set[str]] = {}
+        self._target_columns_cache: dict[str, set[str]] = {}
         self._temp_table_counter = count(1)
+
+    def record_sync_metric(self, table_name: str, count_val: int) -> None:
+        """Record Prometheus metrics for synced records on table."""
+        if count_val > 0:
+            try:
+                from src.utils.metrics import record_oci_sync_metric
+
+                record_oci_sync_metric(table_name, count_val)
+            except (SQLAlchemyError, RuntimeError, OSError, ValueError):
+                logger.debug("Failed to record OCI sync metric for %s", table_name)
+
+    def _query_target_columns_0row(self, executor: Any, table_name: str) -> set[str]:  # noqa: ANN401
+        """Execute a 0-row query on a session or engine connection to get column names."""
+        try:
+            res = executor.execute(text(f"SELECT * FROM {table_name} WHERE 1=0"))  # noqa: S608
+            if res.returns_rows and res.keys():
+                keys = list(res.keys())
+                return {str(col).lower() for col in keys}
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError, AttributeError):
+            pass
+        return set()
+
+    def _get_target_table_columns(self, table_name: str) -> set[str]:
+        """Return lowercased column names for an OCI target table using a 0-row query (SELECT * WHERE 1=0)."""
+        if not hasattr(self, "_target_columns_cache"):
+            self._target_columns_cache = {}
+        cached = self._target_columns_cache.get(table_name)
+        if cached is not None:
+            return cached
+
+        cols: set[str] = set()
+        target_session = getattr(self, "target_session", None)
+        if target_session is not None:
+            cols = self._query_target_columns_0row(target_session, table_name)
+
+        if not cols and getattr(self, "oci_engine", None) is not None:
+            try:
+                with self.oci_engine.connect() as conn:
+                    cols = self._query_target_columns_0row(conn, table_name)
+            except (SQLAlchemyError, RuntimeError, ValueError):
+                cols = set()
+
+        if not cols and getattr(self, "oci_engine", None) is not None:
+            try:
+                insp_cols = inspect(self.oci_engine).get_columns(table_name)
+                cols = {c["name"].lower() for c in insp_cols}
+            except (SQLAlchemyError, RuntimeError, ValueError) as exc:
+                logger.warning("Failed to inspect OCI columns for %s: %s", table_name, exc)
+
+        if cols:
+            self._target_columns_cache[table_name] = cols
+
+        return cols
 
     @staticmethod
     def _chunked(items: list[str], size: int) -> list[list[str]]:
@@ -892,6 +952,26 @@ class OCISyncBase:
         if not options.records:
             return
 
+        target_cols = self._get_target_table_columns(table_name)
+        if target_cols:
+            filtered_records = [
+                {k: v for k, v in record.items() if k.lower() in target_cols} for record in options.records
+            ]
+            unique_cols = [col for col in options.unique_cols if col.lower() in target_cols]
+            options = BulkCopyUpsertOptions(
+                records=filtered_records,
+                unique_cols=unique_cols,
+                update_timestamp=options.update_timestamp,
+                connection=options.connection,
+                reconnect_on_fail=options.reconnect_on_fail,
+            )
+            if not options.records or not options.records[0]:
+                logger.info(
+                    "[info] Skipping bulk COPY for %s: no compatible columns remain after schema check",
+                    table_name,
+                )
+                return
+
         dialect_name = self.oci_engine.dialect.name if self.oci_engine is not None else "postgresql"
         if dialect_name == "oracle":
             serialized_records = _serialize_records_oracle(options.records)
@@ -907,6 +987,7 @@ class OCISyncBase:
                 connection=options.connection,
                 reconnect_on_fail=options.reconnect_on_fail,
             )
+            self.record_sync_metric(table_name, len(options.records))
             return
 
         serialized_records = _serialize_records(options.records)
@@ -922,6 +1003,7 @@ class OCISyncBase:
             connection=options.connection,
             reconnect_on_fail=options.reconnect_on_fail,
         )
+        self.record_sync_metric(table_name, len(options.records))
 
     def _close_raw_connection(self, connection: RawConnection | None, *, label: str) -> None:
         if connection is None:
@@ -1130,13 +1212,8 @@ class OCISyncBase:
     def _target_column_aliases(self, model: type[Base]) -> dict[str, str]:
         if model.__tablename__ not in {"player_season_batting", "player_season_pitching"}:
             return {}
-        if getattr(self, "oci_engine", None) is None:
-            return {}
-        try:
-            target_columns = {
-                column["name"].lower() for column in inspect(self.oci_engine).get_columns(model.__tablename__)
-            }
-        except SQLAlchemyError:
+        target_columns = self._get_target_table_columns(model.__tablename__)
+        if not target_columns:
             return {}
         aliases = {"level": "league_level", "source": "data_source"}
         model_columns = {column.key for column in model.__table__.columns}
@@ -1147,13 +1224,14 @@ class OCISyncBase:
         }
 
     def _resolve_sync_columns(self, model: type[Base], exclude_cols: list[str]) -> list[str]:
-        target_column_defs = {}
-        target_columns = {c.key for c in model.__table__.columns}
-        if getattr(self, "oci_engine", None) is not None:
+        target_column_defs: dict[str, Any] = {}
+        target_columns = self._get_target_table_columns(model.__tablename__)
+        if not target_columns:
+            target_columns = {c.key.lower() for c in model.__table__.columns}
+        elif getattr(self, "oci_engine", None) is not None:
             try:
                 cols = inspect(self.oci_engine).get_columns(model.__tablename__)
                 target_column_defs = {c["name"]: c for c in cols}
-                target_columns = set(target_column_defs)
             except SQLAlchemyError as exc:
                 logger.warning("Failed to inspect OCI columns for %s: %s", model.__tablename__, exc)
 
@@ -1166,11 +1244,11 @@ class OCISyncBase:
 
         if sqlite_bind is not None:
             try:
-                local_columns = {c["name"] for c in inspect(sqlite_bind).get_columns(model.__tablename__)}
+                local_columns = {c["name"].lower() for c in inspect(sqlite_bind).get_columns(model.__tablename__)}
             except SQLAlchemyError:
                 local_columns = set()
         else:
-            local_columns = {c.key for c in model.__table__.columns}
+            local_columns = {c.key.lower() for c in model.__table__.columns}
 
         target_column_names = {str(column).lower() for column in target_columns}
         local_column_names = {str(column).lower() for column in local_columns}
@@ -1179,8 +1257,8 @@ class OCISyncBase:
             c.key
             for c in model.__table__.columns
             if c.key not in exclude_cols
-            and c.key in local_column_names
-            and (c.key in target_column_names or c.key in column_aliases)
+            and c.key.lower() in local_column_names
+            and (c.key.lower() in target_column_names or c.key in column_aliases)
         ]
         if (
             model.__tablename__ == "game_metadata"
@@ -1695,8 +1773,7 @@ class OCISyncBase:
         """Return cached lowercase Oracle column names for a table."""
         columns = self._oracle_columns_cache.get(table_name)
         if columns is None:
-            inspector = inspect(self.oci_engine)
-            columns = {column["name"].lower() for column in inspector.get_columns(table_name)}
+            columns = self._get_target_table_columns(table_name)
             self._oracle_columns_cache[table_name] = columns
         return columns
 
@@ -1715,7 +1792,7 @@ class OCISyncBase:
             try:
                 Base.metadata.create_all(oci_engine, tables=[model.__table__])  # type: ignore[list-item]
                 break
-            except Exception as e:
+            except Exception as e:  # intentional: must inspect any exception type to determine if it's transient
                 if self._is_transient_oci_error(e) and attempt < max_attempts:
                     logger.warning(
                         "⚠️ Transient error during _ensure_table for %s: %s. Retrying in %ss (attempt %s/%s)...",
