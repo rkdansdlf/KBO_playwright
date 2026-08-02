@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from sqlalchemy import inspect, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import defer
+
+logger = logging.getLogger(__name__)
 
 from src.models.game import (
     Game,
@@ -49,6 +54,15 @@ class HydrationSpec:
 class RuntimeHydrator:
     """Copy the minimum operational runtime dataset from OCI into local SQLite."""
 
+    @staticmethod
+    def _get_remote_table_columns(session: Session, table_name: str) -> set[str]:
+        """Return lowercased column names for a remote table using a 0-row query."""
+        try:
+            res = session.execute(text(f"SELECT * FROM {table_name} WHERE 1=0"))  # noqa: S608
+            return {col.lower() for col in res.returns_rows and res.keys()}
+        except (SQLAlchemyError, RuntimeError, ValueError):
+            return set()
+
     SQLITE_UPSERT_KEYS: ClassVar[dict[type, Sequence[str]]] = {
         Game: ("game_id",),
         GameIdAlias: ("alias_game_id",),
@@ -59,6 +73,10 @@ class RuntimeHydrator:
         GamePitchingStat: ("game_id", "player_id", "appearance_seq"),
         GameEvent: ("game_id", "event_seq"),
         PlayerBasic: ("player_id",),
+        PlayerSeasonBatting: ("player_id", "season", "league", "level", "team_code"),
+        PlayerSeasonPitching: ("player_id", "season", "league", "level", "team_code"),
+        PlayerMovement: ("movement_date", "team_code", "player_name", "section"),
+        TeamDailyRoster: ("roster_date", "team_code", "player_id"),
         PlayerGameBatting: ("game_id", "player_id"),
         PlayerGamePitching: ("game_id", "player_id"),
         KboSeason: ("season_id",),
@@ -146,7 +164,7 @@ class RuntimeHydrator:
                 (),
                 (),
                 replace_scope=False,
-                exclude_columns=("created_at", "updated_at"),
+                exclude_columns=("created_at", "updated_at", "education_path"),
             ),
             HydrationSpec(
                 "player_season_batting",
@@ -358,19 +376,40 @@ class RuntimeHydrator:
             target_query = target_query.filter(*spec.target_filters)
         target_query.delete(synchronize_session=False)
 
-    def _hydrate_spec(self, spec: HydrationSpec) -> tuple[int, dict[int, str]]:
+    def _hydrate_spec(self, spec: HydrationSpec) -> tuple[int, dict[int, str]]:  # noqa: C901, PLR0912
+        from sqlalchemy import inspect
         from sqlalchemy.orm import defer
 
         source_query = self.source_session.query(spec.model)
         if spec.source_filters:
             source_query = source_query.filter(*spec.source_filters)
 
-        # Defer created_at and updated_at to bypass named timezone DPY-3022 thin mode crash
-        for col_name in ("created_at", "updated_at"):
+        cols_to_defer = {"created_at", "updated_at", *spec.exclude_columns}
+        table_name = spec.model.__tablename__
+        source_cols = self._get_remote_table_columns(self.source_session, table_name)
+        if source_cols:
+            mapper = inspect(spec.model)
+            for attr in mapper.column_attrs:
+                col_key = attr.key
+                if col_key.lower() not in source_cols:
+                    cols_to_defer.add(col_key)
+
+        for col_name in cols_to_defer:
             if hasattr(spec.model, col_name):
                 source_query = source_query.options(defer(getattr(spec.model, col_name)))
 
-        rows = source_query.all()
+        try:
+            rows = source_query.all()
+        except SQLAlchemyError as err:
+            err_str = str(err)
+            if "ORA-00942" in err_str or "no such table" in err_str.lower():
+                logger.info(
+                    "Source table %s does not exist on remote DB; skipping spec %s",
+                    spec.model.__tablename__,
+                    spec.label,
+                )
+                return 0, {}
+            raise
 
         if not rows:
             return 0, {}
@@ -379,7 +418,7 @@ class RuntimeHydrator:
         if not rows:
             return 0, {}
 
-        excluded = {"id", *spec.exclude_columns}
+        excluded = {"id", *cols_to_defer}
         columns = [column.key for column in spec.model.__table__.columns if column.key not in excluded]
         mappings: list[dict[str, object]] = [{column: getattr(row, column) for column in columns} for row in rows]
 
@@ -477,12 +516,22 @@ class RuntimeHydrator:
         if not missing_ids:
             return
 
-        source_rows = {
-            row.player_id: row
-            for row in self.source_session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(missing_ids)).all()
-        }
+        query = self.source_session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(missing_ids))
+        excluded_player_cols = {"created_at", "updated_at"}
+        source_cols = self._get_remote_table_columns(self.source_session, PlayerBasic.__tablename__)
+        if source_cols:
+            mapper = inspect(PlayerBasic)
+            for attr in mapper.column_attrs:
+                if attr.key.lower() not in source_cols:
+                    excluded_player_cols.add(attr.key)
 
-        full_columns = [c.key for c in PlayerBasic.__table__.columns if c.key not in {"created_at", "updated_at"}]
+        for col_name in excluded_player_cols:
+            if hasattr(PlayerBasic, col_name):
+                query = query.options(defer(getattr(PlayerBasic, col_name)))
+
+        source_rows = {row.player_id: row for row in query.all()}
+
+        full_columns = [c.key for c in PlayerBasic.__table__.columns if c.key not in excluded_player_cols]
         bulk_mappings: list[dict[str, object]] = []
         for player_id in missing_ids:
             source_player = source_rows.get(player_id)

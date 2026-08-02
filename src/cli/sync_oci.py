@@ -143,6 +143,11 @@ def _add_basic_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="시그니처 비교를 건너뛰고 강제로 동기화를 진행합니다.",
     )
+    parser.add_argument(
+        "--auto-resync-lagged",
+        action="store_true",
+        help="24시간 이상 OCI 동기화가 지연된 테이블을 자동 감지하여 증분 재동기화를 수행합니다.",
+    )
 
 
 def _add_game_args(parser: argparse.ArgumentParser) -> None:
@@ -762,6 +767,14 @@ def main(argv: Iterable[str] | None = None) -> None:
             local_session.close()
             oci_session.close()
             oci_engine.dispose()
+        return
+
+    if getattr(args, "auto_resync_lagged", False):
+        logger.info("🔍 Checking OCI sync lag per table (> 24h threshold)...")
+        from src.sync.lag_monitor import check_and_resync_lagging_tables
+
+        res = check_and_resync_lagging_tables(target_url=args.target_url)
+        logger.info("📊 Lag monitor result: %s", res)
         return
 
     sync_dispatch = _build_sync_dispatch()

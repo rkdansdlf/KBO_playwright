@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
@@ -39,6 +40,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Preserve existing local game_id_aliases for the hydrated year instead of replacing them from OCI.",
     )
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="Send Telegram/Slack notification upon successful hydration.",
+    )
+    parser.add_argument(
+        "--quarantine-dir",
+        type=str,
+        help="Quarantine directory path if this hydration is a recovery after DB quarantine.",
+    )
     args = parser.parse_args(argv)
 
     if not args.source_url:
@@ -59,12 +70,36 @@ def main(argv: Sequence[str] | None = None) -> int:
                 target_date=target_date,
                 preserve_aliases=args.preserve_aliases,
             )
+        finally:
             target_session.execute(text("PRAGMA foreign_keys=ON"))
-        except Exception:
-            target_session.execute(text("PRAGMA foreign_keys=ON"))
-            raise
 
     logger.info("✅ Hydrated runtime cache for %s: %s", args.year, summary)
+
+    is_quarantine_recovery = bool(os.getenv("SQLITE_GUARD_QUARANTINED") == "1" or args.quarantine_dir)
+    quarantine_dir = args.quarantine_dir
+    guard_path = Path("/tmp/sqlite_integrity_guard.json")  # noqa: S108
+    if not quarantine_dir and guard_path.exists():
+        try:
+            import json
+
+            with guard_path.open(encoding="utf-8") as f:
+                guard_data = json.load(f)
+                if guard_data.get("status") == "quarantined":
+                    is_quarantine_recovery = True
+                    quarantine_dir = guard_data.get("quarantine_dir")
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    if args.notify or is_quarantine_recovery:
+        from src.utils.alerting import SlackWebhookClient
+
+        SlackWebhookClient.send_hydration_alert(
+            args.year,
+            summary,
+            quarantine_dir=quarantine_dir,
+            is_quarantine_recovery=is_quarantine_recovery,
+        )
+
     source_engine.dispose()
     return 0
 

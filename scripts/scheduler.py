@@ -1706,7 +1706,11 @@ def update_oci_sync_lag_metrics() -> None:
         res = check_and_resync_lagging_tables()
         logger.info("Updated OCI sync lag metrics & auto re-sync check: %s", res)
 
-        max_lag = float(res.get("max_overall_lag", 0.0)) if isinstance(res, dict) and "max_overall_lag" in res else 0.0
+        max_lag = (
+            float(res.get("overall_max_lag_seconds", 0.0))
+            if isinstance(res, dict) and "overall_max_lag_seconds" in res
+            else 0.0
+        )
         KBO_OCI_SYNC_LAG_SECONDS.set(max_lag)
 
         threshold = float(_env_int("OCI_SYNC_LAG_AUTO_HEAL_THRESHOLD", 21600))

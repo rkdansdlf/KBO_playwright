@@ -573,7 +573,7 @@ class TeamStatAggregator:
                 session.execute(cast("Executable", stmt))
 
             session.commit()
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             raise
 

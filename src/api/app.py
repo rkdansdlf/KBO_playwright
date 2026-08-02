@@ -83,7 +83,7 @@ def get_system_status() -> dict[str, Any]:
 
             latest_movement = session.query(PlayerMovement).order_by(PlayerMovement.created_at.desc()).first()
             latest_movement_at = latest_movement.created_at.isoformat() if latest_movement else None
-    except Exception as e:
+    except Exception as e:  # intentional: FastAPI endpoint must catch all exceptions and return HTTP 500
         logger.exception("Failed to query system status")
         raise HTTPException(status_code=500, detail=f"Database query failure: {e}") from e
     else:
@@ -111,7 +111,7 @@ def _async_run_daily_update() -> None:
     try:
         run_daily_update_main([])
         logger.info("[API] Background daily update crawl completed.")
-    except Exception:
+    except Exception:  # intentional: background task must not propagate exceptions to the worker thread
         logger.exception("[API] Background daily update crawl failed")
 
 
@@ -172,7 +172,7 @@ async def upload_text_relay(file: Annotated[UploadFile, File()]) -> dict[str, An
                 )
                 session.add(play)
                 rows_inserted += 1
-    except Exception as e:
+    except Exception as e:  # intentional: FastAPI endpoint must catch all exceptions and return HTTP 500
         logger.exception("Failed to load text relay CSV upload")
         raise HTTPException(status_code=500, detail=f"CSV Ingestion failure: {e}") from e
     else:
