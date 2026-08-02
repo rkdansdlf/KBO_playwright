@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, MAX_INNINGS
+from src.constants import BOXSCORE_TEAM_ROWS, GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, MAX_INNINGS
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
@@ -81,15 +81,68 @@ def _extract_scoreboard(tables: list[pd.DataFrame]) -> pd.DataFrame | None:
         headers = [str(col) for col in df.columns]
         if {"팀", "R", "H", "E"}.issubset(headers):
             return df
-    return None
+    legacy_rheb = None
+    legacy_innings = None
+    for df in tables:
+        headers = [str(col) for col in df.columns]
+        if {"R", "H", "E"}.issubset(headers):
+            legacy_rheb = df
+            break
+    for df in tables:
+        headers = [str(col) for col in df.columns]
+        if (
+            len(headers) >= MAX_INNINGS
+            and all(re.fullmatch(r"\d+", str(col)) for col in headers)
+            and len(df) == BOXSCORE_TEAM_ROWS
+        ):
+            legacy_innings = df
+            break
+    if legacy_rheb is not None and legacy_innings is not None and len(legacy_rheb) == len(legacy_innings):
+        return pd.concat(
+            [legacy_innings.reset_index(drop=True), legacy_rheb.reset_index(drop=True)],
+            axis=1,
+        )
+    return legacy_rheb
+
+
+def _merge_legacy_hitter_pairs(
+    name_tables: list[pd.DataFrame],
+    stat_tables: list[pd.DataFrame],
+) -> list[pd.DataFrame]:
+    """Merge legacy (2001-2009) split hitter tables (name + stats) into one DataFrame each."""
+    merged: list[pd.DataFrame] = []
+    for name_df, stat_df in zip(name_tables, stat_tables, strict=False):
+        if len(name_df) != len(stat_df):
+            continue
+        combined = name_df.reset_index(drop=True).copy()
+        for col in stat_df.columns:
+            combined[col] = stat_df.reset_index(drop=True)[col].to_numpy()
+        combined = combined.rename(
+            columns={
+                "Unnamed: 0": "타순",
+                "Unnamed: 1": "포지션",
+            }
+        )
+        merged.append(combined)
+    return merged
 
 
 def _extract_hitter_tables(tables: list[pd.DataFrame]) -> list[pd.DataFrame]:
     hitters = []
+    name_tables = []
     for df in tables:
         headers = [str(col) for col in df.columns]
+        if "선수명" in headers and not any(h in ("타수", "이닝", "등판") for h in headers):
+            name_tables.append(df)
+            continue
         if any("타수" in h for h in headers):
+            if any(h in ("이닝", "등판", "투구수") for h in headers):
+                continue
             hitters.append(df)
+    if name_tables and hitters:
+        merged = _merge_legacy_hitter_pairs(name_tables, hitters)
+        if merged:
+            return merged
     return hitters
 
 
@@ -253,7 +306,7 @@ def _build_pitcher_payload(
 
         for _, row in df.iterrows():
             name = str(row.get("선수", "") or row.get("선수명", "")).strip()
-            if not name or name in {"팀합계", "합계"}:
+            if not name or name in {"팀합계", "합계", "TOTAL"}:
                 continue
 
             p_id = _safe_player_id(row.get("선수ID") or row.get("playerId") or row.get("player_id"))
