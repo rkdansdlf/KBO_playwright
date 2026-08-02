@@ -55,10 +55,12 @@ VOLUME /app/data
 
 # USER appuser
 
+EXPOSE 8000
+
 # Full SQLite integrity checks remain in the startup guard. Runtime healthchecks
 # stay lightweight so normal write contention does not mark the scheduler unhealthy.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "from sqlalchemy import text; from src.db.engine import SessionLocal; s=SessionLocal(); s.execute(text('SELECT 1')); s.close()" || exit 1
+    CMD python -m src.cli.db_healthcheck || exit 1
 
 ENTRYPOINT ["bash", "docker/entrypoint.sh"]
 CMD ["python", "-m", "scripts.scheduler"]

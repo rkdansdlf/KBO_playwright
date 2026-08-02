@@ -94,6 +94,7 @@ run_sqlite_startup_guard() {
     if python -m src.cli.sqlite_integrity_guard \
         --database-url "${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}" \
         --action "${SQLITE_CORRUPT_ACTION:-quarantine}" \
+        --notify \
         --json > "$GUARD_OUT"; then
         cat "$GUARD_OUT"
     else
@@ -216,7 +217,15 @@ else:
                       HYDRATE_SUCCESS=1
                       for year in "${ADDR[@]}"; do
                           echo "🚚 Running hydrate_runtime_from_oci for season $year..."
-                          if python -m src.cli.hydrate_runtime_from_oci --year "$year" --source-url "$OCI_DB_URL"; then
+                          HYDRATE_ARGS=("--year" "$year" "--source-url" "$OCI_DB_URL")
+                          if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" ]]; then
+                              HYDRATE_ARGS+=("--notify")
+                              QUARANTINE_DIR=$(python -c "import json, os; p='$GUARD_OUT'; print(json.load(open(p)).get('quarantine_dir', '') if os.path.exists(p) else '')" 2>/dev/null || true)
+                              if [[ -n "$QUARANTINE_DIR" ]]; then
+                                  HYDRATE_ARGS+=("--quarantine-dir" "$QUARANTINE_DIR")
+                              fi
+                          fi
+                          if python -m src.cli.hydrate_runtime_from_oci "${HYDRATE_ARGS[@]}"; then
                               echo "✅ Successfully hydrated season $year"
                           else
                               echo "❌ Failed to hydrate season $year"

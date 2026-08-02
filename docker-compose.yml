@@ -27,6 +27,14 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - playwright-browsers:/ms-playwright
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.cli.db_healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     command: ["python", "-m", "scripts.scheduler"]
 
   browserless:
@@ -39,5 +47,47 @@ services:
       - CONNECTION_TIMEOUT=300000
       - KEEP_ALIVE=true
 
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    container_name: kbo_prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - scheduler
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    restart: always
+    container_name: kbo_alertmanager
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    container_name: kbo_grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   playwright-browsers:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
