@@ -137,7 +137,8 @@ def _count_orphans(
 def _count_duplicate_groups(conn, table_name: str, columns: tuple[str, ...], *, where: str = "") -> int:
     if not _has_columns(conn, table_name, columns):
         return 0
-    cols = ", ".join(columns)
+    sql_columns = ['"level"' if _dialect_name(conn) == "oracle" and column == "level" else column for column in columns]
+    cols = ", ".join(sql_columns)
     where_sql = f"WHERE {where}" if where else ""
     return _execute_scalar(
         conn,

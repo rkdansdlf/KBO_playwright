@@ -8,6 +8,7 @@ from pathlib import Path
 
 from scripts.maintenance.review_exact_candidates import (
     apply_approved_candidates,
+    approve_eligible_rows,
     build_review_rows,
     write_review_csv,
 )
@@ -88,6 +89,15 @@ def test_season_evidence_is_eligible_when_game_evidence_is_absent() -> None:
 
     assert rows[0]["review_status"] == "eligible"
     assert rows[0]["validation_reason"] == "single candidate with positive local season evidence"
+
+
+def test_approve_eligible_rows_does_not_approve_manual_review() -> None:
+    rows = build_review_rows(_report(), existing_rows=[])
+
+    approved = approve_eligible_rows(rows)
+
+    assert approved[0]["decision"] == "approve"
+    assert approved[1]["decision"] == "review"
 
 
 def test_review_rows_are_json_serializable() -> None:
