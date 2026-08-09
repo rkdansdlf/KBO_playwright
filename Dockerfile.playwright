@@ -55,7 +55,11 @@ RUN groupadd -r appuser && \
 # 크롤링 데이터가 호스트에 즉시 저장되도록 함
 VOLUME ["/app/data", "/app/logs"]
 
-# USER appuser
+# entrypoint.sh starts as root, adjusts volume ownership, then drops
+# to appuser via gosu.  This USER directive is intentionally omitted
+# so that the entrypoint can perform the initial chown.  The actual
+# process runs as appuser after gosu exec.
+# USER appuser  -- see docker/entrypoint.sh for privilege-drop logic
 
 # 헬스체크 (선택사항)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \

@@ -1,8 +1,8 @@
 name: KBO Weekly Maintenance
 
 on:
-  schedule:
-    - cron: '0 20 * * 0'  # 월요일 05:00 KST (일 20:00 UTC)
+  # schedule:
+  #   - cron: '0 20 * * 0'  # 월요일 05:00 KST (일 20:00 UTC)
   workflow_dispatch:
     inputs:
       profile_limit:
@@ -30,30 +30,21 @@ jobs:
 
       - name: Refresh Source Snapshots
         continue-on-error: true
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          if [ -z "${OCI_DB_URL:-}" ]; then
-            echo "OCI_DB_URL not set; skipping source snapshot refresh"
-            exit 0
-          fi
-          DATABASE_URL="$OCI_DB_URL" python3 -m src.cli.refresh_source_snapshots \
+          python3 -m src.cli.refresh_source_snapshots \
             --all --max-hours 168
 
-      - name: Run Weekly Maintenance & Sync
+      - name: Run Weekly Maintenance
         env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: |
           LIMIT="${{ github.event.inputs.profile_limit || '500' }}"
           python3 -m src.cli.run_weekly_maintenance \
-            --profile-limit "$LIMIT" --sync
+            --profile-limit "$LIMIT"
 
       - name: Run SLA Weekly Report
-        env:
-          DATABASE_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -c "
           from src.monitoring.sla_tracker import SlaTracker
@@ -65,8 +56,6 @@ jobs:
 
       - name: Run Historical Completeness Audit
         continue-on-error: true
-        env:
-          DATABASE_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m scripts.maintenance.audit_completeness_2009_2025 \
             --start-year 2009 --end-year 2025 \

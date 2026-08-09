@@ -36,7 +36,6 @@ APScheduler focuses on real-time and local-only jobs:
   - LIVE_LOCK: pregame, live_refresh, transit_time, congestion
   - DAILY_LOCK: phase1_extra, p0_non_game, p1p2_data, operation_notices
   - MAINTENANCE_LOCK: sla_report, park_factor, fan_culture, retire, audit
-  - REALTIME_OCI_SYNC_LOCK: background OCI sync thread (separate from scheduler)
 """
 
 from __future__ import annotations
@@ -56,7 +55,6 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from threading import Thread
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -82,8 +80,8 @@ from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job
 from src.cli.run_daily_update import format_stability_alert_summary
 from src.cli.run_daily_update import main as run_daily_update_main
-from src.db.engine import DATABASE_URL, SessionLocal, create_engine_for_url
-from src.sync.oci_sync import OCISync
+from src.db.engine import DATABASE_URL, SessionLocal
+from src.db.sqlite_integrity import check_sqlite_database, is_sqlite_corruption_error
 from src.utils.alerting import SlackWebhookClient
 from src.utils.lock import ForceProcessLock, LockAcquisitionError, ProcessLock
 from src.utils.sentry import init_sentry
@@ -91,9 +89,6 @@ from src.utils.metrics import (
     start_metrics_server,
     KBO_SCHEDULER_JOB_TOTAL,
     KBO_SCHEDULER_JOB_DURATION_SECONDS,
-    KBO_OCI_SYNC_LAG_SECONDS,
-    KBO_OCI_LAST_SYNC_TIMESTAMP_SECONDS,
-    KBO_OCI_SYNC_ERRORS_TOTAL,
     KBO_SCHEDULER_LOCK_SKIP_TOTAL,
 )
 
@@ -131,7 +126,6 @@ SCHEDULER_JOB_EXCEPTIONS = (
 LIVE_LOCK = ProcessLock("live_refresh")
 DAILY_LOCK = ForceProcessLock("daily_update")
 MAINTENANCE_LOCK = ForceProcessLock("maintenance")
-REALTIME_OCI_SYNC_LOCK = ProcessLock("realtime_oci_sync")
 SQLITE_WRITE_LOCK = ForceProcessLock("sqlite_writer")
 
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
@@ -368,8 +362,20 @@ def _pregame_refresh_summary(target_date: str) -> tuple[int, int, int]:
         """,
     )
 
-    with SessionLocal() as session:
-        rows = session.execute(query, {"target_date": target_date}).all()
+    try:
+        with SessionLocal() as session:
+            rows = session.execute(query, {"target_date": target_date}).all()
+    except SCHEDULER_JOB_EXCEPTIONS as exc:
+        if is_sqlite_corruption_error(exc):
+            logger.critical("[PregameSummary] SQLite corruption error encountered: %s", exc)
+            try:
+                report = check_sqlite_database(DATABASE_URL)
+                logger.warning("[PregameSummary] SQLite integrity report: %s", report)
+            except Exception:
+                logger.exception("[PregameSummary] Failed running sqlite_integrity_guard check")
+        else:
+            logger.exception("[PregameSummary] Failed to query pregame refresh summary for %s", target_date)
+        return 0, 0, 0
 
     if not rows:
         return 0, 0, 0
@@ -424,116 +430,6 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
-def _pregame_sync_to_oci_enabled() -> bool:
-    return _env_enabled("PREGAME_SYNC_TO_OCI") and bool(os.getenv("OCI_DB_URL"))
-
-
-def _realtime_oci_sync_worker(sync_kind: str, oci_url: str, target_game_ids: list[str], method_name: str) -> None:
-    started_at = datetime.now(KST)
-    succeeded = 0
-    failed_game_ids: list[str] = []
-    try:
-        logger.info("Starting background realtime OCI %s sync games=%s", sync_kind, ",".join(target_game_ids))
-        for game_id in target_game_ids:
-            syncer = None
-            game_started_at = datetime.now(KST)
-            try:
-                with SessionLocal() as sync_session:
-                    syncer = OCISync(oci_url, sync_session)
-                    getattr(syncer, method_name)(game_id)
-                succeeded += 1
-                logger.info(
-                    "Background realtime OCI %s sync succeeded game_id=%s elapsed=%.1fs",
-                    sync_kind,
-                    game_id,
-                    (datetime.now(KST) - game_started_at).total_seconds(),
-                )
-            except SCHEDULER_JOB_EXCEPTIONS as e:
-                failed_game_ids.append(game_id)
-                KBO_OCI_SYNC_ERRORS_TOTAL.inc()
-                sentry_sdk.capture_exception(e)
-                logger.exception("Background realtime OCI %s sync failed game_id=%s", sync_kind, game_id)
-            finally:
-                if syncer is not None:
-                    try:
-                        syncer.close()
-                    except SCHEDULER_JOB_EXCEPTIONS as e:
-                        sentry_sdk.capture_exception(e)
-                        logger.exception(
-                            "Failed to close background realtime OCI %s syncer game_id=%s", sync_kind, game_id
-                        )
-        if succeeded > 0:
-            KBO_OCI_LAST_SYNC_TIMESTAMP_SECONDS.set(time.time())
-    except SCHEDULER_JOB_EXCEPTIONS as e:
-        KBO_OCI_SYNC_ERRORS_TOTAL.inc()
-        sentry_sdk.capture_exception(e)
-        logger.exception("Background realtime OCI %s sync setup failed", sync_kind)
-    finally:
-        REALTIME_OCI_SYNC_LOCK.release()
-        logger.info(
-            "Background realtime OCI %s sync finished succeeded=%d failed=%d failed_game_ids=%s elapsed=%.1fs",
-            sync_kind,
-            succeeded,
-            len(failed_game_ids),
-            ",".join(failed_game_ids) or "-",
-            (datetime.now(KST) - started_at).total_seconds(),
-        )
-
-
-def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
-    target_game_ids = sorted({str(game_id) for game_id in game_ids if game_id})
-    if not target_game_ids:
-        return False
-    oci_url = os.getenv("OCI_DB_URL")
-    if not oci_url:
-        logger.warning("Skipping realtime OCI %s sync because OCI_DB_URL is not set", sync_kind)
-        return False
-    method_by_kind = {"pregame": "sync_pregame_game", "live": "sync_specific_game"}
-    method_name = method_by_kind.get(sync_kind)
-    if method_name is None:
-        msg = f"Unsupported realtime OCI sync kind: {sync_kind}"
-        raise ValueError(msg)
-    if not REALTIME_OCI_SYNC_LOCK.acquire(blocking=False):
-        logger.warning(
-            "Skipping realtime OCI %s sync because a prior realtime OCI sync is still running games=%s",
-            sync_kind,
-            ",".join(target_game_ids),
-        )
-        return False
-
-    def worker() -> None:
-        _realtime_oci_sync_worker(sync_kind, oci_url, target_game_ids, method_name)
-
-    thread = Thread(
-        target=worker,
-        name=f"realtime-oci-{sync_kind}-sync",
-        daemon=True,
-    )
-    try:
-        thread.start()
-    except RuntimeError:
-        REALTIME_OCI_SYNC_LOCK.release()
-        return False
-    return True
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=60, max=300),
-    retry_error_callback=alert_failure,
-)
-def _run_hydration(year: int, target_date: str | None = None):
-    """Run OCI to Local hydration via CLI main."""
-    from src.cli.hydrate_runtime_from_oci import main as hydrate_main
-
-    logger.info("Starting hydration for year=%d, date=%s", year, target_date)
-    args = ["--year", str(year)]
-    if target_date:
-        args.extend(["--date", target_date])
-    hydrate_main(args)
-    logger.info("Hydration completed successfully")
-
-
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=30, max=300),
@@ -554,17 +450,10 @@ def crawl_daily_games():
             logger.info("Running run_daily_update for target_date=%s", target_date)
 
             args = ["--date", target_date, "--seed-tomorrow-preview"]
-            if bool(os.getenv("OCI_DB_URL")):
-                logger.info("Enabling OCI sync for daily update")
-                args.append("--sync")
 
             if _env_enabled("DAILY_SKIP_SEASON_STATS", "0"):
                 logger.info("Skipping season stat crawl for daily update (DAILY_SKIP_SEASON_STATS=1)")
                 args.append("--skip-season-stats")
-
-            if _env_enabled("DAILY_SKIP_OCI_SUPPORTING_SYNC", "0"):
-                logger.info("Skipping non-P0 OCI supporting sync for daily update (DAILY_SKIP_OCI_SUPPORTING_SYNC=1)")
-                args.append("--skip-oci-supporting-sync")
 
             # Auto-remediation: fix stats discrepancies detected by the audit step
             if _env_enabled("DAILY_AUTO_REMEDIATION", "1"):
@@ -770,20 +659,6 @@ def _backfill_phase_profiles(backfilled: list[str]) -> None:
         )
         backfilled.append(f"profiles:{len(batch)}")
         logger.info("Phase 4 — Profile backfill completed for %s players", len(batch))
-        oci_url = os.getenv("OCI_DB_URL")
-        if oci_url:
-            with SessionLocal() as sync_session:
-                syncer = OCISync(oci_url, sync_session)
-                try:
-                    synced_basic = syncer.sync_player_basic_by_ids(batch)
-                    synced_players = syncer.sync_players()
-                    logger.info(
-                        "Phase 4 — Profile OCI sync completed (player_basic=%s, players=%s)",
-                        synced_basic,
-                        synced_players,
-                    )
-                finally:
-                    syncer.close()
     except SCHEDULER_JOB_EXCEPTIONS:
         logger.exception("Phase 4 — Profile backfill failed")
 
@@ -811,8 +686,6 @@ def _process_pregame_date(
     target_date: str,
     refresh_only_missing: bool,
     alert_on_missing: bool,
-    sync_to_oci: bool,
-    pregame_sync_game_ids: list[str],
 ) -> int:
     scheduled_count, starters_missing, preview_missing = _pregame_refresh_summary(target_date)
     if scheduled_count == 0:
@@ -821,10 +694,7 @@ def _process_pregame_date(
         MISSING_PREGAME_ALERTED_DATES.discard(target_date)
         logger.info("Skipping pregame refresh for target_date=%s (all present)", target_date)
         return 0
-    saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=False))
-    if saved_ids and sync_to_oci:
-        pregame_sync_game_ids.extend(saved_ids)
-        logger.info("Pregame OCI sync queued for target_date=%s games=%s", target_date, len(saved_ids))
+    saved_ids = asyncio.run(run_preview_batch(target_date))
     post = _pregame_refresh_summary(target_date)
     if post[0] and (post[1] > 0 or post[2] > 0):
         if alert_on_missing and target_date not in MISSING_PREGAME_ALERTED_DATES:
@@ -845,25 +715,19 @@ def _process_pregame_date(
 
 
 def crawl_pregame_refresh():
-    pregame_sync_game_ids: list[str] = []
     if not LIVE_LOCK.acquire(blocking=False):
         logger.info("Skipping pregame refresh because LIVE_LOCK is already held")
         return
     try:
         refresh_only_missing = _env_enabled("PREGAME_REFRESH_ONLY_MISSING", "1")
         alert_on_missing = _env_enabled("PREGAME_MISSING_ALERT", "0")
-        sync_to_oci = _pregame_sync_to_oci_enabled()
         for target_date in _pregame_target_dates():
-            _process_pregame_date(
-                target_date, refresh_only_missing, alert_on_missing, sync_to_oci, pregame_sync_game_ids
-            )
+            _process_pregame_date(target_date, refresh_only_missing, alert_on_missing)
         alert_success("crawl_pregame_refresh")
         global LAST_PREGAME_RUN_TIME
         LAST_PREGAME_RUN_TIME = datetime.now(KST)
     finally:
         LIVE_LOCK.release()
-    if sync_to_oci and pregame_sync_game_ids:
-        _submit_realtime_oci_sync("pregame", pregame_sync_game_ids)
 
 
 def _parse_start_time(
@@ -1021,7 +885,6 @@ def crawl_live_refresh():
             # Fast exit without acquiring LIVE_LOCK
             return
 
-    live_sync_game_ids: list[str] = []
     if not LIVE_LOCK.acquire(blocking=False):
         logger.info("Skipping live refresh because LIVE_LOCK is already held")
         return
@@ -1030,32 +893,18 @@ def crawl_live_refresh():
     try:
         logger.info("Running live refresh cycle")
         with _sqlite_writer_lock():
-            result = asyncio.run(
+            asyncio.run(
                 run_live_crawler_cycle(
-                    sync_to_oci=False,
                     max_active_games=_live_refresh_max_games_per_cycle(),
                     detail_snapshot_background=True,
                 ),
             )
 
-        if isinstance(result, dict):
-            live_sync_game_ids.extend(str(game_id) for game_id in result.get("game_ids_playing") or [] if game_id)
-            failed_ids = result.get("oci_sync_failed_game_ids") or []
-            failure_count = int(result.get("oci_sync_failure_count") or len(failed_ids) or 0)
-            if failure_count:
-                logger.warning(
-                    "Live refresh completed with OCI partial failures phase=sync_specific_game failed=%d game_ids=%s",
-                    failure_count,
-                    ",".join(str(game_id) for game_id in failed_ids),
-                )
     except SCHEDULER_JOB_EXCEPTIONS:
         LAST_LIVE_RUN_TIME = None
         raise
     finally:
         LIVE_LOCK.release()
-
-    if os.getenv("OCI_DB_URL") and live_sync_game_ids:
-        _submit_realtime_oci_sync("live", live_sync_game_ids)
 
 
 @retry(
@@ -1227,19 +1076,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-@_with_lock_skip_guard
-def sync_from_oci_job():
-    """Sync job: Hydrate local DB from OCI after GitHub Actions run window.
-    Runs daily at 05:00 KST.
-    """
-    with _scheduler_job_lock(MAINTENANCE_LOCK):
-        logger.info("=== Starting OCI to Local Sync (Hydration) ===")
-        current_year = datetime.now(KST).year
-        # Hydrate for the current year
-        _run_hydration(current_year)
-        logger.info("=== OCI to Local Sync Completed Successfully ===")
-
-
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=60, max=300),
@@ -1381,7 +1217,7 @@ def auto_heal_games_job():
 @_with_lock_skip_guard
 def heal_unverified_pbp_job():
     """PBP Healer: scan for unverified PBP games and re-crawl from KBO official site.
-    Runs daily at 04:30 KST (after rankings, before OCI sync).
+     Runs daily at 04:30 KST after rankings.
     Uses MAINTENANCE_LOCK to avoid overlapping with other heavy jobs.
     """
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -1404,7 +1240,7 @@ def heal_unverified_pbp_job():
 @_with_lock_skip_guard
 def data_integrity_check_job():
     """Data Integrity Check: run post-crawl data integrity validation.
-    Runs daily at 04:45 KST (after auto-healers, before OCI hydration).
+     Runs daily at 04:45 KST after auto-healers.
     Uses MAINTENANCE_LOCK.
     """
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -1424,6 +1260,42 @@ def data_integrity_check_job():
                 )
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Data Integrity Check job failed")
+
+
+@_with_lock_skip_guard
+def sync_rag_incremental_job():
+    """RAG Vector DB Incremental Sync Job: sync latest season data to pgvector RAG index.
+    Runs daily at 05:00 KST under MAINTENANCE_LOCK.
+    """
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting RAG Vector DB Incremental Sync ===")
+        try:
+            from src.cli.build_rag_index import main as build_rag_index_main
+
+            current_year = datetime.now(KST).year
+            build_rag_index_main(["--source", "all", "--season", str(current_year)])
+            logger.info("=== RAG Vector DB Incremental Sync Completed Successfully ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("RAG Vector DB Incremental Sync job failed")
+
+
+@_with_lock_skip_guard
+def backup_db_job():
+    """Weekly SQLite Backup & Integrity Check Job.
+    Runs weekly Sunday at 02:00 KST under MAINTENANCE_LOCK.
+    """
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Weekly SQLite Backup & Integrity Check ===")
+        try:
+            from scripts.maintenance.backup_db import run_backup
+
+            res = run_backup()
+            if res:
+                logger.info("=== Weekly SQLite Backup Completed: %s ===", res)
+            else:
+                logger.warning("=== Weekly SQLite Backup Failed ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Weekly SQLite Backup job failed")
 
 
 @_with_lock_skip_guard
@@ -1470,6 +1342,56 @@ def daily_gap_report_job():
             logger.info("=== Daily Gap Report Summary Completed Successfully ===")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Daily Gap Report job failed")
+
+
+@_with_lock_skip_guard
+def crawl_kbo_press_releases_job():
+    """Crawl KBO official press releases and notices.
+    Runs daily at 06:10 KST.
+    """
+    with _scheduler_job_lock(DAILY_LOCK):
+        logger.info("=== Starting KBO Press Releases Crawl ===")
+        try:
+            from src.cli.crawl_press_releases import main as press_main
+
+            press_main(["--save", "--max-pages", "1"])
+            logger.info("=== KBO Press Releases Crawl Completed ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("KBO press releases crawl failed")
+
+
+@_with_lock_skip_guard
+def crawl_futures_schedule_job():
+    """Crawl Futures League game schedule and standings.
+    Runs daily at 06:30 KST.
+    """
+    with _scheduler_job_lock(DAILY_LOCK):
+        logger.info("=== Starting Futures League Schedule Crawl ===")
+        try:
+            from src.cli.crawl_futures_schedule import main as futures_main
+
+            futures_main(["--save"])
+            logger.info("=== Futures League Schedule Crawl Completed ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Futures League schedule crawl failed")
+
+
+@_with_lock_skip_guard
+def recalc_milestones_and_rag_job():
+    """Recalculate player milestones and index RAG knowledge chunks.
+    Runs daily at 07:15 KST.
+    """
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Milestone Recalculation and RAG Indexing ===")
+        try:
+            from src.cli.index_rag_knowledge import main as index_main
+            from src.cli.recalc_milestones import main as recalc_main
+
+            recalc_main([])
+            index_main([])
+            logger.info("=== Milestone Recalculation and RAG Indexing Completed ===")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Milestone recalculation and RAG indexing failed")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1590,12 +1512,20 @@ def crawl_p0_non_game_job():
         try:
             from src.cli.crawl_p0_data import main as crawl_p0_data_main
 
-            current_year = datetime.now(KST).year
-            result = crawl_p0_data_main(["--type", "all", "--save", "--days", "3", "--season", str(current_year)])
-            logger.info("[P0NonGame] P0 non-game crawl completed: %s", result)
-            alert_success("crawl_p0_non_game_job", str(result))
+            crawl_p0_data_main(
+                [
+                    "--type",
+                    "all",
+                    "--save",
+                    "--days",
+                    "3",
+                    "--season",
+                    str(datetime.now(KST).year),
+                ],
+            )
+            logger.info("[P0NonGame] P0 non-game crawl completed")
         except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("P0 non-game crawl failed")
+            logger.exception("P0 non-game job failed")
 
 
 job_start_times: dict[str, float] = {}
@@ -1638,21 +1568,6 @@ def job_lifecycle_listener(event: object) -> None:
                 logger.exception("Failed to send Slack alert for failed job %s", job_id)
 
 
-def _query_max_updated_at(url: str | None) -> datetime | None:
-    if not url:
-        return None
-    try:
-        engine = create_engine_for_url(url)
-        with engine.connect() as conn:
-            row = conn.execute(text("SELECT MAX(updated_at) FROM game")).scalar()
-            return datetime.fromisoformat(row) if isinstance(row, str) else row
-    except Exception as e:
-        logger.exception("Failed to query OCI max updated_at")
-        sentry_sdk.capture_exception(e)
-        KBO_OCI_SYNC_ERRORS_TOTAL.inc()
-        return None
-
-
 def lock_skip_monitor_job() -> None:
     """Monitor lock-skip metrics and alert when the skip rate is abnormally high.
 
@@ -1692,45 +1607,6 @@ def lock_skip_monitor_job() -> None:
                 SlackWebhookClient.send_alert(msg)
             except ALERT_EXCEPTIONS:
                 logger.exception("Failed to send lock-skip alert for %s/%s", job_id, lock_name)
-
-
-_last_oci_auto_sync_trigger: float = 0.0
-
-
-def update_oci_sync_lag_metrics() -> None:
-    global _last_oci_auto_sync_trigger
-
-    try:
-        from src.sync.lag_monitor import check_and_resync_lagging_tables
-
-        res = check_and_resync_lagging_tables()
-        logger.info("Updated OCI sync lag metrics & auto re-sync check: %s", res)
-
-        max_lag = (
-            float(res.get("overall_max_lag_seconds", 0.0))
-            if isinstance(res, dict) and "overall_max_lag_seconds" in res
-            else 0.0
-        )
-        KBO_OCI_SYNC_LAG_SECONDS.set(max_lag)
-
-        threshold = float(_env_int("OCI_SYNC_LAG_AUTO_HEAL_THRESHOLD", 21600))
-        cooldown = float(_env_int("OCI_SYNC_LAG_AUTO_HEAL_COOLDOWN", 3600))
-        now = time.time()
-
-        if max_lag >= threshold and (now - _last_oci_auto_sync_trigger) >= cooldown:
-            logger.warning(
-                "⚠️ OCI overall sync lag (%.1fs) >= threshold (%.0fs). Auto-triggering OCI sync recovery...",
-                max_lag,
-                threshold,
-            )
-            _last_oci_auto_sync_trigger = now
-            try:
-                sync_from_oci_job()
-            except SCHEDULER_JOB_EXCEPTIONS:
-                logger.exception("Auto OCI sync recovery trigger failed")
-    except Exception as e:
-        logger.exception("Failed to update OCI sync lag metrics")
-        sentry_sdk.capture_exception(e)
 
 
 _SCHEDULER_REF: BlockingScheduler | None = None
@@ -1799,7 +1675,7 @@ def _shutdown_handler(signum: int, frame: object) -> None:
             _SCHEDULER_REF.shutdown(wait=False)
         except Exception as e:
             logger.warning("Error during scheduler shutdown: %s", e)
-    for lock in [LIVE_LOCK, DAILY_LOCK, MAINTENANCE_LOCK, REALTIME_OCI_SYNC_LOCK, SQLITE_WRITE_LOCK]:
+    for lock in [LIVE_LOCK, DAILY_LOCK, MAINTENANCE_LOCK, SQLITE_WRITE_LOCK]:
         try:
             lock.release()
         except Exception as e:
@@ -1863,20 +1739,6 @@ def _start_scheduler(args):
             3600,
         ),
         (
-            weekly_sla_report_job,
-            CronTrigger(day_of_week="mon", hour=6, minute=0),
-            "weekly_sla_report",
-            "Weekly SLA Report Generation",
-            3600,
-        ),
-        (
-            compute_park_factor_job,
-            CronTrigger(day_of_week="sun", hour=5, minute=30),
-            "compute_park_factor",
-            "Weekly Park Factor Computation",
-            7200,
-        ),
-        (
             crawl_retired_players_job,
             CronTrigger(day=1, hour=2, minute=0),
             "crawl_retired_players",
@@ -1897,9 +1759,51 @@ def _start_scheduler(args):
             "Daily Gap Report Summary Notification (07:00 KST)",
             3600,
         ),
+        (
+            crawl_kbo_press_releases_job,
+            CronTrigger(hour=6, minute=10),
+            "crawl_kbo_press_releases",
+            "KBO Official Press Releases Crawl (06:10 KST)",
+            3600,
+        ),
+        (
+            crawl_futures_schedule_job,
+            CronTrigger(hour=6, minute=30),
+            "crawl_futures_schedule",
+            "Futures League Schedule Crawl (06:30 KST)",
+            3600,
+        ),
+        (
+            recalc_milestones_and_rag_job,
+            CronTrigger(hour=7, minute=15),
+            "recalc_milestones_and_rag",
+            "Milestone Recalculation and RAG Indexing",
+            7200,
+        ),
+        (
+            weekly_sla_report_job,
+            CronTrigger(day_of_week="mon", hour=6, minute=0),
+            "weekly_sla_report",
+            "Weekly SLA Report",
+            7200,
+        ),
+        (
+            compute_park_factor_job,
+            CronTrigger(day_of_week="sun", hour=5, minute=30),
+            "compute_park_factor",
+            "Weekly Park Factor Computation",
+            7200,
+        ),
     ]
     for fn, trigger, job_id, name, grace in jobs:
-        scheduler.add_job(fn, trigger=trigger, id=job_id, name=name, misfire_grace_time=grace, max_instances=1)
+        scheduler.add_job(
+            fn,
+            trigger=trigger,
+            id=job_id,
+            name=name,
+            misfire_grace_time=grace,
+            max_instances=1,
+        )
         logger.info("Registered job: %s", job_id)
 
     scheduler.add_job(
@@ -1935,6 +1839,8 @@ def _start_scheduler(args):
         (auto_heal_games_job, CronTrigger(hour=4, minute=15), "auto_heal_games", 7200),
         (heal_unverified_pbp_job, CronTrigger(hour=4, minute=30), "heal_pbp", 7200),
         (data_integrity_check_job, CronTrigger(hour=4, minute=45), "data_integrity_check", 7200),
+        (sync_rag_incremental_job, CronTrigger(hour=5, minute=0), "sync_rag_incremental", 7200),
+        (backup_db_job, CronTrigger(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
     ]
     for fn, trigger, job_id, grace in tier2_jobs:
         scheduler.add_job(fn, trigger=trigger, id=job_id, name=job_id, misfire_grace_time=grace, max_instances=1)
@@ -2005,14 +1911,6 @@ def _start_scheduler(args):
         max_instances=1,
     )
     scheduler.add_job(
-        update_oci_sync_lag_metrics,
-        trigger=CronTrigger(minute="*/5"),
-        id="update_oci_sync_lag",
-        name="Update OCI Sync Lag Metrics",
-        misfire_grace_time=300,
-        max_instances=1,
-    )
-    scheduler.add_job(
         lock_skip_monitor_job,
         trigger=CronTrigger(minute="*/15"),
         id="lock_skip_monitor",
@@ -2057,7 +1955,6 @@ def _start_scheduler(args):
         "Auto-Healer (Stuck/Inconsistent Games) (04:15)",
         "PBP Healer (04:30)",
         "Data Integrity Gate (04:45)",
-        "OCI Hydration (05:00)",
         "Team Info/History (Sunday 06:00)",
         "Daily Gap Report Summary (07:00)",
         "Lock Skip Monitor (Every 15m)",

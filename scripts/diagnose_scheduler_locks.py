@@ -29,7 +29,6 @@ KNOWN_LOCKS = (
     "daily_update",
     "live_refresh",
     "maintenance",
-    "realtime_oci_sync",
     "sqlite_writer",
 )
 

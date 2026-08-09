@@ -87,63 +87,47 @@ jobs:
 
   migration-apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: test
-    if: always() && needs.test.result == 'success'
+    timeout-minutes: 5
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: kbo_test
+          POSTGRES_DB: kbo_migrations
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d kbo_test"
+          --health-cmd="pg_isready -U postgres -d kbo_migrations"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
     steps:
       - uses: actions/checkout@v5
-
       - uses: ./.github/actions/kbo-job-setup
         with:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
+      - name: Initialize PostgreSQL ORM baseline schema
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_test
-          OCI_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_test
-
-      - name: Initialize PostgreSQL model schema
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
         run: python -c "from src.db.engine import init_db; init_db()"
+      - name: Verify PostgreSQL ORM baseline views
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_test
-
-      - name: Seed core data
-        run: python -m scripts.maintenance.seed_data
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+        run: python -c "from sqlalchemy import inspect; from src.db.engine import Engine; assert 'vw_player_season_batting_recalc' in inspect(Engine).get_view_names()"
+      - name: Apply PostgreSQL incremental migrations
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_test
-
-      - name: Seed DataSource registry
-        run: python -m src.cli.seed_data_sources
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+        run: python3 -m src.cli.apply_postgres_migrations
+      - name: Reapply PostgreSQL migrations
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_test
-
-      - name: Apply OCI migrations
-        run: python scripts/maintenance/apply_oci_migrations.py
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+        run: python3 -m src.cli.apply_postgres_migrations
+      - name: Check PostgreSQL migrations are current
         env:
-          OCI_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_test
-
-      - name: Verify idempotent re-apply
-        run: python scripts/maintenance/apply_oci_migrations.py
-        env:
-          OCI_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_test
-
-      - name: Check migration status
-        run: python scripts/maintenance/apply_oci_migrations.py --check
-        env:
-          OCI_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_test
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+        run: python3 -m src.cli.apply_postgres_migrations --check
 
   integration-test:
     runs-on: ubuntu-latest
@@ -197,20 +181,13 @@ jobs:
           init-db: 'false'
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
-          OCI_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
 
       - name: Initialize PostgreSQL integration schema
         run: python -c "from src.db.engine import init_db; init_db()"
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
 
-      - name: Apply OCI migrations
-        run: python scripts/maintenance/apply_oci_migrations.py
-        env:
-          OCI_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
-
       - name: Run PostgreSQL integration tests
         run: pytest -m integration --tb=short -v --durations=10 -n 1 2>&1
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
-          OCI_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration

@@ -84,21 +84,21 @@ def test_daily_kbo_sync_includes_core_steps():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
     assert "python3 -m src.cli.run_daily_update" in workflow
-    assert "--sync --fix" in workflow
-    assert "OCI Freshness Gate" in workflow
-    assert "--source-url-env OCI_DB_URL" in workflow
-    assert workflow.index("Run Postgame Finalize & Sync") < workflow.index("Compute Standings")
-    assert workflow.index("Compute Standings") < workflow.index("OCI Freshness Gate")
+    assert "--date ${{ steps.job-setup.outputs.KST_DATE }} --fix" in workflow
+    assert "Freshness Gate" in workflow
+    assert "--source-url-env" not in workflow
+    assert workflow.index("Run Postgame Finalize") < workflow.index("Compute Standings")
+    assert workflow.index("Compute Standings") < workflow.index("Freshness Gate")
 
 
 def test_daily_kbo_sync_runs_scoped_regression_pack_with_artifacts():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
     assert "Data Quality Regression Pack (local, preflight)" in workflow
-    assert "Data Quality Regression Pack (OCI, post-sync)" in workflow
+    assert "Data Quality Regression Pack (local, post-run)" in workflow
     assert "--require-schema" in workflow
     assert '--output "$RUNNER_TEMP/data_quality_regression_local.json"' in workflow
-    assert '--output "$RUNNER_TEMP/data_quality_regression_oci.json"' in workflow
+    assert '--output "$RUNNER_TEMP/data_quality_regression_postrun.json"' in workflow
     assert "Upload Data Quality Regression Artifacts" in workflow
     assert "actions/upload-artifact@v4" in workflow
 
@@ -114,12 +114,12 @@ def test_daily_kbo_sync_includes_quality_and_gap_report():
 def test_daily_kbo_sync_includes_advanced_sync_and_quality_checks():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
-    assert "Run Advanced Daily & Sync" in workflow
+    assert "Run Advanced Daily" in workflow
     assert "Reference Integrity Gate" in workflow
-    assert "Quality Gate (OCI Only)" in workflow
+    assert "Quality Gate" in workflow
     assert "Completeness Audit" in workflow
     assert "Freshness Gate (Extended Window)" in workflow
-    assert "--days 14 --source-url-env OCI_DB_URL" in workflow
+    assert "--days 14" in workflow
 
 
 def test_github_ci_does_not_reference_removed_maintenance_paths():
@@ -174,7 +174,7 @@ def test_github_ci_uses_supported_maintenance_modules():
 
     assert "python3 -m scripts.maintenance.seed_data" in python_env
     assert "python3 -m scripts.maintenance.resolve_null_player_ids_conservative" in daily
-    assert "python3 -m scripts.maintenance.quality_gate" in daily
+    assert "python3 -m src.cli.quality_gate_check" in daily
     assert "from scripts.maintenance.backfill_sh_sf_from_pbp import" in backfill
     assert "python3 -m scripts.maintenance.resolve_null_player_ids_conservative" in backfill
     assert "from scripts.maintenance.backfill_roster_movements import" in backfill
@@ -186,8 +186,8 @@ def test_backfill_advanced_stats_uses_supported_cli_flags():
     assert "python3 -m src.cli.backfill_advanced_stats" in workflow
     assert '--years "$YEAR"' in workflow
     assert "--series regular" in workflow
-    assert "python3 -m src.cli.sync_oci" in workflow
-    assert "--season-stats" in workflow
+    assert "python3 -m src.cli.sync_oci" not in workflow
+    assert "--season-stats" not in workflow
     assert 'python3 -m src.cli.backfill_advanced_stats "$YEAR" regular' not in workflow
 
 
@@ -225,7 +225,7 @@ def test_backfill_prunes_matrix_before_expensive_setup():
     assert backfill.index(f"uses: {NODE24_CHECKOUT_REF}") < backfill.index("uses: ./.github/actions/kbo-job-setup")
 
 
-def test_kbo_automation_recalc_stats_uses_supported_cli_flags_and_syncs():
+def test_kbo_automation_recalc_stats_uses_supported_cli_flags_without_sync():
     workflow = _read(WORKFLOW_DIR / "kbo_automation.yml")
     recalc_start = workflow.index("recalc-stats)")
     recalc_block = workflow[recalc_start : workflow.index(";;", recalc_start)]
@@ -233,8 +233,7 @@ def test_kbo_automation_recalc_stats_uses_supported_cli_flags_and_syncs():
     assert "python3 -m src.cli.backfill_advanced_stats \\" in recalc_block
     assert '--years "${YEAR}"' in recalc_block
     assert "--series regular" in recalc_block
-    assert "python3 -m src.cli.sync_oci \\" in recalc_block
-    assert "--season-stats" in recalc_block
+    assert "python3 -m src.cli.sync_oci" not in recalc_block
     assert 'python3 -m src.cli.backfill_advanced_stats "${YEAR}" regular' not in recalc_block
 
 
@@ -272,24 +271,14 @@ def test_local_github_actions_are_used_after_checkout():
     assert "actions/checkout" not in kbo_setup
 
 
-def test_kbo_job_setup_hydration_with_resolve_date_requires_explicit_inputs():
+def test_kbo_job_setup_has_no_hydration_contract():
     for path in _workflow_files():
         for job_name, job_block in _job_blocks(_read(path)):
             for setup_block in _kbo_job_setup_blocks(job_block):
-                if "resolve-date: 'true'" not in setup_block or "hydrate: 'true'" not in setup_block:
-                    continue
-
-                assert "hydrate-year:" in setup_block, (
-                    f"{path.name}:{job_name} kbo-job-setup hydration runs before date resolution; "
-                    "pass explicit hydrate-year or move hydration after setup"
-                )
-                assert "hydrate-date:" in setup_block, (
-                    f"{path.name}:{job_name} kbo-job-setup hydration runs before date resolution; "
-                    "pass explicit hydrate-date or move hydration after setup"
-                )
+                assert "hydrate" not in setup_block
 
 
-def test_daily_kbo_sync_hydrates_fresh_runner_jobs():
+def test_daily_kbo_sync_does_not_hydrate_fresh_runner_jobs():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
     jobs = dict(_job_blocks(workflow))
 
@@ -298,49 +287,41 @@ def test_daily_kbo_sync_hydrates_fresh_runner_jobs():
 
     for job_name in ("post-process", "quality", "advanced-sync"):
         job_block = jobs[job_name]
-        assert "hydrate: 'true'" in job_block
-        assert "hydrate-year: ${{ needs.finalize.outputs.year }}" in job_block
-        assert "hydrate-date: ${{ needs.finalize.outputs.date }}" in job_block
+        assert "hydrate" not in job_block
 
     assert "python3 -m scripts.verification.verify_player_game_stats \\" in workflow
     assert "--date ${{ needs.finalize.outputs.date }}" in workflow
     assert "--exit-code" in workflow
-    assert "--player-game-stats \\\n            --year ${{ needs.finalize.outputs.year }}" in workflow
-    assert "--player-game-stats \\\n            --date" not in workflow
 
 
-def test_daily_preview_uses_correct_cli_and_hydration():
+def test_daily_preview_uses_correct_cli_without_hydration():
     workflow = _read(WORKFLOW_DIR / "daily_preview.yml")
 
     assert "python3 -m src.cli.daily_preview_batch" in workflow
-    assert "python3 -m src.cli.hydrate_runtime_from_oci" in workflow
+    assert "hydrate_runtime_from_oci" not in workflow
     assert "steps.job-setup.outputs.KST_DATE" in workflow
-    assert "steps.job-setup.outputs.KST_YEAR" in workflow
+    assert "steps.job-setup.outputs.KST_YEAR" not in workflow
     assert ".github/actions/kbo-job-setup" in workflow
     assert "resolve-date: 'true'" in workflow
     assert "if: always()" in workflow
 
 
-def test_pitcher_backfill_uses_correct_cli_and_hydration():
+def test_pitcher_backfill_uses_correct_cli_without_hydration():
     workflow = _read(WORKFLOW_DIR / "pitcher_backfill.yml")
     jobs = dict(_job_blocks(workflow))
     job_block = jobs["backfill-pitchers"]
     setup_idx = job_block.index("uses: ./.github/actions/kbo-job-setup")
-    hydrate_idx = job_block.index("- name: Hydrate Runtime Cache From OCI")
     run_idx = job_block.index("- name: Run Pregame Backfill")
-    setup_block = job_block[setup_idx:hydrate_idx]
-    hydrate_block = job_block[hydrate_idx:run_idx]
+    setup_block = job_block[setup_idx:run_idx]
 
     assert "python3 -m src.cli.backfill_pregame_previews" in workflow
     assert '--days-ahead "${DAYS_AHEAD}"' in workflow
     assert "DAYS_AHEAD" in workflow
     assert ".github/actions/kbo-job-setup" in job_block
     assert "resolve-date: 'true'" in setup_block
-    assert "hydrate: 'true'" not in setup_block
-    assert "python3 -m src.cli.hydrate_runtime_from_oci" in hydrate_block
-    assert "steps.job-setup.outputs.KST_YEAR" in hydrate_block
-    assert "steps.job-setup.outputs.KST_DATE" in hydrate_block
-    assert setup_idx < hydrate_idx < run_idx
+    assert "hydrate" not in setup_block
+    assert "hydrate_runtime_from_oci" not in job_block
+    assert setup_idx < run_idx
 
 
 def test_security_audit_uses_pip_audit():
@@ -364,6 +345,7 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert "pytest --tb=short -v --durations=10" in workflow
     assert "if line_rate < 75:" in workflow
     assert "migration-apply" in workflow
+    assert "apply_postgres_migrations" in workflow
     assert "integration-test-postgres" in workflow
     assert "image: postgres:16" in workflow
     assert "matrix:" in workflow
@@ -384,9 +366,28 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert "migration-apply" in jobs
     assert "integration-test" in jobs
     assert "integration-test-postgres" in jobs
+    assert "OCI_DB_URL" not in jobs["migration-apply"]
     assert "needs: test" in jobs["integration-test"]
     assert "needs: test" in jobs["integration-test-postgres"]
     assert workflow.index("  lint:\n") < workflow.index("  test:\n")
+
+    migration_job = jobs["migration-apply"]
+    assert "Initialize PostgreSQL ORM baseline schema" in migration_job
+    assert "from src.db.engine import init_db; init_db()" in migration_job
+    assert "Verify PostgreSQL ORM baseline views" in migration_job
+    assert "vw_player_season_batting_recalc" in migration_job
+    assert migration_job.index("Initialize PostgreSQL ORM baseline schema") < migration_job.index(
+        "Verify PostgreSQL ORM baseline views"
+    )
+    assert migration_job.index("Verify PostgreSQL ORM baseline views") < migration_job.index(
+        "Apply PostgreSQL incremental migrations",
+    )
+    assert migration_job.index("Apply PostgreSQL incremental migrations") < migration_job.index(
+        "Reapply PostgreSQL migrations",
+    )
+    assert migration_job.index("Reapply PostgreSQL migrations") < migration_job.index(
+        "Check PostgreSQL migrations are current",
+    )
 
 
 def test_docker_build_has_full_build_chain():
@@ -421,12 +422,12 @@ def test_weekly_maintenance_uses_correct_cli_and_env():
 
     assert "python3 -m src.cli.run_weekly_maintenance" in workflow
     assert "--profile-limit" in workflow
-    assert "--sync" in workflow
+    assert "--sync" not in workflow
     assert "YOUTUBE_API_KEY" in workflow
     assert "NAVER_CLIENT_ID" in workflow
     assert "NAVER_CLIENT_SECRET" in workflow
-    assert "OCI_DB_URL" in workflow
-    assert workflow.index("Run Weekly Maintenance & Sync") < workflow.index("uses: ./.github/actions/notify")
+    assert "OCI_DB_URL" not in workflow
+    assert workflow.index("Run Weekly Maintenance") < workflow.index("uses: ./.github/actions/notify")
 
 
 def test_periodic_extras_runs_unified_audit_twice():
@@ -434,10 +435,10 @@ def test_periodic_extras_runs_unified_audit_twice():
 
     assert "python3 -m src.cli.run_periodic_extras" in workflow
     assert "--year" in workflow
-    assert "--sync" in workflow
+    assert "--sync" not in workflow
     assert 'python3 -m src.cli.monthly_unified_audit --year "$PREV_YEAR"' in workflow
     assert 'python3 -m src.cli.monthly_unified_audit --year "$YEAR"' in workflow
-    assert workflow.index("Run Periodic Extras & Sync") < workflow.index("Monthly Unified Audit")
+    assert workflow.index("Run Periodic Extras") < workflow.index("Monthly Unified Audit")
 
 
 def test_full_recalculation_full_pipeline():
@@ -449,8 +450,8 @@ def test_full_recalculation_full_pipeline():
     assert "--save" in workflow
     assert "python3 -m src.cli.recalc_player_game_stats" in workflow
     assert "--season ${{ github.event.inputs.year }}" in workflow
-    assert "python3 -m src.cli.sync_oci --kbo-season --season-stats --player-game-stats" in workflow
-    assert "${{ github.event.inputs.sync == 'true' }}" in workflow
+    assert "python3 -m src.cli.sync_oci" not in workflow
+    assert "github.event.inputs.sync" not in workflow
     assert "python3 -m scripts.verification.verify_player_game_stats --exit-code" in workflow
     assert "if: always()" in workflow
     assert "concurrency:" in workflow

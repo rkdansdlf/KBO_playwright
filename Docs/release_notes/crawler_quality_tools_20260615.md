@@ -11,7 +11,7 @@
 - **Data quality regression pack:** `src.cli.data_quality_regression_pack` checks compact DB invariants for common crawl/parser regressions.
 - **Live and preview crawler hardening:** live detail snapshots now run in a non-cadence-critical background path, preview API payloads reject stale lineup rows, and fielding selectors are centralized.
 - **Relay enrichment:** relay player resolution distinguishes defensive substitutions from offensive text when play descriptions indicate a defensive target.
-- **Profile backfill workflow:** scheduled profile backfill supports configurable batch/delay behavior and OCI sync of profile tables.
+- **Profile backfill workflow:** scheduled profile backfill supports configurable batch/delay behavior and canonical database writes.
 - **Exception hygiene:** reduced `except Exception` in high-volume orchestration and crawler files by replacing them with concrete Playwright, SQLAlchemy, subprocess, HTTP, file, and parser exception sets.
 
 ## Verification Commands

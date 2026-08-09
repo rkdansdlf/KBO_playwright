@@ -1,12 +1,12 @@
 name: KBO Pregame Refresh
 
 on:
-  schedule:
-    - cron: '*/15 7-9 * * 2-5'
-    - cron: '30,45 5 * * 6'
-    - cron: '*/15 6-8 * * 6'
-    - cron: '30,45 2 * * 0'
-    - cron: '*/15 3-8 * * 0'
+  # schedule:
+  #   - cron: '*/15 7-9 * * 2-5'
+  #   - cron: '30,45 5 * * 6'
+  #   - cron: '*/15 6-8 * * 6'
+  #   - cron: '30,45 2 * * 0'
+  #   - cron: '*/15 3-8 * * 0'
   workflow_dispatch:
     inputs:
       target_date:
@@ -20,7 +20,6 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
 
 jobs:
   pregame-refresh:
@@ -36,12 +35,6 @@ jobs:
           resolve-date: 'true'
           target-date: ${{ github.event.inputs.target_date || '' }}
           date-roll: '0'
-
-      - name: Hydrate Runtime Cache From OCI
-        run: |
-          python3 -m src.cli.hydrate_runtime_from_oci \
-            --year "${{ steps.job-setup.outputs.KST_YEAR }}" \
-            --date "${{ steps.job-setup.outputs.KST_DATE }}"
 
       - name: Run Daily Preview Batch
         env:

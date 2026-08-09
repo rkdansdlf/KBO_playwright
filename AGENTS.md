@@ -3,10 +3,10 @@
 ## Project Structure & Module Organization
 This repository is a Playwright-based KBO data crawler with a two-track pipeline:
 - `src/`: Core application code (crawlers, parsers, models, repositories, CLI).
-- `scripts/`: Maintenance and batch utilities (crawling, oci, maintenance).
+- `scripts/`: Maintenance and batch utilities (crawling, maintenance).
 - `tests/`: Pytest tests and debug scripts (`test_*.py` run by default).
 - `Docs/`: Runbooks, URL references, limitations, and schemas.
-- `migrations/`: Schema migrations (including OCI).
+- `migrations/`: Schema migrations.
 - `data/`, `logs/`: Local SQLite DB and runtime logs.
 
 ## Agent Skill Defaults
@@ -16,7 +16,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - For GitHub Actions failures, CI regressions, or workflow log investigation, use `$gh-fix-ci`.
 - For PR, issue, branch, or repository triage, use `$github`; route to the more specific GitHub skill once the task is clear.
 - For security review of a PR, commit, branch diff, or working-tree patch, use `$security-diff-scan`; for repository-wide or scoped-path security audits, use `$security-scan`.
-- For large crawler, scheduler, backfill, OCI sync, or GitHub Actions changes spanning multiple modules, use `$writing-plans` before editing.
+- For large crawler, scheduler, backfill, or GitHub Actions changes spanning multiple modules, use `$writing-plans` before editing.
 - For quality gate, freshness, gap report, or data quality summaries that need analytical presentation, use the Data Analytics reporting or visualization skills when useful.
 - Verification should normally include the narrowest relevant `pytest` target plus `ruff check src/ tests/`; for CLI behavior, prefer a dry-run or read-only command before any save/sync operation.
 
@@ -29,12 +29,12 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.collect_games --year 2024 --month 10`: Collect game details.
 - `python3 -m src.cli.crawl_futures --season 2025 --concurrency 3`: Crawl Futures stats.
 - `python3 -m src.cli.crawl_futures --season 2025 --concurrency 3 --changed-since "2026-06-03"`: Incremental Futures crawl (skip recently updated players).
-- `python3 -m src.cli.sync_oci --truncate`: Sync local SQLite to OCI.
 - `python3 -m src.cli.crawl_p0_data --save`: Collect all P0 data (events + roster + ticket).
 - `python3 -m src.cli.crawl_team_events --save`: Collect team events/news only.
 - `python3 -m src.cli.crawl_roster_transactions --save`: Collect daily roster transactions.
 - `python3 -m src.cli.crawl_ticket_info --save`: Collect ticket prices/open rules.
-- `python3 -m src.cli.seed_data_sources`: Seed initial DataSource entries.
+- `python3 -m src.cli.crawl_awards --save`: Crawl award history (Wikipedia MVP/신인상/골든글러브/수비상 + yagoonara 올스타/한국시리즈 MVP) into `awards`. `--type <MVP|신인상|골든글러브|수비상|올스타전MVP|한국시리즈MVP>` filters; `--dry-run` parses only.
+- `python3 -m src.cli.seed_data_sources`: Seed initial DataSource entries (includes `kbo_awards_wikipedia`, `kbo_awards_yagoonara`).
 - `python3 -m src.cli.seed_p1_data`: Seed P1 data (seat + parking + food).
 - `python3 scripts/seed_seat_sections.py`: Seed stadium seat sections.
 - `python3 scripts/seed_parking.py`: Seed parking lot data.
@@ -48,6 +48,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m scripts.maintenance.backfill_player_ids`: Backfill NULL player_ids in game stats tables (uses PlayerIdResolver with name+team+season matching).
 - `python3 -m scripts.maintenance.backfill_player_ids --year 2026`: Single-year backfill.
 - `python3 -m scripts.maintenance.backfill_player_ids --dry-run`: Preview only (no writes).
+- `python3 -m scripts.maintenance.link_award_player_ids --apply`: Link award winners to player registry (PlayerIdResolver, conservative); `--dry-run` default; `--year` / `--type` filters.
 - `python3 -m scripts.maintenance.resolve_null_player_ids_conservative`: Conservative resolver using group evidence + overrides CSV.
 - `python3 -m scripts.maintenance.resolve_null_player_ids_conservative --year 2026 --apply`: Apply conservative resolution for 2026.
 - `python3 -m src.cli.monthly_pa_audit`: Run PA formula audit & fix for previous year.
@@ -68,15 +69,12 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --json`: Validate crawler selector contracts against fixture/live targets.
 - `python3 -m src.cli.diagnose_crawler_failure --json logs/<logfile>.log`: Classify crawler failure logs and suggest targeted recovery commands.
 - `python3 -m src.cli.data_quality_regression_pack --json`: Run compact DB invariants for PA formula, impossible stats, and NULL player IDs.
-- `python3 -m src.cli.hydrate_runtime_from_oci [--year YYYY] [--date YYYYMMDD]`: Hydrate local runtime cache from OCI.
 - `python3 -m src.cli.live_crawler [--mode ...]`: Run live data crawler during game hours.
 - `python3 -m src.cli.recalc_player_game_stats --year YYYY`: Recalculate player game-level batting/pitching stats.
 - `python3 -m src.cli.recalc_season_stats --year YYYY`: Recalculate season-level player/team stats.
 - `python3 -m src.cli.run_daily_update`: Execute the full daily update pipeline (finalize + standings + defense + rankings).
 - `python3 -m src.cli.run_periodic_extras`: Run periodic data sync tasks.
 - `python3 -m src.cli.run_weekly_maintenance`: Run weekly maintenance tasks (futures profiles, enrichment).
-- `python3 -m src.cli.sync_oci --season-stats`: Sync season-level player/team stats to OCI.
-- `python3 -m src.cli.sync_oci --player-game-stats`: Sync player game-level stats to OCI.
 - `python3 -m src.cli.smart_polling_gate --json`: Lightweight gate to check if today's KBO games are finished (used in CI polling).
 - `python3 -m src.cli.data_integrity_checker --date YYYYMMDD`: Post-crawl data integrity validation (game existence, terminal status, stats, NULL player IDs).
 - `python3 -m src.cli.load_text_relay --input-dir data/`: Load text relay CSV files into the database.
@@ -89,12 +87,12 @@ These modules are operational or diagnostic entrypoints that are less frequently
 
 | Category | CLI modules |
 | --- | --- |
-| Data collection | `collect_profiles`, `collect_rosters`, `crawl_congestion`, `crawl_operation_notices`, `crawl_parking`, `crawl_retire`, `crawl_seat_sections`, `crawl_stadium_food`, `crawl_staff_register`, `crawl_text_relay`, `crawl_transit_time` |
+| Data collection | `collect_profiles`, `collect_rosters`, `crawl_awards`, `crawl_congestion`, `crawl_operation_notices`, `crawl_parking`, `crawl_retire`, `crawl_seat_sections`, `crawl_stadium_food`, `crawl_staff_register`, `crawl_text_relay`, `crawl_transit_time` |
 | Pipeline / jobs | `run_all_crawlers`, `run_advanced_daily`, `daily_highlight_batch`, `daily_review_batch`, `daily_story_batch`, `crawl_phase1_extra`, `run_pipeline_demo` |
-| Repair / backfill | `audit_completeness_2009_2025`, `auto_healer`, `backfill_advanced_stats`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `recovery_pipeline`, `retry_daily_failures` |
+| Repair / backfill | `audit_completeness_2009_2025`, `auto_healer`, `backfill_advanced_stats`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `link_award_player_ids`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `recovery_pipeline`, `retry_daily_failures` |
 | Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
-| Monitoring / reports | `check_data_status`, `crawler_live_smoke`, `crawler_selector_gate`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `historical_coverage_report`, `monitor_data_freshness`, `morning_pbp_report`, `probe_oci_counts`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
-| Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `verify_chunk_quality`, `verify_sync_consistency`, `load_text_relay` |
+| Monitoring / reports | `check_data_status`, `crawler_live_smoke`, `crawler_selector_gate`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `historical_coverage_report`, `monitor_data_freshness`, `morning_pbp_report`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
+| Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `verify_chunk_quality`, `load_text_relay` |
 
 ## Code Quality & Linting
 - `ruff check src/ tests/ scripts/` = **0 errors** (enforced by pre-commit).
@@ -121,15 +119,15 @@ These modules are operational or diagnostic entrypoints that are less frequently
 - PRs should include: a clear summary, affected modules, test commands run, and any selector/URL changes.
 
 ## Configuration & Secrets
-- Use `.env` for `DATABASE_URL`, `OCI_DB_URL`, request throttling (e.g., `KBO_REQUEST_DELAY_MIN`), and external API keys (`YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`).
+- Use `.env` for `DATABASE_URL`, request throttling (e.g., `KBO_REQUEST_DELAY_MIN`), and external API keys (`YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`).
 - Crawler stability depends on consistent delays; avoid reducing throttling without review.
 
 ## Concurrency & Scheduling
 - Automated tasks (`scripts/scheduler.py`) use a **3-stage locking mechanism** to prevent concurrent execution conflicts:
   - **`LIVE_LOCK`**: High-frequency real-time jobs (live refresh, pregame refresh).
   - **`DAILY_LOCK`**: Core daily data pipeline — `crawl_daily_games` (03:00, runs `run_daily_update`), `compute_standings` (03:30), `crawl_p0_non_game` (06:20), `crawl_p1p2_data` (06:45), `crawl_operation_notices` (09:00/11:30), `crawl_operation_notices_naver` (09:30/13:00). `DAILY_LOCK` is a **`ForceProcessLock`** so a stale lock file left by a crashed job is auto-cleared on the next acquire.
-  - **`MAINTENANCE_LOCK`**: Long-running maintenance jobs (futures profile crawl, OCI sync, season stat recalc, report generation). Also a `ForceProcessLock`.
-  - **`REALTIME_OCI_SYNC_LOCK`** / **`SQLITE_WRITE_LOCK`**: See writer-lock notes below.
+  - **`MAINTENANCE_LOCK`**: Long-running maintenance jobs (futures profile crawl, season stat recalc, report generation). Also a `ForceProcessLock`.
+  - **`SQLITE_WRITE_LOCK`**: See writer-lock notes below.
 - **Single-instance guard**: `scripts/scheduler.py` enforces one scheduler process via `data/locks/scheduler.pid` (`_ensure_single_scheduler_instance`). A live PID blocks a second instance (`exit 1`); a dead PID is treated as stale and cleared. This prevents duplicate scheduler containers/processes from contending for the same tier locks (the root cause of the 2026-07 `crawl_p1p2_data_job` `LockAcquisitionError`).
 - **Nested-lock fix**: `run_daily_update_main` accepts `acquire_lock: bool = True`. The scheduler calls it with `acquire_lock=False` because `crawl_daily_games` already holds `DAILY_LOCK`; otherwise the inner `ProcessLock("daily_update")` collides with the scheduler's shared `threading.Lock` and falsely reports "Another instance already running". CLI/direct invocations keep the self-guard.
 - **Tier-lock acquisition now has a bounded timeout.** `_scheduler_job_lock` passes `lock_timeout=SQLITE_WRITE_LOCK_TIMEOUT_SECONDS` (default 60s) to the tier lock; on timeout it raises `_LockSkipped` (caught by `@_with_lock_skip_guard` → logs a warning, no crash) instead of a `LockAcquisitionError`. `crawl_p1p2_data_job` retry policy is `stop_after_attempt(4)` / `wait_exponential(min=300, max=1800)`.
@@ -145,8 +143,8 @@ These modules are operational or diagnostic entrypoints that are less frequently
 The CI/CD pipeline uses 11 workflows and 3 composite actions under `.github/`:
 
 ### Composite Actions
-- `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.12), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional), OCI hydration (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db`, `hydrate` boolean inputs.
-- `.github/actions/kbo-job-setup/`: Reusable checkout + python-env + optional date resolution. Wraps python-env with `playwright`, `init-db`, `hydrate`, `hydrate-year`, `hydrate-date`, `resolve-date`, `target-date` inputs. Outputs `KST_DATE`, `KST_YEAR`. Used to eliminate boilerplate in multi-job workflows.
+- `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.12), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db` boolean inputs.
+- `.github/actions/kbo-job-setup/`: Reusable checkout + python-env + optional date resolution. Wraps python-env with `playwright`, `init-db`, `resolve-date`, `target-date` inputs. Outputs `KST_DATE`, `KST_YEAR`. Used to eliminate boilerplate in multi-job workflows.
 - `.github/actions/notify/`: Status notification to Telegram and/or Slack. Inputs: `status` (success/failure/cancelled), `workflow` (name override), `channels` (telegram/slack/both).
 
 ### Consolidated Daily Pipeline (`daily_kbo_sync.yml`)
@@ -184,7 +182,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 - `security_audit.yml`: Vulnerability scanning
 
 ### Required Secrets
-- `OCI_DB_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+- `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - Per-category gap alert: `TELEGRAM_CHAT_ID_RELAY`, `TELEGRAM_CHAT_ID_STANDINGS`, `TELEGRAM_CHAT_ID_PROFILE`, `TELEGRAM_CHAT_ID_FRESHNESS`
 - External APIs: `YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
 - Optionally: `SLACK_WEBHOOK_URL` (for notify action with `channels: slack`)
@@ -824,5 +822,49 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Completeness audit**: Added `scripts.maintenance.audit_completeness_2009_2025`, a read-only 2009-2025 census combining historical coverage, parent-game heuristics, player-game/season aggregate checks, regression pack, quality gate, and team-code NULL checks. The local audit reported **154 checks, 134 defects, and 12 source-limited known limitations**.
 - **Audit correctness**: Season aggregate checks now scope player-game rows to the target season instead of accumulating earlier seasons; fully populated team-code seasons are omitted from residual findings.
 - **Recovery orchestration**: Added `scripts.maintenance.recovery_pipeline` with explicit `--dry-run` support, resumable phases, scheduler-lock guard, and no automatic apply. Do not use `--apply` until each defect category has a source-specific remediation decision.
-- **OCI probe**: Added `scripts.maintenance.probe_oci_counts` for read-only local/PostgreSQL row-count comparison; it skips cleanly when `TARGET_DATABASE_URL` is absent.
+- **Historical probe**: The temporary cross-database count probe was retired after PostgreSQL became the sole production target.
 - **Weekly automation**: Historical completeness is emitted as a non-blocking artifact; daily quality/gap gates remain the operational blockers.
+
+### Phase 75 Complete (2026-08-09) — Award history crawler
+
+- **`src/crawlers/award_crawler.py` (new)**: Crawls Wikipedia (MVP/신인상/골든글러브/수비상) via the parse API and yagoonara.com/awards for 올스타전MVP/한국시리즈MVP. Normalizes to `AwardRecord` and persists into `awards` (unique: year+award_type+player_name). Besides that, fetches raw snapshots.
+- **Rowspan fix**: `_render_table` previously never expired pending rowspan cells — the glued year repeated into subsequent rows. Fixed by tracking `(text, remaining)` spans that expire after their duration; extracted `_pull_pending_cells`.
+- **Category policy**: `포지션` column missing → `category=None` (was falling back to column 0, storing the year). 1987+ MVP rows keep the source value in the category cell (team names as stored) — source-faithful, per decision.
+- **`--type` filter**: `crawl()`/`run()` accept `types`; CLI `python3 -m src.cli.crawl_awards --type MVP`.
+- **CLI**: `src/cli/crawl_awards.py` (`--save`/`--dry-run`/`--type`), in-process smoke tests.
+- **Snapshots**: raw HTML snapshots persisted through `save_raw_snapshots` (five sources) once per save; DataSource seed now includes both wikipedia/yagoonara entries in `seed_data_sources.py`.
+- **Live data**: `awards` loaded with 495 rows (MVP 48, GG 364, 수비상 28, 신인상 46, 올스타MVP 5, 한국시리즈MVP 4; 1982–2026).
+- **Tests**: `tests/crawlers/test_award_crawler.py` (58 unit cases + 1 live integration), `tests/cli/test_crawl_awards.py` (4 CLI smoke cases). `ruff check` / `ruff format --check` clean.
+
+### Phase 76 Complete (2026-08-09) — Award-to-player linking
+
+- **Schema**: `Award` model gains `player_id` (nullable) + `team_code` (nullable) and `idx_award_player_id`; migrations `sqlite/054_add_award_player_id.sql` and `postgresql/048_add_award_player_id.sql` (PostgreSQL uses `ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`, idempotent alongside SQLAlchemy `create_all`).
+- **Backfill CLI**: `scripts/maintenance/link_award_player_ids.py` — resolves each award row via `get_team_code(team_name, year)` then `PlayerIdResolver.resolve_id(name, team_code, year)`; `--dry-run` default (no writes), `--apply` persists `player_id`/`team_code`; optional `--year` / `--type` filters; immutable `AwardLinkReport` (total/resolved/unresolved_team/unresolved_player).
+- **Sync**: `sync_awards` uses `sync_simple_table` and copies the new columns automatically (conflict keys unchanged).
+- **Tests**: `tests/scripts/test_link_award_player_ids.py` (7 cases — apply mutates+commits, dry-run no-op, no-team mapping skips resolver, ambiguous player, year/type filters, summary-line rendering), `tests/migrations/test_award_player_link_migrations.py` (3 cases — SQLite column+index presence, PostgreSQL idempotent syntax).
+
+### Phase 77 Complete (2026-08-09) — Rowspan chain corruption fix + award table restore
+
+- **Incident**: `awards` grew to 574 rows (MVP 87, 신인상 86) after two crawl batches (05:20 all-선동열/해태 contamination, 06:32 column-shift rows). Root cause: `_render_table`'s rowspan handling dropped pending cells on their last covered row — the `if remaining > 1` filter removed `remaining == 1` spans before the row that still needed them, and `_pull_pending_cells` deleted a span after pulling it (so `rowspan=3` covered only 2 rows, `rowspan=4` only 3). Concretely: 1989-1990 해태/선동열/투수 spans (rs3/rs2/rs2) lost team in 1990, 2001-2004 삼성 (rs4) lost team in 2004, 2003 이승엽 (rs3) lost player, 2004/2005 team read 투수, 2014 넥센 (rs3) team read 2루수; rookie table got the same shift through the shared `_parse_mvp_style_wiki` path.
+- **Fix**: rewrote `_render_table` to a single-pass loop: `pending` keeps `(text, remaining)` per column; each row emits the span at its column, re-registers it as `(text, remaining - 1)` when `remaining > 1` (never `del` on pull, no `remaining > 1` pre-filter), and source cells fill the columns without a span. Removed `_pull_pending_cells`.
+- **Deterministic restore**: backed up the 173 MVP/rookie rows, `DELETE FROM awards`, re-ran `crawl_awards --save` → exactly **495 rows** (MVP 48 = wiki 44 + yagoonara 2022-2025, GG 364, 수비상 28, 신인상 46, 올스타MVP 5, 한국시리즈MVP 4). Verified spot rows: 1990 선동열/해태/투수, 2003 이승엽/삼성/1루수, 2004 배영수/삼성/투수, 2005 손민한/롯데/투수, 2014 서건창/넥센/2루수, 2025 코디 폰세/한화/투수.
+- **Re-link**: `link_award_player_ids --apply` → total=495 resolved=471 (unresolved_team=2 kt wiz mapping, unresolved_player=22 foreign/ambiguous names — conservative skips).
+- **Tests**: added `ROWSPAN_CHAIN_HTML` fixture (rs3/rs2/rs2 + rs3/rs4/rs3 chains) with 5 regression tests: full-row rendering for every covered row, last-covered-row cell preservation, parser-level player/team/category assertions for 1989/1990/2003/2004, and covered-year repetition. `tests/crawlers/test_award_crawler.py` 62 cases + `test_link_award_player_ids.py` + `test_award_player_link_migrations.py` all pass (72 total).
+- **Ops**: `kbo_scheduler` / `kbo_api_server` containers restarted; both healthy.
+
+### Phase 78 In Progress (2026-08-09) — PostgreSQL primary cleanup
+
+- **Source cleanup**: Removed the remaining OCI sync/hydration contracts from `src/`, including `run_daily_update`, pregame status checks, live crawler callsites, sync metrics, hydration alerting, and weekly/periodic maintenance paths. `src/`, `scripts/`, and `.github/` now have no `OCI_DB_URL`, `TARGET_DATABASE_URL`, `OCISync`, `sync_oci`, or runtime hydration references.
+- **Deleted legacy adapters**: Removed `src/sync/`, obsolete sync/hydration CLIs, `scripts.maintenance.quality_gate` parity runner, OCI probe/identity utilities, and their obsolete tests. PostgreSQL migrations are now the canonical `migrations/postgresql/` chain; duplicate `migrations/oci/047` and `048` files were removed.
+- **Workflow/config cleanup**: Removed OCI hydration and sync steps from `backfill.yml`, `daily_kbo_sync.yml`, `daily_preview.yml`, `pitcher_backfill.yml`, `weekly_maintenance.yml`, `periodic_extras.yml`, `full_recalculation.yml`, `kbo_automation.yml`, and the composite setup actions. `DATABASE_URL` is the only database URL contract.
+- **Documentation cleanup**: Updated architecture, CI/CD, scheduler, P0, command reference, operational guide, and PostgreSQL migration documentation to use the primary database contract. Historical OCI audit notes remain historical records only.
+- **Verification**: Targeted source/test Ruff passed; `compileall` passed for changed Python files; the affected non-integration set passed **158 tests**, daily/live/scheduler integration targets passed **40 tests**, and migration/integrity runner targets passed **9 tests**. Full Ruff/full pytest and isolated PostgreSQL migration apply still require final verification.
+- **Environment note**: The local virtualenv was missing declared `sentry-sdk`, `apscheduler`, and `requests`; these were installed from `requirements.txt` constraints to run scheduler/CLI verification. No production DB or OCI connection was used.
+
+### Phase 79 In Progress (2026-08-09) — Ruff cleanup and focused verification
+
+- **Lint cleanup**: Reduced the planned Ruff cleanup set through safe autofixes and targeted edits. FastAPI query dependencies now use `Annotated`; API/cache helpers no longer use avoidable `global` assignments; CLI stdout retains intentional `# noqa: T201`; date parsing uses KST-aware values; job tracker and supporting modules received the required typing/docstring/error-handling fixes.
+- **Structural refactors**: Split SQLite and Oracle engine construction into dedicated helpers while preserving the public `create_engine_for_url` signature and Oracle compiler hook contracts. Extracted required-row validation and the browser-backed batting-series execution workflow to satisfy C901/PLR0915 without changing fallback or Basic2 merge behavior.
+- **Focused verification**: Full `ruff check src/ tests/ scripts/` passes; compileall passes for changed Python files; engine/oracle, validator, batting crawler, current API, scheduler, platform-lock, relay, team-mapping, and fan-culture tests pass in focused runs.
+- **Test alignment**: Updated stale API router assertions, Windows-only file-lock skips, platform-aware manifest path assertions, current TeamMapper names, cooldown timing, persistent fan-culture cache isolation, and the Playwright mock fixture for all-series orchestration.
+- **Repository gate status**: A serial non-integration run reached **4,889 passed, 234 deselected, 1 xfailed** with no test failures before pytest teardown hung and raised `KeyboardInterrupt`; xdist runs also hit worker teardown hangs. `ruff format --check src/ tests/ scripts/` still reports **1,021 files** to reformat, so no bulk formatter rewrite was applied.

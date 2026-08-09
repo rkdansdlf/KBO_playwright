@@ -76,7 +76,6 @@ Default database resolution:
 
 - `--database-url` when provided.
 - `DATABASE_URL` environment variable.
-- `OCI_DB_URL` environment variable.
 
 Command:
 

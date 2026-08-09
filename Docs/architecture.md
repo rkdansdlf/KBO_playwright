@@ -54,20 +54,19 @@ crawlers ──→ parsers ──→ repositories ──→ models
 3-Stage Locking:
 - **LIVE_LOCK**: 실시간 크롤 (경기 중)
 - **DAILY_LOCK**: 일일 파이프라인 (일정/상세/PBP)
-- **MAINTENANCE_LOCK**: 유지보수 (퓨처스/OCI Sync/통계 재계산)
+- **MAINTENANCE_LOCK**: 유지보수 (퓨처스/통계 재계산)
 
 모든 DB 저장은 **UPSERT** 방식으로 멱등성 보장.
 
 ## 데이터 저장소
 
-- **로컬**: SQLite (`data/kbo_*.db`)
-- **클라우드**: OCI (Oracle Cloud Infrastructure) PostgreSQL 호환
-- **동기화**: `src/sync/oci_sync.py` 로컬→OCI 단방향
+- **개발/테스트**: SQLite (`data/kbo_*.db`)
+- **운영**: PostgreSQL (`DATABASE_URL`)
 
 ## 설정
 
 `.env` 파일로 관리되는 주요 설정:
-- `DATABASE_URL`, `OCI_DB_URL`
+- `DATABASE_URL`
 - `KBO_REQUEST_DELAY_MIN/MAX` — 요청 간격
 - `KBO_USER_ID/PWD` — 로그인
 - `YOUTUBE_API_KEY`, `NAVER_CLIENT_ID/SECRET` — 외부 API

@@ -1,13 +1,13 @@
 name: KBO Smart Polling Pipeline
 
 on:
-  schedule:
-    # Tue-Fri: KST 21:30 ~ 23:30 every 30 min (games ~18:30, ~3h10m avg)
-    - cron: '*/30 12-14 * * 2-5'
-    # Saturday: KST 20:00 ~ 22:30 every 30 min (games ~17:00 or 18:00)
-    - cron: '*/30 11-13 * * 6'
-    # Sunday: KST 17:00 ~ 21:00 every 30 min (games ~14:00 or 17:00)
-    - cron: '*/30 08-12 * * 0'
+  # schedule:
+  #   # Tue-Fri: KST 21:30 ~ 23:30 every 30 min (games ~18:30, ~3h10m avg)
+  #   - cron: '*/30 12-14 * * 2-5'
+  #   # Saturday: KST 20:00 ~ 22:30 every 30 min (games ~17:00 or 18:00)
+  #   - cron: '*/30 11-13 * * 6'
+  #   # Sunday: KST 17:00 ~ 21:00 every 30 min (games ~14:00 or 17:00)
+  #   - cron: '*/30 08-12 * * 0'
   workflow_dispatch:
     inputs:
       target_date:
@@ -26,7 +26,6 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
   TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
@@ -123,24 +122,12 @@ jobs:
         with:
           playwright: 'true'
           init-db: 'true'
-          hydrate: 'true'
-          hydrate-date: ${{ needs.polling_gate.outputs.target_date }}
-
-      - name: Hydrate Runtime Cache From OCI
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          python3 -m src.cli.hydrate_runtime_from_oci \
-            --date "${{ needs.polling_gate.outputs.target_date }}"
 
       - name: "[Layer 2] Run Daily Update Pipeline"
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           set -o pipefail
           python3 -m src.cli.run_daily_update \
-            --date "${{ needs.polling_gate.outputs.target_date }}" \
-            --sync 2>&1 | tee daily_update.log
+            --date "${{ needs.polling_gate.outputs.target_date }}" 2>&1 | tee daily_update.log
           exit "${PIPESTATUS[0]}"
 
       - name: Commit and Push Updated Data
@@ -180,7 +167,6 @@ jobs:
         with:
           playwright: 'false'
           init-db: 'true'
-          hydrate: 'false'
 
       - name: Download DB Artifact from daily_update
         uses: actions/download-artifact@v4

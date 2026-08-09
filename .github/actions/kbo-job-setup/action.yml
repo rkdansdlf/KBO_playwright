@@ -1,5 +1,5 @@
 name: 'KBO Job Setup'
-description: 'Checkout, setup Python env, optionally resolve date and hydrate from OCI'
+description: 'Checkout, setup Python environment, and optionally resolve date'
 inputs:
   python-version:
     description: 'Python version'
@@ -13,18 +13,6 @@ inputs:
     description: 'Initialize database and seed metadata'
     required: false
     default: 'true'
-  hydrate:
-    description: 'Hydrate runtime cache from OCI'
-    required: false
-    default: 'false'
-  hydrate-year:
-    description: 'Year for OCI hydration'
-    required: false
-    default: ''
-  hydrate-date:
-    description: 'Date for OCI hydration (YYYYMMDD)'
-    required: false
-    default: ''
   resolve-date:
     description: 'Resolve KST date outputs (for first job in pipeline)'
     required: false
@@ -53,9 +41,6 @@ runs:
         python-version: ${{ inputs.python-version }}
         playwright: ${{ inputs.playwright }}
         init-db: ${{ inputs.init-db }}
-        hydrate: ${{ inputs.hydrate }}
-        hydrate-year: ${{ inputs.hydrate-year }}
-        hydrate-date: ${{ inputs.hydrate-date }}
 
     - name: Resolve target date in KST
       if: ${{ inputs.resolve-date == 'true' }}

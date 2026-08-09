@@ -31,35 +31,13 @@ To verify statistical consistency manually:
 ```
 
 ### Run Reference Integrity Gate
-Run this before OCI publish, after reference repair jobs, and before applying FK migrations:
+Run this after reference repair jobs and before applying FK migrations:
 ```bash
 ./venv/bin/python scripts/verification/check_orphan_data.py --strict --json --sample-limit 20
-./venv/bin/python -m scripts.maintenance.quality_gate --skip-oci
+./venv/bin/python -m src.cli.quality_gate_check --year 2025
 ```
 
-Use the default command for operator runs where the CSV snapshots under `data/` are useful audit artifacts. In CI or agent sessions that only need pass/fail and may not have a writable artifact directory, add `--no-write`:
-```bash
-./venv/bin/python -m scripts.maintenance.quality_gate --skip-oci --no-write
-```
-
-After OCI publish, verify production parity:
-```bash
-./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
-./venv/bin/python -m scripts.maintenance.quality_gate
-```
-
-For fresh CI runners that validate OCI directly without a local snapshot, use OCI-only non-writing mode:
-```bash
-./venv/bin/python -m scripts.maintenance.quality_gate --oci-only --no-write
-```
-
-If a year-scoped game-detail sync fails with a duplicate primary key on an auto-increment table, reset the target sequences and retry the same year:
-```bash
-./venv/bin/python -m scripts.maintenance.reset_oci_sequences
-./venv/bin/python -m src.cli.sync_oci --game-details --year YYYY
-```
-
-Apply declared FK constraints only after the OCI integrity gate passes. Use the repository migration process for `migrations/oci/023_reference_integrity_foreign_keys.sql`; the legacy direct migration helper has been removed.
+Apply declared FK constraints only after the integrity gate passes, using the repository migration process.
 
 ### Run Crawler Stability Gate
 Run this before crawler/publish releases or after selector, retry, relay, or OCI eligibility changes:
@@ -128,7 +106,7 @@ python3 scripts/diagnose_scheduler_locks.py
 - Exit `0` = clean (no stale locks, at most one scheduler process).
 - Exit `1` = problem found (stale `*.lock` file owned by a dead PID, or more than one `scripts/scheduler.py` process). Each problem is listed with the offending file/PID.
 
-Use `-v` to print the OK state of every tier lock (`daily_update`, `live_refresh`, `maintenance`, `realtime_oci_sync`, `sqlite_writer`).
+Use `-v` to print the OK state of every tier lock (`daily_update`, `live_refresh`, `maintenance`, `sqlite_writer`).
 
 Daily post-fix verification (the 2026-07 `crawl_p1p2_data_job` lock fix):
 
@@ -208,13 +186,12 @@ This CLI reads `logs/daily_update_summary/YYYYMMDD.json`, retries only `retry_ca
 | `incomplete_detail`, `detail_payload_filtered` | Detail | Completed game detail is missing required hitter/pitcher rows. | Retry full-detail recovery; do not publish partial child datasets. |
 | `relay_not_found`, `invalid_relay_match`, `relay_api_error`, `relay_empty` | Relay | Relay source did not produce a trusted match or payload. | Verify date/team/doubleheader matching, then rerun relay recovery. |
 | `skipped_filtered`, `partial_relay` | Relay service | Malformed relay rows were filtered; `partial_relay` saved valid rows. | Inspect relay report rows when all rows are filtered or partial data is unexpected. |
-| `skipped_schedule_only`, `skipped_incomplete_detail`, `skipped_empty_relay`, `skipped_cancelled` | OCI publish | Dataset-level publish eligibility filtered the game. | Treat as publish filters; repair detail/relay first where applicable. |
 
 ## 5. Troubleshooting Common Issues
 
 ### SQLite Database Corruption
 - **Symptom:** Scheduler crash loop with `malformed database schema`, `invalid rootpage`, or `database disk image is malformed`.
-- **Action:** Stop the scheduler, quarantine the SQLite file family, restore from a known-good backup or OCI hydration, then restart.
+- **Action:** Stop the scheduler, quarantine the SQLite file family, restore from a known-good backup, then restart.
 
 ```bash
 docker compose stop scheduler
@@ -227,7 +204,7 @@ python -m src.cli.sqlite_integrity_guard --database-url sqlite:///data/kbo_dev.d
 docker compose up -d scheduler
 ```
 
-The guard preserves `kbo_dev.db`, `kbo_dev.db-wal`, and `kbo_dev.db-shm` under `data/archive/corrupt_sqlite/<timestamp>/`. Do not delete the quarantined files until the restored scheduler has passed a full daily cycle or OCI hydration has rebuilt the local cache.
+The guard preserves `kbo_dev.db`, `kbo_dev.db-wal`, and `kbo_dev.db-shm` under `data/archive/corrupt_sqlite/<timestamp>/`. Do not delete the quarantined files until the restored scheduler has passed a full daily cycle.
 
 ### Timeout Errors
 - **Symptom:** `❌ Basic2 크롤링 중 오류: Timeout 30000ms exceeded.`
@@ -244,10 +221,6 @@ The guard preserves `kbo_dev.db`, `kbo_dev.db-wal`, and `kbo_dev.db-shm` under `
 ### Relay/PBP Recovery Misses
 - **Symptom:** relay recovery report rows show `relay_not_found`, `invalid_relay_match`, `relay_api_error`, `skipped_filtered`, or `partial_relay`.
 - **Action:** For `invalid_relay_match`, verify the Naver schedule entry matches the KBO date, teams, and doubleheader number. For `skipped_filtered`, inspect the source relay payload because all rows were missing required inning/half/description state. `partial_relay` means valid rows were saved after malformed rows were discarded.
-
-### OCI Sync Skips
-- **Symptom:** `sync_oci --game-details --unsynced-only` reports `skipped_schedule_only`, `skipped_incomplete_detail`, `skipped_empty_relay`, or `skipped_cancelled`.
-- **Action:** Treat these as publish filters, not transport failures. `skipped_schedule_only` rows should be synced through parent game schedule sync only. For `skipped_incomplete_detail`, rerun detail recovery first. For `skipped_empty_relay`, rerun relay/PBP recovery or verify the source has no PBP.
 
 ### Statistical Mismatches
 - **Symptom:** Quality Gate fails with `Transactional PA > Cumulative PA`.

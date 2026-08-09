@@ -8,14 +8,13 @@ from unittest.mock import patch
 
 import pytest
 
+import src.utils.lock as lock_module
 from src.utils.lock import ForceProcessLock, LockAcquisitionError, ProcessLock
 
 
 @pytest.fixture(autouse=True)
 def _clean_env_pg(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure standard tests do not use PG advisory locks unless explicitly mocked."""
-    monkeypatch.delenv("OCI_DB_URL", raising=False)
-    monkeypatch.delenv("TARGET_DATABASE_URL", raising=False)
     db_url = os.getenv("DATABASE_URL", "")
     if "postgresql" in db_url:
         monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
@@ -36,7 +35,8 @@ def test_lock_context_manager(tmp_path: Path) -> None:
     """Test using ProcessLock as a context manager."""
     lock_name = "test_context"
     with ProcessLock(lock_name, lock_dir=tmp_path) as lock:
-        assert lock.lock_file_path.exists()
+        if lock_module.HAS_FCNTL:
+            assert lock.lock_file_path.exists()
 
     # After block exits, the lock should be released
     # We should be able to acquire it again in blocking=False mode
@@ -140,6 +140,9 @@ def test_lock_context_manager_raises_when_locked(tmp_path: Path) -> None:
 @pytest.mark.slow
 def test_lock_cross_process(tmp_path: Path) -> None:
     """Test that ProcessLock works across separate processes using subprocess."""
+    if not lock_module.HAS_FCNTL:
+        pytest.skip("cross-process file locking requires fcntl")
+
     lock_name = "test_cross_process"
 
     # Code to run in subprocess: acquires lock, signals parent, sleeps, then releases
@@ -249,7 +252,8 @@ def test_postgresql_advisory_lock_fallback_on_failure(tmp_path: Path) -> None:
     ):
         lock = ProcessLock(lock_name, lock_dir=tmp_path, blocking=False)
         assert lock.acquire() is True
-        assert lock.lock_file_path.exists()
+        if lock_module.HAS_FCNTL:
+            assert lock.lock_file_path.exists()
         lock.release()
 
 
@@ -281,6 +285,9 @@ def test_force_process_lock_reentry_does_not_force_clear(tmp_path: Path) -> None
 
 def test_force_process_lock_succeeds_after_stale_file_present(tmp_path: Path) -> None:
     """A stale lock file (dead PID) must not block acquisition."""
+    if not lock_module.HAS_FCNTL:
+        pytest.skip("stale file cleanup requires fcntl")
+
     lock = ForceProcessLock("test_force_stale", lock_dir=tmp_path)
     lock.lock_file_path.write_text("999999\n", encoding="utf-8")
 

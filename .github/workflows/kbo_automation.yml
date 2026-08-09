@@ -51,17 +51,8 @@ jobs:
             echo "TARGET_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Hydrate Runtime Cache From OCI
-        if: ${{ github.event.inputs.phase != 'live' }}
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          TARGET_DATE="${{ steps.target.outputs.TARGET_DATE }}"
-          python3 -m src.cli.hydrate_runtime_from_oci --year "${TARGET_DATE:0:4}" --date "${TARGET_DATE}"
-
       - name: Run Requested Phase
         env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -80,7 +71,7 @@ jobs:
               python3 -m src.cli.live_crawler --run-once
               ;;
             finalize)
-              python3 -m src.cli.run_daily_update --date "${TARGET_DATE}" --sync --fix
+              python3 -m src.cli.run_daily_update --date "${TARGET_DATE}" --fix
               ;;
             freshness)
               python3 -m src.cli.freshness_gate --date "${TARGET_DATE}"
@@ -108,10 +99,6 @@ jobs:
               python3 -m src.cli.backfill_advanced_stats \
                 --years "${YEAR}" \
                 --series regular
-              python3 -m src.cli.sync_oci \
-                --kbo-season \
-                --season-stats \
-                --year "${YEAR}"
               ;;
             *)
               echo "Unsupported phase: ${{ github.event.inputs.phase }}"

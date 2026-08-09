@@ -72,7 +72,7 @@ GROUP BY team_code;
 
 **Monitoring**: `gap_report` SEASON_TEAM_CODE check reports `ok = (batting_null == 0 and pitching_null == 0)`. After `--apply` for 이병헌, only 김택연 (665/2025) remains NULL, so the check stays `False` by design and is accepted. Alerts are suppressed below `SEASON_TEAM_CODE_GAP_ALERT_RATE` (default 10%), while the residual remains visible in the report.
 
-**OCI propagation**: The backfill is now dialect-agnostic (roster lookup uses SQLAlchemy `extract` instead of SQLite `strftime`), so it runs against both local SQLite and OCI. To resolve 이병헌 in OCI, dispatch the manual `backfill_season_team_codes` GitHub Actions workflow with `table=batting` (dry-run first, then `apply=true`); CI reaches OCI via `secrets.OCI_DB_URL`. The local dev SQLite already has the fix applied via `--apply`.
+**Database propagation**: The backfill is dialect-agnostic (roster lookup uses SQLAlchemy `extract` instead of SQLite `strftime`) and runs against the configured `DATABASE_URL`. The local development database already has the approved fix applied.
 
 **OCI verification (2026-07-20)**: The renewed mTLS wallet at
 `/Users/mac/keypair/Wallet_EFH9M9C9H109963K 2` restored OCI connectivity. OCI contained
@@ -166,8 +166,8 @@ both pass after the repair.
   `stage_official_season_stats`; they must not silently overwrite the derived rows.
 - A future official-source promotion requires complete team coverage, explicit handling
   of unavailable fields, and a recorded comparison for earned-run semantics.
-- Do not use `--truncate` against OCI to remove pre-existing source rows during routine
-  season-stat synchronization; the 2026 OCI sync was an upsert and retained older rows.
+- Do not use `--truncate` against the canonical database to remove pre-existing source rows
+  during routine season-stat synchronization; routine updates must remain idempotent.
 
 ### 2026-07-25 Manual Collection Policy (confirmed 2026-07-25)
 
@@ -186,7 +186,7 @@ venv/bin/python -m src.cli.recalc_team_stats --season 2026 --save
 venv/bin/python -m src.cli.quality_gate_check --year 2026
 venv/bin/python -m src.cli.data_quality_regression_pack --year 2026 --json
 venv/bin/python -m src.cli.freshness_gate --days 7 --json
-venv/bin/python -m src.cli.sync_oci --season-stats --year 2026 --workers 1
+venv/bin/python -m src.cli.quality_gate_check --year 2026
 ```
 
 The `player_rollup` team-stat policy remains in force during this pipeline. Do not
@@ -285,6 +285,6 @@ an explicit completeness predicate and an alternate historical source.
 **Coverage**: 12,133/12,133 (100%)
 
 **Method**:
-- 9,508 rows from OCI hydration
+- 9,508 rows from the historical database snapshot
 - 2,453 rows inferred from team modal stadium mapping
 - 8 remaining 2020 HH games manually backfilled

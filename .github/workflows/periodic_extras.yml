@@ -1,8 +1,8 @@
 name: KBO Periodic Extras
 
 on:
-  schedule:
-    - cron: '0 21 1 * *'
+  # schedule:
+  #   - cron: '0 21 1 * *'
   workflow_dispatch:
     inputs:
       year:
@@ -28,15 +28,18 @@ jobs:
           playwright: 'true'
           init-db: 'true'
 
-      - name: Run Periodic Extras & Sync
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      - name: Run Periodic Extras
         run: |
           YEAR="${{ github.event.inputs.year }}"
           if [ -z "$YEAR" ]; then
             YEAR="$(TZ='Asia/Seoul' date +'%Y')"
           fi
-          python3 -m src.cli.run_periodic_extras --year "$YEAR" --sync
+          python3 -m src.cli.run_periodic_extras --year "$YEAR"
+
+      - name: Refresh Award History (Wiki + Yagoonara)
+        run: |
+          python3 -m src.cli.seed_data_sources
+          python3 -m src.cli.crawl_awards --save
 
       - name: Monthly Unified Audit (PA Formula + Team Stats)
         run: |
