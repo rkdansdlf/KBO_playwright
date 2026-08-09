@@ -1,4 +1,4 @@
-"""Review and selectively append Exact OCI identity candidates.
+"""Review and selectively append exact player identity candidates.
 
 The command never changes ``data/player_id_overrides.csv`` unless ``--apply``
 is passed with a review CSV whose rows explicitly contain ``decision=approve``.

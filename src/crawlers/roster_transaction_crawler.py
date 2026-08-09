@@ -107,7 +107,7 @@ class RosterTransactionCrawler:
 
         logger.info("[ROSTER] %s: %s transactions found", crawl_date, len(data))
         if save:
-            self._save_to_db(data)
+            await asyncio.to_thread(self._save_to_db, data)
         else:
             for d in data[:10]:
                 logger.info(d)

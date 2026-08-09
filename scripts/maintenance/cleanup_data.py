@@ -29,10 +29,6 @@ PNG_PATTERNS = [
     "hitter_*.png",
 ]
 
-LOG_PATTERNS = [
-    "sync_oci_*.log",
-]
-
 
 def _get_file_age_days(path: Path) -> float:
     mtime = path.stat().st_mtime
@@ -97,7 +93,7 @@ def _remove_old_backups(data_dir: Path, dry_run: bool, results: dict[str, list[P
 
 
 def _cleanup_patterns(data_dir: Path, dry_run: bool, results: dict[str, list[Path]]) -> None:
-    for pattern in PNG_PATTERNS + LOG_PATTERNS:
+    for pattern in PNG_PATTERNS:
         for path in data_dir.glob(pattern):
             age = _get_file_age_days(path)
             if age > 30 and _should_archive(pattern, age):

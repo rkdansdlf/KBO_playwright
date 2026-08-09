@@ -305,7 +305,7 @@ class TestMain:
             patch.dict(os.environ, {}, clear=True),
             patch("scripts.verification.audit_daily_completeness.load_dotenv"),
             patch("scripts.verification.audit_daily_completeness.audit_completeness") as mock_audit,
-            patch("sys.argv", ["audit_daily_completeness.py", "--db-url", "env:OCI_DB_URL"]),
+            patch("sys.argv", ["audit_daily_completeness.py", "--db-url", "env:DATABASE_URL"]),
         ):
             assert main() == 2
             mock_audit.assert_not_called()

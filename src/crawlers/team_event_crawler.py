@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
@@ -126,7 +127,7 @@ class TeamEventCrawler:
         logger.info("[EVENT] Total: %s events", len(all_events))
 
         if save:
-            self._save_to_db(all_events)
+            await asyncio.to_thread(self._save_to_db, all_events)
         else:
             for e in all_events[:5]:
                 logger.info(e)

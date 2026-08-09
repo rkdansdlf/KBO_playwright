@@ -8,6 +8,7 @@ Sources:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, time
 from http import HTTPStatus
@@ -153,7 +154,7 @@ class TicketCrawler:
         logger.info("[TICKET] Found %s price entries, %s open rules", len(prices), len(open_rules))
 
         if save:
-            self._save_to_db(prices, open_rules)
+            await asyncio.to_thread(self._save_to_db, prices, open_rules)
 
         return prices
 

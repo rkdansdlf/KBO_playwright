@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from playwright.sync_api import ElementHandle, Page, sync_playwright
+from playwright.sync_api import Browser, ElementHandle, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
@@ -1200,6 +1200,84 @@ class BattingSeriesCrawlRequest:
     headless: bool = False
     by_team: bool = False
     preserve_team_splits: bool = False
+    browser: Browser | None = None
+
+
+@dataclass
+class BattingSeriesExecutionContext:
+    """Runtime state for one browser-backed batting crawl."""
+
+    browser: Browser | None
+    year: int
+    series_key: str
+    series_info: dict[str, str]
+    limit: int | None
+    save_to_db: bool
+    by_team: bool
+    preserve_team_splits: bool
+    policy: RequestPolicy
+    unique_players: set[int | tuple[int, str | None]]
+    all_players_data: list[dict]
+
+
+def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
+    """Execute the page workflow for one batting series."""
+    if ctx.browser is None:
+        raise ValueError
+
+    context = ctx.browser.new_context(**ctx.policy.build_context_kwargs(locale="ko-KR"))
+    page = context.new_page()
+    page.set_default_timeout(30000)
+    install_sync_resource_blocking(page)
+
+    try:
+        logger.info("\n📊 %s년 %s 타자 기록 수집 시작 (by_team=%s)", ctx.year, ctx.series_info["name"], ctx.by_team)
+        logger.info("-" * 60)
+
+        if not compliance.is_allowed_sync(HITTER_BASIC1):
+            logger.info("[COMPLIANCE] Navigation to %s aborted.", HITTER_BASIC1)
+            return []
+
+        ctx.policy.delay(host="www.koreabaseball.com")
+        page.goto(HITTER_BASIC1, wait_until="load", timeout=NAV_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+
+        try:
+            _select_season_and_series(page, ctx.year, ctx.series_info, ctx.policy)
+        except CRAWLER_EXCEPTIONS as e:
+            reason = f"Season/Series selection error: {e}"
+            logger.exception("Season/Series selection error, falling back to DB aggregation")
+            context.close()
+            return _handle_batting_fallback(ctx.year, ctx.series_key, reason, save_to_db=ctx.save_to_db)
+
+        team_options = _get_team_options(page, by_team=ctx.by_team)
+        _collect_batting_stats_loop(
+            BattingCrawlContext(
+                page=page,
+                year=ctx.year,
+                series_key=ctx.series_key,
+                iteration_targets=team_options,
+                by_team=ctx.by_team,
+                limit=ctx.limit,
+                policy=ctx.policy,
+                unique_players=ctx.unique_players,
+                all_players_data=ctx.all_players_data,
+                preserve_team_splits=ctx.preserve_team_splits,
+            ),
+        )
+
+        if ctx.series_key == "regular" and ctx.all_players_data and not ctx.preserve_team_splits:
+            ctx.all_players_data = _merge_basic2_data(ctx.all_players_data, page, ctx.year, ctx.series_info, ctx.policy)
+
+        logger.info("✅ %s 데이터 수집 완료", ctx.series_info["name"])
+
+    except DB_SAVE_EXCEPTIONS:
+        logger.exception("❌ 크롤링 중 오류")
+
+    finally:
+        context.close()
+
+    return ctx.all_players_data
 
 
 def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]:
@@ -1232,67 +1310,32 @@ def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]
 
     policy = RequestPolicy()
 
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=headless)
-        # Apply UA rotation via context
-        context = browser.new_context(**policy.build_context_kwargs(locale="ko-KR"))
-        page = context.new_page()
-        page.set_default_timeout(30000)
-        install_sync_resource_blocking(page)
+    execution = BattingSeriesExecutionContext(
+        browser=request.browser,
+        year=year,
+        series_key=series_key,
+        series_info=series_info,
+        limit=limit,
+        save_to_db=save_to_db,
+        by_team=by_team,
+        preserve_team_splits=preserve_team_splits,
+        policy=policy,
+        unique_players=unique_players,
+        all_players_data=all_players_data,
+    )
 
-        try:
-            logger.info("\n📊 %s년 %s 타자 기록 수집 시작 (by_team=%s)", year, series_info["name"], by_team)
-            logger.info("-" * 60)
-
-            # 페이지로 이동 (Basic1 사용)
-            url = HITTER_BASIC1
-            if not compliance.is_allowed_sync(url):
-                logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
-                return []
-
-            policy.delay(host="www.koreabaseball.com")
-            page.goto(url, wait_until="load", timeout=NAV_TIMEOUT)
-            page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-
-            # 시즌과 시리즈 설정
+    if request.browser is not None:
+        _execute_batting_crawl(execution)
+    else:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=headless)
             try:
-                _select_season_and_series(page, year, series_info, policy)
-            except CRAWLER_EXCEPTIONS as e:
-                reason = f"Season/Series selection error: {e}"
-                logger.exception("Season/Series selection error, falling back to DB aggregation")
+                execution.browser = browser
+                _execute_batting_crawl(execution)
+            finally:
                 browser.close()
-                return _handle_batting_fallback(year, series_key, reason, save_to_db=save_to_db)
 
-            # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
-            team_options = _get_team_options(page, by_team=by_team)
-            _collect_batting_stats_loop(
-                BattingCrawlContext(
-                    page=page,
-                    year=year,
-                    series_key=series_key,
-                    iteration_targets=team_options,
-                    by_team=by_team,
-                    limit=limit,
-                    policy=policy,
-                    unique_players=unique_players,
-                    all_players_data=all_players_data,
-                    preserve_team_splits=preserve_team_splits,
-                ),
-            )
-
-            # 정규시즌인 경우 Basic2 페이지에서 추가 데이터 수집
-            if series_key == "regular" and all_players_data and not preserve_team_splits:
-                all_players_data = _merge_basic2_data(all_players_data, page, year, series_info, policy)
-
-            logger.info("✅ %s 데이터 수집 완료", series_info["name"])
-
-        except DB_SAVE_EXCEPTIONS:
-            logger.exception("❌ 크롤링 중 오류")
-
-        finally:
-            browser.close()
-
-    all_players_data = _finalize_batting_summary(all_players_data, series_info)
+    all_players_data = _finalize_batting_summary(execution.all_players_data, series_info)
     _save_batting_if_needed(all_players_data, save_to_db=save_to_db)
     return all_players_data
 
@@ -1346,21 +1389,26 @@ def crawl_all_series(
     series_mapping = get_series_mapping()
     all_series_data = {}
 
-    for series_key, series_info in series_mapping.items():
-        logger.info("\n🚀 %s 시작...", series_info["name"])
-        series_data = crawl_series_batting_stats(
-            BattingSeriesCrawlRequest(
-                year=year,
-                series_key=series_key,
-                limit=limit,
-                save_to_db=save_to_db,
-                headless=headless,
-                by_team=by_team,
-            ),
-        )
-        all_series_data[series_key] = series_data
-
-        policy.delay()
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=headless)
+        try:
+            for series_key, series_info in series_mapping.items():
+                logger.info("\n🚀 %s 시작...", series_info["name"])
+                series_data = crawl_series_batting_stats(
+                    BattingSeriesCrawlRequest(
+                        year=year,
+                        series_key=series_key,
+                        limit=limit,
+                        save_to_db=save_to_db,
+                        headless=headless,
+                        by_team=by_team,
+                        browser=browser,
+                    ),
+                )
+                all_series_data[series_key] = series_data
+                policy.delay()
+        finally:
+            browser.close()
 
     return all_series_data
 

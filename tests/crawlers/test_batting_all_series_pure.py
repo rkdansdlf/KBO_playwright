@@ -837,8 +837,15 @@ class TestBattingPageParsers:
             "regular": {"name": "정규시즌"},
             "exhibition": {"name": "시범경기"},
         }
+        playwright = MagicMock()
+        browser = MagicMock()
+        playwright.chromium.launch.return_value = browser
+        manager = MagicMock()
+        manager.__enter__.return_value = playwright
+        manager.__exit__.return_value = False
 
         with (
+            patch("src.crawlers.player_batting_all_series_crawler.sync_playwright", return_value=manager),
             patch("src.crawlers.player_batting_all_series_crawler.RequestPolicy", return_value=policy),
             patch("src.crawlers.player_batting_all_series_crawler.get_series_mapping", return_value=mapping),
             patch(

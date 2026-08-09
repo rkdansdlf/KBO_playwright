@@ -165,7 +165,7 @@ class TransitTimeCrawler:
         logger.info("[Transit] Got %s measurements", len(records))
 
         if save:
-            self._save_to_db(records)
+            await asyncio.to_thread(self._save_to_db, records)
         else:
             for rec in records:
                 logger.info(

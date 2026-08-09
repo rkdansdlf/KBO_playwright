@@ -923,8 +923,7 @@ def resolve_null_player_ids(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Conservatively fill NULL player_id values.")
-    parser.add_argument("--oci", action="store_true", help="Use OCI_DB_URL instead of local DATABASE_URL.")
-    parser.add_argument("--db-url", default=None, help="Explicit database URL. Overrides --oci and local DATABASE_URL.")
+    parser.add_argument("--db-url", default=None, help="Explicit database URL. Overrides local DATABASE_URL.")
     parser.add_argument(
         "--years",
         default=",".join(str(year) for year in DEFAULT_YEARS),
@@ -952,9 +951,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     load_dotenv()
     args = parse_args()
-    db_url = args.db_url or (os.getenv("OCI_DB_URL") if args.oci else None)
-    if args.oci and not db_url:
-        raise SystemExit("OCI_DB_URL is required with --oci")
+    db_url = args.db_url or os.getenv("DATABASE_URL")
     years = tuple(int(part.strip()) for part in args.years.split(",") if part.strip())
     tables = tuple(part.strip() for part in args.tables.split(",") if part.strip())
     result = resolve_null_player_ids(

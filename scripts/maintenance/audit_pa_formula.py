@@ -45,7 +45,7 @@ def _populate_audit_cache():
     logger.info("Initializing global audit cache (single-scan table query)...")
     t0 = time.time()
     with SessionLocal() as session:
-        # Bypass auxiliary statistics querying to avoid DB scan overload on OCI PostgreSQL
+        # Bypass auxiliary statistics querying to avoid an unnecessary full DB scan.
         total_games_map: dict[int, int] = {}
         total_rows_map: dict[int, int] = {}
 
@@ -303,32 +303,7 @@ def _recalc_and_sync(year: int, game_ids: list[str]) -> None:
         logger.exception("Error recalculating season stats for %s", year)
 
 
-def _sync_corrected_to_oci(year: int, game_ids: list[str]) -> None:
-    import os
-
-    oci_url = os.getenv("OCI_DB_URL")
-    if not oci_url:
-        logger.info("OCI_DB_URL not set. Skipping OCI synchronization.")
-        return
-    logger.info("Synchronizing corrected data to OCI...")
-    try:
-        from src.sync.oci_sync import OCISync
-
-        with SessionLocal() as sqlite_session:
-            syncer = OCISync(oci_url, sqlite_session)
-            syncer.sync_player_basic()
-            syncer.sync_players()
-            for game_id in game_ids:
-                syncer.sync_specific_game(game_id)
-            syncer.sync_player_season_batting(year=year)
-            syncer.sync_player_season_pitching(year=year)
-            syncer.close()
-            logger.info("OCI synchronization completed successfully.")
-    except AUDIT_EXCEPTIONS:
-        logger.exception("Error syncing to OCI")
-
-
-def auto_fix_year(year: int, *, sync_oci: bool = False) -> int:
+def auto_fix_year(year: int) -> int:
     game_ids = _get_violation_game_ids(year)
     if not game_ids:
         logger.info("No PA formula violations found for year %s.", year)
@@ -340,10 +315,6 @@ def auto_fix_year(year: int, *, sync_oci: bool = False) -> int:
         if ratio_fixed:
             logger.info("Applied ratio-based fallback correction for %s: %s rows updated", year, ratio_fixed)
     _recalc_and_sync(year, game_ids)
-    if sync_oci:
-        _sync_corrected_to_oci(year, game_ids)
-    else:
-        logger.info("OCI synchronization disabled; pass --sync-oci to enable it.")
     return len(game_ids)
 
 
@@ -374,11 +345,6 @@ def _build_arg_parser():
     parser.add_argument(
         "--auto-fix", action="store_true", help="Apply PBP-based correction and trigger stats recalculation"
     )
-    parser.add_argument(
-        "--sync-oci",
-        action="store_true",
-        help="Sync auto-fixed data to OCI. Disabled by default even when OCI_DB_URL is configured.",
-    )
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
     return parser
@@ -388,7 +354,7 @@ def _run_auto_fix(args, start_time: float) -> None:
     years = list(range(2018, 2027)) if args.all_years else [args.year] if args.year else [2020, 2021, 2023]
     for y in years:
         logger.info("Auto-fix for year %s", y)
-        auto_fix_year(y, sync_oci=args.sync_oci)
+        auto_fix_year(y)
     logger.info("Total elapsed: %.2fs", time.time() - start_time)
 
 

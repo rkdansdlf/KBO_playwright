@@ -304,7 +304,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Discover archived KBO relay captures from the Internet Archive")
     parser.add_argument(
         "--input",
-        default="data/recovery/relay_unresolved_completed_games_oci_20260415.csv",
+        default="data/recovery/relay_unresolved_completed_games_20260415.csv",
         help="Unresolved relay backlog CSV",
     )
     parser.add_argument(

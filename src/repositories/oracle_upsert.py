@@ -1,4 +1,4 @@
-"""Portable upsert helpers for databases without native SQLAlchemy upsert APIs."""
+"""Dialect-neutral fallback upsert used by Oracle-backed repositories."""
 
 from __future__ import annotations
 
@@ -7,41 +7,50 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
     from sqlalchemy.orm import Session
+
+
+class MissingUniqueKeyValuesError(ValueError):
+    """Raised when an upsert payload lacks a business-key value."""
+
+    def __init__(self, keys: list[str]) -> None:
+        """Initialize the error with the missing business keys.
+
+        Args:
+            keys: Missing business-key names.
+
+        """
+        super().__init__(f"Missing unique-key values: {', '.join(keys)}")
 
 
 def upsert_model_by_unique_keys(
     session: Session,
     model: type[object],
-    payload: Mapping[str, object],
-    unique_keys: Sequence[str],
-) -> None:
-    """Insert or update a model using its business-key columns.
+    payload: dict[str, object],
+    unique_keys: tuple[str, ...],
+) -> object:
+    """Insert a model row or update the row matching its business keys.
 
-    ``Session.merge`` only matches primary-key values. This helper also works
-    for models whose id is an auto-increment column and whose actual upsert
-    key is a composite unique constraint.
-
-    Args:
-        session: Active database session.
-        model: SQLAlchemy model class.
-        payload: Column values to insert or update.
-        unique_keys: Columns that identify an existing row.
-
+    This path is used for dialects without a SQLAlchemy-specific conflict
+    clause. Database-generated identity and creation timestamps are preserved
+    when an existing row is updated.
     """
-    missing_keys = [key for key in unique_keys if key not in payload]
-    if missing_keys:
-        message = f"Missing unique-key values: {', '.join(missing_keys)}"
-        raise ValueError(message)
+    missing = [key for key in unique_keys if key not in payload or payload[key] is None]
+    if missing:
+        raise MissingUniqueKeyValuesError(missing)
 
-    criteria = [getattr(model, key) == payload[key] for key in unique_keys]
-    existing = session.execute(select(model).where(*criteria)).scalars().first()
+    columns = set(model.__table__.columns.keys())  # type: ignore[attr-defined]
+    values = {key: value for key, value in payload.items() if key in columns}
+    filters = [getattr(model, key) == values[key] for key in unique_keys]
+    existing = session.execute(select(model).where(*filters)).scalars().first()
+
     if existing is None:
-        session.add(model(**dict(payload)))  # type: ignore[call-arg]
-        return
+        row = model(**values)  # type: ignore[call-arg]
+        session.add(row)
+        return row
 
-    for key, value in payload.items():
-        if key not in {*unique_keys, "id", "created_at"}:
+    immutable = set(unique_keys) | {"id", "created_at"}
+    for key, value in values.items():
+        if key not in immutable:
             setattr(existing, key, value)
+    return existing

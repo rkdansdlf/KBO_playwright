@@ -1,7 +1,7 @@
 """Backfill missing team_code in player_season batting/pitching tables.
 
 Resolves NULL ``team_code`` rows using a conservative, evidence-based cascade:
-``player_game_batting`` / ``player_game_pitching`` (same season), or the OCI
+``player_game_batting`` / ``player_game_pitching`` (same season), or the game
 ``game_batting_stats`` / ``game_pitching_stats`` fallback -> ``team_daily_roster``
 (same year, when present) -> ``player_basic.career`` text -> current team.
 
@@ -183,7 +183,7 @@ def _has_table(session: Session, table_name: str) -> bool:
 
 
 def _game_team_codes(session: Session, player_id: int, season: int, stat_type: str) -> set[str]:
-    """Use player-game evidence, falling back to OCI game-stat tables."""
+    """Use player-game evidence, falling back to game-stat tables."""
     queries = GAME_EVIDENCE_QUERIES[stat_type]
     table_name = next((name for name in queries if _has_table(session, name)), None)
     if table_name is None:
@@ -199,7 +199,7 @@ def _roster_team_codes(session: Session, player_id: int, season: int) -> set[str
     """Distinct roster team codes for a player in a season (dialect-agnostic).
 
     Uses SQLAlchemy ``extract('year', ...)`` so the same code runs against both
-    SQLite (local) and Oracle (OCI) without ``strftime`` portability issues.
+    SQLite and PostgreSQL without ``strftime`` portability issues.
     """
     stmt = (
         select(distinct(TeamDailyRoster.team_code))
@@ -305,7 +305,7 @@ def _resolve_pitching_team_code(session: Session, player_id: int, season: int) -
 
 
 def _build_update_query(session: Session, table_name: str) -> str:
-    """Build an update compatible with local and OCI season-stat schemas."""
+    """Build an update compatible with supported season-stat schemas."""
     assignments = ["team_code = :code"]
     try:
         columns = {str(column["name"]).lower() for column in sa_inspect(session.get_bind()).get_columns(table_name)}

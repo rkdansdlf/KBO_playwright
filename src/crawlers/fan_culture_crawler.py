@@ -40,6 +40,7 @@ from src.utils.youtube_api_client import (
 
 logger = logging.getLogger(__name__)
 SONG_LOG_PREVIEW_LIMIT = 5
+_CACHE_TTL_SECONDS = 86400  # 24 hours
 
 YOUTUBE_VIDEO_BASE = "https://www.youtube.com/watch?v="
 FAN_CULTURE_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
@@ -118,9 +119,31 @@ class FanCultureCrawler:
 
         """
         self.season = season or datetime.now(KST).year
-
         self.max_results = max_results_per_team
         self.client = YouTubeAPIClient()
+        self._cache_path = "data/snapshots/youtube_fan_culture_cache.json"
+
+    def _load_cache(self) -> dict[str, Any]:
+        from pathlib import Path
+        p = Path(self._cache_path)
+        if p.exists():
+            try:
+                import json
+
+                return json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning("[FanCulture] Failed to load cache file: %s", e)
+        return {}
+
+    def _save_cache(self, cache_data: dict[str, Any]) -> None:
+        import json
+        from pathlib import Path
+        p = Path(self._cache_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            p.write_text(json.dumps(cache_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError as e:
+            logger.warning("[FanCulture] Failed to write cache file: %s", e)
 
     async def run(
         self,
@@ -128,18 +151,9 @@ class FanCultureCrawler:
         save: bool = False,
         team_filter: str | None = None,
         dry_run: bool = False,
+        force_refresh: bool = False,
     ) -> list[dict]:
-        """Crawl cheer songs from YouTube for all (or one) KBO team.
-
-        Args:
-            save: Whether to persist the results.
-            team_filter: Team Filter.
-            dry_run: If True, performs a dry run without persisting changes.
-            save: Persist results to database.
-            team_filter: Only crawl this team code (e.g. 'LG').
-            dry_run: Print results without saving.
-
-        """
+        """Crawl cheer songs from YouTube for all (or one) KBO team."""
         if not self.client.is_configured():
             logger.warning("[FanCulture] ⚠️  YOUTUBE_API_KEY not set.")
             logger.info("[FanCulture]    Set it in .env to enable YouTube-based cheer song crawling.")
@@ -153,17 +167,31 @@ class FanCultureCrawler:
         )
 
         all_songs: list[dict] = []
+        cache_data = self._load_cache()
+        now_ts = datetime.now(KST).timestamp()
 
         for team_id, ch_info in teams.items():
             channel_id = ch_info["channel_id"]
-            logger.info("[FanCulture] %s (%s) — searching YouTube...", team_id, ch_info["name"])
+            team_cache_entry = cache_data.get(team_id)
 
-            team_songs = await self._crawl_team(team_id, channel_id, ch_info["search_queries"])
+            if not force_refresh and team_cache_entry and (
+                now_ts - team_cache_entry.get("timestamp", 0)
+            ) < _CACHE_TTL_SECONDS:
+                logger.info("[FanCulture] %s (%s) — using 24h cached YouTube results", team_id, ch_info["name"])
+                team_songs = team_cache_entry.get("songs", [])
+            else:
+                logger.info("[FanCulture] %s (%s) — searching YouTube...", team_id, ch_info["name"])
+                team_songs = await self._crawl_team(team_id, channel_id, ch_info["search_queries"])
+                cache_data[team_id] = {
+                    "timestamp": now_ts,
+                    "songs": team_songs,
+                }
+                self._save_cache(cache_data)
+                # API 호출 간격 (rate limit 준수)
+                await asyncio.sleep(2.0)
+
             all_songs.extend(team_songs)
             logger.info("[FanCulture]   → %s cheer songs found", len(team_songs))
-
-            # API 호출 간격 (rate limit 준수)
-            await asyncio.sleep(2.0)
 
         logger.info("[FanCulture] Total: %s songs across %s teams", len(all_songs), len(teams))
 

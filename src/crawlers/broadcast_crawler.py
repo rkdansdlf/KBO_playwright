@@ -60,7 +60,7 @@ class BroadcastCrawler:
             await browser.close()
 
             if save:
-                self._save_to_db(data)
+                await asyncio.to_thread(self._save_to_db, data)
             else:
                 for d in data[:10]:
                     logger.info(d)

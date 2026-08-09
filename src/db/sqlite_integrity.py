@@ -62,7 +62,10 @@ def sqlite_path_from_url(database_url: str | None) -> Path | None:
     if not separator or raw_path in {"", ":memory:"}:
         return None
 
-    return Path(unquote(raw_path))
+    path = Path(unquote(raw_path))
+    if path.name.startswith("._"):
+        return None
+    return path
 
 
 def is_sqlite_corruption_error(exc: BaseException) -> bool:

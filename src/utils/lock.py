@@ -133,11 +133,8 @@ class ProcessLock:
 
     def _get_postgres_url(self) -> str | None:
         """Dynamically detect PostgreSQL database URL from the environment."""
-        oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL") or ""
         db_url = os.getenv("DATABASE_URL") or ""
 
-        if "postgresql" in oci_url:
-            return oci_url
         if "postgresql" in db_url:
             return db_url
         return None
@@ -319,6 +316,41 @@ class ProcessLock:
                 self._state.file_fd.close()
                 self._state.file_fd = None
         return success
+
+    def acquire_with_backoff(
+        self,
+        retries: int = 3,
+        initial_delay: float = 0.1,
+        backoff_factor: float = 2.0,
+        timeout: float | None = None,
+    ) -> bool:
+        """Attempt to acquire the lock with exponential backoff retries.
+
+        Args:
+            retries: Maximum number of retry attempts.
+            initial_delay: Initial delay in seconds.
+            backoff_factor: Multiplier for exponential backoff.
+            timeout: Lock acquisition timeout per attempt.
+
+        Returns:
+            True if acquired successfully, False otherwise.
+
+        """
+        delay = initial_delay
+        for attempt in range(retries + 1):
+            if self.acquire(timeout=timeout):
+                return True
+            if attempt < retries:
+                logger.warning(
+                    "[Lock] Lock '%s' contended; retrying in %.2fs (attempt %d/%d)...",
+                    self.name,
+                    delay,
+                    attempt + 1,
+                    retries,
+                )
+                time.sleep(delay)
+                delay *= backoff_factor
+        return False
 
     def release(self) -> None:
         """Release the lock."""

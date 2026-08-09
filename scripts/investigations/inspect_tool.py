@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import sqlite3
 import sys
 from datetime import datetime
@@ -63,8 +62,8 @@ def run_db_query(db_path: Path, query: str) -> None:
             logger.info("-" * (len(" | ".join(cols))))
             for row in cursor.fetchall():
                 logger.info(" | ".join(str(val) for val in row))
-    except DB_QUERY_EXCEPTIONS as e:
-        logger.error(f"Query Execution Error: {e}")
+    except DB_QUERY_EXCEPTIONS:
+        logger.exception("Query Execution Error")
     finally:
         conn.close()
 
@@ -151,78 +150,6 @@ def run_db_summary(db_path: Path) -> None:
     logger.info("\n✅ Local summary complete")
 
 
-def run_oci_summary() -> None:
-    """Print the count of rows for each table in OCI PostgreSQL."""
-    try:
-        from dotenv import load_dotenv
-        from sqlalchemy import create_engine, text
-        from sqlalchemy.exc import SQLAlchemyError
-    except ImportError:
-        logger.info("ERROR: sqlalchemy and python-dotenv are required for OCI summary.")
-        sys.exit(1)
-
-    load_dotenv()
-    db_url = os.getenv("OCI_DB_URL")
-    if not db_url:
-        logger.info("ERROR: OCI_DB_URL environment variable is not set.")
-        sys.exit(1)
-
-    logger.info("Connecting to OCI PostgreSQL...")
-    try:
-        engine = create_engine(db_url)
-        with engine.connect() as conn:
-            logger.info("📊 OCI Database Summary:")
-
-            def get_count(table_name):
-                try:
-                    return conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).fetchone()[0]
-                except SQLAlchemyError as e:
-                    return f"ERROR ({e})"
-
-            logger.info("\n=== Player Data ===")
-            logger.info(f"  player_basic: {get_count('player_basic')}")
-            logger.info(f"  player_season_batting: {get_count('player_season_batting')}")
-            logger.info(f"  player_season_pitching: {get_count('player_season_pitching')}")
-
-            # Additional 2001 check from check_oci_summary.py
-            logger.info(
-                f"  2001 Batting: {conn.execute(text('SELECT COUNT(*) FROM player_season_batting WHERE season=2001')).fetchone()[0]}"
-            )
-            logger.info(
-                f"  2001 Pitching: {conn.execute(text('SELECT COUNT(*) FROM player_season_pitching WHERE season=2001')).fetchone()[0]}"
-            )
-
-            logger.info("\n=== Game Data ===")
-            logger.info(f"  games: {get_count('game')}")
-            logger.info(f"  game_metadata: {get_count('game_metadata')}")
-            logger.info(f"  game_inning_scores: {get_count('game_inning_scores')}")
-            logger.info(f"  game_lineups: {get_count('game_lineups')}")
-            logger.info(f"  game_batting_stats: {get_count('game_batting_stats')}")
-            logger.info(f"  game_pitching_stats: {get_count('game_pitching_stats')}")
-            logger.info(f"  game_summary: {get_count('game_summary')}")
-
-            logger.info("\n=== Other Data ===")
-            logger.info(f"  teams: {get_count('teams')}")
-            logger.info(f"  kbo_seasons: {get_count('kbo_seasons')}")
-            logger.info(f"  awards: {get_count('awards')}")
-
-            logger.info("\n=== Game Years Distribution ===")
-            try:
-                years = conn.execute(
-                    text(
-                        "SELECT substr(game_id, 1, 4) as year, COUNT(*) as cnt FROM game GROUP BY substr(game_id, 1, 4) ORDER BY year DESC LIMIT 10"
-                    )
-                ).fetchall()
-                for year, cnt in years:
-                    logger.info(f"  {year}: {cnt} games")
-            except SQLAlchemyError as e:
-                logger.error(f"  Error loading distribution: {e}")
-
-            logger.info("\n✅ OCI summary complete")
-    except SQLAlchemyError as e:
-        logger.info(f"ERROR connecting to OCI Database: {e}")
-
-
 async def inspect_gamecenter(
     date: str, game_id: str, section: str, headless: bool, screenshot_path: str | None
 ) -> None:
@@ -286,8 +213,8 @@ async def inspect_gamecenter(
                 await page.screenshot(path=screenshot_path)
                 logger.info(f"Screenshot saved to {screenshot_path}")
 
-        except PLAYWRIGHT_EXCEPTIONS as e:
-            logger.error(f"Error during GameCenter inspection: {e}")
+        except PLAYWRIGHT_EXCEPTIONS:
+            logger.exception("Error during GameCenter inspection")
         finally:
             await browser.close()
 
@@ -302,7 +229,6 @@ async def inspect_player_profile(
     screenshot_path: str | None,
 ) -> None:
     """Scrape a player's hitter or pitcher page."""
-
     if not HAS_PLAYWRIGHT:
         logger.info("ERROR: playwright package is not installed.")
         sys.exit(1)
@@ -345,8 +271,8 @@ async def inspect_player_profile(
                             await page.wait_for_load_state("networkidle")
                         else:
                             logger.info(f"Tab '{click_tab}' not found.")
-                except PLAYWRIGHT_EXCEPTIONS as e:
-                    logger.error(f"Error clicking tab: {e}")
+                except PLAYWRIGHT_EXCEPTIONS:
+                    logger.exception("Error clicking tab")
 
             # Handle select year
             if year:
@@ -360,8 +286,8 @@ async def inspect_player_profile(
                         await asyncio.sleep(2)  # Buffer for JS
                     else:
                         logger.info("Year select element not found.")
-                except PLAYWRIGHT_EXCEPTIONS as e:
-                    logger.error(f"Error selecting year: {e}")
+                except PLAYWRIGHT_EXCEPTIONS:
+                    logger.exception("Error selecting year")
 
             # Extract tables
             tables = await page.query_selector_all("table")
@@ -385,8 +311,8 @@ async def inspect_player_profile(
                 await page.screenshot(path=screenshot_path, full_page=True)
                 logger.info(f"Screenshot saved to {screenshot_path}")
 
-        except PLAYWRIGHT_EXCEPTIONS as e:
-            logger.error(f"Error during player profile inspection: {e}")
+        except PLAYWRIGHT_EXCEPTIONS:
+            logger.exception("Error during player profile inspection")
         finally:
             await browser.close()
 
@@ -434,9 +360,6 @@ def main() -> None:
     # Subcommand: summary
     summary_parser = subparsers.add_parser("summary", help="Summarize KBO Database row counts")
     summary_parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH, help="Path to SQLite db file (local)")
-    summary_parser.add_argument(
-        "--oci", action="store_true", help="Summarize OCI remote PostgreSQL database instead of local SQLite"
-    )
 
     args = parser.parse_args()
 
@@ -473,10 +396,7 @@ def main() -> None:
         )
 
     elif args.command == "summary":
-        if args.oci:
-            run_oci_summary()
-        else:
-            run_db_summary(args.db_path)
+        run_db_summary(args.db_path)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ Target URL pattern:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from http import HTTPStatus
@@ -142,7 +143,7 @@ class OperationNoticeLGCrawler:
         logger.info("[LG Notice] Total: %s notices", len(all_notices))
 
         if save:
-            self._save_to_db(all_notices)
+            await asyncio.to_thread(self._save_to_db, all_notices)
         else:
             for n in all_notices[:5]:
                 logger.info(n)
