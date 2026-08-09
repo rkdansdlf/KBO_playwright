@@ -61,14 +61,14 @@ class TestGetEmbedding:
         svc = EmbeddingService()
         svc.api_key = None
         result = svc.get_embedding("test")
-        assert len(result) == 256
+        assert len(result) == 1536
         assert all(v == 0.0 for v in result)
 
     def test_get_embedding_delegates_to_batch(self):
         svc = EmbeddingService()
         svc.api_key = None
         result = svc.get_embedding("single text")
-        assert len(result) == 256
+        assert len(result) == 1536
 
 
 class TestFetchGoogleEmbeddings:
@@ -79,7 +79,7 @@ class TestFetchGoogleEmbeddings:
             mock_client.return_value.__enter__.return_value.post.return_value.status_code = 500
             result = svc._fetch_google_embeddings(["hello"])
             assert len(result) == 1
-            assert result[0] == [0.0] * 256
+            assert result[0] == [0.0] * 1536
 
     def test_successful_response_parses_embeddings(self):
         svc = EmbeddingService()
@@ -99,7 +99,7 @@ class TestFetchGoogleEmbeddings:
         with patch("httpx.Client") as mock_client:
             mock_client.return_value.__enter__.return_value.post.side_effect = httpx.TimeoutException("timeout")
             result = svc._fetch_google_embeddings(["hello"])
-            assert result == [[0.0] * 256]
+            assert result == [[0.0] * 1536]
 
 
 class TestFetchOpenRouterEmbeddings:
@@ -109,7 +109,7 @@ class TestFetchOpenRouterEmbeddings:
         with patch("httpx.Client") as mock_client:
             mock_client.return_value.__enter__.return_value.post.return_value.status_code = 401
             result = svc._fetch_openrouter_embeddings(["hello"])
-            assert result == [[0.0] * 256]
+            assert result == [[0.0] * 1536]
 
     def test_successful_response_parses_in_order(self):
         svc = EmbeddingService()

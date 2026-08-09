@@ -22,13 +22,13 @@ def test_embedding_cache_mechanism():
     svc.api_key = "sk-or-v1-mock-key-for-cache-testing"
 
     # We mock the OpenRouter network fetch method
-    mock_vector = [0.1] * 1536  # text-embedding-3-small default
+    mock_vector = [0.1] * 2048  # pplx-embed-v1-4b native dims (truncated to 1536)
     mock_fetch = mock.MagicMock(return_value=[mock_vector])
 
     test_text = "이것은 캐시 테스트용 고유 텍스트 문구입니다."
 
     # Clean cache database entry for this test to ensure clean run
-    model_name = "openai/text-embedding-3-small"
+    model_name = "perplexity/pplx-embed-v1-4b"
     text_hash = svc._compute_hash(test_text)
 
     with SessionLocal() as session:
@@ -41,7 +41,7 @@ def test_embedding_cache_mechanism():
         # First call: Should trigger API fetch
         emb1 = svc.get_embeddings_batch([test_text])
         assert len(emb1) == 1
-        assert len(emb1[0]) == 256  # Should be post-processed to 256
+        assert len(emb1[0]) == 1536  # Should be post-processed to 1536
         assert mock_fetch.call_count == 1
 
         # Verify L2 normalized value check
@@ -53,7 +53,7 @@ def test_embedding_cache_mechanism():
         # Second call: Should read from SQLite cache instead of calling API
         emb2 = svc.get_embeddings_batch([test_text])
         assert len(emb2) == 1
-        assert len(emb2[0]) == 256
+        assert len(emb2[0]) == 1536
         assert emb2[0] == emb1[0]
         assert mock_fetch.call_count == 1  # Mock API call count must remain 1
 

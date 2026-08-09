@@ -11,7 +11,7 @@ import json
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import and_, desc, func, or_
+from sqlalchemy import and_, desc, func, or_, select
 
 from src.models.game import (
     Game,
@@ -1194,3 +1194,50 @@ class ContextAggregator:
             "position_averages": avg_data,
             "comparison": comparison,
         }
+
+    def get_milestone_alerts(
+        self, away_team: str, home_team: str, season: int = 2026
+    ) -> list[dict[str, Any]]:
+        """Get upcoming milestone alerts for players of the competing teams."""
+        from src.models.player_milestone import PlayerMilestone
+
+        stmt = select(PlayerMilestone).where(
+            PlayerMilestone.season == season,
+            PlayerMilestone.is_achieved.is_(False),
+            PlayerMilestone.team_code.in_([away_team, home_team]),
+        ).order_by(PlayerMilestone.remaining_val.asc())
+
+        milestones = list(self.session.execute(stmt).scalars().all())
+        return [
+            {
+                "player_name": m.player_name,
+                "team_code": m.team_code,
+                "milestone_category": m.milestone_category,
+                "current_val": m.current_val,
+                "target_val": m.target_val,
+                "remaining_val": m.remaining_val,
+                "alert_message": (
+                    f"오늘 {m.milestone_category}까지 {m.remaining_val}개 남음 "
+                    f"({m.current_val}/{m.target_val})"
+                ),
+            }
+            for m in milestones
+        ]
+
+
+    def get_recent_notices(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Get recent KBO press releases and notices."""
+        from src.models.kbo_press_release import KboPressRelease
+
+        stmt = select(KboPressRelease).order_by(KboPressRelease.published_date.desc()).limit(limit)
+        releases = list(self.session.execute(stmt).scalars().all())
+        return [
+            {
+                "notice_id": r.notice_id,
+                "title": r.title,
+                "category": r.category,
+                "published_date": str(r.published_date),
+                "source_url": r.source_url,
+            }
+            for r in releases
+        ]

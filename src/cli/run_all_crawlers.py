@@ -9,52 +9,36 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import sys
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.verify_sync_consistency import run_consistency_audit
-
-# Load environment variables
 from src.constants import KST
 from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
 from src.crawlers.realtime_issue_crawler import RealtimeIssueCrawler
 from src.crawlers.static_text_crawler import StaticTextCrawler
-from src.db.engine import get_db_session, get_oci_url
+from src.db.engine import get_db_session
 from src.parsers.text_transformer import TextTransformer
 from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.services.embedding_service import EmbeddingService
+from src.services.markdown_document_loader import (
+    load_local_markdown_docs,
+    markdown_category,
+    markdown_source_table,
+    markdown_title,
+)
 from src.utils.alerting import SlackWebhookClient
-
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 PIPELINE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
-FILE_READ_EXCEPTIONS = (OSError, UnicodeError)
-
-# Directory-to-category mapping for Docs/baseball subdirectories
-_CATEGORY_MAP: dict[str, str] = {
-    "baseball_rules": "game_rules",
-    "glossary": "glossary",
-    "bylaws": "bylaws",
-    "league_regulations": "league_regulations",
-    "player_regulations": "player_regulations",
-    "scoring_rules": "scoring_rules",
-    "disciplinary_regulations": "disciplinary_regulations",
-    "supplementary_regulations": "supplementary_regulations",
-    "kbo_knowledge": "kbo_knowledge",
-    "kbo_rulebook": "rulebook",
-}
 
 
 def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
@@ -93,56 +77,15 @@ def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
 
 
 def _markdown_category(path_parts: list[str]) -> tuple[str, str | None]:
-    category = "rulebook"
-    subcategory = None
-    for part in path_parts[:-1]:
-        mapped = _CATEGORY_MAP.get(part)
-        if mapped:
-            if category == "rulebook":
-                category = mapped
-            else:
-                subcategory = mapped
-    return category, subcategory
+    return markdown_category(path_parts)
 
 
 def _markdown_title(content: str, file: str) -> str:
-    first_line = content.lstrip().split("\n")[0]
-    if first_line.startswith("#"):
-        return first_line.lstrip("#").strip()
-    return Path(file).stem.replace("_", " ").title()
+    return markdown_title(content, file)
 
 
 def _load_local_markdown_docs(rules_dir: str = "Docs/baseball") -> list[dict[str, Any]]:
-    if not Path(rules_dir).exists():
-        return []
-    logger.info("📁 Scanning directory '%s' for static markdown files...", rules_dir)
-    raw_docs = []
-    for root, _, files in os.walk(rules_dir):
-        for file in files:
-            if not file.endswith(".md"):
-                continue
-            full_path = Path(root, file)
-            try:
-                with full_path.open(encoding="utf-8") as f:
-                    content = f.read()
-                rel_path = os.path.relpath(full_path, rules_dir)
-                category, subcategory = _markdown_category(rel_path.replace("\\", "/").split("/"))
-                raw_docs.append(
-                    {
-                        "title": _markdown_title(content, file),
-                        "content": content,
-                        "meta": {
-                            "source": full_path,
-                            "source_file": file,
-                            "crawled_at": datetime.now(KST).isoformat(),
-                            "category": category,
-                            **({"subcategory": subcategory} if subcategory else {}),
-                        },
-                    },
-                )
-            except FILE_READ_EXCEPTIONS:
-                logger.exception("⚠️ Error reading local markdown %s", file)
-    return raw_docs
+    return load_local_markdown_docs(rules_dir)
 
 
 async def _crawl_static_docs(crawler: StaticTextCrawler, pdf_path: str | None) -> list[dict[str, Any]]:
@@ -183,26 +126,15 @@ def _embed_and_save_static_chunks(
     for idx, emb in enumerate(embeddings):
         all_chunks[idx]["embedding"] = emb
 
+    for chunk in all_chunks:
+        meta = chunk.get("meta", {})
+        if meta.get("source_path"):
+            meta["source_table"] = markdown_source_table({"meta": meta})
+
     logger.info("💾 Saving chunks to local database...")
     with get_db_session() as session:
         upserted = repo.upsert_chunks(session, all_chunks)
         logger.info("✅ Upserted %s RAG chunks to local DB.", upserted)
-        if os.getenv("RUN_SYNC_OCI") == "1":
-            _sync_static_chunks_to_oci(session)
-
-
-def _sync_static_chunks_to_oci(session: Session) -> None:
-    logger.info("🚚 Syncing new static RAG chunks to OCI...")
-    from src.sync.oci_sync import OCISync
-
-    oci_url = get_oci_url()
-    if not oci_url:
-        return
-    syncer = OCISync(oci_url, session)
-    try:
-        logger.info("✅ Synced %s static RAG chunks to OCI.", syncer.sync_rag_chunks())
-    finally:
-        syncer.close()
 
 
 async def run_static_pipeline(pdf_path: str | None = None) -> None:
@@ -249,22 +181,6 @@ async def run_dynamic_pipeline() -> None:
             logger.info("✅ Dynamic rosters updated successfully (%s records processed).", inserted_count)
         except PIPELINE_EXCEPTIONS:
             logger.exception("⚠️ Roster crawler execution failure")
-
-        # 3. Automatically sync to OCI if config allows
-        if os.getenv("RUN_SYNC_OCI") == "1":
-            logger.info("🚚 Syncing ticket schedules and daily rosters to OCI...")
-            from src.sync.oci_sync import OCISync
-
-            oci_url = get_oci_url()
-            if oci_url:
-                syncer = OCISync(oci_url, session)
-                try:
-                    synced_tickets = syncer.sync_ticket_schedules()
-                    synced_rosters = syncer.sync_daily_rosters()
-                    logger.info("✅ Synced %s ticket schedules and %s rosters to OCI.", synced_tickets, synced_rosters)
-                finally:
-                    syncer.close()
-
 
 async def run_realtime_pipeline() -> None:
     """Run news and community thread crawler, transforms text, embeds and loads."""
@@ -317,61 +233,14 @@ async def run_realtime_pipeline() -> None:
             upserted = repo.upsert_chunks(session, all_chunks)
             logger.info("✅ Upserted %s realtime RAG chunks to local DB.", upserted)
 
-            # Automatically sync to OCI if config allows
-            if os.getenv("RUN_SYNC_OCI") == "1":
-                logger.info("🚚 Syncing realtime RAG chunks to OCI...")
-                from src.sync.oci_sync import OCISync
-
-                oci_url = get_oci_url()
-                if oci_url:
-                    syncer = OCISync(oci_url, session)
-                    try:
-                        synced = syncer.sync_rag_chunks()
-                        logger.info("✅ Synced %s realtime RAG chunks to OCI.", synced)
-                    finally:
-                        syncer.close()
-
-
-def run_consistency_check(*, deep: bool = False) -> None:
-    """Run a post-sync consistency audit between local SQLite and OCI.
-
-    Send an alert if mismatches are found. Skips silently if OCI is not configured.
-
-    Args:
-        deep: Deep.
-
-    """
-    oci_url = get_oci_url()
-
-    if not oci_url:
-        logger.info("[info] OCI URL not configured — skipping consistency check.")
-        return
-
-    logger.info("\n🔍 Running post-sync consistency audit...")
-    try:
-        success = run_consistency_audit(deep=deep, trigger_alert=True)
-        if success:
-            logger.info("✅ Consistency audit passed — databases are in sync.")
-        else:
-            logger.info("🚨 Consistency audit found mismatches — alert sent.")
-    except (SQLAlchemyError, RuntimeError, OSError):
-        err_msg = traceback.format_exc()
-        logger.exception("Consistency audit raised an unexpected error")
-        SlackWebhookClient.send_error_alert(f"Consistency audit error:\n{err_msg}")
-
-
 def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
     """Run async pipeline synchronously and catch errors for Telegram alerts.
-
-    After OCI sync completes, automatically runs a count-level consistency audit.
 
     Args:
         pipeline_type: Pipeline Type.
         pdf_path: Pdf file path.
 
     """
-    run_sync = os.getenv("RUN_SYNC_OCI") == "1"
-
     try:
         if pipeline_type == "static":
             asyncio.run(run_static_pipeline(pdf_path))
@@ -389,9 +258,6 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
         SlackWebhookClient.send_error_alert(err_msg)
         return
 
-    # Run a lightweight (count-level) consistency audit after each successful sync
-    if run_sync:
-        run_consistency_check(deep=False)
 
 
 def start_scheduler() -> None:
@@ -431,18 +297,6 @@ def start_scheduler() -> None:
         args=["static"],
         id="static_pipeline",
         name="Quarterly Rules & Wiki Crawler",
-    )
-
-    # 4. Deep Consistency Audit: Runs daily at 05:00 AM (after dynamic pipeline at 03:00 AM)
-    #    Only active when OCI sync is enabled via environment variable.
-    scheduler.add_job(
-        run_consistency_check,
-        "cron",
-        hour=5,
-        minute=0,
-        kwargs={"deep": True},
-        id="consistency_audit",
-        name="Daily Deep Consistency Audit (SQLite ↔ OCI)",
     )
 
     logger.info("   Jobs scheduled:")
