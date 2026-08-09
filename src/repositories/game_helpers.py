@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
@@ -22,7 +21,6 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN, GAME_ID_MIN_LEN
-from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -1000,12 +998,14 @@ def _replace_records(
     write_contract = ctx.write_contract if ctx else None
     dataset = model.__tablename__
     query = session.query(model).filter(model.game_id == game_id)
-    if _records_match_existing(query.all(), model, mappings):
+    existing_rows = query.all()
+    if existing_rows and _records_match_existing(existing_rows, model, mappings):
         if source and write_contract:
             write_contract.dataset_duplicate(game_id, source, dataset, len(mappings))
         return False
 
-    query.delete()
+    if existing_rows:
+        query.delete()
     if mappings:
         now = datetime.now(UTC).replace(tzinfo=None)
         has_created_at = "created_at" in model.__table__.columns
@@ -1035,12 +1035,14 @@ def _replace_records_for_side(
         record_key.model.game_id == record_key.game_id,
         record_key.model.team_side == record_key.team_side,
     )
-    if _records_match_existing(query.all(), record_key.model, mappings):
+    existing_rows = query.all()
+    if existing_rows and _records_match_existing(existing_rows, record_key.model, mappings):
         if source and write_contract:
             write_contract.dataset_duplicate(record_key.game_id, source, dataset, len(mappings))
         return False
 
-    query.delete()
+    if existing_rows:
+        query.delete()
     if mappings:
         now = datetime.now(UTC).replace(tzinfo=None)
         has_created_at = "created_at" in record_key.model.__table__.columns
@@ -1068,17 +1070,23 @@ def _replace_orm_records(
     write_contract = ctx.write_contract if ctx else None
     dataset = model.__tablename__
     query = session.query(model).filter(model.game_id == game_id)
-    if _records_match_existing_objects(query.all(), model, records):
+    existing_rows = query.all()
+    if existing_rows and _records_match_existing_objects(existing_rows, model, records):
         if source and write_contract:
             write_contract.dataset_duplicate(game_id, source, dataset, len(records))
         return False
 
-    query.delete()
+    if existing_rows:
+        query.delete()
     if records:
         session.add_all(records)
     if source and write_contract:
         write_contract.dataset_replaced(game_id, source, dataset, len(records))
     return True
+
+
+def _dict_sort_key(record: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted((k, str(v)) for k, v in record.items()))
 
 
 def _records_match_existing(existing_rows: list[Any], model: type[Any], mappings: list[dict[str, Any]]) -> bool:
@@ -1095,7 +1103,7 @@ def _records_match_existing(existing_rows: list[Any], model: type[Any], mappings
     incoming = [
         _normalize_record_for_compare({name: mapping.get(name) for name in comparable_columns}) for mapping in mappings
     ]
-    return sorted(existing, key=repr) == sorted(incoming, key=repr)
+    return sorted(existing, key=_dict_sort_key) == sorted(incoming, key=_dict_sort_key)
 
 
 def _records_match_existing_objects(existing_rows: list[Any], model: type[Any], records: list[Any]) -> bool:
@@ -1112,7 +1120,7 @@ def _records_match_existing_objects(existing_rows: list[Any], model: type[Any], 
     incoming = [
         _normalize_record_for_compare({name: getattr(row, name) for name in comparable_columns}) for row in records
     ]
-    return sorted(existing, key=repr) == sorted(incoming, key=repr)
+    return sorted(existing, key=_dict_sort_key) == sorted(incoming, key=_dict_sort_key)
 
 
 def _normalize_record_for_compare(record: dict[str, Any]) -> dict[str, Any]:
@@ -1575,27 +1583,3 @@ def _clean_extras(extras: dict[str, Any] | None) -> dict[str, Any] | None:
     ignore_keys = {"COL_0", "COL_1", "선수명", "PlayerName", "playerName"}
     cleaned = {k: v for k, v in extras.items() if k not in ignore_keys}
     return cleaned or None
-
-
-def _auto_sync_to_oci(game_id: str) -> None:
-    """Trigger OCI synchronization if enabled.
-
-    Args:
-        game_id: Game ID.
-        game_id: Game ID.
-
-    """
-    if os.getenv("AUTO_SYNC_OCI") == "true":
-        try:
-            from src.sync.oci_sync import OCISync
-
-            oci_url = os.getenv("OCI_DB_URL")
-            if oci_url:
-                # Use a fresh session to read the committed data
-                with SessionLocal() as sync_session:
-                    syncer = OCISync(oci_url, sync_session)
-                    syncer.sync_specific_game(game_id)
-                    syncer.close()
-                logger.info(" ✨ Auto-synced %s to OCI", game_id)
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
-            logger.exception(" ⚠️ Auto-sync OCI failed")

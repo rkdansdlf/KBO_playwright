@@ -21,6 +21,10 @@ from src.models.game import (
     GamePitchingStat,
     GameSummary,
 )
+from src.repositories.crawl_evidence_repository import (
+    build_game_detail_db_projection,
+    record_crawl_evidence,
+)
 from src.repositories.game_helpers import (
     GameSummaryEntry,
     RecordKey,
@@ -29,7 +33,6 @@ from src.repositories.game_helpers import (
     _apply_game_team_identity,
     _apply_game_team_identity_with_contract,
     _assign_field_if_changed,
-    _auto_sync_to_oci,
     _build_batting_stats,
     _build_inning_scores,
     _build_lineups,
@@ -71,7 +74,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, ValueError, TypeError, OSError)
+GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, ValueError, TypeError, OSError, RuntimeError)
+GAME_DETAIL_PARSER_VERSION = "game-detail-parser-v1"
+GAME_DETAIL_NORMALIZATION_VERSION = "game-detail-normalized-v1"
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,79 @@ class SnapshotContext:
     home_info: dict[str, Any]
     pitchers: dict[str, Any]
     status: str | None
+
+
+def _has_full_detail_payload(
+    hitters: dict[str, list[dict[str, Any]]],
+    pitchers: dict[str, list[dict[str, Any]]],
+) -> bool:
+    """Return whether both teams have hitter and pitcher rows."""
+    return all(
+        bool(rows.get(side))
+        for rows in (hitters, pitchers)
+        for side in ("away", "home")
+    )
+
+
+def _build_detail_evidence_projection(
+    game_data: dict[str, Any],
+    game_id: str,
+    game_date: date,
+    inning_rows: list[dict[str, Any]],
+    summary_rows: list[dict[str, Any]],
+) -> dict[str, object]:
+    """Build the normalized projection used for source-to-DB comparison."""
+    teams = game_data.get("teams", {}) or {}
+    away_info = teams.get("away", {}) or {}
+    home_info = teams.get("home", {}) or {}
+    hitters = game_data.get("hitters", {}) or {}
+    pitchers = game_data.get("pitchers", {}) or {}
+    lineup_rows = _prepare_player_rows(
+        game_id,
+        "game_lineups",
+        _build_lineups(game_id, hitters, season_year=game_date.year),
+    )
+    batting_rows = _prepare_player_rows(
+        game_id,
+        "game_batting_stats",
+        _build_batting_stats(game_id, hitters, season_year=game_date.year),
+    )
+    pitching_rows = _prepare_player_rows(
+        game_id,
+        "game_pitching_stats",
+        _build_pitching_stats(game_id, pitchers, season_year=game_date.year),
+    )
+    return {
+        "game": {
+            "game_id": game_id,
+            "game_date": game_date,
+            "home_team": home_info.get("code"),
+            "away_team": away_info.get("code"),
+            "home_score": home_info.get("score"),
+            "away_score": away_info.get("score"),
+        },
+        "metadata": {
+            "stadium_code": game_data.get("metadata", {}).get("stadium_code"),
+            "stadium_name": game_data.get("metadata", {}).get("stadium"),
+            "attendance": game_data.get("metadata", {}).get("attendance"),
+            "game_time_minutes": game_data.get("metadata", {}).get("duration_minutes"),
+            "weather": game_data.get("metadata", {}).get("weather"),
+        },
+        "innings": sorted(inning_rows, key=_projection_sort_key),
+        "lineups": sorted(lineup_rows, key=_projection_sort_key),
+        "batting": sorted(batting_rows, key=_projection_sort_key),
+        "pitching": sorted(pitching_rows, key=_projection_sort_key),
+        "summary": sorted(summary_rows, key=_projection_sort_key),
+    }
+
+
+def _projection_sort_key(row: dict[str, Any]) -> tuple[str, ...]:
+    return (
+        str(row.get("team_side") or ""),
+        str(row.get("appearance_seq") or row.get("inning") or ""),
+        str(row.get("player_id") or row.get("player_name") or ""),
+        str(row.get("summary_type") or ""),
+    )
 
 
 @dataclass(frozen=True)
@@ -497,22 +575,35 @@ def _update_starting_pitchers(
     return changed
 
 
-def _update_detail_children(
+def _update_detail_children(  # noqa: PLR0913
     session: Session,
     ctx: DetailSaveContext,
     hitters: dict[str, list[dict[str, Any]]],
     pitchers: dict[str, list[dict[str, Any]]],
     inning_rows: list[dict[str, Any]],
+    *,
+    allow_partial: bool = False,
 ) -> bool:
     changed = False
     if inning_rows:
-        changed |= _replace_records(
-            session,
-            GameInningScore,
-            ctx.game_id,
-            inning_rows,
-            RecordReplaceContext(ctx.source, ctx.write_contract),
-        )
+        if allow_partial:
+            for side in ("away", "home"):
+                side_rows = [row for row in inning_rows if row.get("team_side") == side]
+                if side_rows:
+                    changed |= _replace_records_for_side(
+                        session,
+                        RecordKey(GameInningScore, ctx.game_id, side),
+                        side_rows,
+                        RecordReplaceContext(ctx.source, ctx.write_contract),
+                    )
+        else:
+            changed |= _replace_records(
+                session,
+                GameInningScore,
+                ctx.game_id,
+                inning_rows,
+                RecordReplaceContext(ctx.source, ctx.write_contract),
+            )
     lineup_rows = _prepare_player_rows(
         ctx.game_id,
         "game_lineups",
@@ -530,7 +621,19 @@ def _update_detail_children(
     )
     changed |= _ensure_player_basic_stubs(session, [*lineup_rows, *batting_rows, *pitching_rows])
     for model, rows in ((GameLineup, lineup_rows), (GameBattingStat, batting_rows), (GamePitchingStat, pitching_rows)):
-        if rows:
+        if not rows:
+            continue
+        if allow_partial:
+            for side in ("away", "home"):
+                side_rows = [row for row in rows if row.get("team_side") == side]
+                if side_rows:
+                    changed |= _replace_records_for_side(
+                        session,
+                        RecordKey(model, ctx.game_id, side),
+                        side_rows,
+                        RecordReplaceContext(ctx.source, ctx.write_contract),
+                    )
+        else:
             changed |= _replace_records(
                 session,
                 model,
@@ -595,15 +698,34 @@ def _build_summary_rows(
         for player in hitters.get(side, []) + pitchers.get(side, [])
         if player.get("player_name") and player.get("player_id")
     }
+
+    # Pre-extract and batch resolve any unmapped player names across summary items
+    unmapped_names: set[str] = set()
+    for item in summary_items:
+        summary_type = item.get("summary_type")
+        if summary_type == "심판":
+            continue
+        detail_text = item.get("detail_text")
+        entries = _extract_players_from_text(summary_type, detail_text)
+        for player_name, _ in entries:
+            if player_name and player_name not in participant_map:
+                unmapped_names.add(player_name)
+
+    for player_name in unmapped_names:
+        resolved_id = resolver.resolve_id(player_name, None, game_date.year)
+        if resolved_id:
+            participant_map[player_name] = resolved_id
+
     summary_rows = []
     for item in summary_items:
         summary_rows.extend(_summary_item_rows(item, game_id, game_date, participant_map, resolver))
     return summary_rows
 
 
-def save_game_detail(
+def save_game_detail(  # noqa: PLR0913
     game_data: dict[str, Any],
     *,
+    allow_partial: bool = False,
     write_contract: GameWriteContract | None = None,
     source_stage: str = "detail",
     source_crawler: str = "GameDetailCrawler",
@@ -613,6 +735,7 @@ def save_game_detail(
 
     Args:
         game_data: Game Data.
+        allow_partial: Preserve existing child rows for anchored partial payloads.
         write_contract: Write Contract.
         source_stage: Source Stage.
         source_crawler: Source Crawler.
@@ -650,6 +773,7 @@ def save_game_detail(
     metadata = game_data.get("metadata", {}) or {}
     hitters = game_data.get("hitters", {}) or {}
     pitchers = game_data.get("pitchers", {}) or {}
+    allow_partial = allow_partial or not _has_full_detail_payload(hitters, pitchers)
     explicit_status = normalize_game_status(game_data.get("game_status"))
 
     with SessionLocal() as session:
@@ -717,6 +841,7 @@ def save_game_detail(
                 hitters,
                 pitchers,
                 inning_rows,
+                allow_partial=allow_partial,
             )
 
             summary_rows = _build_summary_rows(
@@ -726,7 +851,7 @@ def save_game_detail(
                 {"hitters": hitters, "pitchers": pitchers},
                 game_data.get("summary") or [],
             )
-            if summary_rows:
+            if summary_rows and not allow_partial:
                 changed |= _replace_records(
                     session,
                     GameSummary,
@@ -735,14 +860,41 @@ def save_game_detail(
                     RecordReplaceContext(source, write_contract),
                 )
 
+            source_capture = game_data.get("_source_capture")
+            if isinstance(source_capture, dict):
+                evidence_payload = {key: value for key, value in game_data.items() if key != "_source_capture"}
+                normalized_projection = _build_detail_evidence_projection(
+                    game_data,
+                    game_id,
+                    game_date,
+                    inning_rows,
+                    summary_rows,
+                )
+                db_projection = (
+                    build_game_detail_db_projection(session, game_id, normalized_projection)
+                    if not allow_partial
+                    else None
+                )
+                record_crawl_evidence(
+                    session,
+                    entity_type="game",
+                    entity_id=game_id,
+                    dataset="detail",
+                    source_name=source_crawler,
+                    parsed_payload=evidence_payload,
+                    normalized_payload=normalized_projection,
+                    source_capture=source_capture,
+                    db_projection=db_projection,
+                    parser_version=GAME_DETAIL_PARSER_VERSION,
+                    normalization_version=GAME_DETAIL_NORMALIZATION_VERSION,
+                )
+
             session.commit()
         except GAME_SAVE_EXCEPTIONS:
             session.rollback()
             logger.exception("[ERROR] DB Error (Detail)")
             return False
         else:
-            if changed:
-                _auto_sync_to_oci(game_id)
             return True
 
 
@@ -836,7 +988,6 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
             logger.exception("[ERROR] DB Error (Snapshot)")
             return False
         else:
-            _auto_sync_to_oci(game_id)
             return True
 
 
@@ -982,7 +1133,6 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
             logger.exception("[ERROR] DB Error (Pregame)")
             return False
         else:
-            _auto_sync_to_oci(game_id)
             return True
 
 

@@ -311,11 +311,11 @@ class TestCircuitBreakerPersistence:
 
     def test_expired_cooldown_not_restored(self, tmp_path: Path):
         p = tmp_path / "cb_state.csv"
-        cb = SourceCircuitBreaker(threshold=1, cooldown_seconds=0.05, persist_path=p)
+        cb = SourceCircuitBreaker(threshold=1, cooldown_seconds=0.5, persist_path=p)
         cb.record_failure("n", "b")
         assert cb.is_open("n", "b")
 
-        time.sleep(0.06)
+        time.sleep(0.6)
 
         # Reload — cooldown should be expired (not restored)
         cb2 = SourceCircuitBreaker(threshold=1, persist_path=p)

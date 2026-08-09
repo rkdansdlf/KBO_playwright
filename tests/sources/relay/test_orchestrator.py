@@ -213,6 +213,26 @@ class TestRelayRecoveryOrchestrator:
         assert attempts[0]["status"] == "success"
 
     @pytest.mark.asyncio
+    async def test_fetch_game_not_modified_is_successful_noop(self, orchestrator, mock_adapter):
+        mock_adapter.fetch_game.return_value = NormalizedRelayResult(
+            game_id="G1",
+            source_name="test_source",
+            status="not_modified",
+        )
+
+        result, attempts = await orchestrator.fetch_game(
+            game_id="G1",
+            bucket_id="test_bucket",
+            source_order=["test_source"],
+            validator=lambda _result: "must not run",
+        )
+
+        assert result.is_not_modified is True
+        assert result.is_empty is False
+        assert attempts[0]["status"] == "not_modified"
+        mock_adapter.fetch_game.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_probe_bucket_no_game_ids(self, orchestrator):
         records = await orchestrator.probe_bucket("bucket1", [], ["test_source"])
         assert records == {}

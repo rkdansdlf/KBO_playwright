@@ -135,7 +135,7 @@ class RelayRecoveryOrchestrator:
                 "exception",
             )
         else:
-            status = "success" if not result.is_empty else "miss"
+            status = result.status if result.is_not_modified else "success" if not result.is_empty else "miss"
             return result, status
 
     def source_order_for_bucket(self, bucket_id: str, override: Iterable[str] | None = None) -> list[str]:
@@ -307,7 +307,7 @@ class RelayRecoveryOrchestrator:
             result, status = await self._fetch_with_timeout(adapter, game_id, last_payload_hash=last_payload_hash)
 
             validation_error = None
-            if not result.is_empty and validator:
+            if not result.is_not_modified and not result.is_empty and validator:
                 validation_error = validator(result)
                 if validation_error:
                     status = "skipped_validation"
@@ -324,13 +324,12 @@ class RelayRecoveryOrchestrator:
                 },
             )
 
-            if result.is_empty or validation_error:
-                if cb is not None:
-                    cb.record_failure(source_name, bucket_id)
-            else:
+            if result.is_not_modified or (not result.is_empty and not validation_error):
                 if cb is not None:
                     cb.record_success(source_name, bucket_id)
                 return result, attempts
+            if cb is not None:
+                cb.record_failure(source_name, bucket_id)
 
         attempt_summary = (
             "; ".join(f"{a.get('source_name', '?')}={a.get('status', '?')}" for a in attempts)

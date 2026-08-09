@@ -1,5 +1,6 @@
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -83,15 +84,15 @@ class TestLoadSlots:
         _add_game(conn, "20240315LGSS0", "2024-03-15", 1, 2)
         conn.commit()
         conn.close()
-        cursor = sqlite3.connect(db_path).cursor()
-        slots = _load_slots(cursor, start_date=None, end_date=None, suffixes=("0", "1", "2"))
-        assert len(slots) == 1
-        assert slots[0][0] == "2024-03-15"
+        with closing(sqlite3.connect(db_path)) as conn:
+            slots = _load_slots(conn.cursor(), start_date=None, end_date=None, suffixes=("0", "1", "2"))
+            assert len(slots) == 1
+            assert slots[0][0] == "2024-03-15"
 
     def test_empty_when_no_games(self, db_path):
-        cursor = sqlite3.connect(db_path).cursor()
-        slots = _load_slots(cursor, start_date=None, end_date=None, suffixes=("0",))
-        assert slots == []
+        with closing(sqlite3.connect(db_path)) as conn:
+            slots = _load_slots(conn.cursor(), start_date=None, end_date=None, suffixes=("0",))
+            assert slots == []
 
     def test_filters_by_date_window(self, db_path):
         conn = sqlite3.connect(db_path)
@@ -99,9 +100,9 @@ class TestLoadSlots:
         _add_game(conn, "20240316LGSS0", "2024-03-16", 1, 2)
         conn.commit()
         conn.close()
-        cursor = sqlite3.connect(db_path).cursor()
-        slots = _load_slots(cursor, start_date="2024-03-16", end_date="2024-03-16", suffixes=("0",))
-        assert len(slots) == 1
+        with closing(sqlite3.connect(db_path)) as conn:
+            slots = _load_slots(conn.cursor(), start_date="2024-03-16", end_date="2024-03-16", suffixes=("0",))
+            assert len(slots) == 1
 
 
 class TestLoadCandidates:
@@ -111,37 +112,37 @@ class TestLoadCandidates:
         _add_stats(conn, "20240315LGSS0", 9)
         conn.commit()
         conn.close()
-        cursor = sqlite3.connect(db_path).cursor()
-        candidates = _load_candidates(
-            cursor,
-            query=_CandidateQuery(
-                game_date="2024-03-15",
-                home_fid=1,
-                away_fid=2,
-                suffix="0",
-                suffixes=("0",),
-            ),
-        )
-        assert len(candidates) == 1
-        assert candidates[0][1] == 9
+        with closing(sqlite3.connect(db_path)) as conn:
+            candidates = _load_candidates(
+                conn.cursor(),
+                query=_CandidateQuery(
+                    game_date="2024-03-15",
+                    home_fid=1,
+                    away_fid=2,
+                    suffix="0",
+                    suffixes=("0",),
+                ),
+            )
+            assert len(candidates) == 1
+            assert candidates[0][1] == 9
 
     def test_empty_when_no_match(self, db_path):
         conn = sqlite3.connect(db_path)
         _add_game(conn, "20240315LGSS0", "2024-03-15", 1, 2)
         conn.commit()
         conn.close()
-        cursor = sqlite3.connect(db_path).cursor()
-        candidates = _load_candidates(
-            cursor,
-            query=_CandidateQuery(
-                game_date="2024-03-16",
-                home_fid=1,
-                away_fid=2,
-                suffix="0",
-                suffixes=("0",),
-            ),
-        )
-        assert candidates == []
+        with closing(sqlite3.connect(db_path)) as conn:
+            candidates = _load_candidates(
+                conn.cursor(),
+                query=_CandidateQuery(
+                    game_date="2024-03-16",
+                    home_fid=1,
+                    away_fid=2,
+                    suffix="0",
+                    suffixes=("0",),
+                ),
+            )
+            assert candidates == []
 
 
 class TestMarkWindow:
@@ -153,15 +154,15 @@ class TestMarkWindow:
         _add_stats(conn, "20240315LGSS1", 5)
         conn.commit()
         conn.close()
-        cursor = sqlite3.connect(db_path).cursor()
-        window = DeduplicationWindow(label="test", start_date="2024-03-15", end_date="2024-03-15")
-        result = _mark_window(
-            cursor,
-            start_date=window.start_date,
-            end_date=window.end_date,
-            suffixes=("0", "1"),
-            preferred_codes=DEFAULT_PRIMARY_CODE_PREFERENCES,
-        )
+        with closing(sqlite3.connect(db_path)) as conn:
+            window = DeduplicationWindow(label="test", start_date="2024-03-15", end_date="2024-03-15")
+            result = _mark_window(
+                conn.cursor(),
+                start_date=window.start_date,
+                end_date=window.end_date,
+                suffixes=("0", "1"),
+                preferred_codes=DEFAULT_PRIMARY_CODE_PREFERENCES,
+            )
         assert result.scanned_slots == 2
         assert result.marked_primary == 2
 

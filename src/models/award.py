@@ -27,6 +27,16 @@ class Award(Base, TimestampMixin):
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Winner name")
     team_name: Mapped[str] = mapped_column(String(50), nullable=False, comment="Winner team")
+    player_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Linked player registry ID (via backfill)",
+    )
+    team_code: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Canonical KBO team code",
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -40,6 +50,7 @@ class Award(Base, TimestampMixin):
         Index("idx_award_year", "year"),
         Index("idx_award_type", "award_type"),
         Index("idx_award_player", "player_name"),
+        Index("idx_award_player_id", "player_id"),
     )
 
     def __repr__(self) -> str:

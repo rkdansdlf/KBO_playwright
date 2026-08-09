@@ -17,6 +17,7 @@ from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
 from src.utils.team_codes import normalize_kbo_game_id
+from src.validators.game_data_validator import validate_game_data
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 LAST_MONTH_OF_YEAR = 12
+ROW_FIELD_COUNT = 2
 
 DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE = {
     "no_detail_payload",
@@ -33,6 +35,9 @@ DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE = {
     "timeout",
     "exception",
     "missing",
+    "partial_detail",
+    "hitter_totals_mismatch",
+    "inning_score_mismatch",
 }
 DETAIL_COLLECTION_FAILURE_REASONS_NON_RETRYABLE = {
     "filtered",
@@ -314,8 +319,8 @@ def inspect_existing_game_data(targets: Iterable[GameCollectionTarget]) -> dict[
         return {}
 
     with SessionLocal() as session:
-        batting_ids = _ids_with_rows(session, GameBattingStat, game_ids)
-        pitching_ids = _ids_with_rows(session, GamePitchingStat, game_ids)
+        batting_ids = _ids_with_complete_sides(session, GameBattingStat, game_ids)
+        pitching_ids = _ids_with_complete_sides(session, GamePitchingStat, game_ids)
         event_ids = _ids_with_rows(session, GameEvent, game_ids)
         pbp_ids = _ids_with_rows(session, GamePlayByPlay, game_ids)
 
@@ -526,6 +531,10 @@ def _detail_payload_failure_reason(
         return "crawl_failed", _get_failure_reason(detail_crawler, target.game_id), "no_detail_payload"
     if not _has_required_detail_rows(payload):
         return "filtered", _get_failure_reason(detail_crawler, target.game_id), "incomplete_detail"
+    if "game_id" in payload or "teams" in payload:
+        is_valid, errors, _ = validate_game_data(payload, allow_partial=not _has_full_detail_rows(payload))
+        if not is_valid:
+            return "filtered", errors[0] if errors else "detail_payload_invalid", "invalid_detail_payload"
     if should_save_detail and not should_save_detail(payload):
         return "filtered", "detail_payload_filtered", "filtered"
     return None
@@ -555,8 +564,10 @@ def _save_detail_payload(
     payload: dict[str, Any],
     ctx: DetailProcessingContext,
 ) -> bool:
+    full_detail = _has_full_detail_rows(payload)
     if not save_game_detail(
         payload,
+        allow_partial=not full_detail,
         write_contract=ctx.contract,
         source_stage=ctx.detail_source.stage,
         source_crawler=ctx.detail_source.crawler,
@@ -567,12 +578,15 @@ def _save_detail_payload(
         item.detail_status = "save_failed"
         item.failure_reason = _normalize_detail_failure_reason("detail_save_failed", default="save_failed")
         return False
-    ctx.result.detail_saved += 1
-    ctx.result.processed_game_ids.append(target.game_id)
-    ctx.detail_ready.add(target.game_id)
     item = ctx.result.items[target.game_id]
-    item.detail_status = "saved"
-    item.detail_saved = True
+    item.detail_status = "saved" if full_detail else "partial"
+    item.detail_saved = full_detail
+    if full_detail:
+        ctx.result.detail_saved += 1
+        ctx.result.processed_game_ids.append(target.game_id)
+        ctx.detail_ready.add(target.game_id)
+    else:
+        item.failure_reason = "partial_detail"
     return True
 
 
@@ -622,6 +636,7 @@ async def _collect_relay_phase(
                 parser_version=(relay_data or {}).get("parser_version"),
                 source_schema_version=(relay_data or {}).get("source_schema_version"),
                 payload_hash=(relay_data or {}).get("payload_hash"),
+                source_payload=(relay_data or {}).get("source_payload"),
             )
             ctx.result.relay_rows_saved += saved_rows
             item.relay_rows_saved = saved_rows
@@ -667,6 +682,22 @@ def _ids_with_rows(session: Session, model: type[Any], game_ids: list[str]) -> s
     return {row[0] for row in session.query(model.game_id).filter(model.game_id.in_(game_ids)).distinct().all()}
 
 
+def _ids_with_complete_sides(session: Session, model: type[Any], game_ids: list[str]) -> set[str]:
+    """Return game IDs with both away and home rows for a child dataset."""
+    rows = (
+        session.query(model.game_id, model.team_side)
+        .filter(model.game_id.in_(game_ids), model.team_side.in_(("away", "home")))
+        .distinct()
+        .all()
+    )
+    sides_by_game: dict[str, set[str]] = {}
+    for row in rows:
+        if len(row) < ROW_FIELD_COUNT:
+            continue
+        sides_by_game.setdefault(str(row[0]), set()).add(str(row[1]))
+    return {game_id for game_id, sides in sides_by_game.items() if sides == {"away", "home"}}
+
+
 def _get_failure_reason(crawler: object, game_id: str) -> str | None:
     getter = getattr(crawler, "get_last_failure_reason", None)
     if not callable(getter):
@@ -697,16 +728,21 @@ def _normalize_detail_failure_reason(raw_reason: str | None, *, default: str) ->
 
 
 def _has_required_detail_rows(payload: dict[str, Any]) -> bool:
+    return _has_full_detail_rows(payload) or _has_partial_detail_anchor(payload)
+
+
+def _has_full_detail_rows(payload: dict[str, Any]) -> bool:
     hitters = payload.get("hitters") or {}
     pitchers = payload.get("pitchers") or {}
-    has_full_box = (
+    return (
         bool(hitters.get("away"))
         and bool(hitters.get("home"))
         and bool(pitchers.get("away"))
         and bool(pitchers.get("home"))
     )
-    if has_full_box:
-        return True
+
+
+def _has_partial_detail_anchor(payload: dict[str, Any]) -> bool:
 
     # Partial recovery check: must have at least team codes and SOME score or metadata info
     teams = payload.get("teams") or {}
@@ -751,7 +787,7 @@ def _derive_sh_sf_for_results(result: GameCollectionResult, log: Callable[[str],
     """
     updated_total = 0
 
-    game_ids = [gid for gid, item in result.items.items() if item.detail_status == "success"]
+    game_ids = [gid for gid, item in result.items.items() if item.detail_saved]
     if not game_ids:
         return
     with SessionLocal() as session:

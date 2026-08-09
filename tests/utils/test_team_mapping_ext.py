@@ -121,7 +121,7 @@ class TestAddMappingForYears:
     def test_adds_year_specific(self):
         mapper = TeamMapper()
         mapper._add_mapping_for_years("테스트팀", "TS", 2020, 2022)
-        assert mapper.oci_mapping["테스트팀"] == "TS"
+        assert mapper.database_mapping["테스트팀"] == "TS"
         assert mapper.year_specific_mapping[2020]["테스트팀"] == "TS"
         assert mapper.year_specific_mapping[2021]["테스트팀"] == "TS"
         assert mapper.year_specific_mapping[2022]["테스트팀"] == "TS"

@@ -65,7 +65,6 @@ def session(engine):
 def patch_deps(session):
     with (
         patch("src.repositories.game_save.SessionLocal", return_value=session),
-        patch("src.repositories.game_save._auto_sync_to_oci"),
     ):
         yield
 
@@ -417,7 +416,6 @@ class TestSaveGameDetail:
 
         with (
             patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
-            patch("src.repositories.game_save._auto_sync_to_oci"),
         ):
             result = save_game_detail(data)
             assert result is False
@@ -505,7 +503,6 @@ class TestSaveGameSnapshot:
 
         with (
             patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
-            patch("src.repositories.game_save._auto_sync_to_oci"),
         ):
             result = save_game_snapshot(data)
             assert result is False
@@ -558,7 +555,6 @@ class TestSavePregameLineupsExtended:
 
         with (
             patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
-            patch("src.repositories.game_save._auto_sync_to_oci"),
         ):
             result = save_pregame_lineups(
                 {

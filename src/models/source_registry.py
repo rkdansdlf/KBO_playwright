@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -85,6 +85,10 @@ class RawSourceSnapshot(Base, TimestampMixin):
         nullable=True,
         comment="Path to stored raw content file",
     )
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    raw_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    capture_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status_code: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="HTTP status code")
     parse_status: Mapped[str] = mapped_column(
         String(20),

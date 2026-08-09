@@ -18,6 +18,7 @@ from src.services.relay_recovery_service import (
     _classify_relay_failure,
     _coerce_int,
     _handle_empty_relay_result,
+    _handle_not_modified_relay_result,
     _handle_filtered_relay_result,
     _join_notes,
     _last_event_score,
@@ -177,6 +178,27 @@ class TestHandleEmptyRelayResult:
         relay_result.notes = "no data"
         _handle_empty_relay_result(ctx, [], relay_result)
         assert ctx.run_result.empty_games == 1
+
+
+class TestHandleNotModifiedRelayResult:
+    def test_records_noop_without_counting_empty_or_saving(self):
+        ctx = RecoveryLoopContext(
+            target=RelayRecoveryTarget(game_id="g1", has_event_state=True, has_pbp=True),
+            bucket_id="2024_regular",
+            source_order=["naver"],
+            run_result=RelayRecoveryResult(),
+            dry_run=False,
+            log=MagicMock(),
+        )
+        relay_result = MagicMock()
+        relay_result.source_name = "naver"
+        relay_result.notes = "not_modified"
+
+        _handle_not_modified_relay_result(ctx, [{"status": "not_modified"}], relay_result)
+
+        assert ctx.run_result.empty_games == 0
+        assert ctx.run_result.report_rows[0]["status"] == "not_modified"
+        assert ctx.run_result.report_rows[0]["skipped_event_rows_reason"] == "source_payload_unchanged"
 
     def test_match_failed_classification(self):
         ctx = RecoveryLoopContext(
@@ -407,10 +429,17 @@ class TestSaveOrCountRows:
         relay_result = MagicMock()
         relay_result.events = [{"inning": 1}]
         relay_result.raw_pbp_rows = []
-        with patch("src.services.relay_recovery_service.save_relay_data", return_value=1):
+        relay_result.source_name = "naver"
+        relay_result.notes = None
+        relay_result.parser_version = None
+        relay_result.source_schema_version = None
+        relay_result.payload_hash = None
+        relay_result.source_payload = {"raw": True}
+        with patch("src.services.relay_recovery_service.save_relay_data", return_value=1) as save:
             result = _save_or_count_rows("g1", relay_result, dry_run=False, allow_derived_pbp=False)
             assert result.saved_rows == 1
             assert result.saved_event_rows == 1
+            assert save.call_args.kwargs["source_payload"] == {"raw": True}
 
     def test_save_returns_zero(self):
         relay_result = MagicMock()

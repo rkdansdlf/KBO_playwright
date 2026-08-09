@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 
 from src.models.source_registry import DataSource, RawSourceSnapshot
+from src.repositories.crawl_evidence_repository import evidence_root
+from src.utils.data_lineage import canonical_json, sha256_bytes
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -357,8 +360,6 @@ def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
         raw_pages: Raw Pages.
 
     """
-    import hashlib
-
     snap_repo = RawSourceSnapshotRepository(session)
     ds_repo = DataSourceRepository(session)
     saved = 0
@@ -369,13 +370,26 @@ def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
         ds = ds_repo.get_by_key(source_key)
         if not ds:
             continue
-        content_hash = hashlib.sha256(page["html"].encode()).hexdigest()
+        raw_body = page.get("html", page.get("body", ""))
+        if isinstance(raw_body, (dict, list)):
+            raw_content = canonical_json(raw_body).encode("utf-8")
+        else:
+            raw_content = raw_body if isinstance(raw_body, bytes) else str(raw_body).encode("utf-8")
+        content_hash = sha256_bytes(raw_content)
         ds_repo.mark_success(source_key, content_hash)
         if not snap_repo.get_by_hash(ds.id, content_hash):
+            artifact_path = evidence_root() / "raw" / f"{content_hash}.bin"
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            if not artifact_path.exists():
+                artifact_path.write_bytes(raw_content)
             snap_repo.save(
                 {
                     "data_source_id": ds.id,
-                    "raw_html_or_json_path": page["url"],
+                    "raw_html_or_json_path": str(Path(artifact_path)),
+                    "source_url": page.get("url"),
+                    "content_type": page.get("content_type"),
+                    "raw_size": len(raw_content),
+                    "capture_metadata": page.get("capture_metadata"),
                     "content_hash": content_hash,
                     "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                     "status_code": page["status_code"],

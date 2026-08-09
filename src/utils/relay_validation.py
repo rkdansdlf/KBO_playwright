@@ -43,6 +43,12 @@ ALL_VALIDATION_STATES = frozenset(
 
 # Terminal validation states (no further re-validation expected)
 TERMINAL_VALIDATION_STATES = frozenset({VALIDATION_VERIFIED, VALIDATION_RECOVERED, VALIDATION_SOURCE_UNAVAILABLE})
+TRUSTED_VALIDATION_STATES = frozenset({VALIDATION_VERIFIED, VALIDATION_RECOVERED})
+
+
+def is_trusted_relay_status(status: object) -> bool:
+    """Return whether a relay validation state is safe for downstream publishing."""
+    return str(status or "").lower() in TRUSTED_VALIDATION_STATES
 
 
 def validate_live_events(events: list[dict[str, Any]]) -> list[str]:

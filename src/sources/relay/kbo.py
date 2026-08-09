@@ -58,4 +58,5 @@ class KboRelayAdapter(RelaySourceAdapter):
             has_event_state=events_have_minimum_state(events),
             has_raw_pbp=False,
             notes=notes,
+            source_payload=(result or {}).get("source_payload"),
         )

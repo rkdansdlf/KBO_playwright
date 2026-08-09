@@ -1,44 +1,12 @@
 from __future__ import annotations
 
-import os
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from src.services.p0_readiness import (
-    _env_enabled,
     _safe_rows,
     normalize_yyyymmdd,
 )
-
-
-class TestEnvEnabled:
-    def test_default_enabled(self, monkeypatch):
-        monkeypatch.delenv("TEST_VAR", raising=False)
-        assert _env_enabled("TEST_VAR") is True
-
-    def test_explicit_enabled(self, monkeypatch):
-        monkeypatch.setenv("TEST_VAR", "1")
-        assert _env_enabled("TEST_VAR") is True
-
-    def test_disabled_zero(self, monkeypatch):
-        monkeypatch.setenv("TEST_VAR", "0")
-        assert _env_enabled("TEST_VAR") is False
-
-    def test_disabled_false(self, monkeypatch):
-        monkeypatch.setenv("TEST_VAR", "false")
-        assert _env_enabled("TEST_VAR") is False
-
-    def test_disabled_no(self, monkeypatch):
-        monkeypatch.setenv("TEST_VAR", "no")
-        assert _env_enabled("TEST_VAR") is False
-
-    def test_disabled_off(self, monkeypatch):
-        monkeypatch.setenv("TEST_VAR", "off")
-        assert _env_enabled("TEST_VAR") is False
-
-    def test_default_param(self, monkeypatch):
-        monkeypatch.delenv("TEST_VAR", raising=False)
-        assert _env_enabled("TEST_VAR", default="0") is False
 
 
 class TestNormalizeYyyymmdd:

@@ -81,7 +81,6 @@ def session(engine):
 def patch_deps(session):
     with (
         patch("src.repositories.game_save.SessionLocal", return_value=session),
-        patch("src.repositories.game_save._auto_sync_to_oci"),
     ):
         yield
 

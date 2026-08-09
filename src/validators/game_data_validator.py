@@ -5,11 +5,29 @@ from __future__ import annotations
 from typing import Any
 
 
-def validate_game_data(game_data: dict[str, Any]) -> tuple[bool, list[str], list[str]]:
+def _validate_required_rows(
+    hitters: dict[str, Any],
+    pitchers: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Record missing hitter and pitcher rows for each team."""
+    for side in ("home", "away"):
+        if not hitters.get(side):
+            errors.append(f"No hitter rows for {side}")
+        if not pitchers.get(side):
+            errors.append(f"No pitcher rows for {side}")
+
+
+def validate_game_data(
+    game_data: dict[str, Any],
+    *,
+    allow_partial: bool = False,
+) -> tuple[bool, list[str], list[str]]:
     """Validate parsed game data prior to persistence.
 
     Args:
         game_data: Game Data.
+        allow_partial: Allow anchored partial recovery payloads.
         game_data: Game Data.
 
     Returns:
@@ -53,11 +71,15 @@ def validate_game_data(game_data: dict[str, Any]) -> tuple[bool, list[str], list
     hitters = game_data.get("hitters") or {}
     pitchers = game_data.get("pitchers") or {}
 
-    for side in ("home", "away"):
-        if not hitters.get(side):
-            errors.append(f"No hitter rows for {side}")
-        if not pitchers.get(side):
-            errors.append(f"No pitcher rows for {side}")
+    if not allow_partial:
+        _validate_required_rows(hitters, pitchers, errors)
+    elif not any(hitters.get(side) or pitchers.get(side) for side in ("home", "away")):
+        has_anchor = bool(home_code and away_code) and any(
+            team.get("score") is not None or team.get("line_score") or team.get("stadium")
+            for team in (home, away)
+        )
+        if not has_anchor:
+            errors.append("No detail rows for partial recovery")
 
     # Non-critical validations (warnings only)
     _validate_score_totals(home, "home", warnings)

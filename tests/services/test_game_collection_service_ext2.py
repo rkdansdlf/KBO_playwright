@@ -99,7 +99,12 @@ class TestDeriveShSfForResultsWithUpdates:
     def test_updates_committed(self):
         result = GameCollectionResult()
         result.items = {
-            "g1": GameCollectionItemResult(game_id="g1", game_date="20240315", detail_status="success"),
+            "g1": GameCollectionItemResult(
+                game_id="g1",
+                game_date="20240315",
+                detail_status="saved",
+                detail_saved=True,
+            ),
         }
         mock_session = MagicMock()
         log = MagicMock()

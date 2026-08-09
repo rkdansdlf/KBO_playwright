@@ -430,10 +430,17 @@ def _has_final_detail_rows(game_id: str) -> bool:
     if not normalized:
         return False
     with SessionLocal() as session:
-        return any(
-            session.query(model).filter(model.game_id == normalized).first() is not None
-            for model in (GameBattingStat, GamePitchingStat)
-        )
+        for model in (GameBattingStat, GamePitchingStat):
+            sides = {
+                str(row[0])
+                for row in session.query(model.team_side)
+                .filter(model.game_id == normalized, model.team_side.in_(("away", "home")))
+                .distinct()
+                .all()
+            }
+            if sides != {"away", "home"}:
+                return False
+        return True
 
 
 def _normalize_range(start_date: str, end_date: str) -> tuple[str, str]:

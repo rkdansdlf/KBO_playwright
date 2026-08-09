@@ -29,7 +29,6 @@ from src.repositories.game_helpers import (
     TeamSideContext,
     _apply_game_team_identity_with_contract,
     _assign_field_if_changed,
-    _auto_sync_to_oci,
     _build_inning_scores,
     _canonicalize_game_id_for_payload,
     _derive_game_status,
@@ -558,13 +557,6 @@ class TestBuildInningScores:
             assert len(records) == 2
 
 
-class TestAutoSyncToOci:
-    def test_disabled(self):
-        with patch.dict("os.environ", {}, clear=False):
-            with patch("os.getenv", return_value=None):
-                _auto_sync_to_oci("g1")
-
-
 class TestQueryDbSeasonByDateRange:
     def test_returns_none_on_error(self, session):
         mock_session = MagicMock()
@@ -574,9 +566,8 @@ class TestQueryDbSeasonByDateRange:
 
         mock_session.execute.side_effect = SQLAlchemyError("error")
 
-        with patch("src.repositories.game_helpers.SessionLocal", return_value=mock_session):
-            result = _query_db_season_by_date_range(mock_session, 2024, date(2024, 6, 15))
-            assert result is None
+        result = _query_db_season_by_date_range(mock_session, 2024, date(2024, 6, 15))
+        assert result is None
 
 
 class TestResolveSeasonIdFallback:

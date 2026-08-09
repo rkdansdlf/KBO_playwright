@@ -735,7 +735,7 @@ class RelayCrawler:
                 return None
 
             current_hash = self._compute_payload_hash(all_text_relays)
-            if last_payload_hash and current_hash == last_payload_hash:
+            if last_payload_hash and last_payload_hash in {current_hash, current_hash[:12], current_hash[:16]}:
                 logger.info(
                     "   ⏩ Relay payload hash matches last_payload_hash (%s). Skipping parse.", last_payload_hash
                 )
@@ -844,6 +844,7 @@ class RelayCrawler:
             "parser_version": parsed_payload.get("parser_version", PARSER_VERSION),
             "source_schema_version": parsed_payload.get("source_schema_version", SOURCE_SCHEMA_VERSION),
             "payload_hash": parsed_payload.get("payload_hash"),
+            "source_payload": all_text_relays,
         }
 
     def _parse_naver_data(self, text_relays: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -852,7 +853,7 @@ class RelayCrawler:
     @staticmethod
     def _compute_payload_hash(text_relays: list[dict[str, Any]]) -> str:
         raw = json.dumps(text_relays, sort_keys=True, ensure_ascii=False, default=str)
-        return hashlib.sha256(raw.encode()).hexdigest()[:12]
+        return hashlib.sha256(raw.encode()).hexdigest()
 
     @staticmethod
     def _provider_log_id(
@@ -862,7 +863,7 @@ class RelayCrawler:
         half_token = (identity.half or "x")[:1]
         inning_token = identity.inning if identity.inning is not None else "x"
         return (
-            f"naver:{identity.payload_hash}:{inning_token}{half_token}:"
+            f"naver:{identity.payload_hash[:12]}:{inning_token}{half_token}:"
             f"{identity.segment_index}:{identity.log_index}:{text_hash}"
         )
 
