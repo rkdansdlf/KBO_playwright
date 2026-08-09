@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from http import HTTPStatus
@@ -76,7 +77,7 @@ class FoodCrawler:
 
         logger.info("[FOOD] Total: %s vendors", len(all_vendors))
         if save:
-            self._save_to_db(all_vendors)
+            await asyncio.to_thread(self._save_to_db, all_vendors)
         else:
             for v in all_vendors[:5]:
                 logger.info(v)

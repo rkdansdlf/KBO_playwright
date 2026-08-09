@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -119,7 +120,7 @@ class OperationNoticeNaverCrawler:
         notices = [_result_to_notice(r) for r in search_results]
 
         if save:
-            self._save_to_db(notices)
+            await asyncio.to_thread(self._save_to_db, notices)
         else:
             for n in notices[:NOTICE_LOG_PREVIEW_LIMIT]:
                 logger.info(

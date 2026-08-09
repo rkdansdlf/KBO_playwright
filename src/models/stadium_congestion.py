@@ -96,6 +96,8 @@ class StadiumCongestion(Base, TimestampMixin):
         ),
         Index("idx_sc_game_date", "game_date"),
         Index("idx_sc_measured_at", "measured_at"),
+        Index("idx_sc_stadium_measured", "stadium_code", "measured_at"),
+        Index("idx_sc_stadium_game_date", "stadium_code", "game_date"),
         Index("idx_sc_location_type", "location_type"),
         Index("idx_sc_level", "congestion_level"),
     )

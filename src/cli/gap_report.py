@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_SEASON_TEAM_CODE_ALERT_RATE = 10.0
+NOTICE_STALE_HOURS = 72.0
 
 
 def _season_team_code_alert_rate() -> float:
@@ -191,6 +192,10 @@ def _collect_gaps(report: dict[str, Any]) -> None:
     _check_pa_formula(report)
     _check_team_stats(report)
     _check_season_team_code(report)
+    report["gaps"]["NOTICES"] = check_notices_gaps()
+    report["gaps"]["MILESTONES"] = check_milestones_gaps()
+    report["gaps"]["FUTURES"] = check_futures_gaps()
+    report["gaps"]["SPLITS"] = check_splits_gaps()
 
 
 def build_gap_report() -> dict[str, Any]:
@@ -201,6 +206,66 @@ def build_gap_report() -> dict[str, Any]:
     }
     _collect_gaps(report)
     return report
+
+
+def check_notices_gaps() -> dict[str, Any]:
+    """Check KBO official press releases freshness and missing URL gaps."""
+    from src.models.kbo_press_release import KboPressRelease
+
+    with SessionLocal() as session:
+        total = session.query(KboPressRelease).count()
+        latest = session.query(KboPressRelease).order_by(KboPressRelease.id.desc()).first()
+        stale = False
+        if latest and latest.created_at:
+            created_at = latest.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=KST)
+            age_hours = (datetime.now(KST) - created_at).total_seconds() / 3600
+            stale = age_hours > NOTICE_STALE_HOURS
+        return {
+            "ok": not stale and total > 0,
+            "total_notices": total,
+            "latest_notice_title": latest.title if latest else None,
+            "stale": stale,
+        }
+
+
+def check_milestones_gaps() -> dict[str, Any]:
+    """Check player milestones countdown consistency."""
+    from src.models.player_milestone import PlayerMilestone
+
+    with SessionLocal() as session:
+        total = session.query(PlayerMilestone).count()
+        invalid_negative = session.query(PlayerMilestone).filter(PlayerMilestone.remaining_val < 0).count()
+        return {
+            "ok": invalid_negative == 0 and total > 0,
+            "total_milestones": total,
+            "invalid_negative": invalid_negative,
+        }
+
+
+def check_futures_gaps() -> dict[str, Any]:
+    """Check Futures League schedule coverage gaps."""
+    from src.models.futures_schedule import FuturesGameSchedule
+
+    with SessionLocal() as session:
+        total = session.query(FuturesGameSchedule).count()
+        return {
+            "ok": total > 0,
+            "total_futures_games": total,
+        }
+
+
+def check_splits_gaps() -> dict[str, Any]:
+    """Check player situational splits stats coverage gaps."""
+    from src.models.player_splits_stat import PlayerSplitsStat
+
+    with SessionLocal() as session:
+        total = session.query(PlayerSplitsStat).count()
+        return {
+            "ok": total > 0,
+            "total_splits": total,
+        }
 
 
 def _check_freshness(report: dict[str, Any]) -> None:

@@ -80,17 +80,40 @@ class SlaTracker:
             .count()
         )
 
-        # Detail coverage: completed games with all details
-        full_detail = 0
-        for g in completed:
-            has_meta = self.session.query(GameMetadata).filter(GameMetadata.game_id == g.game_id).count() > 0
-            has_lineup = self.session.query(GameLineup).filter(GameLineup.game_id == g.game_id).count() > 0
-            has_batting = self.session.query(GameBattingStat).filter(GameBattingStat.game_id == g.game_id).count() > 0
-            has_pitching = (
-                self.session.query(GamePitchingStat).filter(GamePitchingStat.game_id == g.game_id).count() > 0
-            )
-            if has_meta and has_lineup and has_batting and has_pitching:
-                full_detail += 1
+        # Detail coverage: completed games with all four detail tables present
+        game_ids = [g.game_id for g in completed]
+        if game_ids:
+            meta_ids = {
+                r[0]
+                for r in self.session.query(GameMetadata.game_id)
+                .filter(GameMetadata.game_id.in_(game_ids))
+                .distinct()
+                .all()
+            }
+            lineup_ids = {
+                r[0]
+                for r in self.session.query(GameLineup.game_id)
+                .filter(GameLineup.game_id.in_(game_ids))
+                .distinct()
+                .all()
+            }
+            batting_ids = {
+                r[0]
+                for r in self.session.query(GameBattingStat.game_id)
+                .filter(GameBattingStat.game_id.in_(game_ids))
+                .distinct()
+                .all()
+            }
+            pitching_ids = {
+                r[0]
+                for r in self.session.query(GamePitchingStat.game_id)
+                .filter(GamePitchingStat.game_id.in_(game_ids))
+                .distinct()
+                .all()
+            }
+            full_detail = len(meta_ids & lineup_ids & batting_ids & pitching_ids)
+        else:
+            full_detail = 0
 
         return {
             "date": target_date,

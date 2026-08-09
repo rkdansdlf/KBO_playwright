@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from urllib.parse import urljoin
@@ -167,7 +168,7 @@ class KboEventCrawler:
                 seen_urls.add(source_url)
         logger.info("[KBO_EVENT] Found %s official event link candidates.", len(events))
         if save:
-            self._save_to_db(events)
+            await asyncio.to_thread(self._save_to_db, events)
         return events
 
     async def _fetch_html(self, url: str) -> tuple[str, str]:

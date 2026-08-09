@@ -31,7 +31,6 @@ def test_crawler_stability_gate_prints_expected_targets():
         "tests/test_naver_relay_resolver.py",
         "tests/test_relay_recovery_service.py",
         "tests/test_relay_recovery.py",
-        "tests/test_oci_sync_dirty_detection.py",
         "tests/test_run_daily_update.py",
         "tests/test_p0_readiness.py",
         "tests/test_broadcast_crawler.py",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from http import HTTPStatus
@@ -78,7 +79,7 @@ class SeatCrawler:
         logger.info("[SEAT] Total: %s sections", len(all_sections))
 
         if save:
-            self._save_to_db(all_sections)
+            await asyncio.to_thread(self._save_to_db, all_sections)
         else:
             for s in all_sections[:5]:
                 logger.info(s)

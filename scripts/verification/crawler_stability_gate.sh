@@ -20,7 +20,6 @@ TEST_TARGETS=(
   "tests/test_naver_relay_resolver.py"
   "tests/test_relay_recovery_service.py"
   "tests/test_relay_recovery.py"
-  "tests/test_oci_sync_dirty_detection.py"
   "tests/test_run_daily_update.py"
   "tests/test_p0_readiness.py"
   "tests/test_broadcast_crawler.py"
@@ -40,7 +39,7 @@ usage() {
 Usage: $0 [--print-targets] [pytest args...]
 
 Run the crawler stability regression gate for schedule, detail, relay/PBP,
-OCI publish eligibility, and daily update orchestration.
+database publish eligibility, and daily update orchestration.
 
 Options:
   --print-targets  Print pytest target files and exit.

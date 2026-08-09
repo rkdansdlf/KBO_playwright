@@ -219,7 +219,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Commit deletion. Default is backup plus dry-run.")
     parser.add_argument("--year", action="append", type=int, help="Regular-season year; repeatable.")
-    parser.add_argument("--database-url", help="Database URL; defaults to TARGET_DATABASE_URL or DATABASE_URL.")
+    parser.add_argument("--database-url", help="Database URL; defaults to DATABASE_URL.")
     parser.add_argument("--backup-out", type=Path, help="Backup JSON path.")
     parser.add_argument("--restore-backup", type=Path, help="Restore a prior cleanup backup instead of deleting.")
     return parser
@@ -229,11 +229,9 @@ def main(argv: list[str] | None = None) -> int:
     """Run the backup and optional cleanup."""
     load_dotenv()
     args = _parser().parse_args(argv)
-    database_url = (
-        args.database_url or os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL") or os.getenv("DATABASE_URL")
-    )
+    database_url = args.database_url or os.getenv("DATABASE_URL")
     if not database_url:
-        raise SystemExit("OCI_DB_URL, TARGET_DATABASE_URL, or DATABASE_URL is required")
+        raise SystemExit("DATABASE_URL is required")
     years = tuple(args.year or DEFAULT_YEARS)
     if not years or any(year < 1900 for year in years):
         raise SystemExit("At least one valid season year is required")

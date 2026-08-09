@@ -18,6 +18,7 @@ Scheduling recommendation:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, date, datetime
 from typing import Any
@@ -111,7 +112,7 @@ class CongestionCrawler:
         logger.info("[Congestion] Total records: %s", len(records))
 
         if save:
-            self._save_to_db(records)
+            await asyncio.to_thread(self._save_to_db, records)
         else:
             for rec in records:
                 logger.info(

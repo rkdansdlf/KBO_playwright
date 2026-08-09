@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from http import HTTPStatus
@@ -78,7 +79,7 @@ class ParkingCrawler:
 
         logger.info("[PARKING] Total: %s lots", len(all_lots))
         if save:
-            self._save_to_db(all_lots)
+            await asyncio.to_thread(self._save_to_db, all_lots)
         else:
             for lot in all_lots[:5]:
                 logger.info(lot)

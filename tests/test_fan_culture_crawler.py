@@ -274,7 +274,7 @@ class TestFanCultureCrawler:
         crawler_short = FanCultureCrawler(season=2026)
         crawler_short.client.search_videos = fake_search_videos_short
 
-        results_short = asyncio.run(crawler_short.run(save=False, team_filter="LG"))
+        results_short = asyncio.run(crawler_short.run(save=False, team_filter="LG", force_refresh=True))
         assert len(results_short) == 3
 
         # Test case 2: returns > 5 items to cover len(all_songs) > 5 evaluates to True
@@ -284,7 +284,7 @@ class TestFanCultureCrawler:
         crawler_long = FanCultureCrawler(season=2026)
         crawler_long.client.search_videos = fake_search_videos_long
 
-        results_long = asyncio.run(crawler_long.run(save=False, team_filter="LG"))
+        results_long = asyncio.run(crawler_long.run(save=False, team_filter="LG", force_refresh=True))
         assert len(results_long) == 6
 
     def test_run_with_save_true(self, monkeypatch):
@@ -315,7 +315,7 @@ class TestFanCultureCrawler:
         mock_save = MagicMock()
         crawler._save_to_db = mock_save
 
-        results = asyncio.run(crawler.run(save=True, team_filter="LG"))
+        results = asyncio.run(crawler.run(save=True, team_filter="LG", force_refresh=True))
         assert len(results) == 1
         mock_save.assert_called_once_with(results)
 

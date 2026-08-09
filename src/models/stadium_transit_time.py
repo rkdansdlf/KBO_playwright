@@ -98,6 +98,8 @@ class StadiumTransitTime(Base, TimestampMixin):
         ),
         Index("idx_stt_game_date", "game_date"),
         Index("idx_stt_measured_at", "measured_at"),
+        Index("idx_stt_stadium_measured", "stadium_code", "measured_at"),
+        Index("idx_stt_stadium_game_date", "stadium_code", "game_date"),
         Index("idx_stt_origin", "origin_label"),
         Index("idx_stt_mode", "transport_mode"),
     )

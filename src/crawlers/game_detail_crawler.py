@@ -594,11 +594,33 @@ class GameDetailCrawler:
             "pitchers": pitchers,
             "lifecycle_state": lifecycle_state,
         }
+        source_capture = await self._capture_rendered_source(page, review_url)
+        if source_capture is not None:
+            game_data["_source_capture"] = source_capture
 
         self._last_failure_reason.pop(game_id, None)
         if not lightweight:
             self._log_unresolved_player_ids(game_id, hitters, pitchers)
         return game_data
+
+    async def _capture_rendered_source(self, page: Page, source_url: str) -> dict[str, object] | None:
+        """Capture the rendered DOM used by extraction when the browser exposes it."""
+        content_method = getattr(page, "content", None)
+        if not callable(content_method):
+            return None
+        try:
+            content = await content_method()
+        except (PlaywrightError, RuntimeError, TypeError):
+            logger.warning("Could not capture rendered source for %s", source_url)
+            return None
+        if not isinstance(content, str) or not content:
+            return None
+        return {
+            "body": content,
+            "url": source_url,
+            "content_type": "text/html;rendered-dom",
+            "capture_mode": "rendered_dom",
+        }
 
     async def _click_review_tab_if_present(self, page: Page) -> None:
         """Handle the click review tab if present operation.
@@ -843,7 +865,7 @@ class GameDetailCrawler:
         game_id: str,
         hitters: dict[str, list[dict[str, Any]]],
         hitter_totals: dict[str, dict[str, Any]],
-    ) -> None:
+    ) -> bool:
         """Validate hitter totals.
 
         Args:
@@ -857,24 +879,44 @@ class GameDetailCrawler:
             hitter_totals: Hitter Totals.
 
         """
+        is_valid = True
         for side, player_list in hitters.items():
             total_row = hitter_totals.get(side)
             if not total_row:
                 continue
             sum_hits = sum(player["stats"].get("hits", 0) for player in player_list)
             sum_ab = sum(player["stats"].get("at_bats", 0) for player in player_list)
-            if sum_hits == total_row.get("hits") and sum_ab == total_row.get("at_bats"):
+            sum_runs = sum(player["stats"].get("runs", 0) for player in player_list)
+            runs_match = total_row.get("runs") is None or sum_runs == total_row.get("runs")
+            if sum_hits == total_row.get("hits") and sum_ab == total_row.get("at_bats") and runs_match:
                 continue
+            is_valid = False
             logger.warning(
-                "⚠️ Integrity check FAILED for %s (%s): Players Sum(%sH, %sAB) != Team Total(%sH, %sAB)",
+                "⚠️ Integrity check FAILED for %s (%s): Players Sum(%sR, %sH, %sAB) != "
+                "Team Total(%sR, %sH, %sAB)",
                 game_id,
                 side,
+                sum_runs,
                 sum_hits,
                 sum_ab,
+                total_row.get("runs"),
                 total_row.get("hits"),
                 total_row.get("at_bats"),
             )
             await page.screenshot(path=f"data/integrity_warning_{game_id}_{side}.png")
+        return is_valid
+
+    @staticmethod
+    def _validate_line_score_totals(team_info: dict[str, dict[str, Any]]) -> bool:
+        """Return whether available line scores equal the captured team scores."""
+        for info in team_info.values():
+            score = info.get("score")
+            line_score = info.get("line_score") or []
+            if score is None or not line_score:
+                continue
+            if sum(int(run or 0) for run in line_score) != score:
+                return False
+        return True
 
     async def _extract_detailed_stats(
         self,
@@ -913,7 +955,12 @@ class GameDetailCrawler:
                 "Proceeding with partial recovery.",
                 ctx.game_id,
             )
-        await self._validate_hitter_totals(ctx.page, ctx.game_id, hitters, hitter_totals)
+        if not self._validate_line_score_totals(team_info):
+            self._last_failure_reason[ctx.game_id] = "inning_score_mismatch"
+            return None
+        if not await self._validate_hitter_totals(ctx.page, ctx.game_id, hitters, hitter_totals):
+            self._last_failure_reason[ctx.game_id] = "hitter_totals_mismatch"
+            return None
         return hitters, pitchers
 
     async def _is_cancelled_boxscore_page(self, page: Page) -> bool:
@@ -2509,7 +2556,7 @@ async def main() -> None:  # pragma: no cover
         )
         from src.repositories.game_repository import save_game_detail
 
-        success = save_game_detail(game_data)
+        success = await asyncio.to_thread(save_game_detail, game_data)
         if success:
             logger.info("✅ Successfully saved and triggered sync for %s", game_id)
         else:

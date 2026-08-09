@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import logging
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -46,6 +47,26 @@ class PlayerIdentity:
     is_pitcher: bool | None
 
 
+@lru_cache(maxsize=1)
+def get_cached_aliases() -> dict[str, str]:
+    """Load name aliases from CSV once and cache in memory."""
+    aliases: dict[str, str] = {}
+    csv_path = ALIAS_CSV_PATH
+    if not csv_path.exists():
+        return aliases
+    try:
+        with csv_path.open(encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                old = row.get("old_name", "").strip()
+                new = row.get("new_name", "").strip()
+                if old and new and old != new:
+                    aliases[old] = new
+    except (csv.Error, OSError, TypeError, ValueError):
+        logger.exception("Failed to load aliases from CSV")
+    return aliases
+
+
 class PlayerIdResolver:
     """Resolver ensuring player IDs are found even if missing in game crawl data."""
 
@@ -57,19 +78,7 @@ class PlayerIdResolver:
         strict_game_resolution: bool = False,
         allow_auto_register: bool | None = None,
     ) -> None:
-        """Initialize a new instance.
-
-        Args:
-            session: Session.
-            allow_unknown_registration: Allow Unknown Registration.
-            strict_game_resolution: Strict Game Resolution.
-            allow_auto_register: Allow Auto Register.
-            session: Session.
-            allow_unknown_registration: Allow Unknown Registration.
-            strict_game_resolution: Strict Game Resolution.
-            allow_auto_register: Allow Auto Register.
-
-        """
+        """Initialize a new instance."""
         self.session = session
 
         if allow_auto_register is not None:
@@ -81,8 +90,8 @@ class PlayerIdResolver:
         self.strict_game_resolution = strict_game_resolution
         self._cache: dict[str, int | None] = {}
 
-        # Load name aliases from CSV
-        self.NAME_ALIASES: dict[str, str] = self._load_aliases_from_csv()
+        # Load name aliases from CSV (cached in memory)
+        self.NAME_ALIASES: dict[str, str] = get_cached_aliases()
 
         # All-Star and International team mappings
         self.ALL_STAR_TEAMS = {

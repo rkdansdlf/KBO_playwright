@@ -68,7 +68,7 @@ class TestComputeDailySla:
         pbp_query.filter.return_value.distinct.return_value.count.return_value = 1
 
         detail_query = MagicMock()
-        detail_query.filter.return_value.count.return_value = 1
+        detail_query.filter.return_value.distinct.return_value.all.return_value = [("GAME1",)]
 
         call_count = [0]
 

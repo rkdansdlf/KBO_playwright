@@ -313,6 +313,22 @@ def _upsert_player_stats(
     conflict_keys = ["player_id", "season", "league", "level", "team_code"]
     saved = 0
 
+    if dialect == "sqlite":
+        try:
+            sample_keys = list(records[0].keys())
+            update_cols = {k: sqlite_insert(model).excluded[k] for k in sample_keys if k not in conflict_keys}
+            stmt = sqlite_insert(model).values(records)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=conflict_keys,
+                set_=update_cols,
+            )
+            session.execute(stmt)
+            session.commit()
+            return len(records)
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception("%s batch upsert failed, falling back to row-by-row", stat_label)
+
     for data in records:
         try:
             if dialect == "sqlite":

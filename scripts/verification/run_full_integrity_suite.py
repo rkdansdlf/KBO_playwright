@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
-"""KBO Unified Data Integrity Audit Runner.
-Executes referential, logical, and statistical checks across local SQLite DB
-(and optionally remote OCI PostgreSQL DB) and compiles results into a Markdown report.
-"""
+"""KBO Unified Data Integrity Audit Runner."""
 
 from __future__ import annotations
 
 import argparse
-import os
 import random
 import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
-
-from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -22,12 +16,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import logging
 
-from scripts.maintenance.quality_gate import run_quality_gate
 from scripts.verification.audit_game_logic import audit_game_logic
 from scripts.verification.check_orphan_data import collect_report
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.validators.standings_integrity import validate_standings_integrity
+from src.validators.quality_gate import run_quality_gate
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +158,6 @@ def main():
     parser = argparse.ArgumentParser(description="Run Full KBO Data Integrity Verification Suite")
     parser.add_argument("--year", type=int, help="Limit check to a specific year/season")
     parser.add_argument("--strict-zero", action="store_true", help="Require all baseline metrics to be zero")
-    parser.add_argument("--skip-oci", action="store_true", help="Skip remote OCI database comparison")
     parser.add_argument(
         "--standings-days",
         type=int,
@@ -173,7 +166,6 @@ def main():
     )
     args = parser.parse_args()
 
-    load_dotenv()
     timestamp = datetime.now()
 
     logger.info("🚀 Running KBO Data Integrity Audit Suite...")
@@ -193,18 +185,14 @@ def main():
 
     # 3. Quality Gate Checks
     logger.info("\n3️⃣ Running Quality Gate Checks...")
-    baseline_path = Path("Docs/quality_gate_baseline.json")
-    oci_url = os.getenv("OCI_DB_URL")
-
-    qgate_results = run_quality_gate(
-        baseline_path=baseline_path,
-        output_dir=Path("data"),
-        oci_url=oci_url,
-        skip_oci=args.skip_oci or not oci_url,
-        oci_only=False,
-        write_artifacts=True,
-        strict_zero=args.strict_zero,
-    )
+    with SessionLocal() as session:
+        raw_qgate_results = run_quality_gate(session, args.year or timestamp.year)
+    qgate_failures = [
+        f"{name}: {len(result.get('mismatches', []))} mismatches"
+        for name, result in raw_qgate_results.items()
+        if isinstance(result, dict) and result.get("mismatches")
+    ]
+    qgate_results = {"ok": raw_qgate_results.get("ok", False), "failures": qgate_failures}
     logger.info(f"   Status: {'PASS' if qgate_results['ok'] else 'FAIL'}")
 
     # 4. Standings Rollup Checks
