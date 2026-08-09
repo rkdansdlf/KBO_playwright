@@ -22,11 +22,11 @@ from src.models.game import (
     GamePlayByPlay,
     GameValidationMetrics,
 )
+from src.repositories.crawl_evidence_repository import build_relay_db_projection, record_crawl_evidence
 from src.repositories.game_helpers import (
     GAME_STATUS_UNRESOLVED,
     RecordReplaceContext,
     _apply_game_team_identity,
-    _auto_sync_to_oci,
     _canonicalize_game_id,
     _enrich_existing_child_team_identity,
     _ensure_game_stub,
@@ -42,6 +42,7 @@ from src.repositories.game_helpers import (
 )
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.sources.relay.base import event_has_minimum_state, event_to_pbp_row, normalize_pbp_row
+from src.utils.data_lineage import canonical_json
 from src.utils.date_helpers import parse_date_str
 from src.utils.team_codes import team_code_from_game_id_segment
 
@@ -132,7 +133,10 @@ def _upsert_validation_metrics(
     metrics.source_used = (data.source_name or metrics.source_used or "unknown")[:16]
     metrics.parser_version = data.parser_version or metrics.parser_version
     metrics.source_schema_version = data.source_schema_version or metrics.source_schema_version
-    metrics.payload_hash = data.payload_hash or metrics.payload_hash
+    full_payload_hash = data.payload_hash_full or data.payload_hash
+    if full_payload_hash:
+        metrics.payload_hash = full_payload_hash[:16]
+        metrics.payload_hash_full = full_payload_hash
     metrics.duplicate_event_count = _duplicate_provider_count(events_list, pbp_list)
     metrics.unclassified_event_count = sum(
         1
@@ -234,7 +238,6 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
                 ],
             )
             session.commit()
-            _auto_sync_to_oci(game_id)
             return len(pbp_mappings)
         except SQLAlchemyError:
             session.rollback()
@@ -245,7 +248,6 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
 def backfill_missing_game_stubs_for_relays(
     *,
     seasons: Iterable[int] | None = None,
-    sync_to_oci: bool = False,
 ) -> int:
     """Ensure a parent `game` row exists for any relay-bearing game_id.
 
@@ -254,9 +256,7 @@ def backfill_missing_game_stubs_for_relays(
 
     Args:
         seasons: Seasons.
-        sync_to_oci: Sync To Oci.
         seasons: Seasons.
-        sync_to_oci: Sync To Oci.
 
     """
     season_prefixes = {str(season) for season in (seasons or []) if season}
@@ -289,9 +289,6 @@ def backfill_missing_game_stubs_for_relays(
             logger.exception("[ERROR] DB Error (Game Stub Backfill)")
             return 0
 
-    if sync_to_oci:
-        for game_id in missing_ids:
-            _auto_sync_to_oci(game_id)
     return len(missing_ids)
 
 
@@ -301,7 +298,6 @@ def mark_relay_source_unavailable(
     reason: str,
     source_name: str = "none",
     evidence: dict[str, Any] | None = None,
-    sync_to_oci: bool = False,
 ) -> bool:
     """Mark a completed game as explainably unrecoverable from public relay sources.
 
@@ -310,12 +306,10 @@ def mark_relay_source_unavailable(
         reason: Reason.
         source_name: Source Name.
         evidence: Evidence.
-        sync_to_oci: Sync To Oci.
         game_id: Game ID.
         reason: Reason.
         source_name: Source Name.
         evidence: Evidence.
-        sync_to_oci: Sync To Oci.
 
     """
     game_id, original_game_id = _canonicalize_game_id(game_id)
@@ -333,7 +327,28 @@ def mark_relay_source_unavailable(
                 reason="normalized_to_kbo_legacy_game_id",
             )
             from src.repositories.game_helpers import _upsert_metadata
-            from src.utils.relay_validation import VALIDATION_SOURCE_UNAVAILABLE
+            from src.utils.relay_validation import VALIDATION_SOURCE_UNAVAILABLE, is_trusted_relay_status
+
+            existing_metrics = (
+                session.query(GameValidationMetrics)
+                .filter(GameValidationMetrics.game_id == game_id)
+                .one_or_none()
+            )
+            if existing_metrics is not None and is_trusted_relay_status(existing_metrics.validation_status):
+                existing_evidence = (
+                    existing_metrics.evidence_json if isinstance(existing_metrics.evidence_json, dict) else {}
+                )
+                existing_metrics.evidence_json = {
+                    **existing_evidence,
+                    "source_unavailable_attempt": {
+                        "reason": reason,
+                        "source_name": source_name,
+                        **(evidence or {}),
+                    },
+                }
+                existing_metrics.fallback_trigger_reason = str(reason)[:64]
+                session.commit()
+                return False
 
             payload = {
                 "pbp_validation_status": VALIDATION_SOURCE_UNAVAILABLE,
@@ -357,8 +372,6 @@ def mark_relay_source_unavailable(
             logger.exception("[ERROR] DB Error (Relay Source Unavailable)")
             return False
 
-    if sync_to_oci:
-        _auto_sync_to_oci(game_id)
     return True
 
 
@@ -451,8 +464,6 @@ def _apply_repaired_game_fields(session: Session, game_id: str) -> None:
 
 def repair_game_parent_from_existing_children(
     game_id: str,
-    *,
-    sync_to_oci: bool = False,
 ) -> bool:
     """Rebuild/repair one parent `game` row from existing child tables.
 
@@ -462,9 +473,7 @@ def repair_game_parent_from_existing_children(
 
     Args:
         game_id: Game ID.
-        sync_to_oci: Sync To Oci.
         game_id: Game ID.
-        sync_to_oci: Sync To Oci.
 
     """
     game_id, original_game_id = _canonicalize_game_id(game_id)
@@ -491,8 +500,6 @@ def repair_game_parent_from_existing_children(
             logger.exception("[ERROR] DB Error (Game Parent Repair)")
             return False
 
-    if sync_to_oci:
-        _auto_sync_to_oci(game_id)
     return True
 
 
@@ -593,6 +600,7 @@ class ValidationMetricsData:
     parser_version: str | None = None
     source_schema_version: str | None = None
     payload_hash: str | None = None
+    payload_hash_full: str | None = None
     evidence: dict[str, Any] | None = None
     notes: str | None = None
     valid_event_rows: list[dict[str, Any]] | None = None
@@ -637,6 +645,7 @@ class RelaySaveOptions:
     parser_version: str | None = None
     source_schema_version: str | None = None
     payload_hash: str | None = None
+    source_payload: object | None = None
     game_lifecycle_state: str | None = None
 
 
@@ -684,6 +693,12 @@ def _resolve_relay_validation(
     if input_data.raw_pbp_rows and not input_data.valid_event_rows and is_terminal_game:
         return _RelayValidationResult(VALIDATION_SOURCE_INCOMPLETE, "raw_pbp_without_valid_event_state", live_warnings)
     if is_terminal_game:
+        if live_warnings:
+            return _RelayValidationResult(
+                VALIDATION_UNVERIFIED,
+                "structural_validation_warnings",
+                live_warnings,
+            )
         is_valid, error_reason = validate_pbp_payload(session, game_id, input_data.events, input_data.raw_pbp_rows)
         if is_valid:
             score_match, score_err = cross_validate_with_box_score(session, game_id, input_data.events)
@@ -741,6 +756,7 @@ def _upsert_relay_validation_metadata(
         parser_version=data.parser_version,
         source_schema_version=data.source_schema_version,
         payload_hash=data.payload_hash,
+        payload_hash_full=data.payload_hash,
         evidence=evidence,
     )
     _upsert_validation_metrics(session, game_id, update_data)
@@ -1107,6 +1123,7 @@ def save_relay_data(
                     parser_version=opts.parser_version,
                     source_schema_version=opts.source_schema_version,
                     payload_hash=opts.payload_hash,
+                    payload_hash_full=opts.payload_hash,
                     notes=opts.notes,
                     valid_event_rows=valid_event_rows,
                     live_warnings=validation.live_warnings,
@@ -1117,7 +1134,7 @@ def save_relay_data(
             resolution = _relay_resolution_context(session, game_id)
             pbp_rows = _build_relay_pbp_rows(game_id, raw_pbp_rows, opts.source_name, resolution)
             event_rows = _build_relay_event_rows(game_id, valid_event_rows, opts.source_name, opts.notes, resolution)
-            changed = _replace_relay_rows(
+            _replace_relay_rows(
                 session,
                 game_id,
                 ctx=RelayRowReplaceContext(
@@ -1127,9 +1144,46 @@ def save_relay_data(
                     write_contract=opts.write_contract,
                 ),
             )
+            if opts.source_payload is not None:
+                evidence_payload = {"events": events, "raw_pbp_rows": raw_pbp_rows}
+                session.flush()
+                db_projection = build_relay_db_projection(session, game_id, evidence_payload)
+                evidence_record = record_crawl_evidence(
+                    session,
+                    entity_type="game",
+                    entity_id=game_id,
+                    dataset="relay",
+                    source_name=opts.source_name or opts.source_crawler,
+                    parsed_payload=evidence_payload,
+                    normalized_payload=evidence_payload,
+                    db_projection=db_projection,
+                    source_capture={
+                        "body": (
+                            opts.source_payload
+                            if isinstance(opts.source_payload, (str, bytes))
+                            else canonical_json(opts.source_payload)
+                        ),
+                        "content_type": "text/plain" if isinstance(opts.source_payload, str) else "application/json",
+                        "capture_mode": "provider-payload",
+                    },
+                    parser_version=opts.parser_version,
+                    normalization_version="relay-normalized-v1",
+                )
+                metrics = (
+                    session.query(GameValidationMetrics)
+                    .filter(GameValidationMetrics.game_id == game_id)
+                    .one_or_none()
+                )
+                if metrics is not None:
+                    existing_evidence = metrics.evidence_json if isinstance(metrics.evidence_json, dict) else {}
+                    metrics.evidence_json = {
+                        **existing_evidence,
+                        "crawl_evidence_id": evidence_record.id,
+                        "crawl_evidence_raw_hash": evidence_record.raw_hash,
+                        "crawl_evidence_normalized_hash": evidence_record.normalized_hash,
+                        "crawl_evidence_db_projection_hash": evidence_record.db_projection_hash,
+                    }
             session.commit()
-            if changed:
-                _auto_sync_to_oci(game_id)
             _log_relay_save_result(game_id, events, valid_event_rows, len(event_rows), len(pbp_rows))
             return len(event_rows) if event_rows else len(pbp_rows)
         except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError):

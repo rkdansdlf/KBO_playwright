@@ -109,7 +109,10 @@ class TestMetadataEnrichmentService:
                 assert result == {"summary": "", "keywords": [], "questions": []}
 
     def test_call_google_success(self):
-        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "AIza-test123"}):
+        with patch.dict(
+            "os.environ",
+            {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "AIza-test123", "OPENROUTER_API_KEY": ""},
+        ):
             svc = MetadataEnrichmentService()
             with patch("httpx.Client") as MockClient:
                 mock_instance = MagicMock()

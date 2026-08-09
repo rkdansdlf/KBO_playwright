@@ -10,8 +10,8 @@ from src.utils.team_mapping import TeamMapper
 
 def _make_mapper() -> TeamMapper:
     mapper = TeamMapper.__new__(TeamMapper)
-    mapper._oci_loaded = False
-    mapper.oci_mapping = {}
+    mapper._database_loaded = False
+    mapper.database_mapping = {}
     mapper.static_mapping = {"LG": "LG", "SSG": "SSG", "KIA": "KIA"}
     mapper.year_specific_mapping = {}
     return mapper

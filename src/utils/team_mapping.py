@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 """
 KBO 팀명 매핑 유틸리티
 
-OCI team_history 테이블과 연동하여 동적 매핑 제공
+team_history 테이블과 연동하여 동적 매핑 제공
 
 """
 
@@ -143,9 +143,9 @@ class TeamMapper:
     def __init__(self) -> None:
         """Initialize a new instance."""
         self.static_mapping = self._get_static_mapping()
-        self.oci_mapping: dict[str, str] = {}
+        self.database_mapping: dict[str, str] = {}
         self.year_specific_mapping: dict[int, dict[str, str]] = {}
-        self._oci_loaded = False
+        self._database_loaded = False
 
     def _get_static_mapping(self) -> dict[str, str]:
         """기본 정적 매핑 (현재 팀들)."""
@@ -173,41 +173,34 @@ class TeamMapper:
             "SSG랜더스": "SSG",
         }
 
-    def load_oci_mapping(self) -> bool:
-        """OCI team_history 테이블에서 매핑 데이터 로드."""
-        from src.db.engine import get_oci_url
-
-        oci_url = get_oci_url()
-        if not oci_url:
-            logger.warning("⚠️ OCI_DB_URL 환경변수가 설정되지 않음. 정적 매핑만 사용.")
-            return False
-
+    def load_database_mapping(self) -> bool:
+        """Load historical team mappings from the configured database."""
         try:
-            results = self._load_team_history_rows(oci_url)
+            from src.db.engine import DATABASE_URL
+
+            results = self._load_team_history_rows(DATABASE_URL)
             if not results:
                 return False
-            self._apply_oci_mapping_rows(results)
-            self._oci_loaded = True
+            self._apply_database_mapping_rows(results)
+            self._database_loaded = True
         except (SQLAlchemyError, ValueError):
-            logger.exception("⚠️ OCI 팀 매핑 로드 실패")
+            logger.exception("⚠️ Database team mapping load failed")
             return False
         else:
-            logger.info("✅ OCI에서 %s개 팀 매핑 로드 완료", len(results))
+            logger.info("✅ Loaded %s team mappings from database", len(results))
             return True
 
-    def _load_team_history_rows(self, oci_url: str) -> list[Sequence[object]] | None:
+    def _load_team_history_rows(self, database_url: str) -> list[Sequence[object]] | None:
         """Load team history rows.
 
         Args:
-            oci_url: Oci URL.
-            oci_url: Oci URL.
-            oci_url: Oci URL.
+            database_url: Database URL.
 
         Returns:
             The result of the operation.
 
         """
-        engine = create_engine(oci_url)
+        engine = create_engine(database_url)
 
         session_maker = sessionmaker(bind=engine)
         session = session_maker()
@@ -272,8 +265,8 @@ class TeamMapper:
                 return list(query_result)
         return None
 
-    def _apply_oci_mapping_rows(self, rows: Iterable[Sequence[object]]) -> None:
-        """Handle the apply oci mapping rows operation.
+    def _apply_database_mapping_rows(self, rows: Iterable[Sequence[object]]) -> None:
+        """Apply database mapping rows.
 
         Args:
             rows: Rows.
@@ -282,10 +275,10 @@ class TeamMapper:
 
         """
         for row in rows:
-            self._apply_oci_mapping_row(row)
+            self._apply_database_mapping_row(row)
 
-    def _apply_oci_mapping_row(self, row: Sequence[object]) -> None:
-        """Handle the apply oci mapping row operation.
+    def _apply_database_mapping_row(self, row: Sequence[object]) -> None:
+        """Apply one database mapping row.
 
         Args:
             row: Row.
@@ -324,7 +317,7 @@ class TeamMapper:
             end_year: End Year.
 
         """
-        self.oci_mapping[team_name] = team_code
+        self.database_mapping[team_name] = team_code
 
         for year in range(start_year, end_year + 1):
             self.year_specific_mapping.setdefault(year, {})[team_name] = team_code
@@ -344,8 +337,8 @@ class TeamMapper:
 
         team_name = team_name.strip()
 
-        # 1. 년도별 매핑 우선 확인 (OCI 등의 외부 소스)
-        if year and self._oci_loaded and year in self.year_specific_mapping:
+        # Prefer year-specific mappings loaded from the configured database.
+        if year and self._database_loaded and year in self.year_specific_mapping:
             year_mapping = self.year_specific_mapping[year]
             if team_name in year_mapping:
                 canonical_code = resolve_team_code(team_name, year)
@@ -374,9 +367,8 @@ class TeamMapper:
 
         if resolved:
             return resolved
-        # 2. OCI 매핑 확인
-        if self._oci_loaded and team_name in self.oci_mapping:
-            return self.oci_mapping[team_name]
+        if self._database_loaded and team_name in self.database_mapping:
+            return self.database_mapping[team_name]
         # 3. 정적 매핑 확인
         if team_name in self.static_mapping:
             return self.static_mapping[team_name]
@@ -519,7 +511,7 @@ class TeamMapper:
 
         mapping = self.static_mapping.copy()
 
-        # OCI에서 로드된 년도별 특수 매핑이 있으면 덮어씀
+        # Database-loaded year-specific mappings take precedence.
         if year in self.year_specific_mapping:
             mapping.update(self.year_specific_mapping[year])
 
@@ -551,8 +543,7 @@ class TeamMapper:
 def get_team_mapper() -> TeamMapper:
     """TeamMapper 싱글톤 인스턴스 반환."""
     mapper = TeamMapper()
-    # 처음 생성시 OCI 매핑 시도
-    mapper.load_oci_mapping()
+    mapper.load_database_mapping()
     return mapper
 
 
@@ -584,16 +575,16 @@ def get_team_mapping_for_year(year: int) -> dict[str, str]:
     return mapper.get_all_teams_for_year(year)
 
 
-def refresh_oci_mapping() -> bool:
-    """OCI 매핑 갱신."""
+def refresh_database_mapping() -> bool:
+    """Refresh database-backed team mappings."""
     mapper = get_team_mapper()
-    return mapper.load_oci_mapping()
+    return mapper.load_database_mapping()
 
 
 if __name__ == "__main__":
     # 테스트 코드
     mapper = TeamMapper()
-    mapper.load_oci_mapping()
+    mapper.load_database_mapping()
 
     # 테스트 케이스들
     test_cases = [

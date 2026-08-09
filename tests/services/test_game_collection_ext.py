@@ -156,8 +156,12 @@ class TestSaveDetailPayload:
         ctx.result = result
         ctx.detail_ready = set()
         target = GameCollectionTarget(game_id="g1", game_date="20240315")
+        payload = {
+            "hitters": {"away": [{"name": "a"}], "home": [{"name": "b"}]},
+            "pitchers": {"away": [{"name": "c"}], "home": [{"name": "d"}]},
+        }
         with patch("src.services.game_collection_service.save_game_detail", return_value=True):
-            assert _save_detail_payload(target, {"data": "test"}, ctx) is True
+            assert _save_detail_payload(target, payload, ctx) is True
             assert result.detail_saved == 1
             assert "g1" in ctx.detail_ready
 
@@ -168,8 +172,12 @@ class TestSaveDetailPayload:
         ctx.result = result
         ctx.detail_ready = set()
         target = GameCollectionTarget(game_id="g1", game_date="20240315")
+        payload = {
+            "hitters": {"away": [{"name": "a"}], "home": [{"name": "b"}]},
+            "pitchers": {"away": [{"name": "c"}], "home": [{"name": "d"}]},
+        }
         with patch("src.services.game_collection_service.save_game_detail", return_value=False):
-            assert _save_detail_payload(target, {"data": "test"}, ctx) is False
+            assert _save_detail_payload(target, payload, ctx) is False
             assert result.detail_failed == 1
 
 
@@ -226,7 +234,14 @@ class TestDeriveShSfForResults:
 
     def test_exception_handled(self):
         result = GameCollectionResult()
-        result.items = {"g1": GameCollectionItemResult(game_id="g1", game_date="20240315", detail_status="success")}
+        result.items = {
+            "g1": GameCollectionItemResult(
+                game_id="g1",
+                game_date="20240315",
+                detail_status="saved",
+                detail_saved=True,
+            ),
+        }
         with patch("src.services.game_collection_service.SessionLocal") as mock_sl:
             mock_session = MagicMock()
             mock_sl.return_value.__enter__.return_value = mock_session

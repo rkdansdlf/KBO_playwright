@@ -64,4 +64,6 @@ class NaverRelayAdapter(RelaySourceAdapter):
             parser_version=(result or {}).get("parser_version"),
             source_schema_version=(result or {}).get("source_schema_version"),
             payload_hash=(result or {}).get("payload_hash"),
+            status=status,
+            source_payload=(result or {}).get("source_payload"),
         )

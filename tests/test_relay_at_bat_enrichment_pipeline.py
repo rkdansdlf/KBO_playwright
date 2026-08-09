@@ -232,9 +232,7 @@ def _build_synthetic_text_relays():
 
 def _setup(monkeypatch, SessionLocal):
     monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
     monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
     _seed_game(SessionLocal, GAME_ID)
 
 
@@ -450,9 +448,7 @@ class TestRelayAtBatEnrichmentPipeline:
     def test_save_relay_resolves_woob_players_with_canonical_and_defensive_team_context(self, monkeypatch):
         SessionLocal = _build_session_factory()
         monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
-        monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
         monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-        monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
         _seed_game(
             SessionLocal,
             "20260607WOOB0",
@@ -502,9 +498,7 @@ class TestRelayAtBatEnrichmentPipeline:
     def test_save_relay_resolves_hhlt_batter_with_explicit_batter_role_context(self, monkeypatch):
         SessionLocal = _build_session_factory()
         monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
-        monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
         monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-        monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
         _seed_game(
             SessionLocal,
             "20260607HHLT0",
@@ -536,9 +530,7 @@ class TestRelayAtBatEnrichmentPipeline:
     def test_save_relay_resolves_live_defensive_substitution_roles(self, monkeypatch):
         SessionLocal = _build_session_factory()
         monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
-        monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
         monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-        monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
         _seed_game(
             SessionLocal,
             "20260613NCKT0",

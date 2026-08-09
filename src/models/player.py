@@ -1,10 +1,10 @@
 """Player-related ORM models.
 
-Aligns with Docs/schema/playerProfileSchemaGuide.md design.
+Aligns with Docs/schema/SCHEMA_README.md design.
 
-PlayerBasic: Simple table from player search crawler (Docs/PLAYERID_CRAWLING.md)
-Player: Complex relational model for detailed player data
-
+PlayerBasic: Canonical parent entity for player records (player_id FK target)
+Player: Extended relational model for detailed individual player master records
+PlayerIdentity: External ID mappings (KBO, Naver, etc.)
 """
 
 from __future__ import annotations
@@ -13,13 +13,13 @@ from datetime import date as date_type
 from typing import Any
 
 from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
 
 
 class PlayerBasic(Base, TimestampMixin):
-    """Simple player table populated from player search crawler.
+    """Canonical player entity table populated from player search crawler.
 
     Source: https://www.koreabaseball.com/Player/Search.aspx.
 
@@ -188,6 +188,8 @@ class Player(Base, TimestampMixin):
         nullable=True,
         comment="Structured education/career history path",
     )
+
+    player_basic: Mapped[PlayerBasic | None] = relationship("PlayerBasic", foreign_keys=[player_basic_id])
 
     def __repr__(self) -> str:
         """Return a string representation of this object."""

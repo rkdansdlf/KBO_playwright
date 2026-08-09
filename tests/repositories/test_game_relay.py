@@ -265,15 +265,30 @@ class TestMarkRelaySourceUnavailable:
         assert metrics.evidence_json is not None
         assert metrics.evidence_json.get("url") == "http://example.com"
 
-    def test_mark_unavailable_sync_to_oci(self, session):
+    def test_mark_unavailable_preserves_trusted_status(self, session):
         session.add(Game(game_id="20241015LGSS0", game_date=date(2024, 10, 15)))
+        session.add(
+            GameValidationMetrics(
+                game_id="20241015LGSS0",
+                validation_status="verified",
+                evidence_json={"payload_hash": "abc"},
+            ),
+        )
         session.commit()
 
-        with patch("src.repositories.game_relay._auto_sync_to_oci") as mock_sync:
-            result = mark_relay_source_unavailable("20241015LGSS0", reason="no_data", sync_to_oci=True)
-            assert result is True
-            mock_sync.assert_called_once_with("20241015LGSS0")
+        result = mark_relay_source_unavailable(
+            "20241015LGSS0",
+            reason="source_not_found",
+            evidence={"url": "http://example.com"},
+        )
 
+        assert result is False
+        metrics = (
+            session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == "20241015LGSS0").one()
+        )
+        assert metrics.validation_status == "verified"
+        assert metrics.evidence_json["payload_hash"] == "abc"
+        assert metrics.evidence_json["source_unavailable_attempt"]["url"] == "http://example.com"
 
 class TestRelayTextIndicatesDefenseSide:
     def test_no_description(self):
@@ -490,7 +505,6 @@ class TestBackfillGamePlayByPlayFromExistingEvents:
 
         with (
             patch("src.repositories.game_relay.SessionLocal", return_value=session),
-            patch("src.repositories.game_relay._auto_sync_to_oci"),
             patch("src.repositories.game_relay.derive_play_by_play_rows_from_events") as mock_derive,
         ):
             mock_derive.return_value = [
@@ -608,31 +622,6 @@ class TestBackfillMissingGameStubsForRelays:
             result = src.repositories.game_relay.backfill_missing_game_stubs_for_relays()
             assert result == 0
 
-    def test_sync_to_oci(self, session):
-        session.add(
-            GameEvent(
-                game_id="20241015LGSS0",
-                event_seq=1,
-                inning=1,
-                inning_half="top",
-                batter_name="Kim",
-                pitcher_name="Park",
-                description="Single",
-                event_type="single",
-            ),
-        )
-        session.commit()
-
-        with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
-            patch("src.repositories.game_relay._ensure_game_stub"),
-            patch("src.repositories.game_relay._auto_sync_to_oci") as mock_sync,
-        ):
-            result = src.repositories.game_relay.backfill_missing_game_stubs_for_relays(sync_to_oci=True)
-            assert result == 1
-            mock_sync.assert_called_once_with("20241015LGSS0")
-
-
 class TestRepairGameParentFromExistingChildren:
     def test_repair_no_game_id(self):
         with patch("src.repositories.game_relay.SessionLocal", return_value=MagicMock()):
@@ -724,32 +713,6 @@ class TestRepairGameParentFromExistingChildren:
         ):
             result = src.repositories.game_relay.repair_game_parent_from_existing_children("20241015LGSS0")
             assert result is True
-
-    def test_repair_sync_to_oci(self, session):
-        session.add(Game(game_id="20241015LGSS0", game_date=date(2024, 10, 15)))
-        session.add(
-            GameBattingStat(
-                game_id="20241015LGSS0",
-                player_name="Kim",
-                team_side="away",
-                appearance_seq=1,
-                at_bats=4,
-            ),
-        )
-        session.commit()
-
-        with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
-            patch("src.repositories.game_relay._record_game_id_alias"),
-            patch("src.repositories.game_relay._auto_sync_to_oci") as mock_sync,
-        ):
-            result = src.repositories.game_relay.repair_game_parent_from_existing_children(
-                "20241015LGSS0",
-                sync_to_oci=True,
-            )
-            assert result is True
-            mock_sync.assert_called_once_with("20241015LGSS0")
-
 
 class TestRelayResolutionContext:
     def test_offense_team_top(self):

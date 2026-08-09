@@ -233,7 +233,7 @@ def _build_hitter_payload(
         team_side = team_cycle[team_index % 2]
         team_index += 1
 
-        for _, row in df.iterrows():
+        for row in df.to_dict(orient="records"):
             name = str(row.get("선수", "") or row.get("선수명", "")).strip()
             if not name or name in {"팀합계", "합계"}:
                 continue
@@ -304,7 +304,7 @@ def _build_pitcher_payload(
         team_side = team_cycle[team_index % 2]
         team_index += 1
 
-        for _, row in df.iterrows():
+        for row in df.to_dict(orient="records"):
             name = str(row.get("선수", "") or row.get("선수명", "")).strip()
             if not name or name in {"팀합계", "합계", "TOTAL"}:
                 continue

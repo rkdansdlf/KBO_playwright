@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from src.models.crawl_evidence import CrawlEvidence
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -34,9 +35,11 @@ from src.repositories.game_relay import (
     _has_repairable_game_children,
     _log_relay_save_result,
     _relay_resolution_context,
+    _resolve_relay_validation,
     _replace_relay_rows,
     _resolve_event_batter,
     _resolve_pbp_player,
+    save_relay_data,
     _upsert_relay_validation_metadata,
 )
 
@@ -59,6 +62,7 @@ def session(engine):
     GamePitchingStat.__table__.create(engine)
     GameInningScore.__table__.create(engine)
     GameLineup.__table__.create(engine)
+    CrawlEvidence.__table__.create(engine)
     Session = sessionmaker(bind=engine)
     return Session()
 
@@ -85,6 +89,74 @@ class TestHasRepairableGameChildren:
         )
         session.commit()
         assert _has_repairable_game_children(session, "20241015LGSS0") is True
+
+
+class TestRelayEvidenceIntegration:
+    def test_save_relay_data_links_local_evidence(self, session, tmp_path, monkeypatch):
+        monkeypatch.setenv("CRAWL_EVIDENCE_DIR", str(tmp_path / "evidence"))
+        session.add(
+            Game(
+                game_id="20241015LGSS0",
+                game_date=date(2024, 10, 15),
+                away_team="LG",
+                home_team="SS",
+                away_score=0,
+                home_score=0,
+                game_status="COMPLETED",
+            ),
+        )
+        session.commit()
+        event = {
+            "event_seq": 1,
+            "inning": 1,
+            "inning_half": "top",
+            "outs": 0,
+            "description": "single",
+            "event_type": "H",
+            "wpa": 0.1,
+            "win_expectancy_before": 0.5,
+            "win_expectancy_after": 0.6,
+            "home_score": 0,
+            "away_score": 0,
+            "base_state": 0,
+        }
+
+        saved = save_relay_data(
+            "20241015LGSS0",
+            [event],
+            raw_pbp_rows=[{"inning": 1, "inning_half": "top", "play_description": "single"}],
+            source_name="naver",
+            source_payload=[{"title": "1회초", "textOptions": []}],
+        )
+
+        assert saved > 0
+        evidence = session.query(CrawlEvidence).one()
+        metrics = session.query(GameValidationMetrics).one()
+        assert evidence.dataset == "relay"
+        assert evidence.db_projection_hash is not None
+        assert metrics.evidence_json["crawl_evidence_id"] == evidence.id
+
+
+class TestResolveRelayValidation:
+    def test_terminal_structural_warning_is_not_verified(self):
+        game = MagicMock(game_status="COMPLETED")
+        input_data = MagicMock(
+            events=[
+                {"inning": 2, "inning_half": "top", "home_score": 0, "away_score": 0, "outs": 0},
+                {"inning": 1, "inning_half": "bottom", "home_score": 0, "away_score": 0, "outs": 0},
+            ],
+            raw_pbp_rows=[{"inning": 1}],
+            valid_event_rows=[{"inning": 1}],
+        )
+
+        with (
+            patch("src.utils.relay_validation.validate_pbp_payload", return_value=(True, None)),
+            patch("src.utils.relay_validation.cross_validate_with_box_score", return_value=(True, None)),
+        ):
+            result = _resolve_relay_validation(MagicMock(), "g1", input_data, game, None)
+
+        assert result.status == "unverified"
+        assert result.error_reason == "structural_validation_warnings"
 
 
 class TestGameDateFromGameId:

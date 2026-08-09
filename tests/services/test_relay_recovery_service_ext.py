@@ -179,20 +179,20 @@ class TestJoinNotes:
 
 class TestManifestBaseDir:
     def test_from_path(self):
-        p = Path("/some/dir/file.csv")
-        assert _manifest_base_dir(p) == Path("/some/dir")
+        p = Path("C:/some/dir/file.csv")
+        assert _manifest_base_dir(p) == p.resolve().parent
 
     def test_from_string(self):
-        result = _manifest_base_dir("/some/dir/file.csv")
-        assert str(result).endswith("/some/dir")
+        result = _manifest_base_dir("C:/some/dir/file.csv")
+        assert result == Path("C:/some/dir/file.csv").resolve().parent
 
     def test_empty_string_fallback(self):
         result = _manifest_base_dir("")
         assert result is not None
 
     def test_from_iterable(self):
-        result = _manifest_base_dir(["/some/dir/file.csv"])
-        assert str(result).endswith("/some/dir")
+        result = _manifest_base_dir(["C:/some/dir/file.csv"])
+        assert result == Path("C:/some/dir/file.csv").resolve().parent
 
     def test_from_empty_iterable(self):
         result = _manifest_base_dir([])

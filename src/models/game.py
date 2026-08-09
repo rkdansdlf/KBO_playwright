@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -97,6 +98,10 @@ class GamePlayByPlay(Base, TimestampMixin):
     """Detailed event logs (play-by-play)."""
 
     __tablename__ = "game_play_by_play"
+    __table_args__ = (
+        Index("idx_pbp_game_inning", "game_id", "inning", "inning_half"),
+        Index("idx_pbp_player_game", "player_id", "game_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -175,7 +180,7 @@ class GameLineup(Base, TimestampMixin):
     standard_position = Column(String(10))
     is_starter = Column(Boolean, default=False)
     appearance_seq = Column(Integer, nullable=False)
-    notes = Column(String(64))
+    notes = Column(Text)
 
     game = relationship("Game", back_populates="lineups")
 
@@ -278,7 +283,11 @@ class GameEvent(Base, TimestampMixin):
     """Normalized Play-by-Play events."""
 
     __tablename__ = "game_events"
-    __table_args__ = (UniqueConstraint("game_id", "event_seq", name="uq_game_event_seq"),)
+    __table_args__ = (
+        UniqueConstraint("game_id", "event_seq", name="uq_game_event_seq"),
+        Index("idx_ge_game_event_type", "game_id", "event_type"),
+        Index("idx_ge_batter_game", "batter_id", "game_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -292,7 +301,7 @@ class GameEvent(Base, TimestampMixin):
     pitcher_name = Column(String(64))
     description = Column(Text)
     event_type = Column(String(32))
-    result_code = Column(String(16))
+    result_code = Column(Text)
     rbi = Column(Integer)
     bases_before = Column(String(3))
     bases_after = Column(String(3))
@@ -344,6 +353,7 @@ class GameValidationMetrics(Base, TimestampMixin):
     parser_version = Column(String(32), nullable=True)
     source_schema_version = Column(String(32), nullable=True)
     payload_hash = Column(String(16), nullable=True)
+    payload_hash_full = Column(String(64), nullable=True)
     evidence_json = Column(JSON, nullable=True)
 
     game = relationship("Game", back_populates="validation_metrics")

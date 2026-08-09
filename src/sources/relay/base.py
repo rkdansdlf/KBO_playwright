@@ -86,6 +86,13 @@ class NormalizedRelayResult:
     parser_version: str | None = None
     source_schema_version: str | None = None
     payload_hash: str | None = None
+    status: str | None = None
+    source_payload: object | None = None
+
+    @property
+    def is_not_modified(self) -> bool:
+        """Return whether the source confirmed that the previous payload is current."""
+        return self.status == "not_modified"
 
     @property
     def is_empty(self) -> bool:
@@ -95,7 +102,7 @@ class NormalizedRelayResult:
             True if successful, False otherwise.
 
         """
-        return not self.events and not self.raw_pbp_rows
+        return not self.is_not_modified and not self.events and not self.raw_pbp_rows
 
 
 class RelaySourceAdapter(ABC):

@@ -170,6 +170,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
             has_event_state=events_have_minimum_state(events),
             has_raw_pbp=bool(raw_pbp_rows),
             notes=notes,
+            source_payload=payload,
         )
 
     def _parse_naver_json(self, entry: ManifestEntry) -> NormalizedRelayResult:
@@ -195,6 +196,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
             has_event_state=events_have_minimum_state(events),
             has_raw_pbp=bool(raw_pbp_rows),
             notes=entry.notes,
+            source_payload=payload,
         )
 
     def _parse_html_archive(self, entry: ManifestEntry) -> NormalizedRelayResult:
@@ -209,12 +211,12 @@ class ImportRelayAdapter(RelaySourceAdapter):
             has_event_state=False,
             has_raw_pbp=bool(rows),
             notes=entry.notes,
+            source_payload=html,
         )
 
     def _parse_plain_text(self, entry: ManifestEntry) -> NormalizedRelayResult:
-        rows = self._lines_to_pbp_rows(
-            self._read_text(entry.locator, expected_sha256=entry.sha256).splitlines(),
-        )
+        text_payload = self._read_text(entry.locator, expected_sha256=entry.sha256)
+        rows = self._lines_to_pbp_rows(text_payload.splitlines())
         return NormalizedRelayResult(
             game_id=entry.game_id,
             source_name=self.source_name,
@@ -223,6 +225,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
             has_event_state=False,
             has_raw_pbp=bool(rows),
             notes=entry.notes,
+            source_payload=text_payload,
         )
 
     def _lines_to_pbp_rows(self, lines: list[str]) -> list[dict[str, Any]]:

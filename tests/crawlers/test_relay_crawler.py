@@ -57,7 +57,7 @@ class TestComputePayloadHash:
         h1 = self.crawler._compute_payload_hash(data)
         h2 = self.crawler._compute_payload_hash(data)
         assert h1 == h2
-        assert len(h1) == 12
+        assert len(h1) == 64
 
 
 class TestProviderLogId:

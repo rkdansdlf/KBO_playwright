@@ -429,6 +429,10 @@ async def recover_relay_data(
                 last_payload_hash=last_payload_hash,
             )
             run_result.report_rows.extend(attempts)
+            if relay_result.is_not_modified:
+                _handle_not_modified_relay_result(ctx, attempts, relay_result)
+                cfg.log(f"[UNCHANGED] Relay data already current for {target.game_id}")
+                continue
             if relay_result.is_empty:
                 _handle_empty_relay_result(
                     ctx,
@@ -521,6 +525,28 @@ def _maybe_derive_pbp(
     return True
 
 
+def _handle_not_modified_relay_result(
+    ctx: RecoveryLoopContext,
+    attempts: list[dict[str, Any]],
+    relay_result: NormalizedRelayResult,
+) -> None:
+    """Record a successful no-op without replacing existing relay rows."""
+    ctx.run_result.report_rows.append(
+        {
+            "game_id": ctx.target.game_id,
+            "bucket_id": ctx.bucket_id,
+            "source_name": relay_result.source_name,
+            "status": "not_modified",
+            "saved_rows": 0,
+            "saved_event_rows": 0,
+            "saved_pbp_rows": 0,
+            "skipped_event_rows_reason": "source_payload_unchanged",
+            "has_event_state": ctx.target.has_event_state,
+            "has_raw_pbp": ctx.target.has_pbp,
+            "notes": relay_result.notes or "not_modified",
+            "attempts": attempts,
+        },
+    )
 def _handle_empty_relay_result(
     ctx: RecoveryLoopContext,
     attempts: list[dict[str, Any]],
@@ -548,13 +574,20 @@ def _mark_unavailable_relay_source(
         "notes": relay_result.notes,
     }
     if not ctx.dry_run:
-        mark_relay_source_unavailable(ctx.target.game_id, reason="public_relay_source_unavailable", evidence=evidence)
+        status_changed = mark_relay_source_unavailable(
+            ctx.target.game_id,
+            reason="public_relay_source_unavailable",
+            evidence=evidence,
+        )
+        report_status = "source_unavailable" if status_changed else "source_unavailable_preserved"
+    else:
+        report_status = "source_unavailable_dry_run"
     ctx.run_result.report_rows.append(
         {
             "game_id": ctx.target.game_id,
             "bucket_id": ctx.bucket_id,
             "source_name": "none",
-            "status": "source_unavailable_dry_run" if ctx.dry_run else "source_unavailable",
+            "status": report_status,
             "saved_rows": 0,
             "saved_event_rows": 0,
             "saved_pbp_rows": 0,
@@ -864,6 +897,7 @@ def _sanitize_relay_result(
         parser_version=relay_result.parser_version,
         source_schema_version=relay_result.source_schema_version,
         payload_hash=relay_result.payload_hash,
+        source_payload=relay_result.source_payload,
     )
     return sanitized, notes, filtered_events + filtered_pbp
 
@@ -978,6 +1012,7 @@ def _save_or_count_rows(
         parser_version=relay_result.parser_version,
         source_schema_version=relay_result.source_schema_version,
         payload_hash=relay_result.payload_hash,
+        source_payload=relay_result.source_payload,
     )
     if not saved_rows:
         return RelaySaveCounts(saved_rows=0, skipped_event_rows_reason=skipped_event_rows_reason)

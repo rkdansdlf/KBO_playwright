@@ -139,17 +139,15 @@ class TestGetAllTeamsForYear:
         assert len(mapping) >= 10
 
 
-class TestLoadOciMapping:
-    @patch("src.db.engine.get_oci_url")
-    def test_oci_url_not_set(self, mock_get_oci_url, mapper):
-        mock_get_oci_url.return_value = None
-        result = mapper.load_oci_mapping()
+class TestLoadDatabaseMapping:
+    @patch("src.db.engine.DATABASE_URL", "sqlite:///:memory:")
+    def test_database_table_not_available(self, mapper):
+        result = mapper.load_database_mapping()
         assert not result
-        assert not mapper._oci_loaded
+        assert not mapper._database_loaded
 
-    @patch("src.db.engine.get_oci_url")
-    def test_oci_url_set_but_no_table(self, mock_get_oci_url, mapper):
-        mock_get_oci_url.return_value = "sqlite:///:memory:"
-        result = mapper.load_oci_mapping()
+    @patch("src.db.engine.DATABASE_URL", "sqlite:///:memory:")
+    def test_database_url_with_no_table(self, mapper):
+        result = mapper.load_database_mapping()
         # Will fail at information_schema query but not crash
         assert isinstance(result, bool)

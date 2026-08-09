@@ -68,6 +68,8 @@ def _quality_failures(report: dict[str, Any]) -> list[str]:
         failures.append("parity")
     if not _section_ok(report, "metrics", "pa_formula_integrity", "ok"):
         failures.append("pa_formula")
+    if not _section_ok(report, "metrics", "stat_discrepancy_integrity", "ok"):
+        failures.append("stat_discrepancy")
     return failures
 
 

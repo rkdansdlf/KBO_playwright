@@ -8,7 +8,6 @@ daily finalize summary, and freshness monitor report the same gaps.
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
@@ -29,6 +28,7 @@ from src.models.game import (
     GamePitchingStat,
     GamePlayByPlay,
     GameSummary,
+    GameValidationMetrics,
 )
 from src.models.roster_transaction import RosterTransaction
 from src.models.team import TeamDailyRoster
@@ -40,6 +40,7 @@ from src.utils.game_status import (
     GAME_STATUS_SCHEDULED,
     is_live_status,
 )
+from src.utils.relay_validation import is_trusted_relay_status
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -48,7 +49,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
-FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,20 +74,14 @@ class P0ReadinessFailure:
 
 @dataclass(frozen=True, slots=True)
 class P0ReadinessOptions:
-    """Date-window and OCI reconciliation settings for a P0 report."""
+    """Date-window settings for a P0 report."""
 
     target_date: str | date | datetime | None = None
     lookback_days: int = 7
     lookahead_days: int = 1
-    oci_skip_counts: dict[str, int] | None = None
-    oci_skip_game_ids: dict[str, list[str]] | None = None
 
 
 P0_READINESS_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
-
-
-def _env_enabled(name: str, default: str = "1") -> bool:
-    return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
 
 
 def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
@@ -130,6 +124,18 @@ def _date_key(value: object) -> str:
 
 def _status(value: object) -> str:
     return str(value or "").upper().strip()
+
+
+def _relay_is_trusted(
+    game_id: str,
+    validation_statuses: dict[str, str] | None,
+    *,
+    allow_unvalidated: bool = False,
+) -> bool:
+    """Return whether a relay game has an explicitly trusted validation status."""
+    if not validation_statuses or game_id not in validation_statuses:
+        return allow_unvalidated
+    return is_trusted_relay_status(validation_statuses[game_id])
 
 
 def _is_cancelled_or_postponed(game: object) -> bool:
@@ -488,10 +494,13 @@ def _check_live_completeness(
     event_counts: dict[str, int],
     pbp_counts: dict[str, int],
     failures: list[dict[str, Any]],
+    validation_statuses: dict[str, str] | None = None,
 ) -> None:
     for game in live_games:
         game_date = _date_key(game.game_date)
-        has_relay = event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
+        has_relay = (
+            event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
+        ) and _relay_is_trusted(game.game_id, validation_statuses, allow_unvalidated=True)
         if not has_relay:
             _add_failure(
                 failures,
@@ -586,19 +595,23 @@ def _check_postgame_completeness(
     return counts
 
 
-def _check_relay_completeness(
+def _check_relay_completeness(  # noqa: PLR0913
     relay_games: list[str],
     active_games: list[Any],
     event_counts: dict[str, int],
     pbp_counts: dict[str, int],
     failures: list[dict[str, Any]],
+    validation_statuses: dict[str, str] | None = None,
 ) -> int:
     relay_ok = 0
     active_by_game_id = {game.game_id: game for game in active_games}
     for game_id in relay_games:
         game = active_by_game_id.get(game_id)
         game_date = _date_key(game.game_date) if game else None
-        if event_counts.get(game_id, 0) > 0 or pbp_counts.get(game_id, 0) > 0:
+        is_live_game = is_live_status(_status(game.game_status)) if game else False
+        if (
+            event_counts.get(game_id, 0) > 0 or pbp_counts.get(game_id, 0) > 0
+        ) and _relay_is_trusted(game_id, validation_statuses, allow_unvalidated=is_live_game):
             relay_ok += 1
         else:
             severity = "critical" if game and _status(game.game_status) in COMPLETED_LIKE_GAME_STATUSES else "warning"
@@ -613,6 +626,24 @@ def _check_relay_completeness(
                 ),
             )
     return relay_ok
+
+
+def _validation_statuses_by_game(session: Session, game_ids: list[str]) -> dict[str, str]:
+    """Return relay validation statuses when the optional metrics table exists."""
+    if not game_ids:
+        return {}
+    try:
+        if not inspect(session.get_bind()).has_table(GameValidationMetrics.__tablename__):
+            return {}
+        rows = (
+            session.query(GameValidationMetrics.game_id, GameValidationMetrics.validation_status)
+            .filter(GameValidationMetrics.game_id.in_(game_ids))
+            .all()
+        )
+    except SQLAlchemyError as exc:
+        logger.debug("Skipping relay validation status lookup: %s", exc)
+        return {}
+    return {str(game_id): str(status) for game_id, status in rows}
 
 
 def _check_roster_completeness(
@@ -676,7 +707,7 @@ def build_p0_readiness(session: Session, options: P0ReadinessOptions | None = No
 
     Args:
         session: Session.
-        options: Date-window and OCI reconciliation settings.
+        options: Date-window settings.
 
     """
     options = options or P0ReadinessOptions()
@@ -703,10 +734,18 @@ def build_p0_readiness(session: Session, options: P0ReadinessOptions | None = No
 
     event_counts = _count_by_game(session, GameEvent, relay_games)
     pbp_counts = _count_by_game(session, GamePlayByPlay, relay_games)
+    validation_statuses = _validation_statuses_by_game(session, relay_games)
     max_innings = _max_innings_by_game(session, relay_games)
-    _check_live_completeness(live_games, event_counts, pbp_counts, failures)
+    _check_live_completeness(live_games, event_counts, pbp_counts, failures, validation_statuses)
     postgame = _check_postgame_completeness(session, completed_games, failures)
-    relay_ok = _check_relay_completeness(relay_games, active_games, event_counts, pbp_counts, failures)
+    relay_ok = _check_relay_completeness(
+        relay_games,
+        active_games,
+        event_counts,
+        pbp_counts,
+        failures,
+        validation_statuses,
+    )
     roster = _check_roster_completeness(session, active_games, target_day, failures)
     broadcast = _check_broadcast_completeness(session, active_games, target_day, failures)
 
@@ -717,11 +756,6 @@ def build_p0_readiness(session: Session, options: P0ReadinessOptions | None = No
     roster_total = len(roster["roster_dates"])
     broadcast_total = len(active_games)
     critical_failure_count = sum(1 for failure in failures if failure.get("severity") == "critical")
-
-    oci_sync_enabled = _env_enabled("P0_OCI_READINESS_EXPECT_SYNC", "0") or bool(os.getenv("OCI_DB_URL"))
-    oci_target_present = bool(os.getenv("OCI_DB_URL"))
-    if oci_sync_enabled and not oci_target_present:
-        _add_failure(failures, P0ReadinessFailure(dataset="oci", reason="sync_not_ready"))
 
     return {
         "generated_at": datetime.now(KST).isoformat(),
@@ -785,12 +819,6 @@ def build_p0_readiness(session: Session, options: P0ReadinessOptions | None = No
             "coverage_pct": _coverage(broadcast["broadcast_ok"], broadcast_total),
             "skip_counts": dict(sorted(broadcast["skip_counts"].items())),
             "skip_game_ids": {key: sorted(set(value)) for key, value in broadcast["skip_game_ids"].items()},
-        },
-        "oci": {
-            "sync_enabled": oci_sync_enabled,
-            "target_url_present": oci_target_present,
-            "skip_counts": dict(sorted((options.oci_skip_counts or {}).items())),
-            "skip_game_ids": {key: sorted(set(value)) for key, value in (options.oci_skip_game_ids or {}).items()},
         },
         "failures": failures,
         "summary": {

@@ -400,6 +400,25 @@ SEED_DATA: list[dict] = [
         "base_url": "https://namu.wiki",
         "is_active": True,
     },
+    # === 시상 이력 ===
+    {
+        "source_key": "kbo_awards_wikipedia",
+        "source_type": "third_party",
+        "target_domain": "award",
+        "reliability": "medium",
+        "crawl_frequency": "yearly",
+        "base_url": "https://ko.wikipedia.org/wiki/KBO_MVP",
+        "is_active": True,
+    },
+    {
+        "source_key": "kbo_awards_yagoonara",
+        "source_type": "third_party",
+        "target_domain": "award",
+        "reliability": "medium",
+        "crawl_frequency": "yearly",
+        "base_url": "https://www.yagoonara.com/awards",
+        "is_active": True,
+    },
 ]
 
 

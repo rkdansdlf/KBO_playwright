@@ -248,10 +248,10 @@ class TestComputePayloadHash:
         h2 = self.crawler._compute_payload_hash(data)
         assert h1 == h2
 
-    def test_12_chars(self):
+    def test_full_sha256_digest(self):
         data = [{"key": "value"}]
         result = self.crawler._compute_payload_hash(data)
-        assert len(result) == 12
+        assert len(result) == 64
 
     def test_different_data_different_hash(self):
         h1 = self.crawler._compute_payload_hash([{"a": 1}])
