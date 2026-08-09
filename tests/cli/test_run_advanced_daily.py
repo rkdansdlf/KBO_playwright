@@ -62,14 +62,14 @@ class TestRunAdvancedDailyCLI:
             main()
             mock_f.assert_called_once_with(2024)
 
-    def test_main_passes_sync_and_visible_browser_options(self):
+    def test_main_passes_visible_browser_options(self):
         with (
-            patch("sys.argv", ["run_advanced_daily", "--year", "2024", "--sync", "--no-headless"]),
+            patch("sys.argv", ["run_advanced_daily", "--year", "2024", "--no-headless"]),
             patch("src.cli.run_advanced_daily.run_advanced_update", new_callable=AsyncMock) as update,
         ):
             assert main() == 0
 
-        update.assert_awaited_once_with(2024, sync=True, headless=False)
+        update.assert_awaited_once_with(2024, headless=False)
 
 
 class TestAdvancedDailySteps:
@@ -163,51 +163,11 @@ class TestAdvancedDailySteps:
 
         rebuild.assert_called_once_with(2025)
 
-    def test_sync_advanced_to_oci_skips_without_url(self):
-        with patch.dict("os.environ", {"OCI_DB_URL": ""}, clear=False):
-            assert run_advanced_daily._sync_advanced_to_oci(2025) is False
-
-    def test_sync_advanced_to_oci_runs_all_syncs_and_closes_connection(self):
-        syncer = MagicMock()
-        with (
-            patch.dict("os.environ", {"OCI_DB_URL": "oci-url"}, clear=False),
-            patch("src.cli.run_advanced_daily.SessionLocal") as session_local,
-            patch("src.cli.run_advanced_daily.OCISync", return_value=syncer),
-        ):
-            session_local.return_value.__enter__.return_value = MagicMock()
-
-            assert run_advanced_daily._sync_advanced_to_oci(2025) is False
-
-        syncer.sync_fielding_stats.assert_called_once_with(2025)
-        syncer.sync_baserunning_stats.assert_called_once_with(2025)
-        syncer.sync_team_season_batting.assert_called_once_with(2025)
-        syncer.sync_team_season_pitching.assert_called_once_with(2025)
-        syncer.sync_team_season_fielding.assert_called_once_with(2025)
-        syncer.sync_team_season_baserunning.assert_called_once_with(2025)
-        syncer.sync_stat_rankings.assert_called_once_with(2025)
-        syncer.close.assert_called_once()
-
-    def test_sync_advanced_to_oci_returns_error_and_closes_connection(self):
-        syncer = MagicMock()
-        syncer.sync_fielding_stats.side_effect = RuntimeError("target unavailable")
-        with (
-            patch.dict("os.environ", {"OCI_DB_URL": "oci-url"}, clear=False),
-            patch("src.cli.run_advanced_daily.SessionLocal") as session_local,
-            patch("src.cli.run_advanced_daily.OCISync", return_value=syncer),
-        ):
-            session_local.return_value.__enter__.return_value = MagicMock()
-
-            assert run_advanced_daily._sync_advanced_to_oci(2025) is True
-
-        syncer.close.assert_called_once()
-
     def test_run_advanced_update_raises_after_any_step_error(self):
         with (
-            patch("src.cli.run_advanced_daily._run_step", new_callable=AsyncMock, return_value=False) as run_step,
-            patch("src.cli.run_advanced_daily._sync_advanced_to_oci", return_value=True) as sync,
+            patch("src.cli.run_advanced_daily._run_step", new_callable=AsyncMock, return_value=True) as run_step,
         ):
             with pytest.raises(RuntimeError, match="finished with errors"):
-                asyncio.run(run_advanced_daily.run_advanced_update(2025, sync=True))
+                asyncio.run(run_advanced_daily.run_advanced_update(2025))
 
         assert run_step.await_count == 6
-        sync.assert_called_once_with(2025)

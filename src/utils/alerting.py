@@ -202,47 +202,6 @@ class SlackWebhookClient:
         return SlackWebhookClient.send_alert(message)
 
     @staticmethod
-    def send_hydration_alert(
-        year: int,
-        summary: dict[str, int],
-        quarantine_dir: str | None = None,
-        *,
-        is_quarantine_recovery: bool = False,
-    ) -> bool:
-        """Send an alert when OCI hydration completes.
-
-        Args:
-            year: Season year.
-            summary: Dictionary of restored row counts per table label.
-            quarantine_dir: Optional quarantine directory path.
-            is_quarantine_recovery: True if hydration was triggered due to quarantine.
-
-        """
-        total_restored = sum(summary.values()) if summary else 0
-        header = "🔄 <b>[DB Self-Healing] OCI 하이드레이션 복구 완료</b>\n"
-        quarantine_info = ""
-        if is_quarantine_recovery or quarantine_dir:
-            quarantine_info = (
-                "⚠️ <b>사유:</b> DB 격리(Quarantine) 후 자동 하이드레이션 진행\n"
-                f"📁 <b>격리 위치:</b> <code>{quarantine_dir or 'N/A'}</code>\n"
-            )
-
-        rows_summary = []
-        if summary:
-            for key, count in summary.items():
-                if count > 0:
-                    rows_summary.append(f"• {key}: {count:,}건")
-
-        body = (
-            f"{quarantine_info}"
-            f"• <b>대상 시즌:</b> {year}년\n"
-            f"• <b>총 복구 레코드:</b> {total_restored:,}건\n\n"
-            "<b>테이블별 복구 현황:</b>\n" + ("\n".join(rows_summary) if rows_summary else "• (복구 내역 없음)")
-        )
-        message = header + "\n" + body
-        return SlackWebhookClient.send_alert(message)
-
-    @staticmethod
     def send_gap_summary_alert(report: dict[str, Any], chat_id: str | None = None) -> bool:
         """Send a daily gap report summary notification.
 

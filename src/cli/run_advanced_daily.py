@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -23,7 +22,6 @@ from src.crawlers.team_batting_stats_crawler import TeamBattingStatsCrawler
 from src.crawlers.team_pitching_stats_crawler import TeamPitchingStatsCrawler
 from src.db.engine import SessionLocal
 from src.repositories.player_stats_repository import PlayerSeasonBaserunningRepository, PlayerSeasonFieldingRepository
-from src.sync.oci_sync import OCISync
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -115,43 +113,15 @@ async def _rebuild_rankings_step(year: int) -> None:
     logger.info("   ✅ Recalculated %s ranking records", saved_rankings)
 
 
-def _sync_advanced_to_oci(year: int) -> bool:
-    logger.info("\n☁️ Step 7: Synchronizing to OCI...")
-    oci_url = os.getenv("OCI_DB_URL")
-    if not oci_url:
-        logger.warning("   ⚠️ OCI_DB_URL not set, skipping sync")
-        return False
-    with SessionLocal() as session:
-        syncer = OCISync(oci_url, session)
-        try:
-            syncer.sync_fielding_stats(year)
-            syncer.sync_baserunning_stats(year)
-            syncer.sync_team_season_batting(year)
-            syncer.sync_team_season_pitching(year)
-            syncer.sync_team_season_fielding(year)
-            syncer.sync_team_season_baserunning(year)
-            syncer.sync_stat_rankings(year)
-        except ADVANCED_STEP_EXCEPTIONS:
-            logger.exception("   ❌ OCI sync error")
-            return True
-        else:
-            logger.info("   ✅ OCI synchronization completed")
-            return False
-        finally:
-            syncer.close()
-
-
 async def run_advanced_update(
     year: int,
     *,
-    sync: bool = False,
     headless: bool = True,
 ) -> None:
     """Run advanced.
 
     Args:
         year: Season year.
-        sync: Whether to sync to remote database.
         headless: Whether to run the browser in headless mode.
         year: Season year.
 
@@ -194,9 +164,6 @@ async def run_advanced_update(
         lambda: _rebuild_rankings_step(year),
     )
 
-    if sync:
-        any_error |= _sync_advanced_to_oci(year)
-
     logger.info("\n%s", "=" * 60)
     logger.info("🏁 Advanced Daily Sync Finished for %s", year)
     logger.info("%s\n", "=" * 60)
@@ -210,13 +177,12 @@ def main() -> int:
     """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Advanced Daily Data Orchestrator")
     parser.add_argument("--year", type=int, help="Target year. Defaults to current year.")
-    parser.add_argument("--sync", action="store_true", help="Sync to OCI")
     parser.add_argument("--no-headless", action="store_false", dest="headless", help="Run with browser UI")
 
     args = parser.parse_args()
 
     year = args.year or datetime.now(KST).year
-    asyncio.run(run_advanced_update(year, sync=args.sync, headless=args.headless))
+    asyncio.run(run_advanced_update(year, headless=args.headless))
     return 0
 
 

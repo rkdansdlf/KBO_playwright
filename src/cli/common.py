@@ -18,8 +18,6 @@ class RegenerationConfig:
     dates: Sequence[str] | None = None
     seasons: Sequence[int] | None = None
     apply: bool = False
-    sync_oci: bool = False
-    oci_url: str | None = None
     report_out: Path | None = None
     backup_out: Path | None = None
     log: Callable[[str], object] = print

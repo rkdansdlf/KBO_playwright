@@ -14,8 +14,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy.exc import SQLAlchemyError
-
 import src.cli.live_crawler as live_crawler
 from src.cli.live_crawler import (
     _apply_dynamic_delay_scaling,
@@ -25,13 +23,11 @@ from src.cli.live_crawler import (
     _evaluate_game_lifecycles,
     _fetch_naver_live_statuses,
     _has_ending_header,
-    _log_oci_sync_failures,
     _query_enriched_game_state,
     _raise_empty_kbo_pbp,
     _resolve_live_lifecycle,
     _save_live_relay_and_snapshot,
     _select_live_shard,
-    _sync_live_touched_games,
     _trigger_fallback_healing_if_unverified,
     GameActivityState,
 )
@@ -94,7 +90,7 @@ class TestQueryEnrichedGameState:
         def _boom() -> MagicMock:
             raise RuntimeError("db down")
 
-        monkeypatch.setattr(live_crawler, "SessionLocal", _boom)
+        monkeypatch.setattr("src.db.engine.SessionLocal", _boom)
         assert _query_enriched_game_state(["G1"]) == {}
 
 
@@ -133,46 +129,6 @@ class TestApplyDynamicDelayScaling:
     def test_missing_policy_uses_zero_min(self) -> None:
         crawler = SimpleNamespace(policy=None)
         _apply_dynamic_delay_scaling(crawler, [SimpleNamespace()])
-
-
-class TestSyncLiveTouchedGames:
-    def test_skips_when_sync_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("OCI_DB_URL", raising=False)
-        assert _sync_live_touched_games(sync_to_oci=False, touched_game_ids={"G1"}) == []
-
-    def test_returns_empty_without_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OCI_DB_URL", "")
-        assert _sync_live_touched_games(sync_to_oci=True, touched_game_ids={"G1"}) == []
-
-    def test_records_failures_on_db_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://x")
-
-        class FakeOCI:
-            def __init__(self, url: str, session: object) -> None:
-                pass
-
-            def sync_specific_game(self, game_id: str) -> None:
-                raise SQLAlchemyError("boom")
-
-            def close(self) -> None:
-                pass
-
-        session = MagicMock()
-        ctx = MagicMock()
-        ctx.__enter__.return_value = session
-        ctx.__exit__.return_value = False
-        monkeypatch.setattr(live_crawler, "SessionLocal", MagicMock(return_value=ctx))
-        monkeypatch.setattr(live_crawler, "OCISync", FakeOCI)
-        failures = _sync_live_touched_games(sync_to_oci=True, touched_game_ids={"G1"})
-        assert failures and failures[0]["game_id"] == "G1"
-
-
-class TestLogOciSyncFailures:
-    def test_returns_early_when_empty(self) -> None:
-        _log_oci_sync_failures([])
-
-    def test_logs_failures(self) -> None:
-        _log_oci_sync_failures([{"game_id": "G1", "phase": "x", "error": "e"}])
 
 
 class TestEmptyLiveResult:

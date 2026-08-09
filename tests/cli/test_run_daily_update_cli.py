@@ -42,7 +42,6 @@ def test_main_forwards_cli_options_and_releases_lock(monkeypatch):
         [
             "--date",
             "20260618",
-            "--sync",
             "--no-headless",
             "--limit",
             "2",
@@ -55,7 +54,6 @@ def test_main_forwards_cli_options_and_releases_lock(monkeypatch):
             "5",
             "--fix",
             "--skip-season-stats",
-            "--skip-oci-supporting-sync",
             "--skip-p0-non-game",
         ],
     )
@@ -63,7 +61,6 @@ def test_main_forwards_cli_options_and_releases_lock(monkeypatch):
     assert result == 0
     assert calls["target_date"] == "20260618"
     assert calls["options"] == cli.DailyUpdateOptions(
-        sync=True,
         headless=False,
         limit=2,
         summary_dir="logs/test-summary",
@@ -73,7 +70,6 @@ def test_main_forwards_cli_options_and_releases_lock(monkeypatch):
         postgame_reconcile_lookback_days=5,
         fix=True,
         skip_season_stats=True,
-        skip_oci_supporting_sync=True,
         run_p0_non_game=False,
     )
     assert _FakeLock.events == [

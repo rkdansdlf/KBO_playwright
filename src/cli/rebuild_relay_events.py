@@ -5,22 +5,18 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_
-from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
-from src.sync.oci_sync import OCISync
-from src.sync.sync_base import SimpleTableSyncOptions
 from src.utils.relay_text import (
     detect_relay_event_type,
     is_relay_noise_text,
@@ -51,7 +47,6 @@ class RebuildReportRow:
     new_rows: int
     notes: str = ""
     backup_path: str = ""
-    oci_status: str = "not_requested"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,12 +56,9 @@ class RelayRebuildOptions:
     seasons: Sequence[int] = DEFAULT_SEASONS
     game_ids: Sequence[str] = ()
     apply: bool = False
-    sync_oci: bool = False
-    oci_sync_mode: str = "events"
     min_events: int = DEFAULT_MIN_EVENTS
     report_out: str | Path | None = None
     backup_out: str | Path | None = None
-    oci_url: str | None = None
     log: Callable[..., Any] = logger.info
 
 
@@ -106,7 +98,6 @@ def rebuild_relay_events(options: RelayRebuildOptions | None = None) -> list[Reb
             options.log(f"[INFO] Existing game_events backup written to {backup_path}")
 
         report_rows: list[RebuildReportRow] = []
-        changed_game_ids: list[str] = []
         calculator = WPACalculator()
         for index, game_id in enumerate(candidate_game_ids, start=1):
             game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
@@ -125,7 +116,6 @@ def rebuild_relay_events(options: RelayRebuildOptions | None = None) -> list[Reb
                 new_rows=len(rebuilt_events),
                 notes=notes,
                 backup_path=str(backup_path) if options.apply else "",
-                oci_status="not_requested" if options.sync_oci else "disabled",
             )
 
             if status == "READY":
@@ -134,7 +124,6 @@ def rebuild_relay_events(options: RelayRebuildOptions | None = None) -> list[Reb
                     session.add_all(_build_orm_events(game_id, rebuilt_events))
                     session.commit()
                     row.status = "APPLIED"
-                    changed_game_ids.append(game_id)
                 else:
                     row.status = "DRY_RUN_READY"
                     session.rollback()
@@ -146,12 +135,6 @@ def rebuild_relay_events(options: RelayRebuildOptions | None = None) -> list[Reb
                 f"[{index}/{len(candidate_game_ids)}] {game_id} {row.status} "
                 f"old={row.old_rows} new={row.new_rows} {row.notes}",
             )
-
-    if options.apply and options.sync_oci and changed_game_ids:
-        if options.oci_sync_mode == "specific-game":
-            _sync_changed_games(changed_game_ids, report_rows, oci_url=options.oci_url, log=options.log)
-        else:
-            _sync_changed_events(changed_game_ids, report_rows, oci_url=options.oci_url, log=options.log)
 
     _write_report(report_path, report_rows)
     options.log(f"[INFO] Rebuild report written to {report_path}")
@@ -328,92 +311,14 @@ def _build_orm_events(game_id: str, events: Sequence[dict[str, Any]]) -> list[Ga
     ]
 
 
-def _sync_changed_games(
-    game_ids: Sequence[str],
-    report_rows: Sequence[RebuildReportRow],
-    *,
-    oci_url: str | None,
-    log: Callable[..., Any],
-) -> None:
-    target_url = _resolve_oci_url(oci_url)
-    report_by_game_id = _build_report_index(report_rows)
-    if not target_url:
-        for game_id in game_ids:
-            report_by_game_id[game_id].oci_status = "skipped_missing_oci_url"
-        return
-
-    with SessionLocal() as sync_session:
-        syncer = OCISync(target_url, sync_session)
-        try:
-            for game_id in game_ids:
-                try:
-                    syncer.sync_specific_game(game_id)
-                    report_by_game_id[game_id].oci_status = "synced"
-                    log(f"[OCI] Synced {game_id}")
-                except SQLAlchemyError as exc:
-                    report_by_game_id[game_id].oci_status = f"failed:{exc}"
-                    log(f"[OCI] Failed {game_id}: {exc}")
-        finally:
-            syncer.close()
-
-
-def _sync_changed_events(
-    game_ids: Sequence[str],
-    report_rows: Sequence[RebuildReportRow],
-    *,
-    oci_url: str | None,
-    log: Callable[..., Any],
-) -> None:
-    target_url = _resolve_oci_url(oci_url)
-    report_by_game_id = _build_report_index(report_rows)
-    if not target_url:
-        for game_id in game_ids:
-            report_by_game_id[game_id].oci_status = "skipped_missing_oci_url"
-        return
-
-    with SessionLocal() as sync_session:
-        syncer = OCISync(target_url, sync_session)
-        try:
-            for batch in _chunked(game_ids, 200):
-                syncer.target_session.query(GameEvent).filter(GameEvent.game_id.in_(list(batch))).delete(
-                    synchronize_session=False,
-                )
-                syncer.target_session.commit()
-            synced = syncer.sync_simple_table(
-                GameEvent,
-                SimpleTableSyncOptions(
-                    conflict_keys=["game_id", "event_seq"],
-                    exclude_cols=["id", "created_at"],
-                    filters=[GameEvent.game_id.in_(list(game_ids))],
-                ),
-            )
-            for game_id in game_ids:
-                report_by_game_id[game_id].oci_status = f"synced_events:{synced}"
-            log(f"[OCI] Synced game_events for {len(game_ids)} games ({synced} rows)")
-        except SQLAlchemyError as exc:
-            for game_id in game_ids:
-                report_by_game_id[game_id].oci_status = f"failed:{exc}"
-            log(f"[OCI] Failed game_events batch sync: {exc}")
-        finally:
-            syncer.close()
-
-
 def _write_report(report_path: Path, rows: Sequence[RebuildReportRow]) -> None:
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["game_id", "status", "old_rows", "new_rows", "notes", "backup_path", "oci_status"]
+    fieldnames = ["game_id", "status", "old_rows", "new_rows", "notes", "backup_path"]
     with report_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
             writer.writerow(_report_row_to_dict(row))
-
-
-def _resolve_oci_url(oci_url: str | None) -> str | None:
-    return oci_url or os.getenv("OCI_DB_URL")
-
-
-def _build_report_index(report_rows: Sequence[RebuildReportRow]) -> dict[str, RebuildReportRow]:
-    return {row.game_id: row for row in report_rows}
 
 
 def _report_row_to_dict(row: RebuildReportRow) -> dict[str, object]:
@@ -424,7 +329,6 @@ def _report_row_to_dict(row: RebuildReportRow) -> dict[str, object]:
         "new_rows": row.new_rows,
         "notes": row.notes,
         "backup_path": row.backup_path,
-        "oci_status": row.oci_status,
     }
 
 
@@ -504,13 +408,6 @@ def run(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--game-ids-file", help="File containing one game_id per line or a CSV with game_id first")
     parser.add_argument("--apply", action="store_true", help="Apply local game_events rewrites")
     parser.add_argument("--dry-run", action="store_true", help="Explicit dry-run mode; default unless --apply is set")
-    parser.add_argument("--sync-oci", action="store_true", help="Sync successfully applied games to OCI")
-    parser.add_argument(
-        "--oci-sync-mode",
-        choices=("events", "specific-game"),
-        default="events",
-        help="OCI sync mode for applied games. Default only replaces game_events.",
-    )
     parser.add_argument(
         "--min-events",
         type=int,
@@ -528,8 +425,6 @@ def run(argv: Sequence[str] | None = None) -> int:
             seasons=seasons,
             game_ids=game_ids,
             apply=bool(args.apply),
-            sync_oci=bool(args.sync_oci),
-            oci_sync_mode=args.oci_sync_mode,
             min_events=args.min_events,
             report_out=args.report_out,
             backup_out=args.backup_out,

@@ -6,7 +6,6 @@ import argparse
 import csv
 import hashlib
 import logging
-import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -25,7 +24,6 @@ from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary
 from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
-from src.sync.oci_sync import OCISync
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
@@ -54,8 +52,6 @@ class StoryRegenerationOptions:
     dates: Sequence[str] = ()
     seasons: Sequence[int] = ()
     apply: bool = False
-    sync_oci: bool = False
-    oci_url: str | None = None
     report_out: Path | None = None
     backup_out: Path | None = None
     log: Callable[[str], object] = logger.info
@@ -76,7 +72,6 @@ class StoryRegenReportRow:
     changed: bool = False
     timeline_events: int = 0
     warnings: str = ""
-    oci_status: str = ""
     message: str = ""
 
     def as_csv_row(self) -> dict[str, Any]:
@@ -95,7 +90,6 @@ class StoryRegenReportRow:
             "changed": str(self.changed).lower(),
             "timeline_events": self.timeline_events,
             "warnings": self.warnings,
-            "oci_status": self.oci_status,
             "message": self.message,
         }
 
@@ -109,7 +103,6 @@ REPORT_FIELDS = [
     "changed",
     "timeline_events",
     "warnings",
-    "oci_status",
     "message",
 ]
 
@@ -239,32 +232,6 @@ def _write_backup(session: Session, game_ids: Sequence[str], path: Path) -> None
             )
 
 
-def _sync_story_summaries(
-    game_ids: Sequence[str],
-    rows: Sequence[StoryRegenReportRow],
-    *,
-    oci_url: str,
-    log: Callable[[str], object],
-) -> None:
-    if not game_ids:
-        return
-    with SessionLocal() as sync_session:
-        syncer = OCISync(oci_url, sync_session)
-        try:
-            result = syncer.sync_review_summaries_for_games(
-                list(game_ids),
-                summary_type=STORY_SUMMARY_TYPE,
-            )
-        finally:
-            syncer.close()
-    status = f"synced_summary:{result.get('summary', 0)}"
-    synced = set(game_ids)
-    for row in rows:
-        if row.game_id in synced and row.status in {"APPLIED", "UNCHANGED"}:
-            row.oci_status = status
-    log(f"OCI story summary sync complete: games={len(synced)} rows={result.get('summary', 0)}")
-
-
 def _append_missing_game_rows(
     rows: list[StoryRegenReportRow],
     requested_ids: Sequence[str],
@@ -352,9 +319,9 @@ class StoryGameContext:
     apply: bool
 
 
-def _process_story_game(ctx: StoryGameContext) -> tuple[StoryRegenReportRow, bool]:
+def _process_story_game(ctx: StoryGameContext) -> StoryRegenReportRow:
     if ctx.game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
-        return _skipped_story_row(ctx.game), False
+        return _skipped_story_row(ctx.game)
 
     old_json = ctx.inner_ctx.existing_summaries.get(ctx.game.game_id)  # type: ignore[call-overload]
     story_data = ctx.builder.build(ctx.game, ctx.events)
@@ -363,13 +330,13 @@ def _process_story_game(ctx: StoryGameContext) -> tuple[StoryRegenReportRow, boo
 
     if not ctx.apply:
         row.status = "DRY_RUN_READY" if row.changed else "DRY_RUN_UNCHANGED"
-        return row, False
+        return row
     if row.changed:
         _upsert_story_summary(ctx.session, ctx.game.game_id, new_json, ctx.inner_ctx.existing_summary_rows)  # type: ignore[arg-type]
         row.status = "APPLIED"
     else:
         row.status = "UNCHANGED"
-    return row, True
+    return row
 
 
 def _process_story_batches(
@@ -379,16 +346,15 @@ def _process_story_batches(
     *,
     ctx: StoryContext,
     apply: bool,
-) -> tuple[list[StoryRegenReportRow], list[str]]:
+) -> list[StoryRegenReportRow]:
     rows: list[StoryRegenReportRow] = []
-    sync_game_ids: list[str] = []
     for game_batch in _game_batches(games):
         batch_event_map = _events_by_game(
             session,
             [game.game_id for game in game_batch if game.game_status in COMPLETED_LIKE_GAME_STATUSES],
         )
         for game in game_batch:
-            row, should_sync = _process_story_game(
+            row = _process_story_game(
                 StoryGameContext(
                     session=session,
                     game=game,
@@ -399,19 +365,7 @@ def _process_story_batches(
                 ),
             )
             rows.append(row)
-            if should_sync:
-                sync_game_ids.append(game.game_id)
-    return rows, sync_game_ids
-
-
-def _mark_story_oci_status(rows: Sequence[StoryRegenReportRow], *, apply: bool, oci_url: str | None) -> None:
-    if not apply:
-        for row in rows:
-            row.oci_status = "skipped_dry_run"
-    elif not oci_url:
-        for row in rows:
-            if row.status in {"APPLIED", "UNCHANGED"}:
-                row.oci_status = "skipped_missing_oci_url"
+    return rows
 
 
 def regenerate_game_stories(options: StoryRegenerationOptions | None = None) -> list[StoryRegenReportRow]:
@@ -449,7 +403,7 @@ def regenerate_game_stories(options: StoryRegenerationOptions | None = None) -> 
         _append_missing_game_rows(rows, target_game_ids, games_by_id)  # type: ignore[arg-type]
         existing_summary_rows, existing_summaries = _load_existing_story_summaries(session, games)
         story_ctx = StoryContext(existing_summary_rows, existing_summaries)
-        processed_rows, sync_game_ids = _process_story_batches(
+        processed_rows = _process_story_batches(
             session,
             games,
             builder,
@@ -464,11 +418,6 @@ def regenerate_game_stories(options: StoryRegenerationOptions | None = None) -> 
             except STORY_REGEN_DB_EXCEPTIONS:
                 session.rollback()
                 raise
-
-    if options.sync_oci:
-        _mark_story_oci_status(rows, apply=options.apply, oci_url=options.oci_url)
-        if options.apply and options.oci_url:
-            _sync_story_summaries(sync_game_ids, rows, oci_url=options.oci_url, log=options.log)
 
     _write_report(rows, report_path)
     options.log(f"Game story regeneration report: {report_path}")
@@ -501,7 +450,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Report only. This is the default unless --apply is set.",
     )
     parser.add_argument("--apply", action="store_true", help="Persist regenerated game story summaries locally.")
-    parser.add_argument("--sync-oci", action="store_true", help="Sync successful game story rows to OCI.")
     parser.add_argument("--report-out", type=Path, help="CSV report path")
     parser.add_argument("--backup-out", type=Path, help="CSV backup path for --apply")
     args = parser.parse_args(argv)
@@ -516,8 +464,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             dates=args.date,
             seasons=args.season,
             apply=args.apply,
-            sync_oci=args.sync_oci,
-            oci_url=os.getenv("OCI_DB_URL"),
             report_out=args.report_out,
             backup_out=args.backup_out,
         ),

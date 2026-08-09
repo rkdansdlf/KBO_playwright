@@ -31,7 +31,6 @@ class RetryOptions:
 
     summary_dir: str | Path | None = None
     apply: bool = False
-    sync: bool = False
     runner: Runner | None = None
     python_bin: str = sys.executable
 
@@ -129,14 +128,12 @@ def _detail_groups(game_ids: Sequence[str]) -> dict[tuple[int, int], list[str]]:
 def build_retry_commands(
     summary: Mapping[str, Any],
     *,
-    sync: bool = False,
     python_bin: str = sys.executable,
 ) -> list[Command]:
     """Build retry commands.
 
     Args:
         summary: Summary.
-        sync: Whether to sync to remote database.
         python_bin: Python Bin.
         summary: Summary.
 
@@ -177,20 +174,6 @@ def build_retry_commands(
             ],
         )
 
-    if sync:
-        sync_ids = sorted(set(detail_ids) | set(relay_ids))
-        if sync_ids:
-            commands.append(
-                [
-                    python_bin,
-                    "-m",
-                    "src.cli.sync_oci",
-                    "--game-details",
-                    "--game-ids",
-                    ",".join(sync_ids),
-                ],
-            )
-
     return commands
 
 
@@ -213,7 +196,7 @@ def run_retry(target_date: str, options: RetryOptions | None = None) -> int:
     summary_file = _summary_path(target_date, options.summary_dir)
 
     summary = load_daily_summary(summary_file)
-    commands = build_retry_commands(summary, sync=options.sync, python_bin=options.python_bin)
+    commands = build_retry_commands(summary, python_bin=options.python_bin)
 
     if not commands:
         logger.info("No retry candidates found in %s", summary_file)
@@ -253,7 +236,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Print retry commands without executing them")
     mode.add_argument("--apply", action="store_true", help="Execute retry commands")
-    parser.add_argument("--sync", action="store_true", help="Sync retried game_ids to OCI after retry commands succeed")
     return parser
 
 
@@ -277,7 +259,6 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
             RetryOptions(
                 summary_dir=args.summary_dir,
                 apply=args.apply,
-                sync=args.sync,
                 runner=runner,
             ),
         )

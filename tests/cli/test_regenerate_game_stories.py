@@ -13,7 +13,6 @@ from src.cli.regenerate_game_stories import (
     _load_game_ids_file,
     _process_story_batches,
     _process_story_game,
-    _sync_story_summaries,
     _upsert_story_summary,
     _write_backup,
     _write_report,
@@ -154,12 +153,11 @@ class TestProcessStoryGame:
             apply=False,
         )
         with patch("src.cli.regenerate_game_stories.dump_story_json", return_value="new"):
-            row, should_sync = _process_story_game(ctx)
+            row = _process_story_game(ctx)
 
         assert row.status == "DRY_RUN_READY"
-        assert should_sync is False
 
-    def test_apply_changed_upserts_and_syncs(self):
+    def test_apply_changed_upserts(self):
         game = self._completed_game()
         builder = MagicMock()
         builder.build.return_value = {"timeline": [1], "source": {"warnings": []}}
@@ -175,10 +173,9 @@ class TestProcessStoryGame:
             patch("src.cli.regenerate_game_stories.dump_story_json", return_value="new"),
             patch("src.cli.regenerate_game_stories._upsert_story_summary") as mock_upsert,
         ):
-            row, should_sync = _process_story_game(ctx)
+            row = _process_story_game(ctx)
 
         assert row.status == "APPLIED"
-        assert should_sync is True
         mock_upsert.assert_called_once()
 
     def test_apply_unchanged_does_not_upsert(self):
@@ -197,15 +194,14 @@ class TestProcessStoryGame:
             patch("src.cli.regenerate_game_stories.dump_story_json", return_value="same"),
             patch("src.cli.regenerate_game_stories._upsert_story_summary") as mock_upsert,
         ):
-            row, should_sync = _process_story_game(ctx)
+            row = _process_story_game(ctx)
 
         assert row.status == "UNCHANGED"
-        assert should_sync is True
         mock_upsert.assert_not_called()
 
 
 class TestProcessStoryBatches:
-    def test_batches_collect_rows_and_sync_ids(self):
+    def test_batches_collect_rows(self):
         games = [
             SimpleNamespace(game_id="g1", game_status="COMPLETED"),
             SimpleNamespace(game_id="g2", game_status="SCHEDULED"),
@@ -215,12 +211,12 @@ class TestProcessStoryBatches:
             patch(
                 "src.cli.regenerate_game_stories._process_story_game",
                 side_effect=[
-                    (StoryRegenReportRow(game_id="g1", game_date="20250401", status="APPLIED"), True),
-                    (StoryRegenReportRow(game_id="g2", game_date="20250401", status="SKIPPED"), False),
+                    StoryRegenReportRow(game_id="g1", game_date="20250401", status="APPLIED"),
+                    StoryRegenReportRow(game_id="g2", game_date="20250401", status="SKIPPED"),
                 ],
             ),
         ):
-            rows, sync_ids = _process_story_batches(
+            rows = _process_story_batches(
                 MagicMock(),
                 games,
                 MagicMock(),
@@ -229,29 +225,7 @@ class TestProcessStoryBatches:
             )
 
         assert [row.game_id for row in rows] == ["g1", "g2"]
-        assert sync_ids == ["g1"]
         mock_events.assert_called_once()
-
-
-class TestSyncStorySummaries:
-    def test_empty_game_ids_returns_early(self):
-        with patch("src.cli.regenerate_game_stories.SessionLocal") as mock_session_local:
-            _sync_story_summaries([], [], oci_url="postgresql://db", log=MagicMock())
-        mock_session_local.assert_not_called()
-
-    def test_marks_synced_rows(self):
-        rows = [StoryRegenReportRow(game_id="g1", game_date="20250401", status="APPLIED")]
-        syncer = MagicMock()
-        syncer.sync_review_summaries_for_games.return_value = {"summary": 1}
-        with (
-            patch("src.cli.regenerate_game_stories.SessionLocal") as mock_session_local,
-            patch("src.cli.regenerate_game_stories.OCISync", return_value=syncer),
-        ):
-            mock_session_local.return_value.__enter__.return_value = MagicMock()
-            _sync_story_summaries(["g1"], rows, oci_url="postgresql://db", log=MagicMock())
-
-        assert rows[0].oci_status == "synced_summary:1"
-        syncer.close.assert_called_once()
 
 
 class TestRegenerateGameStoriesOrchestrator:
@@ -262,7 +236,7 @@ class TestRegenerateGameStoriesOrchestrator:
             patch("src.cli.regenerate_game_stories.SessionLocal") as mock_session_local,
             patch("src.cli.regenerate_game_stories._query_target_games", return_value=[SimpleNamespace(game_id="g1")]),
             patch("src.cli.regenerate_game_stories._load_existing_story_summaries", return_value=({}, {})),
-            patch("src.cli.regenerate_game_stories._process_story_batches", return_value=(processed, [])),
+            patch("src.cli.regenerate_game_stories._process_story_batches", return_value=processed),
             patch("src.cli.regenerate_game_stories._write_report") as mock_write,
         ):
             mock_session_local.return_value.__enter__.return_value = MagicMock()
@@ -282,7 +256,7 @@ class TestRegenerateGameStoriesOrchestrator:
             patch("src.cli.regenerate_game_stories._query_target_games", return_value=[]),
             patch("src.cli.regenerate_game_stories._write_backup"),
             patch("src.cli.regenerate_game_stories._load_existing_story_summaries", return_value=({}, {})),
-            patch("src.cli.regenerate_game_stories._process_story_batches", return_value=([], [])),
+            patch("src.cli.regenerate_game_stories._process_story_batches", return_value=[]),
         ):
             mock_session_local.return_value.__enter__.return_value = session
             try:

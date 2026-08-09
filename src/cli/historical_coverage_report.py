@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import inspect, text
 
 from src.db.engine import create_engine_for_url as create_engine
-from src.db.engine import get_oci_url
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -135,9 +134,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.start_year > args.end_year:
         parser.error("--start-year must not exceed --end-year")
 
-    database_url = args.database_url or os.getenv("DATABASE_URL") or get_oci_url()
+    database_url = args.database_url or os.getenv("DATABASE_URL")
     if not database_url:
-        parser.error("database URL is required via --database-url, DATABASE_URL, or OCI_DB_URL")
+        parser.error("database URL is required via --database-url or DATABASE_URL")
 
     engine = create_engine(database_url)
     with engine.connect() as conn:

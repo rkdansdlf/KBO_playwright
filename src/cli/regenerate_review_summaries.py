@@ -7,7 +7,6 @@ import csv
 import hashlib
 import json
 import logging
-import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -25,7 +24,6 @@ from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameSummary
 from src.services.context_aggregator import ContextAggregator
-from src.sync.oci_sync import OCISync
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
@@ -48,8 +46,6 @@ class ReviewRegenerationOptions:
     dates: Sequence[str] = ()
     seasons: Sequence[int] = ()
     apply: bool = False
-    sync_oci: bool = False
-    oci_url: str | None = None
     report_out: Path | None = None
     backup_out: Path | None = None
     log: Callable[[str], object] = logger.info
@@ -67,7 +63,6 @@ class ReviewRegenReportRow:
     changed: bool = False
     crucial_moments: int = 0
     noise_moments: int = 0
-    oci_status: str = ""
     message: str = ""
 
     def as_csv_row(self) -> dict[str, Any]:
@@ -86,7 +81,6 @@ class ReviewRegenReportRow:
             "changed": str(self.changed).lower(),
             "crucial_moments": self.crucial_moments,
             "noise_moments": self.noise_moments,
-            "oci_status": self.oci_status,
             "message": self.message,
         }
 
@@ -100,7 +94,6 @@ REPORT_FIELDS = [
     "changed",
     "crucial_moments",
     "noise_moments",
-    "oci_status",
     "message",
 ]
 
@@ -222,29 +215,6 @@ def _write_backup(session: Session, game_ids: Sequence[str], path: Path) -> None
             )
 
 
-def _sync_review_summaries(
-    game_ids: Sequence[str],
-    rows: Sequence[ReviewRegenReportRow],
-    *,
-    oci_url: str,
-    log: Callable[[str], object],
-) -> None:
-    if not game_ids:
-        return
-    with SessionLocal() as sync_session:
-        syncer = OCISync(oci_url, sync_session)
-        try:
-            result = syncer.sync_review_summaries_for_games(list(game_ids), summary_type=REVIEW_SUMMARY_TYPE)
-        finally:
-            syncer.close()
-    status = f"synced_summary:{result.get('summary', 0)}"
-    synced = set(game_ids)
-    for row in rows:
-        if row.game_id in synced and row.status in {"APPLIED", "UNCHANGED"}:
-            row.oci_status = status
-    log(f"OCI summary sync complete: games={len(synced)} rows={result.get('summary', 0)}")
-
-
 def _append_missing_review_rows(
     rows: list[ReviewRegenReportRow],
     requested_ids: Sequence[str],
@@ -331,25 +301,12 @@ def _process_review_games(
     agg: ContextAggregator,
     *,
     apply: bool,
-) -> tuple[list[ReviewRegenReportRow], list[str]]:
-    rows = []
-    sync_game_ids = []
+) -> list[ReviewRegenReportRow]:
+    rows: list[ReviewRegenReportRow] = []
     for game in games:
-        row, should_sync = _process_review_game(session, agg, game, apply=apply)
+        row, _ = _process_review_game(session, agg, game, apply=apply)
         rows.append(row)
-        if should_sync:
-            sync_game_ids.append(game.game_id)
-    return rows, sync_game_ids  # type: ignore[return-value]
-
-
-def _mark_review_oci_status(rows: Sequence[ReviewRegenReportRow], *, apply: bool, oci_url: str | None) -> None:
-    if not apply:
-        for row in rows:
-            row.oci_status = "skipped_dry_run"
-    elif not oci_url:
-        for row in rows:
-            if row.status in {"APPLIED", "UNCHANGED"}:
-                row.oci_status = "skipped_missing_oci_url"
+    return rows
 
 
 def regenerate_review_summaries(options: ReviewRegenerationOptions | None = None) -> list[ReviewRegenReportRow]:
@@ -385,7 +342,7 @@ def regenerate_review_summaries(options: ReviewRegenerationOptions | None = None
             options.log(f"Backed up existing review summaries: {backup_path}")
 
         _append_missing_review_rows(rows, target_game_ids, games_by_id)  # type: ignore[arg-type]
-        processed_rows, sync_game_ids = _process_review_games(session, games, agg, apply=options.apply)
+        processed_rows = _process_review_games(session, games, agg, apply=options.apply)
         rows.extend(processed_rows)
 
         if options.apply:
@@ -394,11 +351,6 @@ def regenerate_review_summaries(options: ReviewRegenerationOptions | None = None
             except REVIEW_REGEN_DB_EXCEPTIONS:
                 session.rollback()
                 raise
-
-    if options.sync_oci:
-        _mark_review_oci_status(rows, apply=options.apply, oci_url=options.oci_url)
-        if options.apply and options.oci_url:
-            _sync_review_summaries(sync_game_ids, rows, oci_url=options.oci_url, log=options.log)
 
     _write_report(rows, report_path)
     options.log(f"Review summary regeneration report: {report_path}")
@@ -431,7 +383,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Report only. This is the default unless --apply is set.",
     )
     parser.add_argument("--apply", action="store_true", help="Persist regenerated review summaries locally.")
-    parser.add_argument("--sync-oci", action="store_true", help="Sync successful review summary rows to OCI.")
     parser.add_argument("--report-out", type=Path, help="CSV report path")
     parser.add_argument("--backup-out", type=Path, help="CSV backup path for --apply")
     args = parser.parse_args(argv)
@@ -446,8 +397,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             dates=args.date,
             seasons=args.season,
             apply=args.apply,
-            sync_oci=args.sync_oci,
-            oci_url=os.getenv("OCI_DB_URL"),
             report_out=args.report_out,
             backup_out=args.backup_out,
         ),

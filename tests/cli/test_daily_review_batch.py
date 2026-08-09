@@ -103,7 +103,7 @@ class TestTrustedRelayGameIds:
         result = _trusted_relay_game_ids(mock_session, ["G1", "G2"])
         assert result == {"G1"}
 
-    def test_trusted_by_wpa(self):
+    def test_missing_status_is_not_trusted_by_wpa(self):
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.all.return_value = []
         wpa_row = MagicMock()
@@ -111,7 +111,7 @@ class TestTrustedRelayGameIds:
         mock_session.query.return_value.filter.return_value.distinct.return_value.all.return_value = [wpa_row]
 
         result = _trusted_relay_game_ids(mock_session, ["G3"])
-        assert "G3" in result
+        assert result == set()
 
 
 class TestBuildReviewData:

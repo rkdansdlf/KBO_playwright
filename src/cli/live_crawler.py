@@ -1,7 +1,7 @@
 """Real-time KBO live crawler.
 
 Polls today's schedule, captures relay events plus a lightweight scoreboard snapshot,
-then explicitly syncs changed games to OCI.
+and persists the changed games to the configured database.
 
 """
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -80,7 +79,6 @@ from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import save_game_snapshot, save_relay_data
-from src.sync.oci_sync import OCISync
 from src.utils.game_state import (
     TERMINAL_STATES,
     derive_lifecycle_from_naver_status,
@@ -465,49 +463,6 @@ def _apply_dynamic_delay_scaling(
     )
 
 
-def _sync_live_touched_games(
-    *,
-    sync_to_oci: bool | None,
-    touched_game_ids: set[str],
-) -> list[dict[str, str]]:
-    should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
-    if not should_sync:
-        return []
-    oci_url = os.getenv("OCI_DB_URL")
-    if not oci_url:
-        return []
-    failures: list[dict[str, str]] = []
-    with SessionLocal() as sync_session:
-        sync_engine = OCISync(oci_url, sync_session)
-        try:
-            for game_id in sorted(touched_game_ids):
-                try:
-                    sync_engine.sync_specific_game(game_id)
-                    logger.info("[SYNC] ✅ Synced %s to OCI.", game_id)
-                except DB_EXCEPTIONS as exc:
-                    failures.append({"game_id": game_id, "phase": "sync_specific_game", "error": str(exc)})
-                    logger.exception("[SYNC] OCI sync failed game_id=%s phase=sync_specific_game", game_id)
-        finally:
-            sync_engine.close()
-    return failures
-
-
-def _log_oci_sync_failures(oci_sync_failures: list[dict[str, str]]) -> None:
-    if not oci_sync_failures:
-        return
-    failed_ids = [failure["game_id"] for failure in oci_sync_failures]
-    logger.warning(
-        "Live cycle completed with OCI partial failures phase=sync_specific_game failed=%d game_ids=%s",
-        len(oci_sync_failures),
-        ",".join(failed_ids),
-    )
-    logger.info(
-        "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: failed=%s game_ids=%s",
-        len(oci_sync_failures),
-        ",".join(failed_ids),
-    )
-
-
 def _empty_live_result(*, all_finished: bool) -> dict[str, Any]:
     return {
         "active": False,
@@ -665,7 +620,6 @@ async def _process_single_live_game(
 
 async def run_live_crawler_cycle(
     *,
-    sync_to_oci: bool | None = None,
     max_active_games: int | None = None,
     detail_snapshot_background: bool = False,
 ) -> dict[str, Any]:
@@ -674,7 +628,6 @@ async def run_live_crawler_cycle(
         Returns status dictionary.
 
     Args:
-        sync_to_oci: Sync To Oci.
         max_active_games: Max Active Games.
         detail_snapshot_background: Detail Snapshot Background.
 
@@ -774,9 +727,6 @@ async def run_live_crawler_cycle(
         logger.info("[INFO] No live games currently active right now. manifest=%s", manifest_path)
         return _empty_live_result(all_finished=all_finished)
 
-    oci_sync_failures = _sync_live_touched_games(sync_to_oci=sync_to_oci, touched_game_ids=touched_game_ids)
-
-    _log_oci_sync_failures(oci_sync_failures)
     logger.info("[INFO] Live cycle finished. updated=%s manifest=%s", len(touched_game_ids), manifest_path)
     return {
         "active": True,
@@ -784,17 +734,14 @@ async def run_live_crawler_cycle(
         "active_suspended": active_suspended_flag,
         "all_finished": all_finished,
         "game_ids_playing": list(touched_game_ids),
-        "oci_sync_failure_count": len(oci_sync_failures),
-        "oci_sync_failed_game_ids": [failure["game_id"] for failure in oci_sync_failures],
     }
 
 
-async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = None, dynamic: bool = False) -> None:
+async def main_loop(base_interval_minutes: int, *, dynamic: bool = False) -> None:
     """Run the main entry point for this CLI command.
 
     Args:
         base_interval_minutes: Base Interval Minutes.
-        sync_to_oci: Sync To Oci.
         dynamic: Dynamic.
 
     """
@@ -807,7 +754,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             now = datetime.now(seoul_tz)
 
             # 1. Run the cycle
-            cycle_result = await run_live_crawler_cycle(sync_to_oci=sync_to_oci)
+            cycle_result = await run_live_crawler_cycle()
             active = cycle_result["active"]
             active_playing = cycle_result["active_playing"]
             active_suspended = cycle_result["active_suspended"]
@@ -912,7 +859,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Enable enriched dynamic polling (10s playing, 60s delayed, 120s game-hours, 30m off-hours)",
     )
     parser.add_argument("--run-once", action="store_true", help="Run precisely one cycle and exit")
-    parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)
 
     from src.utils.lock import ProcessLock
@@ -924,11 +870,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.run_once:
-            asyncio.run(run_live_crawler_cycle(sync_to_oci=not args.no_sync))
+            asyncio.run(run_live_crawler_cycle())
         else:
             mode = "DYNAMIC" if args.dynamic else f"FIXED ({args.interval}m)"
             logger.info("🚀 Starting Real-time Daemon... Mode: %s", mode)
-            asyncio.run(main_loop(args.interval, sync_to_oci=not args.no_sync, dynamic=args.dynamic))
+            asyncio.run(main_loop(args.interval, dynamic=args.dynamic))
     finally:
         lock.release()
     return 0

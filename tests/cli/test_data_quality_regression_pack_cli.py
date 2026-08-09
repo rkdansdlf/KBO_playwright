@@ -18,7 +18,6 @@ class TestDataQualityRegressionPackCLI:
     def test_requires_db_url(self):
         with (
             patch("src.cli.data_quality_regression_pack.os.getenv", return_value=None),
-            patch("src.cli.data_quality_regression_pack.get_oci_url", return_value=None),
         ):
             try:
                 main([])
@@ -91,15 +90,6 @@ class TestDataQualityRegressionPackCLI:
                 require_schema=False,
             )
             mock_render.assert_called_once_with(mock_report)
-
-    def test_main_missing_database_url_fails(self):
-        with (
-            patch("src.cli.data_quality_regression_pack.get_oci_url") as mock_get_oci,
-            patch.dict("os.environ", {}, clear=True),
-        ):
-            mock_get_oci.return_value = None
-            with pytest.raises(SystemExit):
-                main([])
 
     def test_main_runs_with_env_vars(self):
         with (

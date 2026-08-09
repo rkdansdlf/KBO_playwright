@@ -143,7 +143,7 @@ class TestUpsertPlayerStats:
 
     def test_execute_error_rolls_back_and_continues(self):
         mock_session = MagicMock()
-        mock_session.execute.side_effect = [SQLAlchemyError("boom"), None]
+        mock_session.execute.side_effect = [SQLAlchemyError("boom"), SQLAlchemyError("row 1"), None]
         result = _upsert_player_stats(
             mock_session,
             PlayerSeasonBatting,
@@ -156,7 +156,7 @@ class TestUpsertPlayerStats:
         )
 
         assert result == 1
-        mock_session.rollback.assert_called_once()
+        assert mock_session.rollback.call_count == 2
         mock_session.commit.assert_called_once()
 
 

@@ -15,19 +15,16 @@ import os
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from scripts.maintenance.audit_game_status_integrity import audit_game_status
-from scripts.maintenance.quality_gate import run_quality_gate as run_legacy_quality_gate
 from src.cli.auto_healer import run_healer_async
 from src.constants import DATE_STR_LEN
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
@@ -62,7 +59,6 @@ from src.services.postgame_reconciliation_service import (
 )
 from src.services.recovery_manager import RecoveryManager
 from src.services.schedule_collection_service import save_schedule_games
-from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
 from src.utils.date_helpers import parse_date_str, parse_datetime_str
 from src.utils.game_status import (
@@ -76,12 +72,14 @@ from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.sentry import init_sentry
 from src.utils.team_codes import normalize_kbo_game_id
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping, Sequence
+
 
 @dataclass(frozen=True, slots=True)
 class DailyUpdateOptions:
     """Optional execution settings for a daily update run."""
 
-    sync: bool = False
     headless: bool = True
     limit: int | None = None
     step_runner: Callable[[Sequence[str]], None] | None = None
@@ -92,7 +90,6 @@ class DailyUpdateOptions:
     postgame_reconcile_lookback_days: int = 3
     fix: bool = False
     skip_season_stats: bool = False
-    skip_oci_supporting_sync: bool = False
     run_p0_non_game: bool = True
 
 
@@ -111,16 +108,13 @@ class _RunContext:
     postgame_reconcile_lookback_days: int = 3
     fix: bool = False
     skip_season_stats: bool = False
-    skip_oci_supporting_sync: bool = False
     run_p0_non_game: bool = True
     headless: bool = True
     limit: int | None = None
-    sync: bool = False
     daily_games: list[dict] = field(default_factory=list)
     detail_games: list[dict] = field(default_factory=list)
     freshness_dates: list[str] = field(default_factory=list)
     r_target_date: str = ""
-    candidate_sync_game_ids: list[str] = field(default_factory=list)
     derived_refresh: list[str] = field(default_factory=list)
     healer_recovery_targets: list[dict[str, str]] = field(default_factory=list)
     reconciliation_changed_ids: list[str] = field(default_factory=list)
@@ -128,10 +122,6 @@ class _RunContext:
     detail_failure_counts: dict[str, int] = field(default_factory=dict)
     detail_failure_game_ids: dict[str, list[str]] = field(default_factory=dict)
     relay_recovery_target_ids: set[str] = field(default_factory=set)
-    oci_skip_counts: dict[str, int] = field(default_factory=dict)
-    oci_skip_game_ids: dict[str, list[str]] = field(default_factory=dict)
-    non_p0_quality_gate_counts: dict[str, int] = field(default_factory=dict)
-    non_p0_quality_gate_ids: dict[str, list[str]] = field(default_factory=dict)
     p0_non_game_counts: dict[str, int] = field(default_factory=dict)
     p0_non_game_errors: dict[str, str] = field(default_factory=dict)
     status_refresh_game_ids: list[str] = field(default_factory=list)
@@ -154,12 +144,6 @@ DEFAULT_DAILY_SUMMARY_DIR = PROJECT_ROOT / "logs" / "daily_update_summary"
 FAILURE_SAMPLE_LIMIT = 5
 TELEGRAM_FAILURE_TEXT_MAX_LENGTH = 2900
 TELEGRAM_FAILURE_TEXT_PREFIX_LENGTH = 2800
-OCI_SKIP_KEYS = (
-    "skipped_schedule_only",
-    "skipped_incomplete_detail",
-    "skipped_empty_relay",
-    "skipped_cancelled",
-)
 DETAIL_RECOVERY_MAX_ROUNDS = int(os.getenv("DETAIL_RECOVERY_MAX_ROUNDS", "3"))
 DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD = int(os.getenv("DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD", "2"))
 DETAIL_RECOVERY_COOLDOWN_MINUTES = int(os.getenv("DETAIL_RECOVERY_COOLDOWN_MINUTES", "360"))
@@ -218,33 +202,6 @@ def _failure_reason_summary(items: Mapping[str, object]) -> tuple[dict[str, int]
     )
 
 
-def _merge_oci_skip_summary(
-    counter: dict[str, int],
-    game_ids_by_reason: dict[str, list[str]],
-    result: object,
-    game_id: str,
-) -> None:
-    if not isinstance(result, dict):
-        return
-
-    for key in OCI_SKIP_KEYS:
-        raw_value = result.get(key)
-        if not raw_value:
-            continue
-        if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes, bytearray)):
-            value = len(raw_value)
-            skipped_ids = [str(item) for item in raw_value if item]
-        else:
-            try:
-                value = int(raw_value)
-            except (TypeError, ValueError):
-                continue
-            skipped_ids = [game_id] if value else []
-        if value:
-            counter[key] = counter.get(key, 0) + value
-            game_ids_by_reason.setdefault(key, []).extend(skipped_ids)
-
-
 def _daily_summary_path(target_date: str, summary_dir: str | Path | None = None) -> Path:
     output_dir = Path(summary_dir) if summary_dir is not None else DEFAULT_DAILY_SUMMARY_DIR
     return output_dir / f"{target_date}.json"
@@ -270,14 +227,9 @@ def _build_stability_summary(
             for game_id in game_ids
         },
     )
-    relay_retry_candidates = sorted(set(ctx.oci_skip_game_ids.get("skipped_empty_relay", [])))
+    relay_retry_candidates = sorted(set(ctx.relay_recovery_target_ids))
     affected_game_ids = sorted(
-        {
-            game_id
-            for ids in [*ctx.detail_failure_game_ids.values(), *ctx.oci_skip_game_ids.values()]
-            for game_id in ids
-            if game_id
-        },
+        {game_id for ids in ctx.detail_failure_game_ids.values() for game_id in ids if game_id},
     )
     return {
         "summary_path": str(summary_path),
@@ -290,18 +242,6 @@ def _build_stability_summary(
         "relay": {
             "target_count": len(set(ctx.relay_recovery_target_ids)),
             "target_game_ids": sorted(set(ctx.relay_recovery_target_ids)),
-        },
-        "oci": {
-            "skip_counts": dict(sorted(ctx.oci_skip_counts.items())),
-            "skip_game_ids": {
-                reason: sorted(set(game_ids)) for reason, game_ids in sorted(ctx.oci_skip_game_ids.items())
-            },
-        },
-        "quality_gates": {
-            "non_p0_failure_counts": dict(sorted(ctx.non_p0_quality_gate_counts.items())),
-            "non_p0_failure_ids": {
-                reason: sorted(set(ids)) for reason, ids in sorted(ctx.non_p0_quality_gate_ids.items())
-            },
         },
         "p0_non_game": {
             "counts": dict(sorted(ctx.p0_non_game_counts.items())),
@@ -366,12 +306,8 @@ def format_stability_alert_summary(result: object) -> str | None:
 
     detail = stability.get("detail") if isinstance(stability.get("detail"), dict) else {}
     relay = stability.get("relay") if isinstance(stability.get("relay"), dict) else {}
-    oci = stability.get("oci") if isinstance(stability.get("oci"), dict) else {}
-    quality_gates = stability.get("quality_gates") if isinstance(stability.get("quality_gates"), dict) else {}
     detail_recovery = stability.get("detail_recovery") if isinstance(stability.get("detail_recovery"), dict) else {}
     detail_counts = detail.get("failure_counts") if isinstance(detail, dict) else {}
-    oci_counts = oci.get("skip_counts") if isinstance(oci, dict) else {}
-    non_p0_counts = quality_gates.get("non_p0_failure_counts") if isinstance(quality_gates, dict) else {}
     relay_targets = relay.get("target_count", 0) if isinstance(relay, dict) else 0
     recovery_passes = detail_recovery.get("passes", 0) if isinstance(detail_recovery, dict) else 0
     recovered_after_retry = detail_recovery.get("recovered_after_retry", 0) if isinstance(detail_recovery, dict) else 0
@@ -384,8 +320,6 @@ def format_stability_alert_summary(result: object) -> str | None:
         f"detail_recovered_after_retry={recovered_after_retry} "
         f"detail_still_missing={still_missing_count} "
         f"relay_targets={relay_targets} "
-        f"oci_skips={_format_counts(oci_counts if isinstance(oci_counts, dict) else {})} "
-        f"non_p0_quality_gates={_format_counts(non_p0_counts if isinstance(non_p0_counts, dict) else {})} "
         f"{format_p0_readiness_summary(result.get('p0_readiness'))}"
     )
 
@@ -408,42 +342,8 @@ def _run_python_step(argv: Sequence[str]) -> None:
     subprocess.run([sys.executable, *argv], check=True)
 
 
-def _run_game_status_integrity_audit() -> None:
-    violations = audit_game_status()
-    if not violations:
-        return
-
-    sample = "; ".join(
-        f"{item.get('game_id')} {item.get('game_date')} {item.get('status')}: {item.get('reason')}"
-        for item in violations[:FAILURE_SAMPLE_LIMIT]
-    )
-    if len(violations) > FAILURE_SAMPLE_LIMIT:
-        sample = f"{sample}; ... and {len(violations) - FAILURE_SAMPLE_LIMIT} more"
-    msg = f"{len(violations)} game status integrity violations found: {sample}"
-    raise RuntimeError(msg)
-
-
-def _run_oci_parity_quality_gate() -> dict[str, Any]:
-    result = run_legacy_quality_gate(
-        baseline_path=PROJECT_ROOT / "Docs" / "quality_gate_baseline.json",
-        output_dir=PROJECT_ROOT / "data",
-        oci_url=os.getenv("OCI_DB_URL"),
-        skip_oci=False,
-        oci_only=False,
-        write_artifacts=True,
-        strict_zero=False,
-    )
-    if not result.get("ok"):
-        failures = result.get("failures") or []
-        detail = "; ".join(str(item) for item in failures[:FAILURE_SAMPLE_LIMIT]) if failures else "unknown failure"
-        if len(failures) > FAILURE_SAMPLE_LIMIT:
-            detail = f"{detail}; ... and {len(failures) - FAILURE_SAMPLE_LIMIT} more"
-        raise RuntimeError(detail)
-    return result
-
-
 def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]]:
-    """Capture auto-healer candidates so repaired past games can be finalized and synced.
+    """Capture auto-healer candidates so repaired past games can be finalized.
 
     Args:
         today: Today.
@@ -966,7 +866,7 @@ async def _step_5_content_generation(ctx: _RunContext) -> None:
     logger.info("\n\U0001f4dd Step 5: Post-game review/WPA generation...")
     try:
         for f_date in ctx.freshness_dates:
-            review_args = ["-m", "src.cli.daily_review_batch", "--date", f_date, "--no-sync"]
+            review_args = ["-m", "src.cli.daily_review_batch", "--date", f_date]
             ctx.runner(review_args)
         logger.info("   \u2705 Review context generation complete")
     except RUNNER_EXCEPTIONS:
@@ -975,7 +875,7 @@ async def _step_5_content_generation(ctx: _RunContext) -> None:
     logger.info("\n\U0001f3ac Step 5.2: Daily highlight generation...")
     try:
         for f_date in ctx.freshness_dates:
-            highlight_args = ["-m", "src.cli.daily_highlight_batch", "--date", f_date, "--no-sync"]
+            highlight_args = ["-m", "src.cli.daily_highlight_batch", "--date", f_date]
             ctx.runner(highlight_args)
         logger.info("   \u2705 Daily highlight generation complete")
     except RUNNER_EXCEPTIONS:
@@ -984,7 +884,7 @@ async def _step_5_content_generation(ctx: _RunContext) -> None:
     logger.info("\n\U0001f4da Step 5.5: LLM-ready game story generation...")
     try:
         for f_date in ctx.freshness_dates:
-            story_args = ["-m", "src.cli.daily_story_batch", "--date", f_date, "--no-sync"]
+            story_args = ["-m", "src.cli.daily_story_batch", "--date", f_date]
             ctx.runner(story_args)
         logger.info("   \u2705 Game story generation complete")
     except CRAWLER_STEP_EXCEPTIONS:
@@ -1043,8 +943,6 @@ async def _step_6_5_maintenance(ctx: _RunContext) -> None:
             "--end-date",
             ctx.target_date,
         ]
-        if ctx.sync:
-            backfill_args.append("--sync")
         ctx.runner(backfill_args)
         logger.info("   \u2705 Starting pitcher backfill complete")
     except RUNNER_EXCEPTIONS:
@@ -1193,187 +1091,12 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
         logger.exception("   \u26a0\ufe0f  Deep statistical audit/heal process failed")
 
 
-def _set_candidate_sync_game_ids(ctx: _RunContext) -> None:
-    ctx.candidate_sync_game_ids = sorted(
-        {game["game_id"] for game in ctx.daily_games}
-        | set(ctx.status_refresh_game_ids)
-        | set(ctx.processed_game_ids)
-        | set(ctx.reconciliation_changed_ids)
-        | {item["game_id"] for item in ctx.healer_recovery_targets}
-        | ctx.relay_recovery_target_ids,
-    )
-
-
-def _run_pre_oci_freshness_gate(ctx: _RunContext) -> None:
-    logger.info("\n\U0001f9ea Step 11: Freshness gate before OCI publish...")
-    freshness_ok = True
-    for freshness_date in ctx.freshness_dates:
-        try:
-            ctx.runner(["-m", "src.cli.freshness_gate", "--date", freshness_date])
-        except subprocess.CalledProcessError:
-            freshness_ok = False
-            logger.exception("   \u26a0\ufe0f Freshness gate found issues for %s (continuing)", freshness_date)
-    if freshness_ok:
-        logger.info("   \u2705 Freshness gate passed")
-
-
-def _run_local_integrity_gate() -> None:
-    logger.info("\n\U0001f575\ufe0f  Step 11.5: Local game status integrity audit...")
-    try:
-        _run_game_status_integrity_audit()
-        logger.info("   \u2705 Local integrity audit passed")
-    except RuntimeError as exc:
-        logger.exception("   \u274c Local integrity audit FAILED")
-        msg = "Aborting OCI sync due to local data integrity violations."
-        raise RuntimeError(msg) from exc
-
-
-def _run_statistical_quality_gate_for_sync(ctx: _RunContext) -> None:
-    logger.info("\n\u2696\ufe0f Step 12: Statistical quality gate check...")
-    try:
-        ctx.runner(["-m", "src.cli.quality_gate_check", "--year", str(ctx.year)])
-        logger.info("   \u2705 Statistical quality gate passed")
-    except subprocess.CalledProcessError:
-        reason = "non_p0_statistical_quality_gate_failed"
-        ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
-        ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
-        logger.exception("   \u26a0\ufe0f Non-P0 statistical quality gate failed (continuing OCI game publish)")
-
-
-def _recalculate_season_aggregates_for_quality_gate(ctx: _RunContext) -> None:
-    logger.info("\n\U0001f9ee Step 11.75: Refreshing season aggregates before statistical quality gate...")
-    try:
-        ctx.runner(["-m", "src.cli.recalc_player_stats", "--season", str(ctx.year)])
-        ctx.runner(["-m", "src.cli.recalc_team_stats", "--season", str(ctx.year)])
-        logger.info("   \u2705 Season aggregates refreshed")
-    except subprocess.CalledProcessError:
-        reason = "non_p0_season_aggregate_recalc_failed"
-        ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
-        ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
-        logger.exception("   \u26a0\ufe0f Non-P0 season aggregate recalculation failed (continuing OCI game publish)")
-
-
-def _resolve_null_player_ids_before_quality_gate(ctx: _RunContext) -> None:
-    logger.info("\n🧩 Step 11.9: Resolving NULL player_ids before OCI publish...")
-    try:
-        ctx.runner(
-            [
-                "-m",
-                "scripts.maintenance.resolve_null_player_ids_conservative",
-                "--years",
-                str(ctx.year),
-                "--apply",
-                "--no-backup",
-                "--delete-duplicates",
-            ],
-        )
-        logger.info("   ✅ NULL player_id resolver complete")
-    except subprocess.CalledProcessError:
-        reason = "non_p0_null_player_id_resolution_failed"
-        ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
-        ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
-        logger.exception("   ⚠️ NULL player_id resolver failed (continuing OCI game publish)")
-
-
-def _sync_oci_supporting_datasets(ctx: _RunContext, syncer: OCISync) -> None:
-    if ctx.skip_oci_supporting_sync:
-        ctx.oci_skip_counts["oci_supporting_sync_skipped"] = (
-            ctx.oci_skip_counts.get("oci_supporting_sync_skipped", 0) + 1
-        )
-        ctx.oci_skip_game_ids.setdefault("oci_supporting_sync_skipped", []).append(f"season:{ctx.year}")
-        logger.info("   \u23ed\ufe0f Non-P0 OCI supporting dataset sync skipped by operator flag")
-        return
-
-    try:
-        syncer.sync_games(filters=[Game.game_id.like(f"{ctx.year}%")])
-        syncer.sync_standings(year=ctx.year)
-        syncer.sync_matchups(year=ctx.year)
-        syncer.sync_stat_rankings(year=ctx.year)
-        syncer.sync_player_season_batting(year=ctx.year)
-        syncer.sync_player_season_pitching(year=ctx.year)
-        syncer.sync_player_movements()
-        syncer.sync_daily_rosters(start_date=ctx.r_target_date, end_date=ctx.r_target_date)
-    except DB_STEP_EXCEPTIONS:
-        logger.exception("   \u26a0\ufe0f Non-P0 OCI supporting dataset sync failed")
-        ctx.oci_skip_counts["non_p0_supporting_sync_failed"] = (
-            ctx.oci_skip_counts.get(
-                "non_p0_supporting_sync_failed",
-                0,
-            )
-            + 1
-        )
-        ctx.oci_skip_game_ids.setdefault("non_p0_supporting_sync_failed", []).append(f"season:{ctx.year}")
-
-
-def _publish_to_oci(ctx: _RunContext) -> None:
-    logger.info("\n\u2601\ufe0f Step 13: Synchronizing to OCI...")
-    oci_url = os.getenv("OCI_DB_URL")
-    if not oci_url:
-        msg = "OCI_DB_URL is required when --sync is enabled"
-        raise RuntimeError(msg)
-
-    with SessionLocal() as sync_session:
-        syncer = OCISync(oci_url, sync_session)
-        try:
-            logger.info("   \U0001f6e1\ufe0f Syncing players/basic first to satisfy FK constraints...")
-            syncer.sync_player_basic()
-            syncer.sync_players()
-
-            for game_id in ctx.candidate_sync_game_ids:
-                sync_result = syncer.sync_specific_game(game_id)
-                _merge_oci_skip_summary(ctx.oci_skip_counts, ctx.oci_skip_game_ids, sync_result, game_id)
-
-            _sync_oci_supporting_datasets(ctx, syncer)
-            if ctx.oci_skip_counts:
-                logger.info("   \u2139\ufe0f OCI skip summary: %s", _format_counts(ctx.oci_skip_counts))
-        finally:
-            syncer.close()
-
-
-def _run_post_oci_freshness_gate(ctx: _RunContext) -> None:
-    logger.info("\n\U0001f9ea Step 13.5: Freshness gate after OCI publish...")
-    for freshness_date in ctx.freshness_dates:
-        try:
-            ctx.runner(["-m", "src.cli.freshness_gate", "--date", freshness_date, "--source-url-env", "OCI_DB_URL"])
-        except subprocess.CalledProcessError:
-            logger.exception("   \u26a0\ufe0f OCI freshness gate found issues for %s (continuing)", freshness_date)
-
-
-def _run_oci_parity_gate(ctx: _RunContext) -> None:
-    logger.info("\n\u2696\ufe0f Step 13.6: OCI parity quality gate check...")
-    try:
-        _run_oci_parity_quality_gate()
-        logger.info("   \u2705 OCI parity check complete")
-    except RuntimeError:
-        logger.exception("OCI parity quality gate failed")
-        reason = "non_p0_oci_parity_quality_gate_failed"
-        ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
-        ctx.non_p0_quality_gate_ids.setdefault(reason, []).append("oci")
-
-
-async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
-    _set_candidate_sync_game_ids(ctx)
-    if not ctx.sync:
-        return
-
-    _run_pre_oci_freshness_gate(ctx)
-    _run_local_integrity_gate()
-    _recalculate_season_aggregates_for_quality_gate(ctx)
-    _resolve_null_player_ids_before_quality_gate(ctx)
-    _run_statistical_quality_gate_for_sync(ctx)
-    _publish_to_oci(ctx)
-    _run_post_oci_freshness_gate(ctx)
-    _run_oci_parity_gate(ctx)
-
-
 async def _step_14_tomorrow_preview(ctx: _RunContext) -> None:
     if ctx.seed_tomorrow_preview:
         tomorrow_date = (parse_datetime_str(ctx.target_date) + timedelta(days=1)).strftime("%Y%m%d")
         logger.info("\n\U0001f52e Step 14: Seeding tomorrow preview contexts (%s)...", tomorrow_date)
         try:
             preview_args = ["-m", "src.cli.daily_preview_batch", "--date", tomorrow_date]
-            if not ctx.sync:
-                preview_args.append("--no-sync")
             ctx.runner(preview_args)
             logger.info("   \u2705 Tomorrow preview seed complete")
         except RUNNER_EXCEPTIONS:
@@ -1393,8 +1116,6 @@ def _build_p0_readiness_for_context(ctx: _RunContext) -> dict[str, Any]:
                     target_date=ctx.target_date,
                     lookback_days=0,
                     lookahead_days=0,
-                    oci_skip_counts=ctx.oci_skip_counts,
-                    oci_skip_game_ids=ctx.oci_skip_game_ids,
                 ),
             )
     except DB_STEP_EXCEPTIONS:
@@ -1408,7 +1129,6 @@ def _build_p0_readiness_for_context(ctx: _RunContext) -> dict[str, Any]:
             "relay": {},
             "roster": {},
             "broadcast": {},
-            "oci": {"skip_counts": dict(ctx.oci_skip_counts), "skip_game_ids": dict(ctx.oci_skip_game_ids)},
             "failures": [
                 {
                     "dataset": "p0_readiness",
@@ -1471,14 +1191,12 @@ def _log_finalize_summaries(ctx: _RunContext, p0_readiness: dict[str, Any]) -> N
     logger.info(
         "Stability summary: detail_failures=%s detail_recovery_passes=%s "
         "detail_recovered_after_retry=%s detail_still_missing=%s relay_targets=%s "
-        "oci_skips=%s non_p0_quality_gates=%s p0_non_game=%s",
+        "p0_non_game=%s",
         _format_counts(ctx.detail_failure_counts),
         ctx.detail_recovery_passes,
         ctx.detail_recovered_after_retry,
         len(ctx.detail_still_missing),
         len(ctx.relay_recovery_target_ids),
-        _format_counts(ctx.oci_skip_counts),
-        _format_counts(ctx.non_p0_quality_gate_counts),
         _format_counts(ctx.p0_non_game_counts),
     )
     logger.info("P0 readiness: %s", format_p0_readiness_summary(p0_readiness))
@@ -1629,7 +1347,6 @@ async def run_update(target_date: str, options: DailyUpdateOptions | None = None
     options = options or DailyUpdateOptions()
     ctx = _RunContext(
         target_date=target_date,
-        sync=options.sync,
         year=int(target_date[:4]),
         month=int(target_date[4:6]),
         today_kst=_today_kst(),
@@ -1642,7 +1359,6 @@ async def run_update(target_date: str, options: DailyUpdateOptions | None = None
         postgame_reconcile_lookback_days=options.postgame_reconcile_lookback_days,
         fix=options.fix,
         skip_season_stats=options.skip_season_stats,
-        skip_oci_supporting_sync=options.skip_oci_supporting_sync,
         run_p0_non_game=options.run_p0_non_game,
         headless=options.headless,
         limit=options.limit,
@@ -1673,7 +1389,6 @@ async def run_update(target_date: str, options: DailyUpdateOptions | None = None
     await _step_7_5_p0_non_game(ctx)
     await _step_8_derived_stats(ctx)
     await _step_10_7_enrichment(ctx)
-    await _step_11_sync_pipeline(ctx)
     await _step_14_tomorrow_preview(ctx)
 
     return _finalize_run_update(ctx)
@@ -1692,11 +1407,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--date",
         type=str,
         help="Target date in YYYYMMDD format. Defaults to yesterday in KST.",
-    )
-    parser.add_argument(
-        "--sync",
-        action="store_true",
-        help="Whether to sync data to OCI after local update.",
     )
     parser.add_argument(
         "--headless",
@@ -1752,11 +1462,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Skip cumulative season stat crawling for scoped P0 recovery/finalize runs.",
     )
     parser.add_argument(
-        "--skip-oci-supporting-sync",
-        action="store_true",
-        help="Skip year-level non-P0 OCI supporting dataset sync after targeted game publish.",
-    )
-    parser.add_argument(
         "--skip-p0-non-game",
         action="store_true",
         help="Skip P0 non-game event/ticket crawlers for scoped historical backfills.",
@@ -1801,7 +1506,6 @@ def main(argv: Sequence[str] | None = None, *, acquire_lock: bool = True) -> int
             run_update(
                 target_date,
                 DailyUpdateOptions(
-                    sync=args.sync,
                     headless=args.headless,
                     limit=args.limit,
                     summary_dir=args.summary_dir,
@@ -1811,7 +1515,6 @@ def main(argv: Sequence[str] | None = None, *, acquire_lock: bool = True) -> int
                     postgame_reconcile_lookback_days=args.postgame_reconcile_lookback_days,
                     fix=args.fix or os.getenv("DAILY_AUTO_REMEDIATION", "0") == "1",
                     skip_season_stats=args.skip_season_stats,
-                    skip_oci_supporting_sync=args.skip_oci_supporting_sync,
                     run_p0_non_game=not args.skip_p0_non_game,
                 ),
             ),

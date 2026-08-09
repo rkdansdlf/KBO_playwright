@@ -2,7 +2,6 @@
 
 Usage:
     python3 -m src.cli.fix_player_names --crawl --save
-    python3 -m src.cli.fix_player_names --crawl --save --sync-oci
     python3 -m src.cli.fix_player_names --crawl --save --max-pages 1
 
 """
@@ -14,7 +13,7 @@ import asyncio
 import logging
 
 from src.crawlers.player_search_crawler import crawl_all_players, player_row_to_dict
-from src.db.engine import SessionLocal, get_oci_url, init_db
+from src.db.engine import init_db
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.utils.player_validation import filter_valid_player_payloads
 
@@ -60,48 +59,21 @@ def _save_players_if_requested(valid_dicts: list[dict], *, save: bool) -> None:
     if not save:
         logger.info("Skipping save (use --save flag)")
         return
-    logger.info("Saving %d players to SQLite...", len(valid_dicts))
+    logger.info("Saving %d players...", len(valid_dicts))
     saved = PlayerBasicRepository().upsert_players(valid_dicts)
     logger.info("Saved %d players", saved)
-
-
-def _should_sync_to_oci(*, sync_oci: bool) -> bool:
-    return sync_oci
-
-
-def _sync_player_basic_to_oci() -> None:
-    oci_url = get_oci_url()
-    if not oci_url:
-        logger.info("OCI_DB_URL not set; cannot sync to OCI")
-        return
-
-    logger.info("Syncing player_basic to OCI...")
-    from src.sync.oci_sync import OCISync
-
-    with SessionLocal() as sqlite_session:
-        sync = OCISync(oci_url, sqlite_session)
-        try:
-            if not sync.test_connection():
-                logger.info("OCI connection failed")
-                return
-            synced = sync.sync_player_basic()
-            logger.info("Synced %d players to OCI", synced)
-        finally:
-            sync.close()
 
 
 async def fix_player_names(
     max_pages: int | None = None,
     *,
     save: bool = False,
-    sync_oci: bool = False,
 ) -> None:
     """Fix player names.
 
     Args:
         max_pages: Max Pages.
         save: Whether to persist the results.
-        sync_oci: Sync Oci.
         max_pages: Max Pages.
 
     """
@@ -124,9 +96,6 @@ async def fix_player_names(
 
     _log_player_sample(valid_dicts)
     _save_players_if_requested(valid_dicts, save=save)
-    if _should_sync_to_oci(sync_oci=sync_oci):
-        _sync_player_basic_to_oci()
-
     logger.info("=" * 60)
     logger.info("Complete")
     logger.info("=" * 60)
@@ -138,7 +107,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Fix player names by re-crawling from KBO website")
     parser.add_argument("--crawl", action="store_true", help="Crawl players from website")
     parser.add_argument("--save", action="store_true", help="Save to SQLite database")
-    parser.add_argument("--sync-oci", action="store_true", help="Sync to OCI after crawl")
     parser.add_argument("--max-pages", type=int, default=None, help="Limit number of pages (for testing)")
     args = parser.parse_args()
 
@@ -151,7 +119,6 @@ def main() -> int:
         fix_player_names(
             max_pages=args.max_pages,
             save=args.save,
-            sync_oci=args.sync_oci,
         ),
     )
     return 0

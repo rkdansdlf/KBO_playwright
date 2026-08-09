@@ -15,20 +15,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 
 from src.constants import DATE_STR_LEN
-from src.db.engine import SessionLocal, get_oci_url
+from src.db.engine import SessionLocal
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 logger = logging.getLogger(__name__)
-
-STARTING_PITCHER_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
-
 
 def _normalize_date(value: str | None) -> str | None:
     if not value:
@@ -65,16 +61,6 @@ def parse_args() -> argparse.Namespace:
         "--overwrite",
         action="store_true",
         help="Overwrite existing game pitcher values from pitching stats.",
-    )
-    parser.add_argument(
-        "--sync",
-        action="store_true",
-        help="Sync repaired games to OCI after local update.",
-    )
-    parser.add_argument(
-        "--sync-target-missing",
-        action="store_true",
-        help="Sync games whose pitcher fields are present locally but missing in OCI.",
     )
     parser.add_argument(
         "--limit",
@@ -238,162 +224,6 @@ def repair_candidates(
     return updated_game_ids, away_updates, home_updates
 
 
-def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
-    """Sync to oci.
-
-    Args:
-        game_ids: Game Ids.
-        game_ids: Game Ids.
-
-    Returns:
-        Tuple result.
-
-    """
-    from src.sync.oci_sync import OCISync
-
-    target_url = get_oci_url()
-    if not target_url:
-        msg = "OCI_DB_URL or TARGET_DATABASE_URL is required for OCI sync"
-        raise RuntimeError(msg)
-
-    with SessionLocal() as session:
-        syncer = OCISync(target_url, session)
-        success = 0
-        failed = 0
-        for game_id in game_ids:
-            try:
-                if syncer.sync_specific_game(game_id):
-                    success += 1
-                else:
-                    failed += 1
-            except STARTING_PITCHER_SYNC_EXCEPTIONS:
-                failed += 1
-                logger.exception("OCI sync failed for %s", game_id)
-    return success, failed
-
-
-def find_target_missing_ready_games(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
-    """Find target missing ready games.
-
-    Args:
-        session: Session.
-        args: Positional arguments to pass through.
-        session: Session.
-        args: Args.
-
-    Returns:
-        List of results.
-
-    """
-    target_url = get_oci_url()
-
-    if not target_url:
-        msg = "OCI_DB_URL or TARGET_DATABASE_URL is required for --sync-target-missing"
-        raise RuntimeError(msg)
-
-    start_date = _normalize_date(args.start_date)
-    end_date = _normalize_date(args.end_date)
-
-    target_engine = create_engine(target_url)
-    target_query = text(
-        """
-        SELECT game_id
-
-        FROM game
-        WHERE (:start_date IS NULL OR game_date >= CAST(:start_date AS date))
-          AND (:end_date IS NULL OR game_date <= CAST(:end_date AS date))
-          AND game_date < CURRENT_DATE
-          AND coalesce(game_status, '') <> 'SCHEDULED'
-          AND (coalesce(trim(away_pitcher), '') = '' OR coalesce(trim(home_pitcher), '') = '')
-        """,
-    )
-    with target_engine.connect() as target_conn:
-        target_missing_ids = {
-            row[0]
-            for row in target_conn.execute(
-                target_query,
-                {"start_date": start_date, "end_date": end_date},
-            )
-        }
-
-    if not target_missing_ids:
-        return []
-
-    local_query = text(
-        """
-        SELECT
-
-            g.game_id,
-            g.away_pitcher,
-            g.home_pitcher
-        FROM game g
-        WHERE (:start_date IS NULL OR g.game_date >= :start_date)
-          AND (:end_date IS NULL OR g.game_date <= :end_date)
-          AND g.game_date < date('now')
-          AND coalesce(g.game_status, '') <> 'SCHEDULED'
-          AND coalesce(trim(g.away_pitcher), '') <> ''
-          AND coalesce(trim(g.home_pitcher), '') <> ''
-        """,
-    )
-    local_ready_rows = [
-        dict(row)
-        for row in session.execute(
-            local_query,
-            {"start_date": start_date, "end_date": end_date},
-        )
-        .mappings()
-        .all()
-    ]
-
-    return sorted(
-        (row for row in local_ready_rows if row["game_id"] in target_missing_ids),
-        key=lambda row: row["game_id"],
-    )
-
-
-def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
-    """Update target pitcher fields.
-
-    Args:
-        rows: Rows.
-        rows: Rows.
-
-    Returns:
-        Integer result.
-
-    """
-    if not rows:
-        return 0
-
-    target_url = get_oci_url()
-    if not target_url:
-        msg = "OCI_DB_URL or TARGET_DATABASE_URL is required for OCI update"
-        raise RuntimeError(msg)
-
-    target_engine = create_engine(target_url)
-    update_query = text(
-        """
-        UPDATE game
-
-        SET
-            away_pitcher = CASE
-                WHEN coalesce(trim(away_pitcher), '') = '' THEN :away_pitcher
-                ELSE away_pitcher
-            END,
-            home_pitcher = CASE
-                WHEN coalesce(trim(home_pitcher), '') = '' THEN :home_pitcher
-                ELSE home_pitcher
-            END
-        WHERE game_id = :game_id
-          AND (coalesce(trim(away_pitcher), '') = '' OR coalesce(trim(home_pitcher), '') = '')
-        """,
-    )
-
-    with target_engine.begin() as target_conn:
-        result = target_conn.execute(update_query, rows)
-        return int(result.rowcount or 0)
-
-
 def main() -> int:
     """Run the main entry point for this CLI command."""
     load_dotenv(PROJECT_ROOT / ".env")
@@ -416,29 +246,6 @@ def main() -> int:
         away_updates,
         home_updates,
     )
-
-    if args.sync_target_missing:
-        with SessionLocal() as session:
-            target_missing_ready_rows = find_target_missing_ready_games(session, args)
-        if args.dry_run:
-            logger.info("target_missing_ready: games=%s", len(target_missing_ready_rows))
-            return 0
-        updated_target_rows = update_target_pitcher_fields(target_missing_ready_rows)
-        logger.info(
-            "target_missing_pitcher_update: candidates=%d, updated=%s",
-            len(target_missing_ready_rows),
-            updated_target_rows,
-        )
-        return 0
-
-    if args.sync and args.dry_run:
-        logger.info("sync skipped: dry-run mode")
-        return 0
-
-    if args.sync and updated_game_ids:
-        success, failed = sync_to_oci(updated_game_ids)
-        logger.info("oci_sync: success=%s, failed=%s", success, failed)
-        return 1 if failed else 0
 
     return 0
 

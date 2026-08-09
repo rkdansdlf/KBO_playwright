@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.constants import DATE_STR_LEN
+from src.db.engine import DATABASE_URL
 from src.db.engine import create_engine_for_url as create_engine
-from src.db.engine import get_oci_url
 from src.validators.data_quality_regression_pack import (
     render_regression_report,
     report_to_json,
@@ -33,7 +33,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--database-url",
         default=None,
-        help="Database URL to inspect. Defaults to DATABASE_URL, then OCI_DB_URL when available.",
+        help="Database URL to inspect. Defaults to DATABASE_URL.",
     )
     parser.add_argument("--json", action="store_true", help="Print JSON report")
     parser.add_argument("--date", help="Scope game-level checks to YYYYMMDD")
@@ -51,9 +51,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--date must use YYYYMMDD or YYYY-MM-DD")
     season = args.year or (int(target_date[:4]) if target_date else None)
 
-    database_url = args.database_url or os.getenv("DATABASE_URL") or get_oci_url()
+    database_url = args.database_url or os.getenv("DATABASE_URL") or DATABASE_URL
     if not database_url:
-        parser.error("database URL is required via --database-url, DATABASE_URL, or OCI_DB_URL")
+        parser.error("database URL is required via --database-url or DATABASE_URL")
 
     engine = create_engine(database_url)
     with engine.connect() as conn:

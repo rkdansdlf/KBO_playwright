@@ -1,4 +1,0 @@
-CREATE TABLE IF NOT EXISTS _schema_migrations (
-    filename TEXT PRIMARY KEY,
-    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);

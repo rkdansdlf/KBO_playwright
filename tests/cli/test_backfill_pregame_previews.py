@@ -297,11 +297,6 @@ class TestBuildArgParser:
         args = parser.parse_args(["--fail-on-incomplete"])
         assert args.fail_on_incomplete is True
 
-    def test_no_sync(self):
-        parser = build_arg_parser()
-        args = parser.parse_args(["--no-sync"])
-        assert args.no_sync is True
-
 
 class TestResolveBackfillRange:
     def test_explicit_dates(self):
@@ -407,7 +402,7 @@ class TestRunBackfill:
                         args = parser.parse_args(["--start-date", "20250101", "--end-date", "20250101"])
                         result = await run_backfill(args)
                         assert result == 0
-                        mock_batch.assert_called_once_with("20250101", sync_to_oci=True)
+                        mock_batch.assert_called_once_with("20250101")
 
         asyncio.run(_run())
 
@@ -462,32 +457,6 @@ class TestRunBackfill:
                         assert result == 1
 
         asyncio.run(_run())
-
-    def test_backfill_no_sync_flag(self):
-        async def _run():
-            mock_session = MagicMock()
-            mock_session.__enter__ = MagicMock(return_value=mock_session)
-            mock_session.__exit__ = MagicMock(return_value=False)
-
-            mock_row = MagicMock()
-            mock_row.target_date = "20250101"
-            mock_row.away_pitcher = None
-            mock_row.home_pitcher = None
-            mock_row.preview_detail_text = None
-            mock_session.execute.return_value.all.return_value = [mock_row]
-
-            with patch("src.cli.backfill_pregame_previews.SessionLocal", return_value=mock_session):
-                with patch("src.cli.backfill_pregame_previews.run_preview_batch", new_callable=AsyncMock) as mock_batch:
-                    mock_batch.return_value = ["game1"]
-                    with patch("src.cli.backfill_pregame_previews._is_incomplete_after_backfill", return_value=None):
-                        parser = build_arg_parser()
-                        args = parser.parse_args(["--start-date", "20250101", "--end-date", "20250101", "--no-sync"])
-                        result = await run_backfill(args)
-                        assert result == 0
-                        mock_batch.assert_called_once_with("20250101", sync_to_oci=False)
-
-        asyncio.run(_run())
-
 
 class TestMain:
     def test_dry_run(self):

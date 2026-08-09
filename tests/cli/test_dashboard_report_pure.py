@@ -20,7 +20,6 @@ from src.cli.dashboard_report import (
     _format_quality_terminal,
     _format_rankings_terminal,
     _format_standings_terminal,
-    _format_sync_terminal,
     _format_team_defense_terminal,
     _format_team_gate_terminal,
     _format_terminal,
@@ -113,9 +112,8 @@ class TestDashboardFormatting:
             "team_defense",
             "quality",
             "freshness",
-            "sync",
         ]
-        assert _normalize_sections(["quality", "sync"]) == ["quality", "sync"]
+        assert _normalize_sections(["quality"]) == ["quality"]
 
     def test_format_json_preserves_korean_and_default_str(self) -> None:
         rendered = _format_json({"team": "두산", "value": object()})
@@ -132,9 +130,9 @@ class TestDashboardFormatting:
 
     def test_emit_dashboard_terminal_delegates_formatter(self) -> None:
         with patch("src.cli.dashboard_report._format_terminal") as mock_format:
-            _emit_dashboard({"sync": {"status": "ok"}}, ["sync"], "terminal")
+            _emit_dashboard({"quality": {"ok": True}}, ["quality"], "terminal")
 
-        mock_format.assert_called_once_with({"sync": {"status": "ok"}}, ["sync"])
+        mock_format.assert_called_once_with({"quality": {"ok": True}}, ["quality"])
 
 
 class TestDashboardTerminalFormatters:
@@ -149,7 +147,6 @@ class TestDashboardTerminalFormatters:
                 "2026",
                 "--sections",
                 "quality",
-                "sync",
                 "--format",
                 "json",
                 "--notify",
@@ -160,7 +157,7 @@ class TestDashboardTerminalFormatters:
 
         assert args.date == "20260402"
         assert args.year == 2026
-        assert args.sections == ["quality", "sync"]
+        assert args.sections == ["quality"]
         assert args.format == "json"
         assert args.notify is True
 
@@ -249,7 +246,7 @@ class TestDashboardTerminalFormatters:
         assert "Quality Report" in info_text
         assert "PA 공식" in error_text
 
-    def test_pa_trend_unified_freshness_sync_and_dispatch(self) -> None:
+    def test_pa_trend_unified_and_freshness_dispatch(self) -> None:
         with patch("src.cli.dashboard_report.logger") as mock_logger:
             _format_pa_trend_terminal(
                 {
@@ -266,15 +263,12 @@ class TestDashboardTerminalFormatters:
                 },
             )
             _format_freshness_terminal({"date": "20260402", "total_issues": 1, "issues": {"G1": ["missing"]}})
-            _format_sync_terminal({"status": "failed", "reason": "diff"})
-            _format_terminal({"sync": {"status": "ok", "ok_count": 1, "table_count": 1}}, ["sync"])
         rendered = "\n".join(
             str(call.args) for call in mock_logger.info.call_args_list + mock_logger.warning.call_args_list
         )
         assert "PA 추세" in rendered
         assert "전체 통과" in rendered
         assert "Freshness" in rendered
-        assert "diff" in rendered
 
 
 class TestDashboardNotificationHelpers:

@@ -10,7 +10,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -18,13 +17,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.db.engine import SessionLocal
-from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
+from src.models.game import Game, GameSummary, GameValidationMetrics
 from src.repositories.game_repository import refresh_game_status_for_date
 from src.services.context_aggregator import ContextAggregator
-from src.sync.oci_sync import OCISync
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
+from src.utils.relay_validation import is_trusted_relay_status
 from src.utils.team_codes import team_code_from_game_id_segment
 
 if TYPE_CHECKING:
@@ -38,9 +37,6 @@ REVIEW_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, Ke
 
 
 REVIEW_SUMMARY_TYPE = "리뷰_WPA"
-TRUSTED_RELAY_STATUSES = {"verified", "recovered"}
-
-
 def _upsert_review_summary(session: Session, game_id: str, review_json: str) -> None:
     existing_summaries = (
         session.query(GameSummary)
@@ -99,27 +95,14 @@ def _trusted_relay_game_ids(session: Session, game_ids: Sequence[str]) -> set[st
         .all()
     )
     statuses = {str(row.game_id): row.validation_status for row in metric_rows}
-    trusted_ids = {game_id for game_id, status in statuses.items() if status in TRUSTED_RELAY_STATUSES}
-
-    missing_metric_ids = target_ids - set(statuses)
-    if missing_metric_ids:
-        wpa_rows = (
-            session.query(GameEvent.game_id)
-            .filter(GameEvent.game_id.in_(list(missing_metric_ids)), GameEvent.wpa.isnot(None))
-            .distinct()
-            .all()
-        )
-        trusted_ids.update(str(row[0]) for row in wpa_rows)
-
-    return trusted_ids
+    return {game_id for game_id, status in statuses.items() if is_trusted_relay_status(status)}
 
 
-async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
+async def run_review_batch(target_date: str) -> list[str]:
     """Run review batch.
 
     Args:
         target_date: Target date for the operation.
-        sync_to_oci: Sync To Oci.
         target_date: Target Date.
 
     Returns:
@@ -193,18 +176,6 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
             logger.exception("❌ Failed to save reviews to DB")
             raise
 
-    should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
-    if should_sync and saved_ids:
-        oci_url = os.getenv("OCI_DB_URL")
-        if oci_url:
-            with SessionLocal() as sync_session:
-                syncer = OCISync(oci_url, sync_session)
-                try:
-                    for sync_id in sorted(set(saved_ids)):
-                        syncer.sync_specific_game(sync_id)
-                finally:
-                    syncer.close()
-
     manifest_path = write_refresh_manifest(
         phase="postgame_review",
         target_date=target_date,
@@ -231,11 +202,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Daily Review Context Generator")
 
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
-    parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)
 
     target = args.date or datetime.now(KST).strftime("%Y%m%d")
-    asyncio.run(run_review_batch(target, sync_to_oci=not args.no_sync))
+    asyncio.run(run_review_batch(target))
     return 0
 
 

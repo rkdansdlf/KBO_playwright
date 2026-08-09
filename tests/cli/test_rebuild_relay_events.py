@@ -63,4 +63,3 @@ class TestRebuildReportRow:
         assert row.new_rows == 45
         assert row.notes == ""
         assert row.backup_path == ""
-        assert row.oci_status == "not_requested"

@@ -21,7 +21,7 @@ class TestDailyPreviewBatchCLI:
             MockCrawler.return_value = mock_instance
             mock_manifest.return_value = "/tmp/manifest.json"
 
-            result = main(["--date", "20251015", "--no-sync"])
+            result = main(["--date", "20251015"])
             assert result == 0
             mock_instance.crawl_preview_for_date.assert_called_once_with("20251015")
 
@@ -45,7 +45,7 @@ class TestDailyPreviewBatchCLI:
             MockCrawler.return_value = mock_instance
             mock_save.return_value = True
 
-            result = main(["--date", "20251015", "--no-sync"])
+            result = main(["--date", "20251015"])
             assert result == 0
 
 
@@ -134,49 +134,20 @@ class TestPreviewPersistence:
         assert add_team_context.call_count == 2
         assert add_pitcher_context.call_count == 2
 
-    def test_sync_skips_when_oci_is_not_configured(self, monkeypatch):
-        monkeypatch.delenv("OCI_DB_URL", raising=False)
-
-        with patch("src.cli.daily_preview_batch.SessionLocal") as session_factory:
-            daily_preview_batch._sync_saved_pregame_games(["G1"])
-
-        session_factory.assert_not_called()
-
-    def test_syncs_unique_game_ids_and_closes_syncer(self, monkeypatch):
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://oci")
-        session = MagicMock()
-        session_factory = MagicMock()
-        session_factory.return_value.__enter__.return_value = session
-        syncer = MagicMock()
-
-        with (
-            patch("src.cli.daily_preview_batch.SessionLocal", session_factory),
-            patch("src.cli.daily_preview_batch.OCISync", return_value=syncer) as sync_class,
-        ):
-            daily_preview_batch._sync_saved_pregame_games(["G2", "G1", "G2"])
-
-        sync_class.assert_called_once_with("postgresql://oci", session)
-        assert syncer.sync_pregame_game.call_args_list[0].args == ("G1",)
-        assert syncer.sync_pregame_game.call_args_list[1].args == ("G2",)
-        syncer.close.assert_called_once()
-
-
 class TestRunPreviewBatch:
-    def test_saves_syncs_and_writes_manifest_for_previews(self):
+    def test_saves_and_writes_manifest_for_previews(self):
         crawler = MagicMock()
         crawler.crawl_preview_for_date = AsyncMock(return_value=[{"game_id": "G1"}])
 
         with (
             patch("src.cli.daily_preview_batch.PreviewCrawler", return_value=crawler),
             patch("src.cli.daily_preview_batch._save_preview_contexts", return_value=["G2", "G1"]) as save_contexts,
-            patch("src.cli.daily_preview_batch._sync_saved_pregame_games") as sync_games,
             patch("src.cli.daily_preview_batch._write_pregame_manifest", return_value="manifest.json") as manifest,
         ):
-            saved_ids = asyncio.run(daily_preview_batch.run_preview_batch("20251015", sync_to_oci=True))
+            saved_ids = asyncio.run(daily_preview_batch.run_preview_batch("20251015"))
 
         assert saved_ids == ["G2", "G1"]
         save_contexts.assert_called_once_with([{"game_id": "G1"}], "20251015")
-        sync_games.assert_called_once_with(["G2", "G1"])
         manifest.assert_called_once_with("20251015", ["G2", "G1"])
 
     def test_does_not_sync_when_no_games_were_saved(self):
@@ -186,11 +157,9 @@ class TestRunPreviewBatch:
         with (
             patch("src.cli.daily_preview_batch.PreviewCrawler", return_value=crawler),
             patch("src.cli.daily_preview_batch._save_preview_contexts", return_value=[]),
-            patch("src.cli.daily_preview_batch._sync_saved_pregame_games") as sync_games,
             patch("src.cli.daily_preview_batch._write_pregame_manifest", return_value="manifest.json") as manifest,
         ):
-            saved_ids = asyncio.run(daily_preview_batch.run_preview_batch("20251015", sync_to_oci=True))
+            saved_ids = asyncio.run(daily_preview_batch.run_preview_batch("20251015"))
 
         assert saved_ids == []
-        sync_games.assert_not_called()
         manifest.assert_called_once_with("20251015", [])

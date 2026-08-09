@@ -8,11 +8,10 @@
    - `CG, SHO, QS, BSV, TBF, NP, AVG, 2B, 3B, SAC, SF, IBB, WP, BK` 헤더를 순서대로 클릭
    - 각 정렬마다 전체 페이지를 순회하며 추가 지표 수집 및 기존 데이터 업데이트
 3. Docs/schema/KBO_시즌별 투수기록 테이블.csv에 정의된 스키마에 맞춰 데이터 정리
-4. 필요 시 OCI(PostgreSQL)에 UPSERT 동기화 (season_id + player_id 기준)
+4. 수집 결과를 PostgreSQL에 UPSERT 저장 (season_id + player_id 기준)
 
 Usage:
     python -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save
-    python -m src.cli.sync_oci --season-stats --year 2025
 
 """
 
@@ -1268,10 +1267,6 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
             payloads = [stat.to_repository_payload() for stat in stats_list]
             saved_count = save_pitching_stats_to_db(payloads)
             logger.info("✅ 투수 데이터 저장 완료: %s명", saved_count)
-            logger.info(
-                "📌 다음 단계: ./venv/bin/python3 -m src.cli.sync_oci --season-stats --year %s 실행하여 OCI 동기화",
-                year,
-            )
         except DB_SAVE_EXCEPTIONS:
             logger.exception("❌ 투수 데이터 저장 실패")
 

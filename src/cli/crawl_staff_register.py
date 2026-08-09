@@ -1,7 +1,7 @@
 """KBO Staff Register CLI.
 
-Crawl the current day's manager and coaching staff registered on KBO Register.aspx,
-upserts them to the local SQLite DB (player_basic table), and optionally synchronizes to OCI.
+Crawl the current day's manager and coaching staff registered on KBO Register.aspx
+and upsert them to the configured database.
 
 """
 
@@ -13,17 +13,12 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from sqlalchemy.exc import SQLAlchemyError
-
 from src.crawlers.staff_register_crawler import KBO_TEAM_MAP, StaffRegisterCrawler
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
-
-STAFF_REGISTER_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
-
 
 async def run_crawler(args: argparse.Namespace) -> int:
     # 1. Determine team codes to crawl
@@ -61,34 +56,6 @@ async def run_crawler(args: argparse.Namespace) -> int:
     # 3. Save to local SQLite
     crawler.save_to_db(records, dry_run=args.dry_run)
 
-    # 4. Optional OCI Synchronization
-    if args.sync_oci and not args.dry_run:
-        from src.db.engine import get_oci_url
-
-        oci_url = get_oci_url()
-        if not oci_url:
-            logger.warning(
-                "⚠️ sync-oci requested, but OCI_DB_URL/TARGET_DATABASE_URL env var not found. Skipping OCI sync.",
-            )
-        else:
-            player_ids = [r["player_id"] for r in records if r.get("player_id")]
-            if player_ids:
-                logger.info("🔄 Synchronizing %s staff records to OCI...", len(player_ids))
-                from src.db.engine import SessionLocal
-                from src.sync.oci_sync import OCISync
-
-                with SessionLocal() as session:
-                    syncer = OCISync(oci_url, session)
-                    try:
-                        synced_count = syncer.sync_player_basic_by_ids(player_ids)
-                        logger.info("✅ Successfully synchronized %s player_basic records to OCI.", synced_count)
-                    except STAFF_REGISTER_SYNC_EXCEPTIONS:
-                        logger.exception("❌ Failed to sync player basic records to OCI")
-                    finally:
-                        syncer.close()
-            else:
-                logger.info("[info] No valid player IDs found to sync to OCI.")
-
     logger.info("🏁 Roster crawling completed.")
     return 0
 
@@ -118,12 +85,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         action="store_true",
         help="Crawl and output statistics without writing to database",
     )
-    parser.add_argument(
-        "--sync-oci",
-        action="store_true",
-        help="Synchronize crawled and updated player_basic records to OCI",
-    )
-
     args = parser.parse_args(argv)
 
     # Run async main loop

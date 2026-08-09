@@ -12,12 +12,10 @@ from src.cli.regenerate_review_summaries import (
     _count_crucial_moments,
     _count_noise_moments,
     _load_game_ids_file,
-    _mark_review_oci_status,
     _process_review_games,
     _process_review_game,
     _short_hash,
     _skipped_review_row,
-    _sync_review_summaries,
     _write_backup,
     _write_report,
     regenerate_review_summaries,
@@ -117,23 +115,6 @@ def test_build_review_report_row_hashes_and_counts():
     assert row.old_hash and row.new_hash and row.old_hash != row.new_hash
 
 
-def test_mark_review_oci_status_dry_run_and_missing_url():
-    rows = [
-        ReviewRegenReportRow("G1", "20260402", "APPLIED"),
-        ReviewRegenReportRow("G2", "20260402", "FAILED"),
-    ]
-
-    _mark_review_oci_status(rows, apply=False, oci_url="oci")
-    assert [row.oci_status for row in rows] == ["skipped_dry_run", "skipped_dry_run"]
-
-    rows = [
-        ReviewRegenReportRow("G1", "20260402", "UNCHANGED"),
-        ReviewRegenReportRow("G2", "20260402", "FAILED"),
-    ]
-    _mark_review_oci_status(rows, apply=True, oci_url=None)
-    assert [row.oci_status for row in rows] == ["skipped_missing_oci_url", ""]
-
-
 def test_process_review_game_branches():
     session = MagicMock()
     agg = MagicMock()
@@ -187,7 +168,7 @@ def test_process_review_game_apply_changed_and_unchanged():
     mock_upsert.assert_not_called()
 
 
-def test_process_review_games_collects_sync_ids():
+def test_process_review_games_collects_rows():
     games = [_Game(game_id="G1"), _Game(game_id="G2")]
     with patch(
         "src.cli.regenerate_review_summaries._process_review_game",
@@ -196,10 +177,9 @@ def test_process_review_games_collects_sync_ids():
             (ReviewRegenReportRow("G2", "20260402", "SKIPPED"), False),
         ],
     ):
-        rows, sync_ids = _process_review_games(MagicMock(), games, MagicMock(), apply=True)
+        rows = _process_review_games(MagicMock(), games, MagicMock(), apply=True)
 
     assert [row.game_id for row in rows] == ["G1", "G2"]
-    assert sync_ids == ["G1"]
 
 
 def test_write_report_and_backup(tmp_path):
@@ -225,25 +205,6 @@ def test_collect_game_ids_reads_file(tmp_path):
     assert _collect_game_ids(args) == ["G1", "G2"]
 
 
-def test_sync_review_summaries_empty_and_success():
-    with patch("src.cli.regenerate_review_summaries.SessionLocal") as mock_session_local:
-        _sync_review_summaries([], [], oci_url="postgresql://db", log=MagicMock())
-    mock_session_local.assert_not_called()
-
-    rows = [ReviewRegenReportRow("G1", "20260402", "APPLIED")]
-    syncer = MagicMock()
-    syncer.sync_review_summaries_for_games.return_value = {"summary": 2}
-    with (
-        patch("src.cli.regenerate_review_summaries.SessionLocal") as mock_session_local,
-        patch("src.cli.regenerate_review_summaries.OCISync", return_value=syncer),
-    ):
-        mock_session_local.return_value.__enter__.return_value = MagicMock()
-        _sync_review_summaries(["G1"], rows, oci_url="postgresql://db", log=MagicMock())
-
-    assert rows[0].oci_status == "synced_summary:2"
-    syncer.close.assert_called_once()
-
-
 def test_regenerate_review_summaries_orchestrator_dry_run(tmp_path):
     report_path = tmp_path / "report.csv"
     processed = [ReviewRegenReportRow("G1", "20260402", "DRY_RUN_READY")]
@@ -251,7 +212,7 @@ def test_regenerate_review_summaries_orchestrator_dry_run(tmp_path):
         patch("src.cli.regenerate_review_summaries.SessionLocal") as mock_session_local,
         patch("src.cli.regenerate_review_summaries._query_target_games", return_value=[_Game(game_id="G1")]),
         patch("src.cli.regenerate_review_summaries.ContextAggregator"),
-        patch("src.cli.regenerate_review_summaries._process_review_games", return_value=(processed, [])),
+        patch("src.cli.regenerate_review_summaries._process_review_games", return_value=processed),
         patch("src.cli.regenerate_review_summaries._write_report") as mock_write,
     ):
         mock_session_local.return_value.__enter__.return_value = MagicMock()
@@ -271,7 +232,7 @@ def test_regenerate_review_summaries_apply_commit_failure_rolls_back(tmp_path):
         patch("src.cli.regenerate_review_summaries._query_target_games", return_value=[]),
         patch("src.cli.regenerate_review_summaries._write_backup"),
         patch("src.cli.regenerate_review_summaries.ContextAggregator"),
-        patch("src.cli.regenerate_review_summaries._process_review_games", return_value=([], [])),
+        patch("src.cli.regenerate_review_summaries._process_review_games", return_value=[]),
     ):
         mock_session_local.return_value.__enter__.return_value = session
         try:
