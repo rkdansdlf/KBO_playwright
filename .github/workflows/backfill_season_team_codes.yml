@@ -1,4 +1,4 @@
-name: KBO Season Team Code Backfill (OCI)
+name: KBO Season Team Code Backfill
 
 concurrency:
   group: kbo-season-team-code-backfill
@@ -23,7 +23,6 @@ on:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  DATABASE_URL: ${{ secrets.OCI_DB_URL }}
 
 jobs:
   backfill:

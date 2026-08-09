@@ -15,20 +15,12 @@ route:
 receivers:
   - name: 'kbo-alerts-default'
     telegram_configs:
-      - bot_token: '${TELEGRAM_BOT_TOKEN}'
-        chat_id: ${TELEGRAM_CHAT_ID}
+      - bot_token_file: '/run/secrets/telegram_bot_token'
+        chat_id_file: '/run/secrets/telegram_chat_id'
         parse_mode: 'HTML'
-    slack_configs:
-      - channel: '#kbo-alerts'
-        api_url: '${SLACK_WEBHOOK_URL}'
-        send_resolved: true
 
   - name: 'kbo-alerts-critical'
     telegram_configs:
-      - bot_token: '${TELEGRAM_BOT_TOKEN}'
-        chat_id: ${TELEGRAM_CHAT_ID}
+      - bot_token_file: '/run/secrets/telegram_bot_token'
+        chat_id_file: '/run/secrets/telegram_chat_id'
         parse_mode: 'HTML'
-    slack_configs:
-      - channel: '#kbo-alerts-critical'
-        api_url: '${SLACK_WEBHOOK_URL}'
-        send_resolved: true

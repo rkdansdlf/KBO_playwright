@@ -1,7 +1,26 @@
 services:
+  postgres:
+    image: postgres:16
+    restart: always
+    container_name: kbo_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kbo}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kbo_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   scheduler:
     build: .
     restart: always
+    container_name: kbo_scheduler
     logging:
       driver: "json-file"
       options:
@@ -11,31 +30,74 @@ services:
       - .env
     environment:
       TZ: Asia/Seoul
-      DATABASE_URL: sqlite:////app/data/kbo_dev.db
-      OCI_DB_URL: ${OCI_DB_URL:-}
-      TARGET_DATABASE_URL: ${TARGET_DATABASE_URL:-}
-      SOURCE_DATABASE_URL: sqlite:////app/data/kbo_dev.db
-      SQLITE_STARTUP_GUARD: ${SQLITE_STARTUP_GUARD:-1}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-kbo_dev}@postgres:5432/${POSTGRES_DB:-kbo}
+      PGVECTOR_URL: postgresql://postgres:${PGVECTOR_PASSWORD:-kbo_rag_dev}@pgvector:5432/kbo_rag
+      TARGET_DATABASE_URL: ""
+      RUN_INIT_DB: "1"
+      CHOWN_BIND_MOUNTS: "0"
+      SQLITE_STARTUP_GUARD: "0"
       SQLITE_CORRUPT_ACTION: ${SQLITE_CORRUPT_ACTION:-quarantine}
       SQLITE_SYNCHRONOUS: ${SQLITE_SYNCHRONOUS:-FULL}
       PLAYWRIGHT_WS_ENDPOINT: ws://browserless:3000/chromium/playwright
     depends_on:
-      - browserless
+      postgres:
+        condition: service_healthy
+      pgvector:
+        condition: service_healthy
+      browserless:
+        condition: service_started
     volumes:
       # Note: On Linux systems, verify that the host data/ and logs/ folders
       # are owned by UID 1000 or the running user to avoid 'Permission Denied' errors.
       - ./data:/app/data
       - ./logs:/app/logs
       - playwright-browsers:/ms-playwright
-    ports:
-      - "8000:8000"
     healthcheck:
-      test: ["CMD", "python", "-m", "src.cli.db_healthcheck"]
+      test: ["CMD", "python", "-c", "from sqlalchemy import text; from src.db.engine import Engine; conn = Engine.connect(); conn.execute(text('SELECT 1')); conn.close()"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
     command: ["python", "-m", "scripts.scheduler"]
+
+  api-server:
+    build: .
+    restart: always
+    container_name: kbo_api_server
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Seoul
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-kbo_dev}@postgres:5432/${POSTGRES_DB:-kbo}
+      PGVECTOR_URL: postgresql://postgres:${PGVECTOR_PASSWORD:-kbo_rag_dev}@pgvector:5432/kbo_rag
+      TARGET_DATABASE_URL: ""
+      RUN_INIT_DB: "1"
+      CHOWN_BIND_MOUNTS: "0"
+      SQLITE_STARTUP_GUARD: "0"
+    volumes:
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgvector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    command: ["python", "-m", "src.cli.run_api_server", "--host", "0.0.0.0", "--port", "8000"]
 
   browserless:
     image: ghcr.io/browserless/chromium:latest
@@ -61,9 +123,14 @@ services:
       - scheduler
 
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.33.1
     restart: always
     container_name: kbo_alertmanager
+    secrets:
+      - source: telegram_bot_token
+        target: telegram_bot_token
+      - source: telegram_chat_id
+        target: telegram_chat_id
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
@@ -77,17 +144,48 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "3001:3000"
     depends_on:
       - prometheus
 
+  # ──────────────────────────────────────────────
+  # pgvector: 로컬 RAG 임베딩 전용 PostgreSQL
+  # 접속: postgresql://postgres:kbo_rag_dev@localhost:5433/kbo_rag
+  # ──────────────────────────────────────────────
+  pgvector:
+    image: pgvector/pgvector:pg16
+    restart: always
+    container_name: kbo_pgvector
+    environment:
+      POSTGRES_DB: kbo_rag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-kbo_rag_dev}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgvector-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kbo_rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+secrets:
+  telegram_bot_token:
+    environment: TELEGRAM_BOT_TOKEN
+  telegram_chat_id:
+    environment: TELEGRAM_CHAT_ID
+
 volumes:
+  postgres-data:
   playwright-browsers:
   prometheus-data:
   alertmanager-data:
   grafana-data:
+  pgvector-data:

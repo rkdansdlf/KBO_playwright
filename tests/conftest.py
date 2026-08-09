@@ -32,11 +32,6 @@ else:
     else:
         TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
     os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
-if "OCI_DB_URL" not in os.environ:
-    os.environ["OCI_DB_URL"] = ""
-if "TARGET_DATABASE_URL" not in os.environ:
-    os.environ["TARGET_DATABASE_URL"] = ""
-
 import logging
 
 
@@ -81,6 +76,11 @@ def _clean_test_db(request):
         if wal_file.exists():
             wal_file.unlink()
     yield
+    engine_module = sys.modules.get("src.db.engine")
+    if engine_module is not None:
+        test_engine = getattr(engine_module, "Engine", None)
+        if test_engine is not None:
+            test_engine.dispose()
     # Cleanup after test
     if test_db.exists():
         test_db.unlink()

@@ -1,5 +1,5 @@
 name: 'KBO Python Env'
-description: 'Setup Python, install deps, init DB, hydrate from OCI'
+description: 'Setup Python, install dependencies, and optionally initialize the database'
 inputs:
   python-version:
     description: 'Python version'
@@ -13,18 +13,6 @@ inputs:
     description: 'Initialize database and seed metadata'
     required: false
     default: 'false'
-  hydrate:
-    description: 'Hydrate runtime cache from OCI'
-    required: false
-    default: 'false'
-  hydrate-year:
-    description: 'Year for OCI hydration'
-    required: false
-    default: ''
-  hydrate-date:
-    description: 'Date for OCI hydration (YYYYMMDD)'
-    required: false
-    default: ''
 
 runs:
   using: 'composite'
@@ -74,22 +62,3 @@ runs:
       run: |
         python3 -c "from src.db.engine import init_db; init_db()"
         python3 -m scripts.maintenance.seed_data
-
-    - name: Hydrate Runtime Cache From OCI
-      if: ${{ inputs.hydrate == 'true' }}
-      shell: bash
-      env:
-        OCI_DB_URL: ${{ env.OCI_DB_URL }}
-      run: |
-        YEAR="${{ inputs.hydrate-year }}"
-        DATE="${{ inputs.hydrate-date }}"
-        if [ -z "$YEAR" ] && [ -n "$DATE" ]; then
-          YEAR="${DATE:0:4}"
-        fi
-        if [ -n "$YEAR" ] && [ -n "$DATE" ]; then
-          python3 -m src.cli.hydrate_runtime_from_oci --year "$YEAR" --date "$DATE"
-        elif [ -n "$YEAR" ]; then
-          python3 -m src.cli.hydrate_runtime_from_oci --year "$YEAR"
-        else
-          echo "Skipping hydration: no year or date provided"
-        fi

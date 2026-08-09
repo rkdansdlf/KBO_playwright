@@ -14,10 +14,11 @@ from src.utils.lock import ForceProcessLock, ProcessLock
 @pytest.fixture(autouse=True)
 def _clean_env_pg(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep lock tests on the local file-lock path despite repository dotenv config."""
-    for key in ("OCI_DB_URL", "TARGET_DATABASE_URL", "DATABASE_URL"):
+    for key in ("DATABASE_URL",):
         monkeypatch.delenv(key, raising=False)
 
 
+@pytest.mark.skipif(not lock_module.HAS_FCNTL, reason="shared cross-thread file-lock state requires fcntl")
 def test_shared_lock_state_is_isolated_between_threads(tmp_path: Path) -> None:
     """A shared lock keeps ownership and descriptors local to each thread."""
     shared_lock = ProcessLock("test_thread_local_state", lock_dir=tmp_path)
@@ -116,9 +117,10 @@ def test_lock_state_properties_update_thread_local_state(tmp_path: Path) -> None
     assert lock.db_connection is connection
 
 
-def test_blocking_file_lock_timeout_releases_thread_lock(tmp_path: Path) -> None:
+def test_blocking_file_lock_timeout_releases_thread_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A file-lock timeout returns false and clears acquisition bookkeeping."""
     lock = ProcessLock("test_file_timeout", lock_dir=tmp_path)
+    monkeypatch.setattr(lock_module, "HAS_FCNTL", True)
 
     with (
         patch.object(lock, "_acquire_file_lock", return_value=False) as acquire_file,
@@ -134,9 +136,10 @@ def test_blocking_file_lock_timeout_releases_thread_lock(tmp_path: Path) -> None
     assert lock.file_fd is None
 
 
-def test_blocking_file_lock_retries_without_sleeping_in_test(tmp_path: Path) -> None:
+def test_blocking_file_lock_retries_without_sleeping_in_test(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A transient file-lock failure retries before succeeding."""
     lock = ProcessLock("test_file_retry", lock_dir=tmp_path)
+    monkeypatch.setattr(lock_module, "HAS_FCNTL", True)
 
     with (
         patch.object(lock, "_acquire_file_lock", side_effect=[False, True]) as acquire_file,
@@ -270,6 +273,7 @@ def test_force_lock_retries_with_timeout_argument(tmp_path: Path) -> None:
     clear_stale.assert_called_once()
 
 
+@pytest.mark.skipif(not lock_module.HAS_FCNTL, reason="active cross-thread file-lock ownership requires fcntl")
 def test_force_lock_does_not_displace_active_owner_in_another_thread(tmp_path: Path) -> None:
     """A non-blocking ForceProcessLock attempt cannot displace an active owner."""
     lock = ForceProcessLock("test_force_active_owner", lock_dir=tmp_path, blocking=False)
@@ -308,11 +312,14 @@ def test_force_lock_does_not_displace_active_owner_in_another_thread(tmp_path: P
     assert holder_ready.wait(timeout=2)
     waiter_thread.start()
     assert waiter_finished.wait(timeout=2)
-    assert results == [False]
-    assert lock.lock_file_path.exists()
-    release_holder.set()
-    holder_thread.join(timeout=2)
-    waiter_thread.join(timeout=2)
+    try:
+        assert results == [False]
+        if lock_module.HAS_FCNTL:
+            assert lock.lock_file_path.exists()
+    finally:
+        release_holder.set()
+        holder_thread.join(timeout=2)
+        waiter_thread.join(timeout=2)
 
     assert errors == []
     assert not holder_thread.is_alive()

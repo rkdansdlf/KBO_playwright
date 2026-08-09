@@ -83,7 +83,7 @@ scheduler.start()
 |------|-------|------|
 | `LIVE_LOCK` | `crawl_live_refresh`, `crawl_pregame_refresh`, `crawl_transit_time`, `crawl_congestion` | 고빈도 실시간 작업 (1~5분 간격) |
 | `DAILY_LOCK` | `crawl_daily_games`(03:00, `run_daily_update`), `compute_standings`(03:30), `crawl_p0_non_game`(06:20), `crawl_p1p2_data`(06:45), `crawl_operation_notices`(09:00/11:30), `crawl_operation_notices_naver`(09:30/13:00) | 핵심 일일 데이터 파이프라인 — `ForceProcessLock` (stale lock 자동 정리) |
-| `MAINTENANCE_LOCK` | `crawl_all_futures_profiles`, OCI sync, `recalc_team_stats`, `recalc_player_stats`, 리포트 생성 | 장기 실행 유지보수 작업 (수시간 소요 가능) — `ForceProcessLock` |
+| `MAINTENANCE_LOCK` | `crawl_all_futures_profiles`, `recalc_team_stats`, `recalc_player_stats`, 리포트 생성 | 장기 실행 유지보수 작업 (수시간 소요 가능) — `ForceProcessLock` |
 
 - **구현:** `threading.Lock` 기반 `ProcessLock`/`ForceProcessLock`을 사용하며, `_scheduler_job_lock` 컨텍스트 매니저가 tier lock + `SQLITE_WRITE_LOCK`을 함께 획득합니다. Tier lock 획득은 `SQLITE_WRITE_LOCK_TIMEOUT_SECONDS`(기본 60s) 데드라인을 가지며, 타임아웃 시 `_LockSkipped`로 skip(경고 로그, 크래시 아님)됩니다.
 - **단일 인스턴스 guard:** `scripts/scheduler.py`는 `data/locks/scheduler.pid`로 중복 스케줄러 프로세스/컨테이너 실행을 차단합니다. 살아있는 PID가 있으면 두 번째 인스턴스는 `exit 1`, 죽은 PID는 stale로 간주하고 정리합니다. (2026-07 `crawl_p1p2_data_job` `LockAcquisitionError`의 근본 원인이었던 중복 실행 방지)

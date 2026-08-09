@@ -1,9 +1,9 @@
 name: KBO Pitcher Backfill
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
-    - cron: '0 14 * * *'
+  # schedule:
+  #   - cron: '0 0 * * *'
+  #   - cron: '0 14 * * *'
   workflow_dispatch:
     inputs:
       days_ahead:
@@ -17,7 +17,6 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
 
 jobs:
   backfill-pitchers:
@@ -33,14 +32,6 @@ jobs:
           resolve-date: 'true'
           date-roll: '0'
 
-      - name: Hydrate Runtime Cache From OCI
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          python3 -m src.cli.hydrate_runtime_from_oci \
-            --year "${{ steps.job-setup.outputs.KST_YEAR }}" \
-            --date "${{ steps.job-setup.outputs.KST_DATE }}"
-
       - name: Resolve Backfill Window
         run: |
           DAYS_AHEAD="${{ github.event.inputs.days_ahead || '1' }}"
@@ -48,7 +39,6 @@ jobs:
 
       - name: Run Pregame Backfill
         env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
         run: |

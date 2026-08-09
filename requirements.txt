@@ -9,6 +9,7 @@ pydantic>=2.5.0
 beautifulsoup4>=4.12.3
 lxml>=5.2.1
 pypdf>=4.0.0
+tzdata>=2024.1
 
 # Database
 SQLAlchemy>=2.0.0
@@ -40,6 +41,7 @@ pytest-xdist>=3.8.0
 openai>=1.12.0
 numpy>=1.26.0
 tiktoken>=0.6.0  # Recommended for token counting
+pgvector>=0.3.0  # Vector similarity search (pgvector PostgreSQL extension client)
 
 # 설치 후 반드시 실행:
 # playwright install chromium

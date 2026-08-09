@@ -40,12 +40,23 @@ if [ "$(id -u)" = '0' ]; then
     # /ms-playwright is a large (~1GB) named volume already owned by appuser from
     # the image build; a recursive chown on every start needlessly delays startup
     # (and, under restart: always, crash recovery). Only chown it when the top
-    # level ownership is actually wrong. Bind-mounted data/logs still get a full
-    # recursive chown because their host UID may differ.
+    # level ownership is actually wrong. Recursive chown is opt-in for bind
+    # mounts because large SQLite data directories can make Docker Desktop
+    # exhaust memory while walking the host filesystem.
     for dir in "/app/data" "/app/logs"; do
         if [ -d "$dir" ]; then
-            echo "🐳 Chowning $dir to appuser:appuser"
-            chown -R appuser:appuser "$dir"
+            if [[ "${CHOWN_BIND_MOUNTS:-0}" == "1" ]]; then
+                current_owner=$(stat -c '%u' "$dir")
+                current_group=$(stat -c '%g' "$dir")
+                if [ "$current_owner" != "$TARGET_UID" ] || [ "$current_group" != "$TARGET_GID" ]; then
+                    echo "🐳 Chowning $dir to appuser:appuser (owner $current_owner:$current_group -> $TARGET_UID:$TARGET_GID)"
+                    chown -R appuser:appuser "$dir"
+                else
+                    echo "🐳 Skipping $dir chown (already owned by $TARGET_UID:$TARGET_GID)"
+                fi
+            else
+                echo "🐳 Skipping $dir recursive chown (set CHOWN_BIND_MOUNTS=1 to enable)"
+            fi
         fi
     done
     if [ -d "/ms-playwright" ]; then
@@ -118,151 +129,9 @@ if [[ "${RUN_INIT_DB:-0}" == "1" ]]; then
   python -c "from src.db.engine import init_db; init_db()"
 fi
 
-if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" && -z "${OCI_DB_URL:-}" && "${RUN_INIT_DB:-0}" != "1" ]]; then
-  echo "🔧 No OCI_DB_URL configured after quarantine. Recreating empty SQLite schema..."
+if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" && "${RUN_INIT_DB:-0}" != "1" ]]; then
+  echo "🔧 Recreating empty SQLite schema after quarantine..."
   python -c "from src.db.engine import init_db; init_db()"
-fi
-
-# SQLite DB 상태 체크 및 자동 하이드레이션 (OCI 백업 DB로부터 복구)
-if [[ -n "${OCI_DB_URL:-}" ]]; then
-  DB_PATH=""
-  # DATABASE_URL에서 SQLite 파일 경로 파싱
-  if [[ "${DATABASE_URL:-}" =~ ^sqlite://(.*) ]]; then
-      RAW_PATH="${BASH_REMATCH[1]}"
-      DB_PATH=$(echo "$RAW_PATH" | sed 's|^/\+||')
-      if [[ "$RAW_PATH" == "./"* ]]; then
-          DB_PATH="./${DB_PATH#./}"
-      else
-          DB_PATH="/$DB_PATH"
-      fi
-  fi
-  DB_PATH="${DB_PATH:-/app/data/kbo_dev.db}"
-
-  # SQLite DB를 사용하는 경우에만 자동 하이드레이션 적용
-  if [[ "${DATABASE_URL:-}" == *"sqlite"* ]] || [[ -z "${DATABASE_URL:-}" ]]; then
-      HYDRATE_REQUIRED=0
-
-      if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" ]]; then
-          echo "⚠️ SQLite database was quarantined. Recovery hydration needed."
-          HYDRATE_REQUIRED=1
-      elif [ ! -f "$DB_PATH" ] || [ ! -s "$DB_PATH" ]; then
-          echo "⚠️ SQLite database file not found or empty at: $DB_PATH. Recovery needed."
-          HYDRATE_REQUIRED=1
-      else
-          # AUTO_HYDRATE=1 인 경우 최종 수정 시간(mtime) 체크
-          if [[ "${AUTO_HYDRATE:-0}" == "1" ]]; then
-              MTIME_DIFF=$(python -c "
-import os, time
-db_path = '$DB_PATH'
-if os.path.exists(db_path):
-    print(int(time.time() - os.path.getmtime(db_path)))
-else:
-    print(0)
-")
-              # 기본 간격 24시간(86400초)
-              INTERVAL=${HYDRATE_INTERVAL_SEC:-86400}
-              if [ "$MTIME_DIFF" -gt "$INTERVAL" ]; then
-                  echo "🕒 Database file is older than $((INTERVAL / 3600)) hours (${MTIME_DIFF}s old). Refresh needed."
-                  HYDRATE_REQUIRED=1
-              fi
-          fi
-
-          if [[ "${AUTO_HYDRATE_FORCE:-0}" == "1" ]]; then
-              echo "🔄 AUTO_HYDRATE_FORCE is set. Forcing refresh."
-              HYDRATE_REQUIRED=1
-          fi
-      fi
-
-      if [ "$HYDRATE_REQUIRED" -eq 1 ]; then
-          LOCKFILE="${DB_PATH}.lock"
-          DB_DIR=$(dirname "$DB_PATH")
-          mkdir -p "$DB_DIR"
-
-          (
-              echo "🔒 Acquiring database lock for hydration: $LOCKFILE"
-              if flock -x -w 120 9; then
-                  echo "🔑 Lock acquired. Double-checking hydration requirement..."
-
-                  RE_CHECK_REQUIRED=0
-                  if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" ]]; then
-                      RE_CHECK_REQUIRED=1
-                  elif [ ! -f "$DB_PATH" ] || [ ! -s "$DB_PATH" ]; then
-                      RE_CHECK_REQUIRED=1
-                  else
-                      MTIME_DIFF=$(python -c "
-import os, time
-db_path = '$DB_PATH'
-if os.path.exists(db_path):
-    print(int(time.time() - os.path.getmtime(db_path)))
-else:
-    print(0)
-")
-                      INTERVAL=${HYDRATE_INTERVAL_SEC:-86400}
-                      if [ "$MTIME_DIFF" -gt "$INTERVAL" ]; then
-                          RE_CHECK_REQUIRED=1
-                      fi
-                      if [[ "${AUTO_HYDRATE_FORCE:-0}" == "1" ]]; then
-                          RE_CHECK_REQUIRED=1
-                      fi
-                  fi
-
-                  if [ "$RE_CHECK_REQUIRED" -eq 1 ]; then
-                      echo "🔧 Schema initialization before hydration..."
-                      python -c "from src.db.engine import init_db; init_db()"
-
-                      CURRENT_YEAR=$(date +%Y)
-                      YEARS_TO_HYDRATE="${HYDRATE_YEARS:-$CURRENT_YEAR}"
-
-                      IFS=',' read -ra ADDR <<< "$YEARS_TO_HYDRATE"
-                      HYDRATE_SUCCESS=1
-                      for year in "${ADDR[@]}"; do
-                          echo "🚚 Running hydrate_runtime_from_oci for season $year..."
-                          HYDRATE_ARGS=("--year" "$year" "--source-url" "$OCI_DB_URL")
-                          if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" ]]; then
-                              HYDRATE_ARGS+=("--notify")
-                              QUARANTINE_DIR=$(python -c "import json, os; p='$GUARD_OUT'; print(json.load(open(p)).get('quarantine_dir', '') if os.path.exists(p) else '')" 2>/dev/null || true)
-                              if [[ -n "$QUARANTINE_DIR" ]]; then
-                                  HYDRATE_ARGS+=("--quarantine-dir" "$QUARANTINE_DIR")
-                              fi
-                          fi
-                          if python -m src.cli.hydrate_runtime_from_oci "${HYDRATE_ARGS[@]}"; then
-                              echo "✅ Successfully hydrated season $year"
-                          else
-                              echo "❌ Failed to hydrate season $year"
-                              HYDRATE_SUCCESS=0
-                          fi
-                      done
-
-                      if [ "$HYDRATE_SUCCESS" -eq 1 ]; then
-                          touch "$DB_PATH"
-                          echo "🎉 Auto-hydration completed successfully."
-                      else
-                          echo "⚠️ Some hydration tasks failed. Checking DB integrity..."
-                      fi
-                  else
-                      echo "ℹ️ Database hydration already completed by another process. Skipping."
-                  fi
-              else
-                  echo "❌ Failed to acquire flock on $LOCKFILE within 120 seconds. Skipping hydration to avoid deadlock."
-              fi
-          ) 9>"$LOCKFILE"
-      fi
-  fi
-fi
-
-# Optional sync from source to OCI target (기존 설정 유지)
-if [[ "${RUN_SYNC_OCI:-0}" == "1" ]]; then
-  : "${TARGET_DATABASE_URL:=${OCI_DB_URL:-}}"
-  if [[ -z "${TARGET_DATABASE_URL}" ]]; then
-    echo "❌ RUN_SYNC_OCI=1 requires TARGET_DATABASE_URL or OCI_DB_URL"
-    exit 1
-  fi
-  SRC_URL="${SOURCE_DATABASE_URL:-sqlite:///./data/kbo_dev.db}"
-  echo "🚚 Syncing from ${SRC_URL} to ${TARGET_DATABASE_URL}"
-  python -m src.cli.sync_oci \
-    --source-url "${SRC_URL}" \
-    --target-url "${TARGET_DATABASE_URL}" \
-    $( [[ "${SYNC_TRUNCATE:-0}" == "1" ]] && echo "--truncate" )
 fi
 
 exec "$@"

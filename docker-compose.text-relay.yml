@@ -46,7 +46,6 @@ services:
 
       # 데이터베이스 (선택사항)
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/kbo_dev.db}
-      - OCI_DB_URL=${OCI_DB_URL:-}
 
       # 로깅
       - LOG_LEVEL=${LOG_LEVEL:-INFO}

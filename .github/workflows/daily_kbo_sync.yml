@@ -1,8 +1,8 @@
 name: KBO Daily Pipeline
 
 on:
-  schedule:
-    - cron: '0 18 * * *'  # 03:00 KST
+  # schedule:
+  #   - cron: '0 18 * * *'  # 03:00 KST (Disabled automated run)
   workflow_dispatch:
     inputs:
       target_date:
@@ -16,7 +16,6 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
@@ -38,14 +37,6 @@ jobs:
           resolve-date: 'true'
           target-date: ${{ github.event.inputs.target_date || '' }}
 
-      - name: Hydrate Runtime Cache From OCI
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          python3 -m src.cli.hydrate_runtime_from_oci \
-            --year "${{ steps.job-setup.outputs.KST_YEAR }}" \
-            --date "${{ steps.job-setup.outputs.KST_DATE }}"
-
       - name: Verify target-date game completeness before publish (local, preflight)
         id: preflight_local
         if: github.event_name == 'workflow_dispatch'
@@ -55,19 +46,6 @@ jobs:
             --date "${{ steps.job-setup.outputs.KST_DATE }}" \
             --include-incomplete \
             --strict
-
-      - name: Verify target-date game completeness before publish (OCI, preflight)
-        id: preflight_oci
-        if: github.event_name == 'workflow_dispatch'
-        continue-on-error: true
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          python3 scripts/verification/audit_daily_completeness.py \
-            --date "${{ steps.job-setup.outputs.KST_DATE }}" \
-            --include-incomplete \
-            --strict \
-            --db-url env:OCI_DB_URL
 
       - name: Data Quality Regression Pack (local, preflight)
         id: regression_pack_local
@@ -82,15 +60,13 @@ jobs:
 
       - name: Run Postgame Finalize & Sync
         env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
         run: |
           python3 -m src.cli.run_daily_update \
-            --date ${{ steps.job-setup.outputs.KST_DATE }} \
-            --sync --fix
+            --date ${{ steps.job-setup.outputs.KST_DATE }} --fix
 
-      - name: Verify target-date game completeness after publish (local, post-sync)
+      - name: Verify target-date game completeness after publish (local, post-run)
         id: postsync_local
         run: |
           python3 scripts/verification/audit_daily_completeness.py \
@@ -98,27 +74,14 @@ jobs:
             --include-incomplete \
             --strict
 
-      - name: Verify target-date game completeness after publish (OCI, post-sync)
-        id: postsync_oci
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          python3 scripts/verification/audit_daily_completeness.py \
-            --date "${{ steps.job-setup.outputs.KST_DATE }}" \
-            --include-incomplete \
-            --strict \
-            --db-url env:OCI_DB_URL
-
-      - name: Data Quality Regression Pack (OCI, post-sync)
-        env:
-          DATABASE_URL: ${{ secrets.OCI_DB_URL }}
+      - name: Data Quality Regression Pack (local, post-run)
         run: |
           python3 -m src.cli.data_quality_regression_pack \
             --date "${{ steps.job-setup.outputs.KST_DATE }}" \
             --year "${{ steps.job-setup.outputs.KST_YEAR }}" \
             --require-schema \
             --json \
-            --output "$RUNNER_TEMP/data_quality_regression_oci.json"
+            --output "$RUNNER_TEMP/data_quality_regression_postrun.json"
 
       - name: Upload Data Quality Regression Artifacts
         if: always()
@@ -150,14 +113,10 @@ jobs:
           python3 -m src.cli.calculate_rankings \
             --year ${{ steps.job-setup.outputs.KST_YEAR }}
 
-      - name: OCI Freshness Gate
-        continue-on-error: true
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      - name: Freshness Gate
         run: |
           python3 -m src.cli.freshness_gate \
-            --date ${{ steps.job-setup.outputs.KST_DATE }} \
-            --source-url-env OCI_DB_URL
+            --date ${{ steps.job-setup.outputs.KST_DATE }}
 
       - uses: ./.github/actions/notify
         if: always()
@@ -179,13 +138,8 @@ jobs:
         with:
           playwright: 'true'
           init-db: 'true'
-          hydrate: 'true'
-          hydrate-year: ${{ needs.finalize.outputs.year }}
-          hydrate-date: ${{ needs.finalize.outputs.date }}
 
       - name: Heal Unverified PBP
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m src.cli.auto_healer --lookback-days 3
 
@@ -212,13 +166,8 @@ jobs:
       - uses: ./.github/actions/kbo-job-setup
         with:
           init-db: 'true'
-          hydrate: 'true'
-          hydrate-year: ${{ needs.finalize.outputs.year }}
-          hydrate-date: ${{ needs.finalize.outputs.date }}
 
       - name: Generate Quality Report
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m src.cli.generate_quality_report \
             --date ${{ needs.finalize.outputs.date }} \
@@ -229,8 +178,6 @@ jobs:
           python3 -m src.cli.quality_dashboard --limit 14 --json
 
       - name: Trend Tracker Check
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -c "
           from src.monitoring.trend_tracker import TrendTracker
@@ -239,7 +186,6 @@ jobs:
 
       - name: Run Gap Report
         env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID_RELAY: ${{ secrets.TELEGRAM_CHAT_ID_RELAY || secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_ID_STANDINGS: ${{ secrets.TELEGRAM_CHAT_ID_STANDINGS || secrets.TELEGRAM_CHAT_ID }}
@@ -252,23 +198,16 @@ jobs:
         run: |
           python3 -m src.cli.monitor_data_freshness
 
+      - name: Quality Gate
+        run: |
+          python3 -m src.cli.quality_gate_check \
+            --year ${{ needs.finalize.outputs.year }}
+
       - name: Recalc Player-Game Stats
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m src.cli.recalc_player_game_stats \
             --date ${{ needs.finalize.outputs.date }} \
             --save
-          python3 -m src.cli.sync_oci --kbo-season
-          python3 -m src.cli.sync_oci \
-            --player-game-stats \
-            --year ${{ needs.finalize.outputs.year }}
-
-      - name: Verify Season Sync Consistency
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          python3 -m scripts.verification.verify_season_sync --json
 
       - name: Verify PlayerGame Data Quality
         run: |
@@ -278,11 +217,9 @@ jobs:
 
       - name: Comprehensive Data Integrity Audit (full_audit)
         continue-on-error: true
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m scripts.maintenance.full_audit \
-            --json --no-write --db-url "$OCI_DB_URL"
+            --json --no-write
 
       - uses: ./.github/actions/notify
         if: always()
@@ -304,58 +241,50 @@ jobs:
         with:
           playwright: 'true'
           init-db: 'true'
-          hydrate: 'true'
-          hydrate-year: ${{ needs.finalize.outputs.year }}
-          hydrate-date: ${{ needs.finalize.outputs.date }}
 
-      - name: Run Advanced Daily & Sync
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      - name: Run Advanced Daily
         run: |
           python3 -m src.cli.run_advanced_daily \
-            --year ${{ needs.finalize.outputs.year }} \
-            --sync
+            --year ${{ needs.finalize.outputs.year }}
 
-      - name: Resolve Null Player IDs (OCI)
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      - name: Crawl KBO Press Releases & Notices
+        run: |
+          python3 -m src.cli.crawl_press_releases --save --max-pages 1
+
+      - name: Crawl Milestones & Futures Schedule
+        run: |
+          python3 -m src.cli.crawl_milestones --season ${{ needs.finalize.outputs.year }} --save
+          python3 -m src.cli.crawl_futures_schedule --year ${{ needs.finalize.outputs.year }} --save
+
+      - name: Recalc Milestones & Index RAG Knowledge
+        run: |
+          python3 -m src.cli.recalc_milestones --season ${{ needs.finalize.outputs.year }}
+          python3 -m src.cli.index_rag_knowledge --season ${{ needs.finalize.outputs.year }}
+
+      - name: Resolve Null Player IDs
         run: |
           python3 -m scripts.maintenance.resolve_null_player_ids_conservative \
-            --oci \
             --years ${{ needs.finalize.outputs.year }} \
             --apply \
             --no-backup \
             --delete-duplicates
 
       - name: Reference Integrity Gate
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 scripts/verification/check_orphan_data.py \
-            --db-url env:OCI_DB_URL --strict --json --sample-limit 20
-
-      - name: Quality Gate (OCI Only)
-        continue-on-error: true
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          python3 -m scripts.maintenance.quality_gate --oci-only --no-write
+            --strict --json --sample-limit 20
 
       - name: Completeness Audit
         if: always()
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 scripts/verification/audit_daily_completeness.py \
-            --db-url env:OCI_DB_URL --days 14
+            --days 14
 
       - name: Freshness Gate (Extended Window)
         if: always()
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m src.cli.freshness_gate \
-            --days 14 --source-url-env OCI_DB_URL
+            --days 14
 
       - uses: ./.github/actions/notify
         if: always()

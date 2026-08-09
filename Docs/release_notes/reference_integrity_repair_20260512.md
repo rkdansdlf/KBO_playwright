@@ -28,17 +28,17 @@
   - `SQLite declared FK coverage` now reports `PASS`.
 
 ## Verification Commands
-Run these after local repair and before any OCI sync:
+Run these after local repair against the canonical database:
 
 ```bash
 ./venv/bin/python scripts/verification/check_orphan_data.py --strict --json --sample-limit 20
-./venv/bin/python -m scripts.maintenance.quality_gate --skip-oci
+./venv/bin/python -m src.cli.quality_gate_check
 ./venv/bin/python -m pytest
 ```
 
 Expected local status after this repair:
 - `check_orphan_data.py --strict`: pass.
-- `scripts.maintenance.quality_gate --skip-oci`: pass.
+- `src.cli.quality_gate_check`: pass.
 - `pytest`: pass with only opt-in/live tests skipped.
 
 ## New And Updated Tools
@@ -52,27 +52,12 @@ Expected local status after this repair:
   - Use `--include-pitching --include-unknown-stubs` for the full player repair set.
   - Use `--ids 1,2,3` for targeted retries.
 
-## OCI Sync Plan
-After local verification passes, sync the smallest needed OCI scope:
+## Canonical Database Verification
+After local verification passes, rerun the integrity checks against the configured database:
 
 ```bash
-./venv/bin/python3 -m src.cli.sync_oci --teams
-./venv/bin/python3 -m src.cli.sync_oci --player-basic
-./venv/bin/python3 -m src.cli.sync_oci --season-stats
-```
-
-If game metadata repairs must be reflected in OCI, also sync the affected game rows and metadata through the existing game sync path. Then verify OCI directly:
-
-```bash
-./venv/bin/python scripts/verification/check_orphan_data.py --db-url "$OCI_DB_URL" --strict --json --sample-limit 20
-./venv/bin/python -m scripts.maintenance.quality_gate
-```
-
-## OCI FK Enforcement
-Applied the OCI FK migration after the OCI target passed logical verification:
-
-```bash
-./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
+./venv/bin/python scripts/verification/check_orphan_data.py --strict --json --sample-limit 20
+./venv/bin/python -m src.cli.quality_gate_check --json
 ```
 
 The migration adds `NOT VALID` constraints first, then validates them. After application:
@@ -81,10 +66,3 @@ The migration adds `NOT VALID` constraints first, then validates them. After app
 - season stat player references: `PASS`
 - team references: `PASS`
 - `Unknown <id>` stubs: `PASS`
-
-OCI sync smoke commands also passed:
-
-```bash
-./venv/bin/python -m src.cli.sync_oci --games-only --year 2026
-./venv/bin/python -m src.cli.sync_oci --game-details --game-ids 20260510SSNC0
-```

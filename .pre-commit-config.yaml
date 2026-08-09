@@ -27,3 +27,9 @@ repos:
         language: system
         files: \.py$
         pass_filenames: true
+      - id: forbid-env-files
+        name: block .env files
+        entry: bash -c 'echo "ERROR: .env files must not be committed" && exit 1'
+        language: system
+        files: '^\.env(\..+)?$'
+        pass_filenames: false

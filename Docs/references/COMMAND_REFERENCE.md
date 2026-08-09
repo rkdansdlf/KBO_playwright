@@ -10,7 +10,6 @@
 4. [크롤링 명령어](#크롤링-명령어)
 5. [자동화 스크립트](#자동화-스크립트)
 6. [데이터 무결성 및 유지보수](#데이터-무결성-및-유지보수)
-7. [OCI 동기화](#oci-동기화)
 7. [문제 해결](#문제-해결)
 8. [고급 사용법](#고급-사용법)
 
@@ -27,7 +26,7 @@ source venv/bin/activate
 python3 -m scripts.scheduler
 
 # 수동 일일 업데이트
-python3 -m src.cli.run_daily_update --date 20251015 --sync
+python3 -m src.cli.run_daily_update --date 20251015
 
 # 특정 시즌 크롤링
 python3 -m src.cli.crawl_schedule --year 2025 --month 10
@@ -218,11 +217,8 @@ python3 -m src.cli.quality_gate_check --year 2025
 
 ### 운영 엔트리포인트 (신규 경기/선수 무결성)
 ```bash
-# 운영 기준: 경기 종료 후 finalize + freshness gate + OCI publish
-./venv/bin/python3 -m src.cli.run_daily_update --date 20251015 --sync
-
-# fresh runner에서 운영 캐시를 먼저 OCI에서 hydrate
-./venv/bin/python3 -m src.cli.hydrate_runtime_from_oci --year 2025 --date 20251015
+# 운영 기준: 경기 종료 후 finalize + freshness gate
+./venv/bin/python3 -m src.cli.run_daily_update --date 20251015
 
 # 경기 전 pregame refresh
 ./venv/bin/python3 -m src.cli.daily_preview_batch --date 20251015
@@ -239,7 +235,7 @@ python3 -m src.cli.quality_gate_check --year 2025
 # 일일 finalize stability summary 기반 soft-failure 재시도
 ./venv/bin/python3 -m src.cli.retry_daily_failures --date 20251015 --dry-run
 ./venv/bin/python3 -m src.cli.retry_daily_failures --date 20251015 --apply
-./venv/bin/python3 -m src.cli.retry_daily_failures --date 20251015 --apply --sync
+./venv/bin/python3 -m src.cli.retry_daily_failures --date 20251015 --apply
 
 # 릴리즈 전 deterministic gate 및 opt-in live smoke
 ./scripts/verification/crawler_release_check.sh
@@ -275,10 +271,6 @@ done
 # 기존 상세/릴레이를 강제로 다시 수집
 ./venv/bin/python3 -m src.cli.collect_games --year 2025 --month 10 --force
 
-# 범용 unsynced-only 상세 동기화
-# 주의: schedule-only parent game 행은 자동 제외되지만, fresh runner 운영에서는
-# run_daily_update 또는 sync_specific_game 경로를 우선 사용
-./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
 ```
 
 #### 릴레이/PBP 수집 경로 구분
@@ -298,22 +290,22 @@ done
     --dry-run \
     --report-out data/recovery/relay_event_rebuild_dry_run.csv
 
-# 실제 로컬 반영 + OCI에는 game_events만 배치 동기화
+# 실제 로컬 반영
 ./venv/bin/python3 -m src.cli.rebuild_relay_events \
     --season 2024 --season 2025 --season 2026 \
-    --apply --sync-oci --oci-sync-mode events \
+    --apply \
     --report-out data/recovery/relay_event_rebuild_apply.csv \
     --backup-out data/recovery/relay_event_rebuild_backup.csv
 
 # 특정 경기만 다시 보정
 ./venv/bin/python3 -m src.cli.rebuild_relay_events \
     --game-id 20260428HTNC0 \
-    --apply --sync-oci --oci-sync-mode events
+    --apply
 
 # CSV/텍스트 파일의 경기 목록만 보정
 ./venv/bin/python3 -m src.cli.rebuild_relay_events \
     --game-ids-file /tmp/game_ids.txt \
-    --apply --sync-oci --oci-sync-mode events
+    --apply
 
 # 보정 skip 경기 원천 재수집 후보 점검(저장 없음)
 ./venv/bin/python3 scripts/fetch_kbo_pbp.py \
@@ -339,11 +331,10 @@ done
 - `APPLIED`: 로컬 `game_events`를 경기 단위로 교체함.
 - `SKIPPED_TOO_FEW_EVENTS`: 정제 후 결과 이벤트가 기본 기준 20개 미만이라 안전상 미적용. 원천 재수집 후보입니다.
 - `SKIPPED_SCORE_MISMATCH`: 정제 이벤트의 최종 점수가 `game` 최종 점수와 달라 미적용. 점수 상태 누락/불완전 문자중계 후보입니다.
-- `oci_status=synced_events:<rows>`: 적용 경기의 OCI `game_events`만 삭제 후 재삽입 완료. 전체 경기 child snapshot 동기화가 필요할 때만 `--oci-sync-mode specific-game`을 사용합니다.
 - `fetch_kbo_pbp.py`의 `skipped_validation`: fresh relay를 가져왔지만 `--min-result-events` 또는 `--validate-final-score` 기준을 통과하지 못해 저장하지 않음.
 
 #### 보정 후 Coach 리뷰 JSON 재생성
-`game_events`를 보정하면 기존 `game_summary`의 `리뷰_WPA` JSON은 예전 승부처를 계속 들고 있을 수 있습니다. 보정 성공 경기 목록만 대상으로 리뷰 JSON을 다시 만들고, OCI에는 `game_summary` 리뷰 행만 빠르게 동기화합니다.
+`game_events`를 보정하면 기존 `game_summary`의 `리뷰_WPA` JSON은 예전 승부처를 계속 들고 있을 수 있습니다. 보정 성공 경기 목록만 대상으로 리뷰 JSON을 다시 만듭니다.
 
 ```bash
 # 보정 성공 경기 목록으로 변경 예정 리뷰만 점검
@@ -352,26 +343,24 @@ done
     --dry-run \
     --report-out data/recovery/review_summary_regen_dry_run.csv
 
-# 로컬 리뷰 JSON 재생성 + OCI game_summary 리뷰 행 동기화
+# 로컬 리뷰 JSON 재생성
 ./venv/bin/python3 -m src.cli.regenerate_review_summaries \
     --game-ids-file data/recovery/relay_event_rebuild_applied_game_ids.txt \
-    --apply --sync-oci \
+    --apply \
     --report-out data/recovery/review_summary_regen_apply.csv \
     --backup-out data/recovery/review_summary_regen_backup.csv
 
 # 특정 날짜 전체 리뷰만 다시 생성
 ./venv/bin/python3 -m src.cli.regenerate_review_summaries \
     --date 20251015 \
-    --apply --sync-oci
+    --apply
 ```
 
 리포트 해석:
 - `DRY_RUN_READY`: 새 리뷰 JSON이 기존 값과 달라질 예정.
 - `DRY_RUN_UNCHANGED`: 재생성해도 기존 로컬 리뷰와 동일.
 - `APPLIED`: 로컬 `game_summary`의 `리뷰_WPA`를 갱신.
-- `UNCHANGED`: 로컬 값은 그대로지만 `--sync-oci` 대상에는 포함.
 - `SKIPPED_REVIEW_MOMENT_NOISE`: 재생성 결과에도 헤더/구분선/투구 로그 같은 noise 승부처가 있어 저장하지 않음.
-- `oci_status=synced_summary:<rows>`: 대상 경기의 OCI `리뷰_WPA` summary 행을 교체/동기화 완료.
 
 `freshness_gate`는 `missing_review_moments`뿐 아니라 `review_moment_noise`도 검사합니다. 이 항목이 실패하면 `game_events` 정제 또는 리뷰 재생성을 먼저 확인하세요.
 
@@ -381,8 +370,7 @@ done
 ```bash
 # 특정 날짜 완료 경기의 경기 스토리 생성
 ./venv/bin/python3 -m src.cli.daily_story_batch \
-    --date 20251015 \
-    --no-sync
+    --date 20251015
 
 # 변경 예정 스토리 점검
 ./venv/bin/python3 -m src.cli.regenerate_game_stories \
@@ -390,10 +378,10 @@ done
     --dry-run \
     --report-out data/reports/game_story_regen_2025_dry_run.csv
 
-# 로컬 스토리 JSON 재생성 + OCI game_summary 경기_스토리 행 동기화
+# 로컬 스토리 JSON 재생성
 ./venv/bin/python3 -m src.cli.regenerate_game_stories \
     --season 2025 \
-    --apply --sync-oci \
+    --apply \
     --report-out data/reports/game_story_regen_2025_apply.csv \
     --backup-out data/recovery/game_story_regen_2025_backup.csv
 ```
@@ -402,10 +390,8 @@ done
 - `DRY_RUN_READY`: 새 경기 스토리 JSON이 기존 값과 달라질 예정.
 - `DRY_RUN_UNCHANGED`: 재생성해도 기존 로컬 스토리와 동일.
 - `APPLIED`: 로컬 `game_summary`의 `경기_스토리`를 갱신.
-- `UNCHANGED`: 로컬 값은 그대로지만 `--sync-oci` 대상에는 포함.
 - `SKIPPED_NOT_COMPLETED`: 완료/무승부 상태가 아니어서 생성하지 않음.
 - `warnings=missing_game_events`: 원천 이벤트가 없어 빈 timeline으로 생성됨.
-- `oci_status=synced_summary:<rows>`: 대상 경기의 OCI `경기_스토리` summary 행을 교체/동기화 완료.
 
 ---
 
@@ -470,7 +456,7 @@ python3 -m src.cli.collect_games --year 2024 --month 10 --force
 과거 날짜임에도 여전히 `SCHEDULED` 상태로 남아있는 경기들을 찾아 `UNRESOLVED_MISSING`으로 업데이트하여 자동 갱신을 유도합니다.
 
 ```bash
-./venv/bin/python3 -m src.cli.run_daily_update --date YYYYMMDD --sync
+./venv/bin/python3 -m src.cli.run_daily_update --date YYYYMMDD
 ```
 
 ### 4. Player ID 무결성 보수 (Player ID Repair)
@@ -483,7 +469,7 @@ python3 -m src.cli.collect_games --year 2024 --month 10 --force
     --output-dir data/null_player_id_conservative
 
 # 2) 최종 품질 게이트
-./venv/bin/python3 -m scripts.maintenance.quality_gate
+./venv/bin/python3 -m src.cli.quality_gate_check --year 2025
 ```
 
 ### 5. PlayerGame 스탯 재계산 (Recalc)
@@ -525,49 +511,10 @@ python3 -m src.cli.collect_games --year 2024 --month 10 --force
 ```
 
 ### 7. 품질 게이트 (Quality Gate Audit)
-데이터베이스의 전반적인 무결성 지표를 점검합니다. 로컬 SQLite와 OCI 원격 DB 간의 일치 여부, 고아 데이터 현황, NULL 값 등을 종합적으로 체크합니다.
+현재 `DATABASE_URL` 데이터베이스의 통계 무결성, 고아 데이터, NULL 값 등을 점검합니다.
 
 ```bash
-# 로컬 DB만 점검
-./venv/bin/python3 -m scripts.maintenance.quality_gate --skip-oci
-
-# 로컬 및 OCI 전체 점검 (권한 필요)
-./venv/bin/python3 -m scripts.maintenance.quality_gate
-```
-
----
-
-## ☁️ OCI 동기화
-
-### 환경변수 설정
-```bash
-# OCI PostgreSQL 연결 정보 설정
-export OCI_DB_URL='postgresql://user:password@host:5432/bega_backend'
-```
-
-### 동기화 명령어
-```bash
-# 운영 권장: 검증된 경기 상세만 OCI에 반영
-python3 -m src.cli.sync_oci --game-details --unsynced-only
-
-# 특정 연도 경기 상세 동기화
-python3 -m src.cli.sync_oci --game-details --year 2025
-
-# player_basic 동기화
-python3 -m src.cli.sync_oci --player-basic
-
-# PlayerGame 스탯 (game-batting/pitching에서 집계) 동기화
-python3 -m src.cli.sync_oci --player-game-stats
-
-# 전체 파이프라인: recalc + sync
-python3 -m src.cli.recalc_player_game_stats --season 2025 --save
-python3 -m src.cli.sync_oci --player-game-stats
-
-# 시즌 스탯 동기화
-python3 -m src.cli.sync_oci --season-stats
-
-# OCI 전체 동기화 (truncate + full sync)
-python3 -m src.cli.sync_oci --truncate
+./venv/bin/python3 -m src.cli.quality_gate_check --year 2025
 ```
 
 ---
@@ -584,8 +531,6 @@ python3 -m src.cli.quality_gate_check --year 2025
 # 전체 시즌 검증
 python3 -m src.cli.quality_gate_check --all-years
 
-# OCI 기준 검증
-python3 -m src.cli.quality_gate_check --year 2025 --oci
 ```
 
 ### 2. PA 공식 감사 (PA Formula Audit)
@@ -614,11 +559,11 @@ python3 -m src.cli.monthly_pa_audit
 # 기본 검증 (1일 기준)
 python3 -m src.cli.freshness_gate --date 20251015
 
-# 확장 검증 (14일 기준, OCI)
-python3 -m src.cli.freshness_gate --days 14 --source-url-env OCI_DB_URL
+# 확장 검증 (14일 기준)
+python3 -m src.cli.freshness_gate --days 14
 
 # 실패 시 Telegram/Slack 알림 전송
-python3 -m src.cli.freshness_gate --days 14 --source-url-env OCI_DB_URL --alert
+python3 -m src.cli.freshness_gate --days 14 --alert
 ```
 
 ### 4. Quality Dashboard
@@ -723,68 +668,14 @@ python3 -m scripts.maintenance.audit_completeness_2009_2025 \
 python3 -m scripts.maintenance.recovery_pipeline \
   --start-year 2009 --end-year 2025 --only-defect-years --dry-run
 
-# 로컬/PostgreSQL row count 비교(읽기 전용)
-python3 -m scripts.maintenance.probe_oci_counts
+# 전체 무결성 감사(읽기 전용)
+python3 -m scripts.maintenance.audit_completeness_2009_2025 --dry-run
 ```
 
 `recovery_pipeline --apply`는 자동 실행하지 않습니다. source availability와 completeness gate를 확인한 뒤 defect category별로 별도 승인해야 합니다.
 
-### 12. OCI 2021 투수 Identity 파일럿 Audit
-OCI `player_season_pitching`의 동일 팀/이름 복수 `player_id`를 local game-level evidence와 비교합니다. 두 DB 모두 read-only이며, 기본 대상은 duplicate 영향도가 높은 상위 3개 팀입니다.
-
-```bash
-# 상위 3개 팀 파일럿 보고서 생성
-OCI_DB_URL="$OCI_DB_URL" DATABASE_URL="sqlite:///./data/kbo_dev.db" \
-./venv/bin/python -m scripts.maintenance.oci_2021_identity_audit \
-  --year 2021 --pilot-limit 3 \
-  --output data/audit/oci_2021_identity_audit_pilot.json \
-  --exact-overrides-output data/audit/oci_2021_identity_exact_candidates.csv
-
-# 특정 팀만 파일럿
-./venv/bin/python -m scripts.maintenance.oci_2021_identity_audit \
-  --year 2021 --team LT --team LG --team SSG \
-  --output data/audit/oci_2021_identity_pilot_3teams.json
-```
-
-`exact` 후보 CSV는 검토용 산출물이며 `data/player_id_overrides.csv`에 자동 병합하지 않습니다. `ambiguous`와 `unresolved`는 override로 승격하지 않습니다.
-
-```bash
-# 전체 302개 그룹 확장 audit
-./venv/bin/python -m scripts.maintenance.oci_2021_identity_audit \
-  --year 2021 --pilot-limit 10 \
-  --output data/audit/oci_2021_identity_audit_full.json \
-  --exact-overrides-output data/audit/oci_2021_identity_exact_candidates_full.csv
-
-# Exact/season evidence 검토 CSV 생성
-./venv/bin/python -m scripts.maintenance.review_exact_candidates \
-  --audit-json data/audit/oci_2021_identity_audit_full.json \
-  --output-csv data/audit/oci_2021_identity_candidates_review.csv
-
-# 사람이 decision=approve로 표시한 행만 override에 append
-./venv/bin/python -m scripts.maintenance.review_exact_candidates \
-  --apply \
-  --approved-csv data/audit/oci_2021_identity_candidates_review.csv
-```
-
-### 13. OCI 이닝 보완 Migration
-local `player_season_pitching`의 양수 이닝을 동일 logical key로 우선 매칭하고, OCI legacy ID와 local ID가 다르면 정확히 하나의 local `(player_name, team_code)` game 또는 season evidence가 있을 때만 fallback합니다. 기본은 dry-run입니다.
-
-```bash
-# 박관진/강경학 기본 대상 dry-run
-./venv/bin/python -m scripts.maintenance.backfill_oci_innings \
-  --year 2021 \
-  --output data/audit/oci_2021_innings_backfill.json
-
-# 보고서 확인 후 명시적으로 적용
-./venv/bin/python -m scripts.maintenance.backfill_oci_innings \
-  --year 2021 --apply \
-  --output data/audit/oci_2021_innings_backfill_apply.json
-```
-
-`--apply`는 단일 transaction으로 계획된 행만 수정합니다. 양수 target 값과 local 값이 다르거나 local identity가 여러 개면 `conflict`로 남기며, 보고서의 before/after/rollback 정보 없이는 자동 수정하지 않습니다.
-
-### 14. Quality Gate Baseline
-OCI-only 운영 baseline과 local/OCI divergence 설명은 `Docs/references/QUALITY_GATE_BASELINE.md`에 기록합니다. baseline을 올려도 required-zero 검사와 regression-pack 실패는 계속 blocking입니다.
+### 12. Quality Gate Baseline
+운영 baseline은 `Docs/references/QUALITY_GATE_BASELINE.md`에 기록합니다. baseline을 올려도 required-zero 검사와 regression-pack 실패는 계속 blocking입니다.
 
 ---
 
@@ -836,8 +727,8 @@ print(get_team_code('MBC청룡', 1985))  # LG 트윈스로 매핑
 print(get_team_code('해태타이거즈', 1990))  # KIA 타이거즈로 매핑
 "
 
-# OCI 팀/시즌 기준 데이터 확인
-./venv/bin/python3 scripts/check_oci_summary.py
+# 팀/시즌 기준 데이터 확인
+./venv/bin/python3 -m src.cli.check_data_status
 ```
 
 ### 크롤러 장애 자동 진단 (Failure Diagnosis)
@@ -880,8 +771,6 @@ python3 -m src.cli.diagnose_crawler_failure logs/crawler_error.log --json
     --years 2020-2025 \
     --concurrency 5
 
-# OCI 변경분 중심 동기화
-./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
 ```
 
 ### 데이터 분석
@@ -982,10 +871,9 @@ export DATABASE_URL="sqlite:///./data/kbo_dev.db"
 ```bash
 # PostgreSQL 연결
 export DATABASE_URL="postgresql://user:pass@localhost:5432/kbo_prod"
-export OCI_DB_URL="postgresql://user:pass@oci-host:5432/bega_backend"
 
 # 안정적인 크롤링
-./crawl_clean_and_sync.sh
+python3 -m src.cli.run_daily_update
 ```
 
 ### Docker 환경

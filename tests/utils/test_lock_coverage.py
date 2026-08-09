@@ -11,8 +11,6 @@ from src.utils.lock import HAS_FCNTL, ForceProcessLock, LockAcquisitionError, Pr
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("OCI_DB_URL", raising=False)
-    monkeypatch.delenv("TARGET_DATABASE_URL", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
 
@@ -113,6 +111,8 @@ class TestAcquirePgLockReturnsFalse:
             assert result is True
 
 
+@pytest.mark.skipif(not HAS_FCNTL, reason="fcntl file-lock behavior is unavailable on Windows")
+@pytest.mark.skipif(not HAS_FCNTL, reason="file-lock backend requires fcntl")
 class TestAcquireFileLock:
     def test_acquire_file_lock_success(self, tmp_path: Path) -> None:
         lock = ProcessLock("test_file", lock_dir=str(tmp_path), blocking=False)
@@ -188,6 +188,8 @@ class TestReleasePgLock:
             assert lock.db_connection is None
 
 
+@pytest.mark.skipif(not HAS_FCNTL, reason="fcntl file-lock behavior is unavailable on Windows")
+@pytest.mark.skipif(not HAS_FCNTL, reason="file-lock backend requires fcntl")
 class TestReleaseFileLock:
     def test_release_file_lock_error(self, tmp_path: Path) -> None:
         lock = ProcessLock("test_rel_file", lock_dir=str(tmp_path), blocking=False)
