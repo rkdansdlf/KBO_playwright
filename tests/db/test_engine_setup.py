@@ -14,8 +14,6 @@ from src.db.engine import (
     create_engine_for_url,
     get_database_type,
     get_db_session,
-    get_oci_url,
-    get_source_db_url,
     init_db,
 )
 
@@ -167,35 +165,6 @@ class TestInitDb:
         mock_core.assert_called_once()
         mock_status_col.assert_called_once()
         mock_identity.assert_called_once()
-
-
-class TestGetOciUrl:
-    @patch("src.db.engine.os.getenv")
-    def test_oci_db_url(self, mock_getenv):
-        mock_getenv.side_effect = lambda k, d=None: "postgresql://oci/db" if k == "OCI_DB_URL" else d
-        assert get_oci_url() == "postgresql://oci/db"
-
-    @patch("src.db.engine.os.getenv")
-    def test_target_db_url(self, mock_getenv):
-        mock_getenv.side_effect = lambda k, d=None: "postgresql://target/db" if k == "TARGET_DATABASE_URL" else d
-        assert get_oci_url() == "postgresql://target/db"
-
-    @patch("src.db.engine.os.getenv", return_value=None)
-    def test_no_url(self, mock_getenv):
-        assert get_oci_url() is None
-
-
-class TestGetSourceDbUrl:
-    @patch("src.db.engine.os.getenv")
-    def test_custom_url(self, mock_getenv):
-        mock_getenv.return_value = "sqlite:///custom.db"
-        assert get_source_db_url() == "sqlite:///custom.db"
-
-    @patch("src.db.engine.os.getenv")
-    def test_default_url(self, mock_getenv):
-        mock_getenv.side_effect = lambda k, d=None: d
-        result = get_source_db_url()
-        assert result == "sqlite:///./data/kbo_dev.db"
 
 
 class TestModuleLevel:

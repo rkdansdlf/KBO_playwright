@@ -16,11 +16,9 @@ from urllib.parse import quote_plus, unquote, urlsplit
 
 from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
-from sqlalchemy import ForeignKeyConstraint, create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.types import Time
 
 from src.db.sqlite_integrity import is_sqlite_corruption_error
 
@@ -31,24 +29,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-os.environ["ORA_SDTZ"] = "+09:00"
-
-try:
-    from sqlalchemy.dialects.oracle.cx_oracle import OracleDialect_cx_oracle
-
-    OracleDialect_cx_oracle._detect_decimal_char = lambda *_: "."  # noqa: SLF001
-except ImportError:
-    pass
-
-try:
-    from sqlalchemy.dialects.oracle.oracledb import OracleDialect_oracledb
-
-    OracleDialect_oracledb._detect_decimal_char = lambda *_: "."  # noqa: SLF001
-except ImportError:
-    pass
-
-# outputtypehandler removed, using defer() strategy instead
-
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
@@ -56,69 +36,38 @@ DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 DB_SESSION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 
 
-def _install_oracle_json_compiler() -> None:
-    """Provide JSON-to-CLOB compilation for SQLAlchemy Oracle dialects."""
+def normalize_oracle_url(url: str) -> str:
+    """Normalize Oracle connection URL, canonicalizing percent-encoding in credentials."""
+    if not url or not url.startswith("oracle"):
+        return url
     try:
-        from sqlalchemy.dialects.oracle.base import OracleTypeCompiler
-    except ImportError:
-        logger.debug("Oracle dialect is unavailable")
-        return
+        parts = urlsplit(url)
+        if not parts.netloc or "@" not in parts.netloc:
+            return url
+        auth, host = parts.netloc.rsplit("@", 1)
+        if ":" not in auth:
+            return url
+        user, password = auth.split(":", 1)
+        decoded = unquote(password)
+        encoded = quote_plus(decoded)
 
-    if hasattr(OracleTypeCompiler, "visit_JSON"):
-        return
+        # Upper-case percent-encoded hex sequences (e.g. %2f -> %2F)
+        res = []
+        idx = 0
+        while idx < len(encoded):
+            if encoded[idx] == "%" and idx + 2 < len(encoded):
+                res.append(encoded[idx : idx + 3].upper())
+                idx += 3
+            else:
+                res.append(encoded[idx])
+                idx += 1
 
-    def _visit_json(_compiler: object, _type: object, **_kwargs: object) -> str:
-        return "CLOB"
-
-    OracleTypeCompiler.visit_JSON = _visit_json  # type: ignore[attr-defined]
-
-
-_install_oracle_json_compiler()
-
-
-def _install_oracle_fk_restrict_compiler() -> None:
-    """Ignore ON DELETE RESTRICT clause for Oracle foreign keys (Oracle's default)."""
-    try:
-        from sqlalchemy.dialects.oracle.base import OracleDDLCompiler
-    except ImportError:
-        logger.debug("Oracle dialect is unavailable")
-        return
-
-    current_visit_fk = OracleDDLCompiler.visit_foreign_key_constraint
-    if getattr(current_visit_fk, "_kbo_fk_restrict_patch", False):
-        return
-
-    orig_visit_fk = current_visit_fk
-
-    def patch_visit_fk(compiler: object, constraint: ForeignKeyConstraint, **kw: object) -> str:
-        old_ondelete = constraint.ondelete
-        if isinstance(old_ondelete, str) and old_ondelete.upper() == "RESTRICT":
-            constraint.ondelete = None
-        try:
-            return orig_visit_fk(compiler, constraint, **kw)
-        finally:
-            constraint.ondelete = old_ondelete
-
-    patch_visit_fk._kbo_fk_restrict_patch = True  # noqa: SLF001  # type: ignore[attr-defined]
-    OracleDDLCompiler.visit_foreign_key_constraint = patch_visit_fk  # type: ignore[method-assign]
+        netloc = f"{user}:{''.join(res)}@{host}"
+        return parts._replace(netloc=netloc).geturl()
+    except (ValueError, IndexError, TypeError):
+        return url
 
 
-_install_oracle_fk_restrict_compiler()
-
-
-@compiles(Time, "oracle")
-def _compile_time_oracle(_type: Time, _compiler: object, **_kw: object) -> str:
-    return "DATE"
-
-
-def get_oci_url() -> str | None:
-    """Resolve the OCI/Target database URL from environment variables."""
-    return os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
-
-
-def get_source_db_url() -> str:
-    """Resolve the source/local database URL (with SQLite default)."""
-    return os.getenv("SOURCE_DATABASE_URL", "sqlite:///./data/kbo_dev.db")
 
 
 def _is_sqlite(url: str | None) -> bool:
@@ -138,150 +87,180 @@ def _normalize_sqlite_synchronous(value: str | None) -> str:
 SQLITE_SYNCHRONOUS = _normalize_sqlite_synchronous(os.getenv("SQLITE_SYNCHRONOUS", "NORMAL"))
 
 
-def normalize_oracle_url(url: str) -> str:
-    """Normalize an Oracle URL while preserving encoded credentials."""
-    if not url.startswith("oracle+oracledb://"):
-        return url
-    try:
-        rest = url.split("oracle+oracledb://", 1)[1]
-        auth_part, dsn = rest.rsplit("@", 1)
-        if ":" in auth_part:
-            user, password = auth_part.split(":", 1)
-            encoded_password = quote_plus(unquote(password))
-            return f"oracle+oracledb://{user}:{encoded_password}@{dsn}"
-    except (IndexError, ValueError):
-        logger.debug("Could not normalize Oracle URL")
-    return url
-
-
-def _oracle_connect_args(url: str) -> dict[str, Any]:
-    tns_admin = os.getenv("TNS_ADMIN")
-    if not tns_admin:
-        return {}
-
-    connect_args: dict[str, Any] = {"config_dir": tns_admin, "wallet_location": tns_admin}
-    try:
-        parsed = urlsplit(url)
-        if parsed.password:
-            password = unquote(parsed.password)
-            connect_args["wallet_password"] = password
-        if parsed.username and parsed.password and parsed.hostname and parsed.path in {"", "/"}:
-            connect_args.update(
-                {
-                    "user": unquote(parsed.username),
-                    "password": password,
-                    "dsn": parsed.hostname,
-                },
-            )
-    except (IndexError, ValueError):
-        logger.debug("Could not parse Oracle wallet credentials from URL")
-    return connect_args
-
-
 def _custom_json_deserializer(val: object) -> object:
-    """Safely deserialize JSON string, falling back to postgres-style string array parsing."""
+    """Deserialize JSON strings or Postgres-style string arrays."""
     if not val:
         return val
-    if isinstance(val, (str, bytes, bytearray)):
+    val_str = str(val).strip()
+    if val_str.startswith('{"') and val_str.endswith('"}') and ":" not in val_str:
+        return [e.strip(' "') for e in val_str[1:-1].split(",")]
+    try:
+        return json.loads(val_str)
+    except json.JSONDecodeError:
+        return val
+
+
+def _install_oracle_json_compiler() -> None:
+    """Ensure Oracle dialect compiles JSON column types as CLOB."""
+    try:
+        from sqlalchemy.dialects.oracle.base import OracleTypeCompiler
+
+        if not hasattr(OracleTypeCompiler, "visit_JSON"):
+
+            def visit_JSON(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
+                return "CLOB"
+
+            OracleTypeCompiler.visit_JSON = visit_JSON
+    except ImportError:
+        pass
+
+
+_oracle_fk_restrict_compiler_installed = False
+
+
+def _install_oracle_fk_restrict_compiler() -> None:
+    """Omit ON DELETE RESTRICT clause for Oracle foreign keys as Oracle doesn't support RESTRICT keyword."""
+    global _oracle_fk_restrict_compiler_installed  # noqa: PLW0603
+    if _oracle_fk_restrict_compiler_installed:
+        return
+    try:
+        from sqlalchemy.dialects.oracle.base import OracleDDLCompiler
+
+        orig_visit_fk = OracleDDLCompiler.visit_foreign_key_constraint
+
+        def visit_foreign_key_constraint(self: Any, constraint: Any, **kw: Any) -> str:  # noqa: ANN401
+            original_ondelete = constraint.ondelete
+            if original_ondelete and str(original_ondelete).upper() == "RESTRICT":
+                constraint.ondelete = None
+            try:
+                res = orig_visit_fk(self, constraint, **kw)
+            finally:
+                constraint.ondelete = original_ondelete
+            return res
+
+        OracleDDLCompiler.visit_foreign_key_constraint = visit_foreign_key_constraint
+        _oracle_fk_restrict_compiler_installed = True
+    except ImportError:
+        pass
+
+
+def _create_sqlite_engine(url: str, *, sqlite_synchronous: str | None = None) -> SQLAlchemyEngine:
+    """Create a SQLite engine and register the connection pragmas."""
+    synchronous_mode = _normalize_sqlite_synchronous(sqlite_synchronous or SQLITE_SYNCHRONOUS)
+    engine = create_engine(
+        url,
+        connect_args={"check_same_thread": False, "timeout": 120},
+        pool_pre_ping=True,
+        echo=False,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_con: sqlite3.Connection, _: object) -> None:
         try:
-            return json.loads(val)
-        except json.JSONDecodeError:
-            pass
-    if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
-        inner = val[1:-1].strip()
-        if not inner:
-            return []
-        parts = []
-        for x in inner.split(","):
-            x = x.strip()
-            if (x.startswith('"') and x.endswith('"')) or (x.startswith("'") and x.endswith("'")):
-                x = x[1:-1]
-            parts.append(x)
-        return parts
-    return val
+            cursor = dbapi_con.cursor()
+            cursor.execute("PRAGMA foreign_keys = ON;")
+            # NOTE: journal_mode = WAL is set once during init_db() via
+            # _ensure_wal_mode(), NOT per-connection. Setting it here caused
+            # exclusive-lock contention in multi-threaded environments
+            # (sqlite3.OperationalError: database is locked).
+            cursor.execute("PRAGMA busy_timeout = 120000;")
+            if synchronous_mode == "FULL":
+                cursor.execute("PRAGMA synchronous = FULL;")
+            else:
+                cursor.execute("PRAGMA synchronous = NORMAL;")
+            cursor.execute("PRAGMA cache_size = -64000;")  # 64MB page cache
+            cursor.execute("PRAGMA mmap_size = 268435456;")  # 256MB memory-mapped I/O
+            cursor.execute("PRAGMA temp_store = MEMORY;")  # temp tables in memory
+            cursor.execute("PRAGMA wal_autocheckpoint = 1000;")  # checkpoint every 1000 pages
+            cursor.close()
+        except sqlite3.Error:
+            logger.warning("Failed to configure SQLite pragmas")
+
+    return engine
+
+
+def _parse_oracle_connection(url: str, tns_admin: str | None) -> tuple[str, dict[str, Any]]:
+    """Build an Oracle target URL and wallet connection arguments."""
+    normalized = normalize_oracle_url(url)
+    connect_args: dict[str, Any] = {}
+    target_url = normalized
+
+    try:
+        parts = urlsplit(normalized)
+        auth = parts.netloc.split("@")[0] if "@" in parts.netloc else ""
+        host_part = parts.netloc.split("@")[1] if "@" in parts.netloc else parts.netloc
+        user = password = None
+        if ":" in auth:
+            user, password_enc = auth.split(":", 1)
+            password = unquote(password_enc)
+
+        if tns_admin:
+            connect_args["config_dir"] = tns_admin
+            connect_args["wallet_location"] = tns_admin
+            if password:
+                connect_args["wallet_password"] = password
+
+        if not parts.path or parts.path == "/":
+            target_url = f"{parts.scheme}://@"
+            if user:
+                connect_args["user"] = user
+            if password:
+                connect_args["password"] = password
+            connect_args["dsn"] = host_part
+    except (ValueError, IndexError, AttributeError):
+        pass
+
+    return target_url, connect_args
 
 
 def _create_oracle_engine(url: str) -> SQLAlchemyEngine:
-    normalized_url = normalize_oracle_url(url)
-    connect_args = _oracle_connect_args(url)
-    engine_url = "oracle+oracledb://@" if "dsn" in connect_args else normalized_url
-    engine = create_engine(
-        engine_url,
+    """Create an Oracle engine with wallet and dialect compatibility settings."""
+    _install_oracle_json_compiler()
+    _install_oracle_fk_restrict_compiler()
+    target_url, connect_args = _parse_oracle_connection(url, os.getenv("TNS_ADMIN"))
+
+    extra_kwargs: dict[str, Any] = {}
+    if connect_args:
+        extra_kwargs["connect_args"] = connect_args
+
+    eng = create_engine(
+        target_url,
         pool_pre_ping=True,
         pool_size=2,
         max_overflow=2,
         echo=False,
-        connect_args=connect_args,
+        **extra_kwargs,
     )
-
-    if isinstance(engine, SQLAlchemyEngine):
-
-        @event.listens_for(engine, "connect")
-        def _oracle_connections(dbapi_con: Any, _: object) -> None:  # noqa: ANN401
-            try:
-                cursor = dbapi_con.cursor()
-                cursor.execute("ALTER SESSION SET TIME_ZONE = '+09:00'")
-                cursor.execute("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'")
-                cursor.execute("ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF'")
-                cursor.close()
-            except Exception as e:  # noqa: BLE001, RUF100
-                logger.warning("Failed to set Oracle session time zone pragmas", exc_info=e)
-
-    engine.dialect._json_deserializer = _custom_json_deserializer  # noqa: SLF001
-    return engine
+    if hasattr(eng, "dialect"):
+        eng.dialect._json_deserializer = _custom_json_deserializer  # noqa: SLF001
+    return eng
 
 
 def create_engine_for_url(
     url: str,
     *,
-    disable_sqlite_wal: bool = False,
+    disable_sqlite_wal: bool = False,  # noqa: ARG001
     sqlite_synchronous: str | None = None,
 ) -> SQLAlchemyEngine:
     """Create engine for url.
 
-        Args:
-            url: Url.
-            disable_sqlite_wal: Disable Sqlite Wal.
-            sqlite_synchronous: SQLite durability mode (``FULL`` or ``NORMAL``).
-            url: Url.
-        disable_sqlite_wal: Disable Sqlite Wal.
+    Args:
         url: Url.
+        disable_sqlite_wal: Disable Sqlite Wal.
+        sqlite_synchronous: SQLite durability mode (``FULL`` or ``NORMAL``).
 
     Returns:
         SQLAlchemyEngine instance.
 
     """
     if _is_sqlite(url):
-        synchronous_mode = _normalize_sqlite_synchronous(sqlite_synchronous or SQLITE_SYNCHRONOUS)
-        engine = create_engine(
-            url,
-            connect_args={"check_same_thread": False, "timeout": 120},
-            pool_pre_ping=True,
-            echo=False,
-        )
-
-        @event.listens_for(engine, "connect")
-        def _sqlite_pragmas(dbapi_con: sqlite3.Connection, _: object) -> None:
-            try:
-                cursor = dbapi_con.cursor()
-                cursor.execute("PRAGMA foreign_keys = ON;")
-                if not disable_sqlite_wal:
-                    cursor.execute("PRAGMA journal_mode = WAL;")
-                cursor.execute("PRAGMA busy_timeout = 120000;")
-                if synchronous_mode == "FULL":
-                    cursor.execute("PRAGMA synchronous = FULL;")
-                else:
-                    cursor.execute("PRAGMA synchronous = NORMAL;")
-                cursor.close()
-            except sqlite3.Error:
-                logger.warning("Failed to configure SQLite pragmas")
-
-        return engine
+        return _create_sqlite_engine(url, sqlite_synchronous=sqlite_synchronous)
 
     if url.startswith("oracle"):
         return _create_oracle_engine(url)
 
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
+
 
 
 Engine = create_engine_for_url(
@@ -320,8 +299,6 @@ def get_database_type() -> str:
         return "mysql"
     if DATABASE_URL.startswith("postgresql"):
         return "postgresql"
-    if DATABASE_URL.startswith("oracle"):
-        return "oracle"
     return "unknown"
 
 
@@ -338,6 +315,42 @@ def _ensure_player_batting_team_code_column() -> None:
                 conn.exec_driver_sql("ALTER TABLE player_season_batting RENAME COLUMN team_id TO team_code;")
     except SQLAlchemyError as exc:
         logger.warning("Could not migrate player_season_batting.team_id column: %s", exc)
+
+
+def _ensure_source_capture_columns() -> None:
+    """Ensure raw source snapshots can retain immutable capture metadata on SQLite."""
+    if not _is_sqlite(DATABASE_URL):
+        return
+    try:
+        with Engine.begin() as conn:
+            info_rows = conn.exec_driver_sql("PRAGMA table_info(raw_source_snapshots);").fetchall()
+            column_names = {row[1] for row in info_rows}
+            if not column_names:
+                return
+            if "source_url" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE raw_source_snapshots ADD COLUMN source_url VARCHAR(1000);")
+            if "content_type" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE raw_source_snapshots ADD COLUMN content_type VARCHAR(100);")
+            if "raw_size" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE raw_source_snapshots ADD COLUMN raw_size INTEGER;")
+            if "capture_metadata" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE raw_source_snapshots ADD COLUMN capture_metadata JSON;")
+    except SQLAlchemyError as exc:
+        logger.warning("Could not ensure source capture columns: %s", exc)
+
+
+def _ensure_relay_full_hash_column() -> None:
+    """Ensure relay metrics retain the full payload hash on SQLite."""
+    if not _is_sqlite(DATABASE_URL):
+        return
+    try:
+        with Engine.begin() as conn:
+            info_rows = conn.exec_driver_sql("PRAGMA table_info(game_validation_metrics);").fetchall()
+            column_names = {row[1] for row in info_rows}
+            if column_names and "payload_hash_full" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE game_validation_metrics ADD COLUMN payload_hash_full VARCHAR(64);")
+    except SQLAlchemyError as exc:
+        logger.warning("Could not ensure relay full hash column: %s", exc)
 
 
 def _ensure_player_basic_status_columns() -> None:
@@ -478,7 +491,7 @@ def _migrate_game_table(conn: Connection) -> None:
             home_franchise_id, away_franchise_id, winning_franchise_id, is_primary,
             created_at, updated_at
         )
-        SELECT
+                    SELECT
             game_id,
             game_date,
             stadium,
@@ -551,6 +564,47 @@ def _migrate_game_summary_table(conn: Connection) -> None:
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
 
+def _ensure_stat_recalc_view(engine: SQLAlchemyEngine | None = None) -> None:
+    """Ensure vw_player_season_batting_recalc view exists."""
+    target_engine = engine or Engine
+    try:
+        with target_engine.begin() as conn:
+            inspector = inspect(conn)
+            existing_objects = set(inspector.get_table_names()) | set(inspector.get_view_names())
+            if "vw_player_season_batting_recalc" in existing_objects:
+                return
+            conn.exec_driver_sql(
+                """
+                CREATE VIEW vw_player_season_batting_recalc AS
+                SELECT
+                    b.player_id,
+                    b.player_name,
+                    g.season_id AS season,
+                    b.team_code,
+                    COUNT(DISTINCT b.game_id) AS games,
+                    SUM(COALESCE(b.plate_appearances, 0)) AS plate_appearances,
+                    SUM(COALESCE(b.at_bats, 0)) AS at_bats,
+                    SUM(COALESCE(b.runs, 0)) AS runs,
+                    SUM(COALESCE(b.hits, 0)) AS hits,
+                    SUM(COALESCE(b.doubles, 0)) AS doubles,
+                    SUM(COALESCE(b.triples, 0)) AS triples,
+                    SUM(COALESCE(b.home_runs, 0)) AS home_runs,
+                    SUM(COALESCE(b.rbi, 0)) AS rbi,
+                    SUM(COALESCE(b.walks, 0)) AS walks,
+                    SUM(COALESCE(b.strikeouts, 0)) AS strikeouts,
+                    CASE WHEN SUM(COALESCE(b.at_bats, 0)) > 0
+                         THEN ROUND(CAST(SUM(COALESCE(b.hits, 0)) AS NUMERIC) / SUM(COALESCE(b.at_bats, 0)), 3)
+                         ELSE 0.0 END AS avg
+                FROM game_batting_stats b
+                JOIN game g ON b.game_id = g.game_id
+                WHERE b.player_id IS NOT NULL
+                GROUP BY b.player_id, b.player_name, g.season_id, b.team_code;
+                """
+            )
+    except SQLAlchemyError as exc:
+        logger.warning("Could not ensure vw_player_season_batting_recalc view: %s", exc)
+
+
 def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
     """Initialize db."""
@@ -569,8 +623,11 @@ def init_db() -> None:
         raise
 
     _ensure_player_batting_team_code_column()
+    _ensure_source_capture_columns()
+    _ensure_relay_full_hash_column()
     _ensure_player_basic_status_columns()
     _ensure_game_core_tables()
     _ensure_game_status_column()
     _ensure_game_identity_columns()
+    _ensure_stat_recalc_view()
     logger.info("[DB] Database initialized: %s", DATABASE_URL)

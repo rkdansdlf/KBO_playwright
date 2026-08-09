@@ -13,6 +13,7 @@ from src.db.engine import (
     _ensure_game_status_column,
     _ensure_player_basic_status_columns,
     _ensure_player_batting_team_code_column,
+    _ensure_stat_recalc_view,
     _is_sqlite,
     init_db,
 )
@@ -115,6 +116,36 @@ class TestEnsurePlayerBasicStatusColumns:
         with patch("src.db.engine.Engine", inmem_engine):
             with patch("src.db.engine.DATABASE_URL", "sqlite:///:memory:"):
                 _ensure_player_basic_status_columns()
+
+
+class TestEnsureStatRecalcView:
+    def test_creates_view_and_is_idempotent(self, inmem_engine):
+        with patch("src.db.engine.Engine", inmem_engine):
+            _ensure_stat_recalc_view()
+            _ensure_stat_recalc_view()
+
+        with inmem_engine.connect() as connection:
+            views = connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'view'").scalars().all()
+        assert views == ["vw_player_season_batting_recalc"]
+
+    def test_postgres_uses_standard_create_view(self):
+        connection = MagicMock()
+        connection.dialect.name = "postgresql"
+        engine = MagicMock()
+        engine.begin.return_value.__enter__.return_value = connection
+        inspector = MagicMock()
+        inspector.get_table_names.return_value = []
+        inspector.get_view_names.return_value = []
+
+        with (
+            patch("src.db.engine.Engine", engine),
+            patch("src.db.engine.inspect", return_value=inspector),
+        ):
+            _ensure_stat_recalc_view()
+
+        sql = connection.exec_driver_sql.call_args.args[0]
+        assert "CREATE VIEW IF NOT EXISTS" not in sql
+        assert "CREATE VIEW vw_player_season_batting_recalc" in sql
 
 
 class TestEnsureGameStatusColumn:
