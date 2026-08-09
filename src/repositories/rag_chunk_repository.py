@@ -37,7 +37,7 @@ class RagChunkRepository:
             meta = chunk_data.get("meta", {})
             embedding = chunk_data.get("embedding")
 
-            source_table = meta.get("category", "unknown")
+            source_table = meta.get("source_table", meta.get("category", "unknown"))
             source_row_id = meta.get("source_row_id", "")
 
             season_year = meta.get("season_year")

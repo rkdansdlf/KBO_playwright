@@ -7,6 +7,7 @@ import json
 import logging
 import os
 from http import HTTPStatus
+from typing import Any
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
@@ -16,6 +17,13 @@ logger = logging.getLogger(__name__)
 EMBEDDING_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 EMBEDDING_HTTP_EXCEPTIONS = (httpx.HTTPError, ValueError, TypeError, RuntimeError, OSError)
 EMBEDDING_NORMALIZATION_EPSILON = 1e-9
+EMBEDDING_TARGET_DIMENSION = 1536
+DEFAULT_OPENROUTER_EMBEDDING_MODEL = "perplexity/pplx-embed-v1-4b"
+
+
+def _is_zero_vector(embedding: list[float]) -> bool:
+    """Return True when every component of the embedding is exactly 0.0."""
+    return bool(embedding) and all(value == 0.0 for value in embedding)
 
 
 class EmbeddingService:
@@ -23,11 +31,13 @@ class EmbeddingService:
 
     def __init__(self) -> None:
         """Initialize a new instance."""
-        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OpenRouter_API_KEY") or os.getenv("GEMINI_API_KEY")  # noqa: SIM112
         if not self.api_key:
-            logger.warning("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
+            logger.warning("⚠️ Warning: OpenRouter_API_KEY is not configured in environment.")
 
-    def adjust_embedding_dimension(self, embedding: list[float], target_dim: int = 256) -> list[float]:
+    def adjust_embedding_dimension(
+        self, embedding: list[float], target_dim: int = EMBEDDING_TARGET_DIMENSION
+    ) -> list[float]:
         """Truncate or pad embedding list to target_dim.
 
         If truncating, L2 normalization is applied.
@@ -73,7 +83,7 @@ class EmbeddingService:
         """
         results = self.get_embeddings_batch([text])
 
-        return results[0] if results else [0.0] * 256
+        return results[0] if results else [0.0] * EMBEDDING_TARGET_DIMENSION
 
     def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for a batch of text strings, utilizing a local SQLite cache.
@@ -100,7 +110,7 @@ class EmbeddingService:
 
     def _model_name(self) -> str:
         if self.api_key and self.api_key.startswith("sk-or-v1-"):
-            return os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small")
+            return os.getenv("EMBEDDING_MODEL", DEFAULT_OPENROUTER_EMBEDDING_MODEL)
         return "models/text-embedding-004"
 
     def _load_cached_embeddings(self, hashes: list[str], model_name: str) -> dict[str, list[float]]:
@@ -121,6 +131,8 @@ class EmbeddingService:
                     if isinstance(emb, str):
                         with contextlib.suppress(json.JSONDecodeError, TypeError):
                             emb = json.loads(emb)
+                    if _is_zero_vector(emb):
+                        continue
                     cached_map[row.text_hash] = emb
         except EMBEDDING_DB_EXCEPTIONS:
             logger.exception("⚠️ Warning: Embedding cache lookup error (continuing without cache)")
@@ -142,8 +154,8 @@ class EmbeddingService:
 
     def _fetch_missing_embeddings(self, missing_texts: list[str]) -> list[list[float]]:
         if not self.api_key:
-            logger.error("❌ GEMINI_API_KEY missing. Returning zero-vectors as fallback.")
-            return [[0.0] * 256 for _ in missing_texts]
+            logger.error("❌ OpenRouter_API_KEY missing. Returning zero-vectors as fallback.")
+            return [[0.0] * EMBEDDING_TARGET_DIMENSION for _ in missing_texts]
         if self.api_key.startswith("sk-or-v1-"):
             raw_embeddings = self._fetch_openrouter_embeddings(missing_texts)
         else:
@@ -162,8 +174,14 @@ class EmbeddingService:
             from src.models.embedding_cache import EmbeddingCache
 
             with SessionLocal() as session:
+                seen: set[str] = set()
                 for idx, emb in enumerate(new_embeddings):
                     text_hash = hashes[missing_indices[idx]]
+                    if text_hash in seen:
+                        continue
+                    seen.add(text_hash)
+                    if _is_zero_vector(emb):
+                        continue
                     existing = session.get(EmbeddingCache, (text_hash, model_name))
                     if not existing:
                         session.add(EmbeddingCache(text_hash=text_hash, model_name=model_name, embedding=emb))
@@ -193,27 +211,57 @@ class EmbeddingService:
 
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
-        # Default to openai/text-embedding-3-small which returns 1536-dimensional vectors
-        model = os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small")
+        # pplx-embed-v1-4b supports MRL-style dimension trimming; other providers may differ
+        model = self._model_name()
 
-        payload = {"model": model, "input": texts, "dimensions": 256}
+        response = self._post_openrouter(
+            url,
+            headers,
+            {"model": model, "input": texts, "dimensions": EMBEDDING_TARGET_DIMENSION},
+        )
 
-        try:
-            with httpx.Client(headers=headers, timeout=30.0) as client:
-                res = client.post(url, json=payload)
-                if res.status_code == HTTPStatus.OK:
-                    data = res.json()
-                    # OpenRouter / OpenAI format: {"data": [{"embedding": [...]}, ...]}
-                    records = data.get("data", [])
-                    # Make sure they are returned in order
-                    sorted_records = sorted(records, key=lambda x: x.get("index", 0))
-                    return [item.get("embedding") for item in sorted_records]
-                logger.error("❌ OpenRouter Embedding API returned status %s: %s", res.status_code, res.text)
-        except EMBEDDING_HTTP_EXCEPTIONS:
-            logger.exception("❌ Exception fetching OpenRouter embeddings")
+        # Some providers reject the OpenAI-style `dimensions` parameter with a 4xx.
+        # Retry without it; adjust_embedding_dimension normalizes the native vector.
+        if response is not None and HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR:
+            logger.warning(
+                "⚠️ OpenRouter embedding API rejected 'dimensions' (status %s) — retrying without it",
+                response.status_code,
+            )
+            response = self._post_openrouter(url, headers, {"model": model, "input": texts})
+
+        if response is None:
+            return [[0.0] * EMBEDDING_TARGET_DIMENSION for _ in texts]
+
+        if response.status_code == HTTPStatus.OK:
+            data = response.json()
+            # OpenRouter / OpenAI format: {"data": [{"embedding": [...]}, ...]}
+            records = data.get("data", [])
+            # Make sure they are returned in order
+            sorted_records = sorted(records, key=lambda x: x.get("index", 0))
+            return [item.get("embedding") for item in sorted_records]
+        logger.error("❌ OpenRouter Embedding API returned status %s: %s", response.status_code, response.text)
 
         # Fallback empty vectors
-        return [[0.0] * 256 for _ in texts]
+        return [[0.0] * EMBEDDING_TARGET_DIMENSION for _ in texts]
+
+    def _post_openrouter(self, url: str, headers: dict[str, str], payload: dict[str, Any]) -> httpx.Response | None:
+        """POST an embedding request to the OpenRouter API.
+
+        Args:
+            url: Url.
+            headers: Headers.
+            payload: Payload.
+
+        Returns:
+            Response, or None when the transport raised an exception.
+
+        """
+        try:
+            with httpx.Client(headers=headers, timeout=30.0) as client:
+                return client.post(url, json=payload)
+        except EMBEDDING_HTTP_EXCEPTIONS:
+            logger.exception("❌ Exception fetching OpenRouter embeddings")
+            return None
 
     def _fetch_google_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Call standard Google Gemini AI Studio Embeddings API.
@@ -232,7 +280,7 @@ class EmbeddingService:
             {
                 "model": "models/text-embedding-004",
                 "content": {"parts": [{"text": text}]},
-                "outputDimensionality": 256,
+                "outputDimensionality": EMBEDDING_TARGET_DIMENSION,
             }
             for text in texts
         ]
@@ -251,5 +299,5 @@ class EmbeddingService:
         except EMBEDDING_HTTP_EXCEPTIONS:
             logger.exception("❌ Exception fetching Google embeddings")
 
-        # Fallback empty vectors (Google text-embedding-004 dimensions = 768, target = 256)
-        return [[0.0] * 256 for _ in texts]
+        # Fallback empty vectors (Google text-embedding-004 dimensions = 768, target = 1536)
+        return [[0.0] * EMBEDDING_TARGET_DIMENSION for _ in texts]

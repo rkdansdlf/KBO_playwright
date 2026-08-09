@@ -32,7 +32,7 @@ class TestModelName:
     def test_openrouter_key(self):
         svc = EmbeddingService()
         svc.api_key = "sk-or-v1-test-key"
-        assert svc._model_name() == "openai/text-embedding-3-small"
+        assert svc._model_name() == "perplexity/pplx-embed-v1-4b"
 
     def test_google_key(self):
         svc = EmbeddingService()
@@ -100,6 +100,19 @@ class TestLoadCachedEmbeddings:
             assert "h1" in result
             assert result["h1"] == [0.1, 0.2, 0.3]
 
+    def test_zero_vector_cache_skipped_and_refetched(self):
+        svc = EmbeddingService()
+        mock_row = MagicMock()
+        mock_row.text_hash = "h1"
+        mock_row.embedding = [0.0, 0.0, 0.0]
+
+        with patch("src.db.engine.SessionLocal") as mock_sl:
+            mock_session = MagicMock()
+            mock_sl.return_value.__enter__.return_value = mock_session
+            mock_session.scalars.return_value.all.return_value = [mock_row]
+            result = svc._load_cached_embeddings(["h1"], "model")
+            assert result == {}
+
 
 class TestSaveCachedEmbeddings:
     def test_exception_handled(self):
@@ -118,6 +131,17 @@ class TestSaveCachedEmbeddings:
             svc._save_cached_embeddings(["h1"], [0], "model", [[0.1, 0.2]])
             mock_session.add.assert_not_called()
 
+    def test_zero_vector_not_saved(self):
+        svc = EmbeddingService()
+        mock_session = MagicMock()
+        mock_session.get.return_value = None
+
+        with patch("src.db.engine.SessionLocal") as mock_sl:
+            mock_sl.return_value.__enter__.return_value = mock_session
+            svc._save_cached_embeddings(["h1"], [0], "model", [[0.0, 0.0]])
+            mock_session.add.assert_not_called()
+            mock_session.commit.assert_called_once()
+
 
 class TestFetchMissingEmbeddings:
     def test_no_api_key_returns_zeros(self):
@@ -130,14 +154,14 @@ class TestFetchMissingEmbeddings:
     def test_openrouter_route(self):
         svc = EmbeddingService()
         svc.api_key = "sk-or-v1-test"
-        with patch.object(svc, "_fetch_openrouter_embeddings", return_value=[[0.1] * 256]):
+        with patch.object(svc, "_fetch_openrouter_embeddings", return_value=[[0.1] * 1536]):
             result = svc._fetch_missing_embeddings(["text"])
             assert len(result) == 1
 
     def test_google_route(self):
         svc = EmbeddingService()
         svc.api_key = "AIza-test"
-        with patch.object(svc, "_fetch_google_embeddings", return_value=[[0.1] * 256]):
+        with patch.object(svc, "_fetch_google_embeddings", return_value=[[0.1] * 1536]):
             result = svc._fetch_missing_embeddings(["text"])
             assert len(result) == 1
 
@@ -147,7 +171,7 @@ class TestGetEmbeddingsBatchWithCache:
         svc = EmbeddingService()
         svc.api_key = None
         with (
-            patch.object(svc, "_load_cached_embeddings", return_value={"h1": [0.1] * 256}),
+            patch.object(svc, "_load_cached_embeddings", return_value={"h1": [0.1] * 1536}),
             patch.object(svc, "_compute_hash", return_value="h1"),
         ):
             result = svc.get_embeddings_batch(["text"])
@@ -165,4 +189,42 @@ class TestFetchOpenRouterException:
         with patch("httpx.Client") as mock_client:
             mock_client.return_value.__enter__.return_value.post.side_effect = httpx.ConnectError("fail")
             result = svc._fetch_openrouter_embeddings(["hello"])
-            assert result == [[0.0] * 256]
+            assert result == [[0.0] * 1536]
+
+    def test_dimensions_accepted_first_attempt(self):
+        svc = EmbeddingService()
+        svc.api_key = "sk-or-v1-test"
+        with patch("httpx.Client") as mock_client:
+            post = mock_client.return_value.__enter__.return_value.post
+            post.return_value = httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.2] * 1536}]})
+            result = svc._fetch_openrouter_embeddings(["hello"])
+            assert result == [[0.2] * 1536]
+            assert post.call_count == 1
+            assert post.call_args_list[0].kwargs["json"]["dimensions"] == 1536
+
+    def test_dimensions_rejected_retries_without_dimensions(self):
+        svc = EmbeddingService()
+        svc.api_key = "sk-or-v1-test"
+        with patch("httpx.Client") as mock_client:
+            post = mock_client.return_value.__enter__.return_value.post
+            rejected = httpx.Response(400, json={"error": {"message": "unknown parameter: dimensions"}})
+            accepted = httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.1] * 1536}]})
+            post.side_effect = [rejected, accepted]
+            result = svc._fetch_openrouter_embeddings(["hello"])
+            assert len(result) == 1
+            assert result[0] == [0.1] * 1536
+            assert post.call_count == 2
+            first_payload = post.call_args_list[0].kwargs["json"]
+            second_payload = post.call_args_list[1].kwargs["json"]
+            assert first_payload["dimensions"] == 1536
+            assert "dimensions" not in second_payload
+
+    def test_server_error_does_not_retry(self):
+        svc = EmbeddingService()
+        svc.api_key = "sk-or-v1-test"
+        with patch("httpx.Client") as mock_client:
+            post = mock_client.return_value.__enter__.return_value.post
+            post.return_value = httpx.Response(500, text="boom")
+            result = svc._fetch_openrouter_embeddings(["hello"])
+            assert result == [[0.0] * 1536]
+            assert post.call_count == 1

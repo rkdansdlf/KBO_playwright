@@ -92,3 +92,23 @@ class TestRagChunkRepository:
         count = repo.upsert_chunks(session, [])
 
         assert count == 0
+
+    def test_upsert_chunks_prefers_explicit_source_table(self):
+        engine = self._engine()
+        self._init_tables(engine)
+        session = self._session(engine)
+        repo = RagChunkRepository()
+
+        repo.upsert_chunks(
+            session,
+            [
+                {
+                    "title": "Regulation",
+                    "content": "content",
+                    "meta": {"category": "rulebook", "source_table": "kbo_regulations", "source_row_id": "r1"},
+                },
+            ],
+        )
+
+        row = session.execute(select(RagChunk)).scalars().one()
+        assert row.source_table == "kbo_regulations"
