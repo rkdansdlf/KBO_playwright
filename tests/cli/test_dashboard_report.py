@@ -21,7 +21,6 @@ from src.cli.dashboard_report import (
     _format_quality_terminal,
     _format_rankings_terminal,
     _format_standings_terminal,
-    _format_sync_terminal,
     _format_team_defense_terminal,
     _format_team_gate_terminal,
     _format_unified_audit_terminal,
@@ -320,10 +319,3 @@ class TestFormatFreshnessTerminal:
         freshness = {"games_total": 10, "games_with_stats": 8, "freshness_pct": 80.0}
         with caplog.at_level(logging.INFO):
             _format_freshness_terminal(freshness)
-
-
-class TestFormatSyncTerminal:
-    def test_with_data(self, caplog):
-        sync = {"synced": 100, "failed": 0, "tables": ["games", "batting"]}
-        with caplog.at_level(logging.INFO):
-            _format_sync_terminal(sync)

@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
-from src.cli.sync_oci import OCISync
 from src.constants import MIN_KBO_PLAYER_ID
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
@@ -26,14 +24,12 @@ SABERMETRICS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeE
 def batch_calculate_sabermetrics(
     years: list[int],
     *,
-    sync_oci: bool = False,
     levels: list[str] | None = None,
 ) -> None:
     """Batches through years and updates all players with advanced Sabermetrics.
 
     Args:
         years: Years.
-        sync_oci: Sync Oci.
         levels: League levels to calculate (e.g. ["KBO1", "KBO2"]).
 
     """
@@ -107,19 +103,6 @@ def batch_calculate_sabermetrics(
 
                 session.commit()
 
-    if sync_oci:
-        logger.info("🚀 Syncing updated Sabermetrics to OCI...")
-        target_url = os.getenv("OCI_DB_URL")
-        if target_url:
-            with SessionLocal() as session:
-                syncer = OCISync(target_url, session)
-                syncer.sync_player_season_batting()
-                syncer.sync_player_season_pitching()
-            logger.info("✅ Sync complete.")
-        else:
-            logger.warning("⚠️ OCI_DB_URL not set, skipping sync.")
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the main entry point for this CLI command.
 
@@ -130,7 +113,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calculate Sabermetrics for players.")
 
     parser.add_argument("--years", type=str, default="2020-2026")
-    parser.add_argument("--sync", action="store_true", help="Sync results to OCI")
     parser.add_argument(
         "--level",
         type=str,
@@ -148,7 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     levels = ["KBO1", "KBO2"] if args.level == "all" else [args.level]
 
-    batch_calculate_sabermetrics(target_years, sync_oci=args.sync, levels=levels)
+    batch_calculate_sabermetrics(target_years, levels=levels)
     return 0
 
 

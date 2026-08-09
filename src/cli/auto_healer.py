@@ -113,6 +113,57 @@ def _find_pa_formula_inconsistent_games() -> list[Game]:
         return list(session.execute(stmt).scalars().all())
 
 
+def _find_season_stat_discrepancies() -> list[int]:
+    """Return list of season years where player_season_batting differs from recalculated view."""
+    from src.db.engine import init_db
+
+    query = text(
+        """
+        SELECT DISTINCT v.season
+        FROM vw_player_season_batting_recalc v
+        JOIN player_season_batting p ON v.player_id = p.player_id AND v.season = p.season
+        WHERE (v.hits != COALESCE(p.hits, 0)
+            OR v.home_runs != COALESCE(p.home_runs, 0)
+            OR v.runs != COALESCE(p.runs, 0)
+            OR v.rbi != COALESCE(p.rbi, 0)
+            OR v.plate_appearances != COALESCE(p.plate_appearances, 0))
+    """,
+    )
+    try:
+        init_db()
+        with SessionLocal() as session:
+            seasons = session.execute(query).scalars().all()
+            return [int(s) for s in seasons if s is not None] if seasons else []
+    except (SQLAlchemyError, OSError) as exc:
+        logger.warning("Discrepancy check via view failed: %s", exc)
+        return []
+
+
+def heal_season_stat_discrepancies(*, dry_run: bool = False) -> int:
+    """Detect and trigger player season stat recalculation for inconsistent seasons."""
+    discrepant_seasons = _find_season_stat_discrepancies()
+    if not discrepant_seasons:
+        logger.info("No season stat discrepancies detected via DB View.")
+        return 0
+
+    logger.warning("Found season stat discrepancies for seasons: %s", discrepant_seasons)
+    if dry_run:
+        logger.info("[Dry Run] Would trigger recalc_player_stats for seasons: %s", discrepant_seasons)
+        return len(discrepant_seasons)
+
+    from src.cli.recalc_player_stats import recalc_season
+    fixed_count = 0
+    for season in discrepant_seasons:
+        try:
+            logger.info("Auto-healing player season stats for season %s...", season)
+            recalc_season(season, dry_run=False)
+            fixed_count += 1
+        except Exception:
+            logger.exception("Failed to auto-heal season stats for season %s", season)
+
+    return fixed_count
+
+
 def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> str:
     """Apply status repair based on one shared collection result item.
 
@@ -664,6 +715,11 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
         help="PA 공식(PA = AB+BB+HBP+SH+SF) 검증 실패 게임 복구 모드 실행",
     )
     parser.add_argument(
+        "--discrepancy-check",
+        action="store_true",
+        help="Check and heal season stat discrepancies via DB View",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Report anomalies without fixing",
@@ -687,6 +743,10 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.discrepancy_check:
+        healed = heal_season_stat_discrepancies(dry_run=args.dry_run)
+        return 0 if healed == 0 else 1
+
     if args.pbp:
         return run_pbp_healer(
             [
@@ -700,7 +760,9 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
     kwargs: dict[str, Any] = {"dry_run": args.dry_run, "reset_checkpoint": args.reset}
     if args.pa_formula and args.game_id:
         kwargs["target_game_ids"] = args.game_id
-    return asyncio.run(run_healer_async(**kwargs))
+    res = asyncio.run(run_healer_async(**kwargs))
+    heal_season_stat_discrepancies(dry_run=args.dry_run)
+    return res
 
 
 def main(argv: Sequence[str] | None = None) -> int:

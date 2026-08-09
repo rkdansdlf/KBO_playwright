@@ -376,7 +376,6 @@ class TestRunLiveCrawlerCycleSharding:
 
         result = asyncio.run(
             live_crawler.run_live_crawler_cycle(
-                sync_to_oci=False,
                 max_active_games=1,
                 detail_snapshot_background=True,
             ),
@@ -470,123 +469,10 @@ class TestRunLiveCrawlerCycleSharding:
         monkeypatch.setattr(live_crawler, "save_game_snapshot", lambda *args, **kwargs: True)
         monkeypatch.setattr(live_crawler, "write_refresh_manifest", lambda **kwargs: "manifest.json")
 
-        asyncio.run(live_crawler.run_live_crawler_cycle(sync_to_oci=False, max_active_games=1))
-        asyncio.run(live_crawler.run_live_crawler_cycle(sync_to_oci=False, max_active_games=1))
+        asyncio.run(live_crawler.run_live_crawler_cycle(max_active_games=1))
+        asyncio.run(live_crawler.run_live_crawler_cycle(max_active_games=1))
 
         assert crawled_game_ids == ["20260531AABB0", "20260531CCDD0"]
-
-    def test_oci_sync_failure_isolated_per_game(self, monkeypatch):
-        class _FrozenDateTime:
-            @staticmethod
-            def now(tz=None):
-                return datetime(2026, 5, 31, 20, 46, 0, tzinfo=ZoneInfo("Asia/Seoul"))
-
-        class _FakeScheduleCrawler:
-            async def crawl_schedule(self, year: int, month: int):
-                return [
-                    {
-                        "game_id": "20260531AABB0",
-                        "game_date": "20260531",
-                        "away_team_code": "AA",
-                        "home_team_code": "BB",
-                    },
-                    {
-                        "game_id": "20260531CCDD0",
-                        "game_date": "20260531",
-                        "away_team_code": "CC",
-                        "home_team_code": "DD",
-                    },
-                ]
-
-        class _FakeStatusResponse:
-            status_code = 200
-
-            def json(self):
-                return {
-                    "result": {
-                        "games": [
-                            {"awayTeamCode": "AA", "homeTeamCode": "BB", "status": "RUNNING"},
-                            {"awayTeamCode": "CC", "homeTeamCode": "DD", "status": "RUNNING"},
-                        ],
-                    },
-                }
-
-        class _FakeAsyncClient:
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-            async def get(self, *args, **kwargs):
-                return _FakeStatusResponse()
-
-        class _FakeRelayCrawler:
-            schedule_api_base_url = "https://example.test/status"
-            headers = {}
-
-            def _schedule_query_context(self, *, query_date: str | None = None):
-                return {"date": query_date}
-
-            def _naver_team_code(self, code: str):
-                return code
-
-            async def crawl_game_events(self, game_id: str):
-                return {
-                    "events": [{"description": "play", "inning": 1, "inning_half": "top"}],
-                    "raw_pbp_rows": [{"play_description": "play", "inning": 1, "inning_half": "top"}],
-                }
-
-        class _FakeDetailCrawler:
-            def __init__(self, request_delay: float):
-                self.request_delay = request_delay
-
-            async def crawl_game(self, game_id: str, game_date: str, lightweight: bool = False):
-                return {"game_id": game_id, "game_date": game_date}
-
-        class _FakeSessionContext:
-            def __enter__(self):
-                return object()
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-        sync_calls = []
-        closed = []
-
-        class _FakeOCISync:
-            def __init__(self, oci_url, session):
-                self.oci_url = oci_url
-                self.session = session
-
-            def sync_specific_game(self, game_id: str):
-                sync_calls.append(game_id)
-                if game_id == "20260531AABB0":
-                    raise RuntimeError("could not receive data from server: Operation timed out")
-                return {"game": 1}
-
-            def close(self):
-                closed.append(True)
-
-        _LIVE_SHARD_CURSOR_BY_DATE.clear()
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
-        monkeypatch.setattr(live_crawler, "datetime", _FrozenDateTime)
-        monkeypatch.setattr(live_crawler, "ScheduleCrawler", _FakeScheduleCrawler)
-        monkeypatch.setattr(live_crawler, "NaverRelayCrawler", _FakeRelayCrawler)
-        monkeypatch.setattr(live_crawler, "GameDetailCrawler", _FakeDetailCrawler)
-        monkeypatch.setattr(live_crawler.httpx, "AsyncClient", _FakeAsyncClient)
-        monkeypatch.setattr(live_crawler, "save_relay_data", lambda *args, **kwargs: 1)
-        monkeypatch.setattr(live_crawler, "save_game_snapshot", lambda *args, **kwargs: True)
-        monkeypatch.setattr(live_crawler, "write_refresh_manifest", lambda **kwargs: "manifest.json")
-        monkeypatch.setattr(live_crawler, "SessionLocal", lambda: _FakeSessionContext())
-        monkeypatch.setattr(live_crawler, "OCISync", _FakeOCISync)
-
-        result = asyncio.run(live_crawler.run_live_crawler_cycle(sync_to_oci=True, max_active_games=None))
-
-        assert sync_calls == ["20260531AABB0", "20260531CCDD0"]
-        assert closed == [True]
-        assert result["oci_sync_failure_count"] == 1
-        assert result["oci_sync_failed_game_ids"] == ["20260531AABB0"]
 
 
 # ===================================================================

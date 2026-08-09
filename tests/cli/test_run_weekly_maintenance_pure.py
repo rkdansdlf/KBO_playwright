@@ -72,44 +72,6 @@ def test_team_events_and_fan_culture_steps() -> None:
     fan_crawler.run.assert_awaited_once_with(save=True)
 
 
-def test_cleanup_oci_duplicates_skips_success_and_exception() -> None:
-    weekly._cleanup_oci_duplicates(None)
-
-    with patch("src.cli.run_weekly_maintenance.cleanup_oci_duplicates", return_value={"games": 2}) as cleanup:
-        weekly._cleanup_oci_duplicates("oci")
-    cleanup.assert_called_once_with(database_url="oci", apply=True)
-
-    with patch("src.cli.run_weekly_maintenance.cleanup_oci_duplicates", side_effect=RuntimeError("boom")):
-        weekly._cleanup_oci_duplicates("oci")
-
-
-def test_sync_weekly_to_oci_skips_success_and_exception() -> None:
-    weekly._sync_weekly_to_oci(None)
-
-    session = MagicMock()
-    session_cm = MagicMock()
-    session_cm.__enter__.return_value = session
-    syncer = MagicMock()
-    with (
-        patch("src.cli.run_weekly_maintenance.SessionLocal", return_value=session_cm),
-        patch("src.cli.run_weekly_maintenance.OCISync", return_value=syncer),
-    ):
-        weekly._sync_weekly_to_oci("oci")
-
-    syncer.sync_kbo_seasons.assert_called_once()
-    syncer.sync_cheer_chants.assert_called_once()
-    syncer.close.assert_called_once()
-
-    failing_syncer = MagicMock()
-    failing_syncer.sync_player_basic.side_effect = RuntimeError("boom")
-    with (
-        patch("src.cli.run_weekly_maintenance.SessionLocal", return_value=session_cm),
-        patch("src.cli.run_weekly_maintenance.OCISync", return_value=failing_syncer),
-    ):
-        weekly._sync_weekly_to_oci("oci")
-    failing_syncer.close.assert_called_once()
-
-
 def test_resolve_null_player_ids_step_invokes_resolver() -> None:
     mock_resolve = MagicMock(return_value={"resolved_groups": 1, "updated_rows": 2, "duplicate_null_rows": 0})
     with patch(
@@ -120,23 +82,18 @@ def test_resolve_null_player_ids_step_invokes_resolver() -> None:
     mock_resolve.assert_called_once()
 
 
-def test_run_weekly_maintenance_routes_all_steps(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCI_DB_URL", "oci")
+def test_run_weekly_maintenance_routes_all_steps() -> None:
     with (
         patch("src.cli.run_weekly_maintenance._run_weekly_step", new=AsyncMock()) as run_step,
-        patch("src.cli.run_weekly_maintenance._cleanup_oci_duplicates") as cleanup,
-        patch("src.cli.run_weekly_maintenance._sync_weekly_to_oci") as sync,
     ):
-        asyncio.run(weekly.run_weekly_maintenance(profile_limit=3, sync=True))
+        asyncio.run(weekly.run_weekly_maintenance(profile_limit=3))
 
     assert run_step.await_count == 7
-    cleanup.assert_called_once_with("oci")
-    sync.assert_called_once_with("oci")
 
 
 def test_main_parses_args_and_runs() -> None:
     with (
-        patch("sys.argv", ["run_weekly_maintenance", "--profile-limit", "12", "--sync"]),
+        patch("sys.argv", ["run_weekly_maintenance", "--profile-limit", "12"]),
         patch("src.cli.run_weekly_maintenance.asyncio.run") as run,
         patch("src.cli.run_weekly_maintenance.run_weekly_maintenance", new=MagicMock(return_value="weekly")),
     ):

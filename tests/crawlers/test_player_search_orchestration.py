@@ -264,14 +264,14 @@ class TestPageAndPostbackHelpers:
 class TestCliOrchestration:
     def test_main_stops_when_player_crawl_is_empty(self, monkeypatch):
         monkeypatch.setattr(
-            player_search, "_parse_crawl_args", lambda: SimpleNamespace(max_pages=None, save=True, sync_oci=None)
+            player_search, "_parse_crawl_args", lambda: SimpleNamespace(max_pages=None, save=True)
         )
         monkeypatch.setattr(player_search, "_crawl_players", AsyncMock(return_value=[]))
 
         assert asyncio.run(player_search.main()) is None
 
     def test_main_initializes_and_saves_when_requested(self, monkeypatch):
-        args = SimpleNamespace(max_pages=1, save=True, sync_oci=False)
+        args = SimpleNamespace(max_pages=1, save=True)
         init_db = MagicMock()
         row = _row()
         monkeypatch.setattr(player_search, "_parse_crawl_args", lambda: args)

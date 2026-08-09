@@ -9,21 +9,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
-from sqlalchemy.exc import SQLAlchemyError
-
-from src.db.engine import SessionLocal
-from src.sync.oci_sync import OCISync
 
 logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 PERIODIC_SUBPROCESS_EXCEPTIONS = (OSError, RuntimeError, ValueError)
-PERIODIC_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 async def _run_subprocess(cmd: list[str]) -> tuple[int, str, str]:
@@ -38,14 +31,10 @@ async def _run_subprocess(cmd: list[str]) -> tuple[int, str, str]:
 
 async def run_periodic_extras(
     year: int,
-    *,
-    sync: bool = False,
 ) -> None:
     """Run periodic extras.
 
     Args:
-        year: Season year.
-        sync: Whether to sync to remote database.
         year: Season year.
 
     """
@@ -80,26 +69,6 @@ async def run_periodic_extras(
     except PERIODIC_SUBPROCESS_EXCEPTIONS:
         logger.exception("   ❌ Error crawling retired players")
 
-    if sync:
-        logger.info("\n☁️ Step 3: Synchronizing to OCI...")
-        oci_url = os.getenv("OCI_DB_URL")
-        if not oci_url:
-            logger.warning("   ⚠️ OCI_DB_URL not set, skipping sync")
-        else:
-            with SessionLocal() as session:
-                syncer = OCISync(oci_url, session)
-                try:
-                    # Sync reference player rows before dependent season-stat tables.
-                    syncer.sync_player_basic()
-                    syncer.sync_players()
-                    syncer.sync_player_season_batting(year=year)
-                    syncer.sync_player_season_pitching(year=year)
-                    logger.info("   ✅ OCI synchronization completed")
-                except PERIODIC_SYNC_EXCEPTIONS:
-                    logger.exception("   ❌ OCI sync error")
-                finally:
-                    syncer.close()
-
     logger.info("\n%s", "=" * 60)
     logger.info("🏁 Periodic Extras Finished")
     logger.info("%s\n", "=" * 60)
@@ -109,12 +78,11 @@ def main() -> int:
     """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Periodic Extras Orchestrator")
     parser.add_argument("--year", type=int, help="Target year. Defaults to current year.")
-    parser.add_argument("--sync", action="store_true", help="Sync to OCI")
 
     args = parser.parse_args()
 
     year = args.year or datetime.now(KST).year
-    asyncio.run(run_periodic_extras(year, sync=args.sync))
+    asyncio.run(run_periodic_extras(year))
     return 0
 
 

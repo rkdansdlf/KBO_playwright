@@ -9,20 +9,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 from datetime import date, datetime
 from typing import TYPE_CHECKING
-
-from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.highlight_aggregator import HighlightAggregator
 from src.constants import KST
 from src.db.engine import SessionLocal
-from src.models.game import Game, GameHighlight
-from src.sync.oci_sync import OCISync
+from src.models.game import Game, GameHighlight, GameValidationMetrics
 from src.utils.alerting import SlackWebhookClient
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.utils.relay_validation import TRUSTED_VALIDATION_STATES
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,15 +28,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-HIGHLIGHT_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
-
-
 def _load_completed_games(session: Session, target_date: date) -> list[Game]:
     return (
         session.query(Game)
+        .join(GameValidationMetrics, GameValidationMetrics.game_id == Game.game_id)
         .filter(
             Game.game_date == target_date,
             Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+            GameValidationMetrics.validation_status.in_(tuple(TRUSTED_VALIDATION_STATES)),
         )
         .all()
     )
@@ -83,25 +79,6 @@ def _process_highlight_games(
         processed_game_ids.append(game_id)
 
     return processed_game_ids, game_highlights_map, game_map
-
-
-def _sync_highlights_to_oci(processed_game_ids: list[str], *, dry_run: bool, sync_to_oci: bool | None) -> None:
-    should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
-    if not should_sync or not processed_game_ids or dry_run:
-        return
-    oci_url = os.getenv("OCI_DB_URL")
-    if not oci_url:
-        return
-    logger.info("🔄 Syncing highlights for %s games to OCI PostgreSQL...", len(processed_game_ids))
-    with SessionLocal() as sync_session:
-        syncer = OCISync(oci_url, sync_session)
-        try:
-            for game_id in sorted(set(processed_game_ids)):
-                syncer.sync_specific_game(game_id)
-        except HIGHLIGHT_SYNC_EXCEPTIONS:
-            logger.exception("OCI Sync failed")
-        finally:
-            syncer.close()
 
 
 def _highlight_notification_message(
@@ -180,7 +157,6 @@ async def run_highlight_batch(
     *,
     force: bool = False,
     dry_run: bool = False,
-    sync_to_oci: bool | None = None,
     notify: bool = True,
 ) -> list[str]:
     """Run highlight batch.
@@ -189,7 +165,6 @@ async def run_highlight_batch(
         target_date_str: Target Date Str.
         force: If True, forces the operation even if data already exists.
         dry_run: If True, performs a dry run without persisting changes.
-        sync_to_oci: Sync To Oci.
         notify: Notify.
         target_date_str: Target Date Str.
 
@@ -218,7 +193,6 @@ async def run_highlight_batch(
             dry_run=dry_run,
         )
 
-    _sync_highlights_to_oci(processed_game_ids, dry_run=dry_run, sync_to_oci=sync_to_oci)
     if notify and processed_game_ids:
         _send_highlight_notification(
             _highlight_notification_message(target_date_str, processed_game_ids, game_highlights_map, game_map),
@@ -241,7 +215,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
     parser.add_argument("--force", action="store_true", help="Re-generate and overwrite highlights if they exist")
     parser.add_argument("--dry-run", action="store_true", help="Run without persisting database changes or alerting")
-    parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     parser.add_argument("--no-notify", action="store_true", help="Skip sending Telegram alert summary")
     args = parser.parse_args(argv)
 
@@ -251,7 +224,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             target,
             force=args.force,
             dry_run=args.dry_run,
-            sync_to_oci=False if args.no_sync else None,
             notify=not args.no_notify,
         ),
     )

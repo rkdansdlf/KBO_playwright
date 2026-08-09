@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import MetaData, Table, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import SessionLocal, get_oci_url
+from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -627,24 +627,13 @@ def get_daily_metrics(
         if valid_players:
             best_player = max(valid_players, key=lambda x: x["war"])
 
-    # 5. Data Parity (Local vs OCI)
-    parity_info = {"ok": True, "local_count": 0, "oci_count": 0, "diff": 0}
+    # 5. Database integrity
+    parity_info = {"ok": True, "local_count": 0, "oci_count": None, "diff": 0}
     try:
-        from sqlalchemy import create_engine, text
-
         local_count = session.query(func.count(Game.game_id)).scalar()
         parity_info["local_count"] = local_count
-
-        target_url = get_oci_url()
-        if target_url:
-            oci_engine = create_engine(target_url)
-            with oci_engine.connect() as conn:
-                oci_count = conn.execute(text("SELECT count(*) FROM game")).scalar()
-                parity_info["oci_count"] = oci_count  # type: ignore[assignment]
-                parity_info["diff"] = oci_count - local_count
-                parity_info["ok"] = parity_info["diff"] == 0
     except SQLAlchemyError as e:
-        _LOGGER.exception("Parity check failed")
+        _LOGGER.exception("Database integrity check failed")
         parity_info["ok"] = False
         parity_info["error"] = str(e)  # type: ignore[assignment]
 
@@ -690,7 +679,7 @@ def _append_parity_section(lines: list[str], parity: dict[str, Any]) -> None:
     if not parity.get("ok", True):
         lines.append(
             f"❓ <b>Parity</b>: Local {parity.get('local_count')} / "
-            f"OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})",
+            f"Database rows: {parity.get('local_count')}",
         )
 
 

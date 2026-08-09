@@ -267,7 +267,7 @@ async def run_backfill(args: argparse.Namespace) -> int:
     saved_total = 0
     for target in targets:
         logger.info("\nRunning pregame backfill for %s...", target.target_date)
-        saved_ids = await run_preview_batch(target.target_date, sync_to_oci=not args.no_sync)
+        saved_ids = await run_preview_batch(target.target_date)
         saved_count = len(saved_ids)
         saved_total += saved_count
         logger.info("Backfill result for %s: saved=%s", target.target_date, saved_count)
@@ -299,7 +299,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit-dates", type=int, help="Limit number of target dates to process.")
     parser.add_argument("--include-complete", action="store_true", help="Include dates already complete.")
     parser.add_argument("--dry-run", action="store_true", help="Only print target dates.")
-    parser.add_argument("--no-sync", action="store_true", help="Skip OCI sync after local writes.")
     parser.add_argument(
         "--fail-on-empty",
         action="store_true",

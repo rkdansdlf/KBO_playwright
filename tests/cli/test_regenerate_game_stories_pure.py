@@ -11,7 +11,6 @@ from src.cli.regenerate_game_stories import (
     _default_backup_path,
     _default_report_path,
     _game_batches,
-    _mark_story_oci_status,
     _parse_date,
     _season_filters,
     _short_hash,
@@ -48,7 +47,7 @@ class TestParseDate:
 class TestDefaultReportPath:
     def test_returns_path_in_data_reports(self) -> None:
         result = _default_report_path()
-        assert "data/reports" in str(result)
+        assert result.parent == result.parent.parent / "reports"
         assert result.suffix == ".csv"
         assert "game_story_regen_report" in str(result)
 
@@ -56,7 +55,7 @@ class TestDefaultReportPath:
 class TestDefaultBackupPath:
     def test_returns_path_in_data_recovery(self) -> None:
         result = _default_backup_path()
-        assert "data/recovery" in str(result)
+        assert result.parent == result.parent.parent / "recovery"
         assert result.suffix == ".csv"
         assert "game_story_regen_backup" in str(result)
 
@@ -173,35 +172,3 @@ class TestBuildStoryReportRow:
         row = _build_story_report_row(game, None, story_data, "{}")
         assert "warn1" in row.warnings
         assert "warn2" in row.warnings
-
-
-class TestMarkStoryOciStatus:
-    def test_not_apply_marks_skipped(self) -> None:
-        rows: list = []
-        for i in range(3):
-
-            @dataclass
-            class Row:
-                status: str = ""
-                oci_status: str = ""
-
-            row = Row()
-            rows.append(row)
-        _mark_story_oci_status(rows, apply=False, oci_url="http://example.com")
-        assert all(r.oci_status == "skipped_dry_run" for r in rows)
-
-    def test_apply_no_oci_url(self) -> None:
-        rows: list = []
-        for status in ("APPLIED", "UNCHANGED", "FAILED", ""):
-
-            @dataclass
-            class Row:
-                status: str
-                oci_status: str = ""
-
-            rows.append(Row(status=status))
-        _mark_story_oci_status(rows, apply=True, oci_url=None)
-        assert rows[0].oci_status == "skipped_missing_oci_url"
-        assert rows[1].oci_status == "skipped_missing_oci_url"
-        assert rows[2].oci_status == ""
-        assert rows[3].oci_status == ""

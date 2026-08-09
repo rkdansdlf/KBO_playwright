@@ -91,7 +91,6 @@ def test_get_daily_metrics_passes_team_stats_snapshot_args(monkeypatch):
     monkeypatch.setattr(module, "get_auto_remediation_summary", lambda *_args: {"status": "no_issues"})
     monkeypatch.setattr(module, "get_pa_formula_integrity", lambda *_args: {"ok": True})
     monkeypatch.setattr(module, "get_pa_formula_trend", lambda *_args, **_kwargs: {"months": []})
-    monkeypatch.setattr(module, "get_oci_url", lambda: None)
 
     def fake_team_stats_trend(_session, gate_result=None):
         assert gate_result == _BASE_GATE

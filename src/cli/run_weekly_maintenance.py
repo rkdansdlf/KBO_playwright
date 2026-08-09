@@ -1,6 +1,6 @@
 """KBO Weekly Maintenance Orchestrator.
 
-Performs player profile enrichment, DB health checks, team events, fan culture crawling, and OCI cleanup/sync.
+Performs player profile enrichment, DB health checks, team events, and fan culture crawling.
 
 """
 
@@ -17,11 +17,9 @@ from zoneinfo import ZoneInfo
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.exc import SQLAlchemyError
 
-from scripts.maintenance.cleanup_oci import cleanup_oci_duplicates
 from src.cli.collect_profiles import collect_profiles
 from src.cli.db_healthcheck import main as healthcheck_main
 from src.db.engine import SessionLocal
-from src.sync.oci_sync import OCISync
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -147,57 +145,12 @@ async def _fan_culture_step() -> None:
     logger.info("   ✅ Fan culture crawl complete")
 
 
-def _cleanup_oci_duplicates(oci_url: str | None) -> None:
-    logger.info("\n🧹 Step 5: Cleaning up OCI Duplicates...")
-    if not oci_url:
-        logger.warning("   ⚠️ OCI_DB_URL not set, skipping cleanup")
-        return
-    try:
-        counts = cleanup_oci_duplicates(database_url=oci_url, apply=True)
-        logger.info("   ✅ OCI Cleanup committed:")
-        for key, value in counts.items():
-            logger.info("      %s: %s", key, value)
-    except WEEKLY_MAINTENANCE_EXCEPTIONS:
-        logger.exception("   ❌ Error during OCI cleanup")
-
-
-def _sync_weekly_to_oci(oci_url: str | None) -> None:
-    logger.info("\n☁️ Step 6: Synchronizing Updated Data to OCI...")
-    if not oci_url:
-        logger.warning("   ⚠️ OCI_DB_URL not set, skipping sync")
-        return
-    with SessionLocal() as session:
-        syncer = OCISync(oci_url, session)
-        try:
-            logger.info("   - Syncing KBO seasons...")
-            syncer.sync_kbo_seasons()
-            logger.info("   - Syncing player basics...")
-            syncer.sync_player_basic()
-            logger.info("   - Syncing players...")
-            syncer.sync_players()
-            logger.info("   - Syncing team events...")
-            syncer.sync_team_events()
-            logger.info("   - Syncing fan culture (rivalries, songs, chants)...")
-            syncer.sync_team_rivalries()
-            syncer.sync_cheer_songs()
-            syncer.sync_cheer_chants()
-            logger.info("   ✅ OCI synchronization completed")
-        except WEEKLY_MAINTENANCE_EXCEPTIONS:
-            logger.exception("   ❌ OCI sync error")
-        finally:
-            syncer.close()
-
-
 async def run_weekly_maintenance(
     profile_limit: int = 100,
-    *,
-    sync: bool = False,
 ) -> None:
     """Run weekly maintenance.
 
     Args:
-        profile_limit: Profile Limit.
-        sync: Whether to sync to remote database.
         profile_limit: Profile Limit.
 
     """
@@ -206,7 +159,6 @@ async def run_weekly_maintenance(
     logger.info("🚀 KBO Weekly Maintenance Started: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("%s", "=" * 60)
 
-    oci_url = os.getenv("OCI_DB_URL")
     await _run_weekly_step(
         "👤 Step 1: Enriching Player Profiles...",
         "Error during profile enrichment",
@@ -234,10 +186,6 @@ async def run_weekly_maintenance(
         "Error crawling fan culture",
         _fan_culture_step,
     )
-    _cleanup_oci_duplicates(oci_url)
-
-    if sync:
-        _sync_weekly_to_oci(oci_url)
 
     logger.info("\n%s", "=" * 60)
     logger.info("🏁 Weekly Maintenance Finished")
@@ -248,10 +196,9 @@ def main() -> int:
     """Run the main entry point for this CLI command."""
     parser = argparse.ArgumentParser(description="KBO Weekly Maintenance Orchestrator")
     parser.add_argument("--profile-limit", type=int, default=200, help="Max profiles to enrich")
-    parser.add_argument("--sync", action="store_true", help="Sync updated profiles to OCI")
 
     args = parser.parse_args()
-    asyncio.run(run_weekly_maintenance(profile_limit=args.profile_limit, sync=args.sync))
+    asyncio.run(run_weekly_maintenance(profile_limit=args.profile_limit))
     return 0
 
 

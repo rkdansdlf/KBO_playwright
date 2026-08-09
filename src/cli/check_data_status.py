@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -36,16 +35,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-FALSE_ENV_VALUES = {"0", "false", "no", "off"}
-
 
 def _configure_cli_logging() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-
-def _env_enabled(name: str, default: str = "1") -> bool:
-    return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
 
 
 def _safe_scalar(session: Session, sql: str, default: int = 0) -> int:
@@ -342,19 +335,7 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
     scheduled_filter = func.upper(Game.game_status) == "SCHEDULED"
     total = session.query(Game).filter(scheduled_filter).count()
     if total == 0:
-        pregame_sync_enabled = _env_enabled("PREGAME_SYNC_TO_OCI")
-        oci_url_present = bool(os.getenv("OCI_DB_URL"))
-        oci_sync_ready = pregame_sync_enabled and oci_url_present
-
         logger.info("Scheduled games: 0")
-        logger.info("  OCI sync candidates: 0")
-        logger.info("  OCI sync candidates with both starters: 0")
-        if oci_sync_ready:
-            logger.info("  OCI sync config: ready")
-        elif not pregame_sync_enabled:
-            logger.info("  OCI sync config: disabled by PREGAME_SYNC_TO_OCI")
-        else:
-            logger.info("  OCI sync config: disabled because OCI_DB_URL is missing")
 
         return {
             "scheduled_total": 0,
@@ -364,9 +345,8 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
             "both_missing": 0,
             "preview_rows": 0,
             "preview_missing_starters": 0,
-            "sync_candidate_games": 0,
-            "sync_complete_starters": 0,
-            "oci_sync_ready": oci_sync_ready,
+            "candidate_games": 0,
+            "complete_candidate_games": 0,
             "coverage_pct": 0.0,
         }
 
@@ -483,10 +463,6 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
         or 0
     )
 
-    pregame_sync_enabled = _env_enabled("PREGAME_SYNC_TO_OCI")
-    oci_url_present = bool(os.getenv("OCI_DB_URL"))
-    oci_sync_ready = pregame_sync_enabled and oci_url_present
-
     coverage_pct = 0.0 if total == 0 else (both_ok / total) * 100  # type: ignore[operator]
 
     logger.info("Scheduled games: %s", total)
@@ -496,14 +472,8 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
     logger.info("  Both missing: %s", both_missing)
     logger.info("  Preview summaries present: %s", preview_rows)
     logger.info("  Preview summaries missing starters: %s", preview_missing_starters)
-    logger.info("  OCI sync candidates: %s", sync_candidate_games)
-    logger.info("  OCI sync candidates with both starters: %s", sync_complete_starters)
-    if oci_sync_ready:
-        logger.info("  OCI sync config: ready")
-    elif not pregame_sync_enabled:
-        logger.info("  OCI sync config: disabled by PREGAME_SYNC_TO_OCI")
-    else:
-        logger.info("  OCI sync config: disabled because OCI_DB_URL is missing")
+    logger.info("  Pregame candidates: %s", sync_candidate_games)
+    logger.info("  Pregame candidates with both starters: %s", sync_complete_starters)
 
     if verbose:
         rows = session.execute(
@@ -554,9 +524,8 @@ def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -
         "both_missing": both_missing,
         "preview_rows": preview_rows,
         "preview_missing_starters": preview_missing_starters,
-        "sync_candidate_games": sync_candidate_games,
-        "sync_complete_starters": sync_complete_starters,
-        "oci_sync_ready": oci_sync_ready,
+        "candidate_games": sync_candidate_games,
+        "complete_candidate_games": sync_complete_starters,
         "coverage_pct": coverage_pct,
     }
 
@@ -586,7 +555,7 @@ def _log_p0_readiness(target_date: str, readiness: dict[str, Any]) -> None:
     logger.info("%s", "=" * 60)
     logger.info(format_p0_readiness_summary(readiness))
     logger.info("\nDataset Summary:")
-    for key in ("schedule", "pregame", "live", "postgame", "relay", "roster", "broadcast", "oci"):
+    for key in ("schedule", "pregame", "live", "postgame", "relay", "roster", "broadcast"):
         logger.info("  %s: %s", key, readiness[key])
     if readiness["failures"]:
         logger.info("\nFailures:")
@@ -643,10 +612,9 @@ def _log_full_status_summary(
         pregame_pitcher_stats["preview_missing_starters"],
     )
     logger.info(
-        "  Pregame OCI sync: candidates=%s, complete_starters=%s, ready=%s",
-        pregame_pitcher_stats["sync_candidate_games"],
-        pregame_pitcher_stats["sync_complete_starters"],
-        pregame_pitcher_stats["oci_sync_ready"],
+        "  Pregame candidates: %s, complete_starters=%s",
+        pregame_pitcher_stats["candidate_games"],
+        pregame_pitcher_stats["complete_candidate_games"],
     )
 
 
@@ -663,8 +631,6 @@ def _collect_status_warnings(
         warnings.append("No Futures batting data found")
     if pregame_pitcher_stats.get("preview_missing_starters", 0) > 0:
         warnings.append("Scheduled preview summaries exist but pitcher fields are missing")
-    if pregame_pitcher_stats.get("sync_candidate_games", 0) > 0 and not pregame_pitcher_stats.get("oci_sync_ready"):
-        warnings.append("Pregame sync candidates exist but OCI sync is not ready")
     return warnings
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from src.cli.run_periodic_extras import main
 
@@ -19,19 +19,13 @@ class TestRunPeriodicExtrasCLI:
 
             assert mock_run.call_count == 2
 
-    def test_main_with_year_and_sync(self):
+    def test_main_with_year(self):
         with (
-            patch("sys.argv", ["run_periodic_extras", "--year", "2024", "--sync"]),
+            patch("sys.argv", ["run_periodic_extras", "--year", "2024"]),
             patch("src.cli.run_periodic_extras._run_subprocess", new_callable=AsyncMock) as mock_run,
-            patch.dict("os.environ", {"OCI_DB_URL": "postgresql://oci"}),
-            patch("src.cli.run_periodic_extras.SessionLocal"),
-            patch("src.cli.run_periodic_extras.OCISync") as MockSync,
         ):
             mock_run.return_value = (0, "", "")
-            mock_sync = MagicMock()
-            MockSync.return_value.__enter__.return_value = mock_sync
 
             main()
 
             assert mock_run.call_count == 2
-            MockSync.assert_called_once()

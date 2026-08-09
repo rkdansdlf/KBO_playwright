@@ -18,6 +18,7 @@ from src.models.game import (
     GamePitchingStat,
     GamePlayByPlay,
     GameSummary,
+    GameValidationMetrics,
 )
 from src.models.player import PlayerBasic
 from src.models.roster_transaction import RosterTransaction
@@ -42,6 +43,7 @@ def _build_session_factory():
         GamePlayByPlay.__table__,
         GameSummary.__table__,
         GameBroadcast.__table__,
+        GameValidationMetrics.__table__,
         TeamDailyRoster.__table__,
         RosterTransaction.__table__,
     ):
@@ -190,6 +192,7 @@ def test_build_p0_readiness_reports_clean_operational_window():
             _add_metadata(session, game_id)
             _add_broadcast(session, game_id)
         _add_completed_detail(session, completed_id)
+        session.add(GameValidationMetrics(game_id=completed_id, validation_status="verified"))
         session.add_all(
             [
                 GameEvent(game_id=live_id, event_seq=1, inning=5, inning_half="bottom", description="볼넷"),

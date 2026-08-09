@@ -195,41 +195,6 @@ class TestCheckPregamePitcherCoverage:
         result = check_pregame_pitcher_coverage(sess, verbose=True)
         assert result["scheduled_total"] == 2
 
-    def test_zero_scheduled_oci_ready_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("PREGAME_SYNC_TO_OCI", "1")
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://x")
-        sess = _session(scheduled_count=0)
-        result = check_pregame_pitcher_coverage(sess, verbose=False)
-        assert result["oci_sync_ready"] is True
-
-    def test_zero_scheduled_env_disabled_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("PREGAME_SYNC_TO_OCI", "0")
-        monkeypatch.delenv("OCI_DB_URL", raising=False)
-        sess = _session(scheduled_count=0)
-        result = check_pregame_pitcher_coverage(sess, verbose=False)
-        assert result["oci_sync_ready"] is False
-
-    def test_zero_scheduled_oci_url_missing_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("PREGAME_SYNC_TO_OCI", "1")
-        monkeypatch.delenv("OCI_DB_URL", raising=False)
-        sess = _session(scheduled_count=0)
-        result = check_pregame_pitcher_coverage(sess, verbose=False)
-        assert result["oci_sync_ready"] is False
-
-    def test_nonzero_oci_ready_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("PREGAME_SYNC_TO_OCI", "1")
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://x")
-        sess = _session(default_scalar=1, rows_map={"프리뷰": []}, scheduled_count=3)
-        result = check_pregame_pitcher_coverage(sess, verbose=False)
-        assert result["oci_sync_ready"] is True
-
-    def test_nonzero_env_disabled_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("PREGAME_SYNC_TO_OCI", "0")
-        monkeypatch.delenv("OCI_DB_URL", raising=False)
-        sess = _session(default_scalar=1, rows_map={"프리뷰": []}, scheduled_count=3)
-        result = check_pregame_pitcher_coverage(sess, verbose=False)
-        assert result["oci_sync_ready"] is False
-
 
 class TestLoggingHelpers:
     def test_log_full_status_summary(self) -> None:
@@ -255,9 +220,8 @@ class TestLoggingHelpers:
                 "both_missing": 0,
                 "preview_rows": 1,
                 "preview_missing_starters": 0,
-                "sync_candidate_games": 1,
-                "sync_complete_starters": 1,
-                "oci_sync_ready": False,
+                "candidate_games": 1,
+                "complete_candidate_games": 1,
                 "coverage_pct": 66.6,
             },
         )
@@ -274,8 +238,6 @@ class TestLoggingHelpers:
             {"batting": 0},
             {
                 "preview_missing_starters": 1,
-                "sync_candidate_games": 2,
-                "oci_sync_ready": False,
             },
         )
         assert len(warnings) >= 4
@@ -291,7 +253,6 @@ class TestLoggingHelpers:
             "relay": 1,
             "roster": 1,
             "broadcast": 1,
-            "oci": 1,
             "failures": [
                 {
                     "severity": "HIGH",
@@ -345,7 +306,6 @@ class TestP0ReadinessBranches:
                     "relay": 1,
                     "roster": 1,
                     "broadcast": 1,
-                    "oci": 1,
                     "failures": [
                         {
                             "severity": "LOW",

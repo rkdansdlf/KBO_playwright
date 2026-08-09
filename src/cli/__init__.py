@@ -8,7 +8,7 @@ KBO Playwright CLI Commands.
 Available via: python -m src.cli.<module> [args]
 
 Core Pipeline:
-  run_daily_update       — Postgame finalize + OCI sync
+  run_daily_update       — Postgame finalize
   daily_preview_batch    — Pregame preview refresh
   live_crawler           — Live game data crawl
   crawl_futures          — Futures league stats
@@ -36,13 +36,12 @@ Backfill & Maintenance:
   auto_healer              — PBP auto-healer
   monitor_data_freshness   — Stale source detection
   refresh_source_snapshots — Refresh DataSource snapshots and last-success timestamps
-  freshness_gate           — OCI freshness check
+  freshness_gate           — Data freshness check
   generate_quality_report  — Daily quality report
   recalc_season_stats      — Full stat recalculation
   recalc_player_stats      — Player season stats recalc
   recalc_team_stats        — Team stats recalc
   recalc_player_game_stats — Player game-level stats recalc
-  sync_oci                 — SQLite → OCI sync
   audit_pa_formula         — PA formula audit and fix
 
 Analysis:

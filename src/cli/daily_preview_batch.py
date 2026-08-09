@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
@@ -20,7 +19,6 @@ from src.crawlers.preview_crawler import PreviewCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import save_pregame_lineups
 from src.services.context_aggregator import ContextAggregator
-from src.sync.oci_sync import OCISync
 from src.utils.date_helpers import parse_date_str
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.team_codes import resolve_team_code
@@ -109,27 +107,11 @@ def _save_preview_contexts(previews: list[dict[str, object]], target_date: str) 
     return saved_ids
 
 
-def _sync_saved_pregame_games(saved_ids: list[str]) -> None:
-    oci_url = os.getenv("OCI_DB_URL")
-    if not oci_url:
-        return
-    with SessionLocal() as sync_session:
-        syncer = OCISync(oci_url, sync_session)
-        try:
-            logger.info("🛡️ Syncing pregame games and referenced players...")
-            for game_id in sorted(set(saved_ids)):
-                syncer.sync_pregame_game(game_id)
-        finally:
-            syncer.close()
-
-
-async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
+async def run_preview_batch(target_date: str) -> list[str]:
     """Run preview batch.
 
     Args:
         target_date: Target date for the operation.
-        sync_to_oci: Sync To Oci.
-        target_date: Target Date.
 
     Returns:
         List of results.
@@ -145,9 +127,6 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
         return []
 
     saved_ids = _save_preview_contexts(previews, target_date)
-    should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
-    if should_sync and saved_ids:
-        _sync_saved_pregame_games(saved_ids)
 
     manifest_path = _write_pregame_manifest(target_date, saved_ids)
     logger.info("✅ Pregame batch finished. saved=%s manifest=%s", len(saved_ids), manifest_path)
@@ -164,11 +143,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Daily Preview Crawler")
 
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
-    parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)
 
     target = args.date or datetime.now(KST).strftime("%Y%m%d")
-    asyncio.run(run_preview_batch(target, sync_to_oci=not args.no_sync))
+    asyncio.run(run_preview_batch(target))
     return 0
 
 

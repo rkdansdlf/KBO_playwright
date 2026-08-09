@@ -20,9 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy.exc import SQLAlchemyError
-
-from src.db.engine import SessionLocal, get_oci_url
+from src.db.engine import SessionLocal
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -30,8 +28,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 TOP_RANKING_LIMIT = 5
 KST = __import__("zoneinfo").ZoneInfo("Asia/Seoul")
-SYNC_CHECK_EXCEPTIONS = (ImportError, SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
-
 AVAILABLE_SECTIONS = [
     "standings",
     "park_factor",
@@ -39,7 +35,6 @@ AVAILABLE_SECTIONS = [
     "team_defense",
     "quality",
     "freshness",
-    "sync",
     "all",
 ]
 
@@ -167,24 +162,6 @@ def _build_freshness(session: Session, date_str: str) -> dict[str, Any]:
 
     issues = collect_freshness_issues(session, target_date=date_str)
     return {"date": date_str, "issues": issues, "total_issues": sum(len(v) for v in issues.values())}
-
-
-def _build_sync() -> dict[str, Any]:
-    try:
-        from scripts.verification.verify_sync_consistency import check_table_counts
-
-        from src.db.engine import create_engine_for_url
-
-        oci_url = get_oci_url()
-        if not oci_url:
-            return {"status": "skipped", "reason": "OCI_DB_URL not set"}
-        oci_engine = create_engine_for_url(oci_url)
-        counts = check_table_counts(SessionLocal().bind, oci_engine)
-        ok_count = sum(1 for c in counts if c["status"] == "OK")
-        return {"status": "ok", "table_count": len(counts), "ok_count": ok_count, "details": counts}
-    except SYNC_CHECK_EXCEPTIONS as exc:
-        logger.exception("Dashboard OCI sync check failed")
-        return {"status": "error", "reason": str(exc)}
 
 
 # ─── Formatters ──────────────────────────────────────────────────────────
@@ -386,16 +363,6 @@ def _format_freshness_terminal(freshness: dict[str, Any]) -> None:
             logger.warning("  ⚠️  [%s] %s", game_id, issue)
 
 
-def _format_sync_terminal(sync: dict[str, Any]) -> None:
-    logger.info("\n%s", "=" * 60)
-    logger.info("  OCI Sync Status")
-    logger.info("%s", "=" * 60)
-    if sync.get("status") == "ok":
-        logger.info("  ✅ %s/%s tables in sync", sync.get("ok_count", 0), sync.get("table_count", 0))
-    else:
-        logger.warning("  ⚠️  %s: %s", sync.get("status"), sync.get("reason", ""))
-
-
 def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:
     year = datetime.now(KST).year
     if "standings" in sections and data.get("standings"):
@@ -410,8 +377,6 @@ def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:
         _format_quality_terminal(data["quality"])
     if "freshness" in sections and data.get("freshness"):
         _format_freshness_terminal(data["freshness"])
-    if "sync" in sections and data.get("sync"):
-        _format_sync_terminal(data["sync"])
     logger.info("")
 
 
@@ -453,7 +418,6 @@ def _build_dashboard_data(sections: list[str], year: int, date_str: str) -> dict
             "team_defense": lambda: _build_team_defense(session, year),
             "quality": lambda: _build_quality(session, date_str, year),
             "freshness": lambda: _build_freshness(session, date_str),
-            "sync": _build_sync,
         }
         for section in sections:
             builder = builders.get(section)

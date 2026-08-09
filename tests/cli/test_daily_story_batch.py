@@ -48,7 +48,7 @@ class TestDailyStoryBatchCLI:
             result = main(["--date", "20251015"])
             assert result == 0
 
-    def test_main_uses_today_and_passes_no_sync_option(self):
+    def test_main_uses_today(self):
         batch = AsyncMock(return_value=[])
 
         with (
@@ -57,9 +57,9 @@ class TestDailyStoryBatchCLI:
         ):
             mock_datetime.now.return_value.strftime.return_value = "20251016"
 
-            assert main(["--no-sync"]) == 0
+            assert main([]) == 0
 
-        batch.assert_awaited_once_with("20251016", sync_to_oci=False)
+        batch.assert_awaited_once_with("20251016")
 
 
 class TestStoryHelpers:
@@ -105,14 +105,14 @@ class TestStoryHelpers:
         assert result == {"timeline": []}
         builder.build.assert_called_once_with(game, events)
 
-    def test_trusted_relay_ids_handles_empty_status_and_wpa_fallback(self):
+    def test_missing_status_is_not_trusted_by_wpa(self):
         session = MagicMock()
         query = session.query.return_value
         query.filter.return_value.all.return_value = []
         query.filter.return_value.distinct.return_value.all.return_value = [("G2",)]
 
         assert daily_story_batch._trusted_relay_game_ids(session, []) == set()
-        assert daily_story_batch._trusted_relay_game_ids(session, ["G2"]) == {"G2"}
+        assert daily_story_batch._trusted_relay_game_ids(session, ["G2"]) == set()
 
     def test_trusted_relay_ids_accepts_verified_status(self):
         session = MagicMock()
@@ -122,38 +122,8 @@ class TestStoryHelpers:
         assert daily_story_batch._trusted_relay_game_ids(session, ["G1"]) == {"G1"}
 
 
-class TestStorySync:
-    def test_sync_skips_without_oci_url(self, monkeypatch):
-        monkeypatch.delenv("OCI_DB_URL", raising=False)
-
-        with patch("src.cli.daily_story_batch.SessionLocal") as session_factory:
-            daily_story_batch._sync_story_summaries(["G1"])
-
-        session_factory.assert_not_called()
-
-    def test_syncs_unique_game_ids_and_closes_syncer(self, monkeypatch):
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://oci")
-        sync_session = MagicMock()
-        session_factory = MagicMock()
-        session_factory.return_value.__enter__.return_value = sync_session
-        syncer = MagicMock()
-
-        with (
-            patch("src.cli.daily_story_batch.SessionLocal", session_factory),
-            patch("src.cli.daily_story_batch.OCISync", return_value=syncer) as sync_class,
-        ):
-            daily_story_batch._sync_story_summaries(["G2", "G1", "G2"])
-
-        sync_class.assert_called_once_with("postgresql://oci", sync_session)
-        syncer.sync_review_summaries_for_games.assert_called_once_with(
-            ["G1", "G2"],
-            summary_type=daily_story_batch.STORY_SUMMARY_TYPE,
-        )
-        syncer.close.assert_called_once()
-
-
 class TestRunStoryBatch:
-    def test_saves_trusted_games_syncs_and_writes_manifest(self):
+    def test_saves_trusted_games_and_writes_manifest(self):
         session = MagicMock()
         session_factory = MagicMock()
         session_factory.return_value.__enter__.return_value = session
@@ -172,7 +142,6 @@ class TestRunStoryBatch:
             ),
             patch("src.cli.daily_story_batch._build_story_data", return_value=story_data) as build_story,
             patch("src.cli.daily_story_batch._upsert_story_summary") as upsert,
-            patch("src.cli.daily_story_batch._sync_story_summaries") as sync,
             patch("src.cli.daily_story_batch.write_refresh_manifest", return_value="manifest.json") as manifest,
         ):
             session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
@@ -180,13 +149,12 @@ class TestRunStoryBatch:
                 untrusted_game,
             ]
 
-            result = asyncio.run(daily_story_batch.run_story_batch("20251015", sync_to_oci=True))
+            result = asyncio.run(daily_story_batch.run_story_batch("20251015"))
 
         assert result == ["G1"]
         build_story.assert_called_once()
         upsert.assert_called_once_with(session, "G1", '{"timeline": [], "source": {"warnings": ["missing relay"]}}')
         session.commit.assert_called_once()
-        sync.assert_called_once_with(["G1"])
         manifest.assert_called_once_with(
             phase="postgame_story",
             target_date="20251015",
@@ -216,6 +184,6 @@ class TestRunStoryBatch:
             session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [game]
 
             with pytest.raises(RuntimeError, match="database unavailable"):
-                asyncio.run(daily_story_batch.run_story_batch("20251015", sync_to_oci=False))
+                asyncio.run(daily_story_batch.run_story_batch("20251015"))
 
         session.rollback.assert_called_once()

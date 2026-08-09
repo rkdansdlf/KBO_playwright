@@ -154,19 +154,6 @@ class TestBuildRetryCommands:
         commands = build_retry_commands(summary)
         assert commands == []
 
-    def test_sync_branch(self) -> None:
-        summary = {
-            "stability": {
-                "retry_candidates": {
-                    "detail": ["20250401LGSS0"],
-                    "relay": [],
-                },
-            },
-        }
-        commands = build_retry_commands(summary, sync=True)
-        assert len(commands) == 2
-        assert "sync_oci" in commands[1][2]
-
     def test_relay_command(self) -> None:
         summary = {
             "stability": {
@@ -196,7 +183,7 @@ class TestBuildRetryCommands:
         assert commands[1][:3] == ["python3", "-m", "src.cli.collect_games"]
         assert commands[2][:2] == ["python3", "scripts/fetch_kbo_pbp.py"]
 
-    def test_sync_deduplicates_detail_and_relay_ids(self) -> None:
+    def test_deduplicates_detail_and_relay_ids(self) -> None:
         summary = {
             "stability": {
                 "retry_candidates": {
@@ -205,8 +192,8 @@ class TestBuildRetryCommands:
                 },
             },
         }
-        commands = build_retry_commands(summary, sync=True, python_bin="python3")
+        commands = build_retry_commands(summary, python_bin="python3")
 
-        sync_command = commands[-1]
-        assert sync_command[:3] == ["python3", "-m", "src.cli.sync_oci"]
-        assert sync_command[-1] == "20250401LGSS0,20250402LGHH0"
+        relay_command = commands[-1]
+        assert relay_command[:2] == ["python3", "scripts/fetch_kbo_pbp.py"]
+        assert relay_command[-2] == "20250401LGSS0,20250402LGHH0"

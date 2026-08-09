@@ -12,7 +12,6 @@ import argparse
 import asyncio
 import contextlib
 import logging
-import os
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -629,22 +628,10 @@ async def crawl_all_players(
 
 def _parse_crawl_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="KBO Player Search Crawler")
-    parser.set_defaults(save=True, sync_oci=None)
+    parser.set_defaults(save=True)
     parser.add_argument("--max-pages", type=int, default=None, help="Maximum pages to crawl (default: all)")
     parser.add_argument("--save", dest="save", action="store_true", help="Save to SQLite database (default)")
     parser.add_argument("--no-save", dest="save", action="store_false", help="Skip saving to SQLite database")
-    parser.add_argument(
-        "--sync-oci",
-        dest="sync_oci",
-        action="store_true",
-        help="Sync player_basic to OCI after crawling (default when OCI_DB_URL is set)",
-    )
-    parser.add_argument(
-        "--no-sync-oci",
-        dest="sync_oci",
-        action="store_false",
-        help="Skip OCI sync even if OCI_DB_URL is set",
-    )
     return parser.parse_args()
 
 
@@ -686,27 +673,10 @@ async def _crawl_and_save(
     parsed_dates = sum(1 for player in player_dicts if player["birth_date_date"] is not None)
     logger.info("\nParsed birth dates: %s/%s", parsed_dates, len(player_dicts))
 
-    logger.info("\nSaving to SQLite...")
+    logger.info("\nSaving players...")
     repo = PlayerBasicRepository()
     saved_count = repo.upsert_players(player_dicts)
-    logger.info("Saved %s players to SQLite", saved_count)
-
-
-def _sync_to_oci(oci_url: str) -> None:
-    from src.db.engine import SessionLocal
-    from src.sync.oci_sync import OCISync
-
-    logger.info("\nSyncing to OCI...")
-    with SessionLocal() as sqlite_session:
-        sync = OCISync(oci_url, sqlite_session)
-        try:
-            if not sync.test_connection():
-                logger.info("OCI connection failed")
-                return
-            synced = sync.sync_player_basic()
-            logger.info("Synced %s players to OCI", synced)
-        finally:
-            sync.close()
+    logger.info("Saved %s players", saved_count)
 
 
 async def main() -> None:
@@ -721,10 +691,7 @@ async def main() -> None:
     if not players:
         return
 
-    oci_url = os.getenv("OCI_DB_URL")
-    should_sync = args.sync_oci if args.sync_oci is not None else bool(oci_url)
-
-    if args.save or should_sync:
+    if args.save:
         from src.db.engine import init_db
 
         logger.info("\nInitializing database...")
@@ -735,19 +702,7 @@ async def main() -> None:
     if args.save:
         await _crawl_and_save(player_dicts)
     else:
-        logger.info("\nSkipping SQLite save (--no-save specified)")
-        if should_sync:
-            logger.info("Existing SQLite data will be used for OCI sync")
-
-    if should_sync:
-        if not oci_url:
-            logger.info("\nOCI_DB_URL not set; skipping OCI sync")
-        else:
-            _sync_to_oci(oci_url)
-    elif args.sync_oci is False:
-        logger.info("\nSkipping OCI sync (--no-sync-oci specified)")
-    elif not oci_url:
-        logger.info("\nOCI_DB_URL not set; OCI sync skipped")
+        logger.info("\nSkipping database save (--no-save specified)")
 
     logger.info("%s", "\n" + "=" * 60)
     logger.info("Complete")

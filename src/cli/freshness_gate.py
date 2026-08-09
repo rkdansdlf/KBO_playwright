@@ -23,11 +23,13 @@ from src.models.game import (
     GameMetadata,
     GamePitchingStat,
     GameSummary,
+    GameValidationMetrics,
 )
 from src.utils.alerting import SlackWebhookClient
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 from src.utils.relay_text import is_relay_noise_text
+from src.utils.relay_validation import TRUSTED_VALIDATION_STATES
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -94,6 +96,7 @@ def _empty_issue_map() -> dict[str, list[str]]:
         "missing_inning_scores": [],
         "missing_events": [],
         "missing_wpa": [],
+        "untrusted_relay": [],
         "missing_starting_pitchers": [],
         "missing_pitching_stats": [],
         "missing_pitching_starters": [],
@@ -169,6 +172,13 @@ def _check_events_wpa(session: Session, game: object, issues: dict[str, list[str
         session.query(GameEvent.id).filter(GameEvent.game_id == game.game_id, GameEvent.wpa.isnot(None)).first() is None  # type: ignore[attr-defined]
     ):
         issues["missing_wpa"].append(game.game_id)  # type: ignore[attr-defined]
+    validation = (
+        session.query(GameValidationMetrics.validation_status)
+        .filter(GameValidationMetrics.game_id == game.game_id)  # type: ignore[attr-defined]
+        .first()
+    )
+    if validation is None or str(validation.validation_status) not in TRUSTED_VALIDATION_STATES:
+        issues.setdefault("untrusted_relay", []).append(game.game_id)  # type: ignore[attr-defined]
 
 
 def _check_starting_pitchers(game: object, issues: dict[str, list[str]]) -> None:
@@ -342,7 +352,7 @@ def _log_sla_metrics(session: Session, issues: dict[str, list[str]]) -> None:
             "threshold": 3,
         },
         "relay": {
-            "issues": ["missing_events", "missing_lineups", "missing_inning_scores"],
+            "issues": ["missing_events", "missing_lineups", "missing_inning_scores", "untrusted_relay"],
             "threshold": 1,
         },
         "analysis": {

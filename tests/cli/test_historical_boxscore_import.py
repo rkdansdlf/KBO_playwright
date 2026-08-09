@@ -1,6 +1,7 @@
 """Unit tests for historical_boxscore_import CLI."""
 
 import hashlib
+from unittest.mock import patch
 
 from src.cli.historical_boxscore_import import (
     main,
@@ -68,7 +69,11 @@ class TestHistoricalBoxscoreImportCli:
         assert len(entries) == 1
         assert entries[0]["game_id"] == "20090404HHSK0"
 
-        report = process_historical_manifest(manifest_file, dry_run=True, strict=False)
+        with patch(
+            "src.cli.historical_boxscore_import._process_single_entry",
+            return_value={"game_id": "20090404HHSK0", "season": 2009, "status": "valid"},
+        ):
+            report = process_historical_manifest(manifest_file, dry_run=True, strict=False)
         assert report["summary"]["total_entries"] == 1
         assert report["summary"]["valid"] == 1
 

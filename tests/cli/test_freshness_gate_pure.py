@@ -29,7 +29,7 @@ from src.constants import KST
 class TestEmptyIssueMap:
     def test_returns_all_keys(self) -> None:
         result = _empty_issue_map()
-        assert len(result) == 14
+        assert len(result) == 15
         for key in (
             "missing_start_time",
             "missing_scores",
@@ -37,6 +37,7 @@ class TestEmptyIssueMap:
             "missing_inning_scores",
             "missing_events",
             "missing_wpa",
+            "untrusted_relay",
             "missing_starting_pitchers",
             "missing_pitching_stats",
             "missing_pitching_starters",

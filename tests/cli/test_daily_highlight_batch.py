@@ -18,7 +18,7 @@ class TestDailyHighlightBatchCLI:
         ):
             mock_dt.strptime.return_value.date.return_value = MagicMock()
             mock_session = MagicMock()
-            mock_session.query.return_value.filter.return_value.all.return_value = []
+            mock_session.query.return_value.join.return_value.filter.return_value.all.return_value = []
             mock_sesh.return_value.__enter__.return_value = mock_session
 
             result = main(["--date", "20251015"])
@@ -34,7 +34,7 @@ class TestDailyHighlightBatchCLI:
             mock_game = MagicMock()
             mock_game.game_id = "20251015LGHH0"
             mock_session = MagicMock()
-            mock_session.query.return_value.filter.return_value.all.return_value = [mock_game]
+            mock_session.query.return_value.join.return_value.filter.return_value.all.return_value = [mock_game]
             mock_sesh.return_value.__enter__.return_value = mock_session
 
             result = main(["--date", "20251015", "--dry-run"])
@@ -50,13 +50,13 @@ class TestDailyHighlightBatchCLI:
             mock_game = MagicMock()
             mock_game.game_id = "20251015LGHH0"
             mock_session = MagicMock()
-            mock_session.query.return_value.filter.return_value.all.return_value = [mock_game]
+            mock_session.query.return_value.join.return_value.filter.return_value.all.return_value = [mock_game]
             mock_sesh.return_value.__enter__.return_value = mock_session
             mock_agg = MagicMock()
             mock_agg.aggregate_game_highlights.return_value = [MagicMock()]
             MockAgg.return_value = mock_agg
 
-            result = main(["--date", "20251015", "--force", "--no-sync", "--no-notify"])
+            result = main(["--date", "20251015", "--force", "--no-notify"])
             assert result == 0
             mock_agg.aggregate_game_highlights.assert_called_once_with("20251015LGHH0")
 
@@ -69,13 +69,12 @@ class TestDailyHighlightBatchCLI:
         ):
             mock_datetime.now.return_value.strftime.return_value = "20251016"
 
-            assert main(["--force", "--dry-run", "--no-sync", "--no-notify"]) == 0
+            assert main(["--force", "--dry-run", "--no-notify"]) == 0
 
         batch.assert_awaited_once_with(
             "20251016",
             force=True,
             dry_run=True,
-            sync_to_oci=False,
             notify=False,
         )
 
@@ -130,7 +129,7 @@ class TestHighlightProcessing:
     def test_load_completed_games_returns_filtered_query_results(self):
         session = MagicMock()
         games = [MagicMock()]
-        session.query.return_value.filter.return_value.all.return_value = games
+        session.query.return_value.join.return_value.filter.return_value.all.return_value = games
 
         result = daily_highlight_batch._load_completed_games(session, date(2025, 10, 15))
 
@@ -138,51 +137,7 @@ class TestHighlightProcessing:
         session.query.assert_called_once()
 
 
-class TestHighlightNotificationsAndSync:
-    def test_syncs_unique_game_ids_and_closes_syncer(self, monkeypatch):
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://oci")
-        sync_session = MagicMock()
-        session_factory = MagicMock()
-        session_factory.return_value.__enter__.return_value = sync_session
-        syncer = MagicMock()
-
-        with (
-            patch("src.cli.daily_highlight_batch.SessionLocal", session_factory),
-            patch("src.cli.daily_highlight_batch.OCISync", return_value=syncer) as sync_class,
-        ):
-            daily_highlight_batch._sync_highlights_to_oci(
-                ["G2", "G1", "G2"],
-                dry_run=False,
-                sync_to_oci=True,
-            )
-
-        sync_class.assert_called_once_with("postgresql://oci", sync_session)
-        assert syncer.sync_specific_game.call_args_list[0].args == ("G1",)
-        assert syncer.sync_specific_game.call_args_list[1].args == ("G2",)
-        syncer.close.assert_called_once()
-
-    def test_sync_failure_is_logged_and_syncer_is_closed(self, monkeypatch):
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://oci")
-        syncer = MagicMock()
-        syncer.sync_specific_game.side_effect = RuntimeError("sync failed")
-        session_factory = MagicMock()
-
-        with (
-            patch("src.cli.daily_highlight_batch.SessionLocal", session_factory),
-            patch("src.cli.daily_highlight_batch.OCISync", return_value=syncer),
-        ):
-            daily_highlight_batch._sync_highlights_to_oci(["G1"], dry_run=False, sync_to_oci=True)
-
-        syncer.close.assert_called_once()
-
-    def test_sync_skips_without_oci_configuration(self, monkeypatch):
-        monkeypatch.delenv("OCI_DB_URL", raising=False)
-
-        with patch("src.cli.daily_highlight_batch.SessionLocal") as session_factory:
-            daily_highlight_batch._sync_highlights_to_oci(["G1"], dry_run=False, sync_to_oci=None)
-
-        session_factory.assert_not_called()
-
+class TestHighlightNotifications:
     def test_formats_special_matchups_and_top_plays(self):
         game_one = SimpleNamespace(away_team="LG", home_team="SSG", away_score=3, home_score=2)
         game_two = SimpleNamespace(away_team="KIA", home_team="DOOSAN", away_score=4, home_score=5)
@@ -235,7 +190,7 @@ class TestRunHighlightBatch:
 
         assert result == []
 
-    def test_orchestrates_processing_sync_and_notification(self):
+    def test_orchestrates_processing_and_notification(self):
         session = MagicMock()
         session_factory = MagicMock()
         session_factory.return_value.__enter__.return_value = session
@@ -247,7 +202,6 @@ class TestRunHighlightBatch:
             patch("src.cli.daily_highlight_batch.SessionLocal", session_factory),
             patch("src.cli.daily_highlight_batch._load_completed_games", return_value=[game]) as load_games,
             patch("src.cli.daily_highlight_batch._process_highlight_games", return_value=processed) as process,
-            patch("src.cli.daily_highlight_batch._sync_highlights_to_oci") as sync,
             patch("src.cli.daily_highlight_batch._highlight_notification_message", return_value="summary"),
             patch("src.cli.daily_highlight_batch._send_highlight_notification") as notify,
         ):
@@ -256,7 +210,6 @@ class TestRunHighlightBatch:
                     "20251015",
                     force=True,
                     dry_run=False,
-                    sync_to_oci=True,
                     notify=True,
                 ),
             )
@@ -264,5 +217,4 @@ class TestRunHighlightBatch:
         assert result == ["G1"]
         load_games.assert_called_once_with(session, date(2025, 10, 15))
         process.assert_called_once_with(session, [game], force=True, dry_run=False)
-        sync.assert_called_once_with(["G1"], dry_run=False, sync_to_oci=True)
         notify.assert_called_once_with("summary", dry_run=False)

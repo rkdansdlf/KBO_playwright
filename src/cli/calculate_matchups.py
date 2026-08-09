@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import SessionLocal
 from src.services.matchup_engine import MatchupEngine
 
 if TYPE_CHECKING:
@@ -19,12 +18,11 @@ logger = logging.getLogger(__name__)
 MATCHUP_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
-def batch_calculate_matchups(years: list[int], *, sync_oci: bool = False) -> None:
+def batch_calculate_matchups(years: list[int]) -> None:
     """Run the MatchupEngine for a range of years to compute BvP and Splits.
 
     Args:
         years: Years.
-        sync_oci: Sync Oci.
 
     """
     engine = MatchupEngine()
@@ -34,22 +32,6 @@ def batch_calculate_matchups(years: list[int], *, sync_oci: bool = False) -> Non
             engine.execute_all(year)
         except MATCHUP_CALC_EXCEPTIONS:
             logger.exception("⚠️ Failed to calculate matchups for %s", year)
-
-    if sync_oci:
-        logger.info("🚀 Syncing Matchups to OCI...")
-        import os
-
-        from src.cli.sync_oci import OCISync
-
-        target_url = os.getenv("OCI_DB_URL")
-        if target_url:
-            with SessionLocal() as session:
-                syncer = OCISync(target_url, session)
-                syncer.sync_matchups()
-            logger.info("✅ Sync complete.")
-        else:
-            logger.warning("⚠️ OCI_DB_URL not set, skipping sync.")
-
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the main entry point for this CLI command.
@@ -61,7 +43,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calculate Matchup and Split matrices.")
 
     parser.add_argument("--years", type=str, default="2020-2026")
-    parser.add_argument("--sync", action="store_true", help="Sync results to OCI")
     args = parser.parse_args(argv)
 
     if "-" in args.years:
@@ -70,7 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         target_years = [int(args.years)]
 
-    batch_calculate_matchups(target_years, sync_oci=args.sync)
+    batch_calculate_matchups(target_years)
     return 0
 
 

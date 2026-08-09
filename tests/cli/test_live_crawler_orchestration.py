@@ -138,38 +138,6 @@ class TestRelaySaving:
         queue_snapshot.assert_called_once_with("game", "20260101")
 
 
-class TestLiveSync:
-    def test_does_not_create_sync_client_when_sync_is_disabled(self, monkeypatch):
-        session_local = MagicMock()
-        monkeypatch.setattr(live_crawler, "SessionLocal", session_local)
-
-        failures = live_crawler._sync_live_touched_games(sync_to_oci=False, touched_game_ids={"game"})
-
-        assert failures == []
-        session_local.assert_not_called()
-
-    def test_collects_per_game_sync_failure_and_closes_client(self, monkeypatch):
-        synced = []
-        sync_client = MagicMock()
-
-        def sync_game(game_id):
-            synced.append(game_id)
-            if game_id == "bad":
-                raise RuntimeError("unavailable")
-
-        sync_client.sync_specific_game.side_effect = sync_game
-        session = _FakeSession()
-        monkeypatch.setenv("OCI_DB_URL", "postgresql://example.test/kbo")
-        monkeypatch.setattr(live_crawler, "SessionLocal", lambda: session)
-        monkeypatch.setattr(live_crawler, "OCISync", MagicMock(return_value=sync_client))
-
-        failures = live_crawler._sync_live_touched_games(sync_to_oci=True, touched_game_ids={"good", "bad"})
-
-        assert synced == ["bad", "good"]
-        assert failures == [{"game_id": "bad", "phase": "sync_specific_game", "error": "unavailable"}]
-        sync_client.close.assert_called_once()
-
-
 class TestProcessAndCycle:
     def test_processes_one_game_and_returns_resolved_lifecycle(self, monkeypatch):
         relay = MagicMock()
@@ -204,7 +172,7 @@ class TestProcessAndCycle:
         monkeypatch.setattr(live_crawler, "datetime", FixedDateTime)
         monkeypatch.setattr(live_crawler, "ScheduleCrawler", MagicMock(return_value=schedule))
 
-        result = asyncio.run(live_crawler.run_live_crawler_cycle(sync_to_oci=False))
+        result = asyncio.run(live_crawler.run_live_crawler_cycle())
 
         assert result == {
             "active": False,
@@ -214,7 +182,7 @@ class TestProcessAndCycle:
             "game_ids_playing": [],
         }
 
-    def test_cycle_aggregates_processed_games_and_sync_failures(self, monkeypatch):
+    def test_cycle_aggregates_processed_games(self, monkeypatch):
         class FixedDateTime:
             @staticmethod
             def now(tz=None):
@@ -242,19 +210,12 @@ class TestProcessAndCycle:
         monkeypatch.setattr(live_crawler, "_apply_dynamic_delay_scaling", MagicMock())
         monkeypatch.setattr(live_crawler, "_process_single_live_game", process)
         monkeypatch.setattr(live_crawler, "write_refresh_manifest", manifest)
-        monkeypatch.setattr(
-            live_crawler,
-            "_sync_live_touched_games",
-            MagicMock(return_value=[{"game_id": "suspended", "phase": "sync_specific_game", "error": "timeout"}]),
-        )
-
-        result = asyncio.run(live_crawler.run_live_crawler_cycle(sync_to_oci=True))
+        result = asyncio.run(live_crawler.run_live_crawler_cycle())
 
         assert result["active"] is True
         assert result["active_playing"] is True
         assert result["active_suspended"] is True
         assert set(result["game_ids_playing"]) == {"running", "suspended"}
-        assert result["oci_sync_failed_game_ids"] == ["suspended"]
         assert manifest.call_args.kwargs["game_ids"] == {"running", "suspended"}
 
 
@@ -273,9 +234,9 @@ class TestMainLoop:
         monkeypatch.setattr(live_crawler.asyncio, "sleep", sleep)
 
         with pytest.raises(asyncio.CancelledError):
-            asyncio.run(live_crawler.main_loop(2, sync_to_oci=False))
+            asyncio.run(live_crawler.main_loop(2))
 
-        cycle.assert_awaited_once_with(sync_to_oci=False)
+        cycle.assert_awaited_once_with()
         sleep.assert_awaited_once_with(120)
 
     def test_dynamic_mode_uses_enriched_interval_for_active_game(self, monkeypatch):
@@ -294,7 +255,7 @@ class TestMainLoop:
         monkeypatch.setattr(live_crawler.asyncio, "sleep", sleep)
 
         with pytest.raises(asyncio.CancelledError):
-            asyncio.run(live_crawler.main_loop(2, sync_to_oci=False, dynamic=True))
+            asyncio.run(live_crawler.main_loop(2, dynamic=True))
 
         enriched_state.assert_called_once_with(["game"])
         sleep.assert_awaited_once_with(21)
