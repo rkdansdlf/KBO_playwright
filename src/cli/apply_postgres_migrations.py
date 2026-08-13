@@ -7,7 +7,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -24,6 +24,12 @@ MIGRATION_DIR = Path(__file__).resolve().parents[2] / "migrations" / "postgresql
 MIGRATION_TABLE = "schema_migrations"
 MIGRATION_NAME_RE = re.compile(r"^(\d+)_.*\.sql$")
 ORM_BASELINE_TABLES = ("game", "kbo_seasons")
+ADOPTABLE_MIGRATIONS = frozenset(
+    {
+        "047_remove_redundant_phase1_indexes.sql",
+        "048_add_award_player_id.sql",
+    },
+)
 
 
 def _migration_paths(directory: Path = MIGRATION_DIR) -> list[Path]:
@@ -77,6 +83,63 @@ def _applied_versions(connection: Connection) -> set[str]:
     }
 
 
+def _raise_adoption_error(message: str) -> NoReturn:
+    raise RuntimeError(message)
+
+
+def _validate_existing_schema_for_adoption(connection: Connection) -> None:
+    """Validate the schema shape before adopting current migration metadata."""
+    inspector = inspect(connection)
+    if inspector.has_table("_schema_migrations"):
+        msg = "Legacy _schema_migrations found; OCI/Oracle history requires separate review"
+        _raise_adoption_error(msg)
+    if not inspector.has_table("awards"):
+        _raise_adoption_error("Existing schema adoption requires the awards table")
+
+    award_columns = {column["name"] for column in inspector.get_columns("awards")}
+    missing_columns = {"player_id", "team_code"} - award_columns
+    if missing_columns:
+        missing = ", ".join(sorted(missing_columns))
+        _raise_adoption_error(f"Existing schema adoption requires awards columns: {missing}")
+
+    index_names = {index.get("name") for index in inspector.get_indexes("awards")}
+    if "idx_award_player_id" not in index_names:
+        _raise_adoption_error("Existing schema adoption requires idx_award_player_id")
+
+
+def adopt_existing_schema(engine: Engine, *, directory: Path = MIGRATION_DIR) -> list[str]:
+    """Record the current PostgreSQL migration baseline without executing DDL."""
+    if engine.dialect.name == "oracle":
+        msg = "PostgreSQL schema adoption does not support Oracle engines"
+        raise RuntimeError(msg)
+
+    paths = _migration_paths(directory)
+    versions = {path.name for path in paths}
+    if versions != ADOPTABLE_MIGRATIONS:
+        unexpected = ", ".join(sorted(versions - ADOPTABLE_MIGRATIONS)) or "none"
+        missing = ", ".join(sorted(ADOPTABLE_MIGRATIONS - versions)) or "none"
+        msg = f"Adoption requires exactly current migrations; missing={missing}, unexpected={unexpected}"
+        raise RuntimeError(msg)
+
+    with engine.connect() as connection:
+        _ensure_orm_baseline(connection)
+        if _tracking_table_exists(connection):
+            applied = _applied_versions(connection)
+            if applied >= ADOPTABLE_MIGRATIONS:
+                return []
+            _raise_adoption_error("schema_migrations already exists; use normal migration handling")
+        _validate_existing_schema_for_adoption(connection)
+
+    with engine.begin() as connection:
+        _ensure_tracking_table(connection)
+        for version in sorted(ADOPTABLE_MIGRATIONS):
+            connection.execute(
+                text(f"INSERT INTO {MIGRATION_TABLE} (version) VALUES (:version)"),  # noqa: S608
+                {"version": version},
+            )
+    return sorted(ADOPTABLE_MIGRATIONS)
+
+
 def apply_migrations(engine: Engine, *, directory: Path = MIGRATION_DIR, check: bool = False) -> list[str]:
     """Apply incremental PostgreSQL migrations or return pending versions."""
     if engine.dialect.name == "oracle":
@@ -114,16 +177,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Apply PostgreSQL incremental migrations")
     parser.add_argument("--url", help="Override DATABASE_URL")
     parser.add_argument("--check", action="store_true", help="Return non-zero when migrations are pending")
+    parser.add_argument(
+        "--adopt-existing",
+        action="store_true",
+        help="Validate the current schema and record the current migration baseline without executing DDL",
+    )
     args = parser.parse_args(argv)
+    if args.check and args.adopt_existing:
+        parser.error("--check and --adopt-existing cannot be combined")
     url = args.url or os.getenv("DATABASE_URL") or DATABASE_URL
     if not url:
         msg = "DATABASE_URL is required"
         raise SystemExit(msg)
     engine = create_engine_for_url(url)
     try:
-        if not args.check:
-            _bootstrap_orm_schema(engine)
-        pending = apply_migrations(engine, check=args.check)
+        if args.adopt_existing:
+            pending = adopt_existing_schema(engine)
+        else:
+            if not args.check:
+                _bootstrap_orm_schema(engine)
+            pending = apply_migrations(engine, check=args.check)
     except (SQLAlchemyError, RuntimeError, OSError):
         logger.exception("PostgreSQL migration failed")
         return 1

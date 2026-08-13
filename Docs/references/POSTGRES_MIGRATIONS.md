@@ -8,8 +8,15 @@ PostgreSQL is the primary application database. SQLite remains available for fas
 2. `init_db()` creates the ORM baseline and PostgreSQL views.
 3. `python3 -m src.cli.apply_postgres_migrations` applies pending PostgreSQL migrations.
 4. `python3 -m src.cli.apply_postgres_migrations --check` checks pending versions without writing.
+5. `python3 -m src.cli.apply_postgres_migrations --adopt-existing` validates the current ORM-shaped schema and records only the current migration baseline metadata.
 
 The migration runner uses `DATABASE_URL` only. It does not connect to a second database or perform a synchronization step.
+
+The explicit adoption mode does not call `init_db()` or execute migration SQL. It requires
+the current `awards` player-link columns and index, then writes only `schema_migrations`
+metadata for migrations 047 and 048. Use it only after backup and read-only review of an
+existing database. The historical OCI/Oracle chain from Git cleanup commit `052ea630`
+is not a PostgreSQL chain and must not be copied into `migrations/postgresql/`.
 
 ## Data Migration
 

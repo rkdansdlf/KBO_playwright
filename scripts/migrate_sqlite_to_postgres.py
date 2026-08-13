@@ -123,24 +123,14 @@ def _copy_rows(connection: Any, table: Table, rows: list[dict[str, object]]) -> 
     if not rows:
         return
     columns = list(rows[0])
-    column_types = {
-        column: table.c[column].type.dialect_impl(connection.dialect)
-        for column in columns
-    }
+    column_types = {column: table.c[column].type.dialect_impl(connection.dialect) for column in columns}
     for column, target_type in column_types.items():
         length = getattr(target_type, "length", None)
         if not length:
             continue
-        if any(
-            len(_copy_value(row[column], target_type)) > length
-            for row in rows
-            if row[column] is not None
-        ):
+        if any(len(_copy_value(row[column], target_type)) > length for row in rows if row[column] is not None):
             connection.execute(
-                text(
-                    f"ALTER TABLE {_quote_identifier(table.name)} "
-                    f"ALTER COLUMN {_quote_identifier(column)} TYPE TEXT"
-                )
+                text(f"ALTER TABLE {_quote_identifier(table.name)} ALTER COLUMN {_quote_identifier(column)} TYPE TEXT")
             )
             column_types[column] = object()
     statement = (
@@ -149,13 +139,7 @@ def _copy_rows(connection: Any, table: Table, rows: list[dict[str, object]]) -> 
     )
     payload = io.StringIO()
     writer = csv.writer(payload, lineterminator="\n")
-    writer.writerows(
-        [
-            _copy_value(row[column], column_types[column])
-            for column in columns
-        ]
-        for row in rows
-    )
+    writer.writerows([_copy_value(row[column], column_types[column]) for column in columns] for row in rows)
     payload.seek(0)
     cursor = connection.connection.cursor()
     try:
