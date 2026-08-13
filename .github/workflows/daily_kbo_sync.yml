@@ -256,10 +256,24 @@ jobs:
           python3 -m src.cli.crawl_milestones --season ${{ needs.finalize.outputs.year }} --save
           python3 -m src.cli.crawl_futures_schedule --year ${{ needs.finalize.outputs.year }} --save
 
+      - name: Crawl Player Splits & Rookie Drafts
+        run: |
+          python3 -m src.cli.crawl_player_splits --season ${{ needs.finalize.outputs.year }} --save
+          python3 -m src.cli.crawl_player_drafts --season ${{ needs.finalize.outputs.year }} --save
+
       - name: Recalc Milestones & Index RAG Knowledge
         run: |
           python3 -m src.cli.recalc_milestones --season ${{ needs.finalize.outputs.year }}
           python3 -m src.cli.index_rag_knowledge --season ${{ needs.finalize.outputs.year }}
+
+      - name: Dispatch Daily KBO Pregame & Milestone Alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 -m src.cli.send_today_pregame_alerts --season ${{ needs.finalize.outputs.year }} --channels telegram
+          python3 -m src.cli.send_milestone_daily_summary --season ${{ needs.finalize.outputs.year }} --channels telegram
+
 
       - name: Resolve Null Player IDs
         run: |
