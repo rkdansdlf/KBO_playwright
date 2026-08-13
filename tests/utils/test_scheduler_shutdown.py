@@ -31,7 +31,7 @@ def test_scheduler_signal_shutdown(tmp_path, monkeypatch) -> None:
             patch("scripts.scheduler.LIVE_LOCK") as mock_live_lock,
             patch("scripts.scheduler.DAILY_LOCK") as mock_daily_lock,
             patch("scripts.scheduler.MAINTENANCE_LOCK") as mock_maintenance_lock,
-            patch("scripts.scheduler.REALTIME_OCI_SYNC_LOCK") as mock_oci_lock,
+            patch("scripts.scheduler.SQLITE_WRITE_LOCK") as mock_writer_lock,
             patch("sys.argv", ["scheduler.py", "--no-startup-run"]),
         ):
             # Execute main to register signal handlers
@@ -50,7 +50,7 @@ def test_scheduler_signal_shutdown(tmp_path, monkeypatch) -> None:
             mock_live_lock.release.assert_called_once()
             mock_daily_lock.release.assert_called_once()
             mock_maintenance_lock.release.assert_called_once()
-            mock_oci_lock.release.assert_called_once()
+            mock_writer_lock.release.assert_called_once()
             mock_exit.assert_called_once_with(0)
 
     finally:

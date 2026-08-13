@@ -30,7 +30,9 @@ from src.constants import KST
 logger = logging.getLogger("backup_db")
 
 
-def run_backup(*, db_path: str = "data/kbo_dev.db", backup_dir: str = "data/backups", keep_count: int = 7, dry_run: bool = False) -> str | None:
+def run_backup(
+    *, db_path: str = "data/kbo_dev.db", backup_dir: str = "data/backups", keep_count: int = 7, dry_run: bool = False
+) -> str | None:
     """Run SQLite online backup and integrity check."""
     src = Path(db_path).resolve()
     if not src.exists():

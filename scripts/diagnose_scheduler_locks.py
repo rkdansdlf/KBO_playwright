@@ -35,6 +35,20 @@ KNOWN_LOCKS = (
 
 def _pid_alive(pid: int) -> bool:
     """Return True if a process with ``pid`` is currently running."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+
+        process_query_limited_information = 0x1000
+        access_denied = 5
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return ctypes.get_last_error() == access_denied
     try:
         os.kill(pid, 0)
     except (OSError, ProcessLookupError):
