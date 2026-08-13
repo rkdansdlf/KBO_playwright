@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
 from src.api.auth import get_api_key
+from src.api.schemas import FuturesScheduleResponse
 from src.db.engine import get_db_session
 from src.models.futures_schedule import FuturesGameSchedule
 
@@ -17,14 +18,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/futures", tags=["KBO Futures League"])
 
 
-@router.get("/schedule", dependencies=[Depends(get_api_key)])
+@router.get(
+    "/schedule",
+    dependencies=[Depends(get_api_key)],
+    response_model=FuturesScheduleResponse,
+    summary="KBO 퓨처스 리그 일정 및 경기 결과 조회",
+)
 def get_futures_schedule(
     season: Annotated[int, Query(description="시즌 연도")] = 2026,
     month: Annotated[int | None, Query(ge=1, le=12, description="월 필터 (1~12)")] = None,
     team_code: Annotated[str | None, Query(description="구단 코드")] = None,
     limit: Annotated[int, Query(ge=1, le=500, description="최대 반환 수")] = 100,
 ) -> dict[str, Any]:
-    """KBO 퓨처스 리그 일정 및 경기 결과를 조회합니다."""
+    """KBO 퓨처스 2군 리그의 일정, 경기 스코어, 진행 상태 및 취소 사유를 조회합니다."""
     with get_db_session() as session:
         stmt = select(FuturesGameSchedule).where(FuturesGameSchedule.season == season)
 

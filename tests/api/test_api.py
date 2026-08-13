@@ -49,7 +49,10 @@ def _db_session_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[A
 @pytest.fixture(autouse=True)
 def _setup_mock_db(db_session_factory: Any) -> Generator[None, None, None]:
     """Globally patch get_db_session for all tests in this file."""
-    with patch("src.api.app.get_db_session", db_session_factory):
+    with (
+        patch("src.api.routers.games.get_db_session", db_session_factory),
+        patch("src.api.routers.health.get_db_session", db_session_factory),
+    ):
         yield
 
 
@@ -98,7 +101,7 @@ def test_get_system_status(db_session_factory: Any) -> None:
     def mock_check_lock(lock_name: str) -> bool:
         return lock_name == "live_refresh"
 
-    with patch("src.api.app._check_lock_status", side_effect=mock_check_lock):
+    with patch("src.api.routers.health._check_lock_status", side_effect=mock_check_lock):
         response = client.get("/status")
         assert response.status_code == 200
         data = response.json()
@@ -112,7 +115,7 @@ def test_get_system_status(db_session_factory: Any) -> None:
 
 def test_trigger_daily_update_lock_held() -> None:
     """Test trigger daily update raises conflict if locks are already held."""
-    with patch("src.api.app._check_lock_status", return_value=True):
+    with patch("src.api.routers.games._check_lock_status", return_value=True):
         response = client.post("/crawl/daily-update")
         assert response.status_code == 409
         assert "already in progress" in response.json()["detail"]
@@ -122,12 +125,13 @@ def test_trigger_daily_update_success() -> None:
     """Test triggering daily update triggers background tasks."""
     mock_run = MagicMock()
     with (
-        patch("src.api.app._check_lock_status", return_value=False),
-        patch("src.api.app._async_run_daily_update", mock_run),
+        patch("src.api.routers.games._check_lock_status", return_value=False),
+        patch("src.api.routers.games._async_run_daily_update", mock_run),
     ):
         response = client.post("/crawl/daily-update")
-        assert response.status_code == 200
-        assert "triggered in background" in response.json()["status"]
+        assert response.status_code == 202
+        assert response.json()["status"] == "accepted"
+        assert "triggered in background" in response.json()["message"]
 
 
 def test_upload_text_relay_validation() -> None:
@@ -209,11 +213,11 @@ def test_api_key_authorized_when_set(monkeypatch: pytest.MonkeyPatch, db_session
     # /crawl/daily-update should succeed
     mock_run = MagicMock()
     with (
-        patch("src.api.app._check_lock_status", return_value=False),
-        patch("src.api.app._async_run_daily_update", mock_run),
+        patch("src.api.routers.games._check_lock_status", return_value=False),
+        patch("src.api.routers.games._async_run_daily_update", mock_run),
     ):
         response = client.post("/crawl/daily-update", headers=headers)
-        assert response.status_code == 200
+        assert response.status_code == 202
 
     # /upload/text-relay should succeed
     csv_data = "inning,inning_half,pitcher_name,batter_name,play_description,event_type,result\n"
