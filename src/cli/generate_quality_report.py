@@ -678,8 +678,7 @@ def _append_collection_section(lines: list[str], metrics: dict[str, Any]) -> Non
 def _append_parity_section(lines: list[str], parity: dict[str, Any]) -> None:
     if not parity.get("ok", True):
         lines.append(
-            f"❓ <b>Parity</b>: Local {parity.get('local_count')} / "
-            f"Database rows: {parity.get('local_count')}",
+            f"❓ <b>Parity</b>: Local {parity.get('local_count')} / Database rows: {parity.get('local_count')}",
         )
 
 
