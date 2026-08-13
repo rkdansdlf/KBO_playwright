@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
 from src.api.auth import get_api_key
+from src.api.schemas import NoticesListResponse
 from src.db.engine import get_db_session
 from src.models.kbo_press_release import KboPressRelease
 
@@ -17,14 +18,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/notices", tags=["KBO Notices & Press Releases"])
 
 
-@router.get("", dependencies=[Depends(get_api_key)])
+@router.get(
+    "",
+    dependencies=[Depends(get_api_key)],
+    response_model=NoticesListResponse,
+    summary="KBO 공식 공시 및 보도자료 목록 조회",
+)
 def get_notices(
     category: Annotated[str | None, Query(description="카테고리 필터 (공시/공지, 뉴스 등)")] = None,
     keyword: Annotated[str | None, Query(description="제목 검색 키워드")] = None,
     page: Annotated[int, Query(ge=1, description="페이지 번호")] = 1,
     limit: Annotated[int, Query(ge=1, le=100, description="페이지 당 항목 수")] = 20,
 ) -> dict[str, Any]:
-    """KBO 공식 공시 및 보도자료 목록을 조회합니다."""
+    """KBO 공식 행정 공시, 주요 언론 보도자료 및 이벤트 소식을 조회합니다."""
     with get_db_session() as session:
         stmt = select(KboPressRelease)
 

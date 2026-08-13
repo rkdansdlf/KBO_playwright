@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 
 from src.api.auth import get_api_key
+from src.api.schemas import PlayerSplitsResponse
 from src.db.engine import get_db_session
 from src.models.player import PlayerBasic
 from src.models.player_draft import PlayerDraftHistory
@@ -46,8 +47,16 @@ def _build_teams_payload() -> dict[str, Any]:
     return payload
 
 
-@router.get("/api/players", dependencies=[Depends(get_api_key)])
-@router.get("/api/v1/players", dependencies=[Depends(get_api_key)])
+@router.get(
+    "/api/players",
+    dependencies=[Depends(get_api_key)],
+    summary="KBO 선수 프로필 목록 검색",
+)
+@router.get(
+    "/api/v1/players",
+    dependencies=[Depends(get_api_key)],
+    summary="KBO 선수 프로필 목록 검색 (v1)",
+)
 def get_players(
     name: Annotated[str | None, Query(description="선수 이름 검색 (부분 일치)")] = None,
     team: Annotated[str | None, Query(description="소속 팀 이름 또는 코드")] = None,
@@ -95,7 +104,11 @@ def get_players(
         raise HTTPException(status_code=500, detail=f"Database query failure: {e}") from e
 
 
-@router.get("/api/v1/players/drafts", dependencies=[Depends(get_api_key)])
+@router.get(
+    "/api/v1/players/drafts",
+    dependencies=[Depends(get_api_key)],
+    summary="KBO 신인 드래프트 지명 이력 조회",
+)
 def get_player_drafts(
     season: Annotated[int, Query(description="지명 시즌 연도")] = 2026,
     team_code: Annotated[str | None, Query(description="구단 코드")] = None,
@@ -127,7 +140,12 @@ def get_player_drafts(
         return {"season": season, "count": len(results), "drafts": results}
 
 
-@router.get("/api/v1/players/{player_id}/splits", dependencies=[Depends(get_api_key)])
+@router.get(
+    "/api/v1/players/{player_id}/splits",
+    dependencies=[Depends(get_api_key)],
+    response_model=PlayerSplitsResponse,
+    summary="선수 상황별/스플릿 세부 통계 조회",
+)
 def get_player_splits(
     player_id: str,
     season: Annotated[int, Query(description="시즌 연도")] = 2026,
@@ -165,8 +183,16 @@ def get_player_splits(
         return {"player_id": player_id, "season": season, "count": len(results), "splits": results}
 
 
-@router.get("/api/teams", dependencies=[Depends(get_api_key)])
-@router.get("/api/v1/teams", dependencies=[Depends(get_api_key)])
+@router.get(
+    "/api/teams",
+    dependencies=[Depends(get_api_key)],
+    summary="KBO 구단 목록 조회",
+)
+@router.get(
+    "/api/v1/teams",
+    dependencies=[Depends(get_api_key)],
+    summary="KBO 구단 목록 조회 (v1)",
+)
 def get_teams() -> dict[str, Any]:
     """Query list of KBO teams."""
     if _teams_state["data"] is not None and (time.monotonic() - _teams_state["ts"]) < _TEAMS_CACHE_TTL_SECONDS:

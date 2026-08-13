@@ -11,6 +11,8 @@ class TestHealthCheck:
             mock_session.execute.return_value.scalar.return_value = 0
             mock_session.execute.return_value.first.return_value = (None,)
             mock_session.query.return_value.all.return_value = []
+            mock_session.query.return_value.count.return_value = 0
+            mock_session.query.return_value.filter.return_value.count.return_value = 0
             result = main([])
             assert result is None
 
@@ -21,5 +23,7 @@ class TestHealthCheck:
             mock_session.execute.return_value.scalar.return_value = 10
             mock_session.execute.return_value.first.return_value = ("2025-01-01",)
             mock_session.query.return_value.all.return_value = []
+            mock_session.query.return_value.count.return_value = 0
+            mock_session.query.return_value.filter.return_value.count.return_value = 0
             result = main([])
             assert result is None

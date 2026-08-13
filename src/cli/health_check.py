@@ -1,17 +1,24 @@
-"""CLI 명령: health check."""
+"""Comprehensive Platform Unified Health Diagnostics CLI."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import os
+import sys
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.api.app import app
 from src.constants import KST
 from src.db.engine import SessionLocal
+from src.models.rag_chunk import RagChunk
 from src.repositories.source_registry_repository import DataSourceRepository
 
 if TYPE_CHECKING:
@@ -26,6 +33,12 @@ TABLE_CHECKS = [
     ("game", "game_date"),
     ("game_batting_stats", "game_id"),
     ("game_pitching_stats", "game_id"),
+    ("kbo_press_releases", "created_at"),
+    ("player_milestones", "updated_at"),
+    ("futures_game_schedules", "game_date"),
+    ("player_splits_stats", "updated_at"),
+    ("player_draft_histories", "created_at"),
+    ("rag_chunks", "created_at"),
     ("team_events", "last_seen_at"),
     ("roster_transactions", "transaction_date"),
     ("ticket_prices", "season"),
@@ -89,69 +102,180 @@ def _check_table_health(session: Session) -> list[dict[str, Any]]:
     return rows
 
 
-def run_health_check() -> None:
-    """Run health."""
+def _check_rag_chunks_health(session: Session) -> dict[str, Any]:
+    """Check RAG chunks count and category breakdown."""
+    total_chunks = session.query(RagChunk).count()
+    pr_chunks = session.query(RagChunk).filter(RagChunk.meta.contains("press_release")).count()
+    ms_chunks = session.query(RagChunk).filter(RagChunk.meta.contains("milestone")).count()
+    fut_chunks = session.query(RagChunk).filter(RagChunk.meta.contains("futures_schedule")).count()
+    spl_chunks = session.query(RagChunk).filter(RagChunk.meta.contains("player_splits")).count()
+
+    healthy = total_chunks > 0
+    return {
+        "healthy": healthy,
+        "total_chunks": total_chunks,
+        "categories": {
+            "press_release": pr_chunks,
+            "milestone": ms_chunks,
+            "futures_schedule": fut_chunks,
+            "player_splits": spl_chunks,
+        },
+    }
+
+
+def _check_telegram_bot_health() -> dict[str, Any]:
+    """Check Telegram bot configuration and client status."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    enabled = bool(token and chat_id)
+
+    return {
+        "healthy": True,  # Non-fatal if token is not configured locally
+        "token_configured": bool(token),
+        "chat_id_configured": bool(chat_id),
+        "client_enabled": enabled,
+    }
+
+
+def _check_api_routers_health() -> dict[str, Any]:
+    """Check 8 core FastAPI REST API router endpoints using TestClient."""
+    client = TestClient(app)
+    endpoints = [
+        ("GET", "/api/v1/health"),
+        ("GET", "/api/v1/notices"),
+        ("GET", "/api/v1/milestones"),
+        ("GET", "/api/v1/futures/schedule"),
+        ("GET", "/api/v1/players"),
+        ("GET", "/api/v1/players/78224/splits"),
+        ("GET", "/api/v1/players/drafts"),
+        ("POST", "/api/v1/rag/hybrid-search"),
+    ]
+
+    results = []
+    all_ok = True
+    for method, path in endpoints:
+        try:
+            res = client.get(path) if method == "GET" else client.post(path, json={"query": "올스타전", "top_k": 2})
+
+            status_ok = res.status_code == HTTPStatus.OK
+            if not status_ok:
+                all_ok = False
+            results.append({"method": method, "path": path, "status": res.status_code, "ok": status_ok})
+        except (AttributeError, KeyError, OSError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as e:
+            all_ok = False
+            results.append({"method": method, "path": path, "status": 500, "error": str(e), "ok": False})
+
+    return {
+        "healthy": all_ok,
+        "total_endpoints": len(endpoints),
+        "successful_endpoints": sum(1 for r in results if r["ok"]),
+        "details": results,
+    }
+
+
+def run_health_check(*, json_format: bool = False) -> dict[str, Any]:
+    """Run comprehensive platform health diagnostics."""
     with SessionLocal() as session:
         ds_rows = _check_datasource_health(session)
         table_rows = _check_table_health(session)
+        rag_health = _check_rag_chunks_health(session)
 
-    logger.info("=" * 60)
-    logger.info(" KBO Pipeline Health Check")
-    logger.info("=" * 60)
-    logger.info(" Timestamp: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
-    logger.info("")
+    telegram_health = _check_telegram_bot_health()
+    api_health = _check_api_routers_health()
 
     stale_count = sum(1 for r in ds_rows if r["stale"].startswith("STALE"))
     never_count = sum(1 for r in ds_rows if r["stale"] == "NEVER")
     empty_count = sum(1 for r in table_rows if r["rows"] == 0 or r["rows"] == "ERR")
 
-    logger.info(" DataSources: %s active (%s stale, %s never crawled)", len(ds_rows), stale_count, never_count)
-    logger.info(" Tables: %s checked (%s issues)", len(table_rows), empty_count)
-    logger.info("")
+    overall_healthy = empty_count == 0 and rag_health["healthy"] and api_health["healthy"]
 
-    logger.info("--- DataSources ---")
-    logger.info("  %-30s %-12s %-10s %-20s %s", "Key", "Domain", "Freq", "Status", "Hash")
-    logger.info("  %s %s %s %s %s", "-" * 30, "-" * 12, "-" * 10, "-" * 20, "-" * 12)
-    for r in ds_rows:
-        logger.info("  %-30s %-12s %-10s %-20s %s", r["key"], r["domain"], r["freq"], r["stale"], r["hash"])
+    report_payload = {
+        "timestamp": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"),
+        "overall_healthy": overall_healthy,
+        "datasources": {
+            "active": len(ds_rows),
+            "stale": stale_count,
+            "never_crawled": never_count,
+            "rows": ds_rows,
+        },
+        "tables": {
+            "total_checked": len(table_rows),
+            "issue_count": empty_count,
+            "rows": table_rows,
+        },
+        "rag_chunks": rag_health,
+        "telegram_bot": telegram_health,
+        "api_routers": api_health,
+    }
 
-    logger.info("")
-    logger.info("--- Tables ---")
-    logger.info("  %-30s %-10s %s", "Table", "Rows", "Latest")
-    logger.info("  %s %s %s", "-" * 30, "-" * 10, "-" * 30)
-    for r in table_rows:
-        logger.info("  %-30s %-10s %s", r["table"], str(r["rows"]), r["latest"])
-
-    logger.info("")
-    if stale_count or never_count or empty_count:
-        logger.info(" ⚠ %s stale, %s never crawled, %s table issues", stale_count, never_count, empty_count)
-    else:
-        logger.info(" ✓ All systems healthy")
+    if json_format:
+        sys.stdout.write(json.dumps(report_payload, indent=2, ensure_ascii=False) + "\n")
+        return report_payload
 
     logger.info("=" * 60)
+    logger.info(" KBO Platform Unified Health Diagnostics")
+    logger.info("=" * 60)
+    logger.info(" Timestamp: %s", report_payload["timestamp"])
+    logger.info(" Overall Status: %s", "✅ HEALTHY" if overall_healthy else "⚠️ WARNING / ISSUES")
+    logger.info("")
+
+    logger.info("--- 1. DataSources & Pipeline ---")
+    logger.info(" DataSources: %s active (%s stale, %s never crawled)", len(ds_rows), stale_count, never_count)
+    logger.info(" Tables: %s checked (%s issues)", len(table_rows), empty_count)
+
+    logger.info("")
+    logger.info("--- 2. RAG Knowledge Base ---")
+    logger.info(
+        " Total Chunks: %d (PR: %d, Milestones: %d, Futures: %d, Splits: %d)",
+        rag_health["total_chunks"],
+        rag_health["categories"]["press_release"],
+        rag_health["categories"]["milestone"],
+        rag_health["categories"]["futures_schedule"],
+        rag_health["categories"]["player_splits"],
+    )
+
+    logger.info("")
+    logger.info("--- 3. Telegram Bot Messenger ---")
+    logger.info(
+        " Token Configured: %s | Chat ID Configured: %s | Client Enabled: %s",
+        telegram_health["token_configured"],
+        telegram_health["chat_id_configured"],
+        telegram_health["client_enabled"],
+    )
+
+    logger.info("")
+    logger.info("--- 4. REST API Routers (8 Endpoints) ---")
+    for detail in api_health["details"]:
+        icon = "✅" if detail["ok"] else "❌"
+        logger.info("  %s %-4s %-35s Status %d", icon, detail["method"], detail["path"], detail["status"])
+
+    logger.info("")
+    logger.info("=" * 60)
+    return report_payload
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Build arg parser.
-
-    Returns:
-        The result of the operation.
-
-    """
-    return argparse.ArgumentParser(description="KBO pipeline health check")
+    """Build arg parser for health check CLI."""
+    parser = argparse.ArgumentParser(description="KBO platform unified health check")
+    parser.add_argument("--json", action="store_true", help="Output health check results in JSON format")
+    parser.add_argument(
+        "--exit-code",
+        action="store_true",
+        help="Exit with non-zero status code on health check issues",
+    )
+    return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Run the main entry point for this CLI command.
-
-    Args:
-        argv: Argv.
-
-    """
+    """Run CLI entrypoint."""
     parser = build_arg_parser()
+    args = parser.parse_args(argv)
 
-    parser.parse_args(argv)
-    run_health_check()
+    logging.basicConfig(level=logging.INFO)
+    report = run_health_check(json_format=args.json)
+
+    if args.exit_code and not report["overall_healthy"]:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

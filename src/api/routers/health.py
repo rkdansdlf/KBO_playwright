@@ -95,6 +95,7 @@ def _build_healing_payload() -> dict[str, Any]:
 
 
 @router.get("/health")
+@router.get("/api/v1/health")
 def health_check() -> dict[str, str]:
     """Provide a simple health check endpoint."""
     return {"status": "ok"}
@@ -109,9 +110,7 @@ def get_prometheus_metrics() -> Response:
 @router.get("/status", dependencies=[Depends(get_api_key)])
 def get_system_status() -> dict[str, Any]:
     """Query database statistics and system lock statuses."""
-    if _status_state["data"] is not None and (
-        time.monotonic() - _status_state["ts"]
-    ) < _STATUS_CACHE_TTL_SECONDS:
+    if _status_state["data"] is not None and (time.monotonic() - _status_state["ts"]) < _STATUS_CACHE_TTL_SECONDS:
         record_api_cache("/status", hit=True)
         return _status_state["data"]
     record_api_cache("/status", hit=False)
@@ -125,9 +124,7 @@ def get_system_status() -> dict[str, Any]:
 @router.get("/api/v1/health/healing-status", dependencies=[Depends(get_api_key)])
 def get_healing_status() -> dict[str, Any]:
     """DB 무결성, 멈춘 경기 수, 시즌 통계 불일치 여부를 리포트합니다."""
-    if _healing_state["data"] is not None and (
-        time.monotonic() - _healing_state["ts"]
-    ) < _HEALING_CACHE_TTL_SECONDS:
+    if _healing_state["data"] is not None and (time.monotonic() - _healing_state["ts"]) < _HEALING_CACHE_TTL_SECONDS:
         record_api_cache("/healing-status", hit=True)
         return _healing_state["data"]
     record_api_cache("/healing-status", hit=False)
