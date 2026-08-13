@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
           init-db: 'false'
       - name: Install lint dependencies
-        run: pip install ruff pre-commit
+        run: pip install ruff==0.15.14 pre-commit
       - name: Ruff lint check
         run: ruff check --output-format=github src/ tests/ scripts/ 2>&1
       - name: Ruff format check

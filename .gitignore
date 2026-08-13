@@ -25,6 +25,7 @@ pw-browsers/
 
 .env
 .env.*
+/docker-data/
 
 # IDE settings
 .vscode/

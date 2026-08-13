@@ -788,7 +788,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Test DB cleanup**: The CI test job removes stale `data/test_runtime*.db*` files before running tests; the local rerun left **0** such files.
 - **Data preservation**: The user-managed `data/` tree was not reverted or deleted.
 
-### Current Verification Baseline (2026-07-18)
+### Historical Verification Baseline (2026-07-18)
 
 - GitHub Actions: lint, Python 3.12 test, SQLite integration-test, PostgreSQL integration-test, and PostgreSQL migration-apply jobs configured; migration and seed flows reproduced locally against PostgreSQL 16.
 - `pytest.ini` default worker pool = `-n 2`; coverage workflow uses `-n 2`; SQLite/PostgreSQL integration workflow steps use `-n 1`.
@@ -861,10 +861,22 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Verification**: Targeted source/test Ruff passed; `compileall` passed for changed Python files; the affected non-integration set passed **158 tests**, daily/live/scheduler integration targets passed **40 tests**, and migration/integrity runner targets passed **9 tests**. Full Ruff/full pytest and isolated PostgreSQL migration apply still require final verification.
 - **Environment note**: The local virtualenv was missing declared `sentry-sdk`, `apscheduler`, and `requests`; these were installed from `requirements.txt` constraints to run scheduler/CLI verification. No production DB or OCI connection was used.
 
-### Phase 79 In Progress (2026-08-09) — Ruff cleanup and focused verification
+### Phase 79 Complete (2026-08-09 to 2026-08-11) — Ruff cleanup and focused verification
 
 - **Lint cleanup**: Reduced the planned Ruff cleanup set through safe autofixes and targeted edits. FastAPI query dependencies now use `Annotated`; API/cache helpers no longer use avoidable `global` assignments; CLI stdout retains intentional `# noqa: T201`; date parsing uses KST-aware values; job tracker and supporting modules received the required typing/docstring/error-handling fixes.
 - **Structural refactors**: Split SQLite and Oracle engine construction into dedicated helpers while preserving the public `create_engine_for_url` signature and Oracle compiler hook contracts. Extracted required-row validation and the browser-backed batting-series execution workflow to satisfy C901/PLR0915 without changing fallback or Basic2 merge behavior.
 - **Focused verification**: Full `ruff check src/ tests/ scripts/` passes; compileall passes for changed Python files; engine/oracle, validator, batting crawler, current API, scheduler, platform-lock, relay, team-mapping, and fan-culture tests pass in focused runs.
 - **Test alignment**: Updated stale API router assertions, Windows-only file-lock skips, platform-aware manifest path assertions, current TeamMapper names, cooldown timing, persistent fan-culture cache isolation, and the Playwright mock fixture for all-series orchestration.
-- **Repository gate status**: A serial non-integration run reached **4,889 passed, 234 deselected, 1 xfailed** with no test failures before pytest teardown hung and raised `KeyboardInterrupt`; xdist runs also hit worker teardown hangs. `ruff format --check src/ tests/ scripts/` still reports **1,021 files** to reformat, so no bulk formatter rewrite was applied.
+- **Repository gate status**: The earlier full-run interruption was diagnosed as a tool/concurrent-process limit plus test isolation issues; final verification uses isolated partitions and does not modify concurrent processes.
+
+### Phase 80 Complete (2026-08-11) — Final gates and Windows/test-isolation hardening
+
+- **Ruff/format**: `venv\\Scripts\\python.exe -m ruff check src tests scripts` passes with 0 errors; `ruff format --check src tests scripts` reports **1153 files already formatted**. The repository-wide formatter backlog was applied using Ruff `0.15.14`, pinned in `requirements-dev.txt` and `.github/workflows/test_suite.yml`.
+- **Partitioned non-integration verification**: **9115 passed, 17 skipped, 5 deselected, 1 xfailed** across API, aggregators, repositories, services, sync, validators, CLI, crawlers, utils, scripts, and root tests. Partitioning avoids the local command-runner hard timeout and concurrent test DB contention.
+- **Integration verification**: **223 passed** across API, auto-healer/daily-update, game collection, game-save, relay/recovery, scheduler, ranking, context, and award integration targets; no production DB, OCI, or live network was used.
+- **Windows PID safety**: `scripts/diagnose_scheduler_locks.py` and `scripts/scheduler.py` now use Windows `OpenProcess` checks instead of `os.kill(pid, 0)`, which can emit `KeyboardInterrupt` on Windows. Scheduler smoke tests pass (7 cases); diagnostic tests pass (6 cases).
+- **Partial summaries**: `src/repositories/game_save.py:save_game_detail` now upserts supplied summaries for partial payloads without replacing existing summaries. `tests/repositories/test_game_save_ext.py` passes 57 integration cases.
+- **Crawler service contracts**: `tests/test_game_collection_service.py` fixtures now provide valid team/detail rows matching the current validator and complete-side detection contract; all 26 integration cases pass.
+- **No-key API guard**: `src/utils/youtube_api_client.py` returns before network access when `YOUTUBE_API_KEY` is unset; the YouTube client tests pass 31 cases.
+- **Fixture isolation**: `tests/scripts/test_crawl_2002_2009_stats.py` and `tests/scripts/test_investigate_2009_game_detail.py` restore injected `sys.modules` stubs. `tests/scripts` passes **221 tests** serially.
+- **Platform/test alignment**: Git/bash shell checks skip cleanly when unavailable, and crawler URL assertions match current KBO endpoints (`MediaNews/Notice/List.aspx`, `Futures/Schedule/GameList.aspx`).
