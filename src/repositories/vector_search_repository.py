@@ -59,8 +59,15 @@ class VectorSearchRepository:
         try:
             with get_vector_session() as session:
                 return self._execute_search(
-                    session, query_vector, top_k, team_id, season_year, source_table,
-                    league_type_code, document_type, game_date,
+                    session,
+                    query_vector,
+                    top_k,
+                    team_id,
+                    season_year,
+                    source_table,
+                    league_type_code,
+                    document_type,
+                    game_date,
                 )
         except _SEARCH_EXCEPTIONS:
             logger.exception("Vector similarity search failed")
@@ -103,23 +110,25 @@ class VectorSearchRepository:
 
         results: list[dict[str, Any]] = []
         for chunk, score in session.execute(stmt):
-            results.append({
-                "id": chunk.id,
-                "title": chunk.title,
-                "content": chunk.content,
-                "source_table": chunk.source_table,
-                "source_row_id": chunk.source_row_id,
-                "team_id": chunk.team_id,
-                "player_id": chunk.player_id,
-                "season_year": chunk.season_year,
-                "document_type": chunk.document_type,
-                "game_date": str(chunk.game_date) if chunk.game_date else None,
-                "published_at": chunk.published_at.isoformat() if chunk.published_at else None,
-                "source_url": chunk.source_url,
-                "language": chunk.language,
-                "score": round(float(score), 4),
-                "meta": chunk.meta or {},
-            })
+            results.append(
+                {
+                    "id": chunk.id,
+                    "title": chunk.title,
+                    "content": chunk.content,
+                    "source_table": chunk.source_table,
+                    "source_row_id": chunk.source_row_id,
+                    "team_id": chunk.team_id,
+                    "player_id": chunk.player_id,
+                    "season_year": chunk.season_year,
+                    "document_type": chunk.document_type,
+                    "game_date": str(chunk.game_date) if chunk.game_date else None,
+                    "published_at": chunk.published_at.isoformat() if chunk.published_at else None,
+                    "source_url": chunk.source_url,
+                    "language": chunk.language,
+                    "score": round(float(score), 4),
+                    "meta": chunk.meta or {},
+                }
+            )
         return results
 
     def upsert_chunk(self, session: Session, chunk_data: dict[str, Any]) -> None:
@@ -190,12 +199,13 @@ class VectorSearchRepository:
                 stmt = select(RagChunkVector)
                 if source_table:
                     stmt = stmt.where(RagChunkVector.source_table == source_table)
-                return session.execute(
-                    select(RagChunkVector.id).select_from(stmt.subquery())
-                ).rowcount or session.query(RagChunkVector).filter(
-                    RagChunkVector.source_table == source_table
-                    if source_table
-                    else RagChunkVector.id.is_not(None)
-                ).count()
+                return (
+                    session.execute(select(RagChunkVector.id).select_from(stmt.subquery())).rowcount
+                    or session.query(RagChunkVector)
+                    .filter(
+                        RagChunkVector.source_table == source_table if source_table else RagChunkVector.id.is_not(None)
+                    )
+                    .count()
+                )
         except _SEARCH_EXCEPTIONS:
             return 0
