@@ -152,6 +152,7 @@ def heal_season_stat_discrepancies(*, dry_run: bool = False) -> int:
         return len(discrepant_seasons)
 
     from src.cli.recalc_player_stats import recalc_season
+
     fixed_count = 0
     for season in discrepant_seasons:
         try:

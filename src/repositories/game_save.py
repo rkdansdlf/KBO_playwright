@@ -90,6 +90,19 @@ class DetailSaveContext:
 
 
 @dataclass(frozen=True)
+class DetailEvidenceContext:
+    """Context required to record detail-source evidence."""
+
+    session: Session
+    game_data: dict[str, Any]
+    detail: DetailSaveContext
+    inning_rows: list[dict[str, Any]]
+    summary_rows: list[dict[str, Any]]
+    allow_partial: bool
+    source_crawler: str
+
+
+@dataclass(frozen=True)
 class SnapshotContext:
     """SnapshotContext class."""
 
@@ -107,11 +120,7 @@ def _has_full_detail_payload(
     pitchers: dict[str, list[dict[str, Any]]],
 ) -> bool:
     """Return whether both teams have hitter and pitcher rows."""
-    return all(
-        bool(rows.get(side))
-        for rows in (hitters, pitchers)
-        for side in ("away", "home")
-    )
+    return all(bool(rows.get(side)) for rows in (hitters, pitchers) for side in ("away", "home"))
 
 
 def _build_detail_evidence_projection(
@@ -722,6 +731,70 @@ def _build_summary_rows(
     return summary_rows
 
 
+def _save_detail_summary_rows(
+    session: Session,
+    detail: DetailSaveContext,
+    summary_rows: list[dict[str, Any]],
+    *,
+    allow_partial: bool,
+) -> bool:
+    if allow_partial:
+        # Preserve existing summaries while adding independently supplied partial data.
+        for row in summary_rows:
+            _upsert_game_summary_entry(
+                session,
+                GameSummaryEntry(
+                    game_id=row["game_id"],
+                    summary_type=row["summary_type"],
+                    detail_text=row["detail_text"],
+                    player_name=row.get("player_name"),
+                    player_id=row.get("player_id"),
+                ),
+            )
+        return True
+
+    return _replace_records(
+        session,
+        GameSummary,
+        detail.game_id,
+        summary_rows,
+        RecordReplaceContext(detail.source, detail.write_contract),
+    )
+
+
+def _record_detail_evidence(context: DetailEvidenceContext) -> None:
+    source_capture = context.game_data.get("_source_capture")
+    if not isinstance(source_capture, dict):
+        return
+
+    evidence_payload = {key: value for key, value in context.game_data.items() if key != "_source_capture"}
+    normalized_projection = _build_detail_evidence_projection(
+        context.game_data,
+        context.detail.game_id,
+        context.detail.game_date,
+        context.inning_rows,
+        context.summary_rows,
+    )
+    db_projection = (
+        build_game_detail_db_projection(context.session, context.detail.game_id, normalized_projection)
+        if not context.allow_partial
+        else None
+    )
+    record_crawl_evidence(
+        context.session,
+        entity_type="game",
+        entity_id=context.detail.game_id,
+        dataset="detail",
+        source_name=context.source_crawler,
+        parsed_payload=evidence_payload,
+        normalized_payload=normalized_projection,
+        source_capture=source_capture,
+        db_projection=db_projection,
+        parser_version=GAME_DETAIL_PARSER_VERSION,
+        normalization_version=GAME_DETAIL_NORMALIZATION_VERSION,
+    )
+
+
 def save_game_detail(  # noqa: PLR0913
     game_data: dict[str, Any],
     *,
@@ -851,43 +924,20 @@ def save_game_detail(  # noqa: PLR0913
                 {"hitters": hitters, "pitchers": pitchers},
                 game_data.get("summary") or [],
             )
-            if summary_rows and not allow_partial:
-                changed |= _replace_records(
-                    session,
-                    GameSummary,
-                    game_id,
-                    summary_rows,
-                    RecordReplaceContext(source, write_contract),
-                )
+            if summary_rows:
+                changed |= _save_detail_summary_rows(session, detail_ctx, summary_rows, allow_partial=allow_partial)
 
-            source_capture = game_data.get("_source_capture")
-            if isinstance(source_capture, dict):
-                evidence_payload = {key: value for key, value in game_data.items() if key != "_source_capture"}
-                normalized_projection = _build_detail_evidence_projection(
-                    game_data,
-                    game_id,
-                    game_date,
-                    inning_rows,
-                    summary_rows,
-                )
-                db_projection = (
-                    build_game_detail_db_projection(session, game_id, normalized_projection)
-                    if not allow_partial
-                    else None
-                )
-                record_crawl_evidence(
-                    session,
-                    entity_type="game",
-                    entity_id=game_id,
-                    dataset="detail",
-                    source_name=source_crawler,
-                    parsed_payload=evidence_payload,
-                    normalized_payload=normalized_projection,
-                    source_capture=source_capture,
-                    db_projection=db_projection,
-                    parser_version=GAME_DETAIL_PARSER_VERSION,
-                    normalization_version=GAME_DETAIL_NORMALIZATION_VERSION,
-                )
+            _record_detail_evidence(
+                DetailEvidenceContext(
+                    session=session,
+                    game_data=game_data,
+                    detail=detail_ctx,
+                    inning_rows=inning_rows,
+                    summary_rows=summary_rows,
+                    allow_partial=allow_partial,
+                    source_crawler=source_crawler,
+                ),
+            )
 
             session.commit()
         except GAME_SAVE_EXCEPTIONS:

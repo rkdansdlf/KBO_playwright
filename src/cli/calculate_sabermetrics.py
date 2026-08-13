@@ -103,6 +103,7 @@ def batch_calculate_sabermetrics(
 
                 session.commit()
 
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the main entry point for this CLI command.
 

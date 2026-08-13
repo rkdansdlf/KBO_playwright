@@ -15,9 +15,7 @@ class PlayerMilestone(Base, TimestampMixin):
 
     __tablename__ = "player_milestones"
 
-    __table_args__ = (
-        UniqueConstraint("season", "player_id", "milestone_category", name="uq_player_milestone"),
-    )
+    __table_args__ = (UniqueConstraint("season", "player_id", "milestone_category", name="uq_player_milestone"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     season: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

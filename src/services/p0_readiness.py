@@ -609,9 +609,9 @@ def _check_relay_completeness(  # noqa: PLR0913
         game = active_by_game_id.get(game_id)
         game_date = _date_key(game.game_date) if game else None
         is_live_game = is_live_status(_status(game.game_status)) if game else False
-        if (
-            event_counts.get(game_id, 0) > 0 or pbp_counts.get(game_id, 0) > 0
-        ) and _relay_is_trusted(game_id, validation_statuses, allow_unvalidated=is_live_game):
+        if (event_counts.get(game_id, 0) > 0 or pbp_counts.get(game_id, 0) > 0) and _relay_is_trusted(
+            game_id, validation_statuses, allow_unvalidated=is_live_game
+        ):
             relay_ok += 1
         else:
             severity = "critical" if game and _status(game.game_status) in COMPLETED_LIKE_GAME_STATUSES else "warning"

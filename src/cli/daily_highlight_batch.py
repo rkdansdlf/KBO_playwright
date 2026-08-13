@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 def _load_completed_games(session: Session, target_date: date) -> list[Game]:
     return (
         session.query(Game)

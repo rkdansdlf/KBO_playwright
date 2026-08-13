@@ -7,6 +7,10 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _mock_playwright():
+    missing = object()
+    original_modules = {
+        mod_name: sys.modules.get(mod_name, missing) for mod_name in ["playwright", "playwright.sync_api"]
+    }
     for mod_name in ["playwright", "playwright.sync_api"]:
         m = types.ModuleType(mod_name)
         if mod_name == "playwright.sync_api":
@@ -14,6 +18,11 @@ def _mock_playwright():
             m.Error = Exception
         sys.modules[mod_name] = m
     yield
+    for mod_name, original in original_modules.items():
+        if original is missing:
+            sys.modules.pop(mod_name, None)
+        else:
+            sys.modules[mod_name] = original
 
 
 class TestInvestigate2009GameDetail:

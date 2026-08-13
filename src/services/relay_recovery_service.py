@@ -547,6 +547,8 @@ def _handle_not_modified_relay_result(
             "attempts": attempts,
         },
     )
+
+
 def _handle_empty_relay_result(
     ctx: RecoveryLoopContext,
     attempts: list[dict[str, Any]],

@@ -75,9 +75,15 @@ class _EmptyHittersDetailCrawler:
 
 
 def _valid_detail_payload(game_id: str, game_date: str):
+    away_code = game_id[8:10]
+    home_code = game_id[10:12]
     return {
         "game_id": game_id,
         "game_date": game_date,
+        "teams": {
+            "away": {"code": away_code},
+            "home": {"code": home_code},
+        },
         "hitters": {
             "away": [{"player_name": "Away Hitter"}],
             "home": [{"player_name": "Home Hitter"}],
@@ -117,12 +123,32 @@ def _seed_existing_game(SessionLocal, game_id: str):
             ),
         )
         session.add(
+            GameBattingStat(
+                game_id=game_id,
+                team_side="home",
+                team_code="SS",
+                player_id=1002,
+                player_name="Existing Home Batter",
+                appearance_seq=1,
+            ),
+        )
+        session.add(
             GamePitchingStat(
                 game_id=game_id,
                 team_side="home",
                 team_code="SS",
                 player_id=2001,
                 player_name="Existing Pitcher",
+                appearance_seq=1,
+            ),
+        )
+        session.add(
+            GamePitchingStat(
+                game_id=game_id,
+                team_side="away",
+                team_code="LG",
+                player_id=2002,
+                player_name="Existing Away Pitcher",
                 appearance_seq=1,
             ),
         )

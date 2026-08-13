@@ -66,28 +66,21 @@ class GamePreviewGenerator:
         ]
 
         if milestones:
-            md_lines.extend(
-                f"- **{m['player_name']}** ({m['team_code']}): {m['alert_message']}"
-                for m in milestones
-            )
+            md_lines.extend(f"- **{m['player_name']}** ({m['team_code']}): {m['alert_message']}" for m in milestones)
         else:
             md_lines.append("- 현재 양 팀에 임박한 대기록 달성 선수가 없습니다.")
 
         md_lines.extend(["", "## 📢 [최신 KBO 행정 공시 & 소식]"])
         if notices:
             md_lines.extend(
-                f"- [{n['published_date']}] [{n['category']}] [{n['title']}]({n['source_url']})"
-                for n in notices
+                f"- [{n['published_date']}] [{n['category']}] [{n['title']}]({n['source_url']})" for n in notices
             )
         else:
             md_lines.append("- 등록된 최신 공시가 없습니다.")
 
         if rag_chunks:
             md_lines.extend(["", "## 🔍 [관련 RAG 지식 검색]"])
-            md_lines.extend(
-                f"- **{r['title']}**: {r['content'][:100]}..."
-                for r in rag_chunks
-            )
+            md_lines.extend(f"- **{r['title']}**: {r['content'][:100]}..." for r in rag_chunks)
 
         markdown_report = "\n".join(md_lines)
 

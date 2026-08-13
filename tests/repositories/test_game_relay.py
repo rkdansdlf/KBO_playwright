@@ -283,12 +283,11 @@ class TestMarkRelaySourceUnavailable:
         )
 
         assert result is False
-        metrics = (
-            session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == "20241015LGSS0").one()
-        )
+        metrics = session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == "20241015LGSS0").one()
         assert metrics.validation_status == "verified"
         assert metrics.evidence_json["payload_hash"] == "abc"
         assert metrics.evidence_json["source_unavailable_attempt"]["url"] == "http://example.com"
+
 
 class TestRelayTextIndicatesDefenseSide:
     def test_no_description(self):
@@ -622,6 +621,7 @@ class TestBackfillMissingGameStubsForRelays:
             result = src.repositories.game_relay.backfill_missing_game_stubs_for_relays()
             assert result == 0
 
+
 class TestRepairGameParentFromExistingChildren:
     def test_repair_no_game_id(self):
         with patch("src.repositories.game_relay.SessionLocal", return_value=MagicMock()):
@@ -713,6 +713,7 @@ class TestRepairGameParentFromExistingChildren:
         ):
             result = src.repositories.game_relay.repair_game_parent_from_existing_children("20241015LGSS0")
             assert result is True
+
 
 class TestRelayResolutionContext:
     def test_offense_team_top(self):

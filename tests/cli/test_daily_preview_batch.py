@@ -134,6 +134,7 @@ class TestPreviewPersistence:
         assert add_team_context.call_count == 2
         assert add_pitcher_context.call_count == 2
 
+
 class TestRunPreviewBatch:
     def test_saves_and_writes_manifest_for_previews(self):
         crawler = MagicMock()
