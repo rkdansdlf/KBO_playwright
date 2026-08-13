@@ -125,6 +125,7 @@ class FanCultureCrawler:
 
     def _load_cache(self) -> dict[str, Any]:
         from pathlib import Path
+
         p = Path(self._cache_path)
         if p.exists():
             try:
@@ -138,6 +139,7 @@ class FanCultureCrawler:
     def _save_cache(self, cache_data: dict[str, Any]) -> None:
         import json
         from pathlib import Path
+
         p = Path(self._cache_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -174,9 +176,11 @@ class FanCultureCrawler:
             channel_id = ch_info["channel_id"]
             team_cache_entry = cache_data.get(team_id)
 
-            if not force_refresh and team_cache_entry and (
-                now_ts - team_cache_entry.get("timestamp", 0)
-            ) < _CACHE_TTL_SECONDS:
+            if (
+                not force_refresh
+                and team_cache_entry
+                and (now_ts - team_cache_entry.get("timestamp", 0)) < _CACHE_TTL_SECONDS
+            ):
                 logger.info("[FanCulture] %s (%s) — using 24h cached YouTube results", team_id, ch_info["name"])
                 team_songs = team_cache_entry.get("songs", [])
             else:

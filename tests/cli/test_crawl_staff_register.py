@@ -60,6 +60,7 @@ class TestRunCrawler:
 
         assert result == 1
         crawler_cls.assert_not_called()
+
     @pytest.mark.asyncio
     async def test_run_crawler_saves_records(self):
         args = MagicMock(all_teams=False, team="lg", dry_run=False)

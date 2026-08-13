@@ -491,7 +491,9 @@ class GameDetailCrawler:
                     await pool.release(page)
 
             workers = [asyncio.create_task(worker()) for _ in range(max_concurrency)]
-            await queue.join()
+            # Workers consume the sentinels after all queued entries. Gathering
+            # them is sufficient and avoids waiting forever if pool acquisition
+            # fails before a worker can acknowledge a queue item.
             await asyncio.gather(*workers, return_exceptions=True)
         finally:
             if owns_pool:
@@ -892,8 +894,7 @@ class GameDetailCrawler:
                 continue
             is_valid = False
             logger.warning(
-                "⚠️ Integrity check FAILED for %s (%s): Players Sum(%sR, %sH, %sAB) != "
-                "Team Total(%sR, %sH, %sAB)",
+                "⚠️ Integrity check FAILED for %s (%s): Players Sum(%sR, %sH, %sAB) != Team Total(%sR, %sH, %sAB)",
                 game_id,
                 side,
                 sum_runs,

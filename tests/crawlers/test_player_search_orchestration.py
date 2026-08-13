@@ -263,9 +263,7 @@ class TestPageAndPostbackHelpers:
 
 class TestCliOrchestration:
     def test_main_stops_when_player_crawl_is_empty(self, monkeypatch):
-        monkeypatch.setattr(
-            player_search, "_parse_crawl_args", lambda: SimpleNamespace(max_pages=None, save=True)
-        )
+        monkeypatch.setattr(player_search, "_parse_crawl_args", lambda: SimpleNamespace(max_pages=None, save=True))
         monkeypatch.setattr(player_search, "_crawl_players", AsyncMock(return_value=[]))
 
         assert asyncio.run(player_search.main()) is None

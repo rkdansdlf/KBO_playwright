@@ -13,7 +13,7 @@ from src.crawlers.press_release_crawler import PressReleaseCrawler
 async def test_press_release_crawler_instantiation() -> None:
     """Test PressReleaseCrawler instantiation and mock response."""
     crawler = PressReleaseCrawler()
-    assert crawler.PRESS_URL == "https://www.koreabaseball.com/News/Notice/List.aspx"
+    assert crawler.PRESS_URL == "https://www.koreabaseball.com/MediaNews/Notice/List.aspx"
 
 
 @pytest.mark.asyncio
@@ -28,4 +28,4 @@ async def test_milestone_crawler_instantiation() -> None:
 async def test_futures_schedule_crawler_instantiation() -> None:
     """Test FuturesScheduleCrawler instantiation."""
     crawler = FuturesScheduleCrawler()
-    assert "Schedule.aspx" in crawler.SCHEDULE_URL
+    assert crawler.SCHEDULE_URL == "https://www.koreabaseball.com/Futures/Schedule/GameList.aspx"

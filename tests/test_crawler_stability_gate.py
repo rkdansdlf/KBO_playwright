@@ -5,11 +5,26 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "verification" / "crawler_stability_gate.sh"
 
 
+def _usable_bash() -> bool:
+    bash_bin = shutil.which("bash")
+    if not bash_bin:
+        return False
+    try:
+        return subprocess.run([bash_bin, "-c", "exit 0"], check=False).returncode == 0
+    except OSError:
+        return False
+
+
 def test_crawler_stability_gate_prints_expected_targets():
+    if not _usable_bash():
+        pytest.skip("requires a usable bash executable")
+
     result = subprocess.run(
         ["bash", str(SCRIPT), "--print-targets"],
         cwd=ROOT,
@@ -49,7 +64,8 @@ def test_crawler_stability_gate_prints_expected_targets():
 
 def test_crawler_stability_gate_propagates_test_runner_failure():
     false_bin = shutil.which("false")
-    assert false_bin
+    if not false_bin or not _usable_bash():
+        pytest.skip("requires usable bash and false commands")
 
     env = {**os.environ, "CRAWLER_STABILITY_PYTHON": false_bin}
     result = subprocess.run(

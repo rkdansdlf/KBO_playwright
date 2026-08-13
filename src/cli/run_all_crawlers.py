@@ -182,6 +182,7 @@ async def run_dynamic_pipeline() -> None:
         except PIPELINE_EXCEPTIONS:
             logger.exception("⚠️ Roster crawler execution failure")
 
+
 async def run_realtime_pipeline() -> None:
     """Run news and community thread crawler, transforms text, embeds and loads."""
     logger.info("\n🏁 Starting Realtime Issue Pipeline...")
@@ -233,6 +234,7 @@ async def run_realtime_pipeline() -> None:
             upserted = repo.upsert_chunks(session, all_chunks)
             logger.info("✅ Upserted %s realtime RAG chunks to local DB.", upserted)
 
+
 def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
     """Run async pipeline synchronously and catch errors for Telegram alerts.
 
@@ -257,7 +259,6 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
         # Send Telegram Bot Warning Webhook alert
         SlackWebhookClient.send_error_alert(err_msg)
         return
-
 
 
 def start_scheduler() -> None:

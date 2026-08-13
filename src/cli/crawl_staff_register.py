@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 async def run_crawler(args: argparse.Namespace) -> int:
     # 1. Determine team codes to crawl
     """Run crawler.

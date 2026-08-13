@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -805,6 +806,24 @@ class TestBoxscoreExtractionFlows:
         assert all(payload["lightweight"] for payload in payloads)
         pool.start.assert_awaited_once()
         assert pool.release.await_count == 2
+        pool.close.assert_not_awaited()
+
+    async def test_crawl_games_returns_when_pool_acquisition_fails(self):
+        pool = MagicMock(max_pages=1)
+        pool.start = AsyncMock()
+        pool.acquire = AsyncMock(side_effect=RuntimeError("pool unavailable"))
+        pool.close = AsyncMock()
+        crawler = GameDetailCrawler(resolver=MagicMock(), pool=pool)
+
+        payloads = await asyncio.wait_for(
+            crawler.crawl_games(
+                [{"game_id": "20250501LGOB0", "game_date": "20250501"}],
+                concurrency=1,
+            ),
+            timeout=1.0,
+        )
+
+        assert payloads == []
         pool.close.assert_not_awaited()
 
     async def test_navigate_section_respects_compliance_block(self):
