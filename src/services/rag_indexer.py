@@ -1,14 +1,16 @@
-"""Service for indexing KBO press releases and milestones into RAG chunks."""
+"""Service for indexing KBO press releases, milestones, futures schedules, and splits into RAG chunks."""
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from src.models.futures_schedule import FuturesGameSchedule
 from src.models.kbo_press_release import KboPressRelease
 from src.models.player_milestone import PlayerMilestone
+from src.models.player_splits_stat import PlayerSplitsStat
 from src.repositories.rag_chunk_repository import RagChunkRepository
 
 if TYPE_CHECKING:
@@ -18,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class RagKnowledgeIndexer:
-    """Indexer service for building RAG chunks from KBO releases and milestones."""
+    """Indexer service for building RAG chunks from KBO data sources."""
 
     def __init__(self, session: Session) -> None:
         """Initialize indexer with DB session."""
@@ -35,7 +37,7 @@ class RagKnowledgeIndexer:
         stmt = select(KboPressRelease)
         releases = list(self.session.execute(stmt).scalars().all())
 
-        chunks: list[dict] = []
+        chunks: list[dict[str, Any]] = []
         for r in releases:
             content = f"[{r.published_date}] KBO 공식 공시: {r.title}\n카테고리: {r.category}\n출처: {r.source_url}"
             chunks.append(
@@ -69,7 +71,7 @@ class RagKnowledgeIndexer:
         stmt = select(PlayerMilestone).where(PlayerMilestone.season == season)
         milestones = list(self.session.execute(stmt).scalars().all())
 
-        chunks: list[dict] = []
+        chunks: list[dict[str, Any]] = []
         for m in milestones:
             status_str = "달성 완료" if m.is_achieved else f"달성 임박 (남은 수치: {m.remaining_val})"
             content = (
@@ -96,3 +98,104 @@ class RagKnowledgeIndexer:
             logger.info("Indexed %d milestone RAG chunks for season %d.", count, season)
             return count
         return 0
+
+    def index_futures_schedules(self, season: int = 2026) -> int:
+        """Index Futures League schedule and game results as RAG chunks.
+
+        Args:
+            season: Season year.
+
+        Returns:
+            Number of chunks upserted.
+
+        """
+        stmt = select(FuturesGameSchedule).where(FuturesGameSchedule.season == season)
+        games = list(self.session.execute(stmt).scalars().all())
+
+        chunks: list[dict[str, Any]] = []
+        for g in games:
+            score_part = f"{g.away_score} : {g.home_score}" if g.away_score is not None else "예정"
+            content = (
+                f"[{g.game_date}] KBO 퓨처스리그 경기: {g.away_team} vs {g.home_team}\n"
+                f"스코어/상태: {score_part} ({g.game_status})\n"
+                f"구장: {g.stadium or '퓨처스 구장'}"
+            )
+            chunks.append(
+                {
+                    "title": f"퓨처스 경기 - {g.away_team} vs {g.home_team} ({g.game_date})",
+                    "content": content,
+                    "meta": {
+                        "category": "futures_schedule",
+                        "source_row_id": str(g.id),
+                        "game_id": g.game_id,
+                        "season_year": season,
+                    },
+                }
+            )
+
+        if chunks:
+            count = self.rag_repo.upsert_chunks(self.session, chunks)
+            logger.info("Indexed %d futures schedule RAG chunks for season %d.", count, season)
+            return count
+        return 0
+
+    def index_player_splits(self, season: int = 2026) -> int:
+        """Index player situational split statistics as RAG chunks.
+
+        Args:
+            season: Season year.
+
+        Returns:
+            Number of chunks upserted.
+
+        """
+        stmt = select(PlayerSplitsStat).where(PlayerSplitsStat.season == season)
+        splits = list(self.session.execute(stmt).scalars().all())
+
+        chunks: list[dict[str, Any]] = []
+        for s in splits:
+            content = (
+                f"[{season} 시즌] {s.team_code or ''} {s.player_name} 상황별 기록 ({s.split_type}:{s.split_key}):\n"
+                f"타율: {s.avg:.3f}, 안타: {s.hits}, 홈런: {s.hr}, 타점: {s.rbi}, OPS: {s.ops:.3f}"
+            )
+            chunks.append(
+                {
+                    "title": f"선수 상황별 스탯 - {s.player_name} ({s.split_key})",
+                    "content": content,
+                    "meta": {
+                        "category": "player_splits",
+                        "source_row_id": str(s.id),
+                        "season_year": season,
+                        "player_id": s.player_id,
+                    },
+                }
+            )
+
+        if chunks:
+            count = self.rag_repo.upsert_chunks(self.session, chunks)
+            logger.info("Indexed %d player splits RAG chunks for season %d.", count, season)
+            return count
+        return 0
+
+    def index_incremental_all(self, season: int = 2026) -> dict[str, int]:
+        """Index all KBO data sources into RAG chunks in one call.
+
+        Args:
+            season: Season year.
+
+        Returns:
+            Dict mapping category to upsert count.
+
+        """
+        pr_count = self.index_press_releases()
+        ms_count = self.index_milestones(season=season)
+        fut_count = self.index_futures_schedules(season=season)
+        spl_count = self.index_player_splits(season=season)
+
+        return {
+            "press_releases": pr_count,
+            "milestones": ms_count,
+            "futures_schedules": fut_count,
+            "player_splits": spl_count,
+            "total_chunks": pr_count + ms_count + fut_count + spl_count,
+        }

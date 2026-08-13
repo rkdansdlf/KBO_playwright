@@ -544,6 +544,7 @@ def _clean_aliases(aliases: object) -> list[str] | None:
     if isinstance(aliases, str):
         try:
             import json
+
             parsed = json.loads(aliases)
         except (ValueError, TypeError):
             return None

@@ -17,10 +17,7 @@ from src.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
-_PGVECTOR_UNAVAILABLE_MSG = (
-    "pgvector DB를 사용할 수 없습니다. "
-    "docker-compose up pgvector -d 로 서비스를 기동하세요."
-)
+_PGVECTOR_UNAVAILABLE_MSG = "pgvector DB를 사용할 수 없습니다. docker-compose up pgvector -d 로 서비스를 기동하세요."
 
 _MAX_CACHE_SIZE = 128
 

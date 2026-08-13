@@ -1,4 +1,4 @@
-"""CLI command to index KBO notices and milestones into RAG knowledge chunks."""
+"""CLI command to index KBO notices, milestones, futures schedules, and splits into RAG chunks."""
 
 from __future__ import annotations
 
@@ -28,14 +28,20 @@ def run(args: argparse.Namespace) -> None:
 
     with get_db_session() as session:
         indexer = RagKnowledgeIndexer(session)
-        pr_count = indexer.index_press_releases()
-        ms_count = indexer.index_milestones(season=season)
-        logger.info("Indexed %d press release chunks and %d milestone chunks.", pr_count, ms_count)
+        counts = indexer.index_incremental_all(season=season)
+        logger.info(
+            "Indexed RAG chunks: PR=%d, Milestones=%d, Futures=%d, Splits=%d (Total=%d).",
+            counts["press_releases"],
+            counts["milestones"],
+            counts["futures_schedules"],
+            counts["player_splits"],
+            counts["total_chunks"],
+        )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build CLI argument parser."""
-    parser = argparse.ArgumentParser(description="Index KBO releases & milestones to RAG chunks")
+    parser = argparse.ArgumentParser(description="Index KBO data sources into RAG knowledge chunks")
     parser.add_argument("--season", type=int, default=None, help="Season year (default: current)")
     return parser
 

@@ -44,12 +44,8 @@ class RagChunkVector(VectorBase, TimestampMixin):
     language: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="언어 코드 (기본 ko)")
 
     # 출처 식별
-    source_table: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="원본 테이블명 (e.g. player_basic, game)"
-    )
-    source_row_id: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="원본 레코드 식별자"
-    )
+    source_table: Mapped[str] = mapped_column(Text, nullable=False, comment="원본 테이블명 (e.g. player_basic, game)")
+    source_row_id: Mapped[str] = mapped_column(Text, nullable=False, comment="원본 레코드 식별자")
 
     # 청크 내용
     title: Mapped[str | None] = mapped_column(Text, nullable=True, comment="청크 제목")
