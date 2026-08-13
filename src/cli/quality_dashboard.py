@@ -1,4 +1,4 @@
-"""Build a compact dashboard from generated quality report JSON files."""
+"""Build a compact dashboard from generated quality report JSON files and system diagnostics."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.constants import DATE_STR_LEN, KST
 from src.utils.date_helpers import parse_date_str, parse_datetime_str
 
@@ -18,6 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_REPORT_DIR = Path("logs/quality_reports")
+DEFAULT_DASHBOARD_LATEST_PATH = Path("logs/quality_dashboard_latest.json")
 
 
 def _load_report(path: Path) -> dict[str, Any] | None:
@@ -122,27 +125,17 @@ def load_quality_records(
     days: int | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Load quality records.
-
-    Args:
-        report_dir: Report Dir.
-        days: Days.
-        limit: Limit.
-        report_dir: Report directory path.
-
-    Returns:
-        List of results.
-
-    """
+    """Load quality records from directory."""
     records: list[dict[str, Any]] = []
 
-    for path in sorted(report_dir.glob("*.json")):
-        report = _load_report(path)
-        if report is None:
-            continue
-        record = _record_from_report(path, report)
-        if _within_days(record, days):
-            records.append(record)
+    if report_dir.exists():
+        for path in sorted(report_dir.glob("*.json")):
+            report = _load_report(path)
+            if report is None:
+                continue
+            record = _record_from_report(path, report)
+            if _within_days(record, days):
+                records.append(record)
     records.sort(key=lambda item: str(item["date"]))
     if limit is not None and limit > 0:
         return records[-limit:]
@@ -150,18 +143,7 @@ def load_quality_records(
 
 
 def build_quality_dashboard(report_dir: Path, *, days: int | None = None, limit: int | None = None) -> dict[str, Any]:
-    """Build quality dashboard.
-
-    Args:
-        report_dir: Report Dir.
-        days: Days.
-        limit: Limit.
-        report_dir: Report directory path.
-
-    Returns:
-        Dictionary result.
-
-    """
+    """Build quality dashboard dict."""
     records = load_quality_records(report_dir, days=days, limit=limit)
 
     failure_counts: dict[str, int] = {}
@@ -183,6 +165,43 @@ def build_quality_dashboard(report_dir: Path, *, days: int | None = None, limit:
         "failure_counts": dict(sorted(failure_counts.items())),
         "records": records,
     }
+
+
+def generate_daily_quality_dashboard(
+    report_dir: Path = DEFAULT_REPORT_DIR,
+    *,
+    days: int | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Generate daily unified quality dashboard combining quality reports, gap reports & health check."""
+    dashboard = build_quality_dashboard(report_dir, days=days, limit=limit)
+
+    try:
+        from src.cli.gap_report import build_gap_report
+
+        gap_report = build_gap_report()
+        dashboard["gap_report"] = gap_report.get("gaps", {})
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.warning("Failed to integrate gap_report in quality_dashboard: %s", e)
+
+    try:
+        from src.cli.health_check import run_health_check
+
+        health_report = run_health_check(json_format=True)
+        dashboard["health_check"] = health_report
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.warning("Failed to integrate health_check in quality_dashboard: %s", e)
+
+    dashboard["generated_at"] = datetime.now(KST).isoformat()
+    return dashboard
+
+
+def save_quality_dashboard(dashboard: dict[str, Any], output_path: Path) -> None:
+    """Save quality dashboard JSON payload to disk."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(dashboard, f, ensure_ascii=False, indent=2, default=str)
+    logger.info("Saved quality dashboard JSON to %s", output_path)
 
 
 def _log_dashboard_summary(dashboard: dict[str, Any]) -> None:
@@ -208,15 +227,10 @@ def _log_dashboard_summary(dashboard: dict[str, Any]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the main entry point for this CLI command.
-
-    Args:
-        argv: Argv.
-
-    """
+    """Run the main entry point for quality dashboard CLI."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    parser = argparse.ArgumentParser(description="Summarize generated quality report JSON files")
+    parser = argparse.ArgumentParser(description="Summarize generated quality report JSON files & system health")
     parser.add_argument(
         "--report-dir",
         type=Path,
@@ -226,9 +240,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--days", type=int, help="Only include reports whose metric date is within N days")
     parser.add_argument("--limit", type=int, help="Only include the most recent N reports after filtering")
     parser.add_argument("--json", action="store_true", help="Print dashboard as JSON")
+    parser.add_argument(
+        "--auto-save",
+        action="store_true",
+        help="Auto save dashboard JSON to logs/quality_dashboard_latest.json",
+    )
+    parser.add_argument("--output", type=Path, help="Save dashboard JSON to specified output file path")
     args = parser.parse_args(argv)
 
-    dashboard = build_quality_dashboard(args.report_dir, days=args.days, limit=args.limit)
+    dashboard = generate_daily_quality_dashboard(args.report_dir, days=args.days, limit=args.limit)
+
+    if args.auto_save:
+        save_quality_dashboard(dashboard, DEFAULT_DASHBOARD_LATEST_PATH)
+    if args.output:
+        save_quality_dashboard(dashboard, args.output)
+
     if args.json:
         logger.info(json.dumps(dashboard, ensure_ascii=False, indent=2, default=str))
     else:

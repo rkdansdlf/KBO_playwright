@@ -71,8 +71,7 @@ def render_dashboard() -> str:
         lines.append(f"  - Stuck Games: {len(stuck)}")
         lines.append(f"  - Discrepant Seasons: {len(discrepant)} ({discrepant or 'None'})")
         lines.append(
-            "  - Integrity Rating: "
-            f"{'HEALTHY (Clean)' if not stuck and not discrepant else 'ATTENTION NEEDED'}"
+            f"  - Integrity Rating: {'HEALTHY (Clean)' if not stuck and not discrepant else 'ATTENTION NEEDED'}"
         )
     except (SQLAlchemyError, OSError) as e:
         lines.append(f"[Integrity Check Error]: {e}")

@@ -256,6 +256,13 @@ class TestRunGapReport:
             patch("src.cli.gap_report.check_pa_formula_gaps") as mock_pa,
             patch("src.cli.gap_report.check_team_stats_gaps") as mock_team,
             patch("src.cli.gap_report.collect_freshness_issues") as mock_fresh,
+            patch("src.cli.gap_report._check_staleness"),
+            patch("src.cli.gap_report._check_standings"),
+            patch("src.cli.gap_report._check_season_team_code"),
+            patch("src.cli.gap_report.check_notices_gaps") as mock_notices,
+            patch("src.cli.gap_report.check_milestones_gaps") as mock_milestones,
+            patch("src.cli.gap_report.check_futures_gaps") as mock_futures,
+            patch("src.cli.gap_report.check_splits_gaps") as mock_splits,
         ):
             mock_relay.return_value = {"ok": True, "missing_count": 0}
             mock_profile.return_value = {"ok": True, "missing_count": 0}
@@ -263,6 +270,10 @@ class TestRunGapReport:
             mock_pa.return_value = {"ok": True}
             mock_team.return_value = {"ok": True, "total": 0}
             mock_fresh.return_value = {}
+            mock_notices.return_value = {"ok": True}
+            mock_milestones.return_value = {"ok": True}
+            mock_futures.return_value = {"ok": True}
+            mock_splits.return_value = {"ok": True}
 
             result = build_gap_report()
             assert isinstance(result, dict)
