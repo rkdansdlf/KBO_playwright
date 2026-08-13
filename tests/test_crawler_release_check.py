@@ -5,13 +5,26 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "verification" / "crawler_release_check.sh"
 
 
+def _usable_bash() -> bool:
+    bash_bin = shutil.which("bash")
+    if not bash_bin:
+        return False
+    try:
+        return subprocess.run([bash_bin, "-c", "exit 0"], check=False).returncode == 0
+    except OSError:
+        return False
+
+
 def test_release_check_skips_live_smoke_by_default():
     true_bin = shutil.which("true")
-    assert true_bin
+    if not true_bin or not _usable_bash():
+        pytest.skip("requires usable bash and true commands")
 
     env = {**os.environ, "CRAWLER_STABILITY_PYTHON": true_bin}
     env.pop("KBO_LIVE_SMOKE", None)
@@ -32,7 +45,8 @@ def test_release_check_skips_live_smoke_by_default():
 
 def test_release_check_runs_live_smoke_when_explicitly_enabled():
     true_bin = shutil.which("true")
-    assert true_bin
+    if not true_bin or not _usable_bash():
+        pytest.skip("requires usable bash and true commands")
 
     env = {
         **os.environ,

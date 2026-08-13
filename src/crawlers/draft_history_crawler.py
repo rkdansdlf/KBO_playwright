@@ -43,46 +43,46 @@ class DraftHistoryCrawler:
 
         try:
             async with AsyncPlaywrightPool() as pool, pool.page() as page:
-                    url = f"{self.DRAFT_URL}?year={season}"
-                    await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-                    await page.wait_for_selector("table", timeout=10000)
+                url = f"{self.DRAFT_URL}?year={season}"
+                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                await page.wait_for_selector("table", timeout=10000)
 
-                    rows = await page.query_selector_all("table tbody tr")
-                    pick_seq = 1
+                rows = await page.query_selector_all("table tbody tr")
+                pick_seq = 1
 
-                    for row in rows:
-                        cols = await row.query_selector_all("td")
-                        if len(cols) < 5:  # noqa: PLR2004
-                            continue
+                for row in rows:
+                    cols = await row.query_selector_all("td")
+                    if len(cols) < 5:  # noqa: PLR2004
+                        continue
 
-                        round_str = (await cols[0].inner_text()).strip()
-                        team_name = (await cols[1].inner_text()).strip()
-                        player_name = (await cols[2].inner_text()).strip()
-                        position = (await cols[3].inner_text()).strip()
-                        school = (await cols[4].inner_text()).strip()
-                        sign_fee = (await cols[5].inner_text()).strip() if len(cols) > 5 else None  # noqa: PLR2004
+                    round_str = (await cols[0].inner_text()).strip()
+                    team_name = (await cols[1].inner_text()).strip()
+                    player_name = (await cols[2].inner_text()).strip()
+                    position = (await cols[3].inner_text()).strip()
+                    school = (await cols[4].inner_text()).strip()
+                    sign_fee = (await cols[5].inner_text()).strip() if len(cols) > 5 else None  # noqa: PLR2004
 
-                        round_num = (
-                            int(round_str.replace("라운드", "").strip())
-                            if round_str.isdigit() or "라운드" in round_str
-                            else 1
-                        )
+                    round_num = (
+                        int(round_str.replace("라운드", "").strip())
+                        if round_str.isdigit() or "라운드" in round_str
+                        else 1
+                    )
 
-                        results.append(
-                            {
-                                "season": season,
-                                "draft_type": " 신인드래프트",
-                                "round_num": round_num,
-                                "pick_seq": pick_seq,
-                                "team_code": team_name,
-                                "player_name": player_name,
-                                "player_id": f"draft_{season}_{pick_seq}",
-                                "position": position,
-                                "school": school,
-                                "sign_fee": sign_fee,
-                            }
-                        )
-                        pick_seq += 1
+                    results.append(
+                        {
+                            "season": season,
+                            "draft_type": " 신인드래프트",
+                            "round_num": round_num,
+                            "pick_seq": pick_seq,
+                            "team_code": team_name,
+                            "player_name": player_name,
+                            "player_id": f"draft_{season}_{pick_seq}",
+                            "position": position,
+                            "school": school,
+                            "sign_fee": sign_fee,
+                        }
+                    )
+                    pick_seq += 1
         except PlaywrightError as exc:
             logger.warning("Playwright error in DraftHistoryCrawler: %s", exc)
         except Exception:

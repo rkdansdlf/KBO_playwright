@@ -74,7 +74,7 @@ class PressReleaseCrawler:
 
                         date_text = (await cols[2].inner_text()).strip() if len(cols) > 2 else ""  # noqa: PLR2004
 
-                        notice_id = num_text if num_text.isdigit() else f"notice_{len(results)+1}"
+                        notice_id = num_text if num_text.isdigit() else f"notice_{len(results) + 1}"
                         if href:
                             if href.startswith("http"):
                                 source_url = href
@@ -86,9 +86,7 @@ class PressReleaseCrawler:
                             source_url = self.PRESS_URL
 
                         published_date = (
-                            date_text.replace(".", "-")
-                            if date_text
-                            else datetime.now(tz=KST).strftime("%Y-%m-%d")
+                            date_text.replace(".", "-") if date_text else datetime.now(tz=KST).strftime("%Y-%m-%d")
                         )
 
                         results.append(
