@@ -68,8 +68,6 @@ def normalize_oracle_url(url: str) -> str:
         return url
 
 
-
-
 def _is_sqlite(url: str | None) -> bool:
     if not url:
         return False
@@ -260,7 +258,6 @@ def create_engine_for_url(
         return _create_oracle_engine(url)
 
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
-
 
 
 Engine = create_engine_for_url(

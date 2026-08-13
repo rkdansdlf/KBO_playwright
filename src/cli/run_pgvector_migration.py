@@ -51,9 +51,7 @@ def main(argv: list[str] | None = None) -> None:
     """Pgvector 마이그레이션을 실행합니다."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    parser = argparse.ArgumentParser(
-        description="로컬 Docker pgvector DB 마이그레이션 실행"
-    )
+    parser = argparse.ArgumentParser(description="로컬 Docker pgvector DB 마이그레이션 실행")
     parser.add_argument(
         "--reset",
         action="store_true",
@@ -63,16 +61,12 @@ def main(argv: list[str] | None = None) -> None:
 
     pgvector_url = os.getenv("PGVECTOR_URL")
     if not pgvector_url:
-        logger.error(
-            "PGVECTOR_URL 환경변수가 설정되지 않았습니다. "
-            ".env 파일에 PGVECTOR_URL을 추가하세요."
-        )
+        logger.error("PGVECTOR_URL 환경변수가 설정되지 않았습니다. .env 파일에 PGVECTOR_URL을 추가하세요.")
         sys.exit(1)
 
     if VectorEngine is None:
         logger.error(
-            "pgvector DB(%s)에 연결할 수 없습니다. "
-            "docker-compose up pgvector -d 로 서비스를 먼저 기동하세요.",
+            "pgvector DB(%s)에 연결할 수 없습니다. docker-compose up pgvector -d 로 서비스를 먼저 기동하세요.",
             pgvector_url[:40],
         )
         sys.exit(1)
