@@ -13,9 +13,7 @@ class PlayerSplitsStat(Base, TimestampMixin):
 
     __tablename__ = "player_splits_stats"
 
-    __table_args__ = (
-        UniqueConstraint("season", "player_id", "split_type", "split_key", name="uq_player_splits_stat"),
-    )
+    __table_args__ = (UniqueConstraint("season", "player_id", "split_type", "split_key", name="uq_player_splits_stat"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     season: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
@@ -27,9 +25,7 @@ class PlayerSplitsStat(Base, TimestampMixin):
     split_type: Mapped[str] = mapped_column(
         String(30), nullable=False, comment="scoring_position, vs_pitcher_type, venue, monthly"
     )
-    split_key: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="득점권, 좌투수, 잠실, 4월 등"
-    )
+    split_key: Mapped[str] = mapped_column(String(50), nullable=False, comment="득점권, 좌투수, 잠실, 4월 등")
 
     ab: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="타수")
     hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="안타")
