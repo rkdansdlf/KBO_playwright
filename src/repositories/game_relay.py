@@ -330,9 +330,7 @@ def mark_relay_source_unavailable(
             from src.utils.relay_validation import VALIDATION_SOURCE_UNAVAILABLE, is_trusted_relay_status
 
             existing_metrics = (
-                session.query(GameValidationMetrics)
-                .filter(GameValidationMetrics.game_id == game_id)
-                .one_or_none()
+                session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
             )
             if existing_metrics is not None and is_trusted_relay_status(existing_metrics.validation_status):
                 existing_evidence = (
@@ -1170,9 +1168,7 @@ def save_relay_data(
                     normalization_version="relay-normalized-v1",
                 )
                 metrics = (
-                    session.query(GameValidationMetrics)
-                    .filter(GameValidationMetrics.game_id == game_id)
-                    .one_or_none()
+                    session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
                 )
                 if metrics is not None:
                     existing_evidence = metrics.evidence_json if isinstance(metrics.evidence_json, dict) else {}

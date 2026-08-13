@@ -33,6 +33,7 @@ def batch_calculate_matchups(years: list[int]) -> None:
         except MATCHUP_CALC_EXCEPTIONS:
             logger.exception("⚠️ Failed to calculate matchups for %s", year)
 
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the main entry point for this CLI command.
 

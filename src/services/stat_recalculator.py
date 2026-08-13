@@ -44,9 +44,7 @@ class StatRecalculator:
 
             # Query season hits/wins depending on milestone category
             if "안타" in m.milestone_category:
-                stat_stmt = select(GameBattingStat.hits).where(
-                    GameBattingStat.player_id == m.player_id
-                )
+                stat_stmt = select(GameBattingStat.hits).where(GameBattingStat.player_id == m.player_id)
                 hits_list = list(self.session.execute(stat_stmt).scalars().all())
                 added_hits = sum(h for h in hits_list if h)
                 if added_hits > 0:

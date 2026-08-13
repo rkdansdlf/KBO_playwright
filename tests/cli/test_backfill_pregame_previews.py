@@ -458,6 +458,7 @@ class TestRunBackfill:
 
         asyncio.run(_run())
 
+
 class TestMain:
     def test_dry_run(self):
         with patch("src.cli.backfill_pregame_previews.asyncio.run") as mock_run:

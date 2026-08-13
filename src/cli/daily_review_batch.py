@@ -37,6 +37,8 @@ REVIEW_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, Ke
 
 
 REVIEW_SUMMARY_TYPE = "리뷰_WPA"
+
+
 def _upsert_review_summary(session: Session, game_id: str, review_json: str) -> None:
     existing_summaries = (
         session.query(GameSummary)

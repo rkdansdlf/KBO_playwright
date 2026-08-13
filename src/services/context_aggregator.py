@@ -1195,17 +1195,19 @@ class ContextAggregator:
             "comparison": comparison,
         }
 
-    def get_milestone_alerts(
-        self, away_team: str, home_team: str, season: int = 2026
-    ) -> list[dict[str, Any]]:
+    def get_milestone_alerts(self, away_team: str, home_team: str, season: int = 2026) -> list[dict[str, Any]]:
         """Get upcoming milestone alerts for players of the competing teams."""
         from src.models.player_milestone import PlayerMilestone
 
-        stmt = select(PlayerMilestone).where(
-            PlayerMilestone.season == season,
-            PlayerMilestone.is_achieved.is_(False),
-            PlayerMilestone.team_code.in_([away_team, home_team]),
-        ).order_by(PlayerMilestone.remaining_val.asc())
+        stmt = (
+            select(PlayerMilestone)
+            .where(
+                PlayerMilestone.season == season,
+                PlayerMilestone.is_achieved.is_(False),
+                PlayerMilestone.team_code.in_([away_team, home_team]),
+            )
+            .order_by(PlayerMilestone.remaining_val.asc())
+        )
 
         milestones = list(self.session.execute(stmt).scalars().all())
         return [
@@ -1217,13 +1219,11 @@ class ContextAggregator:
                 "target_val": m.target_val,
                 "remaining_val": m.remaining_val,
                 "alert_message": (
-                    f"오늘 {m.milestone_category}까지 {m.remaining_val}개 남음 "
-                    f"({m.current_val}/{m.target_val})"
+                    f"오늘 {m.milestone_category}까지 {m.remaining_val}개 남음 ({m.current_val}/{m.target_val})"
                 ),
             }
             for m in milestones
         ]
-
 
     def get_recent_notices(self, limit: int = 5) -> list[dict[str, Any]]:
         """Get recent KBO press releases and notices."""

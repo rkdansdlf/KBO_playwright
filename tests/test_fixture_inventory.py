@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import subprocess
+import shutil
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,8 +32,12 @@ def test_required_test_assets_exist():
 
 
 def test_required_test_assets_are_not_gitignored():
+    git_bin = shutil.which("git")
+    if not git_bin:
+        pytest.skip("git is required for ignore-rule verification")
+
     result = subprocess.run(
-        ["git", "check-ignore", "--no-index", *map(str, REQUIRED_TEST_ASSETS)],
+        [git_bin, "check-ignore", "--no-index", *map(str, REQUIRED_TEST_ASSETS)],
         cwd=ROOT,
         capture_output=True,
         text=True,

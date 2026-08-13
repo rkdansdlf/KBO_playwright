@@ -75,8 +75,7 @@ def validate_game_data(
         _validate_required_rows(hitters, pitchers, errors)
     elif not any(hitters.get(side) or pitchers.get(side) for side in ("home", "away")):
         has_anchor = bool(home_code and away_code) and any(
-            team.get("score") is not None or team.get("line_score") or team.get("stadium")
-            for team in (home, away)
+            team.get("score") is not None or team.get("line_score") or team.get("stadium") for team in (home, away)
         )
         if not has_anchor:
             errors.append("No detail rows for partial recovery")

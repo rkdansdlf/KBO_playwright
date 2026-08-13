@@ -191,6 +191,9 @@ class YouTubeAPIClient:
             Dictionary mapping.
 
         """
+        if not self.is_configured():
+            return {}
+
         params["key"] = self.api_key
 
         url = f"{YOUTUBE_API_BASE}/{endpoint}"
