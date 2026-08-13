@@ -26,11 +26,12 @@ def test_crawl_congestion_skips_under_real_lock_contention(
     real_lock = ProcessLock(f"sqlite_writer_{tmp_path.name}", lock_dir=tmp_path, blocking=False)
 
     held = threading.Event()
+    release = threading.Event()
 
     def holder() -> None:
         with real_lock:
             held.set()
-            time.sleep(0.5)
+            release.wait(timeout=5)
 
     holder_thread = threading.Thread(target=holder)
     holder_thread.start()
@@ -46,9 +47,11 @@ def test_crawl_congestion_skips_under_real_lock_contention(
     skip_metric = MagicMock()
     monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", skip_metric)
 
-    scheduler.crawl_congestion_job()
-
-    holder_thread.join(timeout=5)
+    try:
+        scheduler.crawl_congestion_job()
+    finally:
+        release.set()
+        holder_thread.join(timeout=5)
 
     skip_metric.labels.assert_any_call(job_id="crawl_congestion", lock="sqlite_writer")
     skip_metric.labels.return_value.inc.assert_called()

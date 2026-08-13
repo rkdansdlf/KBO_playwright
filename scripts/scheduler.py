@@ -1617,6 +1617,29 @@ _SCHEDULER_REF: BlockingScheduler | None = None
 _SCHEDULER_PID_FILE = Path(__file__).resolve().parent.parent / "data" / "locks" / "scheduler.pid"
 
 
+def _scheduler_pid_alive(pid: int) -> bool:
+    """Return whether a scheduler PID is currently running."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+
+        process_query_limited_information = 0x1000
+        access_denied = 5
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return ctypes.get_last_error() == access_denied
+    try:
+        os.kill(pid, 0)
+    except (OSError, ProcessLookupError):
+        return False
+    return True
+
+
 def _ensure_single_scheduler_instance() -> None:
     """Exit if another live scheduler process already holds the PID file.
 
@@ -1636,10 +1659,10 @@ def _ensure_single_scheduler_instance() -> None:
                     if pid == os.getpid():
                         stale = True
                     else:
-                        os.kill(pid, 0)
+                        stale = not _scheduler_pid_alive(pid)
                 else:
                     stale = True
-            except (OSError, ProcessLookupError):
+            except OSError:
                 stale = True
             if stale:
                 logger.warning("Removing stale scheduler PID file")
