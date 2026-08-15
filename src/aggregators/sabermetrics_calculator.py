@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 MIN_LEAGUE_PLAYER_ID = 10_000
 LEAGUE_BATTING_PA_STUB_LIMIT = 10
 LEAGUE_PITCHING_OUTS_STUB_LIMIT = 10
+CONSTANTS_CACHE_KEY = "kbo_sabermetrics_constants"
 
 
 class SabermetricsCalculator:
@@ -34,6 +35,11 @@ class SabermetricsCalculator:
             level: League level (e.g. KBO1, KBO2).
 
         """
+        cache_key = (year, level)
+        session_cache = session.info.setdefault(CONSTANTS_CACHE_KEY, {})
+        if cache_key in session_cache:
+            return session_cache[cache_key]
+
         # Aggregate league batting stats
 
         # Filter: Exclude players that likely have incomplete data (e.g., 0 HR and 0 BB despite high PA)
@@ -137,7 +143,7 @@ class SabermetricsCalculator:
         total_bases = (bat_query.h or 0) + (bat_query.d2 or 0) + 2 * (bat_query.d3 or 0) + 3 * (bat_query.hr or 0)
         lg_slg = total_bases / (bat_query.ab or 1)
 
-        return {
+        result = {
             "lg_woba": lg_woba,
             "woba_scale": woba_scale,
             "lg_r_per_pa": lg_r_per_pa,
@@ -147,6 +153,8 @@ class SabermetricsCalculator:
             "lg_obp": lg_obp,
             "lg_slg": lg_slg,
         }
+        session_cache[cache_key] = result
+        return result
 
     @staticmethod
     def calculate_batting_metrics(stat: PlayerSeasonBatting, lg: dict[str, Any]) -> dict[str, Any]:

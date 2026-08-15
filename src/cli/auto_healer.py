@@ -48,6 +48,10 @@ from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sqlalchemy.orm import Session
+
+    from src.models.quarantine import QuarantinedRecord
+
 logger = logging.getLogger(__name__)
 
 
@@ -165,6 +169,31 @@ def heal_season_stat_discrepancies(*, dry_run: bool = False) -> int:
     return fixed_count
 
 
+def _reconcile_and_audit(game_id: str, new_status: str, reason: str | None) -> None:
+    """Record reconciliation audit trail for auto-healed games."""
+    try:
+        from src.services.multi_source_reconciler import CorrectionAuditRequest, MultiSourceReconciler
+
+        with SessionLocal() as session:
+            reconciler = MultiSourceReconciler(session)
+            req = CorrectionAuditRequest(
+                game_id=game_id,
+                entity_type="game",
+                entity_id=game_id,
+                field_name="game_status",
+                raw_value=GAME_STATUS_SCHEDULED,
+                raw_source="kbo_schedule",
+                corrected_value=new_status,
+                corrected_source="auto_healer",
+                reason=f"auto_healer:{reason or 'status_repair'}",
+                confidence=1.0,
+            )
+            reconciler.record_audit(req)
+            session.commit()
+    except (SQLAlchemyError, RuntimeError, ValueError, OSError) as e:
+        logger.warning("[AutoHealer] Failed to record correction audit trail for %s: %s", game_id, e)
+
+
 def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> str:
     """Apply status repair based on one shared collection result item.
 
@@ -176,16 +205,19 @@ def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> 
 
     """
     if item and item.detail_saved:
+        _reconcile_and_audit(game_id, "COMPLETED", "score_saved")
         logger.info("  ✅ %s → COMPLETED (score saved)", game_id)
         return "completed"
 
     failure_reason = item.failure_reason if item else None
     if failure_reason == "cancelled":
         update_game_status(game_id, GAME_STATUS_CANCELLED)
+        _reconcile_and_audit(game_id, GAME_STATUS_CANCELLED, "cancelled")
         logger.info("  🚫 %s → CANCELLED", game_id)
         return "cancelled"
 
     update_game_status(game_id, GAME_STATUS_UNRESOLVED)
+    _reconcile_and_audit(game_id, GAME_STATUS_UNRESOLVED, failure_reason)
     logger.info("  ❓ %s → UNRESOLVED_MISSING (reason=%s)", game_id, failure_reason)
     return "unresolved"
 
@@ -298,6 +330,90 @@ def _apply_pa_formula_backfill(recovery_candidates: list[Game]) -> int:
     return pa_fixed_count
 
 
+def _build_secondary_evidence(session: Session, qr: QuarantinedRecord) -> dict[str, Any]:
+    """Build secondary-source evidence for a quarantine record from current DB state.
+
+    Uses the freshly re-crawled/saved game rows as cross-check evidence for the
+    quarantined entity. Returns an empty dict when no usable evidence exists.
+
+    Args:
+        session: Session.
+        qr: Quarantined record.
+
+    """
+    if qr.entity_type == "batting" and qr.entity_id is not None:
+        try:
+            player_id = int(qr.entity_id)
+        except (ValueError, TypeError):
+            return {}
+        row = (
+            session.execute(
+                text(
+                    "SELECT hits, at_bats, plate_appearances, home_runs, walks "
+                    "FROM game_batting_stats WHERE game_id = :gid AND player_id = :pid"
+                ),
+                {"gid": qr.game_id, "pid": player_id},
+            )
+            .mappings()
+            .first()
+        )
+        if not row:
+            return {}
+        return {key: value for key, value in row.items() if value is not None}
+    return {}
+
+
+def reconcile_pending_quarantines(
+    *,
+    game_ids: list[str] | None = None,
+    limit: int = 100,
+) -> int:
+    """Reconcile PENDING quarantined records against current DB evidence.
+
+    Uses MultiSourceReconciler to auto-heal quarantined payloads whose blocking
+    violation can be confirmed against freshly saved data, recording each
+    correction in correction_audit_trail. Returns the number of records healed.
+
+    Args:
+        game_ids: Optional game filter.
+        limit: Max records scanned.
+
+    """
+    from src.models.quarantine import QuarantinedRecord
+    from src.services.multi_source_reconciler import MultiSourceReconciler
+
+    with SessionLocal() as session:
+        stmt = select(QuarantinedRecord).where(QuarantinedRecord.status == "PENDING")
+        if game_ids:
+            stmt = stmt.where(QuarantinedRecord.game_id.in_(game_ids))
+        stmt = stmt.order_by(QuarantinedRecord.id.asc()).limit(limit)
+        records = list(session.execute(stmt).scalars().all())
+        if not records:
+            logger.info("🧩 Reconcile: no PENDING quarantine records to process.")
+            return 0
+
+        reconciler = MultiSourceReconciler()
+        reconciled = 0
+        for qr in records:
+            secondary = _build_secondary_evidence(session, qr)
+            if not secondary:
+                continue
+            try:
+                if reconciler.reconcile_and_heal_quarantine(session, qr.id, secondary):
+                    session.commit()
+                    reconciled += 1
+            except (SQLAlchemyError, ValueError, TypeError):
+                session.rollback()
+                logger.warning("Reconciliation failed for quarantine id=%s (%s)", qr.id, qr.game_id)
+        if reconciled:
+            logger.info(
+                "🧩 Reconcile: %s/%s PENDING quarantine record(s) healed from current evidence.",
+                reconciled,
+                len(records),
+            )
+        return reconciled
+
+
 async def _run_recovery(
     recovery_candidates: list[Game],
     anomaly_dates: list[Any],
@@ -342,6 +458,12 @@ async def _run_recovery(
         pa_fixed_count = _apply_pa_formula_backfill(recovery_candidates)
         if pa_fixed_count > 0:
             results["pa_formula_fixed"] = pa_fixed_count
+
+        reconciled_count = reconcile_pending_quarantines(
+            game_ids=[game.game_id for game in recovery_candidates],
+        )
+        if reconciled_count > 0:
+            results["reconciled_quarantines"] = reconciled_count
 
         logger.info(write_contract.summary())
         return results
@@ -400,6 +522,9 @@ async def run_healer_async(
     all_found, stuck_games, inconsistent_games, pa_formula_games = _find_recovery_targets(target_game_ids)
     if not target_game_ids and not stuck_games and not inconsistent_games and not pa_formula_games:
         logger.info("✅ No anomalies detected. Pipeline is healthy.")
+        recovered_quarantines = reconcile_pending_quarantines()
+        if recovered_quarantines:
+            logger.info("✅ Recovered %s quarantined record(s) via reconciliation.", recovered_quarantines)
         recovery_mgr.clear()
         return 0
 
