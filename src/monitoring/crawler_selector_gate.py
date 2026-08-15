@@ -380,9 +380,12 @@ def _evaluate_target(target: SelectorTarget, output_dir: Path | None) -> Selecto
 async def _capture_url_html(target: SelectorTarget, output_dir: Path | None) -> str:
     from playwright.async_api import async_playwright
 
+    from src.utils.playwright_blocking import install_async_resource_blocking
+
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
         page = await browser.new_page()
+        await install_async_resource_blocking(page)
         await page.goto(target.source, wait_until=target.wait_until, timeout=target.timeout_ms)
         html = await page.content()
         if output_dir:

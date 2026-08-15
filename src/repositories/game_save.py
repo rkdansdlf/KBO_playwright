@@ -795,6 +795,41 @@ def _record_detail_evidence(context: DetailEvidenceContext) -> None:
     )
 
 
+def _execute_realtime_quality_gate(
+    game_data: dict[str, Any],
+    game_id: str,
+    *,
+    allow_partial: bool,
+    source_crawler: str,
+) -> bool:
+    """Run comprehensive quality gate and quarantine invalid payloads."""
+    import os
+
+    if os.getenv("DISABLE_REALTIME_GATE", "0") == "1":
+        return True
+
+    from src.services.quarantine_service import QuarantineService
+    from src.validators.game_data_validator import validate_game_detail_comprehensive
+
+    is_valid, validation_results = validate_game_detail_comprehensive(
+        game_data,
+        allow_partial=allow_partial,
+    )
+    if not is_valid:
+        logger.warning("[QualityGate] Game %s failed comprehensive validation. Quarantining payload.", game_id)
+        with SessionLocal() as q_session:
+            q_service = QuarantineService(q_session)
+            q_service.quarantine_validation_failures(
+                validation_results,
+                game_data,
+                game_id=game_id,
+                source=source_crawler,
+            )
+            q_session.commit()
+        return False
+    return True
+
+
 def save_game_detail(  # noqa: PLR0913
     game_data: dict[str, Any],
     *,
@@ -848,6 +883,14 @@ def save_game_detail(  # noqa: PLR0913
     pitchers = game_data.get("pitchers", {}) or {}
     allow_partial = allow_partial or not _has_full_detail_payload(hitters, pitchers)
     explicit_status = normalize_game_status(game_data.get("game_status"))
+
+    if not _execute_realtime_quality_gate(
+        game_data,
+        game_id,
+        allow_partial=allow_partial,
+        source_crawler=source_crawler,
+    ):
+        return False
 
     with SessionLocal() as session:
         try:

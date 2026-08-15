@@ -32,6 +32,8 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
+from src.models.season import KboSeason
+from src.repositories.oracle_upsert import upsert_model_by_unique_keys
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.player_id_resolver import PlayerIdResolver
 from src.utils.game_status import (
@@ -364,17 +366,16 @@ def _ensure_season_exists(
         league_type_code,
         name,
     )
-    session.execute(
-        text(
-            """
-            INSERT OR IGNORE INTO kbo_seasons
-
-                (season_id, season_year, league_type_code, league_type_name,
-                 created_at, updated_at)
-            VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            """,
-        ),
-        {"sid": sid, "year": season_year, "code": league_type_code, "name": name},
+    upsert_model_by_unique_keys(
+        session,
+        KboSeason,
+        {
+            "season_id": sid,
+            "season_year": season_year,
+            "league_type_code": league_type_code,
+            "league_type_name": name,
+        },
+        ("season_id",),
     )
     session.flush()
     return sid

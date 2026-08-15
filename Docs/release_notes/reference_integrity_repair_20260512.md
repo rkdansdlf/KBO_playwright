@@ -1,5 +1,10 @@
 # Reference Integrity Repair Notes - 2026-05-12
 
+> Historical record. The OCI and `scripts/crawling/` paths referenced below
+> describe the 2026-05 deployment and are retained for audit history. Current
+> operations use Oracle Autonomous Database and the paths documented in
+> `Docs/references/COMMAND_REFERENCE.md`.
+
 ## Summary
 - Restored local SQLite reference integrity for game metadata, team codes, season stat player references, and `Unknown <id>` player stubs.
 - Strengthened local quality gates so `PRAGMA foreign_key_check` is not the only integrity signal.

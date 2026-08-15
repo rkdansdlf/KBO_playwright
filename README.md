@@ -1,6 +1,6 @@
 # KBO Playwright Crawler
 
-Korean Baseball Organization (KBO) data collection system using Playwright, with CLI orchestration and PostgreSQL primary storage.
+Korean Baseball Organization (KBO) data collection system using Playwright, with CLI orchestration and Oracle Autonomous Database primary storage.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ Two-track data pipeline:
 - **Core (src/)**: CLI entrypoints (`src/cli/`), Playwright crawlers (`src/crawlers/`), parsers, SQLAlchemy ORM models, and repositories (UPSERT).
 - **Scripts (scripts/)**: Batch utilities for crawling, maintenance, verification, and historical backfill.
 
-**Database**: PostgreSQL is the primary database; SQLite remains available for local tests and development. All save logic uses **UPSERT** for idempotency.
+**Database**: Oracle Autonomous Database is the primary database; SQLite is used for local tests and one-time initial-load source data. PostgreSQL/pgvector remains the separate dense RAG search store. All save logic uses **UPSERT** for idempotency.
 
 ## Quick Start
 
@@ -27,7 +27,7 @@ All operational commands use `python3 -m src.cli.*`. See [`AGENTS.md`](AGENTS.md
 
 ```bash
 # Daily postgame orchestration
-python3 -m src.cli.run_daily_update --date 20251015 --sync
+python3 -m src.cli.run_daily_update --date 20251015
 
 # Manual game detail collection
 python3 -m src.cli.collect_games --year 2025 --month 10
@@ -38,9 +38,11 @@ python3 -m src.cli.crawl_schedule --year 2025 --month 10
 # Futures League stats
 python3 -m src.cli.crawl_futures --season 2025 --concurrency 3
 
-# PostgreSQL schema and data migration
-python3 -m src.cli.apply_postgres_migrations --check
-python3 -m scripts.migrate_sqlite_to_postgres --source-url "sqlite:///./data/kbo_dev.db" --target-url "$DATABASE_URL"
+# Oracle schema and SQLite initial load
+python3 -m src.cli.apply_oracle_migrations
+python3 -m src.cli.sync_sqlite_to_oci \
+  --source-url "sqlite:///./data/kbo_dev.db" \
+  --target-url "$DATABASE_URL" --dry-run
 
 # Quality gates
 python3 -m src.cli.quality_gate_check --year 2025
@@ -56,16 +58,21 @@ python3 -m src.cli.build_rag_index --source kbo_regulations
 
 14 GitHub Actions workflows under `.github/workflows/`:
 
-| Workflow | Schedule (KST) | Purpose |
+| Workflow | Trigger | Purpose |
 |---|---|---|
-| `daily_kbo_sync.yml` | 03:00 daily | Postgame finalize, quality report, advanced PostgreSQL processing |
-| `backfill.yml` | Sun 04:00-06:00 | 6 matrix jobs: missed crawls, stats, SH/SF, advanced stats, player IDs, roster |
-| `daily_preview.yml` | 05:00 daily | Pregame preview + live data refresh |
-| `weekly_maintenance.yml` | Sun 05:00 | Futures profiles, player enrichment |
+| `daily_kbo_sync.yml` | Manual / reviewed schedule | Postgame finalize, quality report, advanced Oracle processing |
+| `backfill.yml` | Manual / reviewed schedule | 6 matrix jobs: missed crawls, stats, SH/SF, advanced stats, player IDs, roster |
+| `daily_preview.yml` | Manual / reviewed schedule | Pregame preview + live data refresh |
+| `weekly_maintenance.yml` | Manual / reviewed schedule | Futures profiles, player enrichment |
 | `full_recalculation.yml` | Manual | Full season stat recalculation |
 | `kbo_automation.yml` | Manual | 8-phase: pregame, live, finalize, freshness, quality, gap, backfill, recalc |
 | `test_suite.yml` | CI on push | Ruff lint + pytest (3.12) |
-| `periodic_extras.yml` | Monthly 1st | Periodic data sync |
+| `periodic_extras.yml` | Manual / reviewed schedule | Periodic data sync |
+| `kbo_smart_polling.yml` | Manual / reviewed schedule | Game-finish polling and daily update |
+| `text_relay_docker.yml` | Schedule + manual | Text relay Docker job |
+| `backfill_season_team_codes.yml` | Manual | Futures season team-code repair |
+| `security_audit.yml` | Scheduled + manual | Dependency security audit |
+| `docker_build.yml` | Manual / push | Container build and publish |
 
 See [`AGENTS.md`](AGENTS.md) for required secrets and composite actions.
 
@@ -81,7 +88,7 @@ KBO_playwright/
 │   ├── parsers/           # HTML/JSON parsing
 │   ├── repositories/      # UPSERT-based data storage
 │   ├── services/          # Business logic (matchup, P0 readiness, etc.)
-│   ├── sync/              # Transitional data migration utilities
+│   ├── sync/              # SQLite to Oracle initial-load utilities
 │   ├── aggregators/       # Season stats, rankings, standings computation
 │   └── validators/        # Quality gate checks
 ├── scripts/
@@ -96,7 +103,7 @@ KBO_playwright/
 ├── tests/                 # Pytest suite (1400+ tests)
 │   ├── factories/         # Model factory helpers (DB + model builders)
 │   └── fixtures/          # Static test data (HTML, JSON)
-├── migrations/            # Schema migrations (SQLite + PostgreSQL)
+├── migrations/            # Schema migrations (Oracle + SQLite + PostgreSQL/pgvector)
 ├── Docs/                  # Runbooks, URL references, schemas
 ├── data/                  # SQLite database location
 └── logs/                  # Runtime logs and reports

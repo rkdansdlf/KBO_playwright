@@ -1,10 +1,14 @@
 # Quality Gate Baseline
 
-## PostgreSQL Operational Snapshot (2026-08-02)
+## Oracle Operational Baseline
 
 The daily workflow runs `src.cli.quality_gate_check` against the configured
-`DATABASE_URL`. The operational baseline is therefore based on the primary
-database rather than a secondary cache.
+`DATABASE_URL`, which targets Oracle Autonomous Database in production. A new
+Oracle baseline must be captured after the SQLite→Oracle initial load passes all
+integrity checks.
+
+The values below are the previous PostgreSQL snapshot and are retained only as
+historical comparison data until the new Oracle baseline is approved.
 
 | Metric | Value | Baseline | Policy |
 |---|---:|---:|---|
@@ -15,7 +19,7 @@ database rather than a secondary cache.
 historical source coverage currently present in PostgreSQL. The new limit includes a
 small operational headroom while remaining finite.
 
-The baseline change does not waive required-zero checks. `game_status` must be
+The baseline does not waive required-zero checks. `game_status` must be
 present, past `SCHEDULED` rows must remain zero, and regression-pack failures
 remain blocking.
 

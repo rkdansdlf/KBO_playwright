@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -339,6 +339,16 @@ class TestAggregateFunctions:
 class TestUpsertBulk:
     def test_upsert_bulk_empty(self, session):
         assert _upsert_bulk(session, PlayerGameBatting, []) == 0
+
+    def test_upsert_bulk_uses_oracle_business_key_path(self):
+        session = MagicMock()
+        session.get_bind.return_value.dialect.name = "oracle"
+        records = [{"game_id": "G1", "player_id": 1, "hits": 2}]
+
+        with patch("src.repositories.player_game_stats.upsert_model_by_unique_keys") as upsert:
+            assert _upsert_bulk(session, PlayerGameBatting, records) == 1
+
+        upsert.assert_called_once_with(session, PlayerGameBatting, records[0], ("game_id", "player_id"))
 
     def test_upsert_bulk_player_game_batting(self, session):
         records = [

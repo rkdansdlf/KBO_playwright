@@ -6,7 +6,7 @@ KBO (한국야구위원회) 공식 웹사이트 및 Naver Sports 데이터를 �
 
 - **경기 데이터 수집**: KBO 웹사이트에서 경기 일정, 박스스코어, PBP, 수비 기록 크롤링
 - **선수 통계**: 타/투/수비 시즌 통계 및 고급 스탯(WPA, sabermetrics) 계산
-- **데이터 동기화**: 로컬 SQLite → OCI (Oracle Cloud Infrastructure) DB 동기화
+- **데이터 초기 적재**: 검증된 로컬 SQLite → Oracle Autonomous Database 적재
 - **품질 관리**: Quality Gate, Freshness Gate, Gap Report, PA Formula Audit
 - **자동화 파이프라인**: GitHub Actions 기반 일일/주간/월간 스케줄링
 
@@ -25,7 +25,7 @@ KBO (한국야구위원회) 공식 웹사이트 및 Naver Sports 데이터를 �
 | `src/models/` | SQLAlchemy ORM 모델 |
 | `src/services/` | 비즈니스 로직 (WPA, PlayerID, 등) |
 | `src/cli/` | CLI 진입점 |
-| `src/sync/` | OCI DB 동기화 |
+| `src/sync/` | SQLite → Oracle 초기 적재 및 checkpoint |
 | `src/aggregators/` | 팀/시즌 통계 집계 |
 | `src/utils/` | 공통 유틸리티 (retry, throttle, 등) |
 | `scripts/` | 유지보수/검증 스크립트 |

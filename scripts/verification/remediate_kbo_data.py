@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_invalid_games_for_year(year: int) -> list[dict[str, str]]:
-    """Identifies all completed games for a year that are logically inconsistent
+    """Identify all completed games for a year that are logically inconsistent
+
     or have missing child record data in the database.
     """
     # 1. Fetch game logic violations
@@ -86,7 +87,7 @@ def get_invalid_games_for_year(year: int) -> list[dict[str, str]]:
 
 
 async def remediate_year(year: int, limit: int | None = None, request_delay: float = 1.0) -> bool:
-    """Finds and repairs invalid games for a single year."""
+    """Find and repair invalid games for a single year."""
     logger.info(f"\n📂 Processing Year: {year}")
     logger.info("-" * 40)
 

@@ -28,7 +28,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 logger = logging.getLogger("verify_p1p2_lock_fix")
 
-import scripts.scheduler as scheduler
+from scripts import scheduler
 
 
 def _noop_main(argv=None):

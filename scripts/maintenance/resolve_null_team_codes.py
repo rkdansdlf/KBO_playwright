@@ -212,7 +212,7 @@ def resolve_from_single_career_team(session: Session, player_id: int) -> str | N
         res = session.execute(text(sql), {"player_id": player_id}).fetchall()
         for r in res:
             val = r[0]
-            if val and val != "None" and val != "":
+            if val and val not in {"None", ""}:
                 codes.add(str(val))
 
     if len(codes) == 1:
@@ -343,7 +343,7 @@ def resolve_team_codes(session: Session, year: int | None = None, apply: bool = 
 
 
 def main() -> int:
-    """Main CLI entrypoint."""
+    """Run CLI entrypoint for resolving NULL team_code values."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="Resolve NULL team_code values in player_season tables")

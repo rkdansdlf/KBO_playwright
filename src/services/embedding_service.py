@@ -86,7 +86,7 @@ class EmbeddingService:
         return results[0] if results else [0.0] * EMBEDDING_TARGET_DIMENSION
 
     def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings for a batch of text strings, utilizing a local SQLite cache.
+        """Generate embeddings for a batch of text strings using the primary DB cache.
 
         Args:
             texts: Texts.

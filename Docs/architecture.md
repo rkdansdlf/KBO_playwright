@@ -15,10 +15,7 @@ KBO Website / Naver Sports
    [Repository Layer] ─── DB CRUD, Validation, Upsert
         │
         ▼
-   [SQLite DB]      ─── 로컬 개발/운영 DB
-        │
-        ▼
-   [OCI Sync]       ─── Oracle Cloud DB 동기화
+   [Database]       ─── Oracle Autonomous DB (운영) / SQLite (초기 원본·개발·테스트)
 ```
 
 ## 모듈 의존성 그래프
@@ -60,8 +57,10 @@ crawlers ──→ parsers ──→ repositories ──→ models
 
 ## 데이터 저장소
 
-- **개발/테스트**: SQLite (`data/kbo_*.db`)
-- **운영**: PostgreSQL (`DATABASE_URL`)
+- **운영 야구 데이터**: Oracle Autonomous Database (`DATABASE_URL`)
+- **초기 적재 원본/개발·테스트**: SQLite (`data/kbo_*.db`)
+- **RAG BM25 원문**: Oracle `rag_chunks`
+- **RAG dense vector**: 별도 PostgreSQL/pgvector (`PGVECTOR_URL`)
 
 ## 설정
 

@@ -37,7 +37,7 @@ class TestNormalizeYyyymmdd:
     def test_none_returns_today(self):
         with patch("src.services.p0_readiness.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "20240601"
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock_dt.side_effect = datetime
             result = normalize_yyyymmdd(None)
             assert result == "20240601"
 

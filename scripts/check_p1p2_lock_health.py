@@ -145,6 +145,7 @@ def _collect_problems(logs: str, *, require_run: bool, run_diagnose: bool) -> li
                 [sys.executable, "scripts/diagnose_scheduler_locks.py"],
                 capture_output=True,
                 text=True,
+                check=False,
             )
             if result.returncode != 0:
                 problems.append(f"diagnose_scheduler_locks exited {result.returncode} (stale locks?)")

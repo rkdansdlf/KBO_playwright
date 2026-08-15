@@ -1,8 +1,4 @@
-"""Database engine configuration.
-
-Supports both SQLite (dev) and MySQL (production).
-
-"""
+"""Database engine configuration for Oracle, PostgreSQL, and SQLite."""
 
 from __future__ import annotations
 
@@ -182,7 +178,11 @@ def _create_sqlite_engine(url: str, *, sqlite_synchronous: str | None = None) ->
     return engine
 
 
-def _parse_oracle_connection(url: str, tns_admin: str | None) -> tuple[str, dict[str, Any]]:
+def _parse_oracle_connection(
+    url: str,
+    tns_admin: str | None,
+    wallet_password: str | None = None,
+) -> tuple[str, dict[str, Any]]:
     """Build an Oracle target URL and wallet connection arguments."""
     normalized = normalize_oracle_url(url)
     connect_args: dict[str, Any] = {}
@@ -200,9 +200,9 @@ def _parse_oracle_connection(url: str, tns_admin: str | None) -> tuple[str, dict
         if tns_admin:
             connect_args["config_dir"] = tns_admin
             connect_args["wallet_location"] = tns_admin
-            wallet_password = os.getenv("OCI_WALLET_PASSWORD") or password
-            if wallet_password:
-                connect_args["wallet_password"] = wallet_password
+            resolved_wallet_password = wallet_password or os.getenv("OCI_WALLET_PASSWORD") or password
+            if resolved_wallet_password:
+                connect_args["wallet_password"] = resolved_wallet_password
 
         if not parts.path or parts.path == "/":
             target_url = f"{parts.scheme}://@"
@@ -217,11 +217,20 @@ def _parse_oracle_connection(url: str, tns_admin: str | None) -> tuple[str, dict
     return target_url, connect_args
 
 
-def _create_oracle_engine(url: str) -> SQLAlchemyEngine:
+def _create_oracle_engine(
+    url: str,
+    *,
+    tns_admin: str | None = None,
+    wallet_password: str | None = None,
+) -> SQLAlchemyEngine:
     """Create an Oracle engine with wallet and dialect compatibility settings."""
     _install_oracle_json_compiler()
     _install_oracle_fk_restrict_compiler()
-    target_url, connect_args = _parse_oracle_connection(url, os.getenv("TNS_ADMIN"))
+    target_url, connect_args = _parse_oracle_connection(
+        url,
+        tns_admin or os.getenv("TNS_ADMIN"),
+        wallet_password,
+    )
 
     extra_kwargs: dict[str, Any] = {}
     if connect_args:
@@ -245,6 +254,8 @@ def create_engine_for_url(
     *,
     disable_sqlite_wal: bool = False,  # noqa: ARG001
     sqlite_synchronous: str | None = None,
+    tns_admin: str | None = None,
+    wallet_password: str | None = None,
 ) -> SQLAlchemyEngine:
     """Create engine for url.
 
@@ -252,6 +263,8 @@ def create_engine_for_url(
         url: Url.
         disable_sqlite_wal: Disable Sqlite Wal.
         sqlite_synchronous: SQLite durability mode (``FULL`` or ``NORMAL``).
+        tns_admin: Optional Oracle wallet/TNS configuration directory.
+        wallet_password: Optional Oracle wallet password.
 
     Returns:
         SQLAlchemyEngine instance.
@@ -261,7 +274,7 @@ def create_engine_for_url(
         return _create_sqlite_engine(url, sqlite_synchronous=sqlite_synchronous)
 
     if url.startswith("oracle"):
-        return _create_oracle_engine(url)
+        return _create_oracle_engine(url, tns_admin=tns_admin, wallet_password=wallet_password)
 
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
 
@@ -298,6 +311,8 @@ def get_database_type() -> str:
     """Return the database type based on DATABASE_URL."""
     if DATABASE_URL.startswith("sqlite:"):
         return "sqlite"
+    if DATABASE_URL.startswith("oracle"):
+        return "oracle"
     if DATABASE_URL.startswith("mysql"):
         return "mysql"
     if DATABASE_URL.startswith("postgresql"):
@@ -606,6 +621,8 @@ def _ensure_stat_recalc_view(engine: SQLAlchemyEngine | None = None) -> None:
             )
     except SQLAlchemyError as exc:
         logger.warning("Could not ensure vw_player_season_batting_recalc view: %s", exc)
+        if target_engine.dialect.name == "oracle":
+            raise
 
 
 def init_db() -> None:

@@ -15,9 +15,13 @@ from typing import Any
 from playwright.sync_api import ElementHandle, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.crawlers.selectors import FIELDING_STATS
+from src.db.engine import SessionLocal, get_database_type
+from src.models.player import PlayerSeasonFielding
+from src.repositories.oracle_upsert import upsert_model_by_unique_keys
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.type_helpers import parse_innings, safe_float, safe_int
 
@@ -394,6 +398,9 @@ def save_fielding_stats(year: int | None = None, db_path: str | None = None) -> 
     """
     if year is None:
         year = datetime.now(KST).year
+    if db_path is None and get_database_type() == "oracle":
+        _save_fielding_stats_oracle(year)
+        return
     if db_path is None:
         db_path = f"data/kbo_{year}.db"
     # 수비 기록 크롤링
@@ -460,6 +467,60 @@ def save_fielding_stats(year: int | None = None, db_path: str | None = None) -> 
     conn.close()
 
     logger.info("✅ 수비 기록 저장 완료! (저장: %s건, 스킵: %s건)", saved_count, skipped_count)
+
+
+def _save_fielding_stats_oracle(year: int) -> None:
+    """Save fielding records through the configured Oracle-backed ORM session."""
+    fielding_records = crawl_all_fielding_stats(year)
+    if not fielding_records:
+        logger.warning("⚠️ 수집된 수비 기록이 없습니다.")
+        return
+
+    saved_count = 0
+    with SessionLocal() as session:
+        try:
+            for record in fielding_records:
+                if not record.get("player_id"):
+                    continue
+                payload = {
+                    key: record.get(key)
+                    for key in (
+                        "player_id",
+                        "team_id",
+                        "year",
+                        "position_id",
+                        "games",
+                        "games_started",
+                        "innings",
+                        "putouts",
+                        "assists",
+                        "errors",
+                        "double_plays",
+                        "fielding_pct",
+                        "pickoffs",
+                        "passed_balls",
+                        "stolen_bases_allowed",
+                        "caught_stealing",
+                        "cs_pct",
+                    )
+                    if key in record
+                }
+                payload["year"] = year
+                payload["source"] = "CRAWLER"
+                upsert_model_by_unique_keys(
+                    session,
+                    PlayerSeasonFielding,
+                    payload,
+                    ("player_id", "team_id", "year", "position_id"),
+                )
+                saved_count += 1
+            session.commit()
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+            session.rollback()
+            logger.exception("⚠️ Oracle 수비 기록 저장 실패")
+            return
+
+    logger.info("✅ Oracle 수비 기록 저장 완료! (저장: %s건)", saved_count)
 
 
 if __name__ == "__main__":

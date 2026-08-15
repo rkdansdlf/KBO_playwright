@@ -218,7 +218,7 @@ class TestUpdatePitcherBasic2Stats:
     def test_updates_metrics(self) -> None:
         stats = PitcherStats(player_id=1, season=2026, league="REGULAR")
         header_index = {"CG": 0, "QS": 1, "NP": 2}
-        cell_text_fn = lambda idx: {0: "5", 1: "10", 2: "2500"}.get(idx)
+        cell_text_fn = {0: "5", 1: "10", 2: "2500"}.get
         _update_pitcher_basic2_stats(stats, header_index, cell_text_fn, "basic2")
         metrics = stats.extra_stats.get("metrics", {})
         assert metrics["complete_games"] == 5
@@ -228,7 +228,7 @@ class TestUpdatePitcherBasic2Stats:
     def test_updates_single_fields(self) -> None:
         stats = PitcherStats(player_id=1, season=2026, league="REGULAR")
         header_index = {"IBB": 0, "WP": 1, "BK": 2}
-        cell_text_fn = lambda idx: {0: "3", 1: "2", 2: "1"}.get(idx)
+        cell_text_fn = {0: "3", 1: "2", 2: "1"}.get
         _update_pitcher_basic2_stats(stats, header_index, cell_text_fn, "basic2")
         assert stats.intentional_walks == 3
         assert stats.wild_pitches == 2

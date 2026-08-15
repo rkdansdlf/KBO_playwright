@@ -10,24 +10,6 @@ groups:
           summary: "KBO 스케줄러 락 스킵(경합) 급증 발생"
           description: "최근 5분 동안 락 스킵 횟수가 {{ $value }}회 발생했습니다."
 
-      - alert: KBOOCISyncLagHigh
-        expr: kbo_oci_sync_lag_seconds > 1800
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "KBO OCI 동기화 지연 경보"
-          description: "SQLite와 OCI 간 동기화 지연 시간이 {{ $value }}초(30분 이상)로 심화되었습니다."
-
-      - alert: KBOOCISyncErrors
-        expr: increase(kbo_oci_sync_errors_total[15m]) > 0
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: "KBO OCI 동기화 오류 발생"
-          description: "최근 15분 동안 OCI 동기화 오류가 {{ $value }}회 감지되었습니다."
-
       - alert: KBOSchedulerJobFailed
         expr: increase(kbo_scheduler_job_total{status="failure"}[15m]) > 0
         for: 1m

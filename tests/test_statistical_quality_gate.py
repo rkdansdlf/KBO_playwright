@@ -289,7 +289,7 @@ def test_quality_gate_cli_prints_failed_error_results(monkeypatch, capsys):
         "error": "No Regular Season IDs found for 2025",
     }
 
-    monkeypatch.setattr(quality_gate_check, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(quality_gate_check, "SessionLocal", FakeSession)
     monkeypatch.setattr(
         quality_gate_check,
         "run_quality_gate",

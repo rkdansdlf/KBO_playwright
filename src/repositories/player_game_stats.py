@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.models.game import Game, GameBattingStat, GamePitchingStat, PlayerGameBatting, PlayerGamePitching
 from src.models.stat_dataclasses import BattingStats, PitchingStats
+from src.repositories.oracle_upsert import upsert_model_by_unique_keys
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 if TYPE_CHECKING:
@@ -396,6 +397,14 @@ def _upsert_bulk(
 ) -> int:
     if not records:
         return 0
+    dialect = session.get_bind().dialect.name
+
+    if dialect == "oracle":
+        keys = tuple(conflict_keys or ["game_id", "player_id"])
+        for record in records:
+            upsert_model_by_unique_keys(session, model, record, keys)
+        return len(records)
+
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
     if conflict_keys is None:

@@ -708,7 +708,7 @@ class ContextAggregator:
         # 여기서는 단순하게 정규시즌 ID가 아닌 경우를 포스트시즌으로 간주하거나
         # season_id 범위를 통해 필터링 가능 (프로젝트 규칙에 따라)
 
-        # OCI DB 기준: 정규시즌은 대개 season_year와 동일하거나 별도 매핑됨.
+        # Oracle primary DB 기준: 정규시즌은 대개 season_year와 동일하거나 별도 매핑됨.
         # 여기서는 해당 season_id의 모든 맞대결을 합산.
         games = (
             self.session.query(Game)

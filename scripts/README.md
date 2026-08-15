@@ -13,10 +13,10 @@ python3 -m scripts.maintenance.discover_wayback_relay_captures --limit 10
 
 ## Directory Structure
 
-- **crawling/** - Historical data crawling scripts
 - **maintenance/** - Supported maintenance helpers used by schedulers/workflows
 - **diagnostic/** - Focused diagnostics and fixture capture utilities
 - **verification/** - Integrity and consistency verification commands
+- **investigations/** - Non-operational historical probes and fixture collection
 
 ## Root-Level Scripts
 
@@ -27,7 +27,7 @@ adding or moving a script:
 - **Automation**: `scheduler.py`
 - **Backfill and batch operations**: `backfill_birthdates.py`, `backfill_player_profiles.py`, `batch_parse_snapshots.py`, `bulk_recalc_team_stats.py`
 - **Historical crawling/recovery**: `crawl_2002_2009_stats.py`, `crawl_2009_game_details.py`, `fetch_kbo_pbp.py`
-- **Migration utilities**: database migration and recovery helpers under `migrations/` and `scripts/maintenance/`
+- **Migration utilities**: Oracle initial-load and database recovery helpers under `src/cli/` and `scripts/maintenance/`
 - **Seed data**: `seed_fan_culture.py`, `seed_parking.py`, `seed_seat_sections.py`, `seed_stadium_food.py`, `seed_stadium_info.py`
 - **Diagnostics/investigation**: `dump_defense_html.py`, `historical_analysis.py`, `historical_gap_analysis.py`, `inspect_catcher_table.py`, `inspect_defense_dropdowns.py`, `inspect_defense_tabs.py`, `investigate_2009_game_detail.py`
 - **Developer cleanup tools**: `convert_print_to_logger.py`, `fix_bare_except.py`, `lint_bare_except.py`

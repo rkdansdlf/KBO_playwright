@@ -1,4 +1,4 @@
-"""Repository for managing RAG chunks in the SQLite/Postgres database."""
+"""Repository for managing RAG chunks in the Oracle primary database."""
 
 from __future__ import annotations
 

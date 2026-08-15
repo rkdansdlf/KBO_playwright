@@ -22,7 +22,6 @@ class TestParseMvpPlayer:
         result = crawler._parse_mvp_player("MVP: 김철수")
         assert result == "김철수"
 
-    @pytest.mark.xfail(reason="Pattern 2 (MVP + Korean word) matches before pattern 3 (name, MVP)")
     def test_name_comma_mvp(self, crawler):
         result = crawler._parse_mvp_player("이영희, MVP 수상")
         assert result == "이영희"

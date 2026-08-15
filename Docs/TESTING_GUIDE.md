@@ -18,18 +18,18 @@ pytest -v --tb=short --durations=10
 
 ## 테스트 구조
 
-| 디렉토리 | 대상 | 갯수 |
+| 디렉토리 | 대상 |
 |----------|------|------|
-| `tests/cli/` | `src/cli/` CLI 진입점 | 77 |
-| `tests/crawlers/` | `src/crawlers/` 크롤러 | 42 |
-| `tests/repositories/` | `src/repositories/` DB 레이어 | 40 |
-| `tests/services/` | `src/services/` 서비스 레이어 | 21 |
-| `tests/utils/` | `src/utils/` 유틸리티 | 35 |
-| `tests/parsers/` | `src/parsers/` 파서 | 14 |
-| `tests/sync/` | `src/sync/` OCI 동기화 | 7 |
-| `tests/scripts/` | `scripts/` 유지보수 스크립트 | 84 |
-| `tests/aggregators/` | `src/aggregators/` 통계 집계 | - |
-| `tests/sources/` | `src/sources/` 데이터 소스 | - |
+| `tests/cli/` | `src/cli/` CLI 진입점 |
+| `tests/crawlers/` | `src/crawlers/` 크롤러 |
+| `tests/repositories/` | `src/repositories/` DB 레이어 |
+| `tests/services/` | `src/services/` 서비스 레이어 |
+| `tests/utils/` | `src/utils/` 유틸리티 |
+| `tests/parsers/` | `src/parsers/` 파서 |
+| `tests/` | SQLite→Oracle 초기 적재와 Oracle dialect 검증 |
+| `tests/scripts/` | `scripts/` 유지보수 스크립트 |
+| `tests/aggregators/` | `src/aggregators/` 통계 집계 |
+| `tests/sources/` | `src/sources/` 데이터 소스 |
 
 ## 모킹 전략
 

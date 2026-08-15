@@ -31,9 +31,6 @@ The 3 remaining "Unknown" records are all `PSEUDO` status placeholders:
 # Re-crawl all players and save correct names
 python3 -m src.cli.fix_player_names --crawl --save
 
-# Re-crawl and sync to OCI
-python3 -m src.cli.fix_player_names --crawl --save --sync-oci
-
 # Quick test (1 page)
 python3 -m src.cli.fix_player_names --crawl --save --max-pages 1
 ```

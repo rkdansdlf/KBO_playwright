@@ -32,7 +32,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(args: list[str] | None = None) -> None:
-    """Main execution entrypoint for running FastAPI server."""
+    """Run the KBO Playwright FastAPI REST API server."""
     parsed_args = parse_args(args)
     print(f"Starting KBO Data API server on http://{parsed_args.host}:{parsed_args.port}")  # noqa: T201
     print(f"Swagger API Docs: http://{parsed_args.host}:{parsed_args.port}/docs")  # noqa: T201

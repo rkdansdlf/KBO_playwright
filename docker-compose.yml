@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16
+    profiles: ["local-db"]
     restart: always
     container_name: kbo_postgres
     environment:
@@ -30,9 +31,9 @@ services:
       - .env
     environment:
       TZ: Asia/Seoul
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-kbo_dev}@postgres:5432/${POSTGRES_DB:-kbo}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the Oracle Autonomous Database}
+      TNS_ADMIN: /run/oracle-wallet
       PGVECTOR_URL: postgresql://postgres:${PGVECTOR_PASSWORD:-kbo_rag_dev}@pgvector:5432/kbo_rag
-      TARGET_DATABASE_URL: ""
       RUN_INIT_DB: "1"
       CHOWN_BIND_MOUNTS: "0"
       SQLITE_STARTUP_GUARD: "0"
@@ -40,8 +41,6 @@ services:
       SQLITE_SYNCHRONOUS: ${SQLITE_SYNCHRONOUS:-FULL}
       PLAYWRIGHT_WS_ENDPOINT: ws://browserless:3000/chromium/playwright
     depends_on:
-      postgres:
-        condition: service_healthy
       pgvector:
         condition: service_healthy
       browserless:
@@ -51,6 +50,7 @@ services:
       # are owned by UID 1000 or the running user to avoid 'Permission Denied' errors.
       - ./data:/app/data
       - ./logs:/app/logs
+      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
       - playwright-browsers:/ms-playwright
     healthcheck:
       test: ["CMD", "python", "-c", "from sqlalchemy import text; from src.db.engine import Engine; conn = Engine.connect(); conn.execute(text('SELECT 1')); conn.close()"]
@@ -73,9 +73,9 @@ services:
       - .env
     environment:
       TZ: Asia/Seoul
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-kbo_dev}@postgres:5432/${POSTGRES_DB:-kbo}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the Oracle Autonomous Database}
+      TNS_ADMIN: /run/oracle-wallet
       PGVECTOR_URL: postgresql://postgres:${PGVECTOR_PASSWORD:-kbo_rag_dev}@pgvector:5432/kbo_rag
-      TARGET_DATABASE_URL: ""
       RUN_INIT_DB: "1"
       CHOWN_BIND_MOUNTS: "0"
       SQLITE_STARTUP_GUARD: "0"
@@ -84,11 +84,10 @@ services:
       - ./scripts:/app/scripts
       - ./data:/app/data
       - ./logs:/app/logs
+      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       pgvector:
         condition: service_healthy
     healthcheck:

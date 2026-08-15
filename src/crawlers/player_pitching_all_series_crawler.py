@@ -39,6 +39,7 @@ from src.repositories.player_season_pitching_repository import save_pitching_sta
 from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 from src.utils.player_stats_helpers import extract_rows_fast
+from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT, SEL_TIMEOUT, retry_wait_for_selector
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
@@ -1205,6 +1206,7 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
         browser = playwright.chromium.launch(headless=headless)
         # Apply UA rotation via context
         context = browser.new_context(**policy.build_context_kwargs(locale="ko-KR"))
+        install_sync_resource_blocking(context)
         page = context.new_page()
         page.set_default_timeout(60000)
 

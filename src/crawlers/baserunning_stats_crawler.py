@@ -10,8 +10,12 @@ from typing import Any, Protocol
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
+from src.db.engine import SessionLocal, get_database_type
+from src.models.player import PlayerSeasonBaserunning
+from src.repositories.oracle_upsert import upsert_model_by_unique_keys
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -173,6 +177,9 @@ def save_baserunning_stats(
     """
     if year is None:
         year = datetime.now(KST).year
+    if db_path is None and get_database_type() == "oracle":
+        _save_baserunning_stats_oracle(player_list, year)
+        return
     if db_path is None:
         db_path = f"data/kbo_{year}.db"
     logger.info("\n%s", "=" * 60)
@@ -213,6 +220,53 @@ def save_baserunning_stats(
 
     conn.close()
     _log_baserunning_summary(success_count, fail_count)
+
+
+def _save_baserunning_stats_oracle(player_list: list[dict[str, Any]], year: int) -> None:
+    """Save baserunning records through the configured Oracle-backed ORM session."""
+    baserunning_data = crawl_baserunning_stats(year)
+    if not baserunning_data:
+        logger.error("❌ 주루 기록을 가져올 수 없습니다.")
+        return
+
+    player_map = {p["player_name"]: p["player_id"] for p in player_list}
+    saved_count = 0
+    fail_count = 0
+    with SessionLocal() as session:
+        try:
+            for stats in baserunning_data:
+                player_id = stats.get("player_id") or player_map.get(stats["player_name"])
+                if not player_id:
+                    fail_count += 1
+                    continue
+                payload = {
+                    "player_id": int(player_id),
+                    "team_id": stats.get("team_id"),
+                    "year": stats.get("year") or year,
+                    "player_name": stats.get("player_name"),
+                    "games": stats.get("games"),
+                    "stolen_base_attempts": stats.get("stolen_base_attempts"),
+                    "stolen_bases": stats.get("stolen_bases"),
+                    "caught_stealing": stats.get("caught_stealing"),
+                    "stolen_base_percentage": stats.get("stolen_base_percentage"),
+                    "out_on_base": stats.get("out_on_base"),
+                    "picked_off": stats.get("picked_off"),
+                    "source": "CRAWLER",
+                }
+                upsert_model_by_unique_keys(
+                    session,
+                    PlayerSeasonBaserunning,
+                    payload,
+                    ("player_id", "team_id", "year"),
+                )
+                saved_count += 1
+            session.commit()
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+            session.rollback()
+            logger.exception("⚠️ Oracle 주루 기록 저장 실패")
+            return
+
+    _log_baserunning_summary(saved_count, fail_count)
 
 
 def _resolve_baserunning_player_id(

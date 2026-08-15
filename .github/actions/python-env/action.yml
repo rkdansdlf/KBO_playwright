@@ -52,13 +52,41 @@ runs:
       run: |
         if [ "${{ steps.cache-playwright.outputs.cache-hit }}" == "true" ]; then
           playwright install-deps chromium
-        else
-          playwright install --with-deps chromium
+         else
+           playwright install --with-deps chromium
+         fi
+
+    - name: Prepare Oracle Wallet
+      if: ${{ inputs.init-db == 'true' }}
+      shell: bash
+      run: |
+        if [[ "${DATABASE_URL:-}" != oracle* ]]; then
+          exit 0
         fi
+        if [[ -n "${TNS_ADMIN:-}" && -f "$TNS_ADMIN/tnsnames.ora" ]]; then
+          exit 0
+        fi
+        if [ -z "${ORACLE_WALLET_B64:-}" ]; then
+          echo "ORACLE_WALLET_B64 is required when DATABASE_URL targets Oracle." >&2
+          exit 1
+        fi
+        WALLET_DIR="$RUNNER_TEMP/oracle-wallet"
+        mkdir -p "$WALLET_DIR"
+        printf '%s' "$ORACLE_WALLET_B64" | base64 --decode > "$RUNNER_TEMP/oracle-wallet.zip"
+        unzip -oq "$RUNNER_TEMP/oracle-wallet.zip" -d "$WALLET_DIR"
+        echo "TNS_ADMIN=$WALLET_DIR" >> "$GITHUB_ENV"
 
     - name: Initialize Database & Seed Metadata
       if: ${{ inputs.init-db == 'true' }}
       shell: bash
       run: |
-        python3 -c "from src.db.engine import init_db; init_db()"
+        if [ -z "${DATABASE_URL:-}" ]; then
+          echo "DATABASE_URL must be configured for database initialization." >&2
+          exit 1
+        fi
+        if [[ "$DATABASE_URL" == oracle* ]]; then
+          python3 -m src.cli.apply_oracle_migrations
+        else
+          python3 -c "from src.db.engine import init_db; init_db()"
+        fi
         python3 -m scripts.maintenance.seed_data
