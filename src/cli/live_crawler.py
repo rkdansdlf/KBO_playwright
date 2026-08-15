@@ -811,31 +811,56 @@ def _compute_base_dynamic_interval(  # noqa: PLR0911
     state: GameActivityState,
     base_interval_minutes: int,
 ) -> tuple[int, str]:
-    """Return (base_sleep_seconds, mode_label) for the existing dynamic logic.
+    """Return (base_sleep_seconds, mode_label) using AdaptivePollingEngine.
+
+    The engine's cadence config mirrors the historical dynamic intervals so the
+    decision layer is centralized in AdaptivePollingEngine without behavior drift.
 
     Args:
         state: State.
         base_interval_minutes: Base Interval Minutes.
 
     """
+    from src.utils.polling_policy import AdaptivePollingEngine, PollingPolicyConfig
+
+    engine = AdaptivePollingEngine(
+        PollingPolicyConfig(
+            interval_before=120,
+            interval_running=10,
+            interval_high_leverage=5,
+            interval_delayed=60,
+            interval_stabilization=60,
+            interval_terminal=1800,
+        ),
+    )
+
     if state.active:
         if state.active_cleaning:
             return 60, "CLEANING_TIME (5th inning break)"
-        if state.active_playing:
-            return 10, "ACTIVE (Inning playing)"
         if state.active_suspended:
-            return 60, "DELAYED (Rain delay/Stoppage)"
+            decision = engine.evaluate("delayed")
+            return decision.interval_seconds, "DELAYED (Rain delay/Stoppage)"
+        if state.active_playing:
+            decision = engine.evaluate("running")
+            return decision.interval_seconds, "ACTIVE (Inning playing)"
         return 30, "CHANGE (Inning change)"
+
     recently_active = False
     if state.last_active_time is not None:
         elapsed = (state.now - state.last_active_time).total_seconds()
         if elapsed < RECENT_ACTIVITY_WINDOW_SECONDS:
             recently_active = True
+
     if recently_active:
-        return 60, "COOLDOWN (Recently finished)"
+        decision = engine.evaluate("result_pending_stabilization")
+        return decision.interval_seconds, "COOLDOWN (Recently finished)"
+
     if GAME_HOUR_START <= state.now.hour < GAME_HOUR_END:
-        return 120, "GAME HOURS (No active games)"
-    return 1800, "OFF HOURS"
+        decision = engine.evaluate("before")
+        return decision.interval_seconds, "GAME HOURS (No active games)"
+
+    decision = engine.evaluate("final")
+    return decision.interval_seconds, "OFF HOURS"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

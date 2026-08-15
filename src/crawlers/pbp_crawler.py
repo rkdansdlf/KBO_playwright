@@ -275,7 +275,7 @@ class PBPCrawler:
             if not await self._wait_for_pbp_container(ctx.page, ctx.game_id):
                 return None
             logger.info("[INFO] Extracting Relay Data...")
-            events = await self._extract_flat_events_legacy(ctx.page)
+            events = await self._extract_flat_events_legacy(ctx.page, game_id=ctx.game_id)
         except PBP_CRAWLER_EXCEPTIONS:
             logger.exception("PBP crawl failed for %s", ctx.game_id)
             self.last_failure_reason = "error"
@@ -297,11 +297,37 @@ class PBPCrawler:
         await ctx.pool.start()
         return await self._crawl_game_events_with_pool(ctx.pool, ctx.game_id, ctx.game_date, ctx.url, retry_count=1)
 
-    async def _extract_flat_events_legacy(self, page: Page) -> list[dict[str, Any]]:
+    @staticmethod
+    def _publish_to_stream(game_id: str, event_dict: dict[str, Any]) -> None:
+        """Publish parsed PBP event to the live streaming broker."""
+        try:
+            from src.streaming.pbp_stream import LivePbpEvent, LivePbpEventStream
+
+            stream_event = LivePbpEvent(
+                game_id=game_id,
+                event_seq=int(event_dict.get("event_seq") or 1),
+                inning=int(event_dict.get("inning") or 1),
+                half=str(event_dict.get("inning_half") or "TOP").upper(),
+                batter_name=str(event_dict.get("batter") or ""),
+                pitcher_name=str(event_dict.get("pitcher") or event_dict.get("pitcher_name") or ""),
+                description=str(event_dict.get("description") or ""),
+                score_home=int(event_dict.get("home_score") or 0),
+                score_away=int(event_dict.get("away_score") or 0),
+                outs=int(event_dict.get("outs") or 0),
+                base_state=str(event_dict.get("bases_before") or "---"),
+                wpa=float(event_dict.get("wpa") or 0.0),
+                win_expectancy=float(event_dict.get("win_expectancy_after") or 0.5),
+            )
+            LivePbpEventStream.get_instance().publish(stream_event)
+        except (ValueError, TypeError, KeyError):
+            logger.debug("[PBPCrawler] Failed to publish stream event for %s", game_id)
+
+    async def _extract_flat_events_legacy(self, page: Page, game_id: str = "") -> list[dict[str, Any]]:
         """Extract events from LiveText.aspx which are in reverse chronological order.
 
         Args:
             page: Page.
+            game_id: Game ID for streaming.
 
         """
         extraction_script = """
@@ -359,6 +385,8 @@ class PBPCrawler:
                 outs_before, runners_before = self._update_out_base_state(state, text)
                 event = self._build_legacy_event(state, text, sequence, outs_before, runners_before)
                 events.append(event)
+                if game_id:
+                    self._publish_to_stream(game_id, event)
                 sequence += 1
         except PBP_CRAWLER_EXCEPTIONS:
             logger.exception("Error extracting PBP legacy (JS)")
