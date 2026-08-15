@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .audit_trail import CorrectionAuditTrail as CorrectionAuditTrail
 from .award import Award as Award
 from .broadcast import GameBroadcast as GameBroadcast
 from .crawl import CrawlRun as CrawlRun
@@ -46,6 +47,8 @@ from .player import PlayerBasic as PlayerBasic
 from .player_draft import PlayerDraftHistory as PlayerDraftHistory
 from .player_milestone import PlayerMilestone as PlayerMilestone
 from .player_splits_stat import PlayerSplitsStat as PlayerSplitsStat
+from .projection import PlayerProjection as PlayerProjection
+from .quarantine import QuarantinedRecord as QuarantinedRecord
 from .rag_chunk import RagChunk as RagChunk
 from .rankings import StatRanking as StatRanking
 from .roster_transaction import RosterTransaction as RosterTransaction

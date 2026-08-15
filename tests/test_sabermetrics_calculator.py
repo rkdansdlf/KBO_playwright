@@ -267,7 +267,20 @@ class TestGetLeagueConstants:
         assert result["lg_era"] == 4.50
 
     def test_filters_stub_rows(self, session):
-        _add_batting(session, player_id=MIN_LEAGUE_PLAYER_ID, pa=LEAGUE_BATTING_PA_STUB_LIMIT, hr=0, bb=0)
+        _add_batting(
+            session,
+            player_id=MIN_LEAGUE_PLAYER_ID,
+            pa=LEAGUE_BATTING_PA_STUB_LIMIT,
+            ab=LEAGUE_BATTING_PA_STUB_LIMIT,
+            hits=0,
+            doubles=0,
+            triples=0,
+            hr=0,
+            bb=0,
+            hbp=0,
+            sf=0,
+            runs=0,
+        )
         result = SabermetricsCalculator.get_league_constants(session, 2025)
         # A row exactly at the PA boundary remains a stub when it has no HR or BB.
         assert result["lg_woba"] == 0.320
