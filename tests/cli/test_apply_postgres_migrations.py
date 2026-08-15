@@ -21,6 +21,35 @@ def _create_adoptable_schema(engine) -> None:
             text("CREATE TABLE awards (id INTEGER PRIMARY KEY, player_id INTEGER, team_code VARCHAR(20))"),
         )
         connection.execute(text("CREATE INDEX idx_award_player_id ON awards(player_id)"))
+        connection.execute(
+            text(
+                "CREATE TABLE quarantined_records (id INTEGER PRIMARY KEY, game_id TEXT,"
+                " entity_type TEXT NOT NULL, entity_id TEXT, rule_id TEXT NOT NULL,"
+                " severity TEXT NOT NULL, failure_reason TEXT NOT NULL, raw_payload JSON NOT NULL,"
+                " source TEXT NOT NULL, status TEXT NOT NULL, retry_count INTEGER NOT NULL,"
+                " resolved_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            ),
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE correction_audit_trail (id INTEGER PRIMARY KEY, game_id TEXT,"
+                " entity_type TEXT NOT NULL, entity_id TEXT, field_name TEXT NOT NULL, raw_value TEXT,"
+                " raw_source TEXT NOT NULL, corrected_value TEXT, corrected_source TEXT NOT NULL,"
+                " correction_reason TEXT NOT NULL, confidence FLOAT NOT NULL, extra_metadata JSON,"
+                " created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            ),
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE player_projections (id INTEGER PRIMARY KEY, target_season INTEGER NOT NULL,"
+                " player_id INTEGER NOT NULL, player_name TEXT NOT NULL, team_code TEXT,"
+                " position_type TEXT NOT NULL, age INTEGER, projected_pa FLOAT, projected_ip NUMERIC(6,2),"
+                " projected_avg FLOAT, projected_obp FLOAT, projected_slg FLOAT, projected_ops FLOAT,"
+                " projected_woba FLOAT, projected_era FLOAT, projected_fip FLOAT, projected_whip FLOAT,"
+                " projected_stats JSON NOT NULL, weights_used JSON NOT NULL, regression_params JSON NOT NULL,"
+                " version TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            ),
+        )
 
 
 def test_postgres_migrations_are_idempotent(tmp_path):

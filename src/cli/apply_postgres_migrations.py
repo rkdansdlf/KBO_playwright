@@ -28,6 +28,7 @@ ADOPTABLE_MIGRATIONS = frozenset(
     {
         "047_remove_redundant_phase1_indexes.sql",
         "048_add_award_player_id.sql",
+        "049_quality_gate_and_projection_tables.sql",
     },
 )
 
@@ -105,6 +106,15 @@ def _validate_existing_schema_for_adoption(connection: Connection) -> None:
     index_names = {index.get("name") for index in inspector.get_indexes("awards")}
     if "idx_award_player_id" not in index_names:
         _raise_adoption_error("Existing schema adoption requires idx_award_player_id")
+
+    missing_tables = {
+        "quarantined_records",
+        "correction_audit_trail",
+        "player_projections",
+    } - set(inspector.get_table_names())
+    if missing_tables:
+        missing = ", ".join(sorted(missing_tables))
+        _raise_adoption_error(f"Existing schema adoption requires tables: {missing}")
 
 
 def adopt_existing_schema(engine: Engine, *, directory: Path = MIGRATION_DIR) -> list[str]:
