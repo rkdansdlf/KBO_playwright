@@ -109,6 +109,11 @@ def _install_oracle_json_compiler() -> None:
                 return "CLOB"
 
             OracleTypeCompiler.visit_JSON = visit_JSON
+
+        def visit_TIME(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
+            return "VARCHAR2(8 CHAR)"
+
+        OracleTypeCompiler.visit_TIME = visit_TIME
     except ImportError:
         pass
 
@@ -195,8 +200,9 @@ def _parse_oracle_connection(url: str, tns_admin: str | None) -> tuple[str, dict
         if tns_admin:
             connect_args["config_dir"] = tns_admin
             connect_args["wallet_location"] = tns_admin
-            if password:
-                connect_args["wallet_password"] = password
+            wallet_password = os.getenv("OCI_WALLET_PASSWORD") or password
+            if wallet_password:
+                connect_args["wallet_password"] = wallet_password
 
         if not parts.path or parts.path == "/":
             target_url = f"{parts.scheme}://@"

@@ -38,6 +38,7 @@ def test_create_oracle_engine_uses_normalized_url_and_wallet_args(monkeypatch) -
     fake_engine = MagicMock()
     fake_engine.dialect = SimpleNamespace()
     monkeypatch.setenv("TNS_ADMIN", "/wallet")
+    monkeypatch.delenv("OCI_WALLET_PASSWORD", raising=False)
     url = "oracle+oracledb://user:p%40ss+word@db/service"
 
     with patch.object(engine, "create_engine", return_value=fake_engine) as create:
@@ -65,6 +66,7 @@ def test_create_oracle_engine_uses_explicit_tns_dsn(monkeypatch) -> None:
     fake_engine = MagicMock()
     fake_engine.dialect = SimpleNamespace()
     monkeypatch.setenv("TNS_ADMIN", "/wallet")
+    monkeypatch.delenv("OCI_WALLET_PASSWORD", raising=False)
     url = "oracle+oracledb://user:p%40ss+word@tns_alias"
 
     with patch.object(engine, "create_engine", return_value=fake_engine) as create:
