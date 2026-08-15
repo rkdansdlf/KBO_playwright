@@ -113,12 +113,12 @@ def test_backfill_runs_phase2_when_detail_backfilled_but_pbp_still_missing(monke
         detail_calls["count"] += 1
         return ["20260603"] if detail_calls["count"] == 1 else []
 
-    monkeypatch.setattr(engine, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(engine, "SessionLocal", FakeSession)
     monkeypatch.setattr("scripts.scheduler._find_detail_gaps", fake_find_detail_gaps)
     monkeypatch.setattr("scripts.scheduler._find_pbp_gaps", lambda _session, _start_date: ["20260603"])
     monkeypatch.setattr("scripts.scheduler._find_preview_gaps", lambda _session, _start_date: [])
     monkeypatch.setattr("scripts.scheduler._find_player_profile_gaps", lambda _session: [])
-    monkeypatch.setattr("scripts.scheduler.run_daily_update_main", lambda args: update_calls.append(args))
+    monkeypatch.setattr("scripts.scheduler.run_daily_update_main", update_calls.append)
 
     result = backfill_missed_daily_crawls(lookback_days=14)
 

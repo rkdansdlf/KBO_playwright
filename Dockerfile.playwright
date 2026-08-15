@@ -4,7 +4,7 @@
 # 빌드: docker build -f Dockerfile.playwright -t kbo-text-relay .
 # 실행: docker run --rm -v $(pwd)/data:/app/data kbo-text-relay --game-id 20260412SKLG0 --save
 
-FROM mcr.microsoft.com/playwright/python:v1.56.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.60.0-jammy
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \

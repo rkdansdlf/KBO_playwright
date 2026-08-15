@@ -110,6 +110,10 @@ class TestGetDatabaseType:
         with patch("src.db.engine.DATABASE_URL", "postgresql://user:pass@localhost/db"):
             assert get_database_type() == "postgresql"
 
+    def test_oracle(self):
+        with patch("src.db.engine.DATABASE_URL", "oracle+oracledb://user:pass@db/service"):
+            assert get_database_type() == "oracle"
+
     def test_unknown(self):
         with patch("src.db.engine.DATABASE_URL", "mssql://user:pass@localhost/db"):
             assert get_database_type() == "unknown"

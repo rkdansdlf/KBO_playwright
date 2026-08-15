@@ -53,13 +53,11 @@ class StadiumOperationNotice(Base, TimestampMixin):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime,
         nullable=True,
-        index=True,
         comment="Original publication datetime",
     )
     game_date: Mapped[date | None] = mapped_column(
         Date,
         nullable=True,
-        index=True,
         comment="Game date this notice relates to (if applicable)",
     )
 

@@ -74,6 +74,7 @@ def test_crawler_stability_gate_propagates_test_runner_failure():
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
 
     assert result.returncode != 0

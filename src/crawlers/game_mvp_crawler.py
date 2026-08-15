@@ -128,9 +128,9 @@ class GameMvpCrawler:
     def _parse_mvp_player(text: str) -> str | None:
         patterns = [
             r"([가-힣]{2,4})\s*선수.*MVP",
-            r"MVP[:\s]*([가-힣]{2,4})",
             r"([가-힣]{2,4})\s*,\s*MVP",
             r"([가-힣]{2,4})\s*MVP",
+            r"MVP\s*[:\s]+([가-힣]{2,4})",
         ]
         for p in patterns:
             m = re.search(p, text)

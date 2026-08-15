@@ -202,16 +202,17 @@ def _restore_values(table: Table, row: dict[str, Any]) -> dict[str, Any]:
     for key, value in row.items():
         if key not in table.c:
             continue
+        restored_value = value
         if isinstance(value, str):
             try:
                 python_type = table.c[key].type.python_type
             except (AttributeError, NotImplementedError):
                 python_type = None
             if python_type is datetime:
-                value = datetime.fromisoformat(value)
+                restored_value = datetime.fromisoformat(value)
             elif python_type is date:
-                value = date.fromisoformat(value[:10])
-        values[key] = value
+                restored_value = date.fromisoformat(value[:10])
+        values[key] = restored_value
     return values
 
 

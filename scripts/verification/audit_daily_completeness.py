@@ -49,9 +49,9 @@ def _has_required_home_innings(
 def _parse_statuses(raw: str | None, include_incomplete: bool) -> list[str]:
     statuses: list[str] = []
     for token in (raw or "").split(","):
-        token = token.strip().upper()
-        if token:
-            statuses.append(token)
+        stripped_token = token.strip().upper()
+        if stripped_token:
+            statuses.append(stripped_token)
 
     if not statuses:
         statuses = sorted(COMPLETED_LIKE_GAME_STATUSES)

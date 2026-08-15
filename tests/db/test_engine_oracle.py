@@ -123,6 +123,7 @@ def test_oracle_fk_restrict_is_omitted_and_constraint_is_restored() -> None:
     )
     child.append_constraint(constraint)
 
+    engine._install_oracle_fk_restrict_compiler()
     ddl = str(CreateTable(child).compile(dialect=oracle.dialect()))
 
     assert "ON DELETE RESTRICT" not in ddl.upper()
@@ -148,8 +149,23 @@ def test_oracle_fk_compiler_installation_is_idempotent() -> None:
 
     from src.db import engine
 
+    engine._install_oracle_fk_restrict_compiler()
     patched = OracleDDLCompiler.visit_foreign_key_constraint
 
     engine._install_oracle_fk_restrict_compiler()
 
     assert OracleDDLCompiler.visit_foreign_key_constraint is patched
+
+
+def test_all_registered_orm_tables_compile_for_oracle() -> None:
+    from src.db import engine
+    from src.models.base import Base
+
+    import src.models
+
+    engine._install_oracle_json_compiler()
+    engine._install_oracle_fk_restrict_compiler()
+    dialect = oracle.dialect()
+
+    for table in Base.metadata.tables.values():
+        str(CreateTable(table).compile(dialect=dialect))

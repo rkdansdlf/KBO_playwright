@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_, select
@@ -32,6 +33,7 @@ class RagSearchEngine:
         query: str,
         top_k: int = 5,
         category: str | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Search relevant RAG chunks using keyword matching and scoring.
 
@@ -39,6 +41,8 @@ class RagSearchEngine:
             query: Search query string.
             top_k: Maximum number of results to return.
             category: Optional category filter.
+            filters: Optional metadata filters such as team_id, season_year, source_table,
+                player_id, player_name, and stadium.
 
         Returns:
             List of chunk dictionaries with relevance scores.
@@ -61,20 +65,46 @@ class RagSearchEngine:
 
         chunks = list(self.session.execute(stmt).scalars().all())
 
-        # Score chunks based on keyword frequencies
+        filters = filters or {}
+
+        filtered_chunks = [
+            c
+            for c in chunks
+            if (not category or self._matches_category(c, category)) and self._matches_filters(c, filters)
+        ]
+        average_length = sum(len(f"{c.title or ''} {c.content}".lower().split()) for c in filtered_chunks) / max(
+            len(filtered_chunks), 1
+        )
+        document_frequency = {
+            keyword.lower(): sum(keyword.lower() in f"{c.title or ''} {c.content}".lower() for c in filtered_chunks)
+            for keyword in keywords
+        }
+
+        # Score chunks with BM25 and apply a small title boost.
         scored: list[tuple[float, RagChunk]] = []
-        for c in chunks:
-            if category and c.meta and c.meta.get("category") != category:
-                continue
+        for c in filtered_chunks:
             score = 0.0
             text = f"{c.title} {c.content}".lower()
+            document_length = len(text.split())
             for kw in keywords:
                 kw_lower = kw.lower()
-                count = text.count(kw_lower)
+                term_frequency = text.count(kw_lower)
+                if not term_frequency:
+                    continue
+                idf = max(
+                    0.0,
+                    math.log(
+                        (
+                            (len(filtered_chunks) - document_frequency[kw_lower] + 0.5)
+                            / (document_frequency[kw_lower] + 0.5)
+                        )
+                        + 1.0,
+                    ),
+                )
+                normalization = 1.5 * (1.0 - 0.75 + 0.75 * document_length / max(average_length, 1.0))
+                score += idf * (term_frequency * 2.5) / (term_frequency + normalization)
                 if kw_lower in (c.title or "").lower():
-                    score += count * 3.0
-                else:
-                    score += count * 1.0
+                    score *= 1.2
             scored.append((score, c))
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -83,14 +113,72 @@ class RagSearchEngine:
         return [
             {
                 "chunk_id": str(c.id),
-                "category": c.meta.get("category") if c.meta else "general",
+                "source_table": c.source_table,
+                "source_row_id": c.source_row_id,
+                "category": ((c.meta or {}).get("category") or (c.meta or {}).get("document_type") or "general"),
                 "title": c.title,
                 "content": c.content,
-                "source_url": c.source_row_id,
+                "source_url": self._source_url(c.source_row_id, c.meta),
                 "score": round(score, 2),
+                "meta": c.meta or {},
             }
             for score, c in top_chunks
         ]
+
+    @staticmethod
+    def _matches_category(chunk: RagChunk, category: str) -> bool:
+        """Match the public category against legacy and indexed document labels."""
+        actual = (chunk.meta or {}).get("category") or (chunk.meta or {}).get("document_type")
+        aliases = {
+            "press_release": {"press_release", "notice"},
+            "milestone": {"milestone", "player_milestone"},
+            "futures_schedule": {"futures_schedule", "futures_game"},
+            "player_splits": {"player_splits", "split", "player_split"},
+            "stadium_facility": {"stadium_facility", "stadium_food", "stadium_ticket"},
+        }
+        return actual in aliases.get(category, {category})
+
+    @staticmethod
+    def _source_key(source_table: str, source_row_id: str) -> str:
+        """Build the stable identity shared by SQLite and pgvector indexes."""
+        return f"{source_table}:{source_row_id}"
+
+    @staticmethod
+    def _source_url(source_row_id: str, meta: dict[str, Any] | None) -> str | None:
+        """Return a real source URL without treating arbitrary row IDs as URLs."""
+        source_url = (meta or {}).get("source_url")
+        if isinstance(source_url, str) and source_url.startswith(("http://", "https://")):
+            return source_url
+        if source_row_id.startswith(("http://", "https://")):
+            return source_row_id
+        return None
+
+    @staticmethod
+    def _matches_filters(chunk: RagChunk, filters: dict[str, Any]) -> bool:
+        """Match supported metadata filters without leaking unscoped chunks."""
+        meta = chunk.meta or {}
+        text = f"{chunk.title or ''} {chunk.content}".lower()
+
+        direct_filters = {
+            "team_id": chunk.team_id or meta.get("team_id"),
+            "season_year": chunk.season_year or meta.get("season_year"),
+            "source_table": chunk.source_table,
+            "player_id": chunk.player_id or meta.get("player_id"),
+        }
+        for key, expected in direct_filters.items():
+            if key in filters and expected != filters[key]:
+                return False
+
+        expected_category = filters.get("document_type")
+        if expected_category and not RagSearchEngine._matches_category(chunk, str(expected_category)):
+            return False
+
+        player_name = filters.get("player_name")
+        if player_name and str(player_name).lower() not in text:
+            return False
+
+        stadium = filters.get("stadium")
+        return not bool(stadium and str(stadium).lower() not in text)
 
     def answer_question(self, query: str, top_k: int = 5) -> dict[str, Any]:
         """Synthesize an answer and retrieve source references for a query.

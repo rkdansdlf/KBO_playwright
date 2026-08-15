@@ -137,7 +137,6 @@ class Player(Base, TimestampMixin):
         ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
         unique=True,
         nullable=True,
-        index=True,
         comment="Canonical player_basic.player_id mirror when this row represents a KBO player",
     )
     birth_date: Mapped[Date | None] = mapped_column(Date, nullable=True)

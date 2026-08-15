@@ -57,39 +57,51 @@ pip install -r requirements.txt
 playwright install chromium
 
 # 환경변수 설정
-cp .env.example .env
-# .env 파일 편집하여 DATABASE_URL 설정
+cp env.example .env
+# .env 파일 편집하여 Oracle DATABASE_URL, TNS_ADMIN 설정
 ```
 
 ### 2. 데이터베이스 초기화
 ```bash
-# SQLite 데이터베이스 생성 및 마이그레이션
-python3 -c "from src.db.engine import init_db; init_db()"
+# Oracle ORM baseline 및 migration metadata 생성
+python3 -m src.cli.apply_oracle_migrations
+
+# Oracle migration 상태 확인
+python3 -m src.cli.apply_oracle_migrations --check
 
 # 기본 데이터 시드 (팀, 시즌, 데이터소스)
 python3 -m scripts.maintenance.seed_data
+
+# 로컬 SQLite → Oracle 초기 적재 미리보기
+python3 -m src.cli.sync_sqlite_to_oci \
+    --source-url "sqlite:///./data/kbo_dev.db" \
+    --target-url "$DATABASE_URL" \
+    --mode full --dry-run --json
+
+# 검증된 SQLite 데이터를 Oracle에 적재
+python3 -m src.cli.sync_sqlite_to_oci \
+    --source-url "sqlite:///./data/kbo_dev.db" \
+    --target-url "$DATABASE_URL" \
+    --mode full --apply --json
+
+# 로컬 SQLite schema 생성이 필요한 경우
+python3 -c "from src.db.engine import init_db; init_db()"
 ```
 
 ---
 
 ## 🗄️ 데이터베이스 관리
 
-### SQLite 초기화
+### SQLite 원본 검증
 ```bash
-# 전체 플레이어 데이터 삭제
-./venv/bin/python3 reset_sqlite.py --all
+# SQLite 무결성 검사
+python3 -m src.cli.sqlite_integrity_guard --database-url "sqlite:///./data/kbo_dev.db"
 
-# 특정 년도 데이터만 삭제
-./venv/bin/python3 reset_sqlite.py --year 2025
-
-# 연도 범위 삭제
-./venv/bin/python3 reset_sqlite.py --range 2020 2025
-
-# 특정 테이블만 초기화
-./venv/bin/python3 reset_sqlite.py --all --tables player_season_batting
-
-# 확인 없이 강제 실행
-./venv/bin/python3 reset_sqlite.py --all --force
+# SQLite → Oracle 적재 대상과 row count 확인
+python3 -m src.cli.sync_sqlite_to_oci \
+    --source-url "sqlite:///./data/kbo_dev.db" \
+    --target-url "$DATABASE_URL" \
+    --mode full --dry-run --json
 ```
 
 ### 데이터 검증
@@ -154,39 +166,16 @@ python3 -m src.cli.quality_gate_check --year 2025
 - `playoff`: 플레이오프
 - `korean_series`: 한국시리즈
 
-### 레거시 크롤링 (2001년 이전)
-
-#### 타자 데이터 (단순 구조)
+### 역사 데이터 수집 (2001~2009)
 ```bash
-# 2000년 정규시즌 타자
-./venv/bin/python3 -m src.crawlers.legacy_batting_crawler \
-    --year 2000 \
-    --series regular \
-    --save \
-    --headless
+# 역사 경기 coverage 확인
+python3 -m src.cli.historical_coverage_report --start-year 2001 --end-year 2009
 
-# 1995년 한국시리즈 타자
-./venv/bin/python3 -m src.crawlers.legacy_batting_crawler \
-    --year 1995 \
-    --series korean_series \
-    --save
-```
+# 역사 REVIEW 페이지 수집
+python3 -m src.cli.crawl_legacy_reviews --help
 
-#### 투수 데이터 (단순 구조)
-```bash
-# 2001년 정규시즌 투수
-./venv/bin/python3 -m src.crawlers.legacy_pitching_crawler \
-    --year 2001 \
-    --series regular \
-    --save \
-    --headless
-
-# 1990년 시범경기 투수 (100명 제한)
-./venv/bin/python3 -m src.crawlers.legacy_pitching_crawler \
-    --year 1990 \
-    --series exhibition \
-    --save \
-    --limit 100
+# 역사 boxscore 적재는 dry-run 후 --save 실행
+python3 -m src.cli.historical_boxscore_import --help
 ```
 
 ### Futures 리그 크롤링
@@ -412,7 +401,7 @@ python3 -m scripts.scheduler --help
 ### 2. 일일 데이터 동기화
 ```bash
 # 경기 종료 후 수동 실행
-python3 -m src.cli.run_daily_update --date 20251015 --sync
+python3 -m src.cli.run_daily_update --date 20251015
 ```
 
 ### 3. 연도 범위 크롤링
@@ -434,22 +423,24 @@ python3 -m src.cli.collect_games --year 2024 --month 10 --force
 
 시스템의 데이터 일관성을 유지하고, 누락되거나 잘못된 상태의 데이터를 복구하는 도구들입니다.
 
-### 1. 전체 고아 데이터 백필 (Orphan Games Backfill)
-스탯 데이터만 있고 경기 정보(메타데이터)가 없는 '고아 데이터'를 대량으로 복구합니다. 취소된 경기를 감지하여 중복 시도를 방지하는 기능이 포함되어 있습니다.
+### 1. 역사 데이터 completeness audit
+상세 경기, player-game, 시즌 집계, 품질 게이트, team-code 상태를 읽기 전용으로 점검합니다.
 
 ```bash
-# 기본 실행 (최대 1000건, 100개씩 배치 처리)
-./venv/bin/python3 scripts/crawling/run_full_orphan_backfill.py
+# 2009~2025 전수 점검
+python3 -m scripts.maintenance.audit_completeness_2009_2025 \
+    --start-year 2009 --end-year 2025 --dry-run
 
-# 파라미터 지정 (대상 건수, 배치 크기)
-./venv/bin/python3 scripts/crawling/run_full_orphan_backfill.py 2000 50
+# 복구 계획만 출력
+python3 -m scripts.maintenance.recovery_pipeline \
+    --start-year 2009 --end-year 2025 --only-defect-years --dry-run
 ```
 
 ### 2. 누락 선수 프로필 보충 (Missing Player Backfill)
 시즌 스탯에는 존재하지만 기본 프로필(`player_basic`)이 없는 선수 정보를 자동으로 수집합니다.
 
 ```bash
-./venv/bin/python3 scripts/crawling/backfill_missing_players.py
+python3 scripts/backfill_player_profiles.py --help
 ```
 
 ### 3. 상태 지연 경기 수정 (Past Scheduled Fix)
@@ -829,10 +820,9 @@ print(f"수집된 선수 수: {len(results)}")
 ### 연도별 권장 전략
 
 #### 1982-2001년 (레거시 모드)
-- **특징**: 단순 컬럼 구조
-- **타자**: 순위, 선수명, 팀명, AVG, G, PA, AB, H, 2B, 3B, HR, RBI, SB, CS, BB, HBP, SO, GDP, E
-- **투수**: 순위, 선수명, 팀명, ERA, G, GS, W, L, SV, HLD, IP, H, HR, BB, SO, R, ER
-- **명령어**: `legacy_batting_crawler.py`, `legacy_pitching_crawler.py`
+- **특징**: 원천 페이지 구조와 공개 relay 범위가 현대 데이터와 다름
+- **처리**: `historical_coverage_report`, `crawl_legacy_reviews`, `historical_boxscore_import` 사용
+- **주의**: 원천이 없는 경기의 PBP 완전성은 보장되지 않음
 
 #### 2002년-현재 (현대 모드)
 - **특징**: 복합 구조, 상세 통계
@@ -859,7 +849,7 @@ print(f"수집된 선수 수: {len(results)}")
 
 ### 개발 환경
 ```bash
-# SQLite 전용
+# SQLite 테스트/개발
 export DATABASE_URL="sqlite:///./data/kbo_dev.db"
 
 # 빠른 테스트
@@ -869,8 +859,9 @@ export DATABASE_URL="sqlite:///./data/kbo_dev.db"
 
 ### 프로덕션 환경
 ```bash
-# PostgreSQL 연결
-export DATABASE_URL="postgresql://user:pass@localhost:5432/kbo_prod"
+# Oracle Autonomous Database 연결
+export DATABASE_URL="oracle+oracledb://USER:PASSWORD@TNS_ALIAS"
+export TNS_ADMIN="/secure/path/to/oracle-wallet"
 
 # 안정적인 크롤링
 python3 -m src.cli.run_daily_update
@@ -896,8 +887,7 @@ docker-compose logs -f scheduler
 
 - **[AGENTS.md](../../AGENTS.md)**: 최신 명령어, 워크플로우, 시크릿 설정
 - **[프로젝트 개요](../ProjectOverview.md)**: 전체 아키텍처
-- **[스케줄러 가이드](SCHEDULER_README.md)**: APScheduler 설정
-- **[OCI 런북](../zero_issue_runbook_oci.md)**: OCI 운영/품질 게이트
+- **[운영 가이드](../troubleshooting/OPERATIONAL_GUIDE.md)**: 데이터 무결성 및 장애 복구 가이드
 - **[크롤링 제약사항](CRAWLING_LIMITATIONS.md)**: 알려진 이슈들
 
 ---

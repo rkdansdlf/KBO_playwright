@@ -7,7 +7,15 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `tests/`: Pytest tests and debug scripts (`test_*.py` run by default).
 - `Docs/`: Runbooks, URL references, limitations, and schemas.
 - `migrations/`: Schema migrations.
-- `data/`, `logs/`: Local SQLite DB and runtime logs.
+- `data/`, `logs/`: Local SQLite source/test data and runtime logs.
+
+## Current Database Contract
+- **Primary operational database**: Oracle Autonomous Database via `DATABASE_URL=oracle+oracledb://...`.
+- **Oracle Wallet**: `TNS_ADMIN` and optional `OCI_WALLET_PASSWORD`; wallet files remain outside version control.
+- **SQLite**: Local tests and the verified source for the one-time SQLite→Oracle initial load.
+- **RAG**: Oracle stores `rag_chunks` for source/BM25 search; PostgreSQL/pgvector via `PGVECTOR_URL` stores dense embeddings.
+- **Initial load**: Use `src.cli.apply_oracle_migrations` first, then `src.cli.sync_sqlite_to_oci` with explicit source and target URLs. Always run dry-run and data-quality checks before `--apply`.
+- **PostgreSQL**: Keep only for local development/integration and the separate pgvector service; it is not the primary baseball-data store.
 
 ## Agent Skill Defaults
 Agents should apply the repository's crawler-oriented skill set automatically; the user should not need to invoke these skills one by one.
@@ -77,8 +85,11 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.run_weekly_maintenance`: Run weekly maintenance tasks (futures profiles, enrichment).
 - `python3 -m src.cli.smart_polling_gate --json`: Lightweight gate to check if today's KBO games are finished (used in CI polling).
 - `python3 -m src.cli.data_integrity_checker --date YYYYMMDD`: Post-crawl data integrity validation (game existence, terminal status, stats, NULL player IDs).
-- `python3 -m src.cli.load_text_relay --input-dir data/`: Load text relay CSV files into the database.
-- `python3 scripts.verification.verify_player_game_stats --year YYYY`: Verify player game stat consistency.
+- `python3 -m src.cli.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --dry-run`: Preview the SQLite→Oracle initial load.
+- `python3 -m src.cli.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --apply --mode incremental`: Incremental Oracle sync using native MERGE bulk upsert.
+- `python3 -m src.cli.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --verify`: Verify row count consistency between SQLite and Oracle.
+- `python3 -m src.cli.apply_oracle_migrations`: Bootstrap and apply Oracle ORM baseline/migrations.
+- `python3 -m src.cli.apply_oracle_migrations --check`: Check Oracle migrations without writing.
 - `pytest`: Run the test suite.
 
 ### Additional CLI Inventory
@@ -92,7 +103,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 | Repair / backfill | `audit_completeness_2009_2025`, `auto_healer`, `backfill_advanced_stats`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `link_award_player_ids`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `recovery_pipeline`, `retry_daily_failures` |
 | Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
 | Monitoring / reports | `check_data_status`, `crawler_live_smoke`, `crawler_selector_gate`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `historical_coverage_report`, `monitor_data_freshness`, `morning_pbp_report`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
-| Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `verify_chunk_quality`, `load_text_relay` |
+| Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `sync_sqlite_to_oci`, `verify_chunk_quality`, `load_text_relay` |
 
 ## Code Quality & Linting
 - `ruff check src/ tests/ scripts/` = **0 errors** (enforced by pre-commit).
@@ -135,12 +146,12 @@ These modules are operational or diagnostic entrypoints that are less frequently
 - Use `python3 scripts/diagnose_scheduler_locks.py` to read-only diagnose stale lock files and duplicate scheduler processes (exit 0 = clean, 1 = problem found).
 - All data save logic uses **UPSERT** for idempotency; failed jobs can be safely re-run.
 - **`ProcessLock` is a thread-safe singleton with thread-local state.** `ProcessLock` (and `ForceProcessLock`) instances such as `SQLITE_WRITE_LOCK` are shared as module-level singletons across APScheduler's thread pool. Per-acquisition state (`thread_lock_acquired`, `file_fd`, `db_connection`) lives on a `threading.local` (`_LockState`) so each worker thread tracks its own ownership; the shared `threading.Lock` in `_thread_locks` still provides correct cross-thread mutual exclusion. Do **not** move this state back to instance attributes — that reintroduces a spurious `LockAcquisitionError` when two jobs contend for the same singleton lock (see `crawl_congestion` incident, 2026-07).
-- **SQLite writer lock (`SQLITE_WRITE_LOCK`)** serializes all SQLite writes. High-frequency jobs (`crawl_congestion`, `crawl_transit_time`) acquire it **non-blocking** and skip their save (emitting `kbo_scheduler_lock_skip_total`) when contended, so they never block a worker thread. Tier-locked jobs (daily/maintenance) acquire it **blocking with a `SQLITE_WRITE_LOCK_TIMEOUT_SECONDS` (default 60s) deadline**; on timeout the job is skipped via `_LockSkipped` (caught by `@_with_lock_skip_guard`) rather than hanging the worker pool. `LockAcquisitionError` is part of `SCHEDULER_JOB_EXCEPTIONS`.
+- **SQLite writer lock (`SQLITE_WRITE_LOCK`)** applies only to local SQLite compatibility jobs. Oracle production writes use Oracle transactions and the configured connection pool; do not describe Oracle writes as SQLite-lock protected.
 - **Lock-skip monitoring**: `lock_skip_monitor_job` runs every 15 minutes and warns (Slack) when any `(job_id, lock)` pair's skip count exceeds `LOCK_SKIP_ALERT_THRESHOLD` (env, default 5) per interval — a signal that the SQLite writer lock is contended and real-time data may be going stale.
 
 ## GitHub Actions Automation
 
-The CI/CD pipeline uses 11 workflows and 3 composite actions under `.github/`:
+The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
 
 ### Composite Actions
 - `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.12), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db` boolean inputs.
@@ -155,7 +166,7 @@ The CI/CD pipeline uses 11 workflows and 3 composite actions under `.github/`:
   2. `post-process` — PBP healer + batch parse snapshots
   3. `quality` — quality report + trend tracker + gap report (Tier 3) + data freshness monitor + recalc player-game stats
   4. `advanced-sync` — advanced daily sync + reference integrity gate + quality gate + completeness audit + freshness gate (extended)
-- **Environments**: `OCI_DB_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, per-category `TELEGRAM_CHAT_ID_*` for gap report routing
+- **Environments**: `DATABASE_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, per-category `TELEGRAM_CHAT_ID_*` for gap report routing
 - **Note**: 271→251 lines after extracting `kbo-job-setup` composite action
 
 ### Backfill Workflows (Consolidated, Tier 2 on GH Actions)
@@ -175,13 +186,16 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 - `pitcher_backfill.yml`: Live pitcher stat backfill during game hours
 - `weekly_maintenance.yml`: Sunday 05:00 KST — futures profiles, player enrichment
 - `periodic_extras.yml`: Monthly 1st — periodic data sync
-- `full_recalculation.yml`: Manual dispatch — season stat recalculation + OCI sync
+- `full_recalculation.yml`: Manual dispatch — season stat recalculation against Oracle
 - `kbo_automation.yml`: Manual dispatch — 8 phases: pregame, live, finalize, freshness, quality-report, gap-report, backfill, recalc-stats
 - `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.12)
 - `docker_build.yml`: Docker image build and push
 - `security_audit.yml`: Vulnerability scanning
 
 ### Required Secrets
+- `DATABASE_URL`: Oracle Autonomous Database URL
+- `ORACLE_WALLET_B64`: base64-encoded Oracle Wallet zip for GitHub Actions
+- `OCI_WALLET_PASSWORD`: Wallet password when required
 - `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - Per-category gap alert: `TELEGRAM_CHAT_ID_RELAY`, `TELEGRAM_CHAT_ID_STANDINGS`, `TELEGRAM_CHAT_ID_PROFILE`, `TELEGRAM_CHAT_ID_FRESHNESS`
 - External APIs: `YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
@@ -281,7 +295,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `kbo_official_events` now crawls official KBO `BusinessAndEvent` pages instead of the main page; dry-run returns 11 candidates and `--save` wrote 11 `team_events` plus 7 raw snapshots.
 - `refresh_source_snapshots --source-key doosan_bears_events` and `--source-key doosan_bears_ticket` save successfully through Playwright fallback after httpx TLS verification failure.
 - Local `data_sources` registry has 38 active sources and 0 `last_success_at IS NULL` entries after the source refresh campaign.
-- Weekly maintenance runs `DATABASE_URL="$OCI_DB_URL" python3 -m src.cli.refresh_source_snapshots --all --max-hours 168` as a non-blocking step before the main weekly sync.
+- Weekly maintenance runs `python3 -m src.cli.refresh_source_snapshots --all --max-hours 168` as a non-blocking step.
 - `quality_gate_check --year 2020..2025` succeeds after splitting aggregate placeholders (`TOTAL`, `합계`, etc.) from all-star raw team codes (`EA`/`WE`) when canonical team codes are present.
 - `PlayerMovementCrawler.crawl_years(..., save_snapshots=True)` now records `kbo_player_movement` raw snapshots during daily roster/player movement updates.
 
@@ -880,3 +894,17 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **No-key API guard**: `src/utils/youtube_api_client.py` returns before network access when `YOUTUBE_API_KEY` is unset; the YouTube client tests pass 31 cases.
 - **Fixture isolation**: `tests/scripts/test_crawl_2002_2009_stats.py` and `tests/scripts/test_investigate_2009_game_detail.py` restore injected `sys.modules` stubs. `tests/scripts` passes **221 tests** serially.
 - **Platform/test alignment**: Git/bash shell checks skip cleanly when unavailable, and crawler URL assertions match current KBO endpoints (`MediaNews/Notice/List.aspx`, `Futures/Schedule/GameList.aspx`).
+
+### Phase 81 Complete (2026-08-15) — Clean Code & Linter Expansion
+
+- **Ruff rule expansion**: Permanently selected `PLR1714` (repeated equality comparison), `PLW2901` (redefined loop name), `D401` (imperative docstring mood), `PLR0402` (manual from-import alias), `PLR1711` (useless return), and `PLW0602` (unused global statement) in `pyproject.toml`.
+- **Code refactoring**:
+  - `src/aggregators/team_stat_aggregator.py`: Simplified repeated equality checks to Pythonic `team_id in (away_code, game.away_team)` idioms (`PLR1714`).
+  - `src/cli/build_rag_index.py`: Cleaned loop iteration to `enumerate(..., start=1)` and eliminated loop target reassignment (`PLW2901`).
+  - `src/cli/run_api_server.py`: Standardized docstrings to imperative mood (`D401`).
+  - `scripts/`: Cleaned up 17 rule violations across `backfill_birthdates.py`, `diagnose_scheduler_locks.py`, `fix_lotte_code.py`, `cleanup_legacy_player_season_sources.py`, `resolve_null_team_codes.py`, `scheduler.py`, `audit_daily_completeness.py`, `remediate_kbo_data.py`, and `verify_p1p2_lock_fix.py`.
+- **Configuration & Workspace hygiene**:
+  - Cleaned stale per-file-ignores (`src/sync/sync_*.py`) and mypy targets in `pyproject.toml`.
+  - Removed ghost directory `src/sync/` and stray `,cover` files.
+  - Added robust `Vector` fallback type in `src/models/rag_chunk_vector.py` for environments where `pgvector` library is not installed.
+- **Verification**: `ruff check src/ tests/ scripts/` = **0 errors**; `ruff format --check` = **1153 files already formatted**; `pytest` = **9,138 passed in 52.35s**.

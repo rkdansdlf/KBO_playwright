@@ -28,7 +28,7 @@
 - **완료 경기 PBP 표준 경로:** 완료 경기 릴레이/PBP 복구는 `scripts/fetch_kbo_pbp.py`를 사용합니다. 이 스크립트와 deprecated `src.cli.fetch_kbo_pbp` alias는 공통 `relay_recovery_service`를 사용하며, `game_events`와 `game_play_by_play`가 모두 있는 경기만 기본 skip합니다. 실시간 수집은 `src.cli.live_crawler`가 담당합니다.
 - **공통 상세 저장 서비스 예외:** `live_crawler`의 lightweight snapshot, orphan parent 복구, 기존 player_id 보존용 커스텀 복구 스크립트, bootstrap/demo 워크플로우, 디버그/검증 스크립트는 의도적으로 직접 크롤러 호출을 유지합니다. `src.crawlers.game_detail_crawler --save`, `scripts/crawl_2009_game_details.py` 등 현재 유지되는 조사 스크립트는 운영 진입점이 아니라 bootstrap 또는 parser 조사용 예외입니다.
 - **JSON manifest 예외:** 로컬 JSON manifest만 생성하는 조사성 스크립트는 운영 저장 경로가 아닙니다. DB 일정 저장은 `src.cli.crawl_schedule`을 사용합니다.
-- **국제대회 일정 예외:** `scripts/crawling/collect_international_games.py`는 정규시즌 schedule 페이지가 아닌 국제대회 전용 페이지를 읽습니다. 저장 시에는 직접 ORM upsert가 아니라 공통 `save_game_snapshot` 경로를 사용합니다.
+- **국제대회 일정 예외:** 국제대회 전용 source는 정규시즌 schedule 페이지와 별도 검증이 필요합니다. 저장 시에는 직접 SQL을 사용하지 않고 공통 game snapshot 저장 경로를 사용해야 합니다.
 - **중복 game_id 정리:** `smart_deduplicate.py`, `deduplicate_games.py`, `hard_deduplicate.py`, `absolute_completeness.py`, `fix_2026_only.py`는 모두 공통 `game_deduplication_service`를 통해 슬롯별 primary game을 선정합니다.
 
 ## 2. 퓨처스리그 (선수 프로필 기반 수집) 시 고려사항

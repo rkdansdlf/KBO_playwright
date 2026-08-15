@@ -20,19 +20,20 @@ import logging
 import re
 from datetime import date as date_type
 
-logger = logging.getLogger(__name__)
-
 from playwright.async_api import BrowserContext, Page, async_playwright
 from playwright.async_api import Error as PlaywrightError
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 from src.urls import REGISTER
+from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 REGISTER_URL = REGISTER
 STAFF_REGISTER_CRAWL_EXCEPTIONS = (
     PlaywrightError,
@@ -301,6 +302,7 @@ class StaffRegisterCrawler:
                 locale="ko-KR",
                 timezone_id="Asia/Seoul",
             )
+            await install_async_resource_blocking(context)
             page = await context.new_page()
 
             try:

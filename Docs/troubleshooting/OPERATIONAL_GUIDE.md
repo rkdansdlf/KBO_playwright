@@ -14,6 +14,26 @@ Throttling and stability can be tuned via `.env`:
 | `TELEGRAM_CHAT_ID` | - | Chat ID to send Telegram notifications to. |
 | `SLACK_WEBHOOK_URL` | - | Webhook URL for Slack alerts (Legacy fallback). |
 | `NOTIFY_SUCCESS` | `0` | Set to `1` to receive success alerts. |
+| `DATABASE_URL` | - | Oracle Autonomous Database URL (`oracle+oracledb://...`). |
+| `TNS_ADMIN` | - | Oracle Wallet/TNS directory. |
+| `PGVECTOR_URL` | - | Separate PostgreSQL/pgvector URL for dense RAG search. |
+
+### Oracle Initial Load
+Run the schema bootstrap and a read-only preview before writing the verified
+SQLite source into a new Oracle database:
+
+```bash
+python3 -m src.cli.apply_oracle_migrations
+python3 -m src.cli.sync_sqlite_to_oci \
+  --source-url "sqlite:///./data/kbo_dev.db" \
+  --target-url "$DATABASE_URL" --mode full --dry-run --json
+python3 -m src.cli.data_quality_regression_pack \
+  --database-url "sqlite:///./data/kbo_dev.db" --json
+```
+
+Only run the initial-load command with `--apply` after the preview and source
+quality checks pass. Keep the old Oracle database read-only until the new
+database passes the post-load row-count and integrity checks.
 
 ## 2. Manual Data Recovery
 
@@ -21,7 +41,7 @@ If a specific day fails to crawl or has data inconsistencies:
 
 ### Re-run Daily Finalize for a specific date
 ```bash
-./venv/bin/python3 -m src.cli.run_daily_update --date YYYYMMDD --sync
+./venv/bin/python3 -m src.cli.run_daily_update --date YYYYMMDD
 ```
 
 ### Run Quality Gate Check
@@ -40,7 +60,7 @@ Run this after reference repair jobs and before applying FK migrations:
 Apply declared FK constraints only after the integrity gate passes, using the repository migration process.
 
 ### Run Crawler Stability Gate
-Run this before crawler/publish releases or after selector, retry, relay, or OCI eligibility changes:
+Run this before crawler releases or after selector, retry, relay, or Oracle write-path changes:
 ```bash
 ./scripts/verification/crawler_stability_gate.sh
 ```
@@ -92,7 +112,7 @@ If the same game still fails, wait for the KBO box score to finish publishing an
 
 - **Logs:** Located in `logs/scheduler.log`. These are automatically rotated (max 10MB, 5 backups).
 - **Alerts:** Critical errors in the scheduler are sent to the configured Telegram bot (or Slack as fallback) after 3 failed attempts.
-- **Daily summary:** `run_daily_update` prints detail failure reason counts, relay recovery target counts, and OCI publish skip counts at the end of each run. The same stability payload is written to `logs/daily_update_summary/YYYYMMDD.json` and embedded in the refresh manifest.
+- **Daily summary:** `run_daily_update` prints detail failure reason counts and relay recovery target counts at the end of each run. The same stability payload is written to `logs/daily_update_summary/YYYYMMDD.json` and embedded in the refresh manifest.
 - **Scheduler lock health:** Stale lock files (left by crashed jobs) and duplicate scheduler processes (the root cause of `crawl_p1p2_data_job` `LockAcquisitionError`) are diagnosed read-only by `scripts/diagnose_scheduler_locks.py`.
 
 ### Monitor Scheduler Lock Health
@@ -146,7 +166,7 @@ python3 scripts/check_p1p2_lock_health.py --require-run
 
 The Docker scheduler runs `python -m scripts.scheduler` as **PID 1** inside the container. After a crash (`restart: always` → SIGKILL → restart), the stale `scheduler.pid` also contains `1`; the PID guard treats `pid == os.getpid()` as self/own-stale and re-acquires, so the container stays **Up** (no infinite restart loop). Tier locks self-heal because the dead container's `fcntl.flock` is released on death.
 
-- Always mount an **isolated** `data` volume for verification. Never bind-mount the live `./data` into a verification container — it shares the production SQLite DB and `scheduler.pid`, causing accidental writes and PID-file clobbering.
+- Always mount an **isolated** `data` volume for verification. Never bind-mount the live `./data` into a verification container — it shares local source data and `scheduler.pid`, causing accidental writes and PID-file clobbering.
 - `docker/entrypoint.sh` chowns `/ms-playwright` (the ~1GB Playwright named volume) only when its top-level owner differs from the target UID. On the persisted named volume this chown is skipped after the first run, so crash recovery starts fast. Bind-mounted `data`/`logs` still get a full recursive chown.
 
 ### Read Daily Stability Summary
@@ -154,7 +174,7 @@ The Docker scheduler runs `python -m scripts.scheduler` as **PID 1** inside the 
 cat logs/daily_update_summary/YYYYMMDD.json
 ```
 
-Use `stability.detail.failure_game_ids.incomplete_detail` to rerun full-detail recovery targets, and `stability.oci.skip_game_ids.skipped_empty_relay` to rerun relay/PBP recovery targets. The `retry_candidates` section contains the same operational shortlist without requiring operators to remember each failure key.
+Use `stability.detail.failure_game_ids.incomplete_detail` to rerun full-detail recovery targets, and `stability.relay.target_game_ids` to rerun relay/PBP recovery targets. The `retry_candidates` section contains the same operational shortlist without requiring operators to remember each failure key.
 
 Success notifications include the compact stability summary when `NOTIFY_SUCCESS=1`, so soft failures such as `incomplete_detail` or `skipped_empty_relay` are visible even when the scheduler job itself exits successfully.
 
@@ -169,12 +189,7 @@ Execute only after reviewing the targets:
 ./venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --apply
 ```
 
-Add `--sync` to publish retried game IDs to OCI after all retry commands succeed:
-```bash
-./venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --apply --sync
-```
-
-This CLI reads `logs/daily_update_summary/YYYYMMDD.json`, retries only `retry_candidates.detail` and `retry_candidates.relay`, and requires `--apply` before it runs any recovery command.
+This CLI reads `logs/daily_update_summary/YYYYMMDD.json`, retries only `retry_candidates.detail` and `retry_candidates.relay`, and requires `--apply` before it runs any recovery command. The retry commands write directly to the Oracle primary database through `DATABASE_URL`.
 
 ## 4. Failure Reason Reference
 

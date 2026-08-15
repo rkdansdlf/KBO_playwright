@@ -24,6 +24,7 @@ def test_model_registry_configures_fa_contract_relationships() -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        check=False,
     )
 
     assert result.returncode == 0, result.stderr
@@ -45,6 +46,7 @@ def test_model_registry_includes_oci_migration_dependencies() -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        check=False,
     )
 
     assert result.returncode == 0, result.stderr

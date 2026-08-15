@@ -137,6 +137,7 @@ class TestStaffRegisterCrawler:
         page.goto = AsyncMock()
         page.wait_for_timeout = AsyncMock()
         context = MagicMock()
+        context.route = AsyncMock()
         context.new_page = AsyncMock(return_value=page)
         browser = MagicMock()
         browser.new_context = AsyncMock(return_value=context)

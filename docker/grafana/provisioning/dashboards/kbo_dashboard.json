@@ -229,7 +229,7 @@
         "y": 4
       },
       "id": 6,
-      "title": "SQLite DB Write Lock Wait Duration (P95 / Max)",
+      "title": "Local SQLite Compatibility Lock Wait (P95 / Max)",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",

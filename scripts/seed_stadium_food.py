@@ -258,7 +258,8 @@ def run(dry_run: bool = False) -> None:
 
         for data in FOOD_DATA:
             menus = list(data.get("menus", []))
-            vendor = vendor_repo.save(data)
+            vendor_data = {k: v for k, v in data.items() if k != "menus"}
+            vendor = vendor_repo.save(vendor_data)
             vendor_count += 1
             for menu_data in menus:
                 menu_data["vendor_id"] = vendor.id

@@ -75,6 +75,8 @@ from src.utils.team_codes import normalize_kbo_game_id
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    from src.pipeline.dag import PipelineDAG
+
 
 @dataclass(frozen=True, slots=True)
 class DailyUpdateOptions:
@@ -1336,14 +1338,94 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
     }
 
 
+def _build_daily_update_dag(ctx: _RunContext) -> PipelineDAG:
+    from src.pipeline.dag import PipelineDAG
+
+    dag = PipelineDAG(name=f"daily_update_{ctx.target_date}")
+    dag.add_task("step_0_auto_healer", lambda _c: _step_0_auto_healer(ctx), allow_failure=True)
+    dag.add_task(
+        "step_1_schedule",
+        lambda _c: _step_1_schedule(ctx),
+        dependencies={"step_0_auto_healer"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_2_detail_crawl",
+        lambda _c: _step_2_detail_crawl(ctx),
+        dependencies={"step_1_schedule"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_3_refresh_status",
+        lambda _c: _step_3_refresh_status(ctx),
+        dependencies={"step_2_detail_crawl"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_4_relay_recovery",
+        lambda _c: _step_4_relay_recovery(ctx),
+        dependencies={"step_3_refresh_status"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_4_5_proactive_relay",
+        lambda _c: _step_4_5_proactive_relay(ctx),
+        dependencies={"step_4_relay_recovery"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_5_content_generation",
+        lambda _c: _step_5_content_generation(ctx),
+        dependencies={"step_4_5_proactive_relay"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_6_player_stats",
+        lambda _c: _step_6_player_stats(ctx),
+        dependencies={"step_5_content_generation"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_6_5_maintenance",
+        lambda _c: _step_6_5_maintenance(ctx),
+        dependencies={"step_6_player_stats"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_7_rosters",
+        lambda _c: _step_7_rosters(ctx),
+        dependencies={"step_6_5_maintenance"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_7_5_p0_non_game",
+        lambda _c: _step_7_5_p0_non_game(ctx),
+        dependencies={"step_7_rosters"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_8_derived_stats",
+        lambda _c: _step_8_derived_stats(ctx),
+        dependencies={"step_7_5_p0_non_game"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_10_7_enrichment",
+        lambda _c: _step_10_7_enrichment(ctx),
+        dependencies={"step_8_derived_stats"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_14_tomorrow_preview",
+        lambda _c: _step_14_tomorrow_preview(ctx),
+        dependencies={"step_10_7_enrichment"},
+        allow_failure=True,
+    )
+    return dag
+
+
 async def run_update(target_date: str, options: DailyUpdateOptions | None = None) -> dict[str, Any]:
-    """Handle main orchestration logic for postgame finalize and daily reconciliation.
-
-    Args:
-        target_date: Target date for the operation.
-        options: Optional execution settings.
-
-    """
+    """Handle main orchestration logic for postgame finalize and daily reconciliation."""
     options = options or DailyUpdateOptions()
     ctx = _RunContext(
         target_date=target_date,
@@ -1373,23 +1455,12 @@ async def run_update(target_date: str, options: DailyUpdateOptions | None = None
     )
 
     logger.info("\n%s", "=" * 60)
-    logger.info("\U0001f680 KBO Daily Finalize Started for Date: %s", target_date)
+    logger.info("\U0001f680 KBO Daily Finalize Started (DAG Orchestrated) for Date: %s", target_date)
     logger.info("%s", "=" * 60)
 
-    await _step_0_auto_healer(ctx)
-    await _step_1_schedule(ctx)
-    await _step_2_detail_crawl(ctx)
-    await _step_3_refresh_status(ctx)
-    await _step_4_relay_recovery(ctx)
-    await _step_4_5_proactive_relay(ctx)
-    await _step_5_content_generation(ctx)
-    await _step_6_player_stats(ctx)
-    await _step_6_5_maintenance(ctx)
-    await _step_7_rosters(ctx)
-    await _step_7_5_p0_non_game(ctx)
-    await _step_8_derived_stats(ctx)
-    await _step_10_7_enrichment(ctx)
-    await _step_14_tomorrow_preview(ctx)
+    dag = _build_daily_update_dag(ctx)
+    dag_results = await dag.execute_async()
+    logger.info("   [DAG] All %d tasks executed through DAG engine.", len(dag_results))
 
     return _finalize_run_update(ctx)
 

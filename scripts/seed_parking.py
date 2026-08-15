@@ -279,7 +279,8 @@ def run(dry_run: bool = False) -> None:
 
         for park_data in PARKING_DATA:
             fee_rows = list(park_data.get("fee_rules", []))
-            lot = lot_repo.save(park_data)
+            lot_data = {k: v for k, v in park_data.items() if k != "fee_rules"}
+            lot = lot_repo.save(lot_data)
             lot_count += 1
             for fee_data in fee_rows:
                 fee_data["parking_lot_id"] = lot.id

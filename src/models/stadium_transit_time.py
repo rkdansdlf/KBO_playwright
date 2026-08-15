@@ -51,13 +51,11 @@ class StadiumTransitTime(Base, TimestampMixin):
     measured_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        index=True,
         comment="Datetime when transit time was measured",
     )
     game_date: Mapped[date] = mapped_column(
         Date,
         nullable=False,
-        index=True,
         comment="Game date this measurement relates to",
     )
     duration_minutes: Mapped[int] = mapped_column(

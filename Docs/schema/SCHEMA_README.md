@@ -2,7 +2,7 @@
 
 | Table Name | Column Count | Primary Key |
 | --- | --- | --- |
-| awards | 8 | id |
+| awards | 10 | id |
 | crawl_runs | 10 | id |
 | fa_contracts | 17 | id |
 | game | 15 | id |
@@ -58,7 +58,7 @@
 
 - `player_basic(player_id)` is the canonical player FK target. `players.player_basic_id` is a nullable compatibility mirror and should not become the parent key for new fact tables.
 - `team_daily_roster.player_id`, `player_name`, `position`, and `player_movements.team_code`, `player_name` are source snapshots. Canonical reads should prefer `team_daily_roster.player_basic_id`, `team_daily_roster.person_type`, `player_movements.canonical_team_id`, and `player_movements.player_basic_id`.
-- `player_movements.team_code` intentionally remains raw snapshot data. OCI migration `024_deletion_anomaly_integrity.sql` drops the old update trigger that rewrote this field; normalized team joins use `canonical_team_id`.
+- `player_movements.team_code` intentionally remains raw snapshot data. Oracle migration changes must preserve this source snapshot; normalized team joins use `canonical_team_id`.
 - `player_movements.resolution_status='unresolved_player'` is allowed for ambiguous historical movement rows. Migration `025_player_movement_position_backfill.sql` resolves only rows that are unique after adding the source snapshot position.
 - Game child tables use `ON DELETE CASCADE` from `game`; player and team references use `ON DELETE RESTRICT`.
 

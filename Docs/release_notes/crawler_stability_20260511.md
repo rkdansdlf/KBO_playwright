@@ -1,5 +1,8 @@
 # Crawler Stability Release Notes - 2026-05-11
 
+> Historical record. The OCI publish commands below describe the deployment
+> contract at that time and are not current operational commands.
+
 ## Summary
 - Stabilized the schedule -> detail -> relay -> OCI publish path for completed KBO games.
 - Prevented incomplete completed-game detail payloads from being saved or published as success.

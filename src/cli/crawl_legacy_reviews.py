@@ -27,6 +27,7 @@ from sqlalchemy import text
 
 from src.constants import GAME_ID_MIN_LEN
 from src.db.engine import SessionLocal
+from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.type_helpers import safe_int_or_none
 
 REVIEW_URL = (
@@ -139,6 +140,7 @@ def crawl_reviews(
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
+        install_sync_resource_blocking(page)
         try:
             for db_game_id, game_date in targets:
                 if _skip(entries, db_game_id, retry_errors=retry_errors):

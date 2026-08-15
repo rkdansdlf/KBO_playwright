@@ -258,9 +258,9 @@ def test_crawl_futures_changed_since_skips_recent_futures_rows(monkeypatch):
         return {"player_id": target.player_id, "status": "success", "saved": 1, "failure_reason": None}
 
     monkeypatch.setattr(module, "gather_active_player_ids", ids)
-    monkeypatch.setattr(module, "SessionLocal", lambda: _FakeSession())
+    monkeypatch.setattr(module, "SessionLocal", _FakeSession)
     monkeypatch.setattr(module, "process_player_result", fake_process)
-    monkeypatch.setattr(module, "PlayerRepository", lambda: object())
+    monkeypatch.setattr(module, "PlayerRepository", object)
     monkeypatch.setattr(module, "AsyncPlaywrightPool", _FakePool)
 
     summary = asyncio.run(module.crawl_futures(_args(changed_since=cutoff.isoformat())))
@@ -283,7 +283,7 @@ def test_crawl_futures_summary_groups_failure_reasons(monkeypatch):
 
     monkeypatch.setattr(module, "gather_active_player_ids", ids)
     monkeypatch.setattr(module, "process_player_result", fake_process)
-    monkeypatch.setattr(module, "PlayerRepository", lambda: object())
+    monkeypatch.setattr(module, "PlayerRepository", object)
     monkeypatch.setattr(module, "AsyncPlaywrightPool", _FakePool)
 
     summary = asyncio.run(module.crawl_futures(_args()))

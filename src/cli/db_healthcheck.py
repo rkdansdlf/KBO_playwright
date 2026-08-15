@@ -17,7 +17,7 @@ import sys
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import DATABASE_URL, Engine
+from src.db.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +31,10 @@ def main(_argv: list[str] | None = None) -> None:
     """
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
-    url = DATABASE_URL
     dialect = Engine.url.get_backend_name()
 
     logger.info("\n=== DB Healthcheck ===")
-    logger.info("URL: %s", url)
+    logger.info("URL: %s", Engine.url.render_as_string(hide_password=True))
     logger.info("Dialect: %s", dialect)
 
     # 1. 데이터베이스 연결 테스트
@@ -63,7 +62,7 @@ def main(_argv: list[str] | None = None) -> None:
     for table in [
         "players",
         "teams",
-        "game_schedules",
+        "game",
         "player_season_batting",
         "player_game_batting",
         "player_game_pitching",

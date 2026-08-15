@@ -1,6 +1,8 @@
-# PostgreSQL Database
+# PostgreSQL Development and pgvector Database
 
-PostgreSQL is the primary application database. SQLite remains available for fast local tests and development fixtures.
+PostgreSQL is not the primary baseball-data database. Oracle Autonomous Database is
+the production source of truth. PostgreSQL remains available for local integration
+tests and the separate pgvector dense-search service.
 
 ## Schema Contract
 
@@ -10,7 +12,8 @@ PostgreSQL is the primary application database. SQLite remains available for fas
 4. `python3 -m src.cli.apply_postgres_migrations --check` checks pending versions without writing.
 5. `python3 -m src.cli.apply_postgres_migrations --adopt-existing` validates the current ORM-shaped schema and records only the current migration baseline metadata.
 
-The migration runner uses `DATABASE_URL` only. It does not connect to a second database or perform a synchronization step.
+The migration runner uses `DATABASE_URL` for a PostgreSQL development target only.
+The Oracle production path uses `src.cli.apply_oracle_migrations`.
 
 The explicit adoption mode does not call `init_db()` or execute migration SQL. It requires
 the current `awards` player-link columns and index, then writes only `schema_migrations`
@@ -18,7 +21,7 @@ metadata for migrations 047 and 048. Use it only after backup and read-only revi
 existing database. The historical OCI/Oracle chain from Git cleanup commit `052ea630`
 is not a PostgreSQL chain and must not be copied into `migrations/postgresql/`.
 
-## Data Migration
+## Local Data Migration
 
 Use `scripts/migrate_sqlite_to_postgres.py` to plan or apply a one-time migration from the local SQLite database:
 

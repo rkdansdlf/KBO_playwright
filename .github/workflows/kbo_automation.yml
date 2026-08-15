@@ -28,6 +28,9 @@ on:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  ORACLE_WALLET_B64: ${{ secrets.ORACLE_WALLET_B64 }}
+  OCI_WALLET_PASSWORD: ${{ secrets.OCI_WALLET_PASSWORD }}
 
 jobs:
   run-phase:

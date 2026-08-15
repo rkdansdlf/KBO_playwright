@@ -22,7 +22,6 @@ class RosterTransaction(Base, TimestampMixin):
         Integer,
         ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
         nullable=True,
-        index=True,
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Player name")
     action: Mapped[str] = mapped_column(String(20), nullable=False, comment="registered / deregistered")

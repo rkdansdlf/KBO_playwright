@@ -451,7 +451,8 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
         query = query.filter(Game.season_id == season)
 
     for count, (key, group) in enumerate(
-        groupby(query.yield_per(2000), key=lambda row: (row[0].game_id, row[0].team_side))
+        groupby(query.yield_per(2000), key=lambda row: (row[0].game_id, row[0].team_side)),
+        start=1,
     ):
         game_id, team_side = key
         lines: list[str] = []
@@ -486,7 +487,6 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
             "league_type_code": _REGULAR_SEASON_CODE,
             "meta": {"game_id": game_id, "team_side": team_side, "team_code": team_code},
         }
-        count += 1
         if limit and count >= limit:
             break
 
@@ -508,7 +508,8 @@ def _iter_rankings_chunks(session: Session, season: int | None, limit: int | Non
         (
             (r_season, metric, tuple(rows))
             for (r_season, metric), rows in groupby(query.yield_per(1000), key=lambda r: (r.season, r.metric))
-        )
+        ),
+        start=1,
     ):
         top = [
             f"{row.rank}위 {row.entity_label}" + (f" ({row.team_id})" if row.team_id else "") + f" {row.value}"
@@ -534,7 +535,6 @@ def _iter_rankings_chunks(session: Session, season: int | None, limit: int | Non
             "league_type_code": _REGULAR_SEASON_CODE,
             "meta": {"metric": metric, "season": r_season},
         }
-        count += 1
         if limit and count >= limit:
             break
 
@@ -892,7 +892,7 @@ def _process_source(
     *,
     dry_run: bool,
 ) -> int:
-    """단일 소스의 청크들을 임베딩하여 pgvector DB에 저장합니다."""
+    """단일 소스의 청크를 Oracle source DB에서 읽어 pgvector에 저장합니다."""
     from src.db.vector_engine import get_vector_session
 
     total = 0
@@ -939,7 +939,7 @@ def main(argv: list[str] | None = None) -> None:
     """KBO RAG 인덱스를 구축합니다."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    parser = argparse.ArgumentParser(description="KBO 데이터를 pgvector RAG 인덱스에 저장")
+    parser = argparse.ArgumentParser(description="Oracle KBO 데이터를 별도 PostgreSQL/pgvector RAG 인덱스에 저장")
     parser.add_argument(
         "--source",
         choices=_VALID_SOURCES,
@@ -997,7 +997,7 @@ def main(argv: list[str] | None = None) -> None:
         args.dry_run,
     )
 
-    # 메인 SQLite 세션에서 데이터 읽기
+    # Oracle primary session에서 source data 읽기
     from src.db.engine import get_db_session
 
     grand_total = 0

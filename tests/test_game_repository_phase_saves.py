@@ -22,6 +22,7 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
+from src.models.quarantine import QuarantinedRecord
 from src.models.season import KboSeason
 from src.services.game_write_contract import GameWriteContract
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_COMPLETED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
@@ -52,6 +53,7 @@ def _build_session_factory():
         GameEvent.__table__,
         GameSummary.__table__,
         KboSeason.__table__,
+        QuarantinedRecord.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
@@ -76,6 +78,7 @@ def _build_fk_session_factory():
         GameEvent.__table__,
         GameSummary.__table__,
         KboSeason.__table__,
+        QuarantinedRecord.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

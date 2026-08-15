@@ -18,7 +18,7 @@ class KboPressRelease(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("notice_id", name="uq_kbo_press_release_notice_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    notice_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    notice_id: Mapped[str] = mapped_column(String(50), nullable=False)
     published_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="공지")

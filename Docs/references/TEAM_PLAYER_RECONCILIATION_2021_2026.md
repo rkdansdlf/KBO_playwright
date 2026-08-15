@@ -1,6 +1,6 @@
 # Team-Player Reconciliation Report
 
-작성 범위: 2021/2026 정규시즌, local SQLite와 OCI PostgreSQL sync target의
+작성 범위: 2021/2026 정규시즌, local SQLite와 과거 OCI sync target의
 `team_season_*` 대 `player_season_*` 비교.
 
 ## 결론
@@ -85,7 +85,7 @@ team PA 3,256 대 player PA 3,619이다. 이는 선수 페이지의 자격/노�
 
 다른 source와 다른 league의 row는 삭제하지 않았다.
 
-## OCI Legacy Source Cleanup (2026-07-26)
+## OCI Legacy Source Cleanup (Historical, 2026-07-26)
 
 - Scope: `player_season_batting`/`player_season_pitching`, `league=REGULAR`,
   seasons 2021 and 2026.

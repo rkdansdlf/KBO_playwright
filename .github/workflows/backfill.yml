@@ -30,6 +30,9 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  ORACLE_WALLET_B64: ${{ secrets.ORACLE_WALLET_B64 }}
+  OCI_WALLET_PASSWORD: ${{ secrets.OCI_WALLET_PASSWORD }}
   BACKFILL_DEFINITIONS: >-
     [
       {"id":"missed_crawls","name":"Missed Crawls","cron":"30 19 * * 0","playwright":"true","secrets_group":"kbo_auth"},

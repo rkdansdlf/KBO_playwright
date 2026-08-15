@@ -78,9 +78,9 @@ def _find_scheduler_processes() -> list[int]:
             check=False,
         )
         for line in out.stdout.splitlines():
-            line = line.strip()
-            if line.isdigit():
-                pids.append(int(line))
+            stripped_line = line.strip()
+            if stripped_line.isdigit():
+                pids.append(int(stripped_line))
     except (OSError, subprocess.SubprocessError):
         pass
     return pids

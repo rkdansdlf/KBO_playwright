@@ -125,8 +125,8 @@ class TeamStatAggregator:
         for game in rows:
             away_code = canonical_code_for_team_code(game.away_team or "", year) or game.away_team
             home_code = canonical_code_for_team_code(game.home_team or "", year) or game.home_team
-            is_away = away_code == team_id or game.away_team == team_id
-            is_home = home_code == team_id or game.home_team == team_id
+            is_away = team_id in (away_code, game.away_team)
+            is_home = team_id in (home_code, game.home_team)
             if not (is_away or is_home) or game.away_score is None or game.home_score is None:
                 continue
 

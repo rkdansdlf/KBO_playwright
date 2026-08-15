@@ -36,6 +36,7 @@ class VectorSearchRepository:
         league_type_code: int | None = None,
         document_type: str | None = None,
         game_date: str | None = None,
+        player_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """코사인 거리 기준으로 유사한 청크를 검색합니다.
 
@@ -45,6 +46,7 @@ class VectorSearchRepository:
             team_id: 팀 코드 필터 (선택).
             season_year: 시즌 연도 필터 (선택).
             source_table: 소스 테이블 필터 (선택).
+            player_id: 선수 ID 필터 (선택).
             league_type_code: 리그 레벨 코드 필터 (선택).
             document_type: 문서 유형 필터 (선택).
             game_date: 대상 날짜 필터, YYYY-MM-DD 문자열 (선택).
@@ -68,6 +70,7 @@ class VectorSearchRepository:
                     league_type_code,
                     document_type,
                     game_date,
+                    player_id,
                 )
         except _SEARCH_EXCEPTIONS:
             logger.exception("Vector similarity search failed")
@@ -84,6 +87,7 @@ class VectorSearchRepository:
         league_type_code: int | None,
         document_type: str | None,
         game_date: str | None,
+        player_id: str | None,
     ) -> list[dict[str, Any]]:
         # cosine_distance: 0 = 동일, 2 = 반대 → score = 1 - distance
         distance_expr = RagChunkVector.embedding.cosine_distance(query_vector)
@@ -97,6 +101,8 @@ class VectorSearchRepository:
             stmt = stmt.where(RagChunkVector.season_year == season_year)
         if source_table:
             stmt = stmt.where(RagChunkVector.source_table == source_table)
+        if player_id:
+            stmt = stmt.where(RagChunkVector.player_id == player_id)
         if league_type_code is not None:
             stmt = stmt.where(RagChunkVector.league_type_code == league_type_code)
         if document_type:

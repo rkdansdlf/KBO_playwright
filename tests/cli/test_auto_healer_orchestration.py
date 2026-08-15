@@ -5,7 +5,15 @@ from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 import src.cli.auto_healer as auto_healer
+from src.db.engine import init_db
+
+
+@pytest.fixture(autouse=True)
+def _setup_db():
+    init_db()
 
 
 def _game(game_id: str, status: str = "SCHEDULED"):
