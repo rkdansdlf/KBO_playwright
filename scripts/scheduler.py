@@ -264,7 +264,6 @@ def alert_failure(retry_state):
     # Do NOT re-raise — let retry_error_callback suppress so the scheduler survives.
     if exc:
         logger.warning(f"Job {func_name} permanently failed but scheduler continues: {error_text}")
-    return
 
 
 def alert_warning(func_name: str, details: str | None = None):
@@ -317,7 +316,6 @@ def _pregame_target_dates(now: datetime | None = None) -> list[str]:
 
 
 def _should_skip_live_for_pregame(now: datetime | None = None) -> bool:
-    global LAST_PREGAME_RUN_TIME
     try:
         cooldown_seconds = int(os.getenv("LIVE_PREGAME_COOLDOWN_SECONDS", "30"))
     except ValueError:
@@ -817,6 +815,28 @@ def _analyze_game_rows(rows, now: datetime) -> tuple[bool, bool, bool, datetime 
     return has_active, has_suspended, all_terminal, earliest_start_time, latest_update_time
 
 
+_SCHEDULER_ADAPTIVE_POLLING = None
+
+
+def _get_adaptive_polling_engine():
+    """Return the shared AdaptivePollingEngine configured for scheduler cadence."""
+    global _SCHEDULER_ADAPTIVE_POLLING
+    if _SCHEDULER_ADAPTIVE_POLLING is None:
+        from src.utils.polling_policy import AdaptivePollingEngine, PollingPolicyConfig
+
+        _SCHEDULER_ADAPTIVE_POLLING = AdaptivePollingEngine(
+            PollingPolicyConfig(
+                interval_running=10,
+                interval_high_leverage=5,
+                interval_delayed=60,
+                interval_stabilization=60,
+                interval_terminal=1800,
+                interval_before=120,
+            ),
+        )
+    return _SCHEDULER_ADAPTIVE_POLLING
+
+
 def _interval_from_analysis(
     now: datetime,
     has_active: bool,
@@ -826,7 +846,8 @@ def _interval_from_analysis(
     latest_update_time: datetime | None,
 ) -> int:
     if has_active:
-        return 60 if has_suspended else 10
+        decision = _get_adaptive_polling_engine().evaluate("delayed" if has_suspended else "running")
+        return decision.interval_seconds
     if all_terminal:
         if latest_update_time:
             elapsed = (now - latest_update_time).total_seconds()
@@ -1019,6 +1040,7 @@ def lock_health_check_job():
             [sys.executable, "scripts/check_p1p2_lock_health.py", "--require-run"],
             capture_output=True,
             text=True,
+            check=False,
         )
     except OSError as exc:
         logger.exception("Scheduler lock health check failed to launch")
@@ -1239,8 +1261,8 @@ def heal_unverified_pbp_job():
 
 @_with_lock_skip_guard
 def data_integrity_check_job():
-    """Data Integrity Check: run post-crawl data integrity validation.
-     Runs daily at 04:45 KST after auto-healers.
+    """Run post-crawl data integrity validation (daily at 04:45 KST).
+
     Uses MAINTENANCE_LOCK.
     """
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -1532,7 +1554,7 @@ job_start_times: dict[str, float] = {}
 
 
 def job_lifecycle_listener(event: object) -> None:
-    """Listener for APScheduler job lifecycle events to collect metrics and capture errors."""
+    """Listen for APScheduler job lifecycle events to collect metrics and capture errors."""
     event_code = getattr(event, "code", None)
     job_id = getattr(event, "job_id", "unknown")
 
@@ -1576,8 +1598,6 @@ def lock_skip_monitor_job() -> None:
     skipped more than ``LOCK_SKIP_ALERT_THRESHOLD`` times. High skip rates mean
     the SQLite writer lock is contended and real-time data may be going stale.
     """
-    global _LAST_LOCK_SKIP
-
     try:
         totals: dict[tuple[str, str], float] = {}
         for metric in KBO_SCHEDULER_LOCK_SKIP_TOTAL.collect():
@@ -1725,6 +1745,59 @@ def _dispatch_single_run(args) -> bool:
     return False
 
 
+def selector_drift_sentinel_job():
+    """Daily Canary Check for KBO Website Selector Drift.
+
+    Fetches the KBO schedule page HTML and validates it against the registered
+    page contracts (real crawler selectors). Drift is logged and alerted;
+    failures are non-blocking for the scheduler.
+    """
+    try:
+        import requests
+
+        from src.monitoring.selector_drift_sentinel import (
+            PageContract,
+            create_default_kbo_sentinel,
+        )
+
+        sentinel = create_default_kbo_sentinel()
+        sentinel.register_contract(
+            PageContract(
+                page_name="schedule",
+                required_selectors=(".tbl",),
+                min_table_columns={".tbl": 2},
+            ),
+        )
+
+        page_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
+        response = requests.get(page_url, timeout=20)
+        if response.status_code != 200:
+            logger.warning("[Sentinel] KBO schedule page fetch returned HTTP %s", response.status_code)
+            return
+
+        report = sentinel.check_html("schedule", response.text)
+        if report.is_healthy:
+            logger.info("[Sentinel] Schedule page contract healthy (drift check passed).")
+            return
+
+        logger.warning(
+            "[Sentinel] Selector drift detected on schedule page: missing_selectors=%s mismatched_columns=%s",
+            list(report.missing_selectors),
+            list(report.mismatched_columns),
+        )
+        try:
+            from src.utils.alerting import SlackWebhookClient
+
+            SlackWebhookClient.send_alert(
+                f"⚠️ Selector drift detected on KBO schedule page: "
+                f"missing={list(report.missing_selectors)} columns={list(report.mismatched_columns)}",
+            )
+        except ALERT_EXCEPTIONS:
+            logger.exception("[Sentinel] Failed to send drift alert")
+    except (RequestException, RuntimeError, ValueError, TypeError, OSError):
+        logger.exception("[Sentinel] Selector drift canary check failed")
+
+
 def _start_scheduler(args):
     global _SCHEDULER_REF
     scheduler = BlockingScheduler(timezone="Asia/Seoul")
@@ -1732,6 +1805,13 @@ def _start_scheduler(args):
     scheduler.add_listener(job_lifecycle_listener, EVENT_JOB_SUBMITTED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
 
     jobs = [
+        (
+            selector_drift_sentinel_job,
+            CronTrigger(hour=5, minute=40),
+            "selector_drift_sentinel",
+            "Daily Selector Drift Canary Check",
+            3600,
+        ),
         (
             crawl_daily_games,
             CronTrigger(hour=3, minute=0),
