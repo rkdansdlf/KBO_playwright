@@ -327,11 +327,11 @@ class OciLoader:
             return skipped
         try:
             cursor.executemany(sql, payloads)
-        except Exception:
+        except oracledb.Error:
             for p in payloads:
                 try:
                     cursor.execute(sql, p)
-                except Exception:
+                except oracledb.Error:
                     skipped += 1
             log(f"[warn] {table}: batch fell back to row-by-row, skipped {skipped} orphan rows so far")
         return skipped
