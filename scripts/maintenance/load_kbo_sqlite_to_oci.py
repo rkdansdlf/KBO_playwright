@@ -71,6 +71,13 @@ TABLE_ORDER = [
     "cheer_songs",
     "stadium_info",
     "stadium_operation_notices",
+    "stadium_seat_sections",
+    "stadium_food_vendors",
+    "stadium_food_menu_items",
+    "stadium_regulations",
+    "parking_lots",
+    "parking_fee_rules",
+    "team_rivalries",
     "injury_entries",
     "game_broadcasts",
     "manager_changes",
@@ -98,18 +105,24 @@ TABLE_COL_OVERRIDE: dict[tuple[str, str], Any] = {
     ("player_season_pitching", "level"): lambda v: LEVEL_NORMALIZE.get(v, v),
     ("player_season_batting", "team_code"): lambda v: TEAM_CODE_MAP.get(v, v),
     ("player_season_pitching", "team_code"): lambda v: TEAM_CODE_MAP.get(v, v),
+    ("team_daily_roster", "player_name"): lambda v: v if v and str(v).strip() else "UNKNOWN",
 }
 
 NATURAL_KEYS: dict[str, list[str]] = {
     "game_lineups": ["game_id", "team_side", "appearance_seq"],
     "game_batting_stats": ["game_id", "player_id"],
-    "game_pitching_stats": ["game_id", "player_id"],
+    "game_pitching_stats": ["game_id", "player_id", "appearance_seq"],
     "game_events": ["game_id", "event_seq"],
     "player_game_batting": ["game_id", "player_id"],
     "player_game_pitching": ["game_id", "player_id"],
     "player_season_batting": ["player_id", "season", "league", "level", "team_code"],
     "player_season_pitching": ["player_id", "season", "league", "level", "team_code"],
     "game_inning_scores": ["game_id", "team_side", "inning"],
+}
+
+ORPHAN_FILTERS: dict[str, str] = {
+    "game_highlights": 'game_id IN (SELECT game_id FROM "game")',
+    "player_identities": "player_id IN (SELECT id FROM players)",
 }
 
 REPLACE_TABLES = {
@@ -122,7 +135,7 @@ REPLACE_TABLES = {
     "game_play_by_play",
 }
 
-NO_ID_TABLES = {"player_season_batting", "player_season_pitching"}
+NO_ID_TABLES: set[str] = set()
 
 LEVEL_NORMALIZE = {"1": "KBO1", "1군": "KBO1"}
 
@@ -285,6 +298,8 @@ class OciLoader:
             col_override = TABLE_COL_OVERRIDE.get((table, c))
             if col_override is not None:
                 v = col_override(v)
+            if table == "player_movements" and c == "team_code" and not str(v or "").strip():
+                v = row["canonical_team_id"] or "UNKNOWN"
             v = self._convert(v, oci_types.get(c.upper(), "VARCHAR2"))
             limit = char_sizes.get(c.upper()) if char_sizes else None
             if limit is not None and isinstance(v, str) and len(v) > limit:
@@ -327,12 +342,15 @@ class OciLoader:
             return skipped
         try:
             cursor.executemany(sql, payloads)
-        except oracledb.Error:
+        except oracledb.Error as exc:
+            log(f"[warn] {table}: executemany failed ({exc}); falling back to row-by-row")
             for p in payloads:
                 try:
                     cursor.execute(sql, p)
-                except oracledb.Error:
+                except Exception as exc2:
                     skipped += 1
+                    if skipped <= 3:
+                        log(f"[warn] {table}: row error ({exc2}): {p}")
             log(f"[warn] {table}: batch fell back to row-by-row, skipped {skipped} orphan rows so far")
         return skipped
 
@@ -366,7 +384,9 @@ class OciLoader:
             return {"table": table, "local": total, "dry_run": True}
 
         order_by = ", ".join(f'"{c}"' for c in key_cols) if table in REPLACE_TABLES else None
-        r = self.sq.execute(f'SELECT * FROM "{table}"' + (f" ORDER BY {order_by}" if order_by else ""))
+        orphan_filter = ORPHAN_FILTERS.get(table)
+        where_clause = f" WHERE {orphan_filter}" if orphan_filter else ""
+        r = self.sq.execute(f'SELECT * FROM "{table}"{where_clause}' + (f" ORDER BY {order_by}" if order_by else ""))
         replace_mode = table in REPLACE_TABLES
         if replace_mode:
             with self.engine.connect() as conn:
@@ -379,7 +399,7 @@ class OciLoader:
                 log(f"[wipe] {table}: already empty, skip truncate")
             keys_seen: set[tuple] = set()
         else:
-            qn = ", ".join(f'"{k}"' for k in keys)
+            qn = ", ".join(f'"{known.get(k.lower(), k)}"' for k in keys)
             with self.engine.connect() as conn:
                 rows = conn.execute(text(f'SELECT {qn} FROM "{table.upper()}"')).fetchall()
             keys_seen = {tuple(r) for r in rows}
