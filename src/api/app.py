@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy.exc import SQLAlchemyError
 
-from src.api.routers import futures, games, health, milestones, notices, players, rag
+from src.api.auth import API_KEY_NAME
+from src.api.routers import futures, games, health, milestones, notices, players, rag, stadiums
 from src.db.engine import init_db
 
 if TYPE_CHECKING:
@@ -42,7 +44,11 @@ TAGS_METADATA = [
     },
     {
         "name": "Games & Schedules",
-        "description": "1군 경기 일정, 하이라이트 및 전 경기 프리뷰 카드 조회 API",
+        "description": "1군 경기 일정, 박스스코어, 상대 전적 및 실시간/당일 크롤러 트리거 API",
+    },
+    {
+        "name": "Stadiums & Facilities",
+        "description": "KBO 경기장 목록, 주차장, 식음료(F&B), 좌석 구역 및 예매 정보 조회 API",
     },
     {
         "name": "Health & System",
@@ -55,38 +61,28 @@ DESCRIPTION = """
 
 Welcome to the **KBO Baseball Data & AI Knowledge Platform API**.
 This REST API platform provides unified access to KBO 1st/2nd division schedules,
-player profiles, milestones, press releases, situational split stats, and hybrid RAG
-search capabilities.
+boxscores, player profiles, sabermetrics, milestones, press releases, situational split stats,
+stadium facilities, and hybrid RAG search capabilities.
 
----
-
-### 🔑 Authentication Guide
-When `REST_API_KEY` is configured in the server environment, all protected API endpoints require an API Key:
-- **HTTP Header**: `X-API-Key: <your_api_key>`
-- **Query Parameter**: `?api_key=<your_api_key>`
-
-*Click the **Authorize 🔓** button at the top right of this page to set your API Key for interactive testing.*
-
----
-
-### 🚀 Key Feature Categories
-- 📰 **Notices & Press Releases**: Official KBO administrative announcements.
-- 🏆 **Player Milestones**: Hit, HR, RBI, Wins milestone countdown tracking.
-- ⚾ **Futures League**: 2nd Division schedule, scores, and status.
-- 🤖 **Hybrid RAG Search**: Reciprocal Rank Fusion ($RRF$) search across 193+ KBO knowledge chunks.
-- 📊 **Situational Splits & Drafts**: Scoring position stats, vs LHP/RHP, and rookie draft picks.
+## 🚀 Key Features
+- 📊 **KBO Game Boxscore & Head-to-Head**: Full inning scoreboard, batting/pitching lines, and H2H analytics.
+- 👤 **Player Stats & Sabermetrics**: Career season batting/pitching stats and advanced metrics (wOBA, wRC+, WAR, FIP).
+- 🏟️ **Stadiums & Facilities**: Stadium locations, parking info, food vendors, and seating pricing.
+- 🤖 **Hybrid RAG Search**: Reciprocal Rank Fusion ($RRF$) search across KBO knowledge chunks.
+- ⚡ **High Performance Caching**: In-memory TTL caching for instant millisecond response times.
 """
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Initialize database tables on application startup."""
+    """Startup and shutdown lifecycle handler."""
+    logger.info("Initializing KBO Playwright API server...")
     try:
         init_db()
-        logger.info("Database initialized successfully for FastAPI app.")
-    except Exception:
-        logger.exception("Failed to initialize database on startup")
+    except (SQLAlchemyError, RuntimeError, OSError, ValueError):
+        logger.warning("Database bootstrap skipped or failed during startup", exc_info=True)
     yield
+    logger.info("Shutting down KBO Playwright API server...")
 
 
 app = FastAPI(
@@ -95,21 +91,22 @@ app = FastAPI(
     version="1.5.0",
     openapi_tags=TAGS_METADATA,
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
-# CORS configuration
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials="*" not in allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 def custom_openapi() -> dict[str, Any]:
-    """Customize OpenAPI schema with X-API-Key security scheme."""
+    """Generate custom OpenAPI schema with API Key Header security."""
     if app.openapi_schema:
         return app.openapi_schema
 
@@ -121,13 +118,14 @@ def custom_openapi() -> dict[str, Any]:
         tags=TAGS_METADATA,
     )
 
+    # Add security scheme definition
     openapi_schema["components"] = openapi_schema.get("components", {})
     openapi_schema["components"]["securitySchemes"] = {
         "APIKeyHeader": {
             "type": "apiKey",
-            "name": "X-API-Key",
             "in": "header",
-            "description": "Enter your REST_API_KEY in the format: X-API-Key",
+            "name": API_KEY_NAME,
+            "description": f"Enter your REST_API_KEY in the {API_KEY_NAME} header.",
         }
     }
 
@@ -144,6 +142,7 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 app.include_router(health.router)
 app.include_router(games.router)
 app.include_router(players.router)
+app.include_router(stadiums.router)
 app.include_router(rag.router)
 app.include_router(notices.router)
 app.include_router(milestones.router)
