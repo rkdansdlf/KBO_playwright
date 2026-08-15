@@ -82,21 +82,6 @@ TABLE_ORDER = [
 
 _SHA256 = hashlib.sha256
 
-FRANCHISE_MAP = {
-    1: 8,
-    2: 5,
-    3: 4,
-    4: 7,
-    5: 2,
-    6: 26,
-    7: 1,
-    8: 9,
-    9: 6,
-    10: 3,
-    11: 10,
-    12: 32,
-}
-
 
 def _detail_hash(v: Any) -> Any:
     if v is None:
@@ -109,14 +94,10 @@ TABLE_OVERRIDE: dict[str, Any] = {
 }
 
 TABLE_COL_OVERRIDE: dict[tuple[str, str], Any] = {
-    ("team_history", "franchise_id"): lambda v: FRANCHISE_MAP.get(v, v),
-    ("team_standings_daily", "franchise_id"): lambda v: FRANCHISE_MAP.get(v, v),
     ("player_season_batting", "level"): lambda v: LEVEL_NORMALIZE.get(v, v),
     ("player_season_pitching", "level"): lambda v: LEVEL_NORMALIZE.get(v, v),
     ("player_season_batting", "team_code"): lambda v: TEAM_CODE_MAP.get(v, v),
     ("player_season_pitching", "team_code"): lambda v: TEAM_CODE_MAP.get(v, v),
-    ("player_season_batting", "franchise_id"): lambda v: FRANCHISE_MAP.get(v, v),
-    ("player_season_pitching", "franchise_id"): lambda v: FRANCHISE_MAP.get(v, v),
 }
 
 NATURAL_KEYS: dict[str, list[str]] = {
@@ -163,8 +144,8 @@ def log(msg: str) -> None:
 def _load_env() -> dict[str, str]:
     env: dict[str, str] = {}
     with Path(".env").open() as fh:
-        for line in fh:
-            line = line.strip()
+        for raw in fh:
+            line = raw.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
@@ -284,15 +265,9 @@ class OciLoader:
         def qn(c: str) -> str:
             return f'"{known.get(c.lower(), c.upper())}"'
 
-        bind_cols = ", ".join(f":c{i} AS {qn(c)}" for i, c in enumerate(columns))
         ins_cols = ", ".join(qn(c) for c in columns)
-        ins_vals = ", ".join(f"s.{qn(c)}" for c in columns)
-        not_exists = " AND ".join(f"t.{qn(p)} = s.{qn(p)}" for p in pk)
-        return (
-            f"INSERT INTO {table.upper()} ({ins_cols}) "
-            f"SELECT {ins_vals} FROM (SELECT {bind_cols} FROM dual) s "
-            f"WHERE NOT EXISTS (SELECT 1 FROM {table.upper()} t WHERE {not_exists})"
-        )
+        bind_vals = ", ".join(f":c{i}" for i in range(len(columns)))
+        return f"INSERT INTO {table.upper()} ({ins_cols}) VALUES ({bind_vals})"
 
     def _row_payload(
         self,
@@ -392,22 +367,27 @@ class OciLoader:
 
         order_by = ", ".join(f'"{c}"' for c in key_cols) if table in REPLACE_TABLES else None
         r = self.sq.execute(f'SELECT * FROM "{table}"' + (f" ORDER BY {order_by}" if order_by else ""))
-        if table in REPLACE_TABLES:
+        replace_mode = table in REPLACE_TABLES
+        if replace_mode:
             with self.engine.connect() as conn:
-                existing = conn.execute(
-                    text(f'SELECT COUNT(*) FROM "{table.upper()}"')
-                ).scalar()
+                existing = conn.execute(text(f'SELECT COUNT(*) FROM "{table.upper()}"')).scalar()
             if existing:
                 with self.engine.begin() as conn:
                     conn.execute(text(f'TRUNCATE TABLE "{table.upper()}"'))
                 log(f"[wipe] {table}: {existing} existing rows truncated (replace mode)")
             else:
                 log(f"[wipe] {table}: already empty, skip truncate")
+            keys_seen: set[tuple] = set()
+        else:
+            qn = ", ".join(f'"{k}"' for k in keys)
+            with self.engine.connect() as conn:
+                rows = conn.execute(text(f'SELECT {qn} FROM "{table.upper()}"')).fetchall()
+            keys_seen = {tuple(r) for r in rows}
+            log(f"[keys] {table}: {len(keys_seen)} existing keys loaded for dedup")
         char_sizes = self.oci_char_sizes(table)
         t0 = time.monotonic()
         done = 0
         skipped = 0
-        keys_seen: set[tuple] = set()
         cursor = self.oci.cursor()
         self.set_table_triggers(table, enable=False)
         try:
