@@ -138,6 +138,7 @@ class VectorSearchRepository:
             results.append(
                 {
                     "id": chunk.id,
+                    "chunk_id": f"{chunk.source_table}:{chunk.source_row_id}",
                     "title": chunk.title,
                     "content": chunk.content,
                     "source_table": chunk.source_table,

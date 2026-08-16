@@ -11,6 +11,7 @@ from src.services.retrieval_evaluation import (
     recall_at_k,
     reciprocal_rank,
 )
+from src.services.retrieval_evaluation import _result_id
 
 
 def test_metrics_calculate_expected_values() -> None:
@@ -78,3 +79,8 @@ def test_evaluate_routing_dataset_tracks_false_positive_entities() -> None:
     assert report["intent_accuracy"] == 1.0
     assert report["route_accuracy"] == 1.0
     assert report["entity_false_positive_rate"] == 1.0
+
+
+def test_result_id_prefers_cross_index_source_identity() -> None:
+    """Use the same source key for vector results and golden annotations."""
+    assert _result_id({"id": 99, "chunk_id": "game:g1"}) == "game:g1"
