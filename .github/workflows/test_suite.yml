@@ -191,3 +191,85 @@ jobs:
         run: pytest -m integration --tb=short -v --durations=10 -n 1 2>&1
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
+
+  rag-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    needs: test
+    if: always() && needs.test.result == 'success'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kbo_rag_primary
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d kbo_rag_primary"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      pgvector:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kbo_rag_vector
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d kbo_rag_vector"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          python-version: "3.12"
+          playwright: "false"
+          init-db: 'false'
+      - name: Initialize primary evaluation schema
+        env:
+          RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
+        run: python -c "from src.db.engine import init_db; init_db()"
+      - name: Initialize pgvector evaluation schema
+        env:
+          PGVECTOR_TEST_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/kbo_rag_vector
+        run: python -c "from src.models.rag_chunk_vector import RagChunkVector; from src.db.vector_engine import init_vector_db; init_vector_db()"
+      - name: Validate evaluation corpus and golden IDs
+        run: python -m src.cli.bootstrap_rag_eval_corpus --json
+      - name: Index evaluation corpus into both stores
+        env:
+          RAG_EVAL_ALLOW_WRITE: "1"
+          RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
+          PGVECTOR_TEST_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/kbo_rag_vector
+        run: python -m src.cli.bootstrap_rag_eval_corpus --apply --json
+      - name: Audit sparse/vector identity
+        env:
+          RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
+          PGVECTOR_TEST_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/kbo_rag_vector
+        run: python -m src.cli.audit_rag_index --require-nonempty --json
+      - name: Evaluate retrieval variants
+        env:
+          RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
+          PGVECTOR_TEST_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/kbo_rag_vector
+          GIT_COMMIT: ${{ github.sha }}
+        run: >-
+          python -m src.cli.evaluate_rag_retrieval
+          --dataset tests/fixtures/rag_corpus/golden_queries.json
+          --corpus tests/fixtures/rag_corpus/documents.json
+          --all-variants
+          --require-corpus
+          --embedding-mode deterministic
+          --min-recall 0.50
+          --min-mrr 0.50
+          --output rag-retrieval-evaluation.json
+          --json
+      - name: Upload RAG acceptance artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-acceptance-${{ github.run_number }}
+          path: rag-retrieval-evaluation.json
+          retention-days: 30

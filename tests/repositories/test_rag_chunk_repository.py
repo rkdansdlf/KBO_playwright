@@ -37,6 +37,9 @@ class TestRagChunkRepository:
         row = session.execute(stmt).scalars().one()
         assert row.title == "Rule 1"
         assert row.content == "Ground rule double..."
+        assert len(row.content_hash) == 64
+        assert row.index_version == "rag-v1"
+        assert row.index_status == "ACTIVE"
 
     def test_upsert_chunks_updates_existing(self):
         engine = self._engine()

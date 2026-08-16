@@ -34,11 +34,14 @@ import argparse
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from src.constants import KST
 from src.parsers.text_transformer import TextTransformer
 from src.services.markdown_document_loader import load_local_markdown_docs, markdown_source_table
+from src.services.rag_index_identity import current_index_version
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -884,17 +887,24 @@ def _dedupe_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
+def _persist_index_batch(batch: list[dict[str, Any]], primary_session: Session) -> None:
+    """Publish one batch through pending and final sparse/vector states."""
+    from src.db.vector_engine import get_vector_session
+    from src.services.rag_index_propagation import publish_index_batch
+
+    with get_vector_session() as vsession:
+        publish_index_batch(primary_session, vsession, batch)
+
+
 def _process_source(
     source_name: str,
     chunk_iter: Iterator[dict[str, Any]],
     embedding_service: object,
-    vector_repo: object,
+    primary_session: Session,
     *,
     dry_run: bool,
 ) -> int:
-    """단일 소스의 청크를 Oracle source DB에서 읽어 pgvector에 저장합니다."""
-    from src.db.vector_engine import get_vector_session
-
+    """단일 소스의 청크를 sparse/vector 인덱스에 동일하게 저장합니다."""
     total = 0
     batch: list[dict[str, Any]] = []
 
@@ -908,15 +918,14 @@ def _process_source(
         embeddings = embedding_service.get_embeddings_batch(texts)  # type: ignore[attr-defined]
         for chunk, emb in zip(batch, embeddings, strict=False):
             chunk["embedding"] = emb
+            chunk["index_version"] = current_index_version()
+            chunk["indexed_at"] = datetime.now(KST)
 
         if not dry_run:
-            with get_vector_session() as vsession:
-                for chunk in batch:
-                    vector_repo.upsert_chunk(vsession, chunk)  # type: ignore[attr-defined]
-                    total += 1
-                    if total % _COMMIT_EVERY == 0:
-                        vsession.commit()
-                        logger.info("  [%s] %d 청크 저장 완료...", source_name, total)
+            _persist_index_batch(batch, primary_session)
+            total += len(batch)
+            if total % _COMMIT_EVERY == 0:
+                logger.info("  [%s] %d 청크 저장 완료...", source_name, total)
         else:
             total += len(batch)
 
@@ -980,11 +989,9 @@ def main(argv: list[str] | None = None) -> None:
         init_vector_db()
 
     # 서비스 초기화
-    from src.repositories.vector_search_repository import VectorSearchRepository
     from src.services.embedding_service import EmbeddingService
 
     embedding_service = EmbeddingService()
-    vector_repo = VectorSearchRepository()
 
     # 소스 선택
     sources = list(_SOURCE_MAP.keys()) if args.source == "all" else [args.source]
@@ -1010,7 +1017,7 @@ def main(argv: list[str] | None = None) -> None:
                 source_name,
                 chunk_iter,
                 embedding_service,
-                vector_repo,
+                session,
                 dry_run=args.dry_run,
             )
             logger.info("✅ [%s] %d 청크 완료", source_name, count)

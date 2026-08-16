@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import or_, select
 
 from src.models.rag_chunk import RagChunk
+from src.services.rag_index_identity import RETRIEVABLE_INDEX_STATUSES
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -70,7 +71,9 @@ class RagSearchEngine:
         filtered_chunks = [
             c
             for c in chunks
-            if (not category or self._matches_category(c, category)) and self._matches_filters(c, filters)
+            if (not category or self._matches_category(c, category))
+            and (c.index_status or "ACTIVE") in RETRIEVABLE_INDEX_STATUSES
+            and self._matches_filters(c, filters)
         ]
         average_length = sum(len(f"{c.title or ''} {c.content}".lower().split()) for c in filtered_chunks) / max(
             len(filtered_chunks), 1
@@ -112,7 +115,7 @@ class RagSearchEngine:
 
         return [
             {
-                "chunk_id": str(c.id),
+                "chunk_id": self._source_key(c.source_table, c.source_row_id),
                 "source_table": c.source_table,
                 "source_row_id": c.source_row_id,
                 "category": ((c.meta or {}).get("category") or (c.meta or {}).get("document_type") or "general"),
@@ -120,6 +123,9 @@ class RagSearchEngine:
                 "content": c.content,
                 "source_url": self._source_url(c.source_row_id, c.meta),
                 "score": round(score, 2),
+                "content_hash": c.content_hash,
+                "index_version": c.index_version,
+                "index_status": c.index_status,
                 "meta": c.meta or {},
             }
             for score, c in top_chunks
@@ -164,6 +170,7 @@ class RagSearchEngine:
             "season_year": chunk.season_year or meta.get("season_year"),
             "source_table": chunk.source_table,
             "player_id": chunk.player_id or meta.get("player_id"),
+            "index_version": chunk.index_version or meta.get("index_version"),
         }
         for key, expected in direct_filters.items():
             if key in filters and expected != filters[key]:

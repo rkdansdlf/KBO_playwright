@@ -46,6 +46,8 @@ def test_hybrid_retriever_bm25_only() -> None:
         assert results[0].bm25_rank == 1
         assert results[0].vector_rank is None
         assert results[0].rrf_score > results[1].rrf_score
+        assert retriever.last_trace["mode"] == "hybrid"
+        assert retriever.last_trace["latency_ms"]["total"] >= 0
 
         res_dict = results[0].to_dict()
         assert res_dict["title"] == "KBO 올스타전 공지"

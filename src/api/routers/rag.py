@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +14,8 @@ from src.api.auth import get_api_key
 from src.api.schemas import HybridSearchResponse, RagAskResponse
 from src.db.engine import get_db_session
 from src.services.hybrid_retriever import HybridRetriever
+from src.services.query_router import QueryRouter, RetrievalRoute
+from src.services.structured_retriever import StructuredRetriever
 
 if TYPE_CHECKING:
     from src.services.rag_service import RagService
@@ -104,13 +107,20 @@ def rag_hybrid_search(request: RagSearchRequest) -> dict[str, Any]:
                 "query": request.query,
                 "total_results": len(results),
                 "results": [r.to_dict() for r in results],
+                "retrieval": retriever.last_trace,
             }
     except Exception as e:
         logger.exception("Hybrid RAG search failed")
         raise HTTPException(status_code=500, detail="하이브리드 RAG 검색 오류") from e
 
 
-def _build_rag_answer(query: str, results: list[Any]) -> dict[str, Any]:
+def _build_rag_answer(
+    query: str,
+    results: list[Any],
+    *,
+    analysis: dict[str, Any] | None = None,
+    retrieval: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build a grounded answer and structured source metadata from hybrid hits."""
     if not results:
         return {
@@ -119,6 +129,8 @@ def _build_rag_answer(query: str, results: list[Any]) -> dict[str, Any]:
             "sources": [],
             "chunks": [],
             "chunk_count": 0,
+            "analysis": analysis or {},
+            "retrieval": retrieval or {},
         }
 
     query_terms = [term for term in re.findall(r"[\w가-힣]+", query) if len(term) > 1]
@@ -134,6 +146,7 @@ def _build_rag_answer(query: str, results: list[Any]) -> dict[str, Any]:
                 "document_type": result.category,
                 "snippet": snippet,
                 "meta": result.meta,
+                "provenance": result.provenance,
             }
         )
 
@@ -144,6 +157,8 @@ def _build_rag_answer(query: str, results: list[Any]) -> dict[str, Any]:
         "sources": sources,
         "chunks": [result.to_dict() for result in results],
         "chunk_count": len(results),
+        "analysis": analysis or {},
+        "retrieval": retrieval or {},
     }
 
 
@@ -156,15 +171,73 @@ def _build_rag_answer(query: str, results: list[Any]) -> dict[str, Any]:
 def rag_ask(request: RagSearchRequest) -> dict[str, Any]:
     """자연어 질문에 대해 관련 지식 청크를 추출하고 답변 요약 및 소스 URL을 반환합니다."""
     try:
+        request_started = time.perf_counter()
         with get_db_session() as session:
-            retriever = HybridRetriever(session)
-            results = retriever.retrieve(
-                query=request.query,
-                top_k=request.top_k,
+            plan = QueryRouter(session).plan(
+                request.query,
                 category=request.category,
                 filters=request.filters,
             )
-            return _build_rag_answer(request.query, results)
+            structured_results = []
+            if plan.route in {RetrievalRoute.STRUCTURED, RetrievalRoute.MIXED}:
+                structured_started = time.perf_counter()
+                structured_results = StructuredRetriever(session).retrieve(plan, request.top_k)
+                structured_ms = round((time.perf_counter() - structured_started) * 1000, 3)
+            else:
+                structured_ms = 0.0
+
+            retrieval: dict[str, Any]
+            if plan.route is RetrievalRoute.STRUCTURED and structured_results:
+                results = [result.to_hybrid_result() for result in structured_results]
+                retrieval = {
+                    "mode": "structured",
+                    "route": plan.route.value,
+                    "fallback_used": False,
+                    "structured_candidates": len(structured_results),
+                    "bm25_candidates": 0,
+                    "vector_candidates": 0,
+                    "rerank_candidates": 0,
+                    "returned": len(results),
+                    "latency_ms": {
+                        "router": plan.timings.get("router", 0.0),
+                        "resolver": plan.timings.get("resolver", 0.0),
+                        "structured": structured_ms,
+                        "bm25": 0.0,
+                        "vector": 0.0,
+                        "reranker": 0.0,
+                        "total": round((time.perf_counter() - request_started) * 1000, 3),
+                    },
+                }
+            else:
+                retriever = HybridRetriever(session)
+                hybrid_limit = max(request.top_k - len(structured_results), 1)
+                hybrid_results = retriever.retrieve(
+                    query=request.query,
+                    top_k=hybrid_limit if plan.route is RetrievalRoute.MIXED else request.top_k,
+                    category=request.category,
+                    filters=plan.filters,
+                )
+                if plan.route is RetrievalRoute.MIXED and structured_results:
+                    results = [result.to_hybrid_result() for result in structured_results] + hybrid_results
+                    results = results[: request.top_k]
+                else:
+                    results = hybrid_results
+                retrieval = {
+                    **retriever.last_trace,
+                    "mode": "mixed" if plan.route is RetrievalRoute.MIXED and structured_results else "document",
+                    "route": plan.route.value,
+                    "fallback_used": plan.route in {RetrievalRoute.STRUCTURED, RetrievalRoute.MIXED}
+                    and not structured_results,
+                    "structured_candidates": len(structured_results),
+                    "structured_fallback": plan.route in {RetrievalRoute.STRUCTURED, RetrievalRoute.MIXED}
+                    and not structured_results,
+                }
+            return _build_rag_answer(
+                request.query,
+                results,
+                analysis=plan.to_analysis(),
+                retrieval=retrieval,
+            )
     except Exception as e:
         logger.exception("RAG Q&A failed")
         raise HTTPException(status_code=500, detail="RAG 질의응답 오류") from e

@@ -117,6 +117,7 @@ class HybridSearchResultItemSchema(BaseModel):
     vector_rank: int | None = Field(None, example=1)
     bm25_rank: int | None = Field(None, example=2)
     meta: dict[str, Any] | None = Field(None, example={"category": "press_release", "notice_id": "100"})
+    provenance: dict[str, Any] | None = Field(None)
 
 
 class HybridSearchResponse(BaseModel):
@@ -125,6 +126,7 @@ class HybridSearchResponse(BaseModel):
     query: str = Field(..., example="올스타전 경기일정")
     total_results: int = Field(..., example=1)
     results: list[HybridSearchResultItemSchema]
+    retrieval: dict[str, Any] = Field(default_factory=dict)
 
 
 class RagSourceSchema(BaseModel):
@@ -135,6 +137,7 @@ class RagSourceSchema(BaseModel):
     document_type: str = Field("general", example="press_release")
     snippet: str = Field(..., example="KBO 올스타전 라인업 발표...")
     meta: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] | None = Field(None)
 
 
 class RagAskResponse(BaseModel):
@@ -145,6 +148,8 @@ class RagAskResponse(BaseModel):
     sources: list[RagSourceSchema] = Field(default_factory=list)
     chunks: list[HybridSearchResultItemSchema] = Field(default_factory=list)
     chunk_count: int = 0
+    analysis: dict[str, Any] = Field(default_factory=dict)
+    retrieval: dict[str, Any] = Field(default_factory=dict)
 
 
 # --- Stadiums & Facilities Schemas ---

@@ -8,10 +8,12 @@ from typing import Any
 
 MIN_PLAYER_NAME_LEN = 2
 MAX_PLAYER_NAME_LEN = 4
+MIN_PLAYER_SUFFIX_STRIP_LEN = 4
 
 BASEBALL_STOPWORDS = {
     "타율",
     "홈런",
+    "기록",
     "안타",
     "삼진",
     "볼넷",
@@ -26,7 +28,6 @@ BASEBALL_STOPWORDS = {
     "야구",
     "프로야구",
     "시즌",
-    "기록",
     "선수",
     "구단",
     "팀별",
@@ -78,6 +79,39 @@ BASEBALL_STOPWORDS = {
     "대해",
     "어떻게",
     "몇",
+    "규정",
+    "규칙",
+    "abs",
+    "판정",
+    "허용",
+    "금지",
+    "스트라이크존",
+    "이유",
+    "원인",
+    "설명",
+    "최종",
+    "정규시즌",
+    "최종순위",
+    "우승",
+    "역대",
+    "초창기",
+    "중요한",
+    "동명이인",
+    "사건",
+    "변천",
+    "고의사구",
+    "콜드게임",
+    "승률",
+    "올스타전",
+    "올스타",
+    "역사",
+    "오른",
+    "주자",
+    "베이스",
+    "투구",
+    "떠나",
+    "되나요",
+    "되나",
 }
 
 TEAM_SYNONYM_MAP: dict[str, str] = {
@@ -117,6 +151,7 @@ TEAM_SYNONYM_MAP: dict[str, str] = {
     "이글스": "HH",
     "hh": "HH",
     "빙그레": "HH",
+    "해태": "KIA",
 }
 
 STADIUM_MAP: dict[str, str] = {
@@ -208,9 +243,13 @@ def _extract_category(query_lower: str) -> str | None:
 def _extract_player_candidate(query: str) -> str | None:
     for w in query.split():
         clean_w = re.sub(r"[^가-힣]", "", w)
+        clean_w = re.sub(r"(해줘|알려줘|으로|에서|에게|께서)$", "", clean_w)
+        stripped = re.sub(r"(의|은|는|이|가|을|를|와|과|도|에)$", "", clean_w)
+        if len(clean_w) >= MIN_PLAYER_SUFFIX_STRIP_LEN or stripped in BASEBALL_STOPWORDS:
+            clean_w = stripped
         if (
             MIN_PLAYER_NAME_LEN <= len(clean_w) <= MAX_PLAYER_NAME_LEN
-            and clean_w not in TEAM_SYNONYM_MAP
+            and clean_w.lower() not in TEAM_SYNONYM_MAP
             and clean_w not in STADIUM_MAP
             and clean_w not in BASEBALL_STOPWORDS
         ):
@@ -218,7 +257,7 @@ def _extract_player_candidate(query: str) -> str | None:
     return None
 
 
-def extract_kbo_entities(query: str) -> ExtractedKboEntities:
+def extract_kbo_entities(query: str, *, extract_player: bool = True) -> ExtractedKboEntities:
     """Extract KBO-specific domain entities from user queries."""
     query_lower = query.lower().strip()
     result = ExtractedKboEntities()
@@ -230,7 +269,8 @@ def extract_kbo_entities(query: str) -> ExtractedKboEntities:
     result.team_id = _extract_team(query_lower)
     result.stadium = _extract_stadium(query_lower)
     result.category = _extract_category(query_lower)
-    result.player_name = _extract_player_candidate(query)
+    if extract_player:
+        result.player_name = _extract_player_candidate(query)
     result.remaining_query = query
 
     return result

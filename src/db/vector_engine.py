@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PGVECTOR_URL = os.getenv("PGVECTOR_URL", "")
+PGVECTOR_URL = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL", "")
 
 _VECTOR_ENGINE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, OSError)
 

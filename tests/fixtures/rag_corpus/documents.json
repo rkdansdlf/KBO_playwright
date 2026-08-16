@@ -1,0 +1,130 @@
+[
+  {
+    "source_table": "eval_rulebook",
+    "source_row_id": "rule_abs",
+    "title": "KBO ABS 스트라이크존 규정",
+    "content": "## ABS 스트라이크존\n2024시즌부터 ABS는 홈플레이트 중간 높이를 기준으로 스트라이크존을 판정한다. 상단과 하단 기준은 공식 규정에 따른다.",
+    "document_type": "rulebook",
+    "meta": {"category": "rulebook"},
+    "season_year": 2024,
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_rulebook",
+    "source_row_id": "rule_walk",
+    "title": "KBO 고의사구 규정",
+    "content": "## 고의사구\n고의사구는 투수가 네 개의 공을 던지는 절차 없이 감독의 신호로 타자를 1루에 보낼 수 있다.",
+    "document_type": "rulebook",
+    "meta": {"category": "rulebook"},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_player",
+    "source_row_id": "player_kim",
+    "title": "김도영 선수 프로필",
+    "content": "김도영은 KIA 타이거즈 내야수이며 우투우타 선수다. 주 포지션은 3루수와 유격수다.",
+    "document_type": "player_profile",
+    "team_id": "KIA",
+    "player_id": "78224",
+    "meta": {"category": "player_profile", "player_name": "김도영"},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_player",
+    "source_row_id": "player_yang",
+    "title": "양현종 선수 프로필",
+    "content": "양현종은 KIA 타이거즈의 좌완 선발투수다. KBO 통산 탈삼진과 이닝 기록을 보유하고 있다.",
+    "document_type": "player_profile",
+    "team_id": "KIA",
+    "player_id": "76890",
+    "meta": {"category": "player_profile", "player_name": "양현종"},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_batting",
+    "source_row_id": "batting_kim_2025",
+    "title": "김도영 2025시즌 타격기록",
+    "content": "김도영 2025시즌 타격기록: KIA 팀, 타율 0.347, 안타 180개, 홈런 32개, OPS 1.012.",
+    "document_type": "season_batting",
+    "team_id": "KIA",
+    "player_id": "78224",
+    "season_year": 2025,
+    "meta": {"category": "season_batting", "player_name": "김도영", "avg": 0.347, "hr": 32, "ops": 1.012},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_pitching",
+    "source_row_id": "pitching_hurado_2025",
+    "title": "후라도 2025시즌 투구기록",
+    "content": "후라도 2025시즌 투구기록: 키움 히어로즈 선발투수, 평균자책점 3.12, 12승, 탈삼진 156개.",
+    "document_type": "season_pitching",
+    "team_id": "KH",
+    "player_id": "90001",
+    "season_year": 2025,
+    "meta": {"category": "season_pitching", "player_name": "후라도", "era": 3.12, "wins": 12},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_game",
+    "source_row_id": "game_20250501",
+    "title": "2025-05-01 KIA vs 한화",
+    "content": "2025년 5월 1일 KBO 경기 결과: KIA가 한화를 7대 4로 이겼다. 경기는 광주-기아 챔피언스필드에서 열렸다.",
+    "document_type": "game_result",
+    "season_year": 2025,
+    "game_date": "2025-05-01",
+    "meta": {"category": "game_result", "home_team": "HH", "away_team": "KIA", "winner": "KIA", "stadium": "광주"},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_standings",
+    "source_row_id": "standings_2025",
+    "title": "2025 KIA 팀 순위",
+    "content": "2025 정규시즌 최종순위에서 KIA 타이거즈는 1위였다. KIA는 144경기에서 82승 58패 4무를 기록했다.",
+    "document_type": "standings",
+    "team_id": "KIA",
+    "season_year": 2025,
+    "meta": {"category": "standings", "rank": 1, "wins": 82, "losses": 58},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_stadium",
+    "source_row_id": "stadium_jamsil",
+    "title": "잠실야구장 주차 안내",
+    "content": "잠실야구장 방문객은 경기일 주차장 혼잡을 고려해야 한다. 대중교통과 사전 주차 정보를 확인하는 것이 좋다.",
+    "document_type": "stadium_facility",
+    "meta": {"category": "stadium_facility", "stadium": "잠실"},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_award",
+    "source_row_id": "award_mvp_2024",
+    "title": "2024 KBO MVP 수상자",
+    "content": "2024 KBO 정규시즌 MVP는 김도영이다. 김도영은 KIA 소속으로 정규시즌 최우수선수상을 받았다.",
+    "document_type": "award",
+    "team_id": "KIA",
+    "player_id": "78224",
+    "season_year": 2024,
+    "meta": {"category": "award", "award_type": "MVP", "player_name": "김도영"},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_history",
+    "source_row_id": "history_1982",
+    "title": "1982 KBO 리그 출범 역사",
+    "content": "KBO 리그는 1982년에 출범했다. 원년에는 6개 구단이 참가해 한국 프로야구의 역사를 시작했다.",
+    "document_type": "history",
+    "season_year": 1982,
+    "meta": {"category": "history"},
+    "language": "ko"
+  },
+  {
+    "source_table": "eval_team",
+    "source_row_id": "team_kia",
+    "title": "KIA 타이거즈 구단 정보",
+    "content": "KIA 타이거즈는 광주를 연고로 하는 KBO 구단이다. 홈구장은 광주-기아 챔피언스필드다.",
+    "document_type": "team_profile",
+    "team_id": "KIA",
+    "meta": {"category": "team_profile", "stadium": "광주"},
+    "language": "ko"
+  }
+]
