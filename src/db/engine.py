@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
+DATABASE_URL = os.getenv("RAG_TEST_DB_URL") or os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
 DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 DB_SESSION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 

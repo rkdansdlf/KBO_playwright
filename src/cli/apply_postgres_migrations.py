@@ -29,6 +29,7 @@ ADOPTABLE_MIGRATIONS = frozenset(
         "047_remove_redundant_phase1_indexes.sql",
         "048_add_award_player_id.sql",
         "049_quality_gate_and_projection_tables.sql",
+        "051_rag_index_consistency.sql",
     },
 )
 
@@ -106,6 +107,13 @@ def _validate_existing_schema_for_adoption(connection: Connection) -> None:
     index_names = {index.get("name") for index in inspector.get_indexes("awards")}
     if "idx_award_player_id" not in index_names:
         _raise_adoption_error("Existing schema adoption requires idx_award_player_id")
+
+    if inspector.has_table("rag_chunks"):
+        rag_columns = {column["name"] for column in inspector.get_columns("rag_chunks")}
+        missing_rag_columns = {"content_hash", "index_version", "index_status", "indexed_at"} - rag_columns
+        if missing_rag_columns:
+            missing = ", ".join(sorted(missing_rag_columns))
+            _raise_adoption_error(f"Existing schema adoption requires rag_chunks columns: {missing}")
 
     missing_tables = {
         "quarantined_records",

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -41,6 +42,12 @@ class RagChunk(Base, TimestampMixin):
     )
     title: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Title of the article or section heading")
     content: Mapped[str] = mapped_column(Text, nullable=False, comment="Full text of the chunk")
+
+    # Shared sparse/vector index identity and lifecycle state.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    index_version: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    index_status: Mapped[str] = mapped_column(String(24), nullable=False, default="ACTIVE", server_default="ACTIVE")
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Store embedding as JSON serialized list of floats
     embedding: Mapped[Any | None] = mapped_column(JSON, nullable=True, comment="Float embedding vector")

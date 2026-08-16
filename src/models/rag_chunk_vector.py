@@ -67,6 +67,12 @@ class RagChunkVector(VectorBase, TimestampMixin):
     title: Mapped[str | None] = mapped_column(Text, nullable=True, comment="청크 제목")
     content: Mapped[str] = mapped_column(Text, nullable=False, comment="임베딩할 전체 텍스트")
 
+    # Must match the canonical sparse index row for the same source identity.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    index_version: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    index_status: Mapped[str] = mapped_column(String(24), nullable=False, default="ACTIVE", server_default="ACTIVE")
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     # 1536차원 벡터 임베딩 (pplx-embed-v1-4b, pgvector Vector 타입)
     embedding: Mapped[list[float] | None] = mapped_column(
         Vector(1536), nullable=True, comment="1536차원 float 임베딩 벡터"
