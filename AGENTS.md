@@ -204,7 +204,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-08-17
+Last updated: 2026-08-18
 
 ### Historical Sprint (2026-06-30) — Data Quality & Sync
 
@@ -924,3 +924,16 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **운영 규칙 재확인**: 검증용 Docker 컨테이너는 격리된 DB/포트로 운영 (기존 `kbo_pgvector_alt`/Redis 컨테이너는 미변경).
 - **참고**: `src/scheduler/` 패키지 재구성(사용자 프로세스 진행, jobs/ 서브패키지 포함)은 미커밋 상태로 lint 오류 5건 잔여 — 다음 세션에서 커밋 시 `data/player_id_overrides.csv`(staged)와 `scripts/scheduler.py`와 함께 처리 필요.
 - **Verification**: CI 7개 job 전부 success (test/migration-apply/lint/rag-acceptance/integration-test/slow-no-network/integration-test-postgres); `ruff check src/ tests/ scripts/` = 0 errors.
+
+### Phase 83 Complete (2026-08-18) — scheduler 패키지 완료, 크롤러·파서 공통 기반, historical 수집기
+
+- **scheduler 패키지 재구성 완료**: `scripts/scheduler.py`를 `src/scheduler/` 패키지 위임 래퍼로 전환 (1760→131줄); `jobs/` 서브패키지 (daily/live/maintenance/sentinel/stadium) + alerting/config/locks/metrics/registry 모듈 분리; `tests/scheduler/` 20건 신규; lint/format 정리 후 `data/player_id_overrides.csv`(삼성 김태훈·롯데 김민재 증거 2건)와 함께 커밋.
+- **크롤러 공통 기반 클래스 추출**: `src/crawlers/base.py` (BaseCrawler/BaseHttpCrawler/BasePlaywrightCrawler) 신규 — 중복된 HTTP/Playwright 세션·재시도·요청 정책 로직을 위임; 20개 크롤러 전환; `tests/crawlers/test_base_crawler.py` 추가. `src/crawlers/__init__.py`가 베이스 클래스를 re-export.
+- **파서 공통 기반 도입**: `src/parsers/dto.py`의 제네릭 `ParseResult[T]` (data/success/errors/warnings/metadata) + `src/parsers/base_parser.py`의 `BaseParser[T]` 공통 추상화 (텍스트 추출·테이블 파싱·오류 처리); 7개 파서 전환; `tests/parsers/test_base_parser.py` 확장.
+- **stats 개선**: `scripts/maintenance/backfill_pitching_hr_bb.py` 신규 (game_pitching_stats의 home_runs_allowed/walks_allowed/era를 extra_stats JSON에서 백필, `--dry-run`/`--apply`/`--year`); `team_stat_aggregator`에 league 파라미터 + `func.coalesce(model.level, "KBO1")` partition 적용.
+- **historical 수집기 신규**: `scripts/historical/` — `1982_namu_boxscores.py`(1982 나무위키 박스스코어), `namu_season_boxscores.py`(팀/연도/월 문서 탐색), `build_season_anchors.py`(위키백과 시즌 앵커) + `Docs/references/HISTORICAL_1983_2000_PLAN.md` 보강 계획. bare-except 훅 준수 (logger.exception 5곳, TRY400/TRY401 반영).
+- **RAG (사용자 프로세스)**: `feat(rag)`: OpenRouter 임베딩과 하이브리드 검색 검증 반영 (`embedding_service`/`hybrid_retriever`/`rag_search_engine`/`kbo_entity_resolver`, `migrations/postgresql/053_rag_search_text_index.sql` GIN tsvector 인덱스, `rag_configured_evaluation.json`); `docs(rag)`: staging 승인 기준과 비용 정책 기록.
+- **docs**: `KNOWN_LIMITATIONS.md` 갱신 (역사 데이터·스케줄러·RAG 관련 제한사항).
+- **운영 참고**: 원격과 로컬이 분기된 경우(동일 내용 커밋이 서로 다른 해시로 존재) `git diff`로 동일성 확인 후 `git rebase --onto`로 재배치 — 내용 충돌 없음 확인됨.
+- **참고**: 사용자 프로세스가 RAG 검색 엔진 개선 작업 진행 중 — `src/repositories/vector_search_repository.py`, `src/services/rag_search_engine.py`, `tests/test_rag_and_preview_services.py` 3파일 미커밋 상태.
+- **Verification**: `ruff check src/ tests/ scripts/` = 0 errors; pytest = **9,523 passed, 3 skipped** (103s).
