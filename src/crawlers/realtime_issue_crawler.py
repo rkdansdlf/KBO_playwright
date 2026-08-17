@@ -12,7 +12,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.constants import KST
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.throttle import throttle
 
@@ -57,7 +57,7 @@ class RealtimeIssueCrawler:
         if articles is None:
             articles = self._fetch_naver_news_from_html()
         if save and self._raw_pages:
-            with SessionLocal() as session:
+            with get_db_session() as session:
                 save_raw_snapshots(session, self._raw_pages)
         return articles
 
@@ -234,6 +234,6 @@ class RealtimeIssueCrawler:
             logger.exception("Error fetching MLBPark bullpen posts")
 
         if save and self._raw_pages:
-            with SessionLocal() as session:
+            with get_db_session() as session:
                 save_raw_snapshots(session, self._raw_pages)
         return posts
