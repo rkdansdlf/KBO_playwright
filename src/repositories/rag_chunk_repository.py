@@ -27,15 +27,12 @@ class RagChunkRepository:
         self,
         chunks_or_session: list[dict[str, Any]] | Session,
         chunks: list[dict[str, Any]] | None = None,
-        *,
-        commit: bool = False,
     ) -> int:
         """Save or updates RAG chunks using a clean, database-agnostic query-and-upsert approach.
 
         Args:
             chunks_or_session: Chunks, or a legacy explicit session followed by chunks.
             chunks: Chunks when using the legacy explicit-session call form.
-            commit: Commit when the repository owns or is given a legacy session call.
 
         """
         if chunks is None:
@@ -50,14 +47,12 @@ class RagChunkRepository:
         if session is None:
             with get_rag_index_session() as managed_session:
                 return self._upsert_chunks(managed_session, payloads)
-        return self._upsert_chunks(session, payloads, commit=commit)
+        return self._upsert_chunks(session, payloads)
 
     def _upsert_chunks(
         self,
         session: Session,
         chunks: list[dict[str, Any]],
-        *,
-        commit: bool = False,
     ) -> int:
         """Upsert chunks into an explicitly managed session."""
         upserted_count = 0
@@ -139,8 +134,5 @@ class RagChunkRepository:
             if upserted_count % 100 == 0:
                 session.flush()
 
-        if commit:
-            session.flush()
-        else:
-            session.flush()
+        session.flush()
         return upserted_count
