@@ -57,6 +57,7 @@ def test_create_oracle_engine_uses_normalized_url_and_wallet_args(monkeypatch) -
             "wallet_password": "p@ss+word",
         },
     )
+    assert fake_engine.dialect._json_serializer is engine.json.dumps
     assert fake_engine.dialect._json_deserializer is engine._custom_json_deserializer
 
 
@@ -87,7 +88,39 @@ def test_create_oracle_engine_uses_explicit_tns_dsn(monkeypatch) -> None:
             "wallet_password": "p@ss+word",
         },
     )
+    assert fake_engine.dialect._json_serializer is engine.json.dumps
     assert fake_engine.dialect._json_deserializer is engine._custom_json_deserializer
+
+
+def test_create_oracle_engine_uses_app_credentials_from_environment(monkeypatch) -> None:
+    from src.db import engine
+
+    fake_engine = MagicMock()
+    fake_engine.dialect = SimpleNamespace()
+    monkeypatch.setenv("TNS_ADMIN", "/wallet")
+    monkeypatch.setenv("OCI_WALLET_PASSWORD", "wallet-secret")
+    monkeypatch.setenv("ORACLE_APP_USER", "KBO_APP")
+    monkeypatch.setenv("ORACLE_APP_PASSWORD", "app-secret")
+    url = "oracle+oracledb://KBO_APP@tns_alias"
+
+    with patch.object(engine, "create_engine", return_value=fake_engine) as create:
+        engine.create_engine_for_url(url)
+
+    create.assert_called_once_with(
+        "oracle+oracledb://@",
+        pool_pre_ping=True,
+        pool_size=2,
+        max_overflow=2,
+        echo=False,
+        connect_args={
+            "config_dir": "/wallet",
+            "wallet_location": "/wallet",
+            "user": "KBO_APP",
+            "password": "app-secret",
+            "dsn": "tns_alias",
+            "wallet_password": "wallet-secret",
+        },
+    )
 
 
 def test_custom_json_deserializer_handles_json_and_postgres_style_arrays() -> None:

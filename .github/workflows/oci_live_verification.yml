@@ -1,0 +1,51 @@
+name: OCI Live Database Sync Acceptance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 19 * * 0'  # Weekly Sunday 04:00 KST
+
+jobs:
+  oci-live-acceptance:
+    name: Oracle ADB Live Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      KBO_RUN_OCI_INTEGRATION: "1"
+      ORACLE_WALLET_B64: ${{ secrets.ORACLE_WALLET_B64 }}
+      OCI_WALLET_PASSWORD: ${{ secrets.OCI_WALLET_PASSWORD }}
+      TNS_ADMIN: ${{ github.workspace }}/wallet
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          init-db: 'false'
+
+      - name: Prepare Oracle Wallet
+        run: |
+          test -n "$OCI_DB_URL"
+          test -n "$ORACLE_WALLET_B64"
+          mkdir -p "$TNS_ADMIN"
+          printf '%s' "$ORACLE_WALLET_B64" | base64 --decode > "$RUNNER_TEMP/oracle-wallet.zip"
+          unzip -oq "$RUNNER_TEMP/oracle-wallet.zip" -d "$TNS_ADMIN"
+
+      - name: Apply Oracle migrations
+        run: python3 -m src.cli.apply_oracle_migrations --url "$OCI_DB_URL" --include-safety-gated
+
+      - name: Reapply Oracle migrations
+        run: python3 -m src.cli.apply_oracle_migrations --url "$OCI_DB_URL" --include-safety-gated
+
+      - name: Check Oracle migrations
+        run: python3 -m src.cli.apply_oracle_migrations --url "$OCI_DB_URL" --include-safety-gated --check
+
+      - name: Audit Oracle schema
+        run: python3 scripts/verification/audit_oracle_schema.py --url "$OCI_DB_URL" --json
+
+      - name: Run Oracle repository smoke tests
+        run: pytest tests/test_oracle_smoke.py -m oci -q -o addopts=''
+
+      - name: Run Live Oracle E2E Verification
+        run: python3 scripts/verification/verify_oci_live_sync.py --json

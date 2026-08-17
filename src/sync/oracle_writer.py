@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import oracledb
+try:
+    import oracledb
+except ImportError:
+    oracledb = None  # type: ignore[assignment]
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -30,6 +34,7 @@ TABLE_OVERRIDE: dict[str, object] = {
 }
 
 LEVEL_NORMALIZE = {"1": "KBO1", "1군": "KBO1"}
+BULK_MERGE_ROWS = 500
 
 TEAM_CODE_MAP = {
     "BE": "HH",
@@ -115,6 +120,15 @@ class OracleWriter:
             ).fetchall()
         return {r[0].upper(): r[1] for r in rows}
 
+    def get_column_names(self, table: str) -> dict[str, str]:
+        """Return dict of normalized column names to their Oracle spelling."""
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT column_name FROM user_tab_columns WHERE table_name = :t ORDER BY column_id"),
+                {"t": table.upper()},
+            ).fetchall()
+        return {row[0].upper(): row[0] for row in rows}
+
     def get_char_sizes(self, table: str) -> dict[str, int]:
         """Return dict of column_name.upper() -> char_length for string columns."""
         with self.engine.connect() as conn:
@@ -160,9 +174,12 @@ class OracleWriter:
 
     def count_table(self, table: str) -> int:
         """Count total rows in the specified table."""
-        with self.engine.connect() as conn:
-            cnt = conn.execute(text(f'SELECT COUNT(*) FROM "{table.upper()}"')).scalar()  # noqa: S608
-            return int(cnt or 0)
+        try:
+            with self.engine.connect() as conn:
+                cnt = conn.execute(text(f'SELECT COUNT(*) FROM "{table.upper()}"')).scalar()  # noqa: S608
+                return int(cnt or 0)
+        except (SQLAlchemyError, oracledb.Error):
+            return 0
 
     def convert_value(self, value: object, oci_type: str, char_limit: int | None = None) -> object:
         """Convert a SQLite source value to an Oracle column type."""
@@ -181,14 +198,42 @@ class OracleWriter:
 
         return value
 
-    def build_merge_sql(self, table: str, columns: list[str], pk_columns: list[str]) -> str:
+    def build_merge_sql(  # noqa: PLR0913
+        self,
+        table: str,
+        columns: list[str],
+        pk_columns: list[str],
+        *,
+        row_count: int = 1,
+        column_types: dict[str, str] | None = None,
+        column_names: dict[str, str] | None = None,
+    ) -> str:
         """Build an optimized Oracle MERGE INTO SQL statement for bulk upsert."""
+        if row_count < 1:
+            message = "row_count must be positive"
+            raise ValueError(message)
         table_upper = table.upper()
-        cols_upper = [c.upper() for c in columns]
-        pks_upper = [p.upper() for p in pk_columns]
+        cols_upper = [column_names.get(c.upper(), c.upper()) if column_names else c.upper() for c in columns]
+        pks_upper = [column_names.get(p.upper(), p.upper()) if column_names else p.upper() for p in pk_columns]
 
-        using_cols = ", ".join(f':c{i} AS "{c}"' for i, c in enumerate(cols_upper))
-        using_clause = f"(SELECT {using_cols} FROM DUAL)"  # noqa: S608
+        using_rows = []
+        for row_index in range(row_count):
+            offset = row_index * len(cols_upper)
+            bind_columns = [
+                (
+                    self._bulk_bind_expression(
+                        offset + column_index,
+                        column,
+                        column_types,
+                        row_count,
+                    ),
+                    column,
+                )
+                for column_index, column in enumerate(cols_upper)
+            ]
+            using_cols = ", ".join(f'{expression} AS "{column}"' for expression, column in bind_columns)
+            using_rows.append(f"SELECT {using_cols} FROM DUAL")  # noqa: S608
+        using_clause = f"({' UNION ALL '.join(using_rows)})"
 
         on_clause = " AND ".join(f't."{pk}" = s."{pk}"' for pk in pks_upper)
 
@@ -209,47 +254,171 @@ class OracleWriter:
 
         return "\n".join(parts)
 
-    def build_insert_sql(self, table: str, columns: list[str]) -> str:
+    @staticmethod
+    def _bulk_bind_expression(
+        bind_index: int,
+        column: str,
+        column_types: dict[str, str] | None,
+        row_count: int,
+    ) -> str:
+        """Return a stable Oracle bind expression for multi-row MERGE inputs."""
+        bind = f":c{bind_index}"
+        if row_count == 1 or not column_types:
+            return bind
+
+        data_type = column_types.get(column.upper(), "").upper()
+        if data_type == "CLOB":
+            return f"TO_CLOB({bind})"
+        cast_types = {
+            "VARCHAR2": "VARCHAR2(4000)",
+            "CHAR": "VARCHAR2(4000)",
+            "NCHAR": "VARCHAR2(4000)",
+            "NVARCHAR2": "VARCHAR2(4000)",
+            "NUMBER": "NUMBER",
+            "FLOAT": "NUMBER",
+            "BINARY_FLOAT": "NUMBER",
+            "BINARY_DOUBLE": "NUMBER",
+            "INTEGER": "NUMBER",
+            "DATE": "DATE",
+        }
+        cast_type = data_type if data_type.startswith("TIMESTAMP") else cast_types.get(data_type)
+        return f"CAST({bind} AS {cast_type})" if cast_type else bind
+
+    def build_insert_sql(self, table: str, columns: list[str], column_names: dict[str, str] | None = None) -> str:
         """Build standard INSERT INTO SQL."""
         table_upper = table.upper()
-        cols_upper = [f'"{c.upper()}"' for c in columns]
+        cols_upper = [f'"{column_names.get(c.upper(), c.upper()) if column_names else c.upper()}"' for c in columns]
         binds = [f":c{i}" for i in range(len(columns))]
         return f'INSERT INTO "{table_upper}" ({", ".join(cols_upper)}) VALUES ({", ".join(binds)})'  # noqa: S608
 
-    def execute_batch(
+    def _execute_insert_batch(
         self,
+        cursor: oracledb.Cursor,
         sql: str,
         payloads: list[dict[str, object]],
         table: str,
     ) -> tuple[int, int]:
-        """Execute executemany with row-by-row fallback. Returns (success_count, error_count)."""
+        """Execute an array INSERT and fall back to individual rows on error."""
+        try:
+            cursor.executemany(sql, payloads, batcherrors=True)
+            batch_errors = cursor.getbatcherrors()
+            if batch_errors:
+                logger.warning(
+                    "[%s] Bulk INSERT skipped %d row errors; first error: %s",
+                    table,
+                    len(batch_errors),
+                    batch_errors[0].message.splitlines()[0],
+                )
+                return len(payloads) - len(batch_errors), len(batch_errors)
+        except (oracledb.Error, RuntimeError) as exc:
+            logger.warning("[%s] Bulk INSERT failed (%s), falling back to individual rows", table, exc)
+            self.conn.rollback()
+            synced = 0
+            errors = 0
+            for payload in payloads:
+                try:
+                    cursor.execute(sql, payload)
+                    synced += 1
+                except (oracledb.Error, RuntimeError) as row_err:
+                    errors += 1
+                    logger.debug("[%s] Row execution failed: %s (payload: %s)", table, row_err, payload)
+            return synced, errors
+        return len(payloads), 0
+
+    def execute_batch(  # noqa: PLR0913
+        self,
+        sql: str,
+        payloads: list[dict[str, object]],
+        table: str,
+        columns: list[str],
+        pk_columns: list[str],
+        column_types: dict[str, str],
+        column_names: dict[str, str],
+        *,
+        insert_only: bool = False,
+    ) -> tuple[int, int]:
+        """Execute bulk MERGE statements with row-by-row fallback."""
         if not payloads:
             return 0, 0
 
         cursor = self.conn.cursor()
         cursor.arraysize = self.arraysize
+        synced_total = 0
+        error_total = 0
         try:
-            cursor.executemany(sql, payloads)
-        except (oracledb.Error, RuntimeError) as e:
-            logger.warning("[%s] Batch executemany failed (%s), falling back to individual rows", table, e)
-            success = 0
-            errors = 0
-            for p in payloads:
+            if insert_only:
+                return self._execute_insert_batch(cursor, sql, payloads, table)
+
+            for offset in range(0, len(payloads), BULK_MERGE_ROWS):
+                chunk = payloads[offset : offset + BULK_MERGE_ROWS]
                 try:
-                    cursor.execute(sql, p)
-                    success += 1
-                except (oracledb.Error, RuntimeError) as row_err:
-                    errors += 1
-                    logger.debug("[%s] Row execution failed: %s (payload: %s)", table, row_err, p)
-            return success, errors
-        else:
-            return len(payloads), 0
+                    if len(chunk) == 1:
+                        cursor.execute(sql, chunk[0])
+                    else:
+                        bulk_sql = self.build_merge_sql(
+                            table,
+                            columns,
+                            pk_columns,
+                            row_count=len(chunk),
+                            column_types=column_types,
+                            column_names=column_names,
+                        )
+                        flattened = {
+                            f"c{row_index * len(columns) + column_index}": payload[f"c{column_index}"]
+                            for row_index, payload in enumerate(chunk)
+                            for column_index in range(len(columns))
+                        }
+                        cursor.execute(bulk_sql, flattened)
+                    synced_total += len(chunk)
+                except (oracledb.Error, RuntimeError) as exc:
+                    logger.warning("[%s] Bulk MERGE failed (%s), falling back to individual rows", table, exc)
+                    self.conn.rollback()
+                    for payload in chunk:
+                        try:
+                            cursor.execute(sql, payload)
+                            synced_total += 1
+                        except (oracledb.Error, RuntimeError) as row_err:
+                            error_total += 1
+                            logger.debug("[%s] Row execution failed: %s (payload: %s)", table, row_err, payload)
+            return synced_total, error_total
         finally:
             cursor.close()
 
     def commit(self) -> None:
         """Commit active transaction to Oracle DB."""
         self.conn.commit()
+
+    def align_id_generator(self, table: str) -> None:
+        """Advance the NULL-ID trigger sequence past explicit source IDs."""
+        with self.engine.begin() as connection:
+            trigger_name = connection.execute(
+                text(
+                    "SELECT trigger_name FROM user_triggers "
+                    "WHERE table_name = :table_name AND trigger_name LIKE 'KBO_AI_TR_%'"
+                ),
+                {"table_name": table.upper()},
+            ).scalar()
+            if not trigger_name:
+                return
+
+            suffix_match = re.search(r"KBO_AI_TR_(\d+)$", str(trigger_name))
+            if suffix_match is None:
+                return
+            sequence_name = f"KBO_AI_SQ_{suffix_match.group(1)}"
+            max_id = connection.execute(
+                text(f'SELECT NVL(MAX("ID"), 0) FROM "{table.upper()}"'),  # noqa: S608
+            ).scalar()
+            if max_id is None:
+                return
+
+            current_value = connection.exec_driver_sql(f'SELECT "{sequence_name}".NEXTVAL FROM dual').scalar()  # noqa: S608
+            if current_value is None or int(current_value) > int(max_id):
+                return
+            increment = int(max_id) + 1 - int(current_value)
+            connection.exec_driver_sql(f'ALTER SEQUENCE "{sequence_name}" INCREMENT BY {increment}')
+            connection.exec_driver_sql(f'SELECT "{sequence_name}".NEXTVAL FROM dual').scalar()  # noqa: S608
+            connection.exec_driver_sql(f'ALTER SEQUENCE "{sequence_name}" INCREMENT BY 1')
+            logger.debug("Aligned %s past explicit source ID %s", sequence_name, max_id)
 
     def rollback(self) -> None:
         """Rollback active transaction in Oracle DB."""

@@ -194,6 +194,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ### Required Secrets
 - `DATABASE_URL`: Oracle Autonomous Database URL
+- `OCI_DB_URL`: dedicated disposable Oracle schema URL for migration/smoke verification only; never use as the application primary URL
 - `ORACLE_WALLET_B64`: base64-encoded Oracle Wallet zip for GitHub Actions
 - `OCI_WALLET_PASSWORD`: Wallet password when required
 - `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`

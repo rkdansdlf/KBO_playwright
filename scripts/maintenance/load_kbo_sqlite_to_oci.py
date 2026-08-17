@@ -300,8 +300,8 @@ class OciLoader:
                 v = col_override(v)
             if table == "player_movements" and c == "team_code" and not str(v or "").strip():
                 v = row["canonical_team_id"] or "UNKNOWN"
-            v = self._convert(v, oci_types.get(c.upper(), "VARCHAR2"))
-            limit = char_sizes.get(c.upper()) if char_sizes else None
+            v = self._convert(v, oci_types.get(c.upper()) or oci_types.get(c.lower(), "VARCHAR2"))
+            limit = (char_sizes or {}).get(c.upper()) or (char_sizes or {}).get(c.lower())
             if limit is not None and isinstance(v, str) and len(v) > limit:
                 v = v[:limit]
             payload[c] = v
@@ -369,7 +369,7 @@ class OciLoader:
         if not pk:
             log(f"[skip] {table}: no PK, cannot merge")
             return {"table": table, "dry_run": True}
-        keys = [k.upper() for k in NATURAL_KEYS.get(table, [p.lower() for p in pk])]
+        keys = [known.get(k.lower(), k.upper()) for k in NATURAL_KEYS.get(table, [p.lower() for p in pk])]
         key_cols = [k.lower() for k in NATURAL_KEYS.get(table, [p.lower() for p in pk])]
         full_columns = common + [
             c.lower() for c in oci_only if c.lower() in {x.lower() for x in self.sqlite_columns(table)}
