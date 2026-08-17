@@ -8,6 +8,7 @@ from .broadcast import GameBroadcast as GameBroadcast
 from .crawl import CrawlRun as CrawlRun
 from .crawl_evidence import CrawlEvidence as CrawlEvidence
 from .embedding_cache import EmbeddingCache as EmbeddingCache
+from .external_season_stat import ExternalSeasonStat as ExternalSeasonStat
 from .fa_contract import FAContract as FAContract
 from .fan_culture import CheerChant as CheerChant
 from .fan_culture import CheerSong as CheerSong

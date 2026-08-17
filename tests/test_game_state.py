@@ -85,12 +85,19 @@ class TestDeriveLifecycleFromNaverStatus:
         "nav_status,expected",
         [
             ("BEFORE", "before"),
+            ("SCHEDULED", "before"),
             ("RUNNING", "running"),
+            ("STARTED", "running"),
+            ("LIVE", "running"),
             ("RESULT", "result_pending_stabilization"),
             ("CANCEL", "cancelled"),
             ("CANCELLED", "cancelled"),
+            ("POSTPONED", "cancelled"),
             ("DELAYED", "delayed"),
             ("SUSPENDED", "suspended"),
+            ("ENDED", "final"),
+            ("FINISHED", "final"),
+            ("FINAL", "final"),
         ],
     )
     def test_known_statuses(self, nav_status: str, expected: str | None) -> None:

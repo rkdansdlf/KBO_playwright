@@ -132,3 +132,69 @@ def test_crawler_selector_gate_cli_emits_json(tmp_path: Path, capsys: pytest.Cap
     assert exit_code == 0
     assert payload["ok"] is True
     assert payload["target_count"] == 1
+
+
+def test_evaluate_html_target_checks_required_headers() -> None:
+    html = "<table><thead><tr><th>타순</th><th>이름</th><th>타수</th></tr></thead></table>"
+    target = SelectorTarget(
+        name="batting_headers",
+        source="inline",
+        source_type="inline",
+        checks=[
+            SelectorCheck(
+                name="headers",
+                selector="th",
+                min_count=3,
+                required_headers=("타순", "이름", "타율"),  # "타율" is missing!
+            ),
+        ],
+    )
+    result = evaluate_html_target(target, html)
+    assert result.ok is False
+    assert any(issue.category == "header_missing" for issue in result.issues)
+
+
+def test_evaluate_html_target_checks_datatype_and_range() -> None:
+    html = "<table><tbody><tr><td class='avg'>0.345</td><td class='avg'>0.280</td></tr></tbody></table>"
+    target_pass = SelectorTarget(
+        name="batting_avg",
+        source="inline",
+        source_type="inline",
+        checks=[
+            SelectorCheck(
+                name="avg_field",
+                selector=".avg",
+                min_count=2,
+                expected_datatype="float",
+                value_range=(0.0, 1.0),
+            ),
+        ],
+    )
+    assert evaluate_html_target(target_pass, html).ok is True
+
+    # Test out of range
+    html_bad_range = "<table><tbody><tr><td class='avg'>1.345</td><td class='avg'>0.250</td></tr></tbody></table>"
+    result_bad = evaluate_html_target(target_pass, html_bad_range)
+    assert result_bad.ok is False
+    assert any(issue.category == "value_out_of_range" for issue in result_bad.issues)
+
+
+def test_evaluate_html_target_checks_entropy_collapse() -> None:
+    # 10 identical values '0' -> rate 1.0 > 0.8
+    html = "<table><tbody>" + "".join("<tr><td class='att'>0</td></tr>" for _ in range(10)) + "</tbody></table>"
+    target = SelectorTarget(
+        name="attendance",
+        source="inline",
+        source_type="inline",
+        checks=[
+            SelectorCheck(
+                name="att_field",
+                selector=".att",
+                min_count=10,
+                max_repeated_value_rate=0.8,
+            ),
+        ],
+    )
+    result = evaluate_html_target(target, html)
+    assert result.ok is False
+    assert any(issue.category == "entropy_collapse" for issue in result.issues)

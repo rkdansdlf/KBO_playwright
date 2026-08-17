@@ -24,7 +24,22 @@ def test_refresh_game_status_recovers_past_scores_from_inning_totals(monkeypatch
     ):
         table.create(bind=engine)
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
-    monkeypatch.setattr(game_status_module, "SessionLocal", SessionLocal)
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _mock_get_db_session():
+        session = SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    monkeypatch.setattr(game_status_module, "get_db_session", _mock_get_db_session)
 
     with SessionLocal() as session:
         session.add(

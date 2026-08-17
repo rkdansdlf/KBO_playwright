@@ -1,0 +1,96 @@
+{
+  "description": "Stratified Golden Games Catalog for KBO Crawler/Parser Regression Testing",
+  "version": "1.0",
+  "games": [
+    {
+      "game_id": "20240405LGKT0",
+      "season": 2024,
+      "category": "standard_9inn",
+      "description": "Standard 9-inning regular season game",
+      "home_team": "KT",
+      "away_team": "LG",
+      "final_score": [8, 7],
+      "total_outs": 54
+    },
+    {
+      "game_id": "20230521SSOB0",
+      "season": 2023,
+      "category": "extra_innings_tie",
+      "description": "12-inning tie game",
+      "home_team": "OB",
+      "away_team": "SS",
+      "final_score": [2, 2],
+      "total_outs": 72
+    },
+    {
+      "game_id": "20220714LTNC0",
+      "season": 2022,
+      "category": "shortened_rain_cold",
+      "description": "6-inning rain shortened cold game (< 27 outs)",
+      "home_team": "NC",
+      "away_team": "LT",
+      "final_score": [3, 1],
+      "total_outs": 35
+    },
+    {
+      "game_id": "20240512WOLG1",
+      "season": 2024,
+      "category": "doubleheader_1",
+      "description": "Doubleheader Game 1",
+      "home_team": "LG",
+      "away_team": "WO",
+      "final_score": [5, 4],
+      "total_outs": 54
+    },
+    {
+      "game_id": "20240512WOLG2",
+      "season": 2024,
+      "category": "doubleheader_2",
+      "description": "Doubleheader Game 2",
+      "home_team": "LG",
+      "away_team": "WO",
+      "final_score": [2, 8],
+      "total_outs": 51
+    },
+    {
+      "game_id": "20241021HTSS0",
+      "season": 2024,
+      "category": "suspended_postseason",
+      "description": "Korean Series Game 1 suspended due to rain and resumed next day",
+      "home_team": "HT",
+      "away_team": "SS",
+      "final_score": [1, 5],
+      "total_outs": 51
+    },
+    {
+      "game_id": "20230909KTOB0",
+      "season": 2023,
+      "category": "mass_substitutions",
+      "description": "Game with over 35 total player appearances including PR and DEF_SUB",
+      "home_team": "OB",
+      "away_team": "KT",
+      "final_score": [11, 8],
+      "total_outs": 54
+    },
+    {
+      "game_id": "20231113KTSS0",
+      "season": 2023,
+      "category": "postseason_final",
+      "description": "Korean Series Game 5 Championship decider",
+      "home_team": "SS",
+      "away_team": "KT",
+      "final_score": [2, 6],
+      "total_outs": 54
+    },
+    {
+      "game_id": "20090404SKOB0",
+      "season": 2009,
+      "category": "early_era_format",
+      "description": "Early era 2009 season opener DOM verification fixture",
+      "home_team": "OB",
+      "away_team": "SK",
+      "final_score": [5, 7],
+      "total_outs": 54
+    }
+  ]
+}

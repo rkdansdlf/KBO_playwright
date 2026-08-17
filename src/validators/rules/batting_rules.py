@@ -134,11 +134,14 @@ def validate_total_bases_formula(
     return []
 
 
+_MAX_EXPLAINABLE_PA_DIFF = 2
+
+
 def validate_pa_components_formula(
     record: dict[str, Any],
     context: dict[str, Any] | None = None,
 ) -> list[ValidationResult]:
-    """BAT-004: Plate Appearances (PA) must equal AB + BB + HBP + SH + SF when all fields are present."""
+    """BAT-004: Plate Appearances (PA) must equal AB + BB + HBP + SH + SF + (CI/OB) when present."""
     if "plate_appearances" not in record or record.get("plate_appearances") is None:
         return []
 
@@ -149,11 +152,32 @@ def validate_pa_components_formula(
     sh = _get_int(record, "sacrifice_hits")
     sf = _get_int(record, "sacrifice_flies")
 
-    expected_pa = ab + bb + hbp + sh + sf
+    # Extra PA components if tracked (e.g. Catcher's Interference / Defensive Obstruction)
+    extra_stats = record.get("extra_stats") or {}
+    ci = _get_int(record, "catcher_interference", 0) or _get_int(extra_stats, "catcher_interference", 0)
+    ob = _get_int(record, "defensive_obstruction", 0) or _get_int(extra_stats, "defensive_obstruction", 0)
+    other_pa = _get_int(record, "other_pa", 0) or _get_int(extra_stats, "other_pa", 0)
+    extra_pa = ci + ob + other_pa
+
+    expected_pa = ab + bb + hbp + sh + sf + extra_pa
     if pa != expected_pa and pa > 0:
         game_id = context.get("game_id") if context else record.get("game_id")
         player_id = record.get("player_id") or record.get("player_name")
-        msg = f"PA ({pa}) != components sum ({ab}AB+{bb}BB+{hbp}HBP+{sh}SH+{sf}SF = {expected_pa})"
+        diff = pa - expected_pa
+
+        if diff == 1:
+            severity = ValidationSeverity.WARNING
+            msg = (
+                f"PA ({pa}) != components sum ({expected_pa}) "
+                f"(diff=+1: probable unrecorded catcher interference/obstruction)"
+            )
+        else:
+            severity = ValidationSeverity.ERROR if abs(diff) > _MAX_EXPLAINABLE_PA_DIFF else ValidationSeverity.WARNING
+            comp_str = f"{ab}AB+{bb}BB+{hbp}HBP+{sh}SH+{sf}SF"
+            if extra_pa > 0:
+                comp_str += f"+{extra_pa}extra"
+            msg = f"PA ({pa}) != components sum ({comp_str} = {expected_pa})"
+
         return [
             ValidationResult(
                 validator="batting_rules",
@@ -162,7 +186,7 @@ def validate_pa_components_formula(
                 field_name="plate_appearances",
                 expected=expected_pa,
                 actual=pa,
-                severity=ValidationSeverity.WARNING,
+                severity=severity,
                 game_id=str(game_id) if game_id else None,
                 entity_id=player_id,
                 message=msg,

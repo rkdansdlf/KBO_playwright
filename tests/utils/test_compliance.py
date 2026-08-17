@@ -26,6 +26,17 @@ class TestComplianceChecker:
         allowed = await checker.is_allowed("https://www.koreabaseball.com/Schedule", "*")
         assert allowed
 
+    @pytest.mark.asyncio
+    async def test_external_host_is_not_checked_against_kbo_rules(self):
+        checker = ComplianceChecker()
+        checker.parser = MagicMock()
+        checker.parser.can_fetch.return_value = False
+
+        allowed = await checker.is_allowed("https://api-gw.sports.naver.com/schedule/today-games", "*")
+
+        assert allowed
+        checker.parser.can_fetch.assert_not_called()
+
     def test_is_allowed_sync_blocks_disallowed(self):
         checker = ComplianceChecker()
         checker.last_fetch_time = 1
@@ -41,6 +52,16 @@ class TestComplianceChecker:
         checker.parser.can_fetch.return_value = True
         allowed = checker.is_allowed_sync("https://www.koreabaseball.com/Schedule", "*")
         assert allowed
+
+    def test_external_host_is_not_checked_against_kbo_rules_sync(self):
+        checker = ComplianceChecker()
+        checker.parser = MagicMock()
+        checker.parser.can_fetch.return_value = False
+
+        allowed = checker.is_allowed_sync("https://api-gw.sports.naver.com/schedule/today-games", "*")
+
+        assert allowed
+        checker.parser.can_fetch.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ensure_loaded_fetches_when_expired(self, monkeypatch):

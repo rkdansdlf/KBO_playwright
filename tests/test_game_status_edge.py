@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-import src.repositories.game_status as game_status_module
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -19,7 +21,6 @@ from src.utils.game_status import (
     GAME_STATUS_LIVE,
     GAME_STATUS_POSTPONED,
     GAME_STATUS_SCHEDULED,
-    GAME_STATUS_UNRESOLVED,
 )
 
 
@@ -43,24 +44,23 @@ def _setup_game_tables():
     return engine, sessionmaker(bind=engine)()
 
 
-@patch("src.repositories.game_status.SessionLocal")
+@patch("src.repositories.game_status.get_db_session")
 @patch("src.repositories.game_status._canonicalize_game_id", side_effect=_fake_canonicalize)
-def test_update_game_status_db_error_returns_false(MockCanon, MockSessionLocal):
-    mock_session = MagicMock()
-    mock_session.query.return_value.filter.return_value.one_or_none.return_value = None
-    mock_session.commit.side_effect = Exception("DB error")
-    MockSessionLocal.return_value.__enter__.return_value = mock_session
-    MockSessionLocal.return_value.__exit__.return_value = None
+def test_update_game_status_db_error_returns_false(MockCanon, mock_get_db_session):
+    @contextmanager
+    def _mock_session():
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.one_or_none.side_effect = SQLAlchemyError("DB error")
+        yield mock_session
+
+    mock_get_db_session.side_effect = _mock_session
 
     result = update_game_status("20241015LGSSG0", "completed")
     assert result is False
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_past_game_with_scores(MockSessionLocal):
+def test_refresh_game_status_past_game_with_scores():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     g = Game(
         game_id="20241015LGSSG0",
@@ -75,15 +75,12 @@ def test_refresh_game_status_past_game_with_scores(MockSessionLocal):
     )
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16), session=session)
     assert result["status_counts"].get(GAME_STATUS_COMPLETED) == 1
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_future_game(MockSessionLocal):
+def test_refresh_game_status_future_game():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     g = Game(
         game_id="20241015LGSSG0",
@@ -93,15 +90,12 @@ def test_refresh_game_status_future_game(MockSessionLocal):
     session.add(g)
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 14))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 14), session=session)
     assert result["status_counts"].get(GAME_STATUS_SCHEDULED) == 1
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_today_with_lineups(MockSessionLocal):
+def test_refresh_game_status_today_with_lineups():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     g = Game(
         game_id="20241015LGSSG0",
@@ -121,15 +115,12 @@ def test_refresh_game_status_today_with_lineups(MockSessionLocal):
     )
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 15))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 15), session=session)
     assert result["status_counts"].get(GAME_STATUS_LIVE) == 1
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_cancelled_preserved(MockSessionLocal):
+def test_refresh_game_status_cancelled_preserved():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     g = Game(
         game_id="20241015LGSSG0",
@@ -139,15 +130,12 @@ def test_refresh_game_status_cancelled_preserved(MockSessionLocal):
     session.add(g)
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 15))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 15), session=session)
     assert result["status_counts"].get(GAME_STATUS_CANCELLED) == 1
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_postponed_preserved(MockSessionLocal):
+def test_refresh_game_status_postponed_preserved():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     g = Game(
         game_id="20241015LGSSG0",
@@ -157,15 +145,12 @@ def test_refresh_game_status_postponed_preserved(MockSessionLocal):
     session.add(g)
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 15))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 15), session=session)
     assert result["status_counts"].get(GAME_STATUS_POSTPONED) == 1
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_metadata_only(MockSessionLocal):
+def test_refresh_game_status_metadata_only():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     g = Game(
         game_id="20241015LGSSG0",
@@ -176,15 +161,12 @@ def test_refresh_game_status_metadata_only(MockSessionLocal):
     session.add(GameMetadata(game_id="20241015LGSSG0", stadium_name="잠실"))
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 15))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 15), session=session)
     assert result["status_counts"].get(GAME_STATUS_CANCELLED) == 1
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_multiple_games_by_status(MockSessionLocal):
+def test_refresh_game_status_multiple_games_by_status():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     session.add(
         Game(
@@ -207,47 +189,41 @@ def test_refresh_game_status_multiple_games_by_status(MockSessionLocal):
     )
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16), session=session)
     assert result["total"] == 2
     assert "COMPLETED" in result["status_counts"]
     assert "SCHEDULED" in result["status_counts"] or "UNRESOLVED_MISSING" in result["status_counts"]
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_returns_sorted_ids(MockSessionLocal):
+def test_refresh_game_status_returns_sorted_ids():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     session.add(Game(game_id="20241015KTWO0", game_date=date(2024, 10, 15)))
     session.add(Game(game_id="20241015LGSS0", game_date=date(2024, 10, 15)))
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16), session=session)
     assert result["game_ids"] == sorted(result["game_ids"])
     assert result["updated_game_ids"] == sorted(result["updated_game_ids"])
 
 
-from sqlalchemy.exc import SQLAlchemyError
+@patch("src.repositories.game_status.get_db_session")
+def test_refresh_game_status_db_error_returns_empty(mock_get_db_session):
+    @contextmanager
+    def _mock_session():
+        mock_session = MagicMock()
+        mock_session.query.side_effect = SQLAlchemyError("DB error")
+        yield mock_session
 
-
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_db_error_returns_empty(MockSessionLocal):
-    mock_session = MagicMock()
-    MockSessionLocal.return_value.__enter__.return_value = mock_session
-    MockSessionLocal.return_value.__exit__.return_value = None
-    mock_session.query.return_value.filter.return_value.all.side_effect = SQLAlchemyError("DB error", None, None)
+    mock_get_db_session.side_effect = _mock_session
 
     result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
     assert result["total"] == 0
     assert result["updated"] == 0
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_inning_totals_partial(MockSessionLocal):
+def test_refresh_game_status_inning_totals_partial():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     g = Game(
         game_id="20241015LGSSG0",
@@ -258,15 +234,12 @@ def test_refresh_game_status_inning_totals_partial(MockSessionLocal):
     session.add(GameInningScore(game_id="20241015LGSSG0", team_side="away", inning=1, runs=3))
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16), session=session)
     assert result["total"] == 1
 
 
-@patch("src.repositories.game_status.SessionLocal")
-def test_refresh_game_status_game_ids_by_status_structure(MockSessionLocal):
+def test_refresh_game_status_game_ids_by_status_structure():
     engine, session = _setup_game_tables()
-    MockSessionLocal.return_value.__enter__.return_value = session
-    MockSessionLocal.return_value.__exit__.return_value = None
 
     session.add(
         Game(
@@ -282,7 +255,7 @@ def test_refresh_game_status_game_ids_by_status_structure(MockSessionLocal):
     )
     session.commit()
 
-    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
+    result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16), session=session)
     assert "game_ids_by_status" in result
-    for status, ids in result["game_ids_by_status"].items():
+    for _status, ids in result["game_ids_by_status"].items():
         assert ids == sorted(ids)

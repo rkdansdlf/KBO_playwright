@@ -8,7 +8,10 @@ and stabilization windows.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 GameLifecycleState = Literal[
     "before",
@@ -117,15 +120,42 @@ def derive_lifecycle_from_naver_status(nav_status: str | None) -> str | None:
     upper = nav_status.upper().strip()
     mapping = {
         "BEFORE": "before",
+        "SCHEDULED": "before",
         "RUNNING": "running",
+        "STARTED": "running",
+        "LIVE": "running",
+        "IN_PROGRESS": "running",
         "RESULT": "result_pending_stabilization",
         "CANCEL": "cancelled",
         "CANCELLED": "cancelled",
+        "POSTPONED": "cancelled",
         "DELAYED": "delayed",
         "SUSPENDED": "suspended",
-        "POSTPONED": "cancelled",
+        "ENDED": "final",
+        "END": "final",
+        "FINISHED": "final",
+        "FINAL": "final",
     }
     return mapping.get(upper)
+
+
+def extract_naver_status(game: Mapping[str, object]) -> str | None:
+    """Extract a lifecycle-relevant status from a Naver schedule payload."""
+    if game.get("cancel") is True:
+        return "CANCELLED"
+    if game.get("suspended") is True:
+        return "SUSPENDED"
+
+    for field in ("statusInfo", "statusDescription", "statusName"):
+        value = game.get(field)
+        if isinstance(value, str) and any(marker in value.casefold() for marker in ("취소", "cancel", "postpon")):
+            return "CANCELLED"
+
+    for field in ("status", "statusCode", "gameStatus", "gameState", "progressState"):
+        value = game.get(field)
+        if value and isinstance(value, str):
+            return value.strip().upper()
+    return None
 
 
 NAVER_STATUS_MAP = {s.lower(): s.upper() for s in ["before", "running", "result", "cancel", "delayed", "suspended"]}
