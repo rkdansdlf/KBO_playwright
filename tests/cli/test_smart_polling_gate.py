@@ -108,6 +108,22 @@ class TestExtractGameStatus:
         game = {"gameStatus": "RUNNING"}
         assert _extract_game_status(game) == "RUNNING"
 
+    def test_statusCode_field(self) -> None:
+        game = {"statusCode": "STARTED"}
+        assert _extract_game_status(game) == "STARTED"
+
+    def test_cancel_flag_overrides_status_code(self) -> None:
+        game = {"statusCode": "BEFORE", "cancel": True}
+        assert _extract_game_status(game) == "CANCELLED"
+
+    def test_cancel_status_info_overrides_status_code(self) -> None:
+        game = {"statusCode": "BEFORE", "statusInfo": "경기취소"}
+        assert _extract_game_status(game) == "CANCELLED"
+
+    def test_suspended_flag_overrides_status_code(self) -> None:
+        game = {"statusCode": "STARTED", "suspended": True}
+        assert _extract_game_status(game) == "SUSPENDED"
+
     def test_gameState_field(self) -> None:
         game = {"gameState": "BEFORE"}
         assert _extract_game_status(game) == "BEFORE"
@@ -171,6 +187,18 @@ class TestClassifyGames:
         terminal, active, unknown = _classify_games(games)
         assert len(terminal) == 2
         assert len(active) == 1
+        assert len(unknown) == 0
+
+    def test_current_naver_status_codes(self) -> None:
+        games = [
+            {"statusCode": "BEFORE", "cancel": True},
+            {"statusCode": "STARTED"},
+            {"statusCode": "ENDED"},
+            {"statusCode": "RESULT"},
+        ]
+        terminal, active, unknown = _classify_games(games)
+        assert len(terminal) == 2
+        assert len(active) == 2
         assert len(unknown) == 0
 
     def test_unknown_status(self) -> None:

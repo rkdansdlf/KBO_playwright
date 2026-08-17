@@ -14,12 +14,31 @@ from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_
 from src.utils.team_history import canonical_code_for_team_code, franchise_id_for_team_code
 
 
+from contextlib import contextmanager
+
+
 def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
     Game.__table__.create(bind=engine)
     GameIdAlias.__table__.create(bind=engine)
     KboSeason.__table__.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+def _mock_get_db_session(SessionLocal):
+    @contextmanager
+    def _gen():
+        session = SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return _gen
 
 
 def test_normalize_kbo_game_id_splits_mixed_length_team_codes():
@@ -64,8 +83,8 @@ def test_historical_franchise_split_identity():
 
 def test_save_schedule_game_records_alias_for_modern_source_id(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "get_db_session", _mock_get_db_session(SessionLocal))
+    monkeypatch.setattr(game_relay_module, "get_db_session", _mock_get_db_session(SessionLocal))
 
     saved = game_repository.save_schedule_game(
         {
@@ -90,8 +109,8 @@ def test_save_schedule_game_records_alias_for_modern_source_id(monkeypatch):
 
 def test_save_schedule_game_records_alias_for_legacy_source_id(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "get_db_session", _mock_get_db_session(SessionLocal))
+    monkeypatch.setattr(game_relay_module, "get_db_session", _mock_get_db_session(SessionLocal))
 
     saved = game_repository.save_schedule_game(
         {
@@ -117,8 +136,8 @@ def test_save_schedule_game_records_alias_for_legacy_source_id(monkeypatch):
 
 def test_save_schedule_game_uses_payload_teams_for_malformed_source_id(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "get_db_session", _mock_get_db_session(SessionLocal))
+    monkeypatch.setattr(game_relay_module, "get_db_session", _mock_get_db_session(SessionLocal))
 
     saved = game_repository.save_schedule_game(
         {
@@ -143,8 +162,8 @@ def test_save_schedule_game_uses_payload_teams_for_malformed_source_id(monkeypat
 
 def test_resolve_canonical_game_id_uses_alias_table(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "get_db_session", _mock_get_db_session(SessionLocal))
+    monkeypatch.setattr(game_relay_module, "get_db_session", _mock_get_db_session(SessionLocal))
 
     with SessionLocal() as session:
         session.add(Game(game_id="20260319LGSK0", game_date=date(2026, 3, 19)))

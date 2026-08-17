@@ -38,21 +38,26 @@ async def main():
         )
     logger.info("")
 
+    from src.db.engine import SessionLocal
+
     # Step 2: Get or create player in database
     logger.info("Step 2: Ensuring player %s exists in database...", PLAYER_ID)
-    repo = PlayerRepository()
 
-    from src.parsers.player_profile_parser import PlayerProfileParsed
+    with SessionLocal() as session:
+        repo = PlayerRepository(session)
 
-    player = repo.upsert_player_profile(PLAYER_ID, PlayerProfileParsed(is_active=True, player_name="소형준"))
+        from src.parsers.player_profile_parser import PlayerProfileParsed
 
-    if not player:
-        logger.info("Failed to create player record")
-        return
+        player = repo.upsert_player_profile(PLAYER_ID, PlayerProfileParsed(is_active=True, player_name="소형준"))
+        session.commit()
 
-    logger.info("Player DB ID: %s, Player Basic ID: %s\n", player.id, player.player_basic_id)
+        if not player:
+            logger.info("Failed to create player record")
+            return
 
-    # Step 3: Save Futures pitching stats
+        logger.info("Player DB ID: %s, Player Basic ID: %s\n", player.id, player.player_basic_id)
+
+        # Step 3: Save Futures pitching stats
     logger.info("Step 3: Saving %d Futures pitching records to database...", len(rows))
     payloads = []
     for r in rows:

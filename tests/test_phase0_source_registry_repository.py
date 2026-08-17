@@ -224,6 +224,33 @@ class TestRawSourceSnapshotRepository:
 
 
 class TestSaveRawSnapshots:
+    def test_new_snapshot_preserves_parser_status(self, session):
+        ds_repo = DataSourceRepository(session)
+        ds_repo.save(
+            {"source_key": "award_source", "source_type": "official_kbo", "target_domain": "award", "is_active": True},
+        )
+        session.flush()
+
+        saved = save_raw_snapshots(
+            session,
+            [
+                {
+                    "source_key": "award_source",
+                    "url": "https://example.com/awards",
+                    "html": "<html>awards</html>",
+                    "status_code": 200,
+                    "parse_status": "done",
+                    "parser_version": "award-crawler-v1",
+                    "capture_metadata": {"parsed_records": 12},
+                },
+            ],
+        )
+
+        assert saved == 1
+        snapshot = RawSourceSnapshotRepository(session).get_by_source_id(ds_repo.get_by_key("award_source").id)[0]
+        assert snapshot.parse_status == "done"
+        assert snapshot.parser_version == "award-crawler-v1"
+
     def test_new_snapshot_marks_data_source_success(self, session):
         ds_repo = DataSourceRepository(session)
         ds_repo.save(
@@ -294,3 +321,48 @@ class TestSaveRawSnapshots:
         assert updated.last_content_hash == content_hash
         assert updated.last_success_at is not None
         assert updated.last_success_at > old_success_at
+
+    def test_duplicate_snapshot_updates_parser_status(self, session):
+        from datetime import datetime
+
+        ds_repo = DataSourceRepository(session)
+        ds = ds_repo.save(
+            {
+                "source_key": "award_duplicate",
+                "source_type": "official_kbo",
+                "target_domain": "award",
+                "is_active": True,
+            },
+        )
+        session.flush()
+        html = "<html>unchanged award page</html>"
+        content_hash = hashlib.sha256(html.encode()).hexdigest()
+        RawSourceSnapshotRepository(session).save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "/tmp/award.html",
+                "content_hash": content_hash,
+                "parse_status": "pending",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+                "status_code": 200,
+            },
+        )
+
+        saved = save_raw_snapshots(
+            session,
+            [
+                {
+                    "source_key": "award_duplicate",
+                    "url": "https://example.com/award",
+                    "html": html,
+                    "status_code": 200,
+                    "parse_status": "done",
+                    "parser_version": "award-crawler-v1",
+                },
+            ],
+        )
+
+        assert saved == 0
+        snapshot = RawSourceSnapshotRepository(session).get_by_hash(ds.id, content_hash)
+        assert snapshot.parse_status == "done"
+        assert snapshot.parser_version == "award-crawler-v1"

@@ -50,6 +50,7 @@ def _create_adoptable_schema(engine) -> None:
                 " version TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
             ),
         )
+        connection.execute(text("CREATE TABLE external_season_stats (id INTEGER PRIMARY KEY)"))
 
 
 def test_postgres_migrations_are_idempotent(tmp_path):

@@ -31,7 +31,7 @@ def test_resolve_movement_player_uses_position_for_ambiguous_names():
         )
         session.commit()
 
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
 
         assert repo._resolve_movement_player_id(session, "김지성", "LG", 2017) is None
         assert repo._resolve_movement_player_id(session, "김지성(내야수)", "LG", 2017) == 1001
@@ -61,7 +61,7 @@ def test_resolve_movement_player_uses_unique_profile_mirror():
         )
         session.commit()
 
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
 
         assert repo._resolve_movement_player_id(session, "배재준(투수)", "LG", 2017) == 63145
 
@@ -98,7 +98,7 @@ def test_resolve_movement_player_uses_same_year_roster_link():
         )
         session.commit()
 
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
 
         assert repo._resolve_movement_player_id(session, "이승현(투수)", "SS", 2024) == 60146
 
@@ -138,6 +138,6 @@ def test_resolve_movement_player_uses_franchise_season_history():
         )
         session.commit()
 
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
 
         assert repo._resolve_movement_player_id(session, "박찬호(내야수)", "HT", 2017) == 1001

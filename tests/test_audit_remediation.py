@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import datetime
 from unittest.mock import patch
 
@@ -7,11 +8,26 @@ from sqlalchemy.orm import sessionmaker
 import scripts.verification.audit_fallback_stats as audit_module
 import src.repositories.player_season_pitching_repository as safe_pitch_repo
 import src.repositories.safe_batting_repository as safe_bat_repo
-import src.repositories.team_stats_repository as team_stats_repo
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.season import KboSeason
 from src.models.team import Team
+
+
+def _mock_get_db_session(SessionLocal):
+    @contextmanager
+    def _gen():
+        session = SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return _gen
 
 
 def test_audit_batting_remediation_within_threshold(tmp_path):
@@ -82,12 +98,11 @@ def test_audit_batting_remediation_within_threshold(tmp_path):
         session.add(off_bat)
         session.commit()
 
-    # Now mock SessionLocal in the audit module and repositories to use our TestSessionLocal
+    # Now mock get_db_session in the audit module and repositories to use our TestSessionLocal
     with (
-        patch.object(audit_module, "SessionLocal", TestSessionLocal),
-        patch.object(safe_bat_repo, "SessionLocal", TestSessionLocal),
-        patch.object(safe_pitch_repo, "SessionLocal", TestSessionLocal),
-        patch.object(team_stats_repo, "SessionLocal", TestSessionLocal),
+        patch.object(audit_module, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
         with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
             # 1. Run audit with fix=False -> Should NOT fix it, but send warning alert
@@ -177,10 +192,9 @@ def test_audit_batting_remediation_aborted_by_max_mismatches(tmp_path):
         session.commit()
 
     with (
-        patch.object(audit_module, "SessionLocal", TestSessionLocal),
-        patch.object(safe_bat_repo, "SessionLocal", TestSessionLocal),
-        patch.object(safe_pitch_repo, "SessionLocal", TestSessionLocal),
-        patch.object(team_stats_repo, "SessionLocal", TestSessionLocal),
+        patch.object(audit_module, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
         with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
             # Run audit with fix=True, but max_mismatches=1 -> Should abort!
@@ -265,10 +279,9 @@ def test_audit_batting_remediation_aborted_by_max_game_diff(tmp_path):
         session.commit()
 
     with (
-        patch.object(audit_module, "SessionLocal", TestSessionLocal),
-        patch.object(safe_bat_repo, "SessionLocal", TestSessionLocal),
-        patch.object(safe_pitch_repo, "SessionLocal", TestSessionLocal),
-        patch.object(team_stats_repo, "SessionLocal", TestSessionLocal),
+        patch.object(audit_module, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
         with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
             # Run audit with fix=True, but max_game_diff=15 -> Should abort!
@@ -353,10 +366,9 @@ def test_audit_pitching_remediation_within_threshold(tmp_path):
         session.commit()
 
     with (
-        patch.object(audit_module, "SessionLocal", TestSessionLocal),
-        patch.object(safe_bat_repo, "SessionLocal", TestSessionLocal),
-        patch.object(safe_pitch_repo, "SessionLocal", TestSessionLocal),
-        patch.object(team_stats_repo, "SessionLocal", TestSessionLocal),
+        patch.object(audit_module, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
         with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
             audit_module.StatAudit.audit_pitching(2025, "regular", fix=True, max_mismatches=2, max_game_diff=5)
@@ -440,10 +452,9 @@ def test_audit_pitching_remediation_aborted_by_max_innings_outs_diff(tmp_path):
         session.commit()
 
     with (
-        patch.object(audit_module, "SessionLocal", TestSessionLocal),
-        patch.object(safe_bat_repo, "SessionLocal", TestSessionLocal),
-        patch.object(safe_pitch_repo, "SessionLocal", TestSessionLocal),
-        patch.object(team_stats_repo, "SessionLocal", TestSessionLocal),
+        patch.object(audit_module, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
+        patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
         with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
             audit_module.StatAudit.audit_pitching(
