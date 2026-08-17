@@ -13,6 +13,7 @@ import urllib.robotparser
 from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
+from urllib.parse import urlparse
 
 try:
     import httpx
@@ -120,6 +121,9 @@ class ComplianceChecker:
             user_agent: User Agent.
 
         """
+        if not self._is_same_site(url):
+            return True
+
         await self._ensure_loaded()
 
         allowed = self.parser.can_fetch(user_agent, url)
@@ -137,6 +141,9 @@ class ComplianceChecker:
             user_agent: User Agent.
 
         """
+        if not self._is_same_site(url):
+            return True
+
         # If not loaded, we perform a sync fetch (minimal blocking)
 
         now = time.time()
@@ -164,6 +171,12 @@ class ComplianceChecker:
         if not allowed:
             logger.info("[COMPLIANCE] BLOCKED (sync): %s is DISALLOWED by robots.txt", url)
         return allowed
+
+    def _is_same_site(self, url: str) -> bool:
+        """Return whether a URL belongs to the site covered by this robots file."""
+        robots_host = (urlparse(self.robots_url).hostname or "").removeprefix("www.")
+        target_host = (urlparse(url).hostname or "").removeprefix("www.")
+        return bool(robots_host and (target_host == robots_host or target_host.endswith(f".{robots_host}")))
 
 
 # Global instance

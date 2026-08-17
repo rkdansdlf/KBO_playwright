@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import src.models
-from src.cli.health_check import run_health_check
+from src.cli.health_check import _table_issue_counts, run_health_check
 from src.models.base import Base
 from src.models.kbo_press_release import KboPressRelease
 from src.models.rag_chunk import RagChunk
@@ -70,3 +70,13 @@ def test_run_health_check_json(db_session: Session) -> None:
         assert "telegram_bot" in report
         assert "api_routers" in report
         assert report["api_routers"]["total_endpoints"] == 8
+
+
+def test_table_issue_counts_separate_optional_tables() -> None:
+    rows = [
+        {"table": "game", "rows": 1},
+        {"table": "kbo_press_releases", "rows": 0},
+        {"table": "stadium_congestion", "rows": "ERR"},
+    ]
+
+    assert _table_issue_counts(rows) == (0, 2)

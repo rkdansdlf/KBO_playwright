@@ -58,6 +58,7 @@ def test_health_check() -> None:
 
 
 def test_get_system_status_with_mock_session() -> None:
+    health._status_state.update(data=None, ts=0.0)
     game_query = MagicMock()
     game_query.count.return_value = 7
     game_query.order_by.return_value.first.return_value = MagicMock(game_date=date(2026, 4, 2))

@@ -139,35 +139,85 @@ def validate_hr_allowed_le_hits_allowed(
     return []
 
 
+def _parse_float_ip(ip: float) -> int:
+    """Parse float representation of IP to outs."""
+    full = int(ip)
+    dec = round(ip - full, 3)
+    if dec in (0.1, 0.333, 0.33):
+        return (full * 3) + 1
+    if dec in (0.2, 0.667, 0.67):
+        return (full * 3) + 2
+    if dec == 0.0:
+        return full * 3
+    return round(ip * 3)
+
+
+_FRACTION_OUTS = {"1/3": 1, "0.1": 1, "2/3": 2, "0.2": 2}
+
+
+def _parse_str_ip(ip_str: str) -> int | None:
+    """Parse string representation of IP to outs."""
+    if ip_str in _FRACTION_OUTS:
+        return _FRACTION_OUTS[ip_str]
+
+    res: int | None = None
+    if " " in ip_str:
+        parts = ip_str.split(" ", 1)
+        if parts[0].isdigit():
+            full = int(parts[0])
+            frac = _FRACTION_OUTS.get(parts[1].strip(), 0)
+            res = (full * 3) + frac
+    elif "." in ip_str:
+        try:
+            res = _parse_float_ip(float(ip_str))
+        except ValueError:
+            res = None
+    elif ip_str.isdigit():
+        res = int(ip_str) * 3
+
+    return res
+
+
+def parse_ip_to_outs(ip: str | float | None) -> int | None:
+    """Parse baseball IP notation or float into canonical total recorded outs.
+
+    Baseball notation rules:
+    - 5.0 -> 15 outs (5 * 3 + 0)
+    - 5.1 -> 16 outs (5 * 3 + 1)
+    - 5.2 -> 17 outs (5 * 3 + 2)
+    """
+    if ip is None:
+        return None
+
+    if isinstance(ip, (int, float)):
+        return _parse_float_ip(float(ip))
+
+    ip_clean = str(ip).strip()
+    if not ip_clean:
+        return None
+
+    return _parse_str_ip(ip_clean)
+
+
+def format_outs_to_ip(outs: int) -> str:
+    """Format total recorded outs to standard baseball notation (e.g. 17 -> '5.2')."""
+    full = outs // 3
+    rem = outs % 3
+    return f"{full}.{rem}"
+
+
 def validate_innings_outs_consistency(
     record: dict[str, Any],
     context: dict[str, Any] | None = None,
 ) -> list[ValidationResult]:
-    """PIT-005: Inning Outs vs IP decimal representation consistency."""
+    """PIT-005: Inning Outs vs IP representation consistency."""
     outs = record.get("innings_outs")
     ip = record.get("innings_pitched")
     if outs is None or ip is None:
         return []
 
     outs_val = _get_int(record, "innings_outs")
-    try:
-        ip_float = float(ip)
-    except (ValueError, TypeError):
-        return []
-
-    # IP can be represented as full innings + fractional (e.g. 5.1 -> 5 innings + 1 out = 16 outs, or 5.333)
-    # Check if outs matches (floor(ip)*3 + remainder)
-    full_innings = int(ip_float)
-    decimal_part = round(ip_float - full_innings, 3)
-
-    if decimal_part in (0.1, 0.333):
-        expected_outs = (full_innings * 3) + 1
-    elif decimal_part in (0.2, 0.667):
-        expected_outs = (full_innings * 3) + 2
-    elif decimal_part == 0.0:
-        expected_outs = full_innings * 3
-    else:
-        expected_outs = None
+    expected_outs = parse_ip_to_outs(ip)
 
     if expected_outs is not None and abs(outs_val - expected_outs) > 0:
         game_id = context.get("game_id") if context else record.get("game_id")

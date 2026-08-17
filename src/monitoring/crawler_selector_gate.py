@@ -25,6 +25,10 @@ class SelectorCheck:
     max_count: int | None = None
     required_text: str | None = None
     required_attrs: tuple[str, ...] = ()
+    required_headers: tuple[str, ...] = ()
+    expected_datatype: str | None = None  # "int", "float", "text"
+    value_range: tuple[float, float] | None = None  # (min_val, max_val)
+    max_repeated_value_rate: float | None = None  # e.g. 0.95 to catch entropy collapse
 
 
 @dataclass(frozen=True)
@@ -166,16 +170,117 @@ class SelectorGateSummary:
         }
 
 
+_MIN_ENTROPY_SAMPLE_SIZE = 5
+_TUPLE_RANGE_LEN = 2
+
+
+def _check_semantic_headers(
+    check: SelectorCheck,
+    texts: Sequence[str],
+    count: int,
+) -> list[SelectorIssue]:
+    """Check required headers presence."""
+    if not check.required_headers:
+        return []
+    missing_headers = [h for h in check.required_headers if not any(h in text for text in texts)]
+    if missing_headers:
+        return [
+            SelectorIssue(
+                category="header_missing",
+                check_name=check.name,
+                selector=check.selector,
+                message=f"Required header(s) not found: {', '.join(missing_headers)}",
+                observed_count=count,
+            ),
+        ]
+    return []
+
+
+def _check_datatype_and_range(
+    check: SelectorCheck,
+    texts: Sequence[str],
+    count: int,
+) -> list[SelectorIssue]:
+    """Check datatype parsing and value range."""
+    if check.expected_datatype not in ("int", "float") or not texts:
+        return []
+
+    numeric_vals: list[float] = []
+    for t in texts:
+        t_clean = t.replace(",", "").strip()
+        if not t_clean or t_clean == "-":
+            continue
+        try:
+            val = float(t_clean)
+            if check.expected_datatype == "int" and not val.is_integer():
+                return [
+                    SelectorIssue(
+                        category="datatype_mismatch",
+                        check_name=check.name,
+                        selector=check.selector,
+                        message=f"Expected integer datatype but found decimal value: {t}",
+                        observed_count=count,
+                    ),
+                ]
+            numeric_vals.append(val)
+        except ValueError:
+            return [
+                SelectorIssue(
+                    category="datatype_mismatch",
+                    check_name=check.name,
+                    selector=check.selector,
+                    message=f"Expected {check.expected_datatype} datatype but failed to parse: '{t}'",
+                    observed_count=count,
+                ),
+            ]
+
+    if check.value_range and numeric_vals:
+        min_v, max_v = check.value_range
+        out_of_range = [v for v in numeric_vals if not (min_v <= v <= max_v)]
+        if out_of_range:
+            return [
+                SelectorIssue(
+                    category="value_out_of_range",
+                    check_name=check.name,
+                    selector=check.selector,
+                    message=f"Values out of expected range [{min_v}, {max_v}]: {out_of_range[:5]}",
+                    observed_count=count,
+                ),
+            ]
+    return []
+
+
+def _check_entropy_collapse(
+    check: SelectorCheck,
+    texts: Sequence[str],
+    count: int,
+) -> list[SelectorIssue]:
+    """Check if single repeated value dominates entropy."""
+    if check.max_repeated_value_rate is None or len(texts) < _MIN_ENTROPY_SAMPLE_SIZE:
+        return []
+    from collections import Counter
+
+    counts = Counter(texts)
+    top_val, top_cnt = counts.most_common(1)[0]
+    rep_rate = top_cnt / len(texts)
+    if rep_rate > check.max_repeated_value_rate:
+        return [
+            SelectorIssue(
+                category="entropy_collapse",
+                check_name=check.name,
+                selector=check.selector,
+                message=(
+                    f"Value '{top_val}' repeated {top_cnt}/{len(texts)} times ({rep_rate:.1%}), "
+                    f"exceeds max allowed rate {check.max_repeated_value_rate:.1%}"
+                ),
+                observed_count=count,
+            ),
+        ]
+    return []
+
+
 def evaluate_html_target(target: SelectorTarget, html: str) -> SelectorGateResult:
-    """Evaluate one target against already-captured HTML.
-
-    Args:
-        target: Target.
-        html: Html.
-        target: Target.
-        html: Html.
-
-    """
+    """Evaluate one target against already-captured HTML."""
     soup = BeautifulSoup(html, "html.parser")
 
     check_payloads: dict[str, dict[str, Any]] = {}
@@ -242,6 +347,10 @@ def evaluate_html_target(target: SelectorTarget, html: str) -> SelectorGateResul
                         observed_count=count,
                     ),
                 )
+
+        issues.extend(_check_semantic_headers(check, texts, count))
+        issues.extend(_check_datatype_and_range(check, texts, count))
+        issues.extend(_check_entropy_collapse(check, texts, count))
 
     return SelectorGateResult(
         target=target.name,
@@ -355,6 +464,15 @@ def _check_from_dict(payload: dict[str, Any]) -> SelectorCheck:
     required_attrs = payload.get("required_attrs", ())
     if isinstance(required_attrs, str):
         required_attrs = (required_attrs,)
+    required_headers = payload.get("required_headers", ())
+    if isinstance(required_headers, str):
+        required_headers = (required_headers,)
+    value_range_raw = payload.get("value_range")
+    value_range = (
+        (float(value_range_raw[0]), float(value_range_raw[1]))
+        if value_range_raw and len(value_range_raw) == _TUPLE_RANGE_LEN
+        else None
+    )
     return SelectorCheck(
         name=str(payload["name"]),
         selector=str(payload["selector"]),
@@ -362,6 +480,12 @@ def _check_from_dict(payload: dict[str, Any]) -> SelectorCheck:
         max_count=int(payload["max_count"]) if payload.get("max_count") is not None else None,
         required_text=payload.get("required_text"),
         required_attrs=tuple(str(attr) for attr in required_attrs),
+        required_headers=tuple(str(h) for h in required_headers),
+        expected_datatype=payload.get("expected_datatype"),
+        value_range=value_range,
+        max_repeated_value_rate=(
+            float(payload["max_repeated_value_rate"]) if payload.get("max_repeated_value_rate") is not None else None
+        ),
     )
 
 
