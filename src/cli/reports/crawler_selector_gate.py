@@ -1,0 +1,46 @@
+"""CLI for crawler selector stability checks."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from src.monitoring.crawler_selector_gate import load_selector_config, render_selector_summary, run_selector_gate
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
+    parser = argparse.ArgumentParser(description="Run crawler selector stability checks")
+
+    parser.add_argument("--config", required=True, help="Path to selector gate JSON config")
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Optional directory for selector_gate_report.json and Playwright artifacts",
+    )
+    parser.add_argument("--json", action="store_true", help="Print JSON summary")
+    args = parser.parse_args(argv)
+
+    targets = load_selector_config(args.config)
+    summary = run_selector_gate(targets, output_dir=Path(args.output_dir) if args.output_dir else None)
+
+    if args.json:
+        sys.stdout.write(json.dumps(summary.to_dict(), ensure_ascii=False) + "\n")
+    else:
+        sys.stdout.write(render_selector_summary(summary) + "\n")
+    return 0 if summary.ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,142 @@
+"""Monthly Team Stats Consistency Audit for Scheduler.
+
+Compare TeamSeasonBatting/Pitching with PlayerSeasonBatting/Pitching
+aggregated by team. Reports mismatches without modifying data.
+
+Imported by scripts/scheduler.py as the crawl_monthly_team_audit_job target.
+Runs on the 1st of every month at 04:00 KST via APScheduler.
+
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from src.constants import KBO_QUALITY_AUDIT_START_YEAR, KST
+from src.db.engine import SessionLocal
+from src.validators.quality_gate import run_quality_gate
+
+logger = logging.getLogger(__name__)
+
+
+def run_monthly_team_audit(year: int) -> dict[str, Any]:
+    """Run team stats consistency check and return results.
+
+    Args:
+        year: Season year.
+
+    """
+    with SessionLocal() as session:
+        gate = run_quality_gate(session, year)
+        team_batting = gate.get("team_batting", {})
+        team_pitching = gate.get("team_pitching", {})
+
+        return {
+            "year": year,
+            "generated_at": datetime.now(KST).isoformat(),
+            "batting": {
+                "ok": team_batting.get("ok", True),
+                "checked_teams": team_batting.get("checked_players", 0),
+                "mismatches": team_batting.get("mismatches", []),
+            },
+            "pitching": {
+                "ok": team_pitching.get("ok", True),
+                "checked_teams": team_pitching.get("checked_players", 0),
+                "mismatches": team_pitching.get("mismatches", []),
+            },
+        }
+
+
+def crawl_monthly_team_audit_job() -> None:
+    """Scheduled job entry point — logs results, saves report, raises on failure."""
+    current_year = datetime.now(KST).year
+    target_year = current_year - 1
+
+    if target_year < KBO_QUALITY_AUDIT_START_YEAR:
+        logger.info("Skipping team audit for year %s (before %s)", target_year, KBO_QUALITY_AUDIT_START_YEAR)
+        return
+
+    logger.info("Starting monthly team stats audit for year %s", target_year)
+    result = run_monthly_team_audit(target_year)
+
+    log_dir = Path("logs/team_audit")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    report_path = log_dir / f"team_audit_{target_year}.json"
+    with report_path.open("w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
+
+    bat_ok = result["batting"]["ok"]
+    pit_ok = result["pitching"]["ok"]
+    bat_miss = len(result["batting"]["mismatches"])
+    pit_miss = len(result["pitching"]["mismatches"])
+
+    logger.info(
+        "Team audit for %s: batting_ok=%s (%d mismatches), pitching_ok=%s (%d mismatches)",
+        target_year,
+        bat_ok,
+        bat_miss,
+        pit_ok,
+        pit_miss,
+    )
+
+    if not bat_ok or not pit_ok:
+        msg = (
+            f"Team stats audit failed for {target_year}: batting={bat_miss} mismatches, pitching={pit_miss} mismatches"
+        )
+        raise RuntimeError(msg)
+
+    logger.info("Monthly team stats audit completed for %s", target_year)
+
+
+def main() -> int:
+    """CLI entry point for direct invocation (e.g., from GitHub Actions)."""
+    parser = argparse.ArgumentParser(description="Monthly Team Stats Consistency Audit")
+    parser.add_argument("--year", type=int, help="Target year (defaults to previous year)")
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    args = parser.parse_args()
+
+    current_year = datetime.now(KST).year
+    target_year = args.year or current_year - 1
+
+    if target_year < KBO_QUALITY_AUDIT_START_YEAR:
+        logger.info("Skipping team audit for year %s (before %s)", target_year, KBO_QUALITY_AUDIT_START_YEAR)
+        return 0
+
+    logger.info("Running team stats audit for year %s...", target_year)
+    result = run_monthly_team_audit(target_year)
+
+    if args.json:
+        logger.info(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+
+    bat_ok = result["batting"]["ok"]
+    pit_ok = result["pitching"]["ok"]
+    bat_miss = len(result["batting"]["mismatches"])
+    pit_miss = len(result["pitching"]["mismatches"])
+
+    logger.info("\nTeam Batting: %s (%s mismatches)", "PASS" if bat_ok else "FAIL", bat_miss)
+    for m in result["batting"]["mismatches"]:
+        logger.info("  - [%s] %s", m["team_id"], m["issue"])
+        for d in (m.get("diffs") or [])[:3]:
+            logger.info("    %s", d)
+
+    logger.info("\nTeam Pitching: %s (%s mismatches)", "PASS" if pit_ok else "FAIL", pit_miss)
+    for m in result["pitching"]["mismatches"]:
+        logger.info("  - [%s] %s", m["team_id"], m["issue"])
+        for d in (m.get("diffs") or [])[:3]:
+            logger.info("    %s", d)
+
+    if not bat_ok or not pit_ok:
+        sys.exit(1)
+
+    return 0
+
+
+if __name__ == "__main__":
+    main()

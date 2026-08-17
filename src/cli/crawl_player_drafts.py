@@ -1,43 +1,15 @@
-"""CLI entrypoint for crawling KBO Rookie Draft history."""
+"""Compatibility wrapper for src.cli.collection.crawl_player_drafts."""
 
 from __future__ import annotations
 
-import argparse
-import asyncio
-import logging
+import sys
 
-from src.crawlers.draft_history_crawler import DraftHistoryCrawler
-from src.db.engine import get_db_session
-from src.repositories.player_draft_repository import PlayerDraftRepository
+from src.cli.collection import crawl_player_drafts as _target_module
 
-logger = logging.getLogger(__name__)
-
-
-async def run(args: argparse.Namespace) -> None:
-    """Run draft crawler CLI."""
-    crawler = DraftHistoryCrawler()
-    results = await crawler.crawl_draft_history(season=args.season)
-
-    logger.info("Crawled %d draft records for season %d.", len(results), args.season)
-
-    if args.save:
-        with get_db_session() as session:
-            repo = PlayerDraftRepository(session)
-            for item in results:
-                repo.save_draft_entry(item)
-            logger.info("Saved %d draft records to DB.", len(results))
-
-
-def main() -> None:
-    """Parse CLI args and execute."""
-    logging.basicConfig(level=logging.INFO)
-    parser = argparse.ArgumentParser(description="Crawl KBO Rookie Draft History")
-    parser.add_argument("--season", type=int, default=2026, help="Target draft season year")
-    parser.add_argument("--save", action="store_true", help="Save records to database")
-
-    args = parser.parse_args()
-    asyncio.run(run(args))
-
+# Re-export all symbols and alias module in sys.modules so imports and patches work seamlessly
+globals().update({k: v for k, v in _target_module.__dict__.items() if not (k.startswith("__") and k.endswith("__"))})
+sys.modules[__name__] = _target_module
 
 if __name__ == "__main__":
-    main()
+    if hasattr(_target_module, "main"):
+        sys.exit(_target_module.main())

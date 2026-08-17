@@ -1,0 +1,141 @@
+"""CLI 명령: calculate sabermetrics."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+from typing import TYPE_CHECKING
+
+from sqlalchemy.exc import SQLAlchemyError
+
+from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
+from src.constants import MIN_KBO_PLAYER_ID
+from src.db.engine import SessionLocal
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+logger = logging.getLogger(__name__)
+
+SABERMETRICS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, ZeroDivisionError)
+
+
+def batch_calculate_sabermetrics(
+    years: list[int],
+    *,
+    levels: list[str] | None = None,
+) -> None:
+    """Batches through years and updates all players with advanced Sabermetrics.
+
+    Args:
+        years: Years.
+        levels: League levels to calculate (e.g. ["KBO1", "KBO2"]).
+
+    """
+    if levels is None:
+        levels = ["KBO1", "KBO2"]
+
+    with SessionLocal() as session:
+        for year in years:
+            for level in levels:
+                logger.info("📈 Calculating Sabermetrics for %s (Level: %s)...", year, level)
+
+                try:
+                    lg = SabermetricsCalculator.get_league_constants(session, year, level=level)
+                    logger.info(
+                        "   %s League Constants: wOBA=%.3f, FIP_C=%.2f, R/PA=%.3f",
+                        level,
+                        lg["lg_woba"],
+                        lg["fip_constant"],
+                        lg["lg_r_per_pa"],
+                    )
+                except SABERMETRICS_CALC_EXCEPTIONS:
+                    logger.exception("   ⚠️ Could not calculate league constants for %s (Level: %s)", year, level)
+                    continue
+
+                # 1. Update Batting Sabermetrics
+                batters = (
+                    session.query(PlayerSeasonBatting)
+                    .filter(
+                        PlayerSeasonBatting.season == year,
+                        PlayerSeasonBatting.level == level,
+                        PlayerSeasonBatting.player_id >= MIN_KBO_PLAYER_ID,
+                    )
+                    .all()
+                )
+                for bat in batters:
+                    metrics = SabermetricsCalculator.calculate_batting_metrics(bat, lg)
+
+                    # Update extra_stats JSON
+                    extra = bat.extra_stats or {}
+                    extra.update(metrics)
+                    bat.extra_stats = extra
+
+                logger.info("   ✅ Updated %s %s batters.", len(batters), level)
+
+                # 2. Update Pitching Sabermetrics
+                pitchers = (
+                    session.query(PlayerSeasonPitching)
+                    .filter(
+                        PlayerSeasonPitching.season == year,
+                        PlayerSeasonPitching.level == level,
+                        PlayerSeasonPitching.player_id >= MIN_KBO_PLAYER_ID,
+                    )
+                    .all()
+                )
+                for pit in pitchers:
+                    metrics = SabermetricsCalculator.calculate_pitching_metrics(pit, lg)
+
+                    # Update FIP column and extra_stats
+                    pit.fip = metrics["fip_adj"]
+                    extra = pit.extra_stats or {}
+                    extra.update(
+                        {
+                            "fip_adj": metrics["fip_adj"],
+                            "lob_pct": metrics.get("lob_pct"),
+                            "war": metrics["war"],
+                        }
+                    )
+                    pit.extra_stats = extra
+
+                logger.info("   ✅ Updated %s %s pitchers.", len(pitchers), level)
+
+                session.commit()
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
+    parser = argparse.ArgumentParser(description="Calculate Sabermetrics for players.")
+
+    parser.add_argument("--years", type=str, default="2020-2026")
+    parser.add_argument(
+        "--level",
+        type=str,
+        default="all",
+        choices=["KBO1", "KBO2", "all"],
+        help="League level to calculate (KBO1, KBO2, or all)",
+    )
+    args = parser.parse_args(argv)
+
+    if "-" in args.years:
+        start, end = map(int, args.years.split("-"))
+        target_years = list(range(start, end + 1))
+    else:
+        target_years = [int(args.years)]
+
+    levels = ["KBO1", "KBO2"] if args.level == "all" else [args.level]
+
+    batch_calculate_sabermetrics(target_years, levels=levels)
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

@@ -1,33 +1,15 @@
-"""CLI 명령: crawl stadium food."""
+"""Compatibility wrapper for src.cli.collection.crawl_stadium_food."""
 
 from __future__ import annotations
 
-import argparse
-import asyncio
-import logging
+import sys
 
-from src.crawlers.food_crawler import FoodCrawler
+from src.cli.collection import crawl_stadium_food as _target_module
 
-logger = logging.getLogger(__name__)
-
-
-def main(argv: list[str] | None = None) -> None:
-    """Run the main entry point for this CLI command.
-
-    Args:
-        argv: Argv.
-
-    """
-    parser = argparse.ArgumentParser(description="Crawl stadium food vendor info")
-
-    parser.add_argument("--save", action="store_true")
-    parser.add_argument("--team", type=str, default=None, help="Team code filter")
-    args = parser.parse_args(argv)
-
-    crawler = FoodCrawler()
-    result = asyncio.run(crawler.run(save=args.save, team_filter=args.team))
-    logger.info("[FOOD] Done: %s vendors", len(result))
-
+# Re-export all symbols and alias module in sys.modules so imports and patches work seamlessly
+globals().update({k: v for k, v in _target_module.__dict__.items() if not (k.startswith("__") and k.endswith("__"))})
+sys.modules[__name__] = _target_module
 
 if __name__ == "__main__":
-    main()
+    if hasattr(_target_module, "main"):
+        sys.exit(_target_module.main())
