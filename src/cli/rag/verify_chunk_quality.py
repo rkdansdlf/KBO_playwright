@@ -1,6 +1,6 @@
 """verify_chunk_quality.py.
 
-CLI tool to measure and report the quality of RAG chunks stored in the local SQLite database.
+CLI tool to measure and report the quality of RAG chunks stored in the RAG index database.
 
 Metrics reported:
   - Total chunk count
@@ -57,9 +57,9 @@ KEYWORD_COVERAGE_TARGET = 0.80  # 80%
 
 
 def load_chunks(session: Session, source_filter: str | None = None) -> list[dict[str, Any]]:
-    """Load rag_chunks rows from the local SQLite database.
+    """Load rag_chunks rows from the RAG index database.
 
-    Return a list of dicts with keys: id, source_table, source_row_id, content, metadata.
+    Return a list of dicts with keys: id, source_table, source_row_id, content, meta.
 
     Args:
         session: Session.
@@ -68,20 +68,25 @@ def load_chunks(session: Session, source_filter: str | None = None) -> list[dict
     """
     from sqlalchemy import text
 
-    query = "SELECT id, source_table, source_row_id, content, metadata FROM rag_chunks"
+    query = "SELECT id, source_table, source_row_id, content, meta FROM rag_chunks"
     params: dict[str, Any] = {}
 
     if source_filter:
-        query += " WHERE source_table = :src OR json_extract(metadata, '$.category') = :src"
+        bind = session.get_bind()
+        dialect_name = getattr(getattr(bind, "dialect", None), "name", "sqlite")
+        category_filter = (
+            "meta->>'category' = :src" if dialect_name == "postgresql" else "json_extract(meta, '$.category') = :src"
+        )
+        query += f" WHERE source_table = :src OR {category_filter}"
         params["src"] = source_filter
 
     rows = session.execute(text(query), params).fetchall()
     chunks = []
     for row in rows:
         meta: dict[str, Any] = {}
-        if row.metadata:
+        if row.meta:
             with contextlib.suppress(ValueError, TypeError):
-                meta = json.loads(row.metadata) if isinstance(row.metadata, str) else row.metadata
+                meta = json.loads(row.meta) if isinstance(row.meta, str) else row.meta
         chunks.append(
             {
                 "id": row.id,

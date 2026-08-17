@@ -209,14 +209,14 @@ class TestChunkQualityDatabaseAndReporting:
                 source_table="rulebook",
                 source_row_id="1",
                 content="content",
-                metadata='{"category": "rules", "keywords": ["KBO"]}',
+                meta='{"category": "rules", "keywords": ["KBO"]}',
             ),
             SimpleNamespace(
                 id=2,
                 source_table=None,
                 source_row_id=None,
                 content=None,
-                metadata="not-json",
+                meta="not-json",
             ),
         ]
 
