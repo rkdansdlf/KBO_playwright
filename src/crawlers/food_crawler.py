@@ -6,18 +6,22 @@ import asyncio
 import logging
 import re
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.crawlers.base import BaseHttpCrawler
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_food_repository import StadiumFoodMenuItemRepository, StadiumFoodVendorRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +49,22 @@ TEAM_FOOD_SOURCES: dict[str, dict[str, Any]] = {
 MENU_PATTERN = re.compile(r"([가-힣a-zA-Z0-9\s]{2,30})\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)")
 
 
-class FoodCrawler:
+class FoodCrawler(BaseHttpCrawler):
     """FoodCrawler class."""
 
-    def __init__(self) -> None:
-        """Initialize a new instance."""
+    def __init__(
+        self,
+        request_delay: float = 0.5,
+        policy: RequestPolicy | None = None,
+    ) -> None:
+        """Initialize FoodCrawler.
+
+        Args:
+            request_delay: Request delay in seconds.
+            policy: Optional request policy.
+
+        """
+        super().__init__(request_delay=request_delay, policy=policy, default_headers=HEADERS)
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:

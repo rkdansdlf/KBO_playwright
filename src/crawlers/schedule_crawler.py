@@ -9,11 +9,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.constants import KST
+from src.crawlers.base import BasePlaywrightCrawler
 from src.urls import SCHEDULE
 from src.utils.compliance import compliance
 from src.utils.game_status import (
@@ -33,11 +35,15 @@ from src.utils.schedule_validation import validate_schedule_game_payload
 from src.utils.stadium_codes import STADIUM_SHORT_NAME_MAP
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
+if TYPE_CHECKING:
+    from src.utils.playwright_pool import AsyncPlaywrightPool
+    from src.utils.request_policy import RequestPolicy
+
 logger = logging.getLogger(__name__)
 SCHEDULE_CRAWLER_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
-class ScheduleCrawler:
+class ScheduleCrawler(BasePlaywrightCrawler):
     """KBO 공식 사이트의 월별 경기 일정 페이지에서 경기 정보를 크롤링하는 클래스.
 
     주요 기능:
@@ -60,24 +66,16 @@ class ScheduleCrawler:
             request_delay: Request Delay.
             pool: Connection pool for async operations.
             policy: Policy.
-            request_delay: Request Delay.
-            pool: Connection pool for async operations.
-            policy: Policy.
 
         """
+        super().__init__(request_delay=request_delay, pool=pool, policy=policy)
         self.base_url = SCHEDULE
-
-        self.request_delay = request_delay
-        self.pool = pool
-        self.policy = policy or RequestPolicy.with_delay(request_delay)
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, key: str) -> str | None:
         """Get last failure reason.
 
         Args:
-            key: Key.
-            key: Key.
             key: Key.
 
         Returns:
@@ -94,12 +92,6 @@ class ScheduleCrawler:
         """지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
         Args:
-            year: Season year.
-            month: Month.
-            series_id: Series ID.
-            year: Season year.
-            month: Month.
-            series_id: Series ID.
             year: 시즌 연도 (예: 2024)
             month: 월 (1-12)
             series_id: 시리즈 ID (옵션)
@@ -110,11 +102,7 @@ class ScheduleCrawler:
         """
         logger.info("🔍 Crawling schedule for %s-%02d (Series: %s)...", year, month, series_id)
 
-        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
-        owns_pool = self.pool is None
-        await pool.start()
-        try:
-            page = await pool.acquire()
+        async with self.page_context() as page:
             try:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
             except SCHEDULE_CRAWLER_EXCEPTIONS:
@@ -123,11 +111,6 @@ class ScheduleCrawler:
             else:
                 logger.info("✅ Found %s games", len(games))
                 return games
-            finally:
-                await pool.release(page)
-        finally:
-            if owns_pool:
-                await pool.close()
 
     async def crawl_season(
         self,
@@ -138,12 +121,6 @@ class ScheduleCrawler:
         """주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
         Args:
-            year: Season year.
-            months: Months.
-            series_id: Series ID.
-            year: Season year.
-            months: Months.
-            series_id: Series ID.
             year: 시즌 연도
             months: 크롤링할 월 목록 (기본값: 3월-10월)
             series_id: 시리즈 ID (옵션)
@@ -153,22 +130,12 @@ class ScheduleCrawler:
 
         all_games: list[dict] = []
 
-        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
-        owns_pool = self.pool is None
-        await pool.start()
-        try:
-            page = await pool.acquire()
-            try:
-                for month in months:
-                    await self.policy.delay_async(host="www.koreabaseball.com")
-                    month_games = await self._crawl_month(page, year, month, series_id=series_id)
-                    all_games.extend(month_games)
-                return all_games
-            finally:
-                await pool.release(page)
-        finally:
-            if owns_pool:
-                await pool.close()
+        async with self.page_context() as page:
+            for month in months:
+                await self.policy.delay_async(host="www.koreabaseball.com")
+                month_games = await self._crawl_month(page, year, month, series_id=series_id)
+                all_games.extend(month_games)
+            return all_games
 
     async def _navigate_schedule_page(
         self,

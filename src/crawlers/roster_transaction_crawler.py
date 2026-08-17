@@ -13,7 +13,7 @@ import logging
 import re
 from datetime import date, datetime
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import httpx
@@ -21,9 +21,9 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.constants import KST
+from src.crawlers.base import BasePlaywrightCrawler
 from src.db.engine import SessionLocal
 from src.repositories.roster_transaction_repository import RosterTransactionRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
@@ -31,7 +31,12 @@ from src.urls import REGISTER
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
+from src.utils.request_policy import RequestPolicy
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from src.utils.playwright_pool import AsyncPlaywrightPool
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -60,24 +65,26 @@ TEAM_CODES = [
 ]
 
 
-class RosterTransactionCrawler:
+class RosterTransactionCrawler(BasePlaywrightCrawler):
     """RosterTransactionCrawler class."""
 
-    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initialize a new instance.
+    def __init__(
+        self,
+        request_delay: float = 1.0,
+        pool: AsyncPlaywrightPool | None = None,
+        policy: RequestPolicy | None = None,
+    ) -> None:
+        """Initialize RosterTransactionCrawler.
 
         Args:
             request_delay: Request Delay.
             pool: Connection pool for async operations.
-            request_delay: Request Delay.
-            pool: Connection pool for async operations.
+            policy: Optional request policy.
 
         """
+        super().__init__(request_delay=request_delay, pool=pool, policy=policy)
         self.mobile_url = "https://m.koreabaseball.com/Kbo/PlayerAdd.aspx"
-
         self.register_url = REGISTER
-        self.request_delay = request_delay
-        self.pool = pool
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
@@ -264,65 +271,44 @@ class RosterTransactionCrawler:
 
         Args:
             target_date: Target date for the operation.
-            target_date: Target date for the operation.
 
         """
         transactions = []
 
-        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
-        owns_pool = self.pool is None
-        await pool.start()
+        async with self.page_context() as page:
+            await self.goto_with_retry(page, self.register_url, timeout=NAV_TIMEOUT)
 
-        try:
-            page = await pool.acquire()
+            date_str = target_date.strftime("%Y%m%d")
+            await page.evaluate(
+                f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';",
+            )
             try:
-                async for attempt in AsyncRetrying(
-                    stop=stop_after_attempt(3),
-                    wait=wait_exponential(multiplier=1, min=2, max=10),
-                    retry=retry_if_exception_type(PlaywrightTimeoutError),
-                ):
-                    with attempt:
-                        await page.goto(self.register_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
+                async with page.expect_response(lambda r: "Register.aspx" in r.url, timeout=SHORT_TIMEOUT):
+                    await page.evaluate(
+                        "__doPostBack('ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')",
+                    )
+            except TimeoutError:
+                logger.warning("Calendar select postback timeout, continuing")
+            await page.wait_for_timeout(2000)
 
-                date_str = target_date.strftime("%Y%m%d")
-                await page.evaluate(
-                    f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate')"
-                    f".value = '{date_str}';",
-                )
+            desktop_html = await page.content()
+            self._raw_pages.append(
+                {
+                    "source_key": "kbo_player_register",
+                    "url": self.register_url,
+                    "html": desktop_html,
+                    "status_code": 200,
+                },
+            )
+
+            for site_code, db_code in TEAM_CODES:
                 try:
-                    async with page.expect_response(lambda r: "Register.aspx" in r.url, timeout=SHORT_TIMEOUT):
-                        await page.evaluate(
-                            "__doPostBack("
-                            "'ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')",
-                        )
-                except TimeoutError:
-                    logger.warning("Calendar select postback timeout, continuing")
-                await page.wait_for_timeout(2000)
-
-                desktop_html = await page.content()
-                self._raw_pages.append(
-                    {
-                        "source_key": "kbo_player_register",
-                        "url": self.register_url,
-                        "html": desktop_html,
-                        "status_code": 200,
-                    },
-                )
-
-                for site_code, db_code in TEAM_CODES:
-                    try:
-                        await page.evaluate(f"fnSearchChange('{site_code}')")
-                        await page.wait_for_timeout(500)
-                        daily = await self._extract_desktop_roster(page, db_code, target_date)
-                        transactions.extend(daily)
-                    except ROSTER_CRAWL_EXCEPTIONS:
-                        logger.exception("Desktop roster team %s failed", site_code)
-
-            finally:
-                await pool.release(page)
-        finally:
-            if owns_pool:
-                await pool.close()
+                    await page.evaluate(f"fnSearchChange('{site_code}')")
+                    await page.wait_for_timeout(500)
+                    daily = await self._extract_desktop_roster(page, db_code, target_date)
+                    transactions.extend(daily)
+                except ROSTER_CRAWL_EXCEPTIONS:
+                    logger.exception("Desktop roster team %s failed", site_code)
 
         return transactions
 

@@ -12,7 +12,7 @@ import asyncio
 import logging
 from datetime import datetime, time
 from http import HTTPStatus
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urlparse
 
 import httpx
@@ -20,6 +20,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
+from src.crawlers.base import BaseHttpCrawler
 from src.db.engine import SessionLocal
 from src.parsers.ticket_parser import parse_ticket_page
 from src.repositories.source_registry_repository import save_raw_snapshots
@@ -27,6 +28,9 @@ from src.repositories.ticket_open_rule_repository import TicketOpenRuleRepositor
 from src.repositories.ticket_price_repository import TicketPriceRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +89,8 @@ TEAM_TICKET_INFO: dict[str, dict[str, Any]] = {
     },
     "SK": {
         "stadium_id": "MUNHAK",
-        "platform": "self",
-        "ticket_url": "https://www.ssglanders.com/ticket/main",
+        "platform": "Ticketlink",
+        "ticket_url": None,
         "open_offset_days": 7,
         "open_time": time(11, 0),
     },
@@ -107,11 +111,22 @@ TEAM_TICKET_INFO: dict[str, dict[str, Any]] = {
 }
 
 
-class TicketCrawler:
+class TicketCrawler(BaseHttpCrawler):
     """TicketCrawler class."""
 
-    def __init__(self) -> None:
-        """Initialize a new instance."""
+    def __init__(
+        self,
+        request_delay: float = 0.5,
+        policy: RequestPolicy | None = None,
+    ) -> None:
+        """Initialize a new instance.
+
+        Args:
+            request_delay: Request delay in seconds.
+            policy: Optional request policy.
+
+        """
+        super().__init__(request_delay=request_delay, policy=policy, default_headers=HEADERS)
         self.kbo_ticket_url = "https://www.koreabaseball.com/Kbo/League/Map.aspx"
         self.current_season = datetime.now(KST).year
         self._raw_pages: list[dict] = []

@@ -18,6 +18,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from src.crawlers.base import BasePlaywrightCrawler
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -33,7 +34,7 @@ AWAY_LINEUP_ROW_INDEX = 4
 MIN_LINEUP_GRID_CELLS = 3
 
 
-class PreviewCrawler:
+class PreviewCrawler(BasePlaywrightCrawler):
     """PreviewCrawler class."""
 
     GAME_LIST_URL = "https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList"
@@ -48,18 +49,21 @@ class PreviewCrawler:
         "X-Requested-With": "XMLHttpRequest",
     }
 
-    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initialize a new instance.
+    def __init__(
+        self,
+        request_delay: float = 1.0,
+        pool: AsyncPlaywrightPool | None = None,
+        policy: RequestPolicy | None = None,
+    ) -> None:
+        """Initialize PreviewCrawler.
 
         Args:
             request_delay: Request Delay.
             pool: Connection pool for async operations.
+            policy: Optional request policy.
 
         """
-        self.request_delay = request_delay
-
-        self.pool = pool
-        self.policy = RequestPolicy()
+        super().__init__(request_delay=request_delay, pool=pool, policy=policy or RequestPolicy())
 
     @staticmethod
     def _coerce_api_payload(payload: object) -> object | None:

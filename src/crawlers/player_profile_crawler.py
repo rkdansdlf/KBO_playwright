@@ -13,7 +13,7 @@ import contextlib
 import logging
 import re
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
@@ -38,12 +38,15 @@ def clean_team_name(team_name: str | None) -> str | None:
     return parts[0]
 
 
+from src.crawlers.base import BasePlaywrightCrawler
 from src.urls import HITTER_DETAIL, PITCHER_DETAIL
 from src.utils.compliance import compliance
 from src.utils.player_validation import validate_player_payload
-from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
+
+if TYPE_CHECKING:
+    from src.utils.playwright_pool import AsyncPlaywrightPool
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
 _PROFILE_PREFIXES = [
@@ -108,19 +111,34 @@ _EXTRACT_JS = f"""
     if (photoUrl && photoUrl.includes('emblem')) photoUrl = null;
 
     const teamEl = document.getElementById('h4Team');
-    const team = teamEl ? teamEl.innerText.trim() : null;
+    const get = (id) => {{
+        if (!prefix) return "";
+        const el = document.getElementById(prefix + "_" + id);
+        return el ? el.innerText.trim() : "";
+    }};
+
+    const getImg = (id) => {{
+        if (!prefix) return "";
+        const el = document.getElementById(prefix + "_" + id);
+        return el ? (el.getAttribute("src") || "") : "";
+    }};
+
+    const photoEl = document.querySelector(".photo img");
+    const photoSrc = photoEl ? (photoEl.getAttribute("src") || "") : "";
+
+    const raw_text = document.body ? document.body.innerText : "";
 
     return {{
-        name:         name,
-        team:         team,
-        photo_url:    photoUrl,
-        photo_attr:   photoEl ? photoEl.getAttribute('src') : null,
-        salary:       getVal('lblSalary'),
-        signing:      getVal('lblPayment'),
-        draft:        getVal('lblDraft'),
-        debut:        getVal('lblJoinInfo') || getVal('lblEntryYear') || getVal('lblDebutYear'),
-        height_weight: getVal('lblHeightWeight'),
-        raw_text:     rawText,
+        name: name,
+        team: get("lblTeam"),
+        salary: get("lblSalary"),
+        signing: get("lblPayment"),
+        draft: get("lblDraft"),
+        debut: get("lblJoinYear"),
+        height_weight: get("lblWeight"),
+        photo_attr: getImg("imgProfile"),
+        photo_url: photoSrc,
+        raw_text: raw_text.substring(0, 4000)
     }};
 }}
 """
@@ -219,7 +237,7 @@ def _clean_photo_url(raw: str | None) -> str | None:
     return raw
 
 
-class PlayerProfileCrawler:
+class PlayerProfileCrawler(BasePlaywrightCrawler):
     """선수 고유 ID를 사용하여 KBO 공식 사이트에서 상세 프로필을 크롤링.
 
     타자/투수 페이지를 포지션 기준으로 자동 선택.
@@ -227,32 +245,37 @@ class PlayerProfileCrawler:
     """
 
     HITTER_URL = HITTER_DETAIL
-
     PITCHER_URL = PITCHER_DETAIL
     RETIRE_HITTER_URL = "https://www.koreabaseball.com/Record/Retire/Hitter.aspx"
     RETIRE_PITCHER_URL = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
     FUTURES_HITTER_URL = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     FUTURES_PITCHER_URL = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
-    def __init__(self, request_delay: float = 1.2, pool: AsyncPlaywrightPool | None = None) -> None:
+    def __init__(
+        self,
+        request_delay: float = 1.2,
+        pool: AsyncPlaywrightPool | None = None,
+        policy: RequestPolicy | None = None,
+    ) -> None:
         """Initialize a new instance.
 
         Args:
             request_delay: Request Delay.
             pool: Connection pool for async operations.
+            policy: Optional request policy.
 
         """
-        self.request_delay = request_delay
-
-        self.pool = pool
-        self.policy = RequestPolicy.with_delay(request_delay, request_delay)
+        super().__init__(
+            request_delay=request_delay,
+            pool=pool,
+            policy=policy or RequestPolicy.with_delay(request_delay, request_delay),
+        )
         self._last_failure_reason: dict[str, str] = {}
 
     def get_last_failure_reason(self, player_id: str) -> str | None:
         """Get last failure reason.
 
         Args:
-            player_id: Player ID.
             player_id: Player ID.
 
         Returns:
@@ -310,22 +333,12 @@ class PlayerProfileCrawler:
             position: Position.
 
         """
-        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
-
-        owns_pool = self.pool is None
-        await pool.start()
-        try:
-            page = await pool.acquire()
+        async with self.page_context() as page:
             try:
                 return await self._fetch_profile(page, player_id, position)
             except PROFILE_CRAWL_EXCEPTIONS:
                 logger.exception("❌ Profile crawl failed for %s", player_id)
                 return None
-            finally:
-                await pool.release(page)
-        finally:
-            if owns_pool:
-                await pool.close()
 
     async def _fetch_profile(self, page: Page, player_id: str, position: str | None) -> dict[str, Any] | None:
         urls = self._select_urls(player_id, position)

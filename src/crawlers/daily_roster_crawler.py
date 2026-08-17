@@ -19,15 +19,17 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from src.crawlers.base import BasePlaywrightCrawler
 from src.urls import REGISTER
-from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.team_codes import resolve_team_code
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+    from src.utils.playwright_pool import AsyncPlaywrightPool
+    from src.utils.request_policy import RequestPolicy
 
 ROSTER_CALLBACK_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 ROSTER_CRAWL_EXCEPTIONS = (
@@ -41,21 +43,25 @@ ROSTER_CRAWL_EXCEPTIONS = (
 )
 
 
-class DailyRosterCrawler:
+class DailyRosterCrawler(BasePlaywrightCrawler):
     """Crawl daily roster changes."""
 
-    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        """Initialize a new instance.
+    def __init__(
+        self,
+        request_delay: float = 1.0,
+        pool: AsyncPlaywrightPool | None = None,
+        policy: RequestPolicy | None = None,
+    ) -> None:
+        """Initialize DailyRosterCrawler.
 
         Args:
             request_delay: Request Delay.
             pool: Connection pool for async operations.
+            policy: Optional request policy.
 
         """
+        super().__init__(request_delay=request_delay, pool=pool, policy=policy)
         self.base_url = REGISTER
-
-        self.request_delay = request_delay
-        self.pool = pool
 
     async def crawl_date_range(
         self,
@@ -72,48 +78,31 @@ class DailyRosterCrawler:
 
         """
         s_date = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=KST).date()
-
         e_date = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=KST).date()
 
         results = []
-        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
-        owns_pool = self.pool is None
-        await pool.start()
-        try:
-            page = await pool.acquire()
-            try:
-                # Initial load with Exponential Backoff
-                async for attempt in AsyncRetrying(
-                    stop=stop_after_attempt(3),
-                    wait=wait_exponential(multiplier=1, min=2, max=10),
-                    retry=retry_if_exception_type(PlaywrightTimeoutError),
-                ):
-                    with attempt:
-                        await page.goto(self.base_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
+        async with self.page_context() as page:
+            await self.goto_with_retry(page, self.base_url, timeout=NAV_TIMEOUT)
 
-                # Create a date range list
-                delta = e_date - s_date
-                dates = [s_date + timedelta(days=i) for i in range(delta.days + 1)]
+            # Create a date range list
+            delta = e_date - s_date
+            dates = [s_date + timedelta(days=i) for i in range(delta.days + 1)]
 
-                for d in dates:
-                    roster = await self._crawl_date(page, d)
-                    if roster:
-                        if save_callback:
-                            # Call callback (synchronously if it's not async)
-                            try:
-                                if asyncio.iscoroutinefunction(save_callback):
-                                    await save_callback(roster)
-                                else:
-                                    save_callback(roster)
-                            except ROSTER_CALLBACK_EXCEPTIONS:
-                                logger.exception("⚠️ Callback error")
+            for d in dates:
+                roster = await self._crawl_date(page, d)
+                if roster:
+                    if save_callback:
+                        # Call callback (synchronously if it's not async)
+                        try:
+                            if asyncio.iscoroutinefunction(save_callback):
+                                await save_callback(roster)
+                            else:
+                                save_callback(roster)
+                        except ROSTER_CALLBACK_EXCEPTIONS:
+                            logger.exception("⚠️ Callback error")
 
-                        results.extend(roster)
-            finally:
-                await pool.release(page)
-        finally:
-            if owns_pool:
-                await pool.close()
+                    results.extend(roster)
+
         return results
 
     async def _crawl_date(self, page: Page, target_date: date) -> list[dict[str, Any]]:

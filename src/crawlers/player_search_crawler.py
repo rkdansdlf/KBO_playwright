@@ -108,7 +108,10 @@ class PlayerRow:
     career: str | None
 
 
-class PlayerSearchCrawler:
+from src.crawlers.base import BasePlaywrightCrawler
+
+
+class PlayerSearchCrawler(BasePlaywrightCrawler):
     """PlayerSearchCrawler class."""
 
     def __init__(
@@ -117,20 +120,23 @@ class PlayerSearchCrawler:
         request_delay: float = REQUEST_DELAY_SEC,
         *,
         headless: bool = True,
+        policy: RequestPolicy | None = None,
     ) -> None:
-        """Initialize a new instance.
+        """Initialize PlayerSearchCrawler.
 
         Args:
             pool: Connection pool for async operations.
             request_delay: Request Delay.
             headless: Whether to run the browser in headless mode.
+            policy: Optional request policy.
 
         """
-        self.pool = pool
-
-        self.request_delay = request_delay
+        super().__init__(
+            request_delay=request_delay,
+            pool=pool,
+            policy=policy or RequestPolicy.with_delay(request_delay, request_delay),
+        )
         self.headless = headless
-        self.policy = RequestPolicy.with_delay(request_delay, request_delay)
         self.failure_counts: Counter = Counter()
 
     def _record_failure(self, reason: str) -> None:

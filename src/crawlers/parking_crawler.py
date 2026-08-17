@@ -6,18 +6,22 @@ import asyncio
 import logging
 import re
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.crawlers.base import BaseHttpCrawler
 from src.db.engine import SessionLocal
 from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +51,22 @@ PARKING_FEE_PATTERN = re.compile(
 )
 
 
-class ParkingCrawler:
+class ParkingCrawler(BaseHttpCrawler):
     """ParkingCrawler class."""
 
-    def __init__(self) -> None:
-        """Initialize a new instance."""
+    def __init__(
+        self,
+        request_delay: float = 0.5,
+        policy: RequestPolicy | None = None,
+    ) -> None:
+        """Initialize ParkingCrawler.
+
+        Args:
+            request_delay: Request delay in seconds.
+            policy: Optional request policy.
+
+        """
+        super().__init__(request_delay=request_delay, policy=policy, default_headers=HEADERS)
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:

@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from playwright.async_api import Error as PlaywrightError
 
 from src.constants import KST
-from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.request_policy import RequestPolicy
+from src.crawlers.base import BasePlaywrightCrawler
+
+if TYPE_CHECKING:
+    from src.utils.playwright_pool import AsyncPlaywrightPool
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
 
-class PressReleaseCrawler:
+class PressReleaseCrawler(BasePlaywrightCrawler):
     """Crawler for KBO official press releases and administrative notices."""
 
     PRESS_URL = "https://www.koreabaseball.com/MediaNews/Notice/List.aspx"
@@ -34,9 +37,7 @@ class PressReleaseCrawler:
             policy: Optional request policy.
 
         """
-        self.request_delay = request_delay
-        self.pool = pool
-        self.policy = policy or RequestPolicy.with_delay(request_delay)
+        super().__init__(request_delay=request_delay, pool=pool, policy=policy)
 
     async def crawl_press_releases(self, max_pages: int = 1) -> list[dict[str, Any]]:
         """Crawl press releases from KBO notice board.
@@ -51,7 +52,7 @@ class PressReleaseCrawler:
         results: list[dict[str, Any]] = []
 
         try:
-            async with AsyncPlaywrightPool() as pool, pool.page() as page:
+            async with self.page_context() as page:
                 for page_num in range(1, max_pages + 1):
                     url = f"{self.PRESS_URL}?page={page_num}" if page_num > 1 else self.PRESS_URL
                     await page.goto(url, wait_until="domcontentloaded", timeout=15000)

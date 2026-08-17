@@ -12,11 +12,11 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
+from src.crawlers.base import BaseCrawler
 from src.db.engine import SessionLocal, get_db_session
 from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT
-from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.team_stats_helpers import (
     TeamStatsParseContext,
@@ -31,6 +31,8 @@ from src.utils.type_helpers import parse_innings, parse_innings_to_outs
 
 if TYPE_CHECKING:
     from bs4.element import Tag
+
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -107,21 +109,25 @@ TEAM_STATS_REFRESH_WAIT_MS = 1000
 PAGE_CONTENT_RETRY_ATTEMPTS = 3
 
 
-class TeamPitchingStatsCrawler:
+class TeamPitchingStatsCrawler(BaseCrawler):
     """collect and persists team-level pitching stats for a season."""
 
-    def __init__(self, league: str = "REGULAR", policy: RequestPolicy | None = None) -> None:
-        """Initialize a new instance.
+    def __init__(
+        self,
+        league: str = "REGULAR",
+        policy: RequestPolicy | None = None,
+        request_delay: float = 1.0,
+    ) -> None:
+        """Initialize TeamPitchingStatsCrawler.
 
         Args:
             league: League.
             policy: Policy.
-            league: League.
-            policy: Policy.
+            request_delay: Request delay in seconds.
 
         """
+        super().__init__(request_delay=request_delay, policy=policy)
         self.league = league
-        self.policy = policy or RequestPolicy()
 
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
         """Crawl crawl.
