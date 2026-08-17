@@ -6,6 +6,7 @@ import contextlib
 import json
 import logging
 import os
+import time
 from http import HTTPStatus
 from typing import Any
 
@@ -21,6 +22,9 @@ EMBEDDING_HTTP_EXCEPTIONS = (httpx.HTTPError, ValueError, TypeError, RuntimeErro
 EMBEDDING_NORMALIZATION_EPSILON = 1e-9
 EMBEDDING_TARGET_DIMENSION = 1536
 DEFAULT_OPENROUTER_EMBEDDING_MODEL = "perplexity/pplx-embed-v1-4b"
+OPENROUTER_RATE_LIMIT_RETRIES = 6
+OPENROUTER_RATE_LIMIT_BASE_DELAY_SECONDS = 2.0
+OPENROUTER_RATE_LIMIT_MAX_DELAY_SECONDS = 60.0
 
 
 def _is_zero_vector(embedding: list[float]) -> bool:
@@ -221,7 +225,10 @@ class EmbeddingService:
 
         # Some providers reject the OpenAI-style `dimensions` parameter with a 4xx.
         # Retry without it; adjust_embedding_dimension normalizes the native vector.
-        if response is not None and HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR:
+        if response is not None and response.status_code in (
+            HTTPStatus.BAD_REQUEST,
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+        ):
             logger.warning(
                 "⚠️ OpenRouter embedding API rejected 'dimensions' (status %s) — retrying without it",
                 response.status_code,
@@ -257,7 +264,35 @@ class EmbeddingService:
         """
         try:
             with httpx.Client(headers=headers, timeout=30.0) as client:
-                return client.post(url, json=payload)
+                for attempt in range(OPENROUTER_RATE_LIMIT_RETRIES + 1):
+                    response = client.post(url, json=payload)
+                    if response.status_code != HTTPStatus.TOO_MANY_REQUESTS:
+                        return response
+                    if attempt == OPENROUTER_RATE_LIMIT_RETRIES:
+                        return response
+                    delay = _rate_limit_delay(response, attempt)
+                    logger.warning(
+                        "OpenRouter rate limit (429); retrying in %.1fs (%d/%d)",
+                        delay,
+                        attempt + 1,
+                        OPENROUTER_RATE_LIMIT_RETRIES,
+                    )
+                    time.sleep(delay)
         except EMBEDDING_HTTP_EXCEPTIONS:
             logger.exception("❌ Exception fetching OpenRouter embeddings")
             return None
+        return None
+
+
+def _rate_limit_delay(response: httpx.Response, attempt: int) -> float:
+    """Return a bounded retry delay using the provider's Retry-After hint."""
+    retry_after = response.headers.get("Retry-After")
+    try:
+        if retry_after:
+            return min(float(retry_after), OPENROUTER_RATE_LIMIT_MAX_DELAY_SECONDS)
+    except (TypeError, ValueError):
+        pass
+    return min(
+        OPENROUTER_RATE_LIMIT_BASE_DELAY_SECONDS * (2**attempt),
+        OPENROUTER_RATE_LIMIT_MAX_DELAY_SECONDS,
+    )

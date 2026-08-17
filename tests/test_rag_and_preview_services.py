@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from datetime import date
 from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.models.base import Base
@@ -61,6 +64,20 @@ def test_rag_search_engine(db_session: Session) -> None:
     qa = engine.answer_question("최형우 타점")
     assert qa["chunk_count"] == 1
     assert "https://example.com/2" in qa["sources"]
+
+
+def test_postgresql_search_uses_bounded_tsvector_candidates() -> None:
+    """Use the indexed PostgreSQL lexical path instead of loading every match."""
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    session.execute.return_value.scalars.return_value.all.return_value = []
+
+    RagSearchEngine(session).search("올스타전", top_k=5)
+
+    statement = session.execute.call_args.args[0]
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+    assert "to_tsvector" in compiled
+    assert "LIMIT" in compiled
 
 
 def test_game_preview_generator(db_session: Session) -> None:

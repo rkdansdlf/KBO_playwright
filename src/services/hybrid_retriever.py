@@ -16,6 +16,13 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+DEFAULT_RRF_K = 2
+DEFAULT_DENSE_RRF_WEIGHT = 2.0
+_SOURCE_FILTERS_WITHOUT_RELIABLE_TEAM_SEASON = {
+    "game",
+    "game_highlights",
+    "game_play_by_play",
+}
 
 
 class EmbeddingProvider(Protocol):
@@ -145,30 +152,44 @@ def _matches_dense_filters(item: dict[str, Any], filters: dict[str, Any]) -> boo
     return True
 
 
+def _merge_retrieval_filters(extracted_filters: dict[str, Any], explicit_filters: dict[str, Any]) -> dict[str, Any]:
+    """Merge query entities without applying unreliable source-specific filters."""
+    merged = dict(extracted_filters)
+    source_table = explicit_filters.get("source_table")
+    if source_table in _SOURCE_FILTERS_WITHOUT_RELIABLE_TEAM_SEASON:
+        merged.pop("team_id", None)
+        merged.pop("season_year", None)
+    merged.update(explicit_filters)
+    return merged
+
+
 class HybridRetriever:
     """RRF (Reciprocal Rank Fusion) Hybrid Retriever for KBO Knowledge Base."""
 
     def __init__(
         self,
         session: Session,
-        k: int = 60,
+        k: int = DEFAULT_RRF_K,
         *,
         resolve_entities: bool = True,
         embedding_service: EmbeddingProvider | None = None,
+        dense_weight: float = DEFAULT_DENSE_RRF_WEIGHT,
     ) -> None:
         """Initialize retriever.
 
         Args:
             session: DB Session.
-            k: RRF constant parameter (default 60).
+            k: RRF constant parameter (default 2).
             resolve_entities: Resolve canonical player IDs before retrieval.
             embedding_service: Optional dense embedding provider, primarily for deterministic evaluation.
+            dense_weight: Weight applied to dense rank contributions during fusion.
 
         """
         self.session = session
         self.k = k
         self.resolve_entities = resolve_entities
         self.embedding_service = embedding_service
+        self.dense_weight = dense_weight
         self.bm25_engine = RagSearchEngine(session)
         self.last_trace: dict[str, Any] = {}
 
@@ -184,13 +205,11 @@ class HybridRetriever:
         resolve_started = time.perf_counter()
         if self.resolve_entities:
             resolved = resolve_kbo_entities(self.session, query, filters)
-            merged_filters = resolved.to_filters()
+            merged_filters = _merge_retrieval_filters(resolved.to_filters(), filters or {})
         else:
-            extracted = extract_kbo_entities(query)
-            merged_filters = extracted.to_filters()
+            extracted = extract_kbo_entities(query, extract_player=False)
+            merged_filters = _merge_retrieval_filters(extracted.to_filters(), filters or {})
         resolver_ms = round((time.perf_counter() - resolve_started) * 1000, 3)
-        if filters:
-            merged_filters.update(filters)
         target_category = category if category is not None else merged_filters.get("document_type")
 
         # 1. BM25 Search
@@ -243,7 +262,7 @@ class HybridRetriever:
             if bm25_r is not None:
                 score += 1.0 / (self.k + bm25_r)
             if vector_r is not None:
-                score += 1.0 / (self.k + vector_r)
+                score += self.dense_weight / (self.k + vector_r)
 
             results.append(
                 HybridSearchResult(

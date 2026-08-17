@@ -230,14 +230,14 @@ def _missing_corpus_ids(queries: list[GoldenQuery], *, require_vector: bool) -> 
     with get_rag_index_session() as primary_session:
         primary_ids = {
             f"{row.source_table}:{row.source_row_id}"
-            for row in primary_session.execute(select(RagChunk)).scalars().all()
+            for row in primary_session.execute(select(RagChunk.source_table, RagChunk.source_row_id))
         }
     available_ids = primary_ids
     if require_vector:
         with get_vector_session() as vector_session:
             available_ids = {
                 f"{row.source_table}:{row.source_row_id}"
-                for row in vector_session.execute(select(RagChunkVector)).scalars().all()
+                for row in vector_session.execute(select(RagChunkVector.source_table, RagChunkVector.source_row_id))
             }
     missing = {chunk_id for query in queries for chunk_id in query.relevant_chunk_ids if chunk_id not in available_ids}
     return sorted(missing)

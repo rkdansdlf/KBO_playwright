@@ -6,15 +6,19 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_identity import RETRIEVABLE_INDEX_STATUSES
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+    from sqlalchemy.sql import Select
 
 logger = logging.getLogger(__name__)
+
+BM25_POSTGRES_CANDIDATE_MULTIPLIER = 100
+BM25_POSTGRES_MIN_CANDIDATES = 1000
 
 
 class RagSearchEngine:
@@ -53,7 +57,6 @@ class RagSearchEngine:
         if not keywords:
             keywords = [query.strip()]
 
-        stmt = select(RagChunk)
         conditions = [
             or_(
                 RagChunk.title.icontains(kw),
@@ -61,10 +64,13 @@ class RagSearchEngine:
             )
             for kw in keywords
         ]
-        if conditions:
-            stmt = stmt.where(or_(*conditions))
-
-        chunks = list(self.session.execute(stmt).scalars().all())
+        if self._uses_postgresql():
+            chunks = self._postgresql_candidates(keywords, top_k, filters)
+        else:
+            stmt = select(RagChunk)
+            if conditions:
+                stmt = stmt.where(or_(*conditions))
+            chunks = list(self.session.execute(stmt).scalars().all())
 
         filters = filters or {}
 
@@ -130,6 +136,60 @@ class RagSearchEngine:
             }
             for score, c in top_chunks
         ]
+
+    def _uses_postgresql(self) -> bool:
+        """Return whether the session can use the PostgreSQL text-search path."""
+        bind = self.session.get_bind()
+        dialect = getattr(bind, "dialect", None)
+        return getattr(dialect, "name", None) == "postgresql"
+
+    def _postgresql_candidates(
+        self,
+        keywords: list[str],
+        top_k: int,
+        filters: dict[str, Any] | None,
+    ) -> list[RagChunk]:
+        """Fetch a bounded candidate set using the indexed PostgreSQL tsvector."""
+        search_vector = func.to_tsvector(
+            "simple",
+            func.coalesce(RagChunk.title, "") + " " + RagChunk.content,
+        )
+        ts_queries = [func.plainto_tsquery("simple", keyword) for keyword in keywords]
+        match_condition = or_(*(search_vector.op("@@")(query) for query in ts_queries))
+        candidate_limit = max(top_k * BM25_POSTGRES_CANDIDATE_MULTIPLIER, BM25_POSTGRES_MIN_CANDIDATES)
+        stmt = (
+            select(RagChunk)
+            .where(match_condition)
+            .where(
+                or_(
+                    RagChunk.index_status.is_(None),
+                    RagChunk.index_status.in_(tuple(RETRIEVABLE_INDEX_STATUSES)),
+                )
+            )
+            .limit(candidate_limit)
+        )
+        stmt = self._apply_postgresql_filters(stmt, filters or {})
+        return list(self.session.execute(stmt).scalars().all())
+
+    @staticmethod
+    def _apply_postgresql_filters(
+        stmt: Select[tuple[RagChunk]],
+        filters: dict[str, Any],
+    ) -> Select[tuple[RagChunk]]:
+        """Apply first-class filters while preserving legacy metadata fallbacks."""
+        column_filters = {
+            "team_id": RagChunk.team_id,
+            "season_year": RagChunk.season_year,
+            "player_id": RagChunk.player_id,
+            "index_version": RagChunk.index_version,
+        }
+        for key, column in column_filters.items():
+            if key not in filters or filters[key] is None:
+                continue
+            stmt = stmt.where(or_(column == filters[key], column.is_(None)))
+        if filters.get("source_table"):
+            stmt = stmt.where(RagChunk.source_table == filters["source_table"])
+        return stmt
 
     @staticmethod
     def _matches_category(chunk: RagChunk, category: str) -> bool:

@@ -134,3 +134,35 @@ def test_hybrid_retriever_passes_extracted_metadata_to_sparse_fallback() -> None
     assert filters["stadium"] == "잠실"
     assert filters["document_type"] == "stadium_facility"
     assert "player_name" not in filters
+
+
+def test_hybrid_retriever_does_not_filter_on_unresolved_player_candidate() -> None:
+    """Avoid treating ordinary query words as strict player-name filters."""
+    retriever = HybridRetriever(MagicMock())
+    with (
+        patch.object(retriever.bm25_engine, "search", return_value=[]) as sparse_search,
+        patch("src.services.hybrid_retriever.is_pgvector_available", return_value=False),
+    ):
+        retriever.retrieve("한화와 KT의 2026년 경기 결과", top_k=3)
+
+    filters = sparse_search.call_args.kwargs["filters"]
+    assert filters["team_id"] == "KT"
+    assert "player_name" not in filters
+
+
+def test_hybrid_retriever_omits_unreliable_game_team_and_season_filters() -> None:
+    """Do not filter games by fields that game chunks do not populate reliably."""
+    retriever = HybridRetriever(MagicMock())
+    with (
+        patch.object(retriever.bm25_engine, "search", return_value=[]) as sparse_search,
+        patch("src.services.hybrid_retriever.is_pgvector_available", return_value=False),
+    ):
+        retriever.retrieve(
+            "2026년 한화와 KIA 경기 결과",
+            top_k=3,
+            filters={"source_table": "game"},
+        )
+
+    filters = sparse_search.call_args.kwargs["filters"]
+    assert "team_id" not in filters
+    assert "season_year" not in filters

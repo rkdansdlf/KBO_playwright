@@ -1,0 +1,51 @@
+{
+  "dataset": "Docs/references/rag_golden_queries.json",
+  "dataset_sha256": "6df63f4924ee878a0f52c74cdace0dbe52643287b0654b0202676e3b05a66930",
+  "query_count": 30,
+  "top_k": 5,
+  "embedding_mode": "configured",
+  "embedding_model": "perplexity/pplx-embed-v1-4b",
+  "embedding_dimension": 1536,
+  "corpus_chunks": 207259,
+  "sparse_chunks": 207259,
+  "vector_chunks": 207259,
+  "audit": {
+    "consistent": true,
+    "sparse_only": 0,
+    "vector_only": 0,
+    "hash_mismatch": 0,
+    "version_mismatch": 0,
+    "embedding_missing": 0,
+    "hnsw_index": "idx_rag_chunks_embedding_hnsw"
+  },
+  "variants": {
+    "bm25": {
+      "recall_at_5": 0.3333,
+      "mrr": 0.2833,
+      "latency_p95_ms": 466.719
+    },
+    "vector": {
+      "recall_at_5": 0.9333,
+      "mrr": 0.8056,
+      "latency_p95_ms": 350.578
+    },
+    "hybrid": {
+      "recall_at_5": 0.9333,
+      "mrr": 0.8056,
+      "latency_p95_ms": 396.233
+    },
+    "resolver_hybrid": {
+      "recall_at_5": 0.9333,
+      "mrr": 0.8222,
+      "latency_p95_ms": 396.622
+    }
+  },
+  "routing": {
+    "query_count": 100,
+    "intent_accuracy": 1.0,
+    "route_accuracy": 1.0,
+    "entity_accuracy": 1.0,
+    "entity_false_positive_count": 0
+  },
+  "status": "staging_acceptance_pending_golden_and_budget_approval"
+}

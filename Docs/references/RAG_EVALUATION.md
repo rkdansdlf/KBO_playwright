@@ -96,6 +96,8 @@ sparse index are isolated, `RAG_SOURCE_DB_URL` is read-only input and
 Non-dry-run staging builds also require `RAG_TARGET_ENV=staging` and
 `RAG_INDEX_ALLOW_WRITE=1`; deterministic embeddings are rejected for every
 other target environment. The target URLs are redacted in build logs.
+`RAG_EMBED_BATCH_SIZE` defaults to 50 to keep long source documents below
+provider batch/rate limits; increase it only after a provider-specific canary.
 The manifest exposes `deleted_identities` so stale chunks can be reviewed
 before applying deletes.
 For staging lifecycle/scale acceptance without an external embedding provider,
@@ -103,14 +105,23 @@ For staging lifecycle/scale acceptance without an external embedding provider,
 metrics as production retrieval-quality evidence; use `--embedding-mode
 configured` with the selected provider for the production baseline.
 
-The latest local PostgreSQL 17 staging acceptance run indexed the current
-source iterator census of 206,674 chunks into both stores. The final audit
-reported 206,674 healthy rows, zero sparse-only/vector-only rows, zero hash or
-version mismatches, zero missing embeddings, and `consistent=true`. This is a
-runtime checkpoint, not a permanent corpus-size contract; regenerate the
-complete inventory when the source database changes. It supersedes the older
-206,366-row working-tree baseline because the current iterators now return
-307 additional `game_play_by_play` rows and one additional row elsewhere.
+The latest local staging run indexed the current source iterator census of
+207,259 chunks into both sparse and configured-vector stores. The final audit
+reported 207,259 healthy rows, zero sparse-only/vector-only rows, zero hash or
+version mismatches, zero missing embeddings, and `consistent=true`. The
+configured vector store uses `perplexity/pplx-embed-v1-4b`, 1536 dimensions, and
+the valid `idx_rag_chunks_embedding_hnsw` cosine index. This is a runtime
+checkpoint, not a permanent corpus-size contract; regenerate the complete
+inventory when the source database changes.
+
+The configured-provider production-golden draft currently contains 30 queries.
+The latest all-variant run reports BM25 Recall@5 `0.3333` / MRR `0.2833`,
+vector Recall@5 `0.9333` / MRR `0.8056`, hybrid Recall@5 `0.9333` / MRR
+`0.8056`, and resolver-hybrid Recall@5 `0.9333` / MRR `0.8222`; retrieval p95
+latencies are approximately `467ms`, `351ms`, `396ms`, and `397ms` respectively.
+Routing remains `100/100` for intent, route, and entity accuracy with zero
+false positives. These metrics are staging evidence until the golden labels,
+quality thresholds, and provider cost budget receive final approval.
 
 Audit the awards source path before attempting a production save:
 

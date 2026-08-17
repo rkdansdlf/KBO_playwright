@@ -86,7 +86,7 @@
   {
     "id": "prod_rank_013",
     "query": "2026년 7월 17일 한화 순위를 알려줘",
-    "relevantChunkIds": ["team_standings_daily:2026-07-17_한화"],
+    "relevantChunkIds": ["team_standings_daily:2026-07-17_HH"],
     "filters": {"source_table": "team_standings_daily", "document_type": "standings"},
     "tags": ["standings"]
   },

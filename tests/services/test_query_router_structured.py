@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.models.base import Base
@@ -137,4 +137,28 @@ def test_resolver_uses_season_team_evidence_for_same_name_players() -> None:
     assert not resolved.ambiguous_player
     assert ambiguous.player_id is None
     assert ambiguous.ambiguous_player
+    session.close()
+
+
+def test_resolver_rolls_back_when_optional_player_tables_are_missing() -> None:
+    """Keep document retrieval usable when a sparse-only database lacks player tables."""
+    engine = create_engine("sqlite:///:memory:")
+    session = sessionmaker(bind=engine)()
+
+    resolved = resolve_kbo_entities(session, "2024년 KIA 김도영 타율")
+
+    assert resolved.player_id is None
+    assert session.execute(text("SELECT 1")).scalar_one() == 1
+    session.close()
+
+
+def test_unresolved_player_candidate_is_not_a_strict_filter() -> None:
+    """Do not turn an unverified natural-language token into a player filter."""
+    engine = create_engine("sqlite:///:memory:")
+    session = sessionmaker(bind=engine)()
+
+    resolved = resolve_kbo_entities(session, "2026년 한화와 KT의 경기 결과")
+
+    assert resolved.player_id is None
+    assert "player_name" not in resolved.to_filters()
     session.close()
