@@ -31,12 +31,12 @@ class RagChunk(Base, TimestampMixin):
     team_id: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="Associated team code")
     player_id: Mapped[str | None] = mapped_column(String(20), nullable=True, comment="Associated player person ID")
     source_table: Mapped[str] = mapped_column(
-        Text,
+        Text().with_variant(String(100), "oracle"),
         nullable=False,
         comment="Source descriptor (e.g. naver_news, rulebook, namuwiki)",
     )
     source_row_id: Mapped[str] = mapped_column(
-        Text,
+        Text().with_variant(String(1000), "oracle"),
         nullable=False,
         comment="Unique key or URL of the source article/document",
     )

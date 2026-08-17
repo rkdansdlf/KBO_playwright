@@ -22,10 +22,10 @@ logger = logging.getLogger(__name__)
 class RagKnowledgeIndexer:
     """Indexer service for building RAG chunks from KBO data sources."""
 
-    def __init__(self, session: Session) -> None:
-        """Initialize indexer with DB session."""
+    def __init__(self, session: Session, index_session: Session | None = None) -> None:
+        """Initialize the source reader and sparse-index writer sessions."""
         self.session = session
-        self.rag_repo = RagChunkRepository()
+        self.rag_repo = RagChunkRepository(index_session or session)
 
     def index_press_releases(self) -> int:
         """Index KBO press releases as RAG chunks.
@@ -53,7 +53,7 @@ class RagKnowledgeIndexer:
             )
 
         if chunks:
-            count = self.rag_repo.upsert_chunks(self.session, chunks)
+            count = self.rag_repo.upsert_chunks(chunks)
             logger.info("Indexed %d press release RAG chunks.", count)
             return count
         return 0
@@ -94,7 +94,7 @@ class RagKnowledgeIndexer:
             )
 
         if chunks:
-            count = self.rag_repo.upsert_chunks(self.session, chunks)
+            count = self.rag_repo.upsert_chunks(chunks)
             logger.info("Indexed %d milestone RAG chunks for season %d.", count, season)
             return count
         return 0

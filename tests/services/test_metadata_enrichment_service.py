@@ -20,13 +20,13 @@ class TestMetadataEnrichmentService:
             assert not svc.enabled
 
     def test_enrich_short_content(self):
-        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "sk-or-v1-test"}):
+        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "OPENROUTER_API_KEY": "sk-or-v1-test"}):
             svc = MetadataEnrichmentService()
             result = svc.enrich_chunk("short")
             assert result == {"summary": "", "keywords": [], "questions": []}
 
     def test_enrich_blank_content(self):
-        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "sk-or-v1-test"}):
+        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "OPENROUTER_API_KEY": "sk-or-v1-test"}):
             svc = MetadataEnrichmentService()
             result = svc.enrich_chunk("   ")
             assert result == {"summary": "", "keywords": [], "questions": []}
@@ -70,7 +70,7 @@ class TestMetadataEnrichmentService:
         assert result["questions"] == []
 
     def test_call_openrouter_success(self):
-        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "sk-or-v1-test"}):
+        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "OPENROUTER_API_KEY": "sk-or-v1-test"}):
             svc = MetadataEnrichmentService()
             with patch("httpx.Client") as MockClient:
                 mock_instance = MagicMock()
@@ -86,7 +86,7 @@ class TestMetadataEnrichmentService:
                 assert result["keywords"] == ["k"]
 
     def test_call_openrouter_api_error(self):
-        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "sk-or-v1-test"}):
+        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "OPENROUTER_API_KEY": "sk-or-v1-test"}):
             svc = MetadataEnrichmentService()
             with patch("httpx.Client") as MockClient:
                 mock_instance = MagicMock()
@@ -99,51 +99,7 @@ class TestMetadataEnrichmentService:
                 assert result == {"summary": "", "keywords": [], "questions": []}
 
     def test_call_openrouter_exception(self):
-        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "sk-or-v1-test"}):
-            svc = MetadataEnrichmentService()
-            with patch("httpx.Client") as MockClient:
-                mock_instance = MagicMock()
-                mock_instance.post.side_effect = httpx.ConnectError("network")
-                MockClient.return_value.__enter__.return_value = mock_instance
-                result = svc.enrich_chunk("A" * 100)
-                assert result == {"summary": "", "keywords": [], "questions": []}
-
-    def test_call_google_success(self):
-        with patch.dict(
-            "os.environ",
-            {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "AIza-test123", "OPENROUTER_API_KEY": ""},
-        ):
-            svc = MetadataEnrichmentService()
-            with patch("httpx.Client") as MockClient:
-                mock_instance = MagicMock()
-                mock_response = MagicMock()
-                mock_response.status_code = 200
-                mock_response.json.return_value = {
-                    "candidates": [
-                        {"content": {"parts": [{"text": '{"summary": "s", "keywords": ["k"], "questions": ["q"]}'}]}},
-                    ],
-                }
-                mock_instance.post.return_value = mock_response
-                MockClient.return_value.__enter__.return_value = mock_instance
-                result = svc.enrich_chunk("A" * 100)
-                assert result["summary"] == "s"
-                assert result["keywords"] == ["k"]
-
-    def test_call_google_api_error(self):
-        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "AIza-test123"}):
-            svc = MetadataEnrichmentService()
-            with patch("httpx.Client") as MockClient:
-                mock_instance = MagicMock()
-                mock_response = MagicMock()
-                mock_response.status_code = 400
-                mock_response.text = "Bad Request"
-                mock_instance.post.return_value = mock_response
-                MockClient.return_value.__enter__.return_value = mock_instance
-                result = svc.enrich_chunk("A" * 100)
-                assert result == {"summary": "", "keywords": [], "questions": []}
-
-    def test_call_google_exception(self):
-        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "GEMINI_API_KEY": "AIza-test123"}):
+        with patch.dict("os.environ", {"ENABLE_METADATA_ENRICHMENT": "1", "OPENROUTER_API_KEY": "sk-or-v1-test"}):
             svc = MetadataEnrichmentService()
             with patch("httpx.Client") as MockClient:
                 mock_instance = MagicMock()

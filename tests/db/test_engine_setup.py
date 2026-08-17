@@ -14,6 +14,8 @@ from src.db.engine import (
     create_engine_for_url,
     get_database_type,
     get_db_session,
+    get_rag_index_session,
+    init_rag_index_db,
     init_db,
 )
 
@@ -144,6 +146,46 @@ class TestGetDbSession:
                 assert session is mock_session
             mock_session.commit.assert_called_once()
             mock_session.close.assert_called_once()
+
+
+class TestRagIndexDatabase:
+    def test_uses_index_database_when_configured(self, monkeypatch):
+        index_engine = MagicMock()
+        index_session = MagicMock()
+        session_factory = MagicMock(return_value=index_session)
+        monkeypatch.setenv("RAG_INDEX_DB_URL", "sqlite:///rag-index.db")
+
+        with (
+            patch("src.db.engine.create_engine_for_url", return_value=index_engine) as create_engine_mock,
+            patch("src.db.engine.sessionmaker", return_value=session_factory) as sessionmaker_mock,
+        ):
+            with get_rag_index_session() as session:
+                assert session is index_session
+
+        create_engine_mock.assert_called_once_with("sqlite:///rag-index.db")
+        sessionmaker_mock.assert_called_once_with(
+            bind=index_engine,
+            autoflush=False,
+            autocommit=False,
+            expire_on_commit=False,
+        )
+        index_session.commit.assert_called_once()
+        index_session.close.assert_called_once()
+        index_engine.dispose.assert_called_once()
+
+    def test_initializes_only_sparse_tables_on_index_database(self, monkeypatch):
+        index_engine = MagicMock()
+        monkeypatch.setenv("RAG_INDEX_DB_URL", "sqlite:///rag-index.db")
+
+        with (
+            patch("src.db.engine.create_engine_for_url", return_value=index_engine),
+            patch("src.models.base.Base.metadata.create_all") as create_all,
+        ):
+            init_rag_index_db()
+
+        tables = create_all.call_args.kwargs["tables"]
+        assert {table.name for table in tables} == {"rag_chunks", "embedding_cache"}
+        index_engine.dispose.assert_called_once()
 
 
 class TestInitDb:

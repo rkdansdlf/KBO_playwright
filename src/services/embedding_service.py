@@ -1,4 +1,4 @@
-"""Service to fetch vector embeddings from Gemini API or OpenRouter API."""
+"""Service to fetch vector embeddings from OpenRouter."""
 
 from __future__ import annotations
 
@@ -10,9 +10,11 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 EMBEDDING_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 EMBEDDING_HTTP_EXCEPTIONS = (httpx.HTTPError, ValueError, TypeError, RuntimeError, OSError)
@@ -29,11 +31,12 @@ def _is_zero_vector(embedding: list[float]) -> bool:
 class EmbeddingService:
     """Connects to external embedding providers to generate vector arrays for chunk texts."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, cache_enabled: bool = True) -> None:
         """Initialize a new instance."""
-        self.api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OpenRouter_API_KEY") or os.getenv("GEMINI_API_KEY")  # noqa: SIM112
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.cache_enabled = cache_enabled
         if not self.api_key:
-            logger.warning("⚠️ Warning: OpenRouter_API_KEY is not configured in environment.")
+            logger.warning("⚠️ Warning: OPENROUTER_API_KEY is not configured in environment.")
 
     def adjust_embedding_dimension(
         self, embedding: list[float], target_dim: int = EMBEDDING_TARGET_DIMENSION
@@ -98,30 +101,29 @@ class EmbeddingService:
 
         model_name = self._model_name()
         hashes = [self._compute_hash(t) for t in texts]
-        cached_map = self._load_cached_embeddings(hashes, model_name)
+        cached_map = self._load_cached_embeddings(hashes, model_name) if self.cache_enabled else {}
         missing_indices, missing_texts = self._missing_embedding_inputs(texts, hashes, cached_map)
 
         if missing_texts:
             new_embeddings = self._fetch_missing_embeddings(missing_texts)
-            self._save_cached_embeddings(hashes, missing_indices, model_name, new_embeddings)
+            if self.cache_enabled:
+                self._save_cached_embeddings(hashes, missing_indices, model_name, new_embeddings)
             self._merge_new_embeddings(cached_map, hashes, missing_indices, new_embeddings)
 
         return [cached_map[h] for h in hashes]
 
     def _model_name(self) -> str:
-        if self.api_key and self.api_key.startswith("sk-or-v1-"):
-            return os.getenv("EMBEDDING_MODEL", DEFAULT_OPENROUTER_EMBEDDING_MODEL)
-        return "models/text-embedding-004"
+        return os.getenv("EMBEDDING_MODEL", DEFAULT_OPENROUTER_EMBEDDING_MODEL)
 
     def _load_cached_embeddings(self, hashes: list[str], model_name: str) -> dict[str, list[float]]:
         cached_map = {}
         try:
             from sqlalchemy import select
 
-            from src.db.engine import SessionLocal
+            from src.db.engine import get_rag_index_session
             from src.models.embedding_cache import EmbeddingCache
 
-            with SessionLocal() as session:
+            with get_rag_index_session() as session:
                 stmt = select(EmbeddingCache).where(
                     EmbeddingCache.text_hash.in_(hashes),
                     EmbeddingCache.model_name == model_name,
@@ -154,12 +156,9 @@ class EmbeddingService:
 
     def _fetch_missing_embeddings(self, missing_texts: list[str]) -> list[list[float]]:
         if not self.api_key:
-            logger.error("❌ OpenRouter_API_KEY missing. Returning zero-vectors as fallback.")
+            logger.error("❌ OPENROUTER_API_KEY missing. Returning zero-vectors as fallback.")
             return [[0.0] * EMBEDDING_TARGET_DIMENSION for _ in missing_texts]
-        if self.api_key.startswith("sk-or-v1-"):
-            raw_embeddings = self._fetch_openrouter_embeddings(missing_texts)
-        else:
-            raw_embeddings = self._fetch_google_embeddings(missing_texts)
+        raw_embeddings = self._fetch_openrouter_embeddings(missing_texts)
         return [self.adjust_embedding_dimension(emb) for emb in raw_embeddings]
 
     def _save_cached_embeddings(
@@ -170,10 +169,10 @@ class EmbeddingService:
         new_embeddings: list[list[float]],
     ) -> None:
         try:
-            from src.db.engine import SessionLocal
+            from src.db.engine import get_rag_index_session
             from src.models.embedding_cache import EmbeddingCache
 
-            with SessionLocal() as session:
+            with get_rag_index_session() as session:
                 seen: set[str] = set()
                 for idx, emb in enumerate(new_embeddings):
                     text_hash = hashes[missing_indices[idx]]
@@ -262,42 +261,3 @@ class EmbeddingService:
         except EMBEDDING_HTTP_EXCEPTIONS:
             logger.exception("❌ Exception fetching OpenRouter embeddings")
             return None
-
-    def _fetch_google_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """Call standard Google Gemini AI Studio Embeddings API.
-
-        Args:
-            texts: Texts.
-            texts: Texts.
-
-        """
-        # Google text-embedding-004 supports batching via batchEmbedContents
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key={self.api_key}"
-        headers = {"Content-Type": "application/json"}
-
-        requests_payload = [
-            {
-                "model": "models/text-embedding-004",
-                "content": {"parts": [{"text": text}]},
-                "outputDimensionality": EMBEDDING_TARGET_DIMENSION,
-            }
-            for text in texts
-        ]
-
-        payload = {"requests": requests_payload}
-
-        try:
-            with httpx.Client(headers=headers, timeout=30.0) as client:
-                res = client.post(url, json=payload)
-                if res.status_code == HTTPStatus.OK:
-                    data = res.json()
-                    # Google format: {"embeddings": [{"values": [...]}, ...]}
-                    embeddings_data = data.get("embeddings", [])
-                    return [item.get("values", []) for item in embeddings_data]
-                logger.error("❌ Google Embedding API returned status %s: %s", res.status_code, res.text)
-        except EMBEDDING_HTTP_EXCEPTIONS:
-            logger.exception("❌ Exception fetching Google embeddings")
-
-        # Fallback empty vectors (Google text-embedding-004 dimensions = 768, target = 1536)
-        return [[0.0] * EMBEDDING_TARGET_DIMENSION for _ in texts]

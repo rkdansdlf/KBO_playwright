@@ -109,6 +109,13 @@ def _source_key(row: Mapping[str, Any] | object) -> str:
     return f"{_value(row, 'source_table')}:{_value(row, 'source_row_id')}"
 
 
+def _embedding_is_missing(row: Mapping[str, Any] | object) -> bool:
+    """Return whether a vector projection lacks its embedding."""
+    if _has_field(row, "embedding_present"):
+        return not bool(_value(row, "embedding_present"))
+    return _has_field(row, "embedding") and _value(row, "embedding") is None
+
+
 def compare_index_rows(
     primary_rows: Iterable[Mapping[str, Any] | object],
     vector_rows: Iterable[Mapping[str, Any] | object],
@@ -156,7 +163,7 @@ def compare_index_rows(
         if not primary_version or not vector_version or primary_version != vector_version:
             issue = "INDEX_VERSION_MISMATCH" if primary_version and vector_version else "INDEX_VERSION_MISSING"
             findings.append(IndexConsistencyFinding(source_key, issue, **finding_kwargs))
-        if _has_field(vector_row, "embedding") and _value(vector_row, "embedding") is None:
+        if _embedding_is_missing(vector_row):
             findings.append(IndexConsistencyFinding(source_key, "VECTOR_EMBEDDING_MISSING", **finding_kwargs))
         primary_status = primary_status or "ACTIVE"
         vector_status = vector_status or "ACTIVE"
@@ -174,12 +181,30 @@ def compare_index_rows(
 
 
 def audit_index_sessions(primary_session: Session, vector_session: Session) -> IndexConsistencyReport:
-    """Load both RAG indexes and compare their canonical identities."""
+    """Load lightweight identity projections from both indexes and compare them."""
     from sqlalchemy import select
 
     from src.models.rag_chunk import RagChunk
     from src.models.rag_chunk_vector import RagChunkVector
 
-    primary_rows = list(primary_session.execute(select(RagChunk)).scalars().all())
-    vector_rows = list(vector_session.execute(select(RagChunkVector)).scalars().all())
+    identity_columns = (
+        "source_table",
+        "source_row_id",
+        "content_hash",
+        "index_version",
+        "index_status",
+    )
+    primary_rows = (
+        primary_session.execute(select(*(getattr(RagChunk, column) for column in identity_columns))).mappings().all()
+    )
+    vector_rows = (
+        vector_session.execute(
+            select(
+                *(getattr(RagChunkVector, column) for column in identity_columns),
+                RagChunkVector.embedding.is_not(None).label("embedding_present"),
+            )
+        )
+        .mappings()
+        .all()
+    )
     return compare_index_rows(primary_rows, vector_rows)

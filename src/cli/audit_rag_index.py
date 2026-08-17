@@ -1,60 +1,13 @@
-"""Audit sparse/vector RAG index identity and freshness alignment."""
+"""Compatibility wrapper for :mod:`src.cli.rag.audit_rag_index`."""
 
 from __future__ import annotations
 
-import argparse
-import json
 import sys
-from typing import TYPE_CHECKING
 
-from src.db.engine import get_db_session
-from src.db.vector_engine import get_vector_session, is_pgvector_available
-from src.services.rag_index_consistency import audit_index_sessions
+from src.cli.rag import audit_rag_index as _target_module
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Audit sparse and vector indexes without modifying either database."""
-    parser = argparse.ArgumentParser(description="Audit sparse/vector RAG index consistency")
-    parser.add_argument("--json", action="store_true", dest="as_json", help="Render JSON output")
-    parser.add_argument(
-        "--fail-on-findings",
-        action="store_true",
-        help="Compatibility flag; findings always return exit code 1",
-    )
-    parser.add_argument(
-        "--require-nonempty",
-        action="store_true",
-        help="Return exit code 1 when either index has zero rows",
-    )
-    args = parser.parse_args(argv)
-
-    if not is_pgvector_available():
-        payload = {"consistent": False, "error": "pgvector is unavailable"}
-        rendered = json.dumps(payload, ensure_ascii=False) if args.as_json else payload["error"]
-        sys.stdout.write(rendered + "\n")
-        return 2
-
-    with get_db_session() as primary_session, get_vector_session() as vector_session:
-        report = audit_index_sessions(primary_session, vector_session)
-    payload = report.to_dict()
-    nonempty = report.primary_count > 0 and report.vector_count > 0
-    consistent = report.is_consistent and (nonempty or not args.require_nonempty)
-    payload["consistent"] = consistent
-    if args.require_nonempty and not nonempty:
-        payload["error"] = "RAG index is empty"
-    if args.as_json:
-        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    else:
-        sys.stdout.write(
-            f"primary={report.primary_count} vector={report.vector_count} findings={len(report.findings)}\n"
-        )
-        for finding in report.findings:
-            sys.stdout.write(f"{finding.issue}: {finding.source_key}\n")
-    return 1 if not consistent else 0
-
+globals().update({key: value for key, value in _target_module.__dict__.items() if not key.startswith("__")})
+sys.modules[__name__] = _target_module
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(_target_module.main())
