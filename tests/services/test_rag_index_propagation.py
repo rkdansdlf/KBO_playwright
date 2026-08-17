@@ -5,7 +5,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from src.services.rag_index_propagation import propagate_index_delete, propagate_index_update
+import pytest
+
+from src.services.rag_index_propagation import (
+    propagate_index_delete,
+    propagate_index_update,
+    publish_index_batch,
+)
 
 
 def test_update_keeps_rows_non_retrievable_until_both_indexes_are_written() -> None:
@@ -58,3 +64,47 @@ def test_delete_marks_both_rows_before_optional_purge() -> None:
     assert vector_row.index_status == "DELETED"
     primary.delete.assert_called_once_with(primary_row)
     vector.delete.assert_called_once_with(vector_row)
+
+
+def test_bulk_publish_surfaces_active_sparse_failure_after_vector_commit() -> None:
+    """Keep the recovery boundary visible when the final sparse publish fails."""
+    primary = MagicMock()
+    vector = MagicMock()
+    primary.get_bind.return_value.dialect.name = "postgresql"
+    vector.get_bind.return_value.dialect.name = "postgresql"
+    payload = {"source_table": "game", "source_row_id": "g1", "title": "Game", "content": "내용"}
+    events: list[str] = []
+    fail_active_sparse = True
+
+    def sparse_upsert(_session, _payloads, status):
+        events.append(f"sparse:{status}")
+        if status == "ACTIVE" and fail_active_sparse:
+            raise RuntimeError("injected sparse active publish failure")
+
+    def vector_upsert(_session, _payloads, status):
+        events.append(f"vector:{status}")
+
+    primary.commit.side_effect = lambda: events.append("sparse:commit")
+    vector.commit.side_effect = lambda: events.append("vector:commit")
+    with (
+        patch("src.services.rag_index_propagation._reject_purged_batch"),
+        patch("src.services.rag_index_propagation._bulk_upsert_sparse", side_effect=sparse_upsert),
+        patch("src.services.rag_index_propagation._bulk_upsert_vector", side_effect=vector_upsert),
+    ):
+        with pytest.raises(RuntimeError, match="injected sparse active publish failure"):
+            publish_index_batch(primary, vector, [payload])
+
+        assert events == [
+            "sparse:PENDING",
+            "vector:PENDING",
+            "vector:commit",
+            "vector:ACTIVE",
+            "vector:commit",
+            "sparse:ACTIVE",
+        ]
+
+        fail_active_sparse = False
+        assert publish_index_batch(primary, vector, [payload]) == 1
+
+    assert events[-4:] == ["vector:ACTIVE", "vector:commit", "sparse:ACTIVE", "sparse:commit"]
+    primary.commit.assert_called_once()

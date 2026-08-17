@@ -17,7 +17,7 @@ Usage:
     python scripts/benchmark_embedding_models.py --dry-run            # API 호출 없이 구성 검증만
 
 Environment:
-    OpenRouter_API_KEY (OpenRouter, "sk-or-v1-" prefix) for voyage/qwen3
+    OPENROUTER_API_KEY (OpenRouter, "sk-or-v1-" prefix) for voyage/qwen3
     PPLX_API_KEY for pplx-embed models
 """
 
@@ -62,7 +62,7 @@ _PROVIDER_PERPLEXITY = "perplexity"
 
 # 모델별 API 키 환경변수
 _API_KEY_ENV: dict[str, str] = {
-    _PROVIDER_OPENROUTER: "OpenRouter_API_KEY",
+    _PROVIDER_OPENROUTER: "OPENROUTER_API_KEY",
     _PROVIDER_PERPLEXITY: "PPLX_API_KEY",
 }
 

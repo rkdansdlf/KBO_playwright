@@ -70,36 +70,12 @@ class TestGetEmbedding:
         result = svc.get_embedding("single text")
         assert len(result) == 1536
 
-
-class TestFetchGoogleEmbeddings:
-    def test_api_error_returns_fallback(self):
-        svc = EmbeddingService()
-        svc.api_key = "fake-key"
-        with patch("httpx.Client") as mock_client:
-            mock_client.return_value.__enter__.return_value.post.return_value.status_code = 500
-            result = svc._fetch_google_embeddings(["hello"])
-            assert len(result) == 1
-            assert result[0] == [0.0] * 1536
-
-    def test_successful_response_parses_embeddings(self):
-        svc = EmbeddingService()
-        svc.api_key = "fake-key"
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"embeddings": [{"values": [0.1, 0.2]}]}
-        with patch("httpx.Client") as mock_client:
-            mock_client.return_value.__enter__.return_value.post.return_value = mock_response
-            result = svc._fetch_google_embeddings(["hello"])
-            assert len(result) == 1
-            assert result[0] == [0.1, 0.2]
-
-    def test_exception_during_request_returns_fallback(self):
-        svc = EmbeddingService()
-        svc.api_key = "fake-key"
-        with patch("httpx.Client") as mock_client:
-            mock_client.return_value.__enter__.return_value.post.side_effect = httpx.TimeoutException("timeout")
-            result = svc._fetch_google_embeddings(["hello"])
-            assert result == [[0.0] * 1536]
+    def test_cache_can_be_disabled(self):
+        svc = EmbeddingService(cache_enabled=False)
+        svc.api_key = None
+        with patch.object(svc, "_load_cached_embeddings") as load_cache:
+            assert len(svc.get_embedding("no cache")) == 1536
+        load_cache.assert_not_called()
 
 
 class TestFetchOpenRouterEmbeddings:

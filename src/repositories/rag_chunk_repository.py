@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from src.constants import KST
+from src.db.engine import get_rag_index_session
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_identity import ACTIVE_INDEX_STATUS, chunk_content_hash, current_index_version
 
@@ -18,15 +19,47 @@ if TYPE_CHECKING:
 class RagChunkRepository:
     """Data Access Object (DAO) for managing rag_chunks."""
 
-    def upsert_chunks(self, session: Session, chunks: list[dict[str, Any]], *, commit: bool = True) -> int:
+    def __init__(self, session: Session | None = None) -> None:
+        """Initialize."""
+        self.session = session
+
+    def upsert_chunks(
+        self,
+        chunks_or_session: list[dict[str, Any]] | Session,
+        chunks: list[dict[str, Any]] | None = None,
+        *,
+        commit: bool = False,
+    ) -> int:
         """Save or updates RAG chunks using a clean, database-agnostic query-and-upsert approach.
 
         Args:
-            session: Session.
-            chunks: Chunks.
-            commit: Commit the session after upserting chunks.
+            chunks_or_session: Chunks, or a legacy explicit session followed by chunks.
+            chunks: Chunks when using the legacy explicit-session call form.
+            commit: Commit when the repository owns or is given a legacy session call.
 
         """
+        if chunks is None:
+            payloads = chunks_or_session
+            session = self.session
+        else:
+            session = chunks_or_session
+            payloads = chunks
+        if not isinstance(payloads, list):
+            message = "RAG chunks must be provided as a list"
+            raise TypeError(message)
+        if session is None:
+            with get_rag_index_session() as managed_session:
+                return self._upsert_chunks(managed_session, payloads)
+        return self._upsert_chunks(session, payloads, commit=commit)
+
+    def _upsert_chunks(
+        self,
+        session: Session,
+        chunks: list[dict[str, Any]],
+        *,
+        commit: bool = False,
+    ) -> int:
+        """Upsert chunks into an explicitly managed session."""
         upserted_count = 0
 
         now = datetime.now(KST)
@@ -103,9 +136,11 @@ class RagChunkRepository:
                 session.add(new_chunk)
 
             upserted_count += 1
-            if commit and upserted_count % 100 == 0:
-                session.commit()
+            if upserted_count % 100 == 0:
+                session.flush()
 
         if commit:
-            session.commit()
+            session.flush()
+        else:
+            session.flush()
         return upserted_count

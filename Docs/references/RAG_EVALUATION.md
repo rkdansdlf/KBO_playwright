@@ -62,6 +62,69 @@ then become `ACTIVE`. Do not use the fixture metrics as production retrieval
 quality evidence. Production evaluation still requires annotated IDs from the
 real indexed corpus.
 
+For a read-only production-source inventory, use the same source iterators as
+the index builder without embedding or database writes:
+
+```bash
+python3 -m src.cli.inventory_rag_corpus --source all --limit 1000 --json
+python3 -m src.cli.inventory_rag_corpus --source batting --season 2025 --json
+python3 -m src.cli.inventory_rag_corpus --source all \
+  --require-source players --require-source awards \
+  --output reports/rag-corpus-inventory.json --json
+python3 -m src.cli.inventory_rag_corpus --source all \
+  --profile production --output reports/rag-corpus-inventory.json --json
+```
+
+The inventory reports generated chunks, new/updated/unchanged candidates,
+duplicate or invalid identities, missing metadata, and estimated embedding
+requests. `--limit` makes the report non-complete and therefore suppresses the
+delete census. A complete-scope report returning duplicate identities is a
+blocking corpus defect, not a retrieval-quality failure.
+Use `--require-source` for domains that must be present in a production
+corpus; an empty optional source is reported but does not fail the command.
+The tracked source contract is `Docs/references/rag_source_contract.json`.
+Production and staging currently require `awards`; fixture and dev treat it as
+optional.
+The complete-scope manifest includes per-source `source_rows`, `chunks_generated`,
+`new`, `unchanged`, `updated`, `deleted`, `elapsed_ms`, and defect counts, plus
+aggregate totals. Do not use a run with `--limit` as the production baseline.
+Before staging indexing, require both `PGVECTOR_URL` and an embedding provider
+key; configured embedding runs use `OPENROUTER_API_KEY`. When the source and
+sparse index are isolated, `RAG_SOURCE_DB_URL` is read-only input and
+`RAG_INDEX_DB_URL` is the sparse-index write target. `audit_rag_index
+--require-nonempty` must be run after migrations and after the batch publish.
+Non-dry-run staging builds also require `RAG_TARGET_ENV=staging` and
+`RAG_INDEX_ALLOW_WRITE=1`; deterministic embeddings are rejected for every
+other target environment. The target URLs are redacted in build logs.
+The manifest exposes `deleted_identities` so stale chunks can be reviewed
+before applying deletes.
+For staging lifecycle/scale acceptance without an external embedding provider,
+`build_rag_index --embedding-mode deterministic` is available. Do not use its
+metrics as production retrieval-quality evidence; use `--embedding-mode
+configured` with the selected provider for the production baseline.
+
+The latest local PostgreSQL 17 staging acceptance run indexed the current
+source iterator census of 206,674 chunks into both stores. The final audit
+reported 206,674 healthy rows, zero sparse-only/vector-only rows, zero hash or
+version mismatches, zero missing embeddings, and `consistent=true`. This is a
+runtime checkpoint, not a permanent corpus-size contract; regenerate the
+complete inventory when the source database changes. It supersedes the older
+206,366-row working-tree baseline because the current iterators now return
+307 additional `game_play_by_play` rows and one additional row elsewhere.
+
+Audit the awards source path before attempting a production save:
+
+```bash
+python3 -m src.cli.audit_awards --json --output reports/awards-audit.json
+python3 -m src.cli.audit_awards --probe --json --output reports/awards-audit-probe.json
+```
+
+`--probe` fetches and parses Wikipedia/Yagoonara without saving. The report
+separates raw snapshots, parsed records, stored rows, source errors, pending
+parser status, schema gaps, natural-key duplicates, invalid season values, and
+invalid player/team links. A `persistence_missing` result means the live
+sources parsed records but the target `awards` table still has no rows.
+
 Routing is evaluated separately with a dataset containing `expectedIntent`,
 `expectedRoute`, and optional `expectedEntities` fields:
 

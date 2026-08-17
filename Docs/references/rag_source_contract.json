@@ -1,0 +1,10 @@
+{
+  "rag_sources": {
+    "awards": {
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    }
+  }
+}

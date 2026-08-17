@@ -77,6 +77,197 @@ def propagate_index_update(  # noqa: PLR0913
     return IndexPropagationResult(source_key, "update", "ACTIVE", "ACTIVE", content_hash, version)
 
 
+def _session_dialect_name(session: Session) -> str:
+    """Return the bound SQLAlchemy dialect name for a session."""
+    bind = session.get_bind()
+    return str(getattr(getattr(bind, "dialect", None), "name", ""))
+
+
+def _can_bulk_publish(primary_session: Session, vector_session: Session) -> bool:
+    """Return whether both RAG stores support PostgreSQL bulk upserts."""
+    primary_dialect = _session_dialect_name(primary_session)
+    vector_dialect = _session_dialect_name(vector_session)
+    return primary_dialect == "postgresql" and vector_dialect == "postgresql"
+
+
+def _normalized_meta(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build sparse metadata using the same defaults as the repository path."""
+    meta = dict(payload.get("meta") or {})
+    for key in ("document_type", "source_url", "language", "game_date"):
+        value = payload.get(key)
+        if value is not None:
+            if hasattr(value, "isoformat"):
+                value = value.isoformat()
+            meta.setdefault(key, value)
+    return meta
+
+
+def _sparse_rows(payloads: list[dict[str, Any]], index_status: str) -> list[dict[str, Any]]:
+    """Convert payloads to rows for the PostgreSQL sparse index."""
+    now = datetime.now(KST)
+    return [_sparse_row(payload, index_status, now) for payload in payloads]
+
+
+def _sparse_row(payload: dict[str, Any], index_status: str, now: datetime) -> dict[str, Any]:
+    """Convert one payload to a sparse index row."""
+    content = payload.get("content", "")
+    return {
+        "season_year": payload.get("season_year"),
+        "season_id": payload.get("season_id"),
+        "league_type_code": payload.get("league_type_code"),
+        "team_id": payload.get("team_id"),
+        "player_id": payload.get("player_id"),
+        "source_table": str(payload["source_table"]),
+        "source_row_id": str(payload["source_row_id"]),
+        "title": payload.get("title", ""),
+        "content": content,
+        "content_hash": payload.get("content_hash") or chunk_content_hash(payload.get("title"), content),
+        "index_version": payload.get("index_version") or current_index_version(),
+        "index_status": index_status,
+        "indexed_at": payload.get("indexed_at") or now,
+        "embedding": payload.get("embedding"),
+        "meta": _normalized_meta(payload),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _vector_rows(payloads: list[dict[str, Any]], index_status: str) -> list[dict[str, Any]]:
+    """Convert payloads to rows for the PostgreSQL vector index."""
+    now = datetime.now(KST)
+    return [_vector_row(payload, index_status, now) for payload in payloads]
+
+
+def _vector_row(payload: dict[str, Any], index_status: str, now: datetime) -> dict[str, Any]:
+    """Convert one payload to a vector index row."""
+    content = payload.get("content", "")
+    return {
+        "season_year": payload.get("season_year"),
+        "season_id": payload.get("season_id"),
+        "league_type_code": payload.get("league_type_code"),
+        "team_id": payload.get("team_id"),
+        "player_id": payload.get("player_id"),
+        "source_table": str(payload["source_table"]),
+        "source_row_id": str(payload["source_row_id"]),
+        "title": payload.get("title"),
+        "content": content,
+        "document_type": payload.get("document_type"),
+        "game_date": payload.get("game_date"),
+        "published_at": payload.get("published_at"),
+        "source_url": payload.get("source_url"),
+        "language": payload.get("language"),
+        "content_hash": payload.get("content_hash") or chunk_content_hash(payload.get("title"), content),
+        "index_version": payload.get("index_version") or current_index_version(),
+        "index_status": index_status,
+        "indexed_at": payload.get("indexed_at") or now,
+        "embedding": payload.get("embedding"),
+        "meta": payload.get("meta") or {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _bulk_upsert_sparse(session: Session, payloads: list[dict[str, Any]], index_status: str) -> None:
+    """Bulk upsert sparse rows using PostgreSQL's conflict-aware insert."""
+    from sqlalchemy.dialects.postgresql import insert
+
+    statement = insert(RagChunk).values(_sparse_rows(payloads, index_status))
+    update_columns = {
+        column: getattr(statement.excluded, column)
+        for column in (
+            "season_year",
+            "season_id",
+            "league_type_code",
+            "team_id",
+            "player_id",
+            "title",
+            "content",
+            "content_hash",
+            "index_version",
+            "index_status",
+            "indexed_at",
+            "embedding",
+            "meta",
+            "updated_at",
+        )
+    }
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[RagChunk.source_table, RagChunk.source_row_id],
+            set_=update_columns,
+        )
+    )
+
+
+def _bulk_upsert_vector(session: Session, payloads: list[dict[str, Any]], index_status: str) -> None:
+    """Bulk upsert vector rows using PostgreSQL's conflict-aware insert."""
+    from sqlalchemy.dialects.postgresql import insert
+
+    statement = insert(RagChunkVector).values(_vector_rows(payloads, index_status))
+    update_columns = {
+        column: getattr(statement.excluded, column)
+        for column in (
+            "season_year",
+            "season_id",
+            "league_type_code",
+            "team_id",
+            "player_id",
+            "title",
+            "content",
+            "document_type",
+            "game_date",
+            "published_at",
+            "source_url",
+            "language",
+            "content_hash",
+            "index_version",
+            "index_status",
+            "indexed_at",
+            "embedding",
+            "meta",
+            "updated_at",
+        )
+    }
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[RagChunkVector.source_table, RagChunkVector.source_row_id],
+            set_=update_columns,
+        )
+    )
+
+
+def _reject_purged_batch(primary_session: Session, vector_session: Session, payloads: list[dict[str, Any]]) -> None:
+    """Reject mutations for purged identities with one query per store."""
+    from sqlalchemy import tuple_
+
+    keys = [(str(payload["source_table"]), str(payload["source_row_id"])) for payload in payloads]
+    for session, model in ((primary_session, RagChunk), (vector_session, RagChunkVector)):
+        purged = session.execute(
+            select(model.source_table, model.source_row_id).where(
+                tuple_(model.source_table, model.source_row_id).in_(keys),
+                model.index_status == "PURGED",
+            )
+        ).first()
+        if purged:
+            message = f"Cannot mutate purged RAG index row: {purged[0]}:{purged[1]}"
+            raise ValueError(message)
+
+
+def _publish_bulk(primary_session: Session, vector_session: Session, payloads: list[dict[str, Any]]) -> int:
+    """Publish one PostgreSQL batch through pending and active states."""
+    pending_payloads = [dict(payload, index_status="PENDING") for payload in payloads]
+    _bulk_upsert_sparse(primary_session, pending_payloads, "PENDING")
+    _bulk_upsert_vector(vector_session, pending_payloads, "PENDING")
+    vector_session.commit()
+
+    active_payloads = [dict(payload, index_status="ACTIVE") for payload in payloads]
+    _bulk_upsert_vector(vector_session, active_payloads, "ACTIVE")
+    vector_session.commit()
+    _bulk_upsert_sparse(primary_session, active_payloads, "ACTIVE")
+    primary_session.commit()
+    return len(payloads)
+
+
 def publish_index_batch(
     primary_session: Session,
     vector_session: Session,
@@ -85,6 +276,9 @@ def publish_index_batch(
     """Publish a batch through a non-retrievable pending state into both indexes."""
     if not payloads:
         return 0
+    if _can_bulk_publish(primary_session, vector_session):
+        _reject_purged_batch(primary_session, vector_session, payloads)
+        return _publish_bulk(primary_session, vector_session, payloads)
     for payload in payloads:
         _reject_purged_rows(
             primary_session,

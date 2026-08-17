@@ -34,11 +34,6 @@ class TestModelName:
         svc.api_key = "sk-or-v1-test-key"
         assert svc._model_name() == "perplexity/pplx-embed-v1-4b"
 
-    def test_google_key(self):
-        svc = EmbeddingService()
-        svc.api_key = "AIza-test-key"
-        assert svc._model_name() == "models/text-embedding-004"
-
     def test_custom_embedding_model_env(self, monkeypatch):
         monkeypatch.setenv("EMBEDDING_MODEL", "custom/model-v2")
         svc = EmbeddingService()
@@ -81,8 +76,8 @@ class TestMergeNewEmbeddings:
 class TestLoadCachedEmbeddings:
     def test_db_exception_returns_empty(self):
         svc = EmbeddingService()
-        with patch("src.db.engine.SessionLocal") as mock_sl:
-            mock_sl.return_value.__enter__.side_effect = RuntimeError("db error")
+        with patch("src.db.engine.get_rag_index_session") as mock_session_factory:
+            mock_session_factory.return_value.__enter__.side_effect = RuntimeError("db error")
             result = svc._load_cached_embeddings(["h1"], "model")
             assert result == {}
 
@@ -92,9 +87,9 @@ class TestLoadCachedEmbeddings:
         mock_row.text_hash = "h1"
         mock_row.embedding = "[0.1, 0.2, 0.3]"
 
-        with patch("src.db.engine.SessionLocal") as mock_sl:
+        with patch("src.db.engine.get_rag_index_session") as mock_session_factory:
             mock_session = MagicMock()
-            mock_sl.return_value.__enter__.return_value = mock_session
+            mock_session_factory.return_value.__enter__.return_value = mock_session
             mock_session.scalars.return_value.all.return_value = [mock_row]
             result = svc._load_cached_embeddings(["h1"], "model")
             assert "h1" in result
@@ -106,9 +101,9 @@ class TestLoadCachedEmbeddings:
         mock_row.text_hash = "h1"
         mock_row.embedding = [0.0, 0.0, 0.0]
 
-        with patch("src.db.engine.SessionLocal") as mock_sl:
+        with patch("src.db.engine.get_rag_index_session") as mock_session_factory:
             mock_session = MagicMock()
-            mock_sl.return_value.__enter__.return_value = mock_session
+            mock_session_factory.return_value.__enter__.return_value = mock_session
             mock_session.scalars.return_value.all.return_value = [mock_row]
             result = svc._load_cached_embeddings(["h1"], "model")
             assert result == {}
@@ -117,8 +112,8 @@ class TestLoadCachedEmbeddings:
 class TestSaveCachedEmbeddings:
     def test_exception_handled(self):
         svc = EmbeddingService()
-        with patch("src.db.engine.SessionLocal") as mock_sl:
-            mock_sl.return_value.__enter__.side_effect = RuntimeError("db error")
+        with patch("src.db.engine.get_rag_index_session") as mock_session_factory:
+            mock_session_factory.return_value.__enter__.side_effect = RuntimeError("db error")
             svc._save_cached_embeddings(["h1"], [0], "model", [[0.1, 0.2]])
 
     def test_existing_entry_skipped(self):
@@ -126,8 +121,8 @@ class TestSaveCachedEmbeddings:
         mock_session = MagicMock()
         mock_session.get.return_value = MagicMock()
 
-        with patch("src.db.engine.SessionLocal") as mock_sl:
-            mock_sl.return_value.__enter__.return_value = mock_session
+        with patch("src.db.engine.get_rag_index_session") as mock_session_factory:
+            mock_session_factory.return_value.__enter__.return_value = mock_session
             svc._save_cached_embeddings(["h1"], [0], "model", [[0.1, 0.2]])
             mock_session.add.assert_not_called()
 
@@ -136,8 +131,8 @@ class TestSaveCachedEmbeddings:
         mock_session = MagicMock()
         mock_session.get.return_value = None
 
-        with patch("src.db.engine.SessionLocal") as mock_sl:
-            mock_sl.return_value.__enter__.return_value = mock_session
+        with patch("src.db.engine.get_rag_index_session") as mock_session_factory:
+            mock_session_factory.return_value.__enter__.return_value = mock_session
             svc._save_cached_embeddings(["h1"], [0], "model", [[0.0, 0.0]])
             mock_session.add.assert_not_called()
             mock_session.commit.assert_called_once()
@@ -155,13 +150,6 @@ class TestFetchMissingEmbeddings:
         svc = EmbeddingService()
         svc.api_key = "sk-or-v1-test"
         with patch.object(svc, "_fetch_openrouter_embeddings", return_value=[[0.1] * 1536]):
-            result = svc._fetch_missing_embeddings(["text"])
-            assert len(result) == 1
-
-    def test_google_route(self):
-        svc = EmbeddingService()
-        svc.api_key = "AIza-test"
-        with patch.object(svc, "_fetch_google_embeddings", return_value=[[0.1] * 1536]):
             result = svc._fetch_missing_embeddings(["text"])
             assert len(result) == 1
 

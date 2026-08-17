@@ -290,7 +290,7 @@ class TestChunkQualityDatabaseAndReporting:
         ]
         with (
             patch("argparse.ArgumentParser.parse_args", return_value=args),
-            patch("src.cli.verify_chunk_quality.get_db_session") as get_session,
+            patch("src.cli.verify_chunk_quality.get_rag_index_session") as get_session,
             patch("src.cli.verify_chunk_quality.load_chunks", side_effect=[[], chunks]) as load,
             patch("src.cli.verify_chunk_quality.remove_duplicate_chunks", return_value=2) as remove,
         ):

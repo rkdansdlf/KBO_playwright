@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("RAG_TEST_DB_URL") or os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
+DATABASE_URL = (
+    os.getenv("RAG_SOURCE_DB_URL")
+    or os.getenv("RAG_TEST_DB_URL")
+    or os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
+)
 DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 DB_SESSION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 
@@ -193,9 +197,14 @@ def _parse_oracle_connection(
         auth = parts.netloc.split("@")[0] if "@" in parts.netloc else ""
         host_part = parts.netloc.split("@")[1] if "@" in parts.netloc else parts.netloc
         user = password = None
-        if ":" in auth:
-            user, password_enc = auth.split(":", 1)
-            password = unquote(password_enc)
+        if auth:
+            if ":" in auth:
+                user, password_enc = auth.split(":", 1)
+                password = unquote(password_enc)
+            else:
+                user = auth
+        user = user or os.getenv("ORACLE_APP_USER")
+        password = password or os.getenv("ORACLE_APP_PASSWORD")
 
         if tns_admin:
             connect_args["config_dir"] = tns_admin
@@ -245,6 +254,7 @@ def _create_oracle_engine(
         **extra_kwargs,
     )
     if hasattr(eng, "dialect"):
+        eng.dialect._json_serializer = json.dumps  # noqa: SLF001
         eng.dialect._json_deserializer = _custom_json_deserializer  # noqa: SLF001
     return eng
 
@@ -305,6 +315,56 @@ def get_db_session() -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+@contextmanager
+def get_rag_index_session() -> Iterator[Session]:
+    """Open the sparse RAG index session, separate from the source database when configured."""
+    index_url = os.getenv("RAG_INDEX_DB_URL")
+    if not index_url or index_url == DATABASE_URL:
+        with get_db_session() as session:
+            yield session
+        return
+
+    index_engine = create_engine_for_url(index_url)
+    index_session_factory = sessionmaker(bind=index_engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    session = index_session_factory()
+    try:
+        yield session
+        session.commit()
+    except DB_SESSION_EXCEPTIONS:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+        index_engine.dispose()
+
+
+def init_rag_index_db() -> None:
+    """Create only the sparse RAG tables on a separately configured index database."""
+    index_url = os.getenv("RAG_INDEX_DB_URL")
+    if not index_url or index_url == DATABASE_URL:
+        return
+
+    from src.models.base import Base
+    from src.models.embedding_cache import EmbeddingCache
+    from src.models.rag_chunk import RagChunk
+
+    index_engine = create_engine_for_url(index_url)
+    try:
+        Base.metadata.create_all(bind=index_engine, tables=[RagChunk.__table__, EmbeddingCache.__table__])
+        if index_engine.dialect.name == "postgresql":
+            from sqlalchemy import text
+
+            with index_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_rag_chunks_source "
+                        "ON rag_chunks (source_table, source_row_id)"
+                    )
+                )
+    finally:
+        index_engine.dispose()
 
 
 def get_database_type() -> str:

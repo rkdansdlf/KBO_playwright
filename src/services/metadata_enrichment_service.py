@@ -1,4 +1,4 @@
-"""Service to enrich text chunk metadata using Gemini API (via Google or OpenRouter).
+"""Service to enrich text chunk metadata using OpenRouter.
 
 Extract keywords, summaries, and expected questions to boost RAG search match rate.
 
@@ -13,19 +13,21 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 METADATA_ENRICHMENT_EXCEPTIONS = (httpx.HTTPError, json.JSONDecodeError, RuntimeError, ValueError, TypeError, OSError)
 MIN_ENRICHMENT_CONTENT_LENGTH = 50
 
 
 class MetadataEnrichmentService:
-    """Calls Gemini API to analyze text content and extract keywords, summaries, and questions."""
+    """Call OpenRouter to extract keywords, summaries, and questions."""
 
     def __init__(self) -> None:
         """Initialize a new instance."""
-        self.api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("GEMINI_API_KEY")
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
         self.enabled = os.getenv("ENABLE_METADATA_ENRICHMENT", "0") == "1"
         if not self.api_key:
             self.enabled = False
@@ -57,15 +59,13 @@ class MetadataEnrichmentService:
             f"텍스트 본문:\n{content}"
         )
 
-        if self.api_key and self.api_key.startswith("sk-or-v1-"):
-            return self._call_openrouter(prompt)
-        return self._call_google(prompt)
+        return self._call_openrouter(prompt)
 
     def _call_openrouter(self, prompt: str) -> dict[str, Any]:
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
-        model = os.getenv("ENRICHMENT_MODEL", "google/gemini-flash-1.5")
+        model = os.getenv("ENRICHMENT_MODEL", "openai/gpt-4o-mini")
 
         payload = {
             "model": model,
@@ -83,29 +83,6 @@ class MetadataEnrichmentService:
                 logger.warning("⚠️ OpenRouter Enrichment API status %s: %s", res.status_code, res.text)
         except METADATA_ENRICHMENT_EXCEPTIONS:
             logger.exception("⚠️ Exception in OpenRouter enrichment")
-        return {"summary": "", "keywords": [], "questions": []}
-
-    def _call_google(self, prompt: str) -> dict[str, Any]:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
-        headers = {"Content-Type": "application/json"}
-
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json"},
-        }
-
-        try:
-            with httpx.Client(headers=headers, timeout=15.0) as client:
-                res = client.post(url, json=payload)
-                if res.status_code == HTTPStatus.OK:
-                    data = res.json()
-                    content_str = (
-                        data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                    )
-                    return self._parse_json_response(content_str)
-                logger.warning("⚠️ Google Gemini Enrichment API status %s: %s", res.status_code, res.text)
-        except METADATA_ENRICHMENT_EXCEPTIONS:
-            logger.exception("⚠️ Exception in Gemini enrichment")
         return {"summary": "", "keywords": [], "questions": []}
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:

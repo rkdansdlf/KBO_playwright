@@ -20,7 +20,7 @@ def test_audit_returns_zero_for_consistent_indexes(capsys) -> None:
     report = IndexConsistencyReport(0, 0, (), total_keys=0)
     with (
         patch("src.cli.audit_rag_index.is_pgvector_available", return_value=True),
-        patch("src.cli.audit_rag_index.get_db_session") as primary,
+        patch("src.cli.audit_rag_index.get_rag_index_session") as primary,
         patch("src.cli.audit_rag_index.get_vector_session") as vector,
         patch("src.cli.audit_rag_index.audit_index_sessions", return_value=report),
     ):
@@ -35,7 +35,7 @@ def test_audit_returns_one_for_findings(capsys) -> None:
     report = IndexConsistencyReport(1, 0, (IndexConsistencyFinding("game:g1", "MISSING_IN_VECTOR"),), total_keys=1)
     with (
         patch("src.cli.audit_rag_index.is_pgvector_available", return_value=True),
-        patch("src.cli.audit_rag_index.get_db_session") as primary,
+        patch("src.cli.audit_rag_index.get_rag_index_session") as primary,
         patch("src.cli.audit_rag_index.get_vector_session") as vector,
         patch("src.cli.audit_rag_index.audit_index_sessions", return_value=report),
     ):
@@ -50,7 +50,7 @@ def test_audit_require_nonempty_rejects_empty_indexes(capsys) -> None:
     report = IndexConsistencyReport(0, 0, (), total_keys=0)
     with (
         patch("src.cli.audit_rag_index.is_pgvector_available", return_value=True),
-        patch("src.cli.audit_rag_index.get_db_session") as primary,
+        patch("src.cli.audit_rag_index.get_rag_index_session") as primary,
         patch("src.cli.audit_rag_index.get_vector_session") as vector,
         patch("src.cli.audit_rag_index.audit_index_sessions", return_value=report),
     ):
