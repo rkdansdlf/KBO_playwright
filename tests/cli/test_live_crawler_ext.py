@@ -23,6 +23,7 @@ from src.cli.live_crawler import (
     _evaluate_game_lifecycles,
     _fetch_naver_live_statuses,
     _has_ending_header,
+    _lookup_naver_status,
     _query_enriched_game_state,
     _raise_empty_kbo_pbp,
     _resolve_live_lifecycle,
@@ -178,6 +179,12 @@ class TestEvaluateGameLifecycles:
         assert cands and cands[0][0]["game_id"] == "G1"
         assert all_finished is False
 
+    def test_legacy_team_alias_status_is_used(self) -> None:
+        crawler = SimpleNamespace(_naver_team_code=lambda code: {"DB": "DO", "KIA": "KIA"}.get(code, code))
+        game = {"game_id": "G1", "away_team_code": "DB", "home_team_code": "KIA"}
+
+        assert _lookup_naver_status(game, crawler, {("OB", "HT"): "RESULT"}) == "RESULT"
+
     def test_result_pending_without_terminal_db_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             live_crawler, "derive_lifecycle_from_naver_status", lambda s: "result_pending_stabilization"
@@ -199,6 +206,30 @@ class TestEvaluateGameLifecycles:
 
 class TestFetchNaverLiveStatuses:
     async def test_returns_status_map_on_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        query_context = MagicMock(return_value={"date": "2026-01-01"})
+        crawler = SimpleNamespace(
+            schedule_api_base_url="http://x",
+            headers={},
+            _schedule_query_context=query_context,
+        )
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {
+            "result": {"games": [{"awayTeamCode": "A", "homeTeamCode": "B", "statusCode": "STARTED"}]}
+        }
+        client = MagicMock()
+        client.get = AsyncMock(return_value=response)
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setattr(live_crawler.httpx, "AsyncClient", MagicMock(return_value=client))
+        result = await _fetch_naver_live_statuses(crawler)
+        assert result == {("A", "B"): "STARTED"}
+        query_date = query_context.call_args.kwargs["query_date"]
+        assert len(query_date) == 10
+        assert query_date[4] == "-" and query_date[7] == "-"
+
+    @pytest.mark.asyncio
+    async def test_returns_current_naver_status_codes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         crawler = SimpleNamespace(
             schedule_api_base_url="http://x",
             headers={},
@@ -207,15 +238,20 @@ class TestFetchNaverLiveStatuses:
         response = MagicMock()
         response.status_code = 200
         response.json.return_value = {
-            "result": {"games": [{"awayTeamCode": "A", "homeTeamCode": "B", "status": "LIVE"}]}
+            "result": {
+                "games": [
+                    {"awayTeamCode": "A", "homeTeamCode": "B", "statusCode": "ENDED"},
+                    {"awayTeamCode": "C", "homeTeamCode": "D", "statusCode": "BEFORE", "cancel": True},
+                ]
+            }
         }
         client = MagicMock()
         client.get = AsyncMock(return_value=response)
         client.__aenter__ = AsyncMock(return_value=client)
         client.__aexit__ = AsyncMock(return_value=False)
         monkeypatch.setattr(live_crawler.httpx, "AsyncClient", MagicMock(return_value=client))
-        result = await _fetch_naver_live_statuses(crawler)
-        assert result == {("A", "B"): "LIVE"}
+
+        assert await _fetch_naver_live_statuses(crawler) == {("A", "B"): "ENDED", ("C", "D"): "CANCELLED"}
 
     async def test_returns_empty_on_http_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         crawler = SimpleNamespace(

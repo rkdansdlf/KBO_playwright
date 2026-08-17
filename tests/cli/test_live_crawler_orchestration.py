@@ -182,6 +182,45 @@ class TestProcessAndCycle:
             "game_ids_playing": [],
         }
 
+    def test_cycle_does_not_treat_blocked_schedule_as_finished(self, monkeypatch):
+        schedule = MagicMock()
+        schedule.crawl_schedule = AsyncMock(return_value=[])
+        schedule.get_last_failure_reason.return_value = "blocked"
+        monkeypatch.setattr(live_crawler, "_load_today_games_from_db", lambda _today: [])
+        monkeypatch.setattr(live_crawler, "ScheduleCrawler", MagicMock(return_value=schedule))
+
+        result = asyncio.run(live_crawler.run_live_crawler_cycle())
+
+        assert result["all_finished"] is False
+        assert result["schedule_available"] is False
+        assert result["schedule_failure_reason"] == "blocked"
+
+    def test_cycle_uses_database_schedule_fallback(self, monkeypatch):
+        class FixedDateTime:
+            @staticmethod
+            def now(tz=None):
+                return datetime(2026, 1, 1, 18, 0, tzinfo=ZoneInfo("Asia/Seoul"))
+
+        schedule = MagicMock()
+        schedule.crawl_schedule = AsyncMock(return_value=[])
+        schedule.get_last_failure_reason.return_value = "blocked"
+        fallback_games = [{"game_id": "20260101LGSS0", "game_date": "2026-01-01"}]
+        monkeypatch.setattr(live_crawler, "datetime", FixedDateTime)
+        monkeypatch.setattr(live_crawler, "_load_today_games_from_db", lambda _today: fallback_games)
+        monkeypatch.setattr(live_crawler, "ScheduleCrawler", MagicMock(return_value=schedule))
+        monkeypatch.setattr(live_crawler, "NaverRelayCrawler", MagicMock())
+        monkeypatch.setattr(live_crawler, "_fetch_naver_live_statuses", AsyncMock(return_value={}))
+        monkeypatch.setattr(
+            live_crawler,
+            "_evaluate_game_lifecycles",
+            lambda games, relay, statuses: ([], True),
+        )
+        monkeypatch.setattr(live_crawler, "write_refresh_manifest", MagicMock(return_value=None))
+
+        result = asyncio.run(live_crawler.run_live_crawler_cycle())
+
+        assert result["all_finished"] is True
+
     def test_cycle_aggregates_processed_games(self, monkeypatch):
         class FixedDateTime:
             @staticmethod

@@ -11,6 +11,9 @@ from src.models.game import Game, GameIdAlias
 from src.models.season import KboSeason
 
 
+from contextlib import contextmanager
+
+
 def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
     Game.__table__.create(bind=engine)
@@ -19,9 +22,25 @@ def _build_session_factory():
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
+def _mock_get_db_session(SessionLocal):
+    @contextmanager
+    def _gen():
+        session = SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return _gen
+
+
 def test_save_schedule_game_preserves_existing_season_id_when_mapping_missing(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "get_db_session", _mock_get_db_session(SessionLocal))
 
     with SessionLocal() as session:
         session.add(
@@ -54,7 +73,7 @@ def test_save_schedule_game_preserves_existing_season_id_when_mapping_missing(mo
 
 def test_save_schedule_game_uses_official_kbo_season_id(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "get_db_session", _mock_get_db_session(SessionLocal))
 
     with SessionLocal() as session:
         # two mappings for same year/type -> official(min season_id) should be selected

@@ -232,6 +232,13 @@ class TestCalculateRankingsCLI:
             assert result == 0
             mock.assert_called_once_with(2025)
 
+    def test_external_provider_is_forwarded(self):
+        with patch("src.cli.calculate_rankings.rebuild_rankings", return_value=0) as mock:
+            result = main(["--year", "2025", "--external-provider", "fangraphs"])
+
+        assert result == 0
+        mock.assert_called_once_with(2025, external_provider="fangraphs")
+
     def test_no_year_errors(self):
         import argparse
 

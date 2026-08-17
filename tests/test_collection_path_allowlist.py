@@ -9,14 +9,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DIRECT_SAVE_NAMES = {"save_game_detail", "save_relay_data"}
 ALLOWED_DIRECT_SAVE_FILES = {
+    "src/cli/live_crawler.py",
+    "src/cli/run_pipeline_demo.py",
     "scripts/crawl_2009_game_details.py",
     "src/cli/historical_boxscore_import.py",
     "src/cli/ingest_mock_game_html.py",
-    "src/cli/live_crawler.py",
-    "src/cli/run_pipeline_demo.py",
     "src/crawlers/game_detail_crawler.py",
     "src/repositories/relay_repository.py",
     "src/services/game_collection_service.py",
+    "src/services/historical_detail_backfill_service.py",
     "src/services/relay_recovery_service.py",
 }
 

@@ -75,6 +75,25 @@ class TestGetLivePollIntervalSeconds:
     def test_no_games_returns_1800(self) -> None:
         assert self._call_with_rows([]) == 1800
 
+    def test_game_date_query_binds_a_date_for_oracle(self) -> None:
+        from scripts import scheduler
+
+        now = datetime(2026, 8, 16, 21, 0, tzinfo=KST)
+        mock_session = MagicMock()
+        mock_session.execute.return_value.all.return_value = []
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("scripts.scheduler.SessionLocal", return_value=mock_session),
+            patch("scripts.scheduler.datetime") as datetime_class,
+        ):
+            datetime_class.now.return_value = now
+            assert scheduler._get_live_poll_interval_seconds() == 1800
+
+        params = mock_session.execute.call_args.args[1]
+        assert params["today"] == now.date()
+
     def test_live_game_returns_10(self) -> None:
         rows = [("LIVE", "running", "14:00", None)]
         assert self._call_with_rows(rows) == 10
