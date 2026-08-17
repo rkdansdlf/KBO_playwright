@@ -26,7 +26,7 @@ except ImportError:
             return f"vector({self.dim})"
 
 
-from sqlalchemy import BigInteger, Date, DateTime, Integer, String, Text
+from sqlalchemy import BigInteger, Date, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,6 +42,7 @@ class RagChunkVector(VectorBase, TimestampMixin):
     """
 
     __tablename__ = "rag_chunks"
+    __table_args__ = (UniqueConstraint("source_table", "source_row_id", name="uq_rag_chunks_source_identity"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 

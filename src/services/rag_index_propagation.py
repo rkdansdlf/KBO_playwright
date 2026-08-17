@@ -288,7 +288,7 @@ def publish_index_batch(
         )
     pending_payloads = [dict(payload, index_status="PENDING") for payload in payloads]
     sparse_repo = RagChunkRepository()
-    sparse_repo.upsert_chunks(primary_session, pending_payloads, commit=False)
+    sparse_repo.upsert_chunks(primary_session, pending_payloads)
     vector_repo = VectorSearchRepository()
     for payload in pending_payloads:
         vector_repo.upsert_chunk(vector_session, payload)
@@ -298,7 +298,7 @@ def publish_index_batch(
     for payload in active_payloads:
         vector_repo.upsert_chunk(vector_session, payload)
     vector_session.commit()
-    sparse_repo.upsert_chunks(primary_session, active_payloads, commit=False)
+    sparse_repo.upsert_chunks(primary_session, active_payloads)
     primary_session.commit()
     return len(payloads)
 

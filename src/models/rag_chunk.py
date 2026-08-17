@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -19,6 +19,7 @@ class RagChunk(Base, TimestampMixin):
     """
 
     __tablename__ = "rag_chunks"
+    __table_args__ = (UniqueConstraint("source_table", "source_row_id", name="uq_rag_chunks_source_identity"),)
 
     id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     season_year: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Season year if applicable")

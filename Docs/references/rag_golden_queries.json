@@ -1,1 +1,212 @@
-[]
+[
+  {
+    "id": "prod_bat_001",
+    "query": "김도영의 2026시즌 타격 성적을 알려줘",
+    "relevantChunkIds": ["player_season_batting:52605_2026_KIA_REGULAR"],
+    "filters": {"source_table": "player_season_batting"},
+    "tags": ["batting"]
+  },
+  {
+    "id": "prod_bat_002",
+    "query": "2026년 구자욱 타격 기록은 어때?",
+    "relevantChunkIds": ["player_season_batting:62404_2026_SS_REGULAR"],
+    "filters": {"source_table": "player_season_batting"},
+    "tags": ["batting"]
+  },
+  {
+    "id": "prod_bat_003",
+    "query": "2026시즌 롯데 손호영의 타율과 타점은?",
+    "relevantChunkIds": ["player_season_batting:50150_2026_LT_REGULAR"],
+    "filters": {"source_table": "player_season_batting"},
+    "tags": ["batting"]
+  },
+  {
+    "id": "prod_bat_004",
+    "query": "2026년 NC 김휘집 타격 성적을 찾아줘",
+    "relevantChunkIds": ["player_season_batting:51344_2026_NC_REGULAR"],
+    "filters": {"source_table": "player_season_batting"},
+    "tags": ["batting"]
+  },
+  {
+    "id": "prod_bat_005",
+    "query": "2026시즌 한화 최인호의 타격 기록",
+    "relevantChunkIds": ["player_season_batting:50707_2026_HH_REGULAR"],
+    "filters": {"source_table": "player_season_batting"},
+    "tags": ["batting"]
+  },
+  {
+    "id": "prod_pitch_006",
+    "query": "2026년 양현종 투구 성적과 평균자책점은?",
+    "relevantChunkIds": ["player_season_pitching:3632_2026_KIA_REGULAR"],
+    "filters": {"source_table": "player_season_pitching"},
+    "tags": ["pitching"]
+  },
+  {
+    "id": "prod_pitch_007",
+    "query": "2026시즌 박세웅의 투구 기록을 알려줘",
+    "relevantChunkIds": ["player_season_pitching:1784_2026_LT_REGULAR"],
+    "filters": {"source_table": "player_season_pitching"},
+    "tags": ["pitching"]
+  },
+  {
+    "id": "prod_pitch_008",
+    "query": "2026년 LG 유영찬 세이브와 투구 성적",
+    "relevantChunkIds": ["player_season_pitching:50106_2026_LG_REGULAR"],
+    "filters": {"source_table": "player_season_pitching"},
+    "tags": ["pitching"]
+  },
+  {
+    "id": "prod_pitch_009",
+    "query": "2026시즌 KIA 정해영의 투구 기록은?",
+    "relevantChunkIds": ["player_season_pitching:50662_2026_KIA_REGULAR"],
+    "filters": {"source_table": "player_season_pitching"},
+    "tags": ["pitching"]
+  },
+  {
+    "id": "prod_pitch_010",
+    "query": "2026년 KT 소형준 투구 성적을 보여줘",
+    "relevantChunkIds": ["player_season_pitching:50030_2026_KT_REGULAR"],
+    "filters": {"source_table": "player_season_pitching"},
+    "tags": ["pitching"]
+  },
+  {
+    "id": "prod_rank_011",
+    "query": "2026년 7월 17일 KIA 순위와 승률은?",
+    "relevantChunkIds": ["team_standings_daily:2026-07-17_KIA"],
+    "filters": {"source_table": "team_standings_daily", "document_type": "standings"},
+    "tags": ["standings"]
+  },
+  {
+    "id": "prod_rank_012",
+    "query": "2026년 7월 17일 LG의 팀 순위는?",
+    "relevantChunkIds": ["team_standings_daily:2026-07-17_LG"],
+    "filters": {"source_table": "team_standings_daily", "document_type": "standings"},
+    "tags": ["standings"]
+  },
+  {
+    "id": "prod_rank_013",
+    "query": "2026년 7월 17일 한화 순위를 알려줘",
+    "relevantChunkIds": ["team_standings_daily:2026-07-17_한화"],
+    "filters": {"source_table": "team_standings_daily", "document_type": "standings"},
+    "tags": ["standings"]
+  },
+  {
+    "id": "prod_rank_014",
+    "query": "2026년 7월 17일 SSG의 승률과 순위",
+    "relevantChunkIds": ["team_standings_daily:2026-07-17_SSG"],
+    "filters": {"source_table": "team_standings_daily", "document_type": "standings"},
+    "tags": ["standings"]
+  },
+  {
+    "id": "prod_rank_015",
+    "query": "2026년 7월 17일 KT 팀 순위는 몇 위야?",
+    "relevantChunkIds": ["team_standings_daily:2026-07-17_KT"],
+    "filters": {"source_table": "team_standings_daily", "document_type": "standings"},
+    "tags": ["standings"]
+  },
+  {
+    "id": "prod_team_016",
+    "query": "KIA 타이거즈의 연고지와 홈구장은 어디야?",
+    "relevantChunkIds": ["teams:KIA"],
+    "filters": {"source_table": "teams", "document_type": "team_info"},
+    "tags": ["team"]
+  },
+  {
+    "id": "prod_team_017",
+    "query": "LG 트윈스의 홈구장과 연고지를 알려줘",
+    "relevantChunkIds": ["teams:LG"],
+    "filters": {"source_table": "teams", "document_type": "team_info"},
+    "tags": ["team"]
+  },
+  {
+    "id": "prod_award_018",
+    "query": "2025년 KBO MVP 수상자는 누구야?",
+    "relevantChunkIds": ["awards:470"],
+    "filters": {"source_table": "awards", "document_type": "award"},
+    "tags": ["award"]
+  },
+  {
+    "id": "prod_award_019",
+    "query": "2025년 골든글러브 투수 수상자는?",
+    "relevantChunkIds": ["awards:433"],
+    "filters": {"source_table": "awards", "document_type": "award"},
+    "tags": ["award"]
+  },
+  {
+    "id": "prod_rule_020",
+    "query": "OPS는 어떤 야구 지표야?",
+    "relevantChunkIds": ["kbo_definitions:kbo_knowledge/rules_terms.md_1"],
+    "filters": {"source_table": "kbo_definitions", "document_type": "markdown_doc"},
+    "tags": ["rules"]
+  },
+  {
+    "id": "prod_rule_021",
+    "query": "ABS 스트라이크존은 어떻게 판정돼?",
+    "relevantChunkIds": ["kbo_regulations:kbo_rulebook/baseball_rules/README.md_5"],
+    "filters": {"source_table": "kbo_regulations", "document_type": "markdown_doc"},
+    "tags": ["rules"]
+  },
+  {
+    "id": "prod_rule_022",
+    "query": "KBO 비디오 판독 신청 규정은?",
+    "relevantChunkIds": ["kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_1"],
+    "filters": {"source_table": "kbo_regulations", "document_type": "markdown_doc"},
+    "tags": ["rules"]
+  },
+  {
+    "id": "prod_history_023",
+    "query": "2003년 기아 타이거즈의 팀 역사는 어땠어?",
+    "relevantChunkIds": ["team_history:54"],
+    "filters": {"source_table": "team_history", "document_type": "team_history"},
+    "tags": ["history"]
+  },
+  {
+    "id": "prod_history_024",
+    "query": "2003년 현대 유니콘스의 순위와 구장은?",
+    "relevantChunkIds": ["team_history:253"],
+    "filters": {"source_table": "team_history", "document_type": "team_history"},
+    "tags": ["history"]
+  },
+  {
+    "id": "prod_game_025",
+    "query": "2026년 7월 21일 한화와 KIA 경기 결과",
+    "relevantChunkIds": ["game:20260721HHHT0"],
+    "filters": {"source_table": "game", "document_type": "game_result"},
+    "tags": ["game"]
+  },
+  {
+    "id": "prod_game_026",
+    "query": "2026년 7월 19일 KT와 LG 경기 스코어",
+    "relevantChunkIds": ["game:20260719KTLG0"],
+    "filters": {"source_table": "game", "document_type": "game_result"},
+    "tags": ["game"]
+  },
+  {
+    "id": "prod_highlight_027",
+    "query": "2026년 6월 26일 한화와 SSG 경기의 빅플레이는?",
+    "relevantChunkIds": ["game_highlights:1"],
+    "filters": {"source_table": "game_highlights", "document_type": "highlight"},
+    "tags": ["game"]
+  },
+  {
+    "id": "prod_pbp_028",
+    "query": "2015년 10월 19일 경기에서 김현수의 타석 결과는?",
+    "relevantChunkIds": ["game_play_by_play:999993"],
+    "filters": {"source_table": "game_play_by_play", "document_type": "game_play_by_play"},
+    "tags": ["game"]
+  },
+  {
+    "id": "prod_move_029",
+    "query": "2018년 12월 김동엽 선수 트레이드 내용은?",
+    "relevantChunkIds": ["player_movements:996"],
+    "filters": {"source_table": "player_movements", "document_type": "player_movement"},
+    "tags": ["player"]
+  },
+  {
+    "id": "prod_profile_030",
+    "query": "양현종 선수의 프로필과 소속팀은?",
+    "relevantChunkIds": ["player_basic:3632"],
+    "filters": {"source_table": "player_basic", "document_type": "player_profile"},
+    "tags": ["player"]
+  }
+]
