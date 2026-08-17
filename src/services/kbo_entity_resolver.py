@@ -28,6 +28,9 @@ class ResolvedKboEntities:
         filters = self.extracted.to_filters()
         if self.player_id:
             filters["player_id"] = self.player_id
+        else:
+            # An unresolved token is not reliable enough for a strict text filter.
+            filters.pop("player_name", None)
         return filters
 
 
@@ -62,6 +65,7 @@ def resolve_kbo_entities(
     try:
         players = list(session.execute(stmt).scalars().all())
     except (SQLAlchemyError, RuntimeError, TypeError, AttributeError):
+        session.rollback()
         return ResolvedKboEntities(extracted)
 
     if extracted.season_year and extracted.team_id and players:
@@ -77,6 +81,7 @@ def resolve_kbo_entities(
                 seasonal_ids.update(row[0] for row in session.execute(seasonal_stmt).all())
             players = [player for player in players if player.player_id in seasonal_ids]
         except (SQLAlchemyError, RuntimeError, TypeError, AttributeError):
+            session.rollback()
             return ResolvedKboEntities(extracted)
 
     if len(players) != 1:

@@ -103,6 +103,22 @@ def test_process_source_persists_using_index_session(monkeypatch) -> None:
     assert persisted[0][1] is index_session
 
 
+def test_prepare_long_database_sources_releases_session() -> None:
+    session = MagicMock(name="source_session")
+    chunks = [{"source_table": "game_play_by_play", "source_row_id": "1"}]
+
+    prepared = build_rag_index._prepare_source_chunks(
+        "pbp",
+        lambda _session, _season, _limit: iter(chunks),
+        session,
+        None,
+        None,
+    )
+
+    assert list(prepared) == chunks
+    session.close.assert_called_once_with()
+
+
 def test_validate_embeddings_rejects_zero_vectors() -> None:
     with pytest.raises(RuntimeError, match="zero vector"):
         build_rag_index._validate_embeddings([[0.0, 0.0]], 1)

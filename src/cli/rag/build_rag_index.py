@@ -48,15 +48,15 @@ from src.services.markdown_document_loader import load_local_markdown_docs, mark
 from src.services.rag_index_identity import current_index_version
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-# 임베딩 배치 크기: API 호출 당 처리할 청크 수 (OpenRouter embeddings는 입력 개수 제한이 넉넉하므로 200으로 증가)
-_BATCH_SIZE = 200
+# 임베딩 배치 크기: API 호출 당 처리할 청크 수.
+_BATCH_SIZE = max(1, int(os.getenv("RAG_EMBED_BATCH_SIZE", "50")))
 # DB 커밋 간격
 _COMMIT_EVERY = 100
 
@@ -1175,6 +1175,28 @@ def _process_source(
     return total
 
 
+def _prepare_source_chunks(
+    source_name: str,
+    chunk_fn: Callable[[Session, int | None, int | None], Iterator[dict[str, Any]]],
+    source_session: Session,
+    season: int | None,
+    limit: int | None,
+) -> Iterator[dict[str, Any]]:
+    """Materialize long database-backed sources before slow API calls.
+
+    Oracle can close an idle connection while a generator is paused between
+    embedding batches. Materializing the large streaming sources first lets
+    the source session release its connection before OpenRouter work begins.
+    """
+    chunk_iter = chunk_fn(source_session, season, limit)
+    if source_name not in {"games", "lineups", "pbp"}:
+        return chunk_iter
+
+    chunks = list(chunk_iter)
+    source_session.close()
+    return iter(chunks)
+
+
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
 
 
@@ -1274,7 +1296,13 @@ def main(argv: list[str] | None = None) -> None:
         for source_name in sources:
             logger.info("▶ [%s] 처리 시작...", source_name)
             chunk_fn = _SOURCE_MAP[source_name]
-            chunk_iter = chunk_fn(source_session, args.season, args.limit)
+            chunk_iter = _prepare_source_chunks(
+                source_name,
+                chunk_fn,
+                source_session,
+                args.season,
+                args.limit,
+            )
             count = _process_source(
                 source_name,
                 chunk_iter,

@@ -207,6 +207,25 @@ class TestFetchOpenRouterException:
             assert first_payload["dimensions"] == 1536
             assert "dimensions" not in second_payload
 
+    def test_rate_limit_retries_with_dimensions(self):
+        svc = EmbeddingService()
+        svc.api_key = "sk-or-v1-test"
+        with (
+            patch("httpx.Client") as mock_client,
+            patch("src.services.embedding_service.time.sleep") as sleep,
+        ):
+            post = mock_client.return_value.__enter__.return_value.post
+            limited = httpx.Response(429, headers={"Retry-After": "0"}, text="rate limited")
+            accepted = httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.1] * 1536}]})
+            post.side_effect = [limited, accepted]
+
+            result = svc._fetch_openrouter_embeddings(["hello"])
+
+        assert result == [[0.1] * 1536]
+        assert post.call_count == 2
+        assert all(call.kwargs["json"]["dimensions"] == 1536 for call in post.call_args_list)
+        sleep.assert_called_once_with(0.0)
+
     def test_server_error_does_not_retry(self):
         svc = EmbeddingService()
         svc.api_key = "sk-or-v1-test"
