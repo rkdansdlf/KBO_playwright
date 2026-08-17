@@ -510,3 +510,50 @@ def parse_profile(
         is_foreign=is_foreign,
         team=team,
     )
+
+
+from src.parsers.base_parser import BaseParser
+
+
+class PlayerProfileParser(BaseParser[PlayerProfileParsed]):
+    """Parser for KBO player profile detail texts and raw fields."""
+
+    def __init__(  # noqa: PLR0913
+        self,
+        raw_text: str = "",
+        *,
+        tokens: dict[str, str] | None = None,
+        is_active: bool | None = None,
+        is_foreign: bool | None = None,
+        team: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize PlayerProfileParser."""
+        merged_meta = dict(metadata or {})
+        if team:
+            merged_meta["team"] = team
+        super().__init__(raw_content=raw_text, source_key="kbo_player_profile", metadata=merged_meta)
+        self.raw_text = raw_text
+        self.tokens = tokens
+        self.is_active = is_active
+        self.is_foreign = is_foreign
+        self.team = team
+
+    def _get_default_data(self) -> PlayerProfileParsed:
+        """Return empty PlayerProfileParsed on parse failure."""
+        return PlayerProfileParsed()
+
+    def parse(self) -> PlayerProfileParsed:
+        """Parse player profile string/tokens into structured PlayerProfileParsed DTO.
+
+        Returns:
+            PlayerProfileParsed DTO.
+
+        """
+        return parse_profile(
+            self.raw_text,
+            tokens=self.tokens,
+            is_active=self.is_active,
+            is_foreign=self.is_foreign,
+            team=self.team,
+        )
