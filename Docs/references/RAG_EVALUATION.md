@@ -120,8 +120,9 @@ vector Recall@5 `0.9333` / MRR `0.8056`, hybrid Recall@5 `0.9333` / MRR
 `0.8056`, and resolver-hybrid Recall@5 `0.9333` / MRR `0.8222`; retrieval p95
 latencies are approximately `467ms`, `351ms`, `396ms`, and `397ms` respectively.
 Routing remains `100/100` for intent, route, and entity accuracy with zero
-false positives. These metrics are staging evidence until the golden labels,
-quality thresholds, and provider cost budget receive final approval.
+false positives. The 30 golden labels, quality thresholds, and incremental
+provider cost policy are approved. Production promotion remains a separate
+controlled step; full re-embedding requires a new cost approval.
 
 Audit the awards source path before attempting a production save:
 

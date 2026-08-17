@@ -47,5 +47,21 @@
     "entity_accuracy": 1.0,
     "entity_false_positive_count": 0
   },
-  "status": "staging_acceptance_pending_golden_and_budget_approval"
+  "approval": {
+    "golden_labels": "approved",
+    "thresholds": {
+      "resolver_hybrid_recall_at_5_min": 0.9,
+      "resolver_hybrid_mrr_min": 0.8,
+      "retrieval_latency_p95_ms_max": 500,
+      "routing_accuracy_required": 1.0,
+      "entity_false_positive_count_max": 0
+    },
+    "cost_policy": {
+      "model": "perplexity/pplx-embed-v1-4b",
+      "price_usd_per_million_input_tokens": 0.03,
+      "incremental_embeddings": "approved",
+      "full_reembed": "requires_separate_approval"
+    }
+  },
+  "status": "staging_acceptance_approved_for_production_promotion"
 }
