@@ -11,6 +11,7 @@ from typing import Any, ClassVar
 import httpx
 
 from src.constants import KST
+from src.crawlers.base import BaseHttpCrawler
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,15 @@ HEADERS = {
 }
 
 
-class NaverNewsCrawlerBase(ABC):
+class NaverNewsCrawlerBase(BaseHttpCrawler, ABC):
     """NaverNewsCrawlerBase class."""
 
     KEYWORDS: ClassVar[list[str]] = []
     LABEL: str = "news"
+
+    def __init__(self, request_delay: float = 0.5) -> None:
+        """Initialize NaverNewsCrawlerBase."""
+        super().__init__(request_delay=request_delay, default_headers=HEADERS, timeout=15.0)
 
     async def run(self, *, save: bool = False) -> None:
         """Run run.
@@ -52,7 +57,7 @@ class NaverNewsCrawlerBase(ABC):
     async def _fetch_news(self) -> list[dict]:
         results: list[dict] = []
         today = datetime.now(KST)
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15) as client:
+        async with self.http_client() as client:
             for days_ago in range(7):
                 date_str = (today - timedelta(days=days_ago)).strftime("%Y%m%d")
                 url = NAVER_API_URL.format(date=date_str)

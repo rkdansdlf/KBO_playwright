@@ -183,7 +183,15 @@ _EXTRACT_JS = """
 """
 
 
-class StaffRegisterCrawler:
+from typing import TYPE_CHECKING
+
+from src.crawlers.base import BasePlaywrightCrawler
+
+if TYPE_CHECKING:
+    from src.utils.playwright_pool import AsyncPlaywrightPool
+
+
+class StaffRegisterCrawler(BasePlaywrightCrawler):
     """Register.aspx to collect manager and coach records.
 
     Returns a list of dicts suitable for upsert into player_basic:
@@ -195,19 +203,29 @@ class StaffRegisterCrawler:
 
     """
 
-    def __init__(self, *, headless: bool = True, request_delay: float = 1.5) -> None:
-        """Initialize a new instance.
+    def __init__(
+        self,
+        *,
+        headless: bool = True,
+        request_delay: float = 1.5,
+        pool: AsyncPlaywrightPool | None = None,
+        policy: RequestPolicy | None = None,
+    ) -> None:
+        """Initialize StaffRegisterCrawler.
 
         Args:
             headless: Whether to run the browser in headless mode.
             request_delay: Request Delay.
-            headless: Whether to run the browser in headless mode.
-            request_delay: Request Delay.
+            pool: Connection pool for async operations.
+            policy: Optional request policy.
 
         """
+        super().__init__(
+            request_delay=request_delay,
+            pool=pool,
+            policy=policy or RequestPolicy.with_delay(request_delay, request_delay),
+        )
         self.headless = headless
-
-        self.policy = RequestPolicy.with_delay(request_delay, request_delay)
 
     async def crawl_team(
         self,

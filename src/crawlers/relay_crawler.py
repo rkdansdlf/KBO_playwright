@@ -156,7 +156,10 @@ class NaverEventContext:
     strikes: int
 
 
-class RelayCrawler:
+from src.crawlers.base import BaseHttpCrawler
+
+
+class RelayCrawler(BaseHttpCrawler):
     """RelayCrawler class."""
 
     schedule_fallback_window_days = 7
@@ -173,15 +176,9 @@ class RelayCrawler:
             request_delay: Request Delay.
             policy: Policy.
             _pool: Connection pool for async operations.
-            request_delay: Request Delay.
-            policy: Policy.
-            _pool: Connection pool for async operations.
 
         """
-        self.api_base_url = "https://api-gw.sports.naver.com/schedule/games/{game_id}/relay"
-
-        self.wpa_calc = WPACalculator()
-        self.headers = {
+        headers = {
             "User-Agent": (
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) "
                 "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 "
@@ -190,9 +187,16 @@ class RelayCrawler:
             "Accept": "application/json, text/plain, */*",
             "Origin": "https://m.sports.naver.com",
         }
+        super().__init__(
+            request_delay=request_delay,
+            policy=policy or RequestPolicy.with_delay(request_delay),
+            default_headers=headers,
+        )
+        self.api_base_url = "https://api-gw.sports.naver.com/schedule/games/{game_id}/relay"
+        self.wpa_calc = WPACalculator()
+        self.headers = headers
         self.schedule_api_base_url = "https://api-gw.sports.naver.com/schedule/today-games"
         self.last_resolved_naver_game_id: str | None = None
-        self.policy = policy or RequestPolicy.with_delay(request_delay)
         self._last_failure_reason: dict[str, str] = {}
         self.last_failure_reason: str | None = None
         self._last_fetch_failure_reason: str | None = None

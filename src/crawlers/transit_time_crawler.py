@@ -20,19 +20,20 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, date, datetime
-
-from sqlalchemy.exc import SQLAlchemyError
+from typing import TYPE_CHECKING
 
 from src.constants import KST
+from src.crawlers.base import BaseCrawler
 from src.db.engine import SessionLocal
 from src.repositories.transit_time_repository import TransitTimeRepository
-from src.utils.date_helpers import parse_date_str
 from src.utils.map_api_client import get_transit_times_batch
+
+if TYPE_CHECKING:
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
 STADIUM_CODE = "JAMSIL"
-TRANSIT_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 # Canonical origin points for Jamsil Stadium
 JAMSIL_ORIGINS: list[dict] = [
@@ -75,26 +76,29 @@ JAMSIL_ORIGINS: list[dict] = [
 ]
 
 
-class TransitTimeCrawler:
+class TransitTimeCrawler(BaseCrawler):
     """collect transit time measurements from map APIs and persists them."""
 
     def __init__(
         self,
         stadium_code: str = STADIUM_CODE,
         origins: list[dict] | None = None,
+        request_delay: float = 0.5,
+        policy: RequestPolicy | None = None,
     ) -> None:
         """Initialize a new instance.
 
         Args:
             stadium_code: Stadium Code.
             origins: Origins.
-            stadium_code: Stadium Code.
-            origins: Origins.
+            request_delay: Request delay in seconds.
+            policy: Request policy.
 
         """
+        super().__init__(request_delay=request_delay, policy=policy)
         self.stadium_code = stadium_code
-
         self.origins = origins or JAMSIL_ORIGINS
+        self._origin_map = {o["label"]: o for o in self.origins if "label" in o}
 
     async def run(
         self,
@@ -107,11 +111,6 @@ class TransitTimeCrawler:
         Args:
             game_date: Game Date.
             save: Whether to persist the results.
-            game_date: Game Date.
-            save: Whether to persist the results.
-            game_date: The game date to associate with measurements.
-                       Defaults to today.
-            save: Persist results to the database.
 
         """
         game_date = game_date or datetime.now(KST).date()
@@ -144,36 +143,40 @@ class TransitTimeCrawler:
             )
             all_results.extend(results)
 
-        records = [
-            {
-                "stadium_code": self.stadium_code,
-                "origin_label": r.origin_label,
-                "origin_lat": next((o["lat"] for o in self.origins if o["label"] == r.origin_label), None),
-                "origin_lng": next((o["lng"] for o in self.origins if o["label"] == r.origin_label), None),
-                "transport_mode": r.transport_mode,
-                "measured_at": measured_at,
-                "game_date": game_date,
-                "duration_minutes": r.duration_minutes,
-                "distance_meters": r.distance_meters,
-                "congestion_factor": None,
-                "source_api": r.source_api,
-                "raw_response": r.raw_response,
-            }
-            for r in all_results
-        ]
+        records = []
+        for r in all_results:
+            origin_info = self._origin_map.get(r.origin_label, {})
+            records.append(
+                {
+                    "stadium_code": self.stadium_code,
+                    "origin_label": r.origin_label,
+                    "origin_lat": origin_info.get("lat"),
+                    "origin_lng": origin_info.get("lng"),
+                    "destination_label": getattr(r, "destination_label", "잠실야구장"),
+                    "transport_mode": getattr(r, "transport_mode", getattr(r, "transit_mode", "walk")),
+                    "duration_minutes": r.duration_minutes,
+                    "distance_meters": r.distance_meters,
+                    "congestion_factor": getattr(r, "congestion_factor", None),
+                    "measured_at": measured_at,
+                    "game_date": game_date,
+                    "source_api": getattr(r, "source_api", getattr(r, "source", "unknown")),
+                    "raw_response": getattr(r, "raw_response", None),
+                }
+            )
 
-        logger.info("[Transit] Got %s measurements", len(records))
+        logger.info("[Transit] Total measurements: %s", len(records))
 
         if save:
             await asyncio.to_thread(self._save_to_db, records)
         else:
             for rec in records:
                 logger.info(
-                    "  %s | %s | %smin | %s",
+                    "  %s -> %s [%s]: %s min (%s m)",
                     rec["origin_label"],
+                    rec["destination_label"],
                     rec["transport_mode"],
                     rec["duration_minutes"],
-                    rec["source_api"],
+                    rec["distance_meters"],
                 )
 
         return records
@@ -182,24 +185,26 @@ class TransitTimeCrawler:
         with SessionLocal() as session:
             try:
                 repo = TransitTimeRepository(session)
-                created, updated = repo.bulk_upsert(records)
+                save_fn = getattr(repo, "bulk_upsert", None) or repo.bulk_save
+                count = save_fn(records)
                 session.commit()
-                logger.info("[Transit] Saved: %s new, %s updated.", created, updated)
-            except TRANSIT_DB_EXCEPTIONS:
+                logger.info("[Transit] Saved %s transit time records.", count)
+            except Exception:
                 session.rollback()
-                logger.exception("Transit time batch save error")
+                logger.exception("[Transit] Database error")
 
 
 if __name__ == "__main__":
     import argparse
+    import asyncio
 
-    parser = argparse.ArgumentParser(description="Measure transit times to Jamsil Stadium")
-    parser.add_argument("--save", action="store_true", help="Save to DB")
-    parser.add_argument("--game-date", type=str, default=None, help="Game date YYYYMMDD")
+    from src.utils.date_helpers import parse_date_str
+
+    parser = argparse.ArgumentParser(description="Collect stadium transit times")
+    parser.add_argument("--save", action="store_true", help="Save results to database")
+    parser.add_argument("--date", type=str, default=None, help="Game date (YYYY-MM-DD)")
     args = parser.parse_args()
 
-    gdate = None
-    if args.game_date:
-        gdate = parse_date_str(args.game_date)
-
-    asyncio.run(TransitTimeCrawler().run(game_date=gdate, save=args.save))
+    g_date = parse_date_str(args.date) if args.date else None
+    crawler = TransitTimeCrawler()
+    asyncio.run(crawler.run(game_date=g_date, save=args.save))

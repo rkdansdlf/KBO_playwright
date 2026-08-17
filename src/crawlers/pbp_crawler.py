@@ -62,7 +62,10 @@ PBP_CRAWLER_EXCEPTIONS = (
 )
 
 
-class PBPCrawler:
+from src.crawlers.base import BasePlaywrightCrawler
+
+
+class PBPCrawler(BasePlaywrightCrawler):
     """PBPCrawler class."""
 
     def __init__(
@@ -71,8 +74,7 @@ class PBPCrawler:
         policy: RequestPolicy | None = None,
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        # Using the older but more robust LiveText.aspx which behaves better with Referer checks
-        """Initialize a new instance.
+        """Initialize PBPCrawler.
 
         Args:
             request_delay: Request Delay.
@@ -80,10 +82,12 @@ class PBPCrawler:
             pool: Connection pool for async operations.
 
         """
+        super().__init__(
+            request_delay=request_delay,
+            pool=pool,
+            policy=policy or RequestPolicy.with_delay(request_delay, request_delay + 0.5),
+        )
         self.base_url = "https://www.koreabaseball.com/Game/LiveText.aspx"
-
-        self.policy = policy or RequestPolicy.with_delay(request_delay, request_delay + 0.5)
-        self.pool = pool
         self._context_kwargs = self.policy.build_context_kwargs(locale="ko-KR")
         self.wpa_calc = WPACalculator()
         self.last_failure_reason: str | None = None

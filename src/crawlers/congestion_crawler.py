@@ -21,16 +21,19 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
+from src.crawlers.base import BaseCrawler
 from src.db.engine import SessionLocal
 from src.repositories.congestion_repository import CongestionRepository
-from src.utils.date_helpers import parse_date_str
 from src.utils.seoul_api_client import CongestionSnapshot, get_jamsil_congestion_batch
+
+if TYPE_CHECKING:
+    from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -68,16 +71,24 @@ def _snapshot_to_record(
     }
 
 
-class CongestionCrawler:
+class CongestionCrawler(BaseCrawler):
     """Orchestrates congestion data collection from multiple sources."""
 
-    def __init__(self, stadium_code: str = STADIUM_CODE) -> None:
+    def __init__(
+        self,
+        stadium_code: str = STADIUM_CODE,
+        request_delay: float = 0.5,
+        policy: RequestPolicy | None = None,
+    ) -> None:
         """Initialize a new instance.
 
         Args:
             stadium_code: Stadium Code.
+            request_delay: Request delay in seconds.
+            policy: Optional request policy.
 
         """
+        super().__init__(request_delay=request_delay, policy=policy)
         self.stadium_code = stadium_code
 
     async def run(
@@ -91,7 +102,6 @@ class CongestionCrawler:
         Args:
             game_date: Game Date.
             save: Whether to persist the results.
-            game_date: Game Date.
 
         Returns:
             List of results.
@@ -148,13 +158,13 @@ if __name__ == "__main__":
     import argparse
     import asyncio
 
-    parser = argparse.ArgumentParser(description="Collect congestion data for Jamsil Stadium")
-    parser.add_argument("--save", action="store_true", help="Save to DB")
-    parser.add_argument("--game-date", type=str, default=None, help="Game date YYYYMMDD")
+    from src.utils.date_helpers import parse_date_str
+
+    parser = argparse.ArgumentParser(description="Collect stadium congestion data")
+    parser.add_argument("--save", action="store_true", help="Save results to database")
+    parser.add_argument("--date", type=str, default=None, help="Game date (YYYY-MM-DD)")
     args = parser.parse_args()
 
-    gdate = None
-    if args.game_date:
-        gdate = parse_date_str(args.game_date)
-
-    asyncio.run(CongestionCrawler().run(game_date=gdate, save=args.save))
+    g_date = parse_date_str(args.date) if args.date else None
+    crawler = CongestionCrawler()
+    asyncio.run(crawler.run(game_date=g_date, save=args.save))
