@@ -282,7 +282,36 @@ def _cleanup_consumed(record: dict[str, Any]) -> None:
         record["extra_stats"] = None
 
 
+from src.parsers.base_parser import BaseParser
+
+
+class RetiredPlayerParser(BaseParser[tuple[list[dict[str, Any]], list[dict[str, Any]]]]):
+    """Parser for retired/inactive player career batting and pitching stats tables."""
+
+    def __init__(
+        self,
+        tables: list[dict[str, Any]],
+        source_key: str = "kbo_retired_player",
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize RetiredPlayerParser."""
+        super().__init__(raw_content=tables, source_key=source_key, metadata=metadata)
+        self.tables = tables or []
+
+    def parse(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Parse tables into (hitter_stats, pitcher_stats) tuple.
+
+        Returns:
+            Tuple of (list of hitter records, list of pitcher records).
+
+        """
+        hitter_stats = parse_retired_hitter_tables(self.tables)
+        pitcher_stats = parse_retired_pitcher_table(self.tables)
+        return hitter_stats, pitcher_stats
+
+
 __all__ = [
+    "RetiredPlayerParser",
     "parse_retired_hitter_tables",
     "parse_retired_pitcher_table",
 ]

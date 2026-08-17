@@ -9,8 +9,6 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
-
 from src.constants import KST
 
 if TYPE_CHECKING:
@@ -349,77 +347,91 @@ def _parse_json_team_events(
     return events
 
 
+from src.parsers.base_parser import BaseHtmlParser
+
+
+class TeamEventParser(BaseHtmlParser[list[dict[str, Any]]]):
+    """Parser for team event/news HTML pages."""
+
+    def __init__(self, html: str, source_key: str = "", metadata: dict[str, Any] | None = None) -> None:
+        """Initialize TeamEventParser."""
+        super().__init__(html=html, source_key=source_key, metadata=metadata)
+
+    def parse(self) -> list[dict[str, Any]]:
+        """Parse team event items from HTML or JSON.
+
+        Returns:
+            List of parsed event dictionaries.
+
+        """
+        team_code = TEAM_CODE_FROM_SOURCE_KEY.get(self.source_key, "UNKNOWN")
+        if team_code == "UNKNOWN":
+            return []
+
+        config = SOURCE_CONFIG_MAP.get(self.source_key, {"link_prefix": ""})
+        page_url = self.metadata.get("url", "")
+        cutoff_days = int(self.metadata.get("cutoff_days", CUTOFF_DAYS))
+        fetched_at = _parse_fetched_at(self.metadata)
+        cutoff_date = fetched_at - timedelta(days=cutoff_days)
+
+        json_events = _parse_json_team_events(self.html, self.source_key, self.metadata, cutoff_date, fetched_at)
+        if json_events:
+            return json_events
+
+        soup = self.soup
+        title_sel = config.get("title_sel", "a")
+        date_sel = config.get("date_sel", "")
+
+        events = []
+        seen_titles = set()
+        title_tags = list(soup.select(title_sel))
+        fallback_tags = [] if title_tags else list(soup.select("a[href]"))
+
+        for title_tag in title_tags + fallback_tags:
+            title = title_tag.get_text(" ", strip=True)
+            if len(title) < MIN_EVENT_TITLE_LENGTH:
+                continue
+            if not _is_event_title(title, page_url):
+                continue
+            if title in seen_titles:
+                continue
+            seen_titles.add(title)
+
+            source_url = _extract_source_url(title_tag, config, page_url)
+            published_at = _extract_published_at(title_tag, date_sel, cutoff_date)
+
+            if not published_at:
+                continue
+
+            events.append(
+                {
+                    "event_scope": "team",
+                    "team_id": EVENT_TEAM_NAME_MAP.get(team_code, team_code),
+                    "title": title[:300],
+                    "event_type": _classify_event(title),
+                    "published_at": published_at,
+                    "source_url": source_url or page_url,
+                    "last_seen_at": fetched_at,
+                    "status": "unknown",
+                },
+            )
+
+        return events
+
+
 def parse_team_events(html: str, source_key: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Parse team events.
 
     Args:
-        html: Html.
-        source_key: Source Key.
-        metadata: Metadata.
-        html: Html.
-        source_key: Source Key.
-        metadata: Metadata.
-        html: Html.
-        source_key: Source Key.
-        metadata: Metadata.
+        html: Raw HTML or JSON text.
+        source_key: Source key identifying the team.
+        metadata: Optional metadata dictionary.
 
     Returns:
-        List of results.
+        List of event dictionaries.
 
     """
-    team_code = TEAM_CODE_FROM_SOURCE_KEY.get(source_key, "UNKNOWN")
-
-    if team_code == "UNKNOWN":
-        return []
-    config = SOURCE_CONFIG_MAP.get(source_key, {"link_prefix": ""})
-    page_url = (metadata or {}).get("url", "")
-    cutoff_days = int((metadata or {}).get("cutoff_days", CUTOFF_DAYS))
-    fetched_at = _parse_fetched_at(metadata)
-    cutoff_date = fetched_at - timedelta(days=cutoff_days)
-
-    json_events = _parse_json_team_events(html, source_key, metadata, cutoff_date, fetched_at)
-    if json_events:
-        return json_events
-
-    soup = BeautifulSoup(html, "html.parser")
-    title_sel = config.get("title_sel", "a")
-    date_sel = config.get("date_sel", "")
-
-    events = []
-    seen_titles = set()
-    title_tags = list(soup.select(title_sel))
-    fallback_tags = [] if title_tags else list(soup.select("a[href]"))
-
-    for title_tag in title_tags + fallback_tags:
-        title = title_tag.get_text(" ", strip=True)
-        if len(title) < MIN_EVENT_TITLE_LENGTH:
-            continue
-        if not _is_event_title(title, page_url):
-            continue
-        if title in seen_titles:
-            continue
-        seen_titles.add(title)
-
-        source_url = _extract_source_url(title_tag, config, page_url)
-        published_at = _extract_published_at(title_tag, date_sel, cutoff_date)
-
-        if not published_at:
-            continue
-
-        events.append(
-            {
-                "event_scope": "team",
-                "team_id": EVENT_TEAM_NAME_MAP.get(team_code, team_code),
-                "title": title[:300],
-                "event_type": _classify_event(title),
-                "published_at": published_at,
-                "source_url": source_url or page_url,
-                "last_seen_at": fetched_at,
-                "status": "unknown",
-            },
-        )
-
-    return events
+    return TeamEventParser(html=html, source_key=source_key, metadata=metadata).parse()
 
 
 if __name__ == "__main__":

@@ -7,7 +7,6 @@ from io import StringIO
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
-from bs4 import BeautifulSoup
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -16,11 +15,68 @@ from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segme
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
 if TYPE_CHECKING:
+    from bs4 import BeautifulSoup
     from sqlalchemy.orm import Session
 
 
 DURATION_PART_COUNT = 2
 MIN_NAME_LENGTH_WITH_SPACING = 2
+
+
+from src.parsers.base_parser import BaseHtmlParser
+
+
+class GameDetailParser(BaseHtmlParser[dict[str, Any]]):
+    """Parser for KBO GameCenter REVIEW HTML into structured box scores."""
+
+    def __init__(
+        self,
+        html: str,
+        game_id: str,
+        game_date: str,
+        db_session: Session | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize GameDetailParser."""
+        merged_meta = dict(metadata or {})
+        merged_meta["game_id"] = game_id
+        merged_meta["game_date"] = game_date
+        super().__init__(html=html, source_key=f"game_{game_id}", metadata=merged_meta)
+        self.game_id = game_id
+        self.game_date = game_date
+        self.db_session = db_session
+
+    def parse(self) -> dict[str, Any]:
+        """Parse game detail HTML into structured box score payload.
+
+        Returns:
+            Dictionary containing game metadata, teams, scoreboard, hitters, and pitchers.
+
+        """
+        soup = self.soup
+        dataframes = pd.read_html(StringIO(self.html))
+
+        scoreboard_df = _extract_scoreboard(dataframes)
+        hitter_tables = _extract_hitter_tables(dataframes)
+        pitcher_tables = _extract_pitcher_tables(dataframes)
+
+        season_year = _season_year_from_game(self.game_date)
+        teams = _build_team_info(scoreboard_df, self.game_id, season_year)
+        hitters = _build_hitter_payload(hitter_tables, teams, self.db_session, season_year=season_year)
+        pitchers = _build_pitcher_payload(pitcher_tables, teams, self.db_session, season_year=season_year)
+
+        meta = _parse_metadata(soup)
+
+        return {
+            "game_id": self.game_id,
+            "game_date": self.game_date,
+            "metadata": meta,
+            "teams": teams,
+            "home_team_code": teams["home"]["code"],
+            "away_team_code": teams["away"]["code"],
+            "hitters": hitters,
+            "pitchers": pitchers,
+        }
 
 
 def parse_game_detail_html(
@@ -32,48 +88,16 @@ def parse_game_detail_html(
     """Parse game detail html.
 
     Args:
-        html: Html.
+        html: Raw HTML string of the game review page.
         game_id: Game ID.
-        game_date: Game Date.
-        db_session: Db Session.
-        html: Html.
-        game_id: Game ID.
-        game_date: Game Date.
-        db_session: Db Session.
-        html: Html.
-        game_id: Game ID.
-        game_date: Game Date.
-        db_session: Database session.
+        game_date: Game Date (YYYY-MM-DD or YYYYMMDD).
+        db_session: Optional database session for resolving player IDs.
 
     Returns:
-        Dictionary result.
+        Structured game detail dictionary.
 
     """
-    soup = BeautifulSoup(html, "html.parser")
-
-    dataframes = pd.read_html(StringIO(html))
-
-    scoreboard_df = _extract_scoreboard(dataframes)
-    hitter_tables = _extract_hitter_tables(dataframes)
-    pitcher_tables = _extract_pitcher_tables(dataframes)
-
-    season_year = _season_year_from_game(game_date)
-    teams = _build_team_info(scoreboard_df, game_id, season_year)
-    hitters = _build_hitter_payload(hitter_tables, teams, db_session, season_year=season_year)
-    pitchers = _build_pitcher_payload(pitcher_tables, teams, db_session, season_year=season_year)
-
-    metadata = _parse_metadata(soup)
-
-    return {
-        "game_id": game_id,
-        "game_date": game_date,
-        "metadata": metadata,
-        "teams": teams,
-        "home_team_code": teams["home"]["code"],
-        "away_team_code": teams["away"]["code"],
-        "hitters": hitters,
-        "pitchers": pitchers,
-    }
+    return GameDetailParser(html, game_id, game_date, db_session=db_session).parse()
 
 
 def _extract_scoreboard(tables: list[pd.DataFrame]) -> pd.DataFrame | None:
@@ -334,8 +358,8 @@ def _build_pitcher_payload(
                     "hits_allowed": safe_int_or_none(row.get("피안타")),
                     "runs_allowed": safe_int_or_none(row.get("실점")),
                     "earned_runs": safe_int_or_none(row.get("자책")),
-                    "home_runs_allowed": safe_int_or_none(row.get("피홈런")),
-                    "walks_allowed": safe_int_or_none(row.get("볼넷")),
+                    "home_runs_allowed": safe_int_or_none(row.get("피홈런") or row.get("홈런")),
+                    "walks_allowed": safe_int_or_none(row.get("볼넷") or row.get("4사구") or row.get("사사구")),
                     "strikeouts": safe_int_or_none(row.get("삼진")),
                     "hit_batters": safe_int_or_none(row.get("사구")),
                     "wild_pitches": safe_int_or_none(row.get("폭투")),
@@ -344,7 +368,7 @@ def _build_pitcher_payload(
                     "losses": safe_int_or_none(row.get("패")),
                     "saves": safe_int_or_none(row.get("세")),
                     "holds": safe_int_or_none(row.get("홀드")),
-                    "era": safe_float_or_none(row.get("ERA")),
+                    "era": safe_float_or_none(row.get("ERA") or row.get("평균자책점")),
                     "whip": safe_float_or_none(row.get("WHIP")),
                     "k_per_nine": safe_float_or_none(row.get("K/9")),
                     "bb_per_nine": safe_float_or_none(row.get("BB/9")),
