@@ -22,6 +22,7 @@ from src.db.sqlite_integrity import check_sqlite_database, is_sqlite_corruption_
 from src.scheduler.alerting import alert_failure, alert_success
 from src.scheduler.config import (
     ALERT_EXCEPTIONS,
+    FALSE_ENV_VALUES,
     KST,
     SCHEDULER_JOB_EXCEPTIONS,
     _env_enabled,
@@ -171,19 +172,18 @@ def _pregame_preview_detail_has_starters(detail_text: str | None) -> bool:
 
 
 def _live_refresh_max_games_per_cycle() -> int | None:
-    raw = os.getenv("LIVE_REFRESH_MAX_GAMES_PER_CYCLE")
-    if raw is None:
+    raw = os.getenv("LIVE_REFRESH_MAX_GAMES_PER_CYCLE", "1").strip().lower()
+    if raw in FALSE_ENV_VALUES or raw == "all":
         return None
     try:
-        val = int(raw.strip())
+        val = int(raw)
     except ValueError:
         logger.warning(
-            "Invalid integer for LIVE_REFRESH_MAX_GAMES_PER_CYCLE=%r; using default=None",
+            "Invalid integer for LIVE_REFRESH_MAX_GAMES_PER_CYCLE=%r; using default=1",
             raw,
         )
-        return None
-    else:
-        return val if val > 0 else None
+        return 1
+    return val if val > 0 else None
 
 
 @retry(
@@ -410,12 +410,14 @@ def crawl_live_refresh() -> None:
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
     live_lock = getattr(mod, "LIVE_LOCK", LIVE_LOCK) if mod else LIVE_LOCK
 
-    if _should_skip_live_for_pregame():
+    skip_fn = getattr(mod, "_should_skip_live_for_pregame", None) or _should_skip_live_for_pregame
+    if skip_fn():
         logger.info("Skipping live refresh because pregame refresh is due soon")
         return
 
     now = datetime.now(KST)
-    interval = _get_live_poll_interval_seconds()
+    interval_fn = getattr(mod, "_get_live_poll_interval_seconds", None) or _get_live_poll_interval_seconds
+    interval = interval_fn()
 
     if interval != _STATE.last_live_poll_interval:
         logger.info(
@@ -443,10 +445,12 @@ def crawl_live_refresh() -> None:
         mod.LAST_LIVE_RUN_TIME = now
     try:
         logger.info("Running live refresh cycle")
+        cycle_fn = getattr(mod, "run_live_crawler_cycle", None) or run_live_crawler_cycle
+        max_games_fn = getattr(mod, "_live_refresh_max_games_per_cycle", None) or _live_refresh_max_games_per_cycle
         with _sqlite_writer_lock():
             asyncio.run(
-                run_live_crawler_cycle(
-                    max_active_games=_live_refresh_max_games_per_cycle(),
+                cycle_fn(
+                    max_active_games=max_games_fn(),
                     detail_snapshot_background=True,
                 ),
             )

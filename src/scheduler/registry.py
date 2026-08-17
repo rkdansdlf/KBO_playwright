@@ -155,7 +155,11 @@ def _dispatch_single_run(args: argparse.Namespace) -> bool:
 
 
 def _start_scheduler(args: argparse.Namespace) -> None:
-    scheduler = BlockingScheduler(timezone="Asia/Seoul")
+    mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
+    scheduler_cls = getattr(mod, "BlockingScheduler", BlockingScheduler) if mod else BlockingScheduler
+    trigger_cls = getattr(mod, "CronTrigger", CronTrigger) if mod else CronTrigger
+
+    scheduler = scheduler_cls(timezone="Asia/Seoul")
     global _SCHEDULER_REF  # noqa: PLW0603
     _SCHEDULER_REF = scheduler
     scheduler.add_listener(job_lifecycle_listener, EVENT_JOB_SUBMITTED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
@@ -163,92 +167,92 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     jobs = [
         (
             selector_drift_sentinel_job,
-            CronTrigger(hour=5, minute=40),
+            trigger_cls(hour=5, minute=40),
             "selector_drift_sentinel",
             "Daily Selector Drift Canary Check",
             3600,
         ),
         (
             crawl_daily_games,
-            CronTrigger(hour=3, minute=0),
+            trigger_cls(hour=3, minute=0),
             "crawl_daily_games",
             "Daily Games Crawl (Schedule + Details)",
             7200,
         ),
-        (crawl_phase1_extra_job, CronTrigger(hour=6, minute=0), "crawl_phase1_extra", "Phase 1 Extra Crawlers", 7200),
+        (crawl_phase1_extra_job, trigger_cls(hour=6, minute=0), "crawl_phase1_extra", "Phase 1 Extra Crawlers", 7200),
         (
             crawl_p1p2_data_job,
-            CronTrigger(hour=6, minute=45),
+            trigger_cls(hour=6, minute=45),
             "crawl_p1p2_data",
             "P1/P2 Seat/Parking/Food Crawlers",
             7200,
         ),
         (
             lock_health_check_job,
-            CronTrigger(hour=6, minute=50),
+            trigger_cls(hour=6, minute=50),
             "lock_health_check",
             "Scheduler Lock Health Check (post P1/P2)",
             600,
         ),
         (
             crawl_p0_non_game_job,
-            CronTrigger(hour=6, minute=20),
+            trigger_cls(hour=6, minute=20),
             "crawl_p0_non_game",
             "P0 Non-Game Data Crawl (Events/Roster/Tickets)",
             3600,
         ),
         (
             crawl_retired_players_job,
-            CronTrigger(day=1, hour=2, minute=0),
+            trigger_cls(day=1, hour=2, minute=0),
             "crawl_retired_players",
             "Monthly Retired Player Crawl",
             3600,
         ),
         (
             crawl_monthly_unified_audit_job,
-            CronTrigger(day=1, hour=3, minute=0),
+            trigger_cls(day=1, hour=3, minute=0),
             "crawl_monthly_unified_audit",
             "Monthly Unified Audit (PA + Team Stats)",
             3600,
         ),
         (
             daily_gap_report_job,
-            CronTrigger(hour=7, minute=0),
+            trigger_cls(hour=7, minute=0),
             "daily_gap_report",
             "Daily Gap Report Summary Notification (07:00 KST)",
             3600,
         ),
         (
             crawl_kbo_press_releases_job,
-            CronTrigger(hour=6, minute=10),
+            trigger_cls(hour=6, minute=10),
             "crawl_kbo_press_releases",
             "KBO Official Press Releases Crawl (06:10 KST)",
             3600,
         ),
         (
             crawl_futures_schedule_job,
-            CronTrigger(hour=6, minute=30),
+            trigger_cls(hour=6, minute=30),
             "crawl_futures_schedule",
             "Futures League Schedule Crawl (06:30 KST)",
             3600,
         ),
         (
             recalc_milestones_and_rag_job,
-            CronTrigger(hour=7, minute=15),
+            trigger_cls(hour=7, minute=15),
             "recalc_milestones_and_rag",
             "Milestone Recalculation and RAG Indexing",
             7200,
         ),
         (
             weekly_sla_report_job,
-            CronTrigger(day_of_week="mon", hour=6, minute=0),
+            trigger_cls(day_of_week="mon", hour=6, minute=0),
             "weekly_sla_report",
             "Weekly SLA Report",
             7200,
         ),
         (
             compute_park_factor_job,
-            CronTrigger(day_of_week="sun", hour=5, minute=30),
+            trigger_cls(day_of_week="sun", hour=5, minute=30),
             "compute_park_factor",
             "Weekly Park Factor Computation",
             7200,
@@ -267,7 +271,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
 
     scheduler.add_job(
         crawl_pregame_refresh,
-        trigger=CronTrigger(hour="10-23", minute="*/15"),
+        trigger=trigger_cls(hour="10-23", minute="*/15"),
         id="crawl_pregame_refresh",
         name="Pregame Refresh",
         misfire_grace_time=900,
@@ -275,7 +279,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         crawl_live_refresh,
-        trigger=CronTrigger(hour="12-22", second="*/10"),
+        trigger=trigger_cls(hour="12-22", second="*/10"),
         id="crawl_live_refresh_day",
         name="Live Refresh Day Window",
         misfire_grace_time=5,
@@ -283,7 +287,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         crawl_live_refresh,
-        trigger=CronTrigger(hour=23, minute="0-30", second="*/10"),
+        trigger=trigger_cls(hour=23, minute="0-30", second="*/10"),
         id="crawl_live_refresh_night",
         name="Live Refresh Night Window",
         misfire_grace_time=5,
@@ -292,14 +296,14 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     logger.info("Registered job: crawl_live_refresh (Every 10s, 12:00-23:30 KST)")
 
     tier2_jobs = [
-        (compute_standings_job, CronTrigger(hour=3, minute=30), "compute_standings", 7200),
-        (aggregate_team_defense_job, CronTrigger(hour=3, minute=45), "aggregate_team_defense", 7200),
-        (compute_rankings_job, CronTrigger(hour=4, minute=0), "compute_rankings", 7200),
-        (auto_heal_games_job, CronTrigger(hour=4, minute=15), "auto_heal_games", 7200),
-        (heal_unverified_pbp_job, CronTrigger(hour=4, minute=30), "heal_pbp", 7200),
-        (data_integrity_check_job, CronTrigger(hour=4, minute=45), "data_integrity_check", 7200),
-        (sync_rag_incremental_job, CronTrigger(hour=5, minute=0), "sync_rag_incremental", 7200),
-        (backup_db_job, CronTrigger(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
+        (compute_standings_job, trigger_cls(hour=3, minute=30), "compute_standings", 7200),
+        (aggregate_team_defense_job, trigger_cls(hour=3, minute=45), "aggregate_team_defense", 7200),
+        (compute_rankings_job, trigger_cls(hour=4, minute=0), "compute_rankings", 7200),
+        (auto_heal_games_job, trigger_cls(hour=4, minute=15), "auto_heal_games", 7200),
+        (heal_unverified_pbp_job, trigger_cls(hour=4, minute=30), "heal_pbp", 7200),
+        (data_integrity_check_job, trigger_cls(hour=4, minute=45), "data_integrity_check", 7200),
+        (sync_rag_incremental_job, trigger_cls(hour=5, minute=0), "sync_rag_incremental", 7200),
+        (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
     ]
     for fn, trigger, job_id, grace in tier2_jobs:
         scheduler.add_job(fn, trigger=trigger, id=job_id, name=job_id, misfire_grace_time=grace, max_instances=1)
@@ -307,7 +311,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
 
     scheduler.add_job(
         crawl_transit_time_job,
-        trigger=CronTrigger(hour="10-23", minute="*/15"),
+        trigger=trigger_cls(hour="10-23", minute="*/15"),
         id="crawl_transit_time",
         name="Stadium Transit Time Measurement (JAMSIL)",
         misfire_grace_time=600,
@@ -315,7 +319,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         crawl_congestion_job,
-        trigger=CronTrigger(hour="10-23", minute="*/5"),
+        trigger=trigger_cls(hour="10-23", minute="*/5"),
         id="crawl_congestion",
         name="Stadium Congestion Data (JAMSIL)",
         misfire_grace_time=300,
@@ -323,7 +327,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         crawl_operation_notices_job,
-        trigger=CronTrigger(hour=9, minute=0),
+        trigger=trigger_cls(hour=9, minute=0),
         id="crawl_operation_notices_morning",
         name="Operation Notices — Morning",
         misfire_grace_time=3600,
@@ -331,7 +335,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         crawl_operation_notices_job,
-        trigger=CronTrigger(hour=11, minute=30),
+        trigger=trigger_cls(hour=11, minute=30),
         id="crawl_operation_notices_daygame",
         name="Operation Notices — Day-of-Game",
         misfire_grace_time=3600,
@@ -339,7 +343,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         crawl_operation_notices_naver_job,
-        trigger=CronTrigger(hour=9, minute=30),
+        trigger=trigger_cls(hour=9, minute=30),
         id="crawl_naver_notices_morning",
         name="Naver Notice — Morning",
         misfire_grace_time=3600,
@@ -347,7 +351,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         crawl_operation_notices_naver_job,
-        trigger=CronTrigger(hour=13, minute=0),
+        trigger=trigger_cls(hour=13, minute=0),
         id="crawl_naver_notices_afternoon",
         name="Naver Notice — Afternoon",
         misfire_grace_time=3600,
@@ -355,7 +359,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         crawl_fan_culture_job,
-        trigger=CronTrigger(day_of_week="sat", hour=4, minute=0),
+        trigger=trigger_cls(day_of_week="sat", hour=4, minute=0),
         id="crawl_fan_culture",
         name="Fan Culture Data Crawl",
         misfire_grace_time=7200,
@@ -363,7 +367,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         _crawl_team_info_history,
-        trigger=CronTrigger(day_of_week="sun", hour=6, minute=0),
+        trigger=trigger_cls(day_of_week="sun", hour=6, minute=0),
         id="crawl_team_info_history",
         name="Team Info/History Refresh",
         misfire_grace_time=7200,
@@ -371,7 +375,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     scheduler.add_job(
         lock_skip_monitor_job,
-        trigger=CronTrigger(minute="*/15"),
+        trigger=trigger_cls(minute="*/15"),
         id="lock_skip_monitor",
         name="Lock Skip Rate Monitor",
         misfire_grace_time=300,

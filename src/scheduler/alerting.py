@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from src.scheduler.config import ALERT_EXCEPTIONS
 from src.utils.alerting import SlackWebhookClient
@@ -42,11 +43,14 @@ def alert_warning(func_name: str, details: str | None = None) -> None:
 
 
 def alert_success(func_name: str, details: str | None = None) -> None:
-    """Send Slack success notification."""
+    """Send optional Slack success notification."""
     logger.info("Job %s succeeded: %s", func_name, details)
+    if os.getenv("NOTIFY_SUCCESS", "0") != "1":
+        return
     try:
-        SlackWebhookClient.send_alert(
-            f"✅ <b>Scheduler Job Completed</b>\nFunction: <code>{func_name}</code>\nDetails: {details or 'Success'}",
-        )
+        message = f"✅ KBO Job {func_name} completed successfully."
+        if details:
+            message = f"{message}\n{details}"
+        SlackWebhookClient.send_alert(message)
     except ALERT_EXCEPTIONS:
-        logger.exception("Failed to send Slack success notification for %s", func_name)
+        logger.exception("Failed to send success alert for job %s", func_name)
