@@ -21,7 +21,7 @@ class TestRagChunkRepository:
         engine = self._engine()
         self._init_tables(engine)
         session = self._session(engine)
-        repo = RagChunkRepository()
+        repo = RagChunkRepository(session)
 
         chunks = [
             {
@@ -30,7 +30,7 @@ class TestRagChunkRepository:
                 "meta": {"category": "rulebook", "source_row_id": "rule_001"},
             },
         ]
-        count = repo.upsert_chunks(session, chunks)
+        count = repo.upsert_chunks(chunks)
 
         assert count == 1
         stmt = select(RagChunk).where(RagChunk.source_table == "rulebook")
@@ -45,7 +45,7 @@ class TestRagChunkRepository:
         engine = self._engine()
         self._init_tables(engine)
         session = self._session(engine)
-        repo = RagChunkRepository()
+        repo = RagChunkRepository(session)
 
         chunks1 = [
             {
@@ -54,7 +54,7 @@ class TestRagChunkRepository:
                 "meta": {"category": "rulebook", "source_row_id": "rule_001"},
             },
         ]
-        repo.upsert_chunks(session, chunks1)
+        repo.upsert_chunks(chunks1)
 
         chunks2 = [
             {
@@ -63,7 +63,7 @@ class TestRagChunkRepository:
                 "meta": {"category": "rulebook", "source_row_id": "rule_001"},
             },
         ]
-        count = repo.upsert_chunks(session, chunks2)
+        count = repo.upsert_chunks(chunks2)
 
         assert count == 1
         rows = list(session.execute(select(RagChunk)).scalars().all())
@@ -74,13 +74,13 @@ class TestRagChunkRepository:
         engine = self._engine()
         self._init_tables(engine)
         session = self._session(engine)
-        repo = RagChunkRepository()
+        repo = RagChunkRepository(session)
 
         chunks = [
             {"title": "A", "content": "AAA", "meta": {"category": "news", "source_row_id": "n1"}},
             {"title": "B", "content": "BBB", "meta": {"category": "news", "source_row_id": "n2"}},
         ]
-        count = repo.upsert_chunks(session, chunks)
+        count = repo.upsert_chunks(chunks)
 
         assert count == 2
         rows = list(session.execute(select(RagChunk)).scalars().all())
@@ -90,9 +90,9 @@ class TestRagChunkRepository:
         engine = self._engine()
         self._init_tables(engine)
         session = self._session(engine)
-        repo = RagChunkRepository()
+        repo = RagChunkRepository(session)
 
-        count = repo.upsert_chunks(session, [])
+        count = repo.upsert_chunks([])
 
         assert count == 0
 
@@ -100,10 +100,9 @@ class TestRagChunkRepository:
         engine = self._engine()
         self._init_tables(engine)
         session = self._session(engine)
-        repo = RagChunkRepository()
+        repo = RagChunkRepository(session)
 
         repo.upsert_chunks(
-            session,
             [
                 {
                     "title": "Regulation",

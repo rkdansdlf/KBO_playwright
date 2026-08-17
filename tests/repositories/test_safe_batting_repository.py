@@ -4,6 +4,7 @@ from collections import Counter
 from unittest.mock import patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -34,7 +35,6 @@ def session(engine):
 @pytest.fixture(autouse=True)
 def patch_deps(session):
     with (
-        patch("src.repositories.safe_batting_repository.SessionLocal", return_value=session),
         patch("src.repositories.safe_batting_repository.get_database_type", return_value="sqlite"),
         patch(
             "src.repositories.safe_batting_repository.filter_valid_season_stat_payloads",
@@ -47,7 +47,7 @@ def patch_deps(session):
 
 class TestSaveBattingStats:
     def test_empty_payloads(self):
-        result = save_batting_stats_safe([])
+        result = save_batting_stats_safe([], session=session)
         assert result == 0
 
     @patch("src.repositories.safe_batting_repository.filter_valid_season_stat_payloads")
@@ -60,7 +60,7 @@ class TestSaveBattingStats:
             Counter(),
         )
 
-        result = save_batting_stats_safe([{}])
+        result = save_batting_stats_safe([{}], session=session)
         assert result == 1
 
         stats = session.query(PlayerSeasonBatting).all()
@@ -81,7 +81,7 @@ class TestSaveBattingStats:
             Counter(),
         )
 
-        result = save_batting_stats_safe([{}, {}])
+        result = save_batting_stats_safe([{}, {}], session=session)
         assert result == 2
 
     @patch("src.repositories.safe_batting_repository.filter_valid_season_stat_payloads")
@@ -93,13 +93,13 @@ class TestSaveBattingStats:
             [{"player_id": 1001, "season": 2024, "league": "REGULAR", "level": "KBO1", "games": 10, "hits": 25}],
             Counter(),
         )
-        save_batting_stats_safe([{}])
+        save_batting_stats_safe([{}], session=session)
 
         mock_filter.return_value = (
             [{"player_id": 1001, "season": 2024, "league": "REGULAR", "level": "KBO1", "games": 11, "hits": 30}],
             Counter(),
         )
-        result = save_batting_stats_safe([{}])
+        result = save_batting_stats_safe([{}], session=session)
         assert result == 1
 
         stats = session.query(PlayerSeasonBatting).all()
@@ -119,7 +119,7 @@ class TestSaveBattingStats:
             Counter(),
         )
 
-        result = save_batting_stats_safe([{}, {}])
+        result = save_batting_stats_safe([{}, {}], session=session)
 
         assert result == 2
         assert session.query(PlayerSeasonBatting).filter_by(player_id=1002).count() == 2
@@ -136,13 +136,13 @@ class TestSaveBattingStats:
         session.add(PlayerBasic(player_id=1, name="A"))
         session.commit()
 
-        result = save_batting_stats_safe([{}, {}])
+        result = save_batting_stats_safe([{}, {}], session=session)
         assert result == 1
 
     @patch("src.repositories.safe_batting_repository.filter_valid_season_stat_payloads")
     def test_get_last_filter_counts(self, mock_filter):
         mock_filter.return_value = ([], Counter({"invalid": 3}))
-        save_batting_stats_safe([{"player_id": 1, "season": 2024}])
+        save_batting_stats_safe([{"player_id": 1, "season": 2024}], session=session)
         counts = get_last_filter_counts()
         assert counts.get("invalid") == 3
 
@@ -153,7 +153,7 @@ class TestQueryAndCleanup:
         session.add(PlayerSeasonBatting(player_id=1, season=2024, league="REGULAR", level="KBO1"))
         session.commit()
 
-        count = get_batting_stats_count(session)
+        count = get_batting_stats_count(session=session)
         assert count == 1
 
     def test_get_batting_stats_by_season(self, session):
@@ -162,7 +162,7 @@ class TestQueryAndCleanup:
         session.add(PlayerSeasonBatting(player_id=1, season=2025, league="REGULAR", level="KBO1"))
         session.commit()
 
-        results = get_batting_stats_by_season(2024, session)
+        results = get_batting_stats_by_season(2024, session=session)
         assert len(results) == 1
 
     def test_cleanup_invalid_data_clean(self, session):

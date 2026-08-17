@@ -4,6 +4,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -82,6 +83,7 @@ class TestSaveDailyRostersAdvanced:
         ]
         count = repo.save_daily_rosters(rosters)
         assert count == 1
+        session.flush()
         from src.models.team import TeamDailyRoster
 
         record = session.query(TeamDailyRoster).first()

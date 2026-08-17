@@ -18,15 +18,10 @@ class TestPlayerSeasonFieldingRepository:
         PlayerSeasonFielding.__table__.create(engine)
         return sessionmaker(bind=engine)()
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_creates_records(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_creates_records(self):
         session = self._fielding_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = PlayerSeasonFieldingRepository()
+        repo = PlayerSeasonFieldingRepository(session)
         result = repo.upsert_many(
             [
                 {
@@ -46,21 +41,15 @@ class TestPlayerSeasonFieldingRepository:
         assert row.player_id == 1
         assert row.games == 100
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_empty_input(self, MockEngine, MockSessionLocal):
-        repo = PlayerSeasonFieldingRepository()
+    def test_upsert_many_empty_input(self):
+        session = self._fielding_session_fixture()
+        repo = PlayerSeasonFieldingRepository(session)
         assert repo.upsert_many([]) == 0
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_duplicate_updates(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_duplicate_updates(self):
         session = self._fielding_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = PlayerSeasonFieldingRepository()
+        repo = PlayerSeasonFieldingRepository(session)
         repo.upsert_many(
             [
                 {
@@ -100,15 +89,10 @@ class TestPlayerSeasonBaserunningRepository:
         PlayerSeasonBaserunning.__table__.create(engine)
         return sessionmaker(bind=engine)()
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_creates_records(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_creates_records(self):
         session = self._baserunning_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = PlayerSeasonBaserunningRepository()
+        repo = PlayerSeasonBaserunningRepository(session)
         result = repo.upsert_many(
             [
                 {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 30, "caught_stealing": 5},
@@ -119,21 +103,15 @@ class TestPlayerSeasonBaserunningRepository:
         assert row.player_id == 1
         assert row.stolen_bases == 30
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_empty_input(self, MockEngine, MockSessionLocal):
-        repo = PlayerSeasonBaserunningRepository()
+    def test_upsert_many_empty_input(self):
+        session = self._baserunning_session_fixture()
+        repo = PlayerSeasonBaserunningRepository(session)
         assert repo.upsert_many([]) == 0
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_duplicate_updates(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_duplicate_updates(self):
         session = self._baserunning_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = PlayerSeasonBaserunningRepository()
+        repo = PlayerSeasonBaserunningRepository(session)
         repo.upsert_many(
             [
                 {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 30},

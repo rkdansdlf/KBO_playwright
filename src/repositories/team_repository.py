@@ -140,7 +140,6 @@ class TeamRepository:
             )
             self.session.execute(stmt)
 
-        self.session.commit()
         return len(values)
 
     def _person_type_for_position(self, position: str | None) -> str:

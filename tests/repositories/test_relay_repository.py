@@ -57,8 +57,8 @@ class TestRelayRepository:
         result = save_relay_data("20241015LGSSG0", None)
         assert result == 0
 
-    @patch("src.repositories.relay_repository.SessionLocal")
-    def test_get_game_relay_summary_no_plays(self, MockSessionLocal):
+    @patch("src.repositories.relay_repository.get_db_session")
+    def test_get_game_relay_summary_no_plays(self, Mockget_db_session):
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
 
@@ -67,8 +67,8 @@ class TestRelayRepository:
         engine = create_engine("sqlite:///:memory:")
         GamePlayByPlay.__table__.create(engine)
         session = sessionmaker(bind=engine)()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
+        Mockget_db_session.return_value.__enter__.return_value = session
+        Mockget_db_session.return_value.__exit__.return_value = None
 
         summary = get_game_relay_summary("NONEXISTENT")
         assert summary["game_id"] == "NONEXISTENT"
@@ -76,8 +76,8 @@ class TestRelayRepository:
         assert summary["innings"] == 0
         assert summary["event_types"] == {}
 
-    @patch("src.repositories.relay_repository.SessionLocal")
-    def test_get_game_relay_summary_with_plays(self, MockSessionLocal):
+    @patch("src.repositories.relay_repository.get_db_session")
+    def test_get_game_relay_summary_with_plays(self, Mockget_db_session):
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
 
@@ -86,8 +86,8 @@ class TestRelayRepository:
         engine = create_engine("sqlite:///:memory:")
         GamePlayByPlay.__table__.create(engine)
         session = sessionmaker(bind=engine)()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
+        Mockget_db_session.return_value.__enter__.return_value = session
+        Mockget_db_session.return_value.__exit__.return_value = None
 
         session.add_all(
             [

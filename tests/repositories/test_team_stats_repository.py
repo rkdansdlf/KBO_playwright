@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 import pytest
+import contextlib
 
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from src.repositories.team_stats_repository import TeamSeasonBattingRepository, TeamSeasonPitchingRepository
@@ -16,15 +17,10 @@ class TestTeamSeasonBattingRepository:
         TeamSeasonBatting.__table__.create(engine)
         return sessionmaker(bind=engine)()
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_creates_records(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_creates_records(self):
         session = self._batting_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = TeamSeasonBattingRepository()
+        repo = TeamSeasonBattingRepository(session)
         result = repo.upsert_many(
             [
                 {
@@ -42,21 +38,14 @@ class TestTeamSeasonBattingRepository:
         assert row.team_id == "LG"
         assert row.games == 144
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_empty(self, MockEngine, MockSessionLocal):
-        repo = TeamSeasonBattingRepository()
+    def test_upsert_many_empty(self):
+        repo = TeamSeasonBattingRepository(MagicMock())
         assert repo.upsert_many([]) == 0
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_updates_existing(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_updates_existing(self):
         session = self._batting_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = TeamSeasonBattingRepository()
+        repo = TeamSeasonBattingRepository(session)
         repo.upsert_many(
             [
                 {"team_id": "LG", "team_name": "LG Twins", "season": 2024, "league": "REGULAR", "games": 144},
@@ -79,15 +68,10 @@ class TestTeamSeasonBattingRepository:
         assert rows[0].games == 145
         assert rows[0].avg == 0.290
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_multiple_teams(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_multiple_teams(self):
         session = self._batting_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = TeamSeasonBattingRepository()
+        repo = TeamSeasonBattingRepository(session)
         repo.upsert_many(
             [
                 {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144},
@@ -109,15 +93,10 @@ class TestTeamSeasonPitchingRepository:
         TeamSeasonPitching.__table__.create(engine)
         return sessionmaker(bind=engine)()
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_creates_records(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_creates_records(self):
         session = self._pitching_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = TeamSeasonPitchingRepository()
+        repo = TeamSeasonPitchingRepository(session)
         result = repo.upsert_many(
             [
                 {
@@ -134,21 +113,14 @@ class TestTeamSeasonPitchingRepository:
         row = session.query(TeamSeasonPitching).one()
         assert row.era == 3.75
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_empty(self, MockEngine, MockSessionLocal):
-        repo = TeamSeasonPitchingRepository()
+    def test_upsert_many_empty(self):
+        repo = TeamSeasonPitchingRepository(MagicMock())
         assert repo.upsert_many([]) == 0
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_updates_existing(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_updates_existing(self):
         session = self._pitching_session_fixture()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
-        repo = TeamSeasonPitchingRepository()
+        repo = TeamSeasonPitchingRepository(session)
         repo.upsert_many(
             [
                 {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "era": 3.75},
@@ -164,15 +136,11 @@ class TestTeamSeasonPitchingRepository:
         assert rows[0].era == 3.50
         assert rows[0].wins == 82
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_postgresql_dialect(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_postgresql_dialect(self):
         mock_session = MagicMock()
-        MockSessionLocal.return_value.__enter__.return_value = mock_session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "postgresql"
+        mock_session.get_bind.return_value.dialect.name = "postgresql"
 
-        repo = TeamSeasonPitchingRepository()
+        repo = TeamSeasonPitchingRepository(mock_session)
         result = repo.upsert_many([{"team_id": "LG", "season": 2024, "league": "REGULAR", "era": 3.75}])
         assert result == 1
         stmt_calls = [call[0][0] for call in mock_session.execute.call_args_list if "PRAGMA" not in str(call[0][0])]
@@ -188,15 +156,11 @@ class TestTeamSeasonPitchingRepository:
         )
         assert result_bulk == 2
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_mysql_dialect(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_mysql_dialect(self):
         mock_session = MagicMock()
-        MockSessionLocal.return_value.__enter__.return_value = mock_session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "mysql"
+        mock_session.get_bind.return_value.dialect.name = "mysql"
 
-        repo = TeamSeasonPitchingRepository()
+        repo = TeamSeasonPitchingRepository(mock_session)
         result = repo.upsert_many([{"team_id": "LG", "season": 2024, "league": "REGULAR", "era": 3.75}])
         assert result == 1
         stmt_calls = [call[0][0] for call in mock_session.execute.call_args_list if "PRAGMA" not in str(call[0][0])]
@@ -212,16 +176,12 @@ class TestTeamSeasonPitchingRepository:
         )
         assert result_bulk == 2
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_fallback_dialect(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_fallback_dialect(self):
         mock_session = MagicMock()
-        MockSessionLocal.return_value.__enter__.return_value = mock_session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "oracle"
+        mock_session.get_bind.return_value.dialect.name = "oracle"
         mock_session.execute.return_value.scalars.return_value.first.return_value = None
 
-        repo = TeamSeasonPitchingRepository()
+        repo = TeamSeasonPitchingRepository(mock_session)
         result = repo.upsert_many([{"team_id": "LG", "season": 2024, "league": "REGULAR", "era": 3.75}])
         assert result == 1
         assert mock_session.add.call_count == 1
@@ -236,35 +196,25 @@ class TestTeamSeasonPitchingRepository:
         assert result_bulk == 2
         assert mock_session.add.call_count == 2
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
-    def test_upsert_many_rollback_on_error(self, MockEngine, MockSessionLocal):
+    def test_upsert_many_rollback_on_error(self):
         mock_session = MagicMock()
-        MockSessionLocal.return_value.__enter__.return_value = mock_session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
 
         from sqlalchemy.exc import SQLAlchemyError
 
         mock_session.execute.side_effect = SQLAlchemyError("Execution error")
 
-        repo = TeamSeasonPitchingRepository()
+        repo = TeamSeasonPitchingRepository(mock_session)
         with pytest.raises(SQLAlchemyError):
             repo.upsert_many([{"team_id": "LG", "season": 2024, "league": "REGULAR", "era": 3.75}])
 
-        mock_session.rollback.assert_called_once()
+        mock_session.rollback.assert_not_called()
 
-    @patch("src.repositories.team_stats_repository.SessionLocal")
-    @patch("src.repositories.team_stats_repository.Engine")
     @patch("src.repositories.team_stats_repository.get_database_type")
-    def test_upsert_many_non_sqlite_pragma_skipped(self, mock_db_type, MockEngine, MockSessionLocal):
+    def test_upsert_many_non_sqlite_pragma_skipped(self, mock_db_type):
         mock_session = MagicMock()
-        MockSessionLocal.return_value.__enter__.return_value = mock_session
-        MockSessionLocal.return_value.__exit__.return_value = None
-        MockEngine.dialect.name = "sqlite"
         mock_db_type.return_value = "postgresql"
 
-        repo = TeamSeasonPitchingRepository()
+        repo = TeamSeasonPitchingRepository(mock_session)
         repo.upsert_many([{"team_id": "LG", "season": 2024, "league": "REGULAR", "era": 3.75}])
 
         for call in mock_session.execute.call_args_list:

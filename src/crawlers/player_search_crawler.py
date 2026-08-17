@@ -658,6 +658,7 @@ async def _crawl_players(max_pages: int | None) -> list[PlayerRow]:
 async def _crawl_and_save(
     player_dicts: list[dict[str, Any]],
 ) -> None:
+    from src.db.engine import get_db_session
     from src.repositories.player_basic_repository import PlayerBasicRepository
 
     suspects = [entry for entry in player_dicts if entry.get("status") in {"retired", "staff"}]
@@ -674,8 +675,9 @@ async def _crawl_and_save(
     logger.info("\nParsed birth dates: %s/%s", parsed_dates, len(player_dicts))
 
     logger.info("\nSaving players...")
-    repo = PlayerBasicRepository()
-    saved_count = repo.upsert_players(player_dicts)
+    with get_db_session() as session:
+        repo = PlayerBasicRepository(session)
+        saved_count = repo.upsert_players(player_dicts)
     logger.info("Saved %s players", saved_count)
 
 

@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import SessionLocal, get_database_type
+from src.db.engine import get_database_type, get_db_session
 from src.models.player import PlayerSeasonBatting
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 
@@ -118,7 +118,6 @@ def _save_sqlite_rows(session: Session, rows: list[dict[str, Any]]) -> int:
         session.execute(stmt)
         return len(rows)
     except SQLAlchemyError:
-        session.rollback()
         logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
         saved_count = 0
         for data in rows:
@@ -138,7 +137,6 @@ def _save_mysql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
         session.execute(stmt)
         return len(rows)
     except SQLAlchemyError:
-        session.rollback()
         logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
         saved_count = 0
         for data in rows:
@@ -155,7 +153,6 @@ def _save_postgresql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
         session.execute(stmt)
         return len(rows)
     except SQLAlchemyError:
-        session.rollback()
         logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
         saved_count = 0
         for data in rows:
@@ -173,7 +170,6 @@ def _execute_single_upsert(session: Session, stmt: object, data: dict[str, Any])
         session.execute(stmt)
     except SQLAlchemyError:
         logger.exception("⚠️ UPSERT 실패 (player_id=%s)", data.get("player_id"))
-        session.rollback()
         return 0
     else:
         return 1
@@ -228,7 +224,7 @@ def _save_rows_with_team_key(session: Session, rows: list[dict[str, Any]], db_ty
     return _save_generic_rows(session, rows)
 
 
-def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
+def save_batting_stats_safe(payloads: list[dict[str, Any]], session: Session | None = None) -> int:
     """타자 시즌 통계를 player_season_batting 테이블에 안전하게 UPSERT 저장.
 
     외래키 제약조건을 임시로 비활성화하여 데이터 저장.
@@ -237,6 +233,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
         payloads: Payloads.
         payloads: Payloads.
         payloads: 타자 데이터 딕셔너리 리스트
+        session: Database session.
 
     Returns:
         저장된 레코드 수
@@ -254,33 +251,36 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
     if not payloads:
         return 0
 
-    with SessionLocal() as session:
+    def _internal_save(s: Session) -> int:
         db_type = get_database_type()
-
         try:
-            # SQLite의 경우 외래키 제약조건 임시 비활성화
             if db_type == "sqlite":
-                session.execute(text("PRAGMA foreign_keys = OFF"))
+                s.execute(text("PRAGMA foreign_keys = OFF"))
                 logger.info("⚙️ SQLite 외래키 제약조건 임시 비활성화")
 
             rows = _batting_rows(payloads)
             if not rows:
                 return 0
 
-            saved_count = _save_rows_by_database_type(session, rows, db_type)
+            saved_count = _save_rows_by_database_type(s, rows, db_type)
+            s.flush()
 
-            session.commit()
             logger.info("✅ 타자 데이터 %s건 저장 완료 (player_season_batting 테이블)", saved_count)
 
         except SQLAlchemyError:
-            session.rollback()
             logger.exception("❌ 타자 데이터 저장 실패")
             return 0
+        else:
+            return saved_count
         finally:
             if db_type == "sqlite":
-                session.execute(text("PRAGMA foreign_keys = ON"))
+                s.execute(text("PRAGMA foreign_keys = ON"))
 
-        return saved_count
+    if session:
+        return _internal_save(session)
+
+    with get_db_session() as s:
+        return _internal_save(s)
 
 
 def get_batting_stats_count(session: Session | None = None) -> int:
@@ -293,7 +293,7 @@ def get_batting_stats_count(session: Session | None = None) -> int:
     """
     if session:
         return session.query(PlayerSeasonBatting).count()
-    with SessionLocal() as new_session:
+    with get_db_session() as new_session:
         return new_session.query(PlayerSeasonBatting).count()
 
 
@@ -309,7 +309,7 @@ def get_batting_stats_by_season(season: int, session: Session | None = None) -> 
     """
     if session:
         return session.query(PlayerSeasonBatting).filter_by(season=season).all()
-    with SessionLocal() as new_session:
+    with get_db_session() as new_session:
         return new_session.query(PlayerSeasonBatting).filter_by(season=season).all()
 
 
@@ -321,37 +321,34 @@ def cleanup_invalid_batting_data(session: Session | None = None) -> int:
         session: Session.
 
     """
-    cleanup_session = session or SessionLocal()
 
-    try:
-        # player_id나 season이 없는 레코드 삭제
-        deleted = (
-            cleanup_session.query(PlayerSeasonBatting)
-            .filter((PlayerSeasonBatting.player_id.is_(None)) | (PlayerSeasonBatting.season.is_(None)))
-            .delete()
-        )
+    def _do_cleanup(s: Session) -> int:
+        try:
+            deleted = (
+                s.query(PlayerSeasonBatting)
+                .filter((PlayerSeasonBatting.player_id.is_(None)) | (PlayerSeasonBatting.season.is_(None)))
+                .delete()
+            )
+            s.flush()
+        except SQLAlchemyError:
+            logger.exception("⚠️ 타자 데이터 정리 실패")
+            return 0
+        else:
+            return deleted
 
-        if not session:  # 외부 세션이 아닌 경우만 커밋
-            cleanup_session.commit()
-
-    except SQLAlchemyError:
-        if not session:
-            cleanup_session.rollback()
-        logger.exception("⚠️ 타자 데이터 정리 실패")
-        return 0
-    else:
-        return deleted
-    finally:
-        if not session:
-            cleanup_session.close()
+    if session:
+        return _do_cleanup(session)
+    with get_db_session() as s:
+        return _do_cleanup(s)
 
 
-def save_futures_batting(
+def save_futures_batting(  # noqa: PLR0913
     player_id_db: int,
     player_name: str | None,
     rows: list[dict],
     league: str = "FUTURES",
     level: str = "KBO2",
+    session: Session | None = None,
 ) -> int:
     """Save futures batting.
 
@@ -361,6 +358,7 @@ def save_futures_batting(
         rows: Rows.
         league: League.
         level: Level.
+        session: Database session.
 
     Returns:
         Integer result.
@@ -372,9 +370,15 @@ def save_futures_batting(
     if not player_name:
         from src.models.player import PlayerBasic
 
-        with SessionLocal() as session:
-            basic = session.query(PlayerBasic).filter_by(player_id=player_id_db).first()
-            player_name = basic.name if basic else "Unknown"
+        def _get_name(s: Session) -> str:
+            basic = s.query(PlayerBasic).filter_by(player_id=player_id_db).first()
+            return basic.name if basic else "Unknown"
+
+        if session:
+            player_name = _get_name(session)
+        else:
+            with get_db_session() as s:
+                player_name = _get_name(s)
 
     payloads = [
         {
@@ -409,4 +413,4 @@ def save_futures_batting(
     ]
     if not payloads:
         return 0
-    return save_batting_stats_safe(payloads)
+    return save_batting_stats_safe(payloads, session=session)

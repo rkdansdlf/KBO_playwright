@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 from src.models.game import GamePlayByPlay
 from src.repositories.game_repository import save_relay_data as save_normalized_relay_data
 
 
-def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
+def save_relay_data(game_id: str, innings_data: list[dict[str, Any]], session: Session | None = None) -> int:
     """Backward-compatible wrapper that flattens inning-grouped relay payloads and.
 
     forwards them to the canonical writer in game_repository.
@@ -17,8 +20,7 @@ def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
     Args:
         game_id: Game ID.
         innings_data: Innings Data.
-        game_id: Game ID.
-        innings_data: Innings Data.
+        session: Session instance.
 
     """
     flat_rows: list[dict[str, Any]] = []
@@ -38,43 +40,47 @@ def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
             }
             for play in inning_data.get("plays", []) or []
         )
-    return save_normalized_relay_data(game_id, events=None, raw_pbp_rows=flat_rows, allow_derived_pbp=False)
+    return save_normalized_relay_data(
+        game_id, events=None, raw_pbp_rows=flat_rows, allow_derived_pbp=False, session=session
+    )
 
 
-def get_game_relay_summary(game_id: str) -> dict[str, Any]:
+def get_game_relay_summary(game_id: str, session: Session | None = None) -> dict[str, Any]:
     """Get game relay summary.
 
     Args:
         game_id: Game ID.
-        game_id: Game ID.
-        game_id: Game ID.
+        session: Session instance.
 
     Returns:
         Dictionary result.
 
     """
-    with SessionLocal() as session:
-        plays = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).all()
+    if session is None:
+        with get_db_session() as s:
+            return get_game_relay_summary(game_id, session=s)
 
-        if not plays:
-            return {
-                "game_id": game_id,
-                "total_plays": 0,
-                "innings": 0,
-                "event_types": {},
-            }
+    plays = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).all()
 
-        innings_set = {(play.inning, play.inning_half) for play in plays}
-
+    if not plays:
         return {
             "game_id": game_id,
-            "total_plays": len(plays),
-            "innings": len(innings_set),
-            "event_types": {
-                "batting": sum(1 for play in plays if play.event_type == "batting"),
-                "strikeout": sum(1 for play in plays if play.event_type == "strikeout"),
-                "walk": sum(1 for play in plays if play.event_type == "walk"),
-                "hit": sum(1 for play in plays if play.event_type == "hit"),
-                "home_run": sum(1 for play in plays if play.event_type == "home_run"),
-            },
+            "total_plays": 0,
+            "innings": 0,
+            "event_types": {},
         }
+
+    innings_set = {(play.inning, play.inning_half) for play in plays}
+
+    return {
+        "game_id": game_id,
+        "total_plays": len(plays),
+        "innings": len(innings_set),
+        "event_types": {
+            "batting": sum(1 for play in plays if play.event_type == "batting"),
+            "strikeout": sum(1 for play in plays if play.event_type == "strikeout"),
+            "walk": sum(1 for play in plays if play.event_type == "walk"),
+            "hit": sum(1 for play in plays if play.event_type == "hit"),
+            "home_run": sum(1 for play in plays if play.event_type == "home_run"),
+        },
+    }

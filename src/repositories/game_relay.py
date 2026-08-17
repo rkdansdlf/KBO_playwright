@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, KST
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -181,7 +181,7 @@ def derive_play_by_play_rows_from_events(events: Iterable[dict[str, Any]]) -> li
     return [event_to_pbp_row(event) for event in events]
 
 
-def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
+def backfill_game_play_by_play_from_existing_events(game_id: str, session: Session | None = None) -> int:
     """Regenerate game_play_by_play rows from stored game_events for one game.
 
     Note: this is a legacy backfill that projects a minimal subset of fields
@@ -191,63 +191,66 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
 
     Args:
         game_id: Game ID.
-        game_id: Game ID.
+        session: Session instance.
 
     """
+    if session is None:
+        with get_db_session() as s:
+            return backfill_game_play_by_play_from_existing_events(game_id, session=s)
+
     game_id, _ = _canonicalize_game_id(game_id)
 
     if not game_id:
         return 0
-    with SessionLocal() as session:
-        try:
-            _ensure_game_stub(session, game_id)
-            stored_events = (
-                session.query(GameEvent).filter(GameEvent.game_id == game_id).order_by(GameEvent.event_seq.asc()).all()
-            )
-            if not stored_events:
-                return 0
-
-            pbp_mappings = derive_play_by_play_rows_from_events(
-                [
-                    {
-                        "inning": event.inning,
-                        "inning_half": event.inning_half,
-                        "pitcher_name": event.pitcher_name,
-                        "batter_name": event.batter_name,
-                        "description": event.description,
-                        "event_type": event.event_type,
-                        "result_code": event.result_code,
-                    }
-                    for event in stored_events
-                ],
-            )
-            session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).delete()
-            session.add_all(
-                [
-                    GamePlayByPlay(
-                        game_id=game_id,
-                        inning=row.get("inning"),
-                        inning_half=row.get("inning_half"),
-                        batter_name=row.get("batter_name"),
-                        pitcher_name=row.get("pitcher_name"),
-                        play_description=row.get("play_description"),
-                        event_type=row.get("event_type"),
-                        result=row.get("result"),
-                    )
-                    for row in pbp_mappings
-                ],
-            )
-            session.commit()
-            return len(pbp_mappings)
-        except SQLAlchemyError:
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Derived Relay Backfill)")
+    try:
+        _ensure_game_stub(session, game_id)
+        stored_events = (
+            session.query(GameEvent).filter(GameEvent.game_id == game_id).order_by(GameEvent.event_seq.asc()).all()
+        )
+        if not stored_events:
             return 0
+
+        pbp_mappings = derive_play_by_play_rows_from_events(
+            [
+                {
+                    "inning": event.inning,
+                    "inning_half": event.inning_half,
+                    "pitcher_name": event.pitcher_name,
+                    "batter_name": event.batter_name,
+                    "description": event.description,
+                    "event_type": event.event_type,
+                    "result_code": event.result_code,
+                }
+                for event in stored_events
+            ],
+        )
+        session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).delete()
+        session.add_all(
+            [
+                GamePlayByPlay(
+                    game_id=game_id,
+                    inning=row.get("inning"),
+                    inning_half=row.get("inning_half"),
+                    batter_name=row.get("batter_name"),
+                    pitcher_name=row.get("pitcher_name"),
+                    play_description=row.get("play_description"),
+                    event_type=row.get("event_type"),
+                    result=row.get("result"),
+                )
+                for row in pbp_mappings
+            ],
+        )
+        session.flush()
+        return len(pbp_mappings)
+    except SQLAlchemyError:
+        logger.exception("[ERROR] DB Error (Derived Relay Backfill)")
+        return 0
 
 
 def backfill_missing_game_stubs_for_relays(
     *,
     seasons: Iterable[int] | None = None,
+    session: Session | None = None,
 ) -> int:
     """Ensure a parent `game` row exists for any relay-bearing game_id.
 
@@ -256,38 +259,38 @@ def backfill_missing_game_stubs_for_relays(
 
     Args:
         seasons: Seasons.
-        seasons: Seasons.
+        session: Session instance.
 
     """
+    if session is None:
+        with get_db_session() as s:
+            return backfill_missing_game_stubs_for_relays(seasons=seasons, session=s)
+
     season_prefixes = {str(season) for season in (seasons or []) if season}
 
-    with SessionLocal() as session:
-        try:
-            event_ids = {row[0] for row in session.query(GameEvent.game_id).distinct().all()}
-            pbp_ids = {row[0] for row in session.query(GamePlayByPlay.game_id).distinct().all()}
-            candidate_ids = sorted(event_ids | pbp_ids)
-            if season_prefixes:
-                candidate_ids = [
-                    game_id
-                    for game_id in candidate_ids
-                    if any(game_id.startswith(prefix) for prefix in season_prefixes)
-                ]
+    try:
+        event_ids = {row[0] for row in session.query(GameEvent.game_id).distinct().all()}
+        pbp_ids = {row[0] for row in session.query(GamePlayByPlay.game_id).distinct().all()}
+        candidate_ids = sorted(event_ids | pbp_ids)
+        if season_prefixes:
+            candidate_ids = [
+                game_id for game_id in candidate_ids if any(game_id.startswith(prefix) for prefix in season_prefixes)
+            ]
 
-            existing_ids = (
-                {row[0] for row in session.query(Game.game_id).filter(Game.game_id.in_(candidate_ids)).all()}
-                if candidate_ids
-                else set()
-            )
+        existing_ids = (
+            {row[0] for row in session.query(Game.game_id).filter(Game.game_id.in_(candidate_ids)).all()}
+            if candidate_ids
+            else set()
+        )
 
-            missing_ids = [game_id for game_id in candidate_ids if game_id not in existing_ids]
-            for game_id in missing_ids:
-                _ensure_game_stub(session, game_id)
+        missing_ids = [game_id for game_id in candidate_ids if game_id not in existing_ids]
+        for game_id in missing_ids:
+            _ensure_game_stub(session, game_id)
 
-            session.commit()
-        except SQLAlchemyError:
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Game Stub Backfill)")
-            return 0
+        session.flush()
+    except SQLAlchemyError:
+        logger.exception("[ERROR] DB Error (Game Stub Backfill)")
+        return 0
 
     return len(missing_ids)
 
@@ -298,6 +301,7 @@ def mark_relay_source_unavailable(
     reason: str,
     source_name: str = "none",
     evidence: dict[str, Any] | None = None,
+    session: Session | None = None,
 ) -> bool:
     """Mark a completed game as explainably unrecoverable from public relay sources.
 
@@ -306,69 +310,74 @@ def mark_relay_source_unavailable(
         reason: Reason.
         source_name: Source Name.
         evidence: Evidence.
-        game_id: Game ID.
-        reason: Reason.
-        source_name: Source Name.
-        evidence: Evidence.
+        session: Session instance.
 
     """
+    if session is None:
+        with get_db_session() as s:
+            return mark_relay_source_unavailable(
+                game_id,
+                reason=reason,
+                source_name=source_name,
+                evidence=evidence,
+                session=s,
+            )
+
     game_id, original_game_id = _canonicalize_game_id(game_id)
 
     if not game_id:
         return False
-    with SessionLocal() as session:
-        try:
-            _ensure_game_stub(session, game_id)
-            _record_game_id_alias(
-                session,
-                original_game_id,
-                game_id,
-                source="relay_source_unavailable",
-                reason="normalized_to_kbo_legacy_game_id",
-            )
-            from src.repositories.game_helpers import _upsert_metadata
-            from src.utils.relay_validation import VALIDATION_SOURCE_UNAVAILABLE, is_trusted_relay_status
+    try:
+        _ensure_game_stub(session, game_id)
+        _record_game_id_alias(
+            session,
+            original_game_id,
+            game_id,
+            source="relay_source_unavailable",
+            reason="normalized_to_kbo_legacy_game_id",
+        )
+        from src.repositories.game_helpers import _upsert_metadata
+        from src.utils.relay_validation import VALIDATION_SOURCE_UNAVAILABLE, is_trusted_relay_status
 
-            existing_metrics = (
-                session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
+        existing_metrics = (
+            session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
+        )
+        if existing_metrics is not None and is_trusted_relay_status(existing_metrics.validation_status):
+            existing_evidence = (
+                existing_metrics.evidence_json if isinstance(existing_metrics.evidence_json, dict) else {}
             )
-            if existing_metrics is not None and is_trusted_relay_status(existing_metrics.validation_status):
-                existing_evidence = (
-                    existing_metrics.evidence_json if isinstance(existing_metrics.evidence_json, dict) else {}
-                )
-                existing_metrics.evidence_json = {
-                    **existing_evidence,
-                    "source_unavailable_attempt": {
-                        "reason": reason,
-                        "source_name": source_name,
-                        **(evidence or {}),
-                    },
-                }
-                existing_metrics.fallback_trigger_reason = str(reason)[:64]
-                session.commit()
-                return False
-
-            payload = {
-                "pbp_validation_status": VALIDATION_SOURCE_UNAVAILABLE,
-                "pbp_validation_error": reason,
-                "relay_source_used": source_name,
+            existing_metrics.evidence_json = {
+                **existing_evidence,
+                "source_unavailable_attempt": {
+                    "reason": reason,
+                    "source_name": source_name,
+                    **(evidence or {}),
+                },
             }
-            _upsert_metadata(session, game_id, payload)
-            _upsert_validation_metrics(
-                session,
-                game_id,
-                ValidationMetricsData(
-                    validation_status=VALIDATION_SOURCE_UNAVAILABLE,
-                    source_name=source_name,
-                    error_reason=reason,
-                    evidence=evidence or {"reason": reason},
-                ),
-            )
-            session.commit()
-        except SQLAlchemyError:
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Relay Source Unavailable)")
+            existing_metrics.fallback_trigger_reason = str(reason)[:64]
+            session.flush()
             return False
+
+        payload = {
+            "pbp_validation_status": VALIDATION_SOURCE_UNAVAILABLE,
+            "pbp_validation_error": reason,
+            "relay_source_used": source_name,
+        }
+        _upsert_metadata(session, game_id, payload)
+        _upsert_validation_metrics(
+            session,
+            game_id,
+            ValidationMetricsData(
+                validation_status=VALIDATION_SOURCE_UNAVAILABLE,
+                source_name=source_name,
+                error_reason=reason,
+                evidence=evidence or {"reason": reason},
+            ),
+        )
+        session.flush()
+    except SQLAlchemyError:
+        logger.exception("[ERROR] DB Error (Relay Source Unavailable)")
+        return False
 
     return True
 
@@ -462,6 +471,7 @@ def _apply_repaired_game_fields(session: Session, game_id: str) -> None:
 
 def repair_game_parent_from_existing_children(
     game_id: str,
+    session: Session | None = None,
 ) -> bool:
     """Rebuild/repair one parent `game` row from existing child tables.
 
@@ -471,32 +481,34 @@ def repair_game_parent_from_existing_children(
 
     Args:
         game_id: Game ID.
-        game_id: Game ID.
+        session: Session instance.
 
     """
+    if session is None:
+        with get_db_session() as s:
+            return repair_game_parent_from_existing_children(game_id, session=s)
+
     game_id, original_game_id = _canonicalize_game_id(game_id)
 
     if not game_id:
         return False
 
-    with SessionLocal() as session:
-        try:
-            _record_game_id_alias(
-                session,
-                original_game_id,
-                game_id,
-                source="parent_repair",
-                reason="normalized_to_kbo_legacy_game_id",
-            )
-            if not _has_repairable_game_children(session, game_id):
-                return False
-
-            _apply_repaired_game_fields(session, game_id)
-            session.commit()
-        except SQLAlchemyError:
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Game Parent Repair)")
+    try:
+        _record_game_id_alias(
+            session,
+            original_game_id,
+            game_id,
+            source="parent_repair",
+            reason="normalized_to_kbo_legacy_game_id",
+        )
+        if not _has_repairable_game_children(session, game_id):
             return False
+
+        _apply_repaired_game_fields(session, game_id)
+        session.flush()
+    except SQLAlchemyError:
+        logger.exception("[ERROR] DB Error (Game Parent Repair)")
+        return False
 
     return True
 
@@ -1050,6 +1062,7 @@ def save_relay_data(
     raw_pbp_rows: list[dict[str, Any]] | None = None,
     *,
     options: RelaySaveOptions | None = None,
+    session: Session | None = None,
     **overrides: object,
 ) -> int:
     """Persist normalized relay data.
@@ -1064,6 +1077,7 @@ def save_relay_data(
         events: Events.
         raw_pbp_rows: Raw Pbp Rows.
         options: Options.
+        session: Session instance.
         overrides: Overrides.
         game_id: Game ID.
         events: Events.
@@ -1072,6 +1086,17 @@ def save_relay_data(
         overrides: Overrides.
 
     """
+    if session is None:
+        with get_db_session() as s:
+            return save_relay_data(
+                game_id,
+                events=events,
+                raw_pbp_rows=raw_pbp_rows,
+                options=options,
+                session=s,
+                **overrides,
+            )
+
     opts: RelaySaveOptions = options if options is not None else RelaySaveOptions(**overrides)
 
     game_id, original_game_id = _canonicalize_game_id(game_id)
@@ -1085,104 +1110,102 @@ def save_relay_data(
     if not valid_event_rows and not raw_pbp_rows:
         return 0
 
-    with SessionLocal() as session:
-        try:
-            _ensure_game_stub(session, game_id)
-            _record_game_id_alias(
-                session,
-                original_game_id,
-                game_id,
-                source="relay",
-                reason="normalized_to_kbo_legacy_game_id",
-            )
+    try:
+        _ensure_game_stub(session, game_id)
+        _record_game_id_alias(
+            session,
+            original_game_id,
+            game_id,
+            source="relay",
+            reason="normalized_to_kbo_legacy_game_id",
+        )
 
-            game_row = session.query(Game).filter(Game.game_id == game_id).first()
-            validation = _resolve_relay_validation(
-                session,
-                game_id,
-                RelayValidationInput(
-                    events=events,
-                    raw_pbp_rows=raw_pbp_rows,
-                    valid_event_rows=valid_event_rows,
-                ),
-                game_row=game_row,
-                game_lifecycle_state=opts.game_lifecycle_state,
-            )
-            _upsert_relay_validation_metadata(
-                session,
-                game_id,
-                validation,
-                ValidationMetricsData(
-                    validation_status=validation.status,
-                    source_name=opts.source_name,
-                    error_reason=validation.error_reason,
-                    events=events,
-                    raw_pbp_rows=raw_pbp_rows,
-                    parser_version=opts.parser_version,
-                    source_schema_version=opts.source_schema_version,
-                    payload_hash=opts.payload_hash,
-                    payload_hash_full=opts.payload_hash,
-                    notes=opts.notes,
-                    valid_event_rows=valid_event_rows,
-                    live_warnings=validation.live_warnings,
-                ),
-            )
-            _apply_relay_lifecycle_state(game_row, game_id, opts.game_lifecycle_state)
+        game_row = session.query(Game).filter(Game.game_id == game_id).first()
+        validation = _resolve_relay_validation(
+            session,
+            game_id,
+            RelayValidationInput(
+                events=events,
+                raw_pbp_rows=raw_pbp_rows,
+                valid_event_rows=valid_event_rows,
+            ),
+            game_row=game_row,
+            game_lifecycle_state=opts.game_lifecycle_state,
+        )
+        _upsert_relay_validation_metadata(
+            session,
+            game_id,
+            validation,
+            ValidationMetricsData(
+                validation_status=validation.status,
+                source_name=opts.source_name,
+                error_reason=validation.error_reason,
+                events=events,
+                raw_pbp_rows=raw_pbp_rows,
+                parser_version=opts.parser_version,
+                source_schema_version=opts.source_schema_version,
+                payload_hash=opts.payload_hash,
+                payload_hash_full=opts.payload_hash,
+                notes=opts.notes,
+                valid_event_rows=valid_event_rows,
+                live_warnings=validation.live_warnings,
+            ),
+        )
+        _apply_relay_lifecycle_state(game_row, game_id, opts.game_lifecycle_state)
 
-            resolution = _relay_resolution_context(session, game_id)
-            pbp_rows = _build_relay_pbp_rows(game_id, raw_pbp_rows, opts.source_name, resolution)
-            event_rows = _build_relay_event_rows(game_id, valid_event_rows, opts.source_name, opts.notes, resolution)
-            _replace_relay_rows(
+        resolution = _relay_resolution_context(session, game_id)
+        pbp_rows = _build_relay_pbp_rows(game_id, raw_pbp_rows, opts.source_name, resolution)
+        event_rows = _build_relay_event_rows(game_id, valid_event_rows, opts.source_name, opts.notes, resolution)
+        _replace_relay_rows(
+            session,
+            game_id,
+            ctx=RelayRowReplaceContext(
+                pbp_rows=pbp_rows,
+                event_rows=event_rows,
+                source=source,
+                write_contract=opts.write_contract,
+            ),
+        )
+        if opts.source_payload is not None:
+            evidence_payload = {"events": events, "raw_pbp_rows": raw_pbp_rows}
+            session.flush()
+            db_projection = build_relay_db_projection(session, game_id, evidence_payload)
+            evidence_record = record_crawl_evidence(
                 session,
-                game_id,
-                ctx=RelayRowReplaceContext(
-                    pbp_rows=pbp_rows,
-                    event_rows=event_rows,
-                    source=source,
-                    write_contract=opts.write_contract,
-                ),
+                entity_type="game",
+                entity_id=game_id,
+                dataset="relay",
+                source_name=opts.source_name or opts.source_crawler,
+                parsed_payload=evidence_payload,
+                normalized_payload=evidence_payload,
+                db_projection=db_projection,
+                source_capture={
+                    "body": (
+                        opts.source_payload
+                        if isinstance(opts.source_payload, (str, bytes))
+                        else canonical_json(opts.source_payload)
+                    ),
+                    "content_type": "text/plain" if isinstance(opts.source_payload, str) else "application/json",
+                    "capture_mode": "provider-payload",
+                },
+                parser_version=opts.parser_version,
+                normalization_version="relay-normalized-v1",
             )
-            if opts.source_payload is not None:
-                evidence_payload = {"events": events, "raw_pbp_rows": raw_pbp_rows}
-                session.flush()
-                db_projection = build_relay_db_projection(session, game_id, evidence_payload)
-                evidence_record = record_crawl_evidence(
-                    session,
-                    entity_type="game",
-                    entity_id=game_id,
-                    dataset="relay",
-                    source_name=opts.source_name or opts.source_crawler,
-                    parsed_payload=evidence_payload,
-                    normalized_payload=evidence_payload,
-                    db_projection=db_projection,
-                    source_capture={
-                        "body": (
-                            opts.source_payload
-                            if isinstance(opts.source_payload, (str, bytes))
-                            else canonical_json(opts.source_payload)
-                        ),
-                        "content_type": "text/plain" if isinstance(opts.source_payload, str) else "application/json",
-                        "capture_mode": "provider-payload",
-                    },
-                    parser_version=opts.parser_version,
-                    normalization_version="relay-normalized-v1",
-                )
-                metrics = (
-                    session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
-                )
-                if metrics is not None:
-                    existing_evidence = metrics.evidence_json if isinstance(metrics.evidence_json, dict) else {}
-                    metrics.evidence_json = {
-                        **existing_evidence,
-                        "crawl_evidence_id": evidence_record.id,
-                        "crawl_evidence_raw_hash": evidence_record.raw_hash,
-                        "crawl_evidence_normalized_hash": evidence_record.normalized_hash,
-                        "crawl_evidence_db_projection_hash": evidence_record.db_projection_hash,
-                    }
-            session.commit()
-            _log_relay_save_result(game_id, events, valid_event_rows, len(event_rows), len(pbp_rows))
-            return len(event_rows) if event_rows else len(pbp_rows)
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError):
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Relay)")
-            return 0
+            metrics = (
+                session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
+            )
+            if metrics is not None:
+                existing_evidence = metrics.evidence_json if isinstance(metrics.evidence_json, dict) else {}
+                metrics.evidence_json = {
+                    **existing_evidence,
+                    "crawl_evidence_id": evidence_record.id,
+                    "crawl_evidence_raw_hash": evidence_record.raw_hash,
+                    "crawl_evidence_normalized_hash": evidence_record.normalized_hash,
+                    "crawl_evidence_db_projection_hash": evidence_record.db_projection_hash,
+                }
+        session.flush()
+        _log_relay_save_result(game_id, events, valid_event_rows, len(event_rows), len(pbp_rows))
+        return len(event_rows) if event_rows else len(pbp_rows)
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError):
+        logger.exception("[ERROR] DB Error (Relay)")
+        return 0

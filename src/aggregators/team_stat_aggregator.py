@@ -561,7 +561,7 @@ class TeamStatAggregator:
         session = self.session
         from src.repositories.team_stats_repository import TeamSeasonBattingRepository
 
-        repo = TeamSeasonBattingRepository()
+        repo = TeamSeasonBattingRepository(session)
         cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
 
         db_type = get_database_type()
@@ -583,7 +583,7 @@ class TeamStatAggregator:
         session = self.session
         from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 
-        repo = TeamSeasonPitchingRepository()
+        repo = TeamSeasonPitchingRepository(session)
         cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
 
         db_type = get_database_type()

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, KST
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -226,21 +226,24 @@ class StartersInfo:
     start_pitcher_announced: object
 
 
-def get_games_by_date(target_date: str) -> list[Game]:
+def get_games_by_date(target_date: str, session: Session | None = None) -> list[Game]:
     """Retrieve Game objects for a specific date (YYYYMMDD).
 
     Args:
         target_date: Target date for the operation.
-        target_date: Target date for the operation.
+        session: DB Session.
 
     """
+    if session is None:
+        with get_db_session() as s:
+            return get_games_by_date(target_date, session=s)
+
     try:
         dt = parse_date_str(target_date)
     except ValueError:
         return []
 
-    with SessionLocal() as session:
-        return session.query(Game).filter(Game.game_date == dt).all()
+    return session.query(Game).filter(Game.game_date == dt).all()
 
 
 def _clean_pregame_text(value: object) -> str:
@@ -281,30 +284,35 @@ def _resolve_pregame_starter(
     return resolved_starter, resolved_starter_id
 
 
-def resolve_canonical_game_id(game_id: str) -> str | None:
+def resolve_canonical_game_id(game_id: str, session: Session | None = None) -> str | None:
     """Resolve an external/alias game_id to the canonical legacy KBO game_id.
 
     Args:
         game_id: Game ID.
-        game_id: Game ID.
+        session: DB Session.
 
     """
+    if session is None:
+        with get_db_session() as s:
+            return resolve_canonical_game_id(game_id, session=s)
+
     canonical, original = _canonicalize_game_id(game_id)
 
     if not canonical:
         return None
-    with SessionLocal() as session:
-        alias = session.query(GameIdAlias).filter(GameIdAlias.alias_game_id == original).one_or_none()
-        return alias.canonical_game_id if alias else canonical
+
+    alias = session.query(GameIdAlias).filter(GameIdAlias.alias_game_id == original).one_or_none()
+    return alias.canonical_game_id if alias else canonical
 
 
-def save_schedule_game(
+def save_schedule_game(  # noqa: PLR0913
     game_data: dict[str, Any],
     *,
     write_contract: GameWriteContract | None = None,
     source_stage: str = "schedule",
     source_crawler: str = "ScheduleCrawler",
     source_reason: str = "schedule_refresh",
+    session: Session | None = None,
 ) -> bool:
     """Persist basic game info from schedule crawler.
 
@@ -314,13 +322,24 @@ def save_schedule_game(
         source_stage: Source Stage.
         source_crawler: Source Crawler.
         source_reason: Source Reason.
-        game_data: Game Data.
-        write_contract: Write Contract.
-        source_stage: Source Stage.
-        source_crawler: Source Crawler.
-        source_reason: Source Reason.
+        session: DB Session.
 
     """
+    if session is None:
+        try:
+            with get_db_session() as s:
+                return save_schedule_game(
+                    game_data,
+                    write_contract=write_contract,
+                    source_stage=source_stage,
+                    source_crawler=source_crawler,
+                    source_reason=source_reason,
+                    session=s,
+                )
+        except SQLAlchemyError:
+            logger.exception("[ERROR] DB Error (Schedule)")
+            return False
+
     game_date_str = str(game_data.get("game_date", "")).replace("-", "")
 
     try:
@@ -344,104 +363,93 @@ def save_schedule_game(
     if write_contract:
         write_contract.claim_game(game_id, source)
 
-    with SessionLocal() as session:
-        try:
-            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
-            changed = False
-            if not game:
-                game = Game(game_id=game_id)
-                session.add(game)
-                changed = True
-                if write_contract:
-                    write_contract.field_updated(game_id, source, "game.created", old=None, new=True)
+    game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+    changed = False
+    if not game:
+        game = Game(game_id=game_id)
+        session.add(game)
+        changed = True
+        if write_contract:
+            write_contract.field_updated(game_id, source, "game.created", old=None, new=True)
 
-            changed |= _assign_field_if_changed(
-                game,
-                "game_date",
-                game_date,
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "home_team",
-                game_data.get("home_team_code"),
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "away_team",
-                game_data.get("away_team_code"),
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-            )
-            resolved_season_id = _resolve_schedule_season_id(session, game_data, game.season_id)
-            if resolved_season_id is not None:
-                changed |= _assign_field_if_changed(
-                    game,
-                    "season_id",
-                    resolved_season_id,
-                    game_id=game_id,
-                    source=source,
-                    write_contract=write_contract,
-                )
-            changed |= _apply_game_team_identity_with_contract(
-                game,
-                game_date.year,
-                source=source,
-                write_contract=write_contract,
-            )
-            _record_game_id_alias(
-                session,
-                original_game_id,
-                game_id,
-                source="schedule",
-                reason="normalized_to_kbo_legacy_game_id",
-            )
+    changed |= _assign_field_if_changed(
+        game,
+        "game_date",
+        game_date,
+        game_id=game_id,
+        source=source,
+        write_contract=write_contract,
+    )
+    changed |= _assign_field_if_changed(
+        game,
+        "home_team",
+        game_data.get("home_team_code"),
+        game_id=game_id,
+        source=source,
+        write_contract=write_contract,
+    )
+    changed |= _assign_field_if_changed(
+        game,
+        "away_team",
+        game_data.get("away_team_code"),
+        game_id=game_id,
+        source=source,
+        write_contract=write_contract,
+    )
+    resolved_season_id = _resolve_schedule_season_id(session, game_data, game.season_id)
+    if resolved_season_id is not None:
+        changed |= _assign_field_if_changed(
+            game,
+            "season_id",
+            resolved_season_id,
+            game_id=game_id,
+            source=source,
+            write_contract=write_contract,
+        )
+    changed |= _apply_game_team_identity_with_contract(
+        game,
+        game_date.year,
+        source=source,
+        write_contract=write_contract,
+    )
+    _record_game_id_alias(
+        session,
+        original_game_id,
+        game_id,
+        source="schedule",
+        reason="normalized_to_kbo_legacy_game_id",
+    )
 
-            # Schedule crawl should keep already finalized statuses intact.
-            new_status = derive_stable_game_status(
-                GameStatusEvidence(
-                    game_date=game_date,
-                    current_status=game.game_status,
-                    new_status=game_data.get("game_status"),
-                    home_score=game.home_score,
-                    away_score=game.away_score,
-                ),
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "game_status",
-                new_status,
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-            )
+    new_status = derive_stable_game_status(
+        GameStatusEvidence(
+            game_date=game_date,
+            current_status=game.game_status,
+            new_status=game_data.get("game_status"),
+            home_score=game.home_score,
+            away_score=game.away_score,
+        ),
+    )
+    changed |= _assign_field_if_changed(
+        game,
+        "game_status",
+        new_status,
+        game_id=game_id,
+        source=source,
+        write_contract=write_contract,
+    )
 
-            # Note: Scores and other details are not available in basic schedule crawl
+    meta_payload = {"start_time": game_data.get("game_time"), "stadium": game_data.get("stadium")}
+    if meta_payload["start_time"] or meta_payload["stadium"]:
+        changed |= _upsert_metadata(
+            session,
+            game_id,
+            meta_payload,
+            source=source,
+            write_contract=write_contract,
+        )
 
-            # Save Metadata (Time/Stadium)
-            meta_payload = {"start_time": game_data.get("game_time"), "stadium": game_data.get("stadium")}
-            if meta_payload["start_time"] or meta_payload["stadium"]:
-                changed |= _upsert_metadata(
-                    session,
-                    game_id,
-                    meta_payload,
-                    source=source,
-                    write_contract=write_contract,
-                )
-
-            session.commit()
-        except SQLAlchemyError:
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Schedule)")
-            return False
-        else:
-            return True
+    session.flush()
+    return True
 
 
 def _parse_detail_game_date(game_data: dict[str, Any], provisional_game_id: str | None) -> tuple[str, date]:
@@ -817,7 +825,7 @@ def _execute_realtime_quality_gate(
     )
     if not is_valid:
         logger.warning("[QualityGate] Game %s failed comprehensive validation. Quarantining payload.", game_id)
-        with SessionLocal() as q_session:
+        with get_db_session() as q_session:
             q_service = QuarantineService(q_session)
             q_service.quarantine_validation_failures(
                 validation_results,
@@ -825,7 +833,6 @@ def _execute_realtime_quality_gate(
                 game_id=game_id,
                 source=source_crawler,
             )
-            q_session.commit()
         return False
     return True
 
@@ -838,6 +845,7 @@ def save_game_detail(  # noqa: PLR0913
     source_stage: str = "detail",
     source_crawler: str = "GameDetailCrawler",
     source_reason: str = "detail_recovery",
+    session: Session | None = None,
 ) -> bool:
     """Persist full game snapshot including box score + player stats.
 
@@ -848,13 +856,25 @@ def save_game_detail(  # noqa: PLR0913
         source_stage: Source Stage.
         source_crawler: Source Crawler.
         source_reason: Source Reason.
-        game_data: Game Data.
-        write_contract: Write Contract.
-        source_stage: Source Stage.
-        source_crawler: Source Crawler.
-        source_reason: Source Reason.
+        session: DB Session.
 
     """
+    if session is None:
+        try:
+            with get_db_session() as s:
+                return save_game_detail(
+                    game_data,
+                    allow_partial=allow_partial,
+                    write_contract=write_contract,
+                    source_stage=source_stage,
+                    source_crawler=source_crawler,
+                    source_reason=source_reason,
+                    session=s,
+                )
+        except GAME_SAVE_EXCEPTIONS:
+            logger.exception("[ERROR] DB Error (Detail)")
+            return False
+
     if not game_data:
         return False
 
@@ -892,115 +912,115 @@ def save_game_detail(  # noqa: PLR0913
     ):
         return False
 
-    with SessionLocal() as session:
-        try:
-            game, changed = _get_or_create_game(session, game_id, game_date, source, write_contract)
-            detail_ctx = DetailSaveContext(game_id, game_date, source, write_contract)
-            _record_game_id_alias(
-                session,
-                original_game_id,
-                game_id,
-                source="detail",
-                reason="normalized_to_kbo_legacy_game_id",
-            )
+    game, changed = _get_or_create_game(session, game_id, game_date, source, write_contract)
+    detail_ctx = DetailSaveContext(game_id, game_date, source, write_contract)
+    _record_game_id_alias(
+        session,
+        original_game_id,
+        game_id,
+        source="detail",
+        reason="normalized_to_kbo_legacy_game_id",
+    )
 
-            changed |= _update_detail_core_fields(
-                game,
-                detail_ctx,
-                metadata=metadata,
-                home_info=home_info,
-                away_info=away_info,
-            )
-            status_changed, inning_rows, new_status = _update_detail_status(
-                game,
-                detail_ctx,
-                teams,
-                explicit_status,
-            )
-            changed |= status_changed
-            changed |= _update_detail_winner(
-                game,
-                detail_ctx,
-                home_info=home_info,
-                away_info=away_info,
-                new_status=new_status,
-            )
-            changed |= _update_starting_pitchers(game, game_id, pitchers, source, write_contract)
+    changed |= _update_detail_core_fields(
+        game,
+        detail_ctx,
+        metadata=metadata,
+        home_info=home_info,
+        away_info=away_info,
+    )
+    status_changed, inning_rows, new_status = _update_detail_status(
+        game,
+        detail_ctx,
+        teams,
+        explicit_status,
+    )
+    changed |= status_changed
+    changed |= _update_detail_winner(
+        game,
+        detail_ctx,
+        home_info=home_info,
+        away_info=away_info,
+        new_status=new_status,
+    )
+    changed |= _update_starting_pitchers(game, game_id, pitchers, source, write_contract)
 
-            season_id = _resolve_game_season_id(session, game_data, game_date, game.season_id)
-            if season_id:
-                changed |= _assign_field_if_changed(
-                    game,
-                    "season_id",
-                    season_id,
-                    game_id=game_id,
-                    source=source,
-                    write_contract=write_contract,
-                )
-            changed |= _apply_game_team_identity_with_contract(
-                game,
-                game_date.year,
-                source=source,
-                write_contract=write_contract,
-            )
+    season_id = _resolve_game_season_id(session, game_data, game_date, game.season_id)
+    if season_id:
+        changed |= _assign_field_if_changed(
+            game,
+            "season_id",
+            season_id,
+            game_id=game_id,
+            source=source,
+            write_contract=write_contract,
+        )
+    changed |= _apply_game_team_identity_with_contract(
+        game,
+        game_date.year,
+        source=source,
+        write_contract=write_contract,
+    )
 
-            changed |= _upsert_metadata(
-                session,
-                game_id,
-                metadata,
-                source=source,
-                write_contract=write_contract,
-            )
-            changed |= _update_detail_children(
-                session,
-                detail_ctx,
-                hitters,
-                pitchers,
-                inning_rows,
-                allow_partial=allow_partial,
-            )
+    changed |= _upsert_metadata(
+        session,
+        game_id,
+        metadata,
+        source=source,
+        write_contract=write_contract,
+    )
+    changed |= _update_detail_children(
+        session,
+        detail_ctx,
+        hitters,
+        pitchers,
+        inning_rows,
+        allow_partial=allow_partial,
+    )
 
-            summary_rows = _build_summary_rows(
-                session,
-                game_id,
-                game_date,
-                {"hitters": hitters, "pitchers": pitchers},
-                game_data.get("summary") or [],
-            )
-            if summary_rows:
-                changed |= _save_detail_summary_rows(session, detail_ctx, summary_rows, allow_partial=allow_partial)
+    summary_rows = _build_summary_rows(
+        session,
+        game_id,
+        game_date,
+        {"hitters": hitters, "pitchers": pitchers},
+        game_data.get("summary") or [],
+    )
+    if summary_rows:
+        changed |= _save_detail_summary_rows(session, detail_ctx, summary_rows, allow_partial=allow_partial)
 
-            _record_detail_evidence(
-                DetailEvidenceContext(
-                    session=session,
-                    game_data=game_data,
-                    detail=detail_ctx,
-                    inning_rows=inning_rows,
-                    summary_rows=summary_rows,
-                    allow_partial=allow_partial,
-                    source_crawler=source_crawler,
-                ),
-            )
+    _record_detail_evidence(
+        DetailEvidenceContext(
+            session=session,
+            game_data=game_data,
+            detail=detail_ctx,
+            inning_rows=inning_rows,
+            summary_rows=summary_rows,
+            allow_partial=allow_partial,
+            source_crawler=source_crawler,
+        ),
+    )
 
-            session.commit()
-        except GAME_SAVE_EXCEPTIONS:
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Detail)")
-            return False
-        else:
-            return True
+    session.flush()
+    return True
 
 
-def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) -> bool:
+def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None, session: Session | None = None) -> bool:
     """Persist live/lightweight scoreboard data without touching full detail sections.
 
     Args:
         game_data: Game Data.
         status: Status.
-        game_data: Game Data.
-        status: Status.
+        session: DB Session.
 
     """
+    if session is None:
+        try:
+            with get_db_session() as s:
+                return save_game_snapshot(game_data, status=status, session=s)
+        except GAME_SAVE_EXCEPTIONS:
+            logger.exception("[ERROR] DB Error (Snapshot)")
+            return False
+
     if not game_data:
         return False
 
@@ -1027,61 +1047,54 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
     metadata = game_data.get("metadata", {}) or {}
     pitchers = game_data.get("pitchers", {}) or {}
 
-    with SessionLocal() as session:
-        try:
-            game = _get_or_create_snapshot_game(session, game_id, game_date)
-            _record_game_id_alias(
-                session,
-                original_game_id,
-                game_id,
-                source="snapshot",
-                reason="normalized_to_kbo_legacy_game_id",
-            )
+    game = _get_or_create_snapshot_game(session, game_id, game_date)
+    _record_game_id_alias(
+        session,
+        original_game_id,
+        game_id,
+        source="snapshot",
+        reason="normalized_to_kbo_legacy_game_id",
+    )
 
-            _apply_snapshot_game_fields(
-                session,
-                game,
-                SnapshotContext(
-                    game_data=game_data,
-                    game_date=game_date,
-                    metadata=metadata,
-                    away_info=away_info,
-                    home_info=home_info,
-                    pitchers=pitchers,
-                    status=status,
-                ),
-            )
-            _apply_game_team_identity(game, game_date.year)
-            _upsert_metadata(session, game_id, metadata)
+    _apply_snapshot_game_fields(
+        session,
+        game,
+        SnapshotContext(
+            game_data=game_data,
+            game_date=game_date,
+            metadata=metadata,
+            away_info=away_info,
+            home_info=home_info,
+            pitchers=pitchers,
+            status=status,
+        ),
+    )
+    _apply_game_team_identity(game, game_date.year)
+    _upsert_metadata(session, game_id, metadata)
 
-            inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
-            if inning_rows:
-                consistency_warnings = _validate_inning_score_consistency(teams, inning_rows, game_id)
-                for warning in consistency_warnings:
-                    logger.warning("[InningScore] %s", warning)
-                _replace_records(session, GameInningScore, game_id, inning_rows)
+    inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
+    if inning_rows:
+        consistency_warnings = _validate_inning_score_consistency(teams, inning_rows, game_id)
+        for warning in consistency_warnings:
+            logger.warning("[InningScore] %s", warning)
+        _replace_records(session, GameInningScore, game_id, inning_rows)
 
-            _apply_snapshot_status_and_winner(game, game_date, status, has_inning_rows=bool(inning_rows))
+    _apply_snapshot_status_and_winner(game, game_date, status, has_inning_rows=bool(inning_rows))
 
-            lifecycle_state = game_data.get("lifecycle_state")
-            if lifecycle_state:
-                snapshot_source = GameWriteSource("snapshot", "live_crawler", "lifecycle_override")
-                _assign_field_if_changed(
-                    game,
-                    "game_lifecycle_state",
-                    lifecycle_state,
-                    game_id=game_id,
-                    source=snapshot_source,
-                    write_contract=None,
-                )
+    lifecycle_state = game_data.get("lifecycle_state")
+    if lifecycle_state:
+        snapshot_source = GameWriteSource("snapshot", "live_crawler", "lifecycle_override")
+        _assign_field_if_changed(
+            game,
+            "game_lifecycle_state",
+            lifecycle_state,
+            game_id=game_id,
+            source=snapshot_source,
+            write_contract=None,
+        )
 
-            session.commit()
-        except GAME_SAVE_EXCEPTIONS:
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Snapshot)")
-            return False
-        else:
-            return True
+    session.flush()
+    return True
 
 
 def _get_or_create_snapshot_game(session: Session, game_id: str, game_date: date) -> Game:
@@ -1157,14 +1170,22 @@ def _apply_snapshot_status_and_winner(
         )
 
 
-def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
+def save_pregame_lineups(preview_data: dict[str, Any], session: Session | None = None) -> bool:  # noqa: PLR0911
     """Persist pregame start time, announced starters, and published starting lineups.
 
     Args:
         preview_data: Preview Data.
-        preview_data: Preview Data.
+        session: DB Session.
 
     """
+    if session is None:
+        try:
+            with get_db_session() as s:
+                return save_pregame_lineups(preview_data, session=s)
+        except GAME_SAVE_EXCEPTIONS:
+            logger.exception("[ERROR] DB Error (Pregame)")
+            return False
+
     if not preview_data:
         return False
 
@@ -1197,36 +1218,29 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
     if not game_id:
         return False
 
-    with SessionLocal() as session:
-        try:
-            game = _get_or_create_snapshot_game(session, game_id, game_date)
-            _record_game_id_alias(
-                session,
-                original_game_id,
-                game_id,
-                source="preview",
-                reason="normalized_to_kbo_legacy_game_id",
-            )
+    game = _get_or_create_snapshot_game(session, game_id, game_date)
+    _record_game_id_alias(
+        session,
+        original_game_id,
+        game_id,
+        source="preview",
+        reason="normalized_to_kbo_legacy_game_id",
+    )
 
-            _apply_pregame_payload(
-                session,
-                game,
-                preview_data,
-                PregameContext(
-                    game_id=game_id,
-                    game_date=game_date,
-                    away_code=away_code,
-                    home_code=home_code,
-                ),
-            )
+    _apply_pregame_payload(
+        session,
+        game,
+        preview_data,
+        PregameContext(
+            game_id=game_id,
+            game_date=game_date,
+            away_code=away_code,
+            home_code=home_code,
+        ),
+    )
 
-            session.commit()
-        except GAME_SAVE_EXCEPTIONS:
-            session.rollback()
-            logger.exception("[ERROR] DB Error (Pregame)")
-            return False
-        else:
-            return True
+    session.flush()
+    return True
 
 
 def _apply_pregame_payload(

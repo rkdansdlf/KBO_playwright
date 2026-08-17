@@ -35,12 +35,12 @@ class TestGameStatus:
         GamePitchingStat.__table__.create(engine)
         return engine, sessionmaker(bind=engine)()
 
-    @patch("src.repositories.game_status.SessionLocal")
+    @patch("src.repositories.game_status.get_db_session")
     @patch("src.repositories.game_status._canonicalize_game_id", side_effect=_fake_canonicalize)
-    def test_update_game_status_updates_record(self, MockCanon, MockSessionLocal):
+    def test_update_game_status_updates_record(self, MockCanon, Mockget_db_session):
         engine, session = self._setup_game_tables()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
+        Mockget_db_session.return_value.__enter__.return_value = session
+        Mockget_db_session.return_value.__exit__.return_value = None
 
         g = Game(game_id="20241015LGSSG0", game_date=date(2024, 10, 15))
         session.add(g)
@@ -52,22 +52,22 @@ class TestGameStatus:
         session.refresh(g)
         assert g.game_status == "completed"
 
-    @patch("src.repositories.game_status.SessionLocal")
+    @patch("src.repositories.game_status.get_db_session")
     @patch("src.repositories.game_status._canonicalize_game_id", side_effect=_fake_canonicalize)
-    def test_update_game_status_invalid_id(self, MockCanon, MockSessionLocal):
+    def test_update_game_status_invalid_id(self, MockCanon, Mockget_db_session):
         engine, session = self._setup_game_tables()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
+        Mockget_db_session.return_value.__enter__.return_value = session
+        Mockget_db_session.return_value.__exit__.return_value = None
 
         result = update_game_status("NONEXISTENT", "completed")
         assert result is False
 
-    @patch("src.repositories.game_status.SessionLocal")
+    @patch("src.repositories.game_status.get_db_session")
     @patch("src.repositories.game_status._canonicalize_game_id", side_effect=_fake_canonicalize)
-    def test_update_game_status_empty_params(self, MockCanon, MockSessionLocal):
+    def test_update_game_status_empty_params(self, MockCanon, Mockget_db_session):
         engine, session = self._setup_game_tables()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
+        Mockget_db_session.return_value.__enter__.return_value = session
+        Mockget_db_session.return_value.__exit__.return_value = None
 
         assert update_game_status("", "completed") is False
         assert update_game_status("20241015LGSSG0", "") is False
@@ -83,11 +83,11 @@ class TestGameStatus:
         result = game_status_repo.refresh_game_status_for_date("20241015")
         assert result["total"] == 1
 
-    @patch("src.repositories.game_status.SessionLocal")
-    def test_refresh_game_status_derives_completed(self, MockSessionLocal):
+    @patch("src.repositories.game_status.get_db_session")
+    def test_refresh_game_status_derives_completed(self, Mockget_db_session):
         engine, session = self._setup_game_tables()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
+        Mockget_db_session.return_value.__enter__.return_value = session
+        Mockget_db_session.return_value.__exit__.return_value = None
 
         g = Game(
             game_id="20241015LGSSG0",
@@ -106,17 +106,17 @@ class TestGameStatus:
         assert result["updated"] == 1
         assert result["status_counts"].get("COMPLETED") == 1
 
-    @patch("src.repositories.game_status.SessionLocal")
-    def test_refresh_game_status_invalid_date(self, MockSessionLocal):
+    @patch("src.repositories.game_status.get_db_session")
+    def test_refresh_game_status_invalid_date(self, Mockget_db_session):
         result = refresh_game_status_for_date("not-a-date")
         assert result["total"] == 0
         assert result["updated"] == 0
 
-    @patch("src.repositories.game_status.SessionLocal")
-    def test_refresh_game_status_no_games_for_date(self, MockSessionLocal):
+    @patch("src.repositories.game_status.get_db_session")
+    def test_refresh_game_status_no_games_for_date(self, Mockget_db_session):
         engine, session = self._setup_game_tables()
-        MockSessionLocal.return_value.__enter__.return_value = session
-        MockSessionLocal.return_value.__exit__.return_value = None
+        Mockget_db_session.return_value.__enter__.return_value = session
+        Mockget_db_session.return_value.__exit__.return_value = None
 
         result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
         assert result["total"] == 0

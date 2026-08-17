@@ -4,18 +4,26 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.models.player import Player, PlayerBasic, PlayerIdentity, PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.player import (
+    Player,
+    PlayerBasic,
+    PlayerIdentity,
+    PlayerSeasonBatting,
+    PlayerSeasonPitching,
+    PlayerMovement,
+)
 from src.models.team import Team, TeamDailyRoster
 from src.parsers.player_profile_parser import PlayerProfileParsed
 from src.repositories.player_repository import PlayerRepository
 
 
 @pytest.fixture
-def repo():
-    return PlayerRepository()
+def repo(inmemory_session):
+    return PlayerRepository(inmemory_session)
 
 
 @pytest.fixture
@@ -24,8 +32,10 @@ def inmemory_session():
     Player.__table__.create(engine)
     PlayerBasic.__table__.create(engine)
     PlayerIdentity.__table__.create(engine)
-    Session = sessionmaker(bind=engine)
-    with Session() as session:
+    PlayerSeasonPitching.__table__.create(engine)
+    PlayerSeasonBatting.__table__.create(engine)
+    LocalSession = sessionmaker(bind=engine)
+    with LocalSession() as session:
         yield session
 
 
@@ -39,10 +49,11 @@ def movement_session():
         TeamDailyRoster.__table__,
         PlayerSeasonBatting.__table__,
         PlayerSeasonPitching.__table__,
+        PlayerMovement.__table__,
     ):
         table.create(engine)
-    Session = sessionmaker(bind=engine)
-    with Session() as session:
+    LocalSession = sessionmaker(bind=engine)
+    with LocalSession() as session:
         yield session
 
 
@@ -334,35 +345,27 @@ class TestUpsertIdentity:
 
 
 class TestUpsertSeasonPitching:
-    def test_insert_new_pitching_record(self, repo):
-        with patch("src.repositories.player_repository.SessionLocal") as mock_session_local:
-            mock_session = MagicMock(spec=Session)
-            mock_session_local.return_value.__enter__.return_value = mock_session
-            mock_session.execute.return_value.scalar_one_or_none.return_value = None
-            repo.upsert_season_pitching(1, {"season": 2025, "league": "REGULAR", "level": "KBO1", "era": 3.50})
-            mock_session.add.assert_called_once()
-            mock_session.commit.assert_called_once()
+    def test_insert_new_pitching_record(self, repo, inmemory_session):
+        repo.upsert_season_pitching(1, {"season": 2025, "league": "REGULAR", "level": "KBO1", "era": 3.50})
+        record = inmemory_session.query(PlayerSeasonPitching).first()
+        assert record is not None
+        assert record.era == 3.50
 
 
 class TestUpsertSeasonStats:
-    def test_insert_new_batting_record(self, repo):
-        with patch("src.repositories.player_repository.SessionLocal") as mock_session_local:
-            mock_session = MagicMock(spec=Session)
-            mock_session_local.return_value.__enter__.return_value = mock_session
-            mock_session.execute.return_value.scalar_one_or_none.return_value = None
-            repo.upsert_season_batting(1, {"season": 2025, "league": "REGULAR", "level": "KBO1", "at_bats": 100})
-            mock_session.add.assert_called_once()
-            mock_session.commit.assert_called_once()
+    def test_insert_new_batting_record(self, repo, inmemory_session):
+        repo.upsert_season_batting(1, {"season": 2025, "league": "REGULAR", "level": "KBO1", "at_bats": 100})
+        record = inmemory_session.query(PlayerSeasonBatting).first()
+        assert record is not None
+        assert record.at_bats == 100
 
-    def test_update_existing_batting_record(self, repo):
-        existing = MagicMock(spec=PlayerSeasonBatting)
-        with patch("src.repositories.player_repository.SessionLocal") as mock_session_local:
-            mock_session = MagicMock(spec=Session)
-            mock_session_local.return_value.__enter__.return_value = mock_session
-            mock_session.execute.return_value.scalar_one_or_none.return_value = existing
-            repo.upsert_season_batting(1, {"season": 2025, "league": "REGULAR", "level": "KBO1", "at_bats": 200})
-            assert existing.at_bats == 200
-            mock_session.commit.assert_called_once()
+    def test_update_existing_batting_record(self, repo, inmemory_session):
+        inmemory_session.add(PlayerSeasonBatting(player_id=1, season=2025, league="REGULAR", level="KBO1", at_bats=50))
+        inmemory_session.commit()
+        repo.upsert_season_batting(1, {"season": 2025, "league": "REGULAR", "level": "KBO1", "at_bats": 200})
+        inmemory_session.flush()
+        record = inmemory_session.query(PlayerSeasonBatting).first()
+        assert record.at_bats == 200
 
     def test_skips_empty_payload(self, repo):
         repo.upsert_season_batting(1, {})
@@ -520,16 +523,12 @@ class TestMovementTeamHelpers:
 
 
 class TestSavePlayerMovements:
-    def test_inserts_new_movement_with_resolved_player(self, repo):
+    def test_inserts_new_movement_with_resolved_player(self, movement_session):
+        repo = PlayerRepository(movement_session)
         with (
-            patch("src.repositories.player_repository.SessionLocal") as mock_session_local,
             patch.object(repo, "_resolve_movement_team_id", return_value="LG"),
             patch.object(repo, "_resolve_movement_player_id", return_value=1001),
         ):
-            mock_session = MagicMock(spec=Session)
-            mock_session_local.return_value.__enter__.return_value = mock_session
-            mock_session.execute.return_value.scalar_one_or_none.return_value = None
-
             saved = repo.save_player_movements(
                 [
                     {
@@ -543,23 +542,26 @@ class TestSavePlayerMovements:
             )
 
         assert saved == 1
-        mock_session.add.assert_called_once()
-        new_record = mock_session.add.call_args.args[0]
-        assert new_record.resolution_status == "resolved"
-        mock_session.commit.assert_called_once()
+        from src.models.player import PlayerMovement
 
-    def test_updates_existing_movement_with_inferred_team(self, repo):
-        existing = MagicMock()
+        new_record = movement_session.query(PlayerMovement).first()
+        assert new_record.resolution_status == "resolved"
+
+    def test_updates_existing_movement_with_inferred_team(self, movement_session):
+        repo = PlayerRepository(movement_session)
+        from src.models.player import PlayerMovement
+
+        existing = PlayerMovement(
+            movement_date=date(2025, 4, 1), team_code="두산", player_name="홍길동", section="말소", remarks="부상"
+        )
+        movement_session.add(existing)
+        movement_session.commit()
+
         with (
-            patch("src.repositories.player_repository.SessionLocal") as mock_session_local,
             patch.object(repo, "_resolve_movement_team_id", return_value=None),
             patch.object(repo, "_infer_movement_team_from_history", return_value="LG"),
             patch.object(repo, "_resolve_movement_player_id", return_value=None),
         ):
-            mock_session = MagicMock(spec=Session)
-            mock_session_local.return_value.__enter__.return_value = mock_session
-            mock_session.execute.return_value.scalar_one_or_none.return_value = existing
-
             saved = repo.save_player_movements(
                 [
                     {
@@ -575,7 +577,6 @@ class TestSavePlayerMovements:
         assert saved == 1
         assert existing.canonical_team_id == "LG"
         assert existing.resolution_status == "unresolved_player"
-        mock_session.add.assert_not_called()
 
 
 class TestUpsertPlayerProfile:
@@ -583,11 +584,8 @@ class TestUpsertPlayerProfile:
         with pytest.raises(ValueError, match="kbo_player_id"):
             repo.upsert_player_profile("", PlayerProfileParsed())
 
-    def test_upsert_creates_player(self, repo):
+    def test_upsert_creates_player(self, repo, inmemory_session):
         profile = PlayerProfileParsed(player_name="테스트", birth_date="1995-03-15", is_active=True)
-        with patch("src.repositories.player_repository.SessionLocal") as mock_session_local:
-            mock_session = MagicMock(spec=Session)
-            mock_session_local.return_value.__enter__.return_value = mock_session
-            mock_session.execute.return_value.scalar_one_or_none.return_value = None
-            player = repo.upsert_player_profile("12345", profile)
-            assert player is not None
+        player = repo.upsert_player_profile("12345", profile)
+        assert player is not None
+        assert player.kbo_person_id == "12345"

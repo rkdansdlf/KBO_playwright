@@ -439,10 +439,7 @@ def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) 
         Integer result.
 
     """
-    count = _upsert_bulk(session, PlayerGameBatting, records)
-
-    session.commit()
-    return count
+    return _upsert_bulk(session, PlayerGameBatting, records)
 
 
 def upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
@@ -460,10 +457,7 @@ def upsert_player_game_pitching(session: Session, records: list[dict[str, Any]])
         Integer result.
 
     """
-    count = _upsert_bulk(session, PlayerGamePitching, records)
-
-    session.commit()
-    return count
+    return _upsert_bulk(session, PlayerGamePitching, records)
 
 
 def bulk_upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:

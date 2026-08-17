@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -138,7 +139,7 @@ class TestResolveMovementTeamId:
         session.add(team)
         session.commit()
 
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_team_id(session, "LG")
         assert result == "LG"
 
@@ -149,16 +150,16 @@ class TestResolveMovementTeamId:
         session.add(team)
         session.commit()
 
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_team_id(session, "LG")
         assert result == "LG"
 
     def test_unknown_team(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_team_id(session, "ZZ")
         assert result is None
 
     def test_empty_team(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_team_id(session, "")
         assert result is None

@@ -4,6 +4,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -63,8 +64,12 @@ def session(engine):
 
 @pytest.fixture(autouse=True)
 def patch_deps(session):
+    @contextlib.contextmanager
+    def mock_get_db_session():
+        yield session
+
     with (
-        patch("src.repositories.game_save.SessionLocal", return_value=session),
+        patch("src.repositories.game_save.get_db_session", side_effect=mock_get_db_session),
     ):
         yield
 
@@ -412,10 +417,12 @@ class TestSaveGameDetail:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.commit.side_effect = OSError("DB Error")
+        mock_session.query.side_effect = OSError("DB Error")
 
         with (
-            patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
+            patch(
+                "src.repositories.game_save.get_db_session", side_effect=lambda: contextlib.nullcontext(mock_session)
+            ),
         ):
             result = save_game_detail(data)
             assert result is False
@@ -499,10 +506,12 @@ class TestSaveGameSnapshot:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.commit.side_effect = OSError("DB Error")
+        mock_session.query.side_effect = OSError("DB Error")
 
         with (
-            patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
+            patch(
+                "src.repositories.game_save.get_db_session", side_effect=lambda: contextlib.nullcontext(mock_session)
+            ),
         ):
             result = save_game_snapshot(data)
             assert result is False
@@ -551,10 +560,12 @@ class TestSavePregameLineupsExtended:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.commit.side_effect = OSError("DB Error")
+        mock_session.query.side_effect = OSError("DB Error")
 
         with (
-            patch("src.repositories.game_save.SessionLocal", return_value=mock_session),
+            patch(
+                "src.repositories.game_save.get_db_session", side_effect=lambda: contextlib.nullcontext(mock_session)
+            ),
         ):
             result = save_pregame_lineups(
                 {

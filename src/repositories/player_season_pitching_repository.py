@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import SessionLocal, get_database_type
+from src.db.engine import get_database_type, get_db_session
 from src.models.player import PlayerSeasonPitching
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 
@@ -48,13 +48,14 @@ def _prefer_payload_value(
     return metrics.get(key)
 
 
-def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
+def save_pitching_stats_to_db(payloads: list[dict[str, Any]], session: Session | None = None) -> int:
     """투수 시즌 통계를 player_season_pitching 테이블에 UPSERT 저장.
 
     Args:
         payloads: Payloads.
         payloads: Payloads.
         payloads: 투수 데이터 딕셔너리 리스트
+        session: Database session.
 
     Returns:
         저장된 레코드 수
@@ -72,7 +73,7 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
     if not payloads:
         return 0
 
-    with SessionLocal() as session:
+    def _internal_save(s: Session) -> int:
         db_type = get_database_type()
         saved_count = 0
 
@@ -81,30 +82,32 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
             stmt = _build_pitching_upsert_stmt(data, db_type)
             if stmt is None:
                 try:
-                    _merge_pitching_row(session, data)
+                    _merge_pitching_row(s, data)
                     saved_count += 1
                 except SQLAlchemyError:
                     logger.exception("⚠️ 병합 실패 (player_id=%s)", data.get("player_id"))
-                    session.rollback()
                 continue
 
             try:
-                session.execute(stmt)
+                s.execute(stmt)
                 saved_count += 1
             except SQLAlchemyError:
                 logger.exception("⚠️ UPSERT 실패 (player_id=%s)", data.get("player_id"))
-                session.rollback()
                 continue
 
         try:
-            session.commit()
+            s.flush()
             logger.info("✅ 투수 데이터 %s건 저장 완료 (player_season_pitching 테이블)", saved_count)
         except SQLAlchemyError:
-            session.rollback()
-            logger.exception("❌ 커밋 실패")
+            logger.exception("❌ 플러시 실패")
             return 0
 
         return saved_count
+
+    if session:
+        return _internal_save(session)
+    with get_db_session() as s:
+        return _internal_save(s)
 
 
 def _build_pitching_row(payload: dict[str, Any]) -> dict[str, Any]:
@@ -220,7 +223,7 @@ def get_pitching_stats_count(session: Session | None = None) -> int:
     """
     if session:
         return session.query(PlayerSeasonPitching).count()
-    with SessionLocal() as new_session:
+    with get_db_session() as new_session:
         return new_session.query(PlayerSeasonPitching).count()
 
 
@@ -236,7 +239,7 @@ def get_pitching_stats_by_season(season: int, session: Session | None = None) ->
     """
     if session:
         return session.query(PlayerSeasonPitching).filter_by(season=season).all()
-    with SessionLocal() as new_session:
+    with get_db_session() as new_session:
         return new_session.query(PlayerSeasonPitching).filter_by(season=season).all()
 
 
@@ -248,26 +251,22 @@ def cleanup_invalid_pitching_data(session: Session | None = None) -> int:
         session: Session.
 
     """
-    cleanup_session = session or SessionLocal()
 
-    try:
-        # player_id나 season이 없는 레코드 삭제
-        deleted = (
-            cleanup_session.query(PlayerSeasonPitching)
-            .filter((PlayerSeasonPitching.player_id.is_(None)) | (PlayerSeasonPitching.season.is_(None)))
-            .delete()
-        )
+    def _do_cleanup(s: Session) -> int:
+        try:
+            deleted = (
+                s.query(PlayerSeasonPitching)
+                .filter((PlayerSeasonPitching.player_id.is_(None)) | (PlayerSeasonPitching.season.is_(None)))
+                .delete()
+            )
+            s.flush()
+        except SQLAlchemyError:
+            logger.exception("⚠️ 투수 데이터 정리 실패")
+            return 0
+        else:
+            return deleted
 
-        if not session:  # 외부 세션이 아닌 경우만 커밋
-            cleanup_session.commit()
-
-    except SQLAlchemyError:
-        if not session:
-            cleanup_session.rollback()
-        logger.exception("⚠️ 투수 데이터 정리 실패")
-        return 0
-    else:
-        return deleted
-    finally:
-        if not session:
-            cleanup_session.close()
+    if session:
+        return _do_cleanup(session)
+    with get_db_session() as s:
+        return _do_cleanup(s)

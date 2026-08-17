@@ -12,6 +12,8 @@ SABER_EXTRA_CONFIG_PARTS = 2
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from sqlalchemy.orm import Session
+
 
 @dataclass(frozen=True)
 class MetricConfig:
@@ -110,15 +112,21 @@ PITCHING_METRICS: list[MetricConfig] = [
 class RankingAggregator:
     """Aggregate per-metric rankings across stat categories."""
 
-    def __init__(self, repository: RankingRepository | None = None) -> None:
+    def __init__(self, repository: RankingRepository | None = None, session: Session | None = None) -> None:
         """Initialize a new instance.
 
         Args:
             repository: Repository.
-            repository: Repository.
+            session: Session.
 
         """
-        self.repository = repository or RankingRepository()
+        if repository is not None:
+            self.repository = repository
+        elif session is not None:
+            self.repository = RankingRepository(session)
+        else:
+            # Fallback for tests that don't pass either (when persist=False)
+            self.repository = None  # type: ignore[assignment]
 
     def generate_rankings(self, request: RankingGenerationRequest) -> list[dict[str, Any]]:
         """Generate rankings.
