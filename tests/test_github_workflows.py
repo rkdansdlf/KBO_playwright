@@ -390,6 +390,21 @@ def test_test_suite_runs_lint_and_test_matrix():
     )
 
 
+def test_oci_live_verification_uses_dedicated_target_and_smoke_gates():
+    workflow = _read(WORKFLOW_DIR / "oci_live_verification.yml")
+
+    assert "OCI_DB_URL: ${{ secrets.OCI_DB_URL }}" in workflow
+    assert "DATABASE_URL:" not in workflow
+    assert "init-db: 'false'" in workflow
+    assert "--include-safety-gated" in workflow
+    assert "scripts/verification/audit_oracle_schema.py" in workflow
+    assert "pytest tests/test_oracle_smoke.py -m oci -q -o addopts=''" in workflow
+    assert workflow.index("Apply Oracle migrations") < workflow.index("Reapply Oracle migrations")
+    assert workflow.index("Reapply Oracle migrations") < workflow.index("Check Oracle migrations")
+    assert workflow.index("Check Oracle migrations") < workflow.index("Run Oracle repository smoke tests")
+    assert workflow.index("Run Oracle repository smoke tests") < workflow.index("Run Live Oracle E2E Verification")
+
+
 def test_docker_build_has_full_build_chain():
     workflow = _read(WORKFLOW_DIR / "docker_build.yml")
 

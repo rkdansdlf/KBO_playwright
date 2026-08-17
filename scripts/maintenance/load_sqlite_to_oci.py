@@ -102,8 +102,8 @@ TABLE_COL_OVERRIDE: dict[tuple[str, str], Any] = {
 
 NATURAL_KEYS: dict[str, list[str]] = {
     "game_lineups": ["game_id", "team_side", "appearance_seq"],
-    "game_batting_stats": ["game_id", "player_id"],
-    "game_pitching_stats": ["game_id", "player_id"],
+    "game_batting_stats": ["game_id", "player_id", "appearance_seq"],
+    "game_pitching_stats": ["game_id", "player_id", "appearance_seq"],
     "game_events": ["game_id", "event_seq"],
     "player_game_batting": ["game_id", "player_id"],
     "player_game_pitching": ["game_id", "player_id"],
@@ -122,7 +122,7 @@ REPLACE_TABLES = {
     "game_play_by_play",
 }
 
-NO_ID_TABLES = {"player_season_batting", "player_season_pitching"}
+NO_ID_TABLES: set[str] = set()
 
 LEVEL_NORMALIZE = {"1": "KBO1", "1군": "KBO1"}
 
@@ -285,8 +285,8 @@ class OciLoader:
             col_override = TABLE_COL_OVERRIDE.get((table, c))
             if col_override is not None:
                 v = col_override(v)
-            v = self._convert(v, oci_types.get(c.upper(), "VARCHAR2"))
-            limit = char_sizes.get(c.upper()) if char_sizes else None
+            v = self._convert(v, oci_types.get(c.upper()) or oci_types.get(c.lower(), "VARCHAR2"))
+            limit = (char_sizes or {}).get(c.upper()) or (char_sizes or {}).get(c.lower())
             if limit is not None and isinstance(v, str) and len(v) > limit:
                 v = v[:limit]
             payload[c] = v
@@ -351,7 +351,7 @@ class OciLoader:
         if not pk:
             log(f"[skip] {table}: no PK, cannot merge")
             return {"table": table, "dry_run": True}
-        keys = [k.upper() for k in NATURAL_KEYS.get(table, [p.lower() for p in pk])]
+        keys = [known.get(k.lower(), k.upper()) for k in NATURAL_KEYS.get(table, [p.lower() for p in pk])]
         key_cols = [k.lower() for k in NATURAL_KEYS.get(table, [p.lower() for p in pk])]
         full_columns = common + [
             c.lower() for c in oci_only if c.lower() in {x.lower() for x in self.sqlite_columns(table)}

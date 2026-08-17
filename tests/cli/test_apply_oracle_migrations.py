@@ -21,6 +21,26 @@ def test_migration_paths_are_sorted_by_numeric_prefix(tmp_path) -> None:
     assert [path.name for path in _migration_paths(tmp_path)] == ["002_earlier.sql", "010_later.sql"]
 
 
+def test_migration_paths_use_filename_as_stable_tiebreaker(tmp_path) -> None:
+    """Test deterministic ordering when multiple migrations share a prefix."""
+    (tmp_path / "020_zeta.sql").write_text("SELECT 1", encoding="utf-8")
+    (tmp_path / "020_alpha.sql").write_text("SELECT 1", encoding="utf-8")
+
+    assert [path.name for path in _migration_paths(tmp_path)] == ["020_alpha.sql", "020_zeta.sql"]
+
+
+def test_migration_paths_exclude_safety_gated_files_by_default(tmp_path) -> None:
+    """Require explicit opt-in before data-rewrite migrations are included."""
+    (tmp_path / "024_deletion_anomaly_integrity.sql").write_text("SELECT 1", encoding="utf-8")
+    (tmp_path / "065_reconcile_model_indexes.sql").write_text("SELECT 1", encoding="utf-8")
+
+    assert [path.name for path in _migration_paths(tmp_path)] == ["065_reconcile_model_indexes.sql"]
+    assert [path.name for path in _migration_paths(tmp_path, include_safety_gated=True)] == [
+        "024_deletion_anomaly_integrity.sql",
+        "065_reconcile_model_indexes.sql",
+    ]
+
+
 def test_already_exists_error_recognizes_oracle_object_exists_code() -> None:
     error = SQLAlchemyError("object exists")
     error.orig = SimpleNamespace(code=955)  # type: ignore[attr-defined]
