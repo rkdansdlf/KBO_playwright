@@ -1,10 +1,45 @@
 # Known Data Limitations
 
-Last updated: 2026-07-25
+Last updated: 2026-08-17
 
 This document tracks known data quality issues and their current status.
 
 ---
+
+## 1982 Season: Synthetic → Measured (namu.wiki boxscores) Replacement (2026-08-17)
+
+**Status**: ✅ Resolved — 1982 정규시즌 경기결과를 합성 데이터에서 실측으로 전량 교체.
+
+**배경**: KBO 공식 채널은 2000년 이전 시즌 경기별 기록을 제공하지 않고, 스탯티즈
+(1982 일정 404/로그인 필요)와 위키백과(경기별 점수 미기재)는 부적합이었다.
+나무위키 팀별 월별 문서의 박스스코어가 유일한 경기별 실측 소스로 확정되었다.
+
+**단일 소스**: `https://namu.moe/w/{팀 문서명}/1982년/{3~4월|5월|6월|7월|8월|9~10월}`
+(OB 베어스는 "9~10월" 404 → "9월" 단일 문서). 수집 482 박스 → 병합/정정 후
+**241경기** (정규 240 + 무승부 1). 캘린더 표는 날짜 시프트/스코어 방향 혼재로
+박스스코어의 날짜/스코어를 진실로 취급.
+
+**교체 내용** (local SQLite + Oracle 운영 DB 동일 적용):
+- 합성 240행 DELETE → 실측 241행 INSERT (`season_id=198200`, `game_status=COMPLETED`).
+- 사실관계: 개막전은 1982-03-27 동대문 삼성 7:11 MBC (기존 합성은 3/26 OB:MB 7:11로
+  날짜·매치업·스코어 전부 오류). 무승부 1건: 8/5 MB:HT 7:7 (무등).
+- DH: 8그룹 (6/20, 6/26, 6/27, 8/18, 9/22, 9/28, 10/3, 10/6). 재경기 1건:
+  8/18 MB:HT 8:7 (동대문, 8/5 무승부의 재경기).
+- 검증: 팀별 승패가 위키백과 1982 최종순위와 전부 일치 (OB 56-24, SS 54-26,
+  MB 46-34+D, HT 38-42+D, LT 31-49, SM 15-65), 매치업 균형 16~17, boxscore 유니크
+  매칭 unmatched 0.
+- 홈/원정: 경기장 소유 규칙으로 220경기 확정, 순회(중립) 경기장 21경기는
+  박스 순서 유지 (순회 홈 제도: 전주/춘천/마산/한밭/청주 등에서 홈 경기 개최).
+
+**재현 파이프라인**: `scripts/historical/1982_namu_boxscores.py` (`--crawl` 네트워크
+전체 수집, 기본 모드 로컬 archive 재현, `--verify-only` 검증). 산출물:
+`data/archives/1982_namu_raw.json` (482 박스), `data/archives/1982_answer_set_final.json`
+(241경기, `game_id` 포함). 유령 경기(해태 4/8 = 4/14 복사 오기) 제거 규칙과
+재경기 날짜 교정 규칙이 스크립트에 명시.
+
+**제한**: 1983~2000 시즌은 여전히 합성(추정) 데이터(`data/archives/kbo_YYYY_official.json`
+소스). 선수 레벨 스탯은 1982에 존재하지 않음. 나무위키 원본 오기(박스 복사)를
+캘린더/이닝 대조로 1건 감지했으나, 동일 스코어 복사 케이스는 추가 감지 불가.
 
 ## Supabase Migration Cleanup (2026-07-25)
 
