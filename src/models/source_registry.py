@@ -32,7 +32,7 @@ class DataSource(Base, TimestampMixin):
     target_domain: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
-        comment="ticket / seat / parking / food / roster / event / broadcast / injury / etc",
+        comment="ticket / seat / parking / food / roster / event / season_stats / etc",
     )
     reliability: Mapped[str] = mapped_column(
         String(10),
@@ -94,7 +94,7 @@ class RawSourceSnapshot(Base, TimestampMixin):
         String(20),
         nullable=False,
         default="pending",
-        comment="pending / done / failed",
+        comment="pending / done / failed / superseded",
     )
     parser_version: Mapped[str | None] = mapped_column(
         String(30),

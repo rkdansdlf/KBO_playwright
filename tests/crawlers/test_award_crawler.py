@@ -388,6 +388,26 @@ class TestWikiFetchSnapshot:
         assert crawler._raw_snapshots[0]["status_code"] == 200
         assert "page=KBO MVP" in crawler._raw_snapshots[0]["url"]
 
+    def test_parse_status_is_attached_to_matching_snapshot(self) -> None:
+        crawler = AwardCrawler()
+        crawler._raw_snapshots = [
+            {
+                "url": "https://example.com/awards",
+                "html": "<html></html>",
+                "source_key": "kbo_awards_yagoonara",
+            },
+        ]
+
+        crawler._mark_snapshot_parse_status(
+            "kbo_awards_yagoonara",
+            "https://example.com/awards",
+            parsed_records=12,
+        )
+
+        assert crawler._raw_snapshots[0]["parse_status"] == "done"
+        assert crawler._raw_snapshots[0]["parser_version"] == "award-crawler-v1"
+        assert crawler._raw_snapshots[0]["capture_metadata"] == {"parsed_records": 12}
+
     @pytest.mark.asyncio
     async def test_yagoonara_fetch_stores_snapshot(self, monkeypatch: pytest.MonkeyPatch) -> None:
         crawler = AwardCrawler()
@@ -522,6 +542,8 @@ class TestCrawlOrchestration:
             "올스타전MVP",
             "한국시리즈MVP",
         }
+        assert len(crawler.source_runs) == 5
+        assert sum(run.parsed_records for run in crawler.source_runs) == len(records)
 
     @pytest.mark.asyncio
     async def test_wiki_failure_skipped_other_sources_continue(self) -> None:
@@ -540,6 +562,7 @@ class TestCrawlOrchestration:
 
         assert len(records) == 3 + 8 + 3 + 4
         assert crawler.policy.delay_async.await_count == 5
+        assert any(run.error for run in crawler.source_runs)
 
     @pytest.mark.asyncio
     async def test_yagoonara_failure_warns_and_keeps_wiki(self) -> None:
@@ -598,8 +621,12 @@ class TestLiveAwardCrawler:
         crawler = AwardCrawler()
         try:
             records = await crawler.crawl()
+        except httpx.HTTPError as err:
+            pytest.skip(f"Live external award source unavailable: {err}")
         finally:
             await crawler.close()
+        if not records:
+            pytest.skip("Live awards crawl returned empty (offline/firewall)")
         assert len(records) >= 380
         by_type = {r.award_type for r in records}
         assert {"MVP", "신인상", "골든글러브", "수비상"} <= by_type
