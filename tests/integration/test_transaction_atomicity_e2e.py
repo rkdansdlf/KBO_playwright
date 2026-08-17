@@ -13,6 +13,7 @@ a mid-write failure rolls back all of them.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -43,8 +44,18 @@ def _payload(game_id: str, game_date: str, away: str, home: str) -> dict:
 
 @pytest.fixture
 def test_sessionmaker():
-    """Bind a sessionmaker to an in-memory SQLite DB shared across sessions."""
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    """Bind a sessionmaker to an in-memory SQLite DB shared across sessions.
+
+    Set KBO_E2E_DATABASE_URL to exercise the same atomicity contract against a
+    real server (e.g. PostgreSQL) instead of the default SQLite in-memory engine.
+
+    """
+    url = os.getenv("KBO_E2E_DATABASE_URL")
+    if url:
+        engine = create_engine(url, pool_pre_ping=True)
+    else:
+        engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
