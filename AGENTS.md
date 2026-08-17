@@ -204,7 +204,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-07-18
+Last updated: 2026-08-17
 
 ### Historical Sprint (2026-06-30) — Data Quality & Sync
 
@@ -909,3 +909,18 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
   - Removed ghost directory `src/sync/` and stray `,cover` files.
   - Added robust `Vector` fallback type in `src/models/rag_chunk_vector.py` for environments where `pgvector` library is not installed.
 - **Verification**: `ruff check src/ tests/ scripts/` = **0 errors**; `ruff format --check` = **1153 files already formatted**; `pytest` = **9,138 passed in 52.35s**.
+
+### Phase 82 Complete (2026-08-17) — 그룹 커밋 푸시, CI 회귀 수정, RAG 정합성, E2E 확장
+
+- **기능별 그룹 커밋 12건 푸시** (한글 imperative 메시지, `feat|fix|refactor|chore|test(scope):`): rag 이중 인덱스 파이프라인, 트랜잭션 소유권 감사 체계, CLI 서브패키지 재구성, 외부 통계 소스, awards, OCI 검증, 크롤러 세션 위임, validators, 스크립트/완전성 감사, 테스트 보완, 문서·설정, RAG 청크 품질 검증.
+- **CI 회귀 수정 3종** (최종 커밋 기준 전 job green):
+  - `integration-test`/`integration-test-postgres`: `tests/test_postgame_reconciliation_service.py`가 `game_save`/`game_relay` 모듈에 `SessionLocal` 속성을 주입하던 것을 `get_db_session` 패치(`contextlib.nullcontext`)로 전환 — P0 트랜잭션 소유권 계약 이후 모듈에 `SessionLocal`이 없어 `AttributeError` 발생했음.
+  - `slow-no-network`: `test_collection_path_allowlist.py`의 `ALLOWED_DIRECT_SAVE_FILES`에 CLI 서브패키지 재구성 후 이동한 경로 4건(`src/cli/live/live_crawler.py`, `src/cli/pipelines/run_pipeline_demo.py`, `src/cli/reports/historical_boxscore_import.py`, `src/cli/collection/ingest_mock_game_html.py`) 누락 — 갱신.
+  - `rag-acceptance`: `rag_index_propagation`의 PostgreSQL `on_conflict_do_update(index_elements=[source_table, source_row_id])`가 실패 — `rag_chunks`에 해당 UNIQUE 제약 부재.
+- **RAG 소스 identity 정합성**: `RagChunk`/`RagChunkVector` 모델에 `UniqueConstraint("source_table", "source_row_id", name="uq_rag_chunks_source_identity")` 추가; `migrations/postgresql/052_rag_source_identity_unique.sql`(중복 제거 + `CREATE UNIQUE INDEX IF NOT EXISTS`) 및 `migrations/sqlite/058_rag_source_identity_unique.py` 신규; `rag_chunk_repository.upsert_chunks`/`_upsert_chunks`의 **dead `commit` 파라미터 제거** (호출자 전수 확인: `rag_index_propagation`의 `commit=False` 2곳만 전달, `if commit: flush else: flush` 동일 분기); `Docs/references/rag_golden_queries.json` 평가 쿼리셋 채움.
+- **pre-commit stash 충돌 근본 해결**: ruff/ruff-format 훅에 `files: \.py$` 한정 추가 — json/csv/sql을 스테이징하면 ruff `--fix`가 비-Python 파일을 수정하려다 "Stashed changes conflicted with hook auto-fixes"로 커밋이 무한 롤백되는 문제 (`.pre-commit-config.yaml`의 ruff 훅에 파일 패턴이 없었음).
+- **reports/ 정리**: `integrity_report_*.md` 생성물(총 3.3MB) 삭제 + `/reports/`를 `.gitignore`에 추가 (tracked 파일은 삭제 커밋 포함).
+- **P0.6 실서버 트랜잭션 검증 완료**: `tests/integration/test_transaction_atomicity_e2e.py` fixture에 `KBO_E2E_DATABASE_URL` 분기 추가 — 설정 시 PostgreSQL 등 실서버에서 동일 원자성 계약 검증; **`drop_all` 누락으로 인한 테스트 간 오염 발견·수정** (SQLite in-memory 재생성에 감춰져 있었고 PostgreSQL에서 롤백 검증이 오염 데이터로 실패). PostgreSQL 16 컨테이너에서 3 passed 확인, 검증 컨테이너는 정리.
+- **운영 규칙 재확인**: 검증용 Docker 컨테이너는 격리된 DB/포트로 운영 (기존 `kbo_pgvector_alt`/Redis 컨테이너는 미변경).
+- **참고**: `src/scheduler/` 패키지 재구성(사용자 프로세스 진행, jobs/ 서브패키지 포함)은 미커밋 상태로 lint 오류 5건 잔여 — 다음 세션에서 커밋 시 `data/player_id_overrides.csv`(staged)와 `scripts/scheduler.py`와 함께 처리 필요.
+- **Verification**: CI 7개 job 전부 success (test/migration-apply/lint/rag-acceptance/integration-test/slow-no-network/integration-test-postgres); `ruff check src/ tests/ scripts/` = 0 errors.
