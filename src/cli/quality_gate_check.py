@@ -1,114 +1,15 @@
-"""CLI tool for running statistical quality gate checks."""
+"""Compatibility wrapper for src.cli.reports.quality_gate_check."""
 
 from __future__ import annotations
 
-import argparse
-import json
-import logging
 import sys
-from typing import TYPE_CHECKING
 
-from src.constants import KST
-from src.db.engine import SessionLocal
-from src.validators.quality_gate import run_quality_gate
+from src.cli.reports import quality_gate_check as _target_module
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-logger = logging.getLogger(__name__)
-DIFF_ENTRY_PREVIEW_LIMIT = 3
-MISMATCH_PREVIEW_LIMIT = 5
-
-CATEGORY_LABELS = {
-    "batting": "Batting",
-    "pitching": "Pitching",
-    "pa_formula": "PA Formula",
-    "team_batting": "Team Batting",
-    "team_pitching": "Team Pitching",
-    "futures_batting": "Futures Batting",
-    "futures_pitching": "Futures Pitching",
-}
-
-
-def _print_category(category: str, result: dict) -> None:
-    status = "PASSED" if result.get("ok") else "FAILED"
-    label = CATEGORY_LABELS.get(category, category.capitalize())
-    logger.info("%s: %s", label, status)
-
-    is_team = category.startswith("team_")
-    checked_label = "Checked Teams" if is_team else "Checked Players"
-    logger.info("  %s: %s", checked_label, result.get("checked_players", 0))
-
-    if result.get("error"):
-        logger.error("  Error: %s", result["error"])
-
-    mismatches = result.get("mismatches") or []
-    if mismatches:
-        logger.warning("  Mismatches: %d", len(mismatches))
-        for mismatch in mismatches[:5]:
-            entity = mismatch.get("player_id") or mismatch.get("team_id") or "?"
-            logger.warning("    - %s: %s", entity, mismatch.get("issue"))
-            diffs = mismatch.get("diffs")
-            if diffs:
-                for d in diffs[:3]:
-                    logger.warning("      %s", d)
-                if len(diffs) > DIFF_ENTRY_PREVIEW_LIMIT:
-                    logger.warning("      ... and %d more diff entries", len(diffs) - DIFF_ENTRY_PREVIEW_LIMIT)
-            for key in ("expected_pa", "actual_pa", "difference"):
-                if key in mismatch:
-                    logger.warning("      %s: %s", key, mismatch[key])
-        if len(mismatches) > MISMATCH_PREVIEW_LIMIT:
-            logger.warning("    - ... and %d more", len(mismatches) - MISMATCH_PREVIEW_LIMIT)
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the main entry point for this CLI command.
-
-    Args:
-        argv: Argv.
-
-    """
-    parser = argparse.ArgumentParser(description="KBO Data Statistical Quality Gate")
-
-    parser.add_argument("--year", type=int, help="Season year to check")
-    parser.add_argument("--json", action="store_true", help="Output as JSON")
-    args = parser.parse_args(argv)
-
-    if not args.year:
-        from datetime import datetime
-
-        year = datetime.now(KST).year
-    else:
-        year = args.year
-
-    with SessionLocal() as session:
-        result = run_quality_gate(session, year)
-
-    if args.json:
-        logger.info(json.dumps(result, indent=2))
-    else:
-        logger.info("Statistical Quality Gate for %d", year)
-        logger.info("----------------------------------------")
-
-        for category in [
-            "batting",
-            "pitching",
-            "pa_formula",
-            "team_batting",
-            "team_pitching",
-            "futures_batting",
-            "futures_pitching",
-        ]:
-            _print_category(category, result[category])
-
-        logger.info("----------------------------------------")
-        if result["ok"]:
-            logger.info("Overall Status: SUCCESS")
-        else:
-            logger.warning("Overall Status: FAILURE (Statistical inconsistencies detected)")
-
-    return 0 if result["ok"] else 1
-
+# Re-export all symbols and alias module in sys.modules so imports and patches work seamlessly
+globals().update({k: v for k, v in _target_module.__dict__.items() if not (k.startswith("__") and k.endswith("__"))})
+sys.modules[__name__] = _target_module
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if hasattr(_target_module, "main"):
+        sys.exit(_target_module.main())

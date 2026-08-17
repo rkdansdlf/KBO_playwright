@@ -1,0 +1,593 @@
+"""Unified data gap reporter for KBO pipeline.
+
+Aggregate gap checks from multiple existing monitors into a single
+structured report, then sends gap-type-aware alerts via Slack/Telegram.
+
+Usage:
+    python -m src.cli.gap_report                     # run + alert
+    python -m src.cli.gap_report --no-alert           # run only
+    python -m src.cli.gap_report --dry-run            # print only
+
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import or_, select, text
+from sqlalchemy.exc import SQLAlchemyError
+
+from src.cli.freshness_gate import collect_freshness_issues
+from src.cli.monitor_data_freshness import check_freshness
+from src.constants import MIN_KBO_PLAYER_ID
+from src.db.engine import SessionLocal
+from src.models.game import GamePlayByPlay
+from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
+from src.validators.standings_integrity import validate_standings_integrity
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+logger = logging.getLogger(__name__)
+KST = ZoneInfo("Asia/Seoul")
+DEFAULT_SEASON_TEAM_CODE_ALERT_RATE = 10.0
+NOTICE_STALE_HOURS = 72.0
+
+
+def _season_team_code_alert_rate() -> float:
+    """Return the NULL-rate percentage that triggers a season-team alert."""
+    raw_rate = os.getenv("SEASON_TEAM_CODE_GAP_ALERT_RATE", str(DEFAULT_SEASON_TEAM_CODE_ALERT_RATE))
+    try:
+        return max(0.0, float(raw_rate))
+    except ValueError:
+        logger.warning(
+            "Invalid SEASON_TEAM_CODE_GAP_ALERT_RATE=%r; using %.1f%%",
+            raw_rate,
+            DEFAULT_SEASON_TEAM_CODE_ALERT_RATE,
+        )
+        return DEFAULT_SEASON_TEAM_CODE_ALERT_RATE
+
+
+def check_relay_gaps() -> dict[str, Any]:
+    """Find COMPLETED/DRAW games missing game_play_by_play (last 14 days)."""
+    from src.models.game import Game
+    from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+    start = datetime.now(KST).date() - timedelta(days=14)
+    relay_games: list[str] = []
+    with SessionLocal() as session:
+        stmt = select(Game.game_id).where(
+            Game.game_date >= start,
+            Game.is_primary.is_(True),
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+            ~Game.game_id.in_(select(GamePlayByPlay.game_id).distinct()),
+        )
+        relay_games = list(session.execute(stmt).scalars().all())
+    return {
+        "ok": len(relay_games) == 0,
+        "missing_count": len(relay_games),
+        "missing_game_ids": relay_games,
+    }
+
+
+def check_profile_gaps() -> dict[str, Any]:
+    """Find player IDs missing photo_url (excludes pseudo/not-found)."""
+    from src.models.player import PlayerBasic
+
+    with SessionLocal() as session:
+        rows = (
+            session.query(PlayerBasic.player_id)
+            .filter(
+                PlayerBasic.photo_url.is_(None),
+                PlayerBasic.player_id >= MIN_KBO_PLAYER_ID,
+                or_(PlayerBasic.status.is_(None), ~PlayerBasic.status.in_(["NOT_FOUND", "PSEUDO"])),
+            )
+            .all()
+        )
+    player_ids = [r.player_id for r in rows]
+    return {
+        "ok": len(player_ids) == 0,
+        "missing_count": len(player_ids),
+        "missing_player_ids": player_ids[:20],
+    }
+
+
+def check_id_resolution_gaps() -> dict[str, Any]:
+    """Find NULL player_ids in game stats tables."""
+    with SessionLocal() as session:
+        batting = session.execute(text("SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL")).scalar() or 0
+        pitching = (
+            session.execute(text("SELECT COUNT(*) FROM game_pitching_stats WHERE player_id IS NULL")).scalar() or 0
+        )
+        lineups = session.execute(text("SELECT COUNT(*) FROM game_lineups WHERE player_id IS NULL")).scalar() or 0
+    total = batting + pitching + lineups
+    counts = {"batting": batting, "pitching": pitching, "lineups": lineups}
+    return {"ok": total == 0, "total": total, "counts": counts}
+
+
+def check_pa_formula_gaps() -> dict[str, Any]:
+    """Find PA formula violations (PA != AB+BB+HBP+SH+SF) for the current season."""
+    from src.cli.generate_quality_report import get_pa_formula_integrity
+
+    year = datetime.now(KST).year
+    with SessionLocal() as session:
+        pa_formula = get_pa_formula_integrity(session, year)
+    return {
+        "ok": pa_formula.get("ok", True),
+        "violation_count": pa_formula.get("violation_count", 0),
+        "violations": pa_formula.get("violations", [])[:20],
+    }
+
+
+def check_team_stats_gaps() -> dict[str, Any]:
+    """Check TeamSeasonBatting/Pitching vs PlayerSeasonBatting/Pitching consistency."""
+    year = datetime.now(KST).year
+    with SessionLocal() as session:
+        from src.validators.quality_gate import run_quality_gate
+
+        gate = run_quality_gate(session, year)
+        team_batting = gate.get("team_batting", {})
+        team_pitching = gate.get("team_pitching", {})
+        batting_mismatches = len(team_batting.get("mismatches", []))
+        pitching_mismatches = len(team_pitching.get("mismatches", []))
+        return {
+            "ok": team_batting.get("ok", True) and team_pitching.get("ok", True),
+            "batting_mismatches": batting_mismatches,
+            "pitching_mismatches": pitching_mismatches,
+            "total": batting_mismatches + pitching_mismatches,
+            "details": {
+                "batting": team_batting.get("mismatches", []),
+                "pitching": team_pitching.get("mismatches", []),
+            },
+        }
+
+
+def check_season_stat_team_code_gaps() -> dict[str, Any]:
+    """Check NULL team_code in player_season_batting/pitching tables."""
+    with SessionLocal() as session:
+        batting_null = session.execute(
+            text("SELECT COUNT(*) FROM player_season_batting WHERE team_code IS NULL"),
+        ).scalar()
+        batting_total = session.execute(
+            text("SELECT COUNT(*) FROM player_season_batting"),
+        ).scalar()
+        pitching_null = session.execute(
+            text("SELECT COUNT(*) FROM player_season_pitching WHERE team_code IS NULL OR team_code = ''"),
+        ).scalar()
+        pitching_total = session.execute(
+            text("SELECT COUNT(*) FROM player_season_pitching"),
+        ).scalar()
+
+        batting_rate = (batting_null / batting_total * 100) if batting_total else 0
+        pitching_rate = (pitching_null / pitching_total * 100) if pitching_total else 0
+        alert_threshold = _season_team_code_alert_rate()
+
+        return {
+            "ok": batting_null == 0 and pitching_null == 0,
+            "alert": batting_rate > alert_threshold or pitching_rate > alert_threshold,
+            "alert_threshold_rate": alert_threshold,
+            "batting_null": batting_null,
+            "batting_total": batting_total,
+            "batting_null_rate": round(batting_rate, 1),
+            "pitching_null": pitching_null,
+            "pitching_total": pitching_total,
+            "pitching_null_rate": round(pitching_rate, 1),
+            "total_null": batting_null + pitching_null,  # type: ignore[operator]
+        }
+
+
+def _collect_gaps(report: dict[str, Any]) -> None:
+    """Collect all gap checks into the report dict."""
+    _check_freshness(report)
+    _check_relay(report)
+    _check_staleness(report)
+    _check_standings(report)
+    _check_profile(report)
+    _check_id_resolution(report)
+    _check_pa_formula(report)
+    _check_team_stats(report)
+    _check_season_team_code(report)
+    report["gaps"]["NOTICES"] = check_notices_gaps()
+    report["gaps"]["MILESTONES"] = check_milestones_gaps()
+    report["gaps"]["FUTURES"] = check_futures_gaps()
+    report["gaps"]["SPLITS"] = check_splits_gaps()
+
+
+def build_gap_report() -> dict[str, Any]:
+    """Run all gap checks and return a unified report dict."""
+    report: dict[str, Any] = {
+        "generated_at": datetime.now(KST).isoformat(),
+        "gaps": {},
+    }
+    _collect_gaps(report)
+    return report
+
+
+def check_notices_gaps() -> dict[str, Any]:
+    """Check KBO official press releases freshness and missing URL gaps."""
+    from src.models.kbo_press_release import KboPressRelease
+
+    with SessionLocal() as session:
+        total = session.query(KboPressRelease).count()
+        latest = session.query(KboPressRelease).order_by(KboPressRelease.id.desc()).first()
+        stale = False
+        if latest and latest.created_at:
+            created_at = latest.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=KST)
+            age_hours = (datetime.now(KST) - created_at).total_seconds() / 3600
+            stale = age_hours > NOTICE_STALE_HOURS
+        return {
+            "ok": not stale and total > 0,
+            "total_notices": total,
+            "latest_notice_title": latest.title if latest else None,
+            "stale": stale,
+        }
+
+
+def check_milestones_gaps() -> dict[str, Any]:
+    """Check player milestones countdown consistency."""
+    from src.models.player_milestone import PlayerMilestone
+
+    with SessionLocal() as session:
+        total = session.query(PlayerMilestone).count()
+        invalid_negative = session.query(PlayerMilestone).filter(PlayerMilestone.remaining_val < 0).count()
+        return {
+            "ok": invalid_negative == 0 and total > 0,
+            "total_milestones": total,
+            "invalid_negative": invalid_negative,
+        }
+
+
+def check_futures_gaps() -> dict[str, Any]:
+    """Check Futures League schedule coverage gaps."""
+    from src.models.futures_schedule import FuturesGameSchedule
+
+    with SessionLocal() as session:
+        total = session.query(FuturesGameSchedule).count()
+        return {
+            "ok": total > 0,
+            "total_futures_games": total,
+        }
+
+
+def check_splits_gaps() -> dict[str, Any]:
+    """Check player situational splits stats coverage gaps."""
+    from src.models.player_splits_stat import PlayerSplitsStat
+
+    with SessionLocal() as session:
+        total = session.query(PlayerSplitsStat).count()
+        return {
+            "ok": total > 0,
+            "total_splits": total,
+        }
+
+
+def _check_freshness(report: dict[str, Any]) -> None:
+    try:
+        with SessionLocal() as session:
+            freshness = collect_freshness_issues(session, days=3)
+        total_issues = sum(len(v) for v in freshness.values())
+        report["gaps"]["FRESHNESS"] = {
+            "ok": total_issues == 0,
+            "total_issues": total_issues,
+            "details": {k: v for k, v in freshness.items() if v},
+        }
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("FRESHNESS gap check failed")
+        report["gaps"]["FRESHNESS"] = {"ok": False, "error": str(e)}
+
+
+def _check_relay(report: dict[str, Any]) -> None:
+    try:
+        report["gaps"]["RELAY"] = check_relay_gaps()
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("RELAY gap check failed")
+        report["gaps"]["RELAY"] = {"ok": False, "error": str(e)}
+
+
+def _check_staleness(report: dict[str, Any]) -> None:
+    try:
+        stale = check_freshness(dry_run=True)
+        report["gaps"]["STALENESS"] = {
+            "ok": len(stale) == 0,
+            "stale_count": len(stale),
+            "details": stale,
+        }
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("STALENESS gap check failed")
+        report["gaps"]["STALENESS"] = {"ok": False, "error": str(e)}
+
+
+def _check_standings(report: dict[str, Any]) -> None:
+    try:
+        target_date = datetime.now(KST).date() - timedelta(days=1)
+        with SessionLocal() as session:
+            standings = validate_standings_integrity(session, target_date)
+        report["gaps"]["STANDINGS"] = {
+            "ok": standings.get("ok", False),
+            "mismatches": len(standings.get("mismatches", [])),
+            "missing_scores": len(standings.get("missing_score_games", [])),
+        }
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("STANDINGS gap check failed")
+        report["gaps"]["STANDINGS"] = {"ok": False, "error": str(e)}
+
+
+def _check_profile(report: dict[str, Any]) -> None:
+    try:
+        report["gaps"]["PROFILE"] = check_profile_gaps()
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("PROFILE gap check failed")
+        report["gaps"]["PROFILE"] = {"ok": False, "error": str(e)}
+
+
+def _check_id_resolution(report: dict[str, Any]) -> None:
+    try:
+        report["gaps"]["ID_RESOLUTION"] = check_id_resolution_gaps()
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("ID_RESOLUTION gap check failed")
+        report["gaps"]["ID_RESOLUTION"] = {"ok": False, "error": str(e)}
+
+
+def _check_pa_formula(report: dict[str, Any]) -> None:
+    try:
+        report["gaps"]["PA_FORMULA"] = check_pa_formula_gaps()
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("PA_FORMULA gap check failed")
+        report["gaps"]["PA_FORMULA"] = {"ok": False, "error": str(e)}
+
+
+def _check_team_stats(report: dict[str, Any]) -> None:
+    try:
+        report["gaps"]["TEAM_STATS"] = check_team_stats_gaps()
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("TEAM_STATS gap check failed")
+        report["gaps"]["TEAM_STATS"] = {"ok": False, "error": str(e)}
+
+
+def _check_season_team_code(report: dict[str, Any]) -> None:
+    try:
+        report["gaps"]["SEASON_TEAM_CODE"] = check_season_stat_team_code_gaps()
+    except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("SEASON_TEAM_CODE gap check failed")
+        report["gaps"]["SEASON_TEAM_CODE"] = {"ok": False, "error": str(e)}
+
+
+def _gap_severity(gap: dict[str, Any]) -> str:
+    if gap.get("error"):
+        return "error"
+    if gap.get("alert") is False:
+        return "ok"
+    if not gap.get("ok", True):
+        return "warning"
+    return "ok"
+
+
+def _freshness_summary_parts(gap_data: dict[str, Any]) -> list[str]:
+    details = gap_data.get("details", {})
+    summary_parts = [f"{gap_data.get('total_issues', 0)} total issues"]
+    for key, value in details.items():
+        if value:
+            summary_parts.append(f"{key}: {len(value)} games")
+    return summary_parts
+
+
+def _team_stats_summary_parts(gap_data: dict[str, Any]) -> list[str]:
+    summary_parts = [f"{gap_data.get('total', 0)} team stat mismatches"]
+    bat = gap_data.get("batting_mismatches", 0)
+    pit = gap_data.get("pitching_mismatches", 0)
+    if bat:
+        summary_parts.append(f"batting={bat}")
+    if pit:
+        summary_parts.append(f"pitching={pit}")
+    return summary_parts
+
+
+def _season_team_code_summary_parts(gap_data: dict[str, Any]) -> list[str]:
+    """Format season team-code NULL counts and the configured alert threshold."""
+    return [
+        (
+            f"{gap_data.get('total_null', 0)} NULL team_codes "
+            f"(batting={gap_data.get('batting_null_rate', 0):.1f}%, "
+            f"pitching={gap_data.get('pitching_null_rate', 0):.1f}%, "
+            f"alert_threshold={gap_data.get('alert_threshold_rate', DEFAULT_SEASON_TEAM_CODE_ALERT_RATE):.1f}%)"
+        ),
+    ]
+
+
+def _gap_summary_parts(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
+    if gap_type == "FRESHNESS":
+        return _freshness_summary_parts(gap_data)
+    if gap_type == "TEAM_STATS":
+        return _team_stats_summary_parts(gap_data)
+    if gap_type == "SEASON_TEAM_CODE":
+        return _season_team_code_summary_parts(gap_data)
+    if gap_data.get("error"):
+        return [f"Error: {gap_data['error']}"]
+    return _GAP_SUMMARY_FORMATTERS.get(gap_type, lambda _: [])(gap_data)
+
+
+_GAP_SUMMARY_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
+    "RELAY": lambda d: [f"{d.get('missing_count', 0)} games missing PBP"],
+    "STALENESS": lambda d: [f"{d.get('stale_count', 0)} stale sources"],
+    "STANDINGS": lambda d: [f"{d.get('mismatches', 0)} mismatches, {d.get('missing_scores', 0)} missing scores"],
+    "PROFILE": lambda d: [f"{d.get('missing_count', 0)} players missing profiles"],
+    "PA_FORMULA": lambda d: [f"{d.get('violation_count', 0)} PA formula violations"],
+    "ID_RESOLUTION": lambda d: [
+        (
+            f"{d.get('total', 0)} NULL player_ids "
+            f"(batting={d.get('counts', {}).get('batting')}, "
+            f"pitching={d.get('counts', {}).get('pitching')}, "
+            f"lineups={d.get('counts', {}).get('lineups')})"
+        ),
+    ],
+}
+
+
+def _freshness_detail_items(gap_data: dict[str, Any]) -> list[str]:
+    detail_items: list[str] = []
+    details = gap_data.get("details", {})
+    for key, value in details.items():
+        detail_items.extend(f"{key}: {game_id}" for game_id in value[:3])
+    return detail_items
+
+
+def _pa_formula_detail_items(gap_data: dict[str, Any]) -> list[str]:
+    return [
+        f"{violation['game_date']} {violation['player_name']} PA={violation['pa']} ≠ AB+BB+HBP+SH+SF"
+        for violation in (gap_data.get("violations") or [])[:5]
+    ]
+
+
+def _team_stats_detail_items(gap_data: dict[str, Any]) -> list[str]:
+    detail_items = []
+    details = gap_data.get("details", {})
+    for mismatch in (details.get("batting") or [])[:3]:
+        team_id = mismatch.get("team_id", "?")
+        detail_items.append(f"타격 [{team_id}]: {mismatch.get('issue', '')}")
+        detail_items.extend(f"  {diff}" for diff in (mismatch.get("diffs") or [])[:2])
+    for mismatch in (details.get("pitching") or [])[:3]:
+        team_id = mismatch.get("team_id", "?")
+        detail_items.append(f"투수 [{team_id}]: {mismatch.get('issue', '')}")
+        detail_items.extend(f"  {diff}" for diff in (mismatch.get("diffs") or [])[:2])
+    return detail_items
+
+
+_GAP_DETAIL_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
+    "RELAY": lambda d: [f"{gid}" for gid in (d.get("missing_game_ids") or [])[:5]],
+    "PROFILE": lambda d: [f"player_id={pid}" for pid in (d.get("missing_player_ids") or [])[:5]],
+    "STALENESS": lambda d: d.get("details", [])[:5],
+    "FRESHNESS": _freshness_detail_items,
+    "PA_FORMULA": _pa_formula_detail_items,
+    "TEAM_STATS": _team_stats_detail_items,
+}
+
+
+def _gap_detail_items(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
+    formatter = _GAP_DETAIL_FORMATTERS.get(gap_type)
+    return formatter(gap_data) if formatter else []
+
+
+def send_gap_alerts(report: dict[str, Any]) -> None:
+    """Send gap-type-aware alerts for each non-ok gap in the report.
+
+    Args:
+        report: Report.
+
+    """
+    for gap_type, gap_data in report.get("gaps", {}).items():
+        severity = _gap_severity(gap_data)
+        if severity == "ok":
+            continue
+
+        summary_parts = _gap_summary_parts(gap_type, gap_data)
+        summary = ", ".join(summary_parts) if summary_parts else "Unknown gap"
+        detail_items = _gap_detail_items(gap_type, gap_data)
+        SlackWebhookClient.send_gap_alert(gap_type, summary, detail_items)
+
+
+def format_report_summary(report: dict[str, Any]) -> str:
+    """Return a human-readable one-line summary of all gap states.
+
+    Args:
+        report: Report.
+
+    """
+    parts = []
+
+    for gap_type, gap_data in report.get("gaps", {}).items():
+        emoji = GAP_EMOJI_MAP.get(gap_type, "\u2753")
+        sev = _gap_severity(gap_data)
+        icon = "\u2705" if sev == "ok" else "\u26a0\ufe0f" if sev == "warning" else "\u274c"
+        parts.append(f"{icon}{emoji}{gap_type}")
+    return " | ".join(parts)
+
+
+def run_gap_report(
+    *,
+    alert: bool = True,
+    send_summary: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Build and optionally alert the unified gap report.
+
+    Args:
+        alert: Alert.
+        send_summary: If True, send daily overall gap report summary notification.
+        dry_run: If True, performs a dry run without persisting changes.
+
+    """
+    if dry_run:
+        logger.info("[GAP-REPORT] DRY RUN — no alerts will be sent")
+
+    report = build_gap_report()
+    summary = format_report_summary(report)
+    logger.info("[GAP-REPORT] %s", summary)
+
+    for gap_type, gap_data in report.get("gaps", {}).items():
+        sev = _gap_severity(gap_data)
+        emoji = GAP_EMOJI_MAP.get(gap_type, "❓")
+        icon = "✅" if sev == "ok" else "⚠️" if sev == "warning" else "❌"
+        count = ""
+        if "missing_count" in gap_data:
+            count = f" ({gap_data['missing_count']})"
+        elif "total_issues" in gap_data:
+            count = f" ({gap_data['total_issues']})"
+        elif "stale_count" in gap_data:
+            count = f" ({gap_data['stale_count']})"
+        elif "total" in gap_data:
+            count = f" ({gap_data['total']})"
+        elif "violation_count" in gap_data:
+            count = f" ({gap_data['violation_count']})"
+        logger.info("  %s %s %s: %s%s", icon, emoji, gap_type, sev, count)
+
+    if alert and not dry_run:
+        send_gap_alerts(report)
+
+    if send_summary and not dry_run:
+        SlackWebhookClient.send_gap_summary_alert(report)
+
+    return report
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
+    parser = argparse.ArgumentParser(description="KBO Unified Data Gap Report")
+
+    parser.add_argument("--no-alert", action="store_true", help="Suppress Slack/Telegram alerts")
+    parser.add_argument(
+        "--send-summary",
+        "--notify-summary",
+        action="store_true",
+        help="Send daily overall gap report summary via Telegram/Slack",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Print only, no alerts")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
+    parser = build_arg_parser()
+
+    args = parser.parse_args(argv)
+    run_gap_report(alert=not args.no_alert, send_summary=args.send_summary, dry_run=args.dry_run)
+
+
+if __name__ == "__main__":
+    main()

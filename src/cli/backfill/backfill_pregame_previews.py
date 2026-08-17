@@ -1,0 +1,329 @@
+"""Backfill missing pregame preview data for scheduled games.
+
+This CLI finds scheduled game dates whose preview summaries or starting
+pitcher fields are incomplete, then runs daily_preview_batch for those dates.
+
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import text
+
+from src.cli.daily_preview_batch import run_preview_batch
+from src.constants import DATE_STR_LEN
+from src.db.engine import SessionLocal
+from src.utils.date_helpers import parse_datetime_str
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+logger = logging.getLogger(__name__)
+
+KST = ZoneInfo("Asia/Seoul")
+
+
+@dataclass(frozen=True)
+class PregameBackfillDate:
+    """PregameBackfillDate class."""
+
+    target_date: str
+    scheduled_total: int
+    starters_complete: int
+    preview_rows: int
+    preview_missing_starters: int
+
+
+def _yyyymmdd(value: str) -> str:
+    normalized = value.replace("-", "")
+    if len(normalized) != DATE_STR_LEN or not normalized.isdigit():
+        msg = f"Invalid date: {value}. Use YYYYMMDD."
+        raise argparse.ArgumentTypeError(msg)
+    parse_datetime_str(normalized)
+    return normalized
+
+
+def _default_start_date() -> str:
+    return datetime.now(KST).strftime("%Y%m%d")
+
+
+def _default_end_date(days_ahead: int) -> str:
+    return (datetime.now(KST).date() + timedelta(days=days_ahead)).strftime("%Y%m%d")
+
+
+def _preview_detail_has_starters(detail_text: str | None) -> bool:
+    if not detail_text:
+        return False
+    try:
+        payload = json.loads(detail_text)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return bool(str(payload.get("away_starter") or "").strip()) and bool(str(payload.get("home_starter") or "").strip())
+
+
+def find_missing_pregame_dates(
+    *,
+    start_date: str,
+    end_date: str,
+    include_complete: bool = False,
+    limit_dates: int | None = None,
+) -> list[PregameBackfillDate]:
+    """Find missing pregame dates.
+
+    Args:
+        start_date: Start Date.
+        end_date: End Date.
+        include_complete: Include Complete.
+        limit_dates: Limit Dates.
+
+    Returns:
+        List of results.
+
+    """
+    query = """
+
+        SELECT
+            REPLACE(CAST(g.game_date AS TEXT), '-', '') AS target_date,
+            g.game_id,
+            g.away_pitcher,
+            g.home_pitcher,
+            p.detail_text AS preview_detail_text
+        FROM game g
+        LEFT JOIN (
+            SELECT gs.game_id, gs.detail_text
+            FROM game_summary gs
+            JOIN (
+                SELECT game_id, MAX(id) AS id
+                FROM game_summary
+                WHERE summary_type = '프리뷰'
+                GROUP BY game_id
+            ) latest ON latest.id = gs.id
+        ) p ON p.game_id = g.game_id
+        WHERE UPPER(g.game_status) = 'SCHEDULED'
+          AND REPLACE(CAST(g.game_date AS TEXT), '-', '') BETWEEN :start_date AND :end_date
+    """
+    query += " ORDER BY g.game_date"
+
+    params: dict[str, object] = {
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+    with SessionLocal() as session:
+        rows = session.execute(text(query), params).all()
+
+    by_date: dict[str, PregameBackfillDate] = {}
+    for row in rows:
+        target_date = str(row.target_date)
+        current = by_date.get(target_date)
+        if current is None:
+            current = PregameBackfillDate(
+                target_date=target_date,
+                scheduled_total=0,
+                starters_complete=0,
+                preview_rows=0,
+                preview_missing_starters=0,
+            )
+
+        has_preview = row.preview_detail_text is not None
+        starters_complete = bool(str(row.away_pitcher or "").strip()) and bool(str(row.home_pitcher or "").strip())
+        preview_has_starters = _preview_detail_has_starters(row.preview_detail_text)
+
+        by_date[target_date] = PregameBackfillDate(
+            target_date=target_date,
+            scheduled_total=current.scheduled_total + 1,
+            starters_complete=current.starters_complete + int(starters_complete),
+            preview_rows=current.preview_rows + int(has_preview),
+            preview_missing_starters=current.preview_missing_starters + int(has_preview and not preview_has_starters),
+        )
+
+    targets = list(by_date.values())
+    if not include_complete:
+        targets = [
+            target
+            for target in targets
+            if target.starters_complete < target.scheduled_total
+            or target.preview_rows < target.scheduled_total
+            or target.preview_missing_starters > 0
+        ]
+    if limit_dates is not None:
+        targets = targets[:limit_dates]
+    return targets
+
+
+def get_pregame_date_status(target_date: str) -> PregameBackfillDate | None:
+    """Get pregame date status.
+
+    Args:
+        target_date: Target date for the operation.
+        target_date: Target Date.
+
+    Returns:
+        The result of the operation.
+
+    """
+    statuses = find_missing_pregame_dates(
+        start_date=target_date,
+        end_date=target_date,
+        include_complete=True,
+        limit_dates=1,
+    )
+    return statuses[0] if statuses else None
+
+
+def _resolve_backfill_range(args: argparse.Namespace) -> tuple[str, str]:
+    start_date = args.start_date or _default_start_date()
+    end_date = args.end_date or _default_end_date(args.days_ahead)
+    return start_date, end_date
+
+
+def _log_backfill_targets(start_date: str, end_date: str, targets: list[PregameBackfillDate]) -> None:
+    logger.info("Pregame backfill targets (%s..%s): %s date(s)", start_date, end_date, len(targets))
+    for target in targets:
+        logger.info(
+            "  %s: starters=%s/%s, preview=%s/%s, preview_missing_starters=%s",
+            target.target_date,
+            target.starters_complete,
+            target.scheduled_total,
+            target.preview_rows,
+            target.scheduled_total,
+            target.preview_missing_starters,
+        )
+
+
+def _is_incomplete_after_backfill(target_date: str) -> str | None:
+    refreshed = get_pregame_date_status(target_date)
+    if not refreshed:
+        return None
+    if refreshed.starters_complete >= refreshed.scheduled_total and refreshed.preview_missing_starters == 0:
+        return None
+    return (
+        f"{target_date}: "
+        f"starters={refreshed.starters_complete}/{refreshed.scheduled_total}, "
+        f"preview={refreshed.preview_rows}/{refreshed.scheduled_total}, "
+        f"preview_missing_starters={refreshed.preview_missing_starters}"
+    )
+
+
+def _log_backfill_result(saved_total: int, failed: list[str], incomplete: list[str]) -> None:
+    logger.info(
+        "\nPregame backfill finished. saved_total=%s, failed_empty=%s, incomplete=%s",
+        saved_total,
+        len(failed),
+        len(incomplete),
+    )
+    if failed:
+        logger.info("Dates with scheduled games but no preview rows saved:")
+        for target_date in failed:
+            logger.info("  %s", target_date)
+    if incomplete:
+        logger.info("Dates still missing complete starting pitchers:")
+        for target in incomplete:
+            logger.info("  %s", target)
+
+
+async def run_backfill(args: argparse.Namespace) -> int:
+    """Run run backfill.
+
+    Args:
+        args: Positional arguments to pass through.
+        args: Args.
+
+    Returns:
+        Integer result.
+
+    """
+    start_date, end_date = _resolve_backfill_range(args)
+
+    targets = find_missing_pregame_dates(
+        start_date=start_date,
+        end_date=end_date,
+        include_complete=args.include_complete,
+        limit_dates=args.limit_dates,
+    )
+
+    if not targets:
+        logger.info("No missing scheduled pregame dates found between %s and %s.", start_date, end_date)
+        return 0
+
+    _log_backfill_targets(start_date, end_date, targets)
+
+    if args.dry_run:
+        return 0
+
+    failed: list[str] = []
+    incomplete: list[str] = []
+    saved_total = 0
+    for target in targets:
+        logger.info("\nRunning pregame backfill for %s...", target.target_date)
+        saved_ids = await run_preview_batch(target.target_date)
+        saved_count = len(saved_ids)
+        saved_total += saved_count
+        logger.info("Backfill result for %s: saved=%s", target.target_date, saved_count)
+        if args.fail_on_empty and target.scheduled_total and saved_count == 0:
+            failed.append(target.target_date)
+        if args.fail_on_incomplete:
+            incomplete_status = _is_incomplete_after_backfill(target.target_date)
+            if incomplete_status:
+                incomplete.append(incomplete_status)
+
+    _log_backfill_result(saved_total, failed, incomplete)
+    if failed or incomplete:
+        return 1
+    return 0
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build arg parser.
+
+    Returns:
+        The result of the operation.
+
+    """
+    parser = argparse.ArgumentParser(description="Backfill missing scheduled pregame previews")
+
+    parser.add_argument("--start-date", type=_yyyymmdd, help="Start date YYYYMMDD. Defaults to today in KST.")
+    parser.add_argument("--end-date", type=_yyyymmdd, help="End date YYYYMMDD. Defaults to today + --days-ahead.")
+    parser.add_argument("--days-ahead", type=int, default=1, help="Default end-date offset when --end-date is omitted.")
+    parser.add_argument("--limit-dates", type=int, help="Limit number of target dates to process.")
+    parser.add_argument("--include-complete", action="store_true", help="Include dates already complete.")
+    parser.add_argument("--dry-run", action="store_true", help="Only print target dates.")
+    parser.add_argument(
+        "--fail-on-empty",
+        action="store_true",
+        help="Exit non-zero when a scheduled date saves zero preview rows.",
+    )
+    parser.add_argument(
+        "--fail-on-incomplete",
+        action="store_true",
+        help="Exit non-zero when starters are still incomplete after backfill.",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the main entry point for this CLI command.
+
+    Args:
+        argv: Argv.
+
+    """
+    parser = build_arg_parser()
+
+    args = parser.parse_args(argv)
+    return asyncio.run(run_backfill(args))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

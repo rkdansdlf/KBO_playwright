@@ -1,46 +1,15 @@
-"""CLI for diagnosing crawler and pipeline failure logs."""
+"""Compatibility wrapper for src.cli.reports.diagnose_crawler_failure."""
 
 from __future__ import annotations
 
-import argparse
 import sys
-from pathlib import Path
-from typing import TYPE_CHECKING
 
-from src.monitoring.failure_diagnosis import diagnose_sources, render_diagnosis_text, report_to_json
+from src.cli.reports import diagnose_crawler_failure as _target_module
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the main entry point for this CLI command.
-
-    Args:
-        argv: Argv.
-
-    """
-    parser = argparse.ArgumentParser(description="Diagnose crawler failure logs")
-
-    parser.add_argument("logs", nargs="*", help="Log files to inspect. Reads stdin when omitted.")
-    parser.add_argument("--json", action="store_true", help="Print JSON report")
-    args = parser.parse_args(argv)
-
-    sources = _read_sources(args.logs)
-    report = diagnose_sources(sources)
-
-    if args.json:
-        sys.stdout.write(report_to_json(report) + "\n")
-    else:
-        sys.stdout.write(render_diagnosis_text(report) + "\n")
-    return report.exit_code
-
-
-def _read_sources(paths: Sequence[str]) -> dict[str, str]:
-    if not paths:
-        return {"stdin": sys.stdin.read()}
-    return {path: Path(path).read_text(encoding="utf-8") for path in paths}
-
+# Re-export all symbols and alias module in sys.modules so imports and patches work seamlessly
+globals().update({k: v for k, v in _target_module.__dict__.items() if not (k.startswith("__") and k.endswith("__"))})
+sys.modules[__name__] = _target_module
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if hasattr(_target_module, "main"):
+        sys.exit(_target_module.main())

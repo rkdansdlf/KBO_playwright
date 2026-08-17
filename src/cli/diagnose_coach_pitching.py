@@ -1,126 +1,15 @@
-"""Diagnose completed-game Coach pitcher data flow.
-
-Shows, per game, where starter and bullpen data is present or missing across:
-1. raw crawl tables (game_pitching_stats),
-2. repository payload construction,
-3. final postgame Coach review JSON (game_summary / 리뷰_WPA).
-
-"""
+"""Compatibility wrapper for src.cli.reports.diagnose_coach_pitching."""
 
 from __future__ import annotations
 
-import argparse
-import json
-import logging
 import sys
-from typing import TYPE_CHECKING
 
-from src.db.engine import SessionLocal
-from src.models.game import Game
-from src.services.context_aggregator import ContextAggregator
-from src.utils.date_helpers import parse_date_str
-from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.cli.reports import diagnose_coach_pitching as _target_module
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from sqlalchemy.orm import Session
-
-logger = logging.getLogger(__name__)
-
-
-def _game_ids_for_date(session: Session, target_date: str) -> list[str]:
-    target = parse_date_str(target_date)
-    return [
-        row[0]
-        for row in session.query(Game.game_id)
-        .filter(
-            Game.game_date == target,
-            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
-        )
-        .order_by(Game.game_id.asc())
-        .all()
-    ]
-
-
-def _print_text_report(rows: list[dict]) -> None:
-    if not rows:
-        logger.info("No completed games matched.")
-        return
-
-    for row in rows:
-        raw = row["raw_tables"]
-        repo = row["repository"]
-        final = row["final_payload"]
-        logger.info("%s: %s", row["game_id"], row["drop_stage"])
-        logger.info(
-            "  raw: pitching=%s starters=%s bullpen=%s missing_player_ids=%s",
-            raw["game_pitching_rows"],
-            raw["starter_rows"],
-            raw["bullpen_rows"],
-            raw["player_id_missing_rows"],
-        )
-        logger.info(
-            "  repository: starters=%s bullpen=%s season_matches=%s unmatched=%s",
-            repo["starter_rows"],
-            repo["bullpen_rows"],
-            repo["season_pitching_matches"],
-            len(repo["unmatched_season_stats"]),
-        )
-        logger.info(
-            "  final_payload: review=%s summary_rows=%s pitching_breakdown=%s starters=%s bullpen=%s",
-            final["review_summary_found"],
-            final["review_summary_rows"],
-            final["pitching_breakdown_found"],
-            final["starter_rows"],
-            final["bullpen_rows"],
-        )
-        if row.get("warnings"):
-            logger.info("  warnings: %s", ", ".join(row["warnings"]))
-        if repo["unmatched_season_stats"]:
-            examples = ", ".join(
-                f"{item.get('player_name')}({item.get('player_id')})" for item in repo["unmatched_season_stats"][:5]
-            )
-            logger.info("  unmatched_examples: %s", examples)
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the main entry point for this CLI command.
-
-    Args:
-        argv: Argv.
-
-    """
-    parser = argparse.ArgumentParser(description="Trace completed-game Coach starter/bullpen data by game.")
-
-    parser.add_argument("--date", help="Completed game date to inspect (YYYYMMDD)")
-    parser.add_argument(
-        "--game-id",
-        action="append",
-        dest="game_ids",
-        help="Specific game ID to inspect. Repeatable.",
-    )
-    parser.add_argument("--json", action="store_true", help="Emit JSON instead of text")
-    args = parser.parse_args(argv)
-
-    if not args.date and not args.game_ids:
-        parser.error("provide --date or at least one --game-id")
-
-    with SessionLocal() as session:
-        game_ids = list(args.game_ids or [])
-        if args.date:
-            game_ids.extend(_game_ids_for_date(session, args.date))
-        game_ids = list(dict.fromkeys(game_ids))
-
-        agg = ContextAggregator(session)
-        rows = [agg.diagnose_completed_game_coach_pitching(game_id) for game_id in game_ids]
-
-    if args.json:
-        logger.info(json.dumps(rows, ensure_ascii=False, indent=2))
-    else:
-        _print_text_report(rows)
-    return 0
-
+# Re-export all symbols and alias module in sys.modules so imports and patches work seamlessly
+globals().update({k: v for k, v in _target_module.__dict__.items() if not (k.startswith("__") and k.endswith("__"))})
+sys.modules[__name__] = _target_module
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if hasattr(_target_module, "main"):
+        sys.exit(_target_module.main())
