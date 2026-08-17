@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.apply_oracle_migrations import (
     _is_already_exists_error,
+    _execute_migration,
     _migration_paths,
     main,
 )
@@ -39,6 +40,18 @@ def test_migration_paths_exclude_safety_gated_files_by_default(tmp_path) -> None
         "024_deletion_anomaly_integrity.sql",
         "065_reconcile_model_indexes.sql",
     ]
+
+
+def test_execute_migration_preserves_plsql_block_terminator(tmp_path) -> None:
+    """Keep the final semicolon required by Oracle anonymous PL/SQL blocks."""
+    migration = tmp_path / "065_plsql.sql"
+    migration.write_text("-- comment\nDECLARE\nBEGIN\n    NULL;\nEND;\n/\n", encoding="utf-8")
+    connection = MagicMock()
+
+    _execute_migration(connection, migration)
+
+    statement = connection.exec_driver_sql.call_args.args[0]
+    assert statement.endswith("END;")
 
 
 def test_already_exists_error_recognizes_oracle_object_exists_code() -> None:

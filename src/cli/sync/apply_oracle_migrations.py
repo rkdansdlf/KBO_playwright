@@ -132,9 +132,15 @@ def _execute_migration(connection: Connection, path: Path) -> None:
         statement = block.strip()
         if not statement:
             continue
-        if statement.endswith(";"):
+        if statement.endswith(";") and not _is_plsql_block(statement):
             statement = statement[:-1].rstrip()
         connection.exec_driver_sql(statement)
+
+
+def _is_plsql_block(statement: str) -> bool:
+    """Return whether a migration statement is an anonymous PL/SQL block."""
+    without_leading_comments = re.sub(r"(?m)^\s*--[^\n]*(?:\n|$)", "", statement).lstrip()
+    return bool(re.match(r"(?i)^(?:DECLARE|BEGIN)\b", without_leading_comments))
 
 
 def apply_migrations(
