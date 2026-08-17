@@ -101,6 +101,9 @@ data/archive/
 coverage.xml
 coverage.json
 coverage_report.txt
+
+# Integrity verification reports (generated artifacts)
+/reports/
 /.opencode
 /data/*
 !/data/game_status_overrides.csv
