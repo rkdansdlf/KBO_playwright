@@ -16,6 +16,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -62,6 +63,7 @@ _DECEASED_PREFIX_RE = re.compile(r"^\(?故?\)?")
 _MIN_YAGOO_TABLE_ROWS = 2
 _YAGOO_CELL_COUNT = 4
 _AWARD_HAS_CATEGORY_PREFIXES = ("골든글러브", "수비상")
+AWARD_PARSER_VERSION = "award-crawler-v1"
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,17 @@ class AwardRecord:
     category: str | None
     player_name: str
     team_name: str
+
+
+@dataclass(frozen=True)
+class AwardSourceRun:
+    """Summarize one source fetch and parse attempt."""
+
+    source_key: str
+    source_url: str
+    fetched: bool
+    parsed_records: int
+    error: str | None = None
 
 
 def _extract_year(text: str) -> int | None:
@@ -117,8 +130,19 @@ class AwardCrawler:
     def __init__(self) -> None:
         """Initialize a new instance."""
         self.policy = RequestPolicy()
-        self._raw_snapshots: list[dict[str, str]] = []
+        self._raw_snapshots: list[dict[str, Any]] = []
+        self._source_runs: list[AwardSourceRun] = []
         self._client: httpx.AsyncClient | None = None
+
+    @property
+    def source_runs(self) -> tuple[AwardSourceRun, ...]:
+        """Return source fetch/parse results from the most recent crawl."""
+        return tuple(self._source_runs)
+
+    @property
+    def raw_snapshots(self) -> tuple[dict[str, Any], ...]:
+        """Return raw snapshots captured by the most recent crawl."""
+        return tuple(dict(snapshot) for snapshot in self._raw_snapshots)
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Return the shared lazily-created httpx client.
@@ -212,15 +236,46 @@ class AwardCrawler:
 
         """
         records: list[AwardRecord] = []
+        self._source_runs = []
         for award_type, title in WIKI_PAGES.items():
             if types is not None and award_type not in types:
                 continue
             try:
                 soup = await self._fetch_wiki_page(title)
                 parsed = self._parse_wiki_soup(soup, award_type)
+                self._mark_snapshot_parse_status(
+                    "kbo_awards_wikipedia",
+                    f"{WIKI_API_URL}?page={title}",
+                    parsed_records=len(parsed),
+                )
+                self._source_runs.append(
+                    AwardSourceRun(
+                        source_key="kbo_awards_wikipedia",
+                        source_url=f"{WIKI_API_URL}?page={title}",
+                        fetched=True,
+                        parsed_records=len(parsed),
+                    ),
+                )
                 logger.info("wikipedia %-8s -> %s records", award_type, len(parsed))
                 records.extend(parsed)
-            except AWARD_FETCH_EXCEPTIONS:
+            except AWARD_FETCH_EXCEPTIONS as exc:
+                self._mark_snapshot_parse_status(
+                    "kbo_awards_wikipedia",
+                    f"{WIKI_API_URL}?page={title}",
+                    parsed_records=0,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                self._source_runs.append(
+                    AwardSourceRun(
+                        source_key="kbo_awards_wikipedia",
+                        source_url=f"{WIKI_API_URL}?page={title}",
+                        fetched=any(
+                            snapshot.get("source_key") == "kbo_awards_wikipedia" for snapshot in self._raw_snapshots
+                        ),
+                        parsed_records=0,
+                        error=f"{type(exc).__name__}: {exc}",
+                    ),
+                )
                 logger.exception("wikipedia %s failed (skipped)", title)
             await self.policy.delay_async(host="ko.wikipedia.org")
 
@@ -229,13 +284,61 @@ class AwardCrawler:
             parsed = self._parse_yagoonara(soup)
             if types is not None:
                 parsed = [rec for rec in parsed if rec.award_type in types]
+            self._mark_snapshot_parse_status(
+                "kbo_awards_yagoonara",
+                YAGOONARA_URL,
+                parsed_records=len(parsed),
+            )
+            self._source_runs.append(
+                AwardSourceRun(
+                    source_key="kbo_awards_yagoonara",
+                    source_url=YAGOONARA_URL,
+                    fetched=True,
+                    parsed_records=len(parsed),
+                ),
+            )
             logger.info("yagoonara -> %s records", len(parsed))
             records.extend(parsed)
-        except AWARD_FETCH_EXCEPTIONS:
+        except AWARD_FETCH_EXCEPTIONS as exc:
+            self._mark_snapshot_parse_status(
+                "kbo_awards_yagoonara",
+                YAGOONARA_URL,
+                parsed_records=0,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            self._source_runs.append(
+                AwardSourceRun(
+                    source_key="kbo_awards_yagoonara",
+                    source_url=YAGOONARA_URL,
+                    fetched=any(
+                        snapshot.get("source_key") == "kbo_awards_yagoonara" for snapshot in self._raw_snapshots
+                    ),
+                    parsed_records=0,
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+            )
             logger.warning("yagoonara fetch failed (skipped)")
 
         await self.policy.delay_async(host="yagoonara.com")
         return self._dedup(records)
+
+    def _mark_snapshot_parse_status(
+        self,
+        source_key: str,
+        source_url: str,
+        *,
+        parsed_records: int,
+        error: str | None = None,
+    ) -> None:
+        """Attach parser outcome metadata to the matching raw snapshot."""
+        for snapshot in reversed(self._raw_snapshots):
+            if snapshot.get("source_key") != source_key or snapshot.get("url") != source_url:
+                continue
+            snapshot["parse_status"] = "failed" if error else "done"
+            snapshot["parser_version"] = AWARD_PARSER_VERSION
+            snapshot["error_message"] = error
+            snapshot["capture_metadata"] = {"parsed_records": parsed_records}
+            return
 
     # ─── 표 렌더링 헬퍼 ───────────────────────────────────────────────────────
 
