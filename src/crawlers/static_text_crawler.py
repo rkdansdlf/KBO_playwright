@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 
@@ -128,7 +128,7 @@ class StaticTextCrawler:
         if save:
             from src.repositories.source_registry_repository import save_raw_snapshots
 
-            with SessionLocal() as session:
+            with get_db_session() as session:
                 save_raw_snapshots(session, self._raw_pages)
 
         title, main_content = self._parse_namuwiki_html(html_content)

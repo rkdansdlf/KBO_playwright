@@ -363,8 +363,11 @@ class StaffRegisterCrawler:
             logger.info("  [info] No valid staff records to save.")
             return 0
 
-        repo = PlayerBasicRepository()
-        count = repo.upsert_players(valid)
+        from src.db.engine import get_db_session
+
+        with get_db_session() as session:
+            repo = PlayerBasicRepository(session)
+            count = repo.upsert_players(valid)
         logger.info("  ✅ Upserted %s staff record(s) into player_basic.", count)
         return count
 

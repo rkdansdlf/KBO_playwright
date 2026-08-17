@@ -12,7 +12,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal, get_db_session
 from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT
@@ -121,8 +121,6 @@ class TeamPitchingStatsCrawler:
 
         """
         self.league = league
-
-        self.repo = TeamSeasonPitchingRepository()
         self.policy = policy or RequestPolicy()
 
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
@@ -176,8 +174,13 @@ class TeamPitchingStatsCrawler:
                 logger.exception("[ERROR] 팀 투구 집계 폴백 실패")
                 raise
 
-        elif persist:
-            self.repo.upsert_many(stats)
+        elif persist and stats:
+            configured_repo = getattr(self, "repo", None)
+            if configured_repo is not None:
+                configured_repo.upsert_many(stats)
+            else:
+                with get_db_session() as session:
+                    TeamSeasonPitchingRepository(session).upsert_many(stats)
         return stats
 
     def _collect_from_site(self, season: int, team_mapping: dict[str, str], *, headless: bool) -> list[dict[str, Any]]:

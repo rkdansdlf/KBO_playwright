@@ -9,7 +9,7 @@ from playwright.async_api import Browser, BrowserContext, Locator, Page, Playwri
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
 
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal, get_db_session
 from src.models.franchise import Franchise
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.throttle import throttle
@@ -177,7 +177,7 @@ class TeamInfoCrawler:
     def _save_raw_snapshots(self) -> None:
         from src.repositories.source_registry_repository import save_raw_snapshots
 
-        with SessionLocal() as session:
+        with get_db_session() as session:
             count = save_raw_snapshots(session, self._raw_pages)
             logger.info("Saved %d raw snapshots for team info.", count)
 
