@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import date
 from types import SimpleNamespace
 
@@ -105,8 +106,8 @@ def test_find_postgame_reconciliation_targets_can_force_include_game_id(monkeypa
 def test_reconcile_postgame_range_reports_status_and_score_changes(monkeypatch):
     SessionLocal = _build_session_factory()
     monkeypatch.setattr(service, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "get_db_session", lambda: contextlib.nullcontext(SessionLocal()))
+    monkeypatch.setattr(game_relay_module, "get_db_session", lambda: contextlib.nullcontext(SessionLocal()))
     monkeypatch.setattr(service, "repair_game_parent_from_existing_children", lambda _game_id: True)
 
     with SessionLocal() as session:
