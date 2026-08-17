@@ -377,7 +377,8 @@ def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
             raw_content = raw_body if isinstance(raw_body, bytes) else str(raw_body).encode("utf-8")
         content_hash = sha256_bytes(raw_content)
         ds_repo.mark_success(source_key, content_hash)
-        if not snap_repo.get_by_hash(ds.id, content_hash):
+        existing_snapshot = snap_repo.get_by_hash(ds.id, content_hash)
+        if existing_snapshot is None:
             artifact_path = evidence_root() / "raw" / f"{content_hash}.bin"
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
             if not artifact_path.exists():
@@ -393,7 +394,17 @@ def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
                     "content_hash": content_hash,
                     "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                     "status_code": page["status_code"],
+                    "parse_status": page.get("parse_status", "pending"),
+                    "parser_version": page.get("parser_version"),
+                    "error_message": page.get("error_message"),
                 },
             )
             saved += 1
+        elif page.get("parse_status") or page.get("parser_version") or page.get("error_message"):
+            snap_repo.update_parse_status(
+                existing_snapshot.id,
+                page.get("parse_status", existing_snapshot.parse_status),
+                parser_version=page.get("parser_version"),
+                error_message=page.get("error_message"),
+            )
     return saved

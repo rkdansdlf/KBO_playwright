@@ -4,6 +4,7 @@ from datetime import date, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -79,8 +80,12 @@ def session(engine):
 
 @pytest.fixture(autouse=True)
 def patch_deps(session):
+    @contextlib.contextmanager
+    def mock_get_db_session():
+        yield session
+
     with (
-        patch("src.repositories.game_save.SessionLocal", return_value=session),
+        patch("src.repositories.game_save.get_db_session", side_effect=mock_get_db_session),
     ):
         yield
 

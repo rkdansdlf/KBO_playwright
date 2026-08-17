@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -40,10 +41,7 @@ def session(engine):
 
 @pytest.fixture(autouse=True)
 def patch_deps(session):
-    with (
-        patch("src.repositories.player_repository.SessionLocal", return_value=session),
-        patch.object(Engine.dialect, "name", "sqlite"),
-    ):
+    with patch.object(Engine.dialect, "name", "sqlite"):
         yield
 
 
@@ -64,7 +62,7 @@ class TestPlayerRepository:
 
     def test_upsert_player_profile_creates_player(self, session):
         self._add_basic(session)
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
 
         profile = MagicMock()
         profile.player_name = "Kim"
@@ -99,8 +97,8 @@ class TestPlayerRepository:
         assert player.bats == "R"
         assert player.throws == "R"
 
-    def test_upsert_player_profile_raises_on_empty_id(self):
-        repo = PlayerRepository()
+    def test_upsert_player_profile_raises_on_empty_id(self, session):
+        repo = PlayerRepository(session)
         with pytest.raises(ValueError, match="kbo_player_id is required"):
             repo.upsert_player_profile("", MagicMock())
 
@@ -125,7 +123,7 @@ class TestPlayerRepository:
 
     def test_upsert_season_batting(self, session):
         self._add_basic(session, player_id=1001)
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
 
         repo.upsert_season_batting(1001, {"season": 2024, "games": 10, "hits": 25})
         stats = session.query(PlayerSeasonBatting).all()
@@ -135,7 +133,7 @@ class TestPlayerRepository:
 
     def test_upsert_season_batting_updates_existing(self, session):
         self._add_basic(session, player_id=1001)
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         repo.upsert_season_batting(1001, {"season": 2024, "league": "REGULAR", "level": "KBO1", "hits": 10})
         repo.upsert_season_batting(1001, {"season": 2024, "league": "REGULAR", "level": "KBO1", "hits": 20})
 
@@ -145,19 +143,19 @@ class TestPlayerRepository:
 
     def test_upsert_season_pitching(self, session):
         self._add_basic(session, player_id=1001)
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         repo.upsert_season_pitching(1001, {"season": 2024, "games": 10, "wins": 5})
         stats = session.query(PlayerSeasonPitching).all()
         assert len(stats) == 1
         assert stats[0].wins == 5
 
     def test_upsert_season_stats_empty_payload(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         repo._upsert_season_stats(PlayerSeasonBatting, 1001, {})
         assert session.query(PlayerSeasonBatting).count() == 0
 
-    def test_upsert_season_stats_missing_season(self):
-        repo = PlayerRepository()
+    def test_upsert_season_stats_missing_season(self, session):
+        repo = PlayerRepository(session)
         with pytest.raises(ValueError, match="season_data must include 'season'"):
             repo._upsert_season_stats(PlayerSeasonBatting, 1001, {"games": 5})
 
@@ -172,18 +170,18 @@ class TestPlayerRepository:
 
     def test_resolve_movement_team_id(self, session):
         self._add_team(session, "LG")
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_team_id(session, "LG")
         assert result == "LG"
 
     def test_resolve_movement_team_id_with_mapping(self, session):
         self._add_team(session, "DB")
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_team_id(session, "두산")
         assert result == "DB"
 
     def test_resolve_movement_team_id_not_found(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_team_id(session, "UNKNOWN")
         assert result is None
 
@@ -192,7 +190,7 @@ class TestPlayerRepository:
     def test_save_player_movements(self, session):
         self._add_basic(session, player_id=1001, name="Kim")
         self._add_team(session, "LG")
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
 
         movements = [
             {"date": "2024-01-15", "team_code": "LG", "player_name": "Kim", "section": "Trade", "remarks": "Test"},
@@ -208,7 +206,7 @@ class TestPlayerRepository:
     def test_save_player_movements_updates_existing(self, session):
         self._add_basic(session, player_id=1001, name="Kim")
         self._add_team(session, "LG")
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
 
         movements = [
             {"date": "2024-01-15", "team_code": "LG", "player_name": "Kim", "section": "Trade", "remarks": "v1"},
@@ -225,26 +223,26 @@ class TestPlayerRepository:
 
     def test_resolve_movement_player_id_single(self, session):
         self._add_basic(session, player_id=1001, name="Kim")
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_player_id(session, "Kim", "LG", 2024)
         assert result == 1001
 
     def test_resolve_movement_player_id_rookie(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_player_id(session, "신인", None, 2024)
         assert result is None
 
     def test_resolve_movement_player_id_ambiguous(self, session):
         self._add_basic(session, player_id=1001, name="Kim")
         self._add_basic(session, player_id=1002, name="Kim")
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._resolve_movement_player_id(session, "Kim", None, 2024)
         assert result is None
 
     # --- _infer_movement_team_from_history ---
 
     def test_infer_movement_team_from_history_no_player(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._infer_movement_team_from_history(session, "Nobody", 2024)
         assert result is None
 
@@ -252,20 +250,20 @@ class TestPlayerRepository:
 
     def test_unique_roster_movement_player_id_no_roster(self, session):
         self._add_team(session, "LG")
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._unique_roster_movement_player_id(session, "Kim", "LG", 2024, {1001})
         assert result is None
 
     # --- _unique_franchise_season_player_id ---
 
     def test_unique_franchise_season_player_id_no_team(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._unique_franchise_season_player_id(session, None, 2024, {1001})
         assert result is None
 
     def test_unique_franchise_season_player_id_no_candidates(self, session):
         self._add_team(session, "LG")
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._unique_franchise_season_player_id(session, "LG", 2024, set())
         assert result is None
 
@@ -273,17 +271,17 @@ class TestPlayerRepository:
 
     def test_canonical_player_basic_id(self, session):
         self._add_basic(session, player_id=1001)
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._canonical_player_basic_id(session, "1001")
         assert result == 1001
 
     def test_canonical_player_basic_id_not_found(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._canonical_player_basic_id(session, "9999")
         assert result is None
 
     def test_canonical_player_basic_id_invalid(self, session):
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         result = repo._canonical_player_basic_id(session, "abc")
         assert result is None
 
@@ -291,14 +289,14 @@ class TestPlayerRepository:
 
     def test_get_or_create_player_new(self, session):
         self._add_basic(session, player_id=1001)
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         player = repo._get_or_create_player(session, "1001")
         assert player.id is not None
         assert player.kbo_person_id == "1001"
 
     def test_get_or_create_player_existing(self, session):
         self._add_basic(session, player_id=1001)
-        repo = PlayerRepository()
+        repo = PlayerRepository(session)
         p1 = repo._get_or_create_player(session, "1001")
         p2 = repo._get_or_create_player(session, "1001")
         assert p1.id == p2.id

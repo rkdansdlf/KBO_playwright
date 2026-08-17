@@ -5,6 +5,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
+import contextlib
 import src.repositories.game_relay
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -64,8 +65,12 @@ def session(engine):
 
 @pytest.fixture(autouse=True)
 def patch_deps(session):
+    @contextlib.contextmanager
+    def mock_get_db_session():
+        yield session
+
     with (
-        patch("src.repositories.game_relay.SessionLocal", return_value=session),
+        patch("src.repositories.game_relay.get_db_session", side_effect=mock_get_db_session),
     ):
         yield
 
@@ -475,12 +480,12 @@ class TestUpsertValidationMetrics:
 
 class TestBackfillGamePlayByPlayFromExistingEvents:
     def test_backfill_no_game_id(self, session):
-        with patch("src.repositories.game_relay.SessionLocal", return_value=session):
+        with patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)):
             result = src.repositories.game_relay.backfill_game_play_by_play_from_existing_events("")
             assert result == 0
 
     def test_backfill_no_stored_events(self, session):
-        with patch("src.repositories.game_relay.SessionLocal", return_value=session):
+        with patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)):
             result = src.repositories.game_relay.backfill_game_play_by_play_from_existing_events("20241015LGSS0")
             assert result == 0
 
@@ -503,7 +508,7 @@ class TestBackfillGamePlayByPlayFromExistingEvents:
         session.commit()
 
         with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
+            patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)),
             patch("src.repositories.game_relay.derive_play_by_play_rows_from_events") as mock_derive,
         ):
             mock_derive.return_value = [
@@ -531,14 +536,16 @@ class TestBackfillGamePlayByPlayFromExistingEvents:
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_session.commit.side_effect = SQLAlchemyError("DB Error")
 
-        with patch("src.repositories.game_relay.SessionLocal", return_value=mock_session):
+        with patch(
+            "src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(mock_session)
+        ):
             result = src.repositories.game_relay.backfill_game_play_by_play_from_existing_events("20241015LGSS0")
             assert result == 0
 
 
 class TestBackfillMissingGameStubsForRelays:
     def test_no_candidates(self, session):
-        with patch("src.repositories.game_relay.SessionLocal", return_value=session):
+        with patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)):
             result = src.repositories.game_relay.backfill_missing_game_stubs_for_relays()
             assert result == 0
 
@@ -558,7 +565,7 @@ class TestBackfillMissingGameStubsForRelays:
         session.commit()
 
         with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
+            patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)),
             patch("src.repositories.game_relay._ensure_game_stub"),
         ):
             result = src.repositories.game_relay.backfill_missing_game_stubs_for_relays()
@@ -592,7 +599,7 @@ class TestBackfillMissingGameStubsForRelays:
         session.commit()
 
         with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
+            patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)),
             patch("src.repositories.game_relay._ensure_game_stub"),
         ):
             result = src.repositories.game_relay.backfill_missing_game_stubs_for_relays(seasons=[2024])
@@ -615,7 +622,7 @@ class TestBackfillMissingGameStubsForRelays:
         session.commit()
 
         with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
+            patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)),
             patch("src.repositories.game_relay._ensure_game_stub"),
         ):
             result = src.repositories.game_relay.backfill_missing_game_stubs_for_relays()
@@ -624,12 +631,14 @@ class TestBackfillMissingGameStubsForRelays:
 
 class TestRepairGameParentFromExistingChildren:
     def test_repair_no_game_id(self):
-        with patch("src.repositories.game_relay.SessionLocal", return_value=MagicMock()):
+        with patch(
+            "src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(MagicMock())
+        ):
             result = src.repositories.game_relay.repair_game_parent_from_existing_children("")
             assert result is False
 
     def test_repair_no_children(self, session):
-        with patch("src.repositories.game_relay.SessionLocal", return_value=session):
+        with patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)):
             result = src.repositories.game_relay.repair_game_parent_from_existing_children("20241015LGSS0")
             assert result is False
 
@@ -647,7 +656,7 @@ class TestRepairGameParentFromExistingChildren:
         session.commit()
 
         with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
+            patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)),
             patch("src.repositories.game_relay._record_game_id_alias"),
         ):
             result = src.repositories.game_relay.repair_game_parent_from_existing_children("20241015LGSS0")
@@ -667,7 +676,7 @@ class TestRepairGameParentFromExistingChildren:
         session.commit()
 
         with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
+            patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)),
             patch("src.repositories.game_relay._record_game_id_alias"),
         ):
             result = src.repositories.game_relay.repair_game_parent_from_existing_children("20241015LGSS0")
@@ -686,7 +695,7 @@ class TestRepairGameParentFromExistingChildren:
         session.commit()
 
         with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
+            patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)),
             patch("src.repositories.game_relay._record_game_id_alias"),
         ):
             result = src.repositories.game_relay.repair_game_parent_from_existing_children("20241015LGSS0")
@@ -707,7 +716,7 @@ class TestRepairGameParentFromExistingChildren:
         session.commit()
 
         with (
-            patch("src.repositories.game_relay.SessionLocal", return_value=session),
+            patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)),
             patch("src.repositories.game_relay._record_game_id_alias"),
             patch("src.repositories.game_relay._has_game_child_rows", return_value=True),
         ):

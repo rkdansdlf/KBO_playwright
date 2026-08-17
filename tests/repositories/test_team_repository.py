@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -94,6 +95,7 @@ class TestTeamRepository:
         repo.save_daily_rosters([roster])
         roster["back_number"] = "99"
         repo.save_daily_rosters([roster])
+        session.flush()
         from src.models.team import TeamDailyRoster
 
         record = (

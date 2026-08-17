@@ -15,9 +15,7 @@ from sqlalchemy import case
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import Engine, SessionLocal
 from src.models.player import PlayerBasic
 from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload
 
@@ -28,9 +26,10 @@ if TYPE_CHECKING:
 class PlayerBasicRepository:
     """Repository for player_basic table operations."""
 
-    def __init__(self) -> None:
+    def __init__(self, session: Session) -> None:
         """Initialize a new instance."""
-        self.dialect = Engine.dialect.name
+        self.session = session
+        self.dialect = session.get_bind().dialect.name
         self.last_filter_counts: Counter = Counter()
 
     def upsert_players(self, players: list[dict[str, Any]]) -> int:
@@ -57,33 +56,24 @@ class PlayerBasicRepository:
         if not players:
             return 0
 
-        with SessionLocal() as session:
-            try:
-                valid_players, filter_counts = filter_valid_player_payloads(players)
-                self.last_filter_counts = filter_counts
-                rows = self._unique_payload_rows(valid_players)
-                if not rows:
-                    return 0
+        valid_players, filter_counts = filter_valid_player_payloads(players)
+        self.last_filter_counts = filter_counts
+        rows = self._unique_payload_rows(valid_players)
+        if not rows:
+            return 0
 
-                if self.dialect == "oracle":
-                    for row in rows:
-                        session.merge(PlayerBasic(**row))
-                else:
-                    session.execute(self._build_upsert_stmt(rows))
-                session.commit()
-                return len(rows)
-            except SQLAlchemyError:
-                session.rollback()
-                logger.exception("[ERROR] Error upserting players")
-                raise
+        if self.dialect == "oracle":
+            for row in rows:
+                self.session.merge(PlayerBasic(**row))
+        else:
+            self.session.execute(self._build_upsert_stmt(rows))
+        return len(rows)
 
-    def _upsert_one(self, session: Session, player_data: dict[str, Any]) -> None:
+    def _upsert_one(self, player_data: dict[str, Any]) -> None:
         """Upsert single player (SQLite/PostgreSQL compatible).
 
         Args:
-            session: Session.
             player_data: Player Data.
-            session: Session.
             player_data: Player Data.
 
         """
@@ -95,9 +85,9 @@ class PlayerBasicRepository:
 
         data = self._build_payload(player_data)
         if self.dialect == "oracle":
-            session.merge(PlayerBasic(**data))
+            self.session.merge(PlayerBasic(**data))
         else:
-            session.execute(self._build_upsert_stmt(data))
+            self.session.execute(self._build_upsert_stmt(data))
 
     def _unique_payload_rows(self, players: list[dict[str, Any]]) -> list[dict[str, Any]]:
         unique_payload = {}
@@ -187,11 +177,10 @@ class PlayerBasicRepository:
             limit: Limit.
 
         """
-        with SessionLocal() as session:
-            query = session.query(PlayerBasic)
-            if limit:
-                query = query.limit(limit)
-            return list(query.all())
+        query = self.session.query(PlayerBasic)
+        if limit:
+            query = query.limit(limit)
+        return list(query.all())
 
     def update_statuses(self, updates: list[dict[str, Any]]) -> int:
         """Update status/staff_role/status_source for existing players.
@@ -203,24 +192,19 @@ class PlayerBasicRepository:
         """
         if not updates:
             return 0
-        with SessionLocal() as session:
-            try:
-                for entry in updates:
-                    player_id = entry.get("player_id")
-                    if not player_id:
-                        continue
-                    session.query(PlayerBasic).filter_by(player_id=player_id).update(
-                        {
-                            "status": entry.get("status"),
-                            "staff_role": entry.get("staff_role"),
-                            "status_source": entry.get("status_source"),
-                        },
-                    )
-                session.commit()
-                return len(updates)
-            except SQLAlchemyError:
-                session.rollback()
-                raise
+
+        for entry in updates:
+            player_id = entry.get("player_id")
+            if not player_id:
+                continue
+            self.session.query(PlayerBasic).filter_by(player_id=player_id).update(
+                {
+                    "status": entry.get("status"),
+                    "staff_role": entry.get("staff_role"),
+                    "status_source": entry.get("status_source"),
+                },
+            )
+        return len(updates)
 
     def get_by_id(self, player_id: int) -> PlayerBasic | None:
         """Get player by ID.
@@ -230,8 +214,7 @@ class PlayerBasicRepository:
             player_id: Player ID.
 
         """
-        with SessionLocal() as session:
-            return session.query(PlayerBasic).filter_by(player_id=player_id).first()
+        return self.session.query(PlayerBasic).filter_by(player_id=player_id).first()
 
     def get_by_team(self, team: str, limit: int | None = None) -> list[PlayerBasic]:
         """Get players by team.
@@ -243,11 +226,12 @@ class PlayerBasicRepository:
             limit: Limit.
 
         """
-        with SessionLocal() as session:
-            query = session.query(PlayerBasic).filter_by(team=team)
-            if limit:
-                query = query.limit(limit)
-            return list(query.all())
+        query = self.session.query(PlayerBasic)
+        if team:
+            query = query.filter_by(team=team)
+        if limit:
+            query = query.limit(limit)
+        return list(query.all())
 
 
 def save_player_basic(player_data: dict[str, Any]) -> int:
@@ -258,6 +242,8 @@ def save_player_basic(player_data: dict[str, Any]) -> int:
         player_data: Player Data.
 
     """
-    repo = PlayerBasicRepository()
+    from src.db.engine import get_db_session
 
-    return repo.upsert_players([player_data])
+    with get_db_session() as session:
+        repo = PlayerBasicRepository(session)
+        return repo.upsert_players([player_data])

@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from sqlalchemy import select, update
 
 from src.constants import KST
-from src.db.engine import Engine, SessionLocal
 from src.models.player import (
     Player,
     PlayerBasic,
@@ -44,9 +43,10 @@ class MovementPlayerResolutionContext:
 class PlayerRepository:
     """Persist player-related entities with SQLite/MySQL compatible UPSERT logic."""
 
-    def __init__(self) -> None:
+    def __init__(self, session: Session) -> None:
         """Initialize a new instance."""
-        self.dialect = Engine.dialect.name
+        self.session = session
+        self.dialect = self.session.get_bind().dialect.name
 
     # ------------------------------------------------------------------
     # Profile / identity handling
@@ -67,17 +67,15 @@ class PlayerRepository:
             msg = "kbo_player_id is required to upsert a player profile"
             raise ValueError(msg)
 
-        with SessionLocal() as session:
-            player = self._get_or_create_player(session, kbo_player_id)
-            self._apply_profile_fields(player, profile)
-            self._upsert_identity(session, player, profile)
+        player = self._get_or_create_player(self.session, kbo_player_id)
+        self._apply_profile_fields(player, profile)
+        self._upsert_identity(self.session, player, profile)
 
-            # Synchronize back to PlayerBasic
-            self._sync_to_player_basic(session, kbo_player_id, profile)
+        # Synchronize back to PlayerBasic
+        self._sync_to_player_basic(self.session, kbo_player_id, profile)
 
-            session.commit()
-            session.refresh(player)
-            return player
+        self.session.flush()
+        return player
 
     def _sync_to_player_basic(self, session: Session, kbo_player_id: str, profile: PlayerProfileParsed) -> None:
         try:
@@ -281,24 +279,21 @@ class PlayerRepository:
             msg = "season_data must include 'season'"
             raise ValueError(msg)
 
-        with SessionLocal() as session:
-            existing = session.execute(
-                select(model).where(
-                    model.player_id == player_id,
-                    model.season == data.get("season"),
-                    model.league == data.get("league", "REGULAR"),
-                    model.level == data.get("level", "KBO1"),
-                ),
-            ).scalar_one_or_none()
+        existing = self.session.execute(
+            select(model).where(
+                model.player_id == player_id,
+                model.season == data.get("season"),
+                model.league == data.get("league", "REGULAR"),
+                model.level == data.get("level", "KBO1"),
+            ),
+        ).scalar_one_or_none()
 
-            if existing:
-                for key, value in data.items():
-                    setattr(existing, key, value)
-            else:
-                record = model(player_id=player_id, **data)
-                session.add(record)
-
-            session.commit()
+        if existing:
+            for key, value in data.items():
+                setattr(existing, key, value)
+        else:
+            record = model(player_id=player_id, **data)
+            self.session.add(record)
 
     # ------------------------------------------------------------------
     # Player Movements
@@ -317,58 +312,56 @@ class PlayerRepository:
         """
         saved_count = 0
 
-        with SessionLocal() as session:
-            for item in movements:
-                # Convert date string to object if needed
-                d_val = item["date"]
-                if isinstance(d_val, str):
-                    d_val = datetime.strptime(d_val, "%Y-%m-%d").replace(tzinfo=KST).date()
+        for item in movements:
+            # Convert date string to object if needed
+            d_val = item["date"]
+            if isinstance(d_val, str):
+                d_val = datetime.strptime(d_val, "%Y-%m-%d").replace(tzinfo=KST).date()
 
-                team_code = item["team_code"]
-                player_name = item["player_name"]
-                canonical_team_id = self._resolve_movement_team_id(session, team_code)
-                if not canonical_team_id:
-                    canonical_team_id = self._infer_movement_team_from_history(session, player_name, d_val.year)
-                player_basic_id = self._resolve_movement_player_id(
-                    session,
-                    player_name,
-                    canonical_team_id,
-                    d_val.year,
+            team_code = item["team_code"]
+            player_name = item["player_name"]
+            canonical_team_id = self._resolve_movement_team_id(self.session, team_code)
+            if not canonical_team_id:
+                canonical_team_id = self._infer_movement_team_from_history(self.session, player_name, d_val.year)
+            player_basic_id = self._resolve_movement_player_id(
+                self.session,
+                player_name,
+                canonical_team_id,
+                d_val.year,
+            )
+            if not canonical_team_id:
+                resolution_status = "unresolved_team"
+            elif player_basic_id:
+                resolution_status = "resolved"
+            else:
+                resolution_status = "unresolved_player"
+
+            stmt = select(PlayerMovement).where(
+                PlayerMovement.movement_date == d_val,
+                PlayerMovement.team_code == team_code,
+                PlayerMovement.player_name == player_name,
+                PlayerMovement.section == item["section"],
+            )
+            existing = self.session.execute(stmt).scalar_one_or_none()
+
+            if existing:
+                existing.remarks = item.get("remarks")
+                existing.canonical_team_id = canonical_team_id
+                existing.player_basic_id = player_basic_id
+                existing.resolution_status = resolution_status
+            else:
+                new_rec = PlayerMovement(
+                    movement_date=d_val,
+                    section=item["section"],
+                    team_code=team_code,
+                    canonical_team_id=canonical_team_id,
+                    player_basic_id=player_basic_id,
+                    resolution_status=resolution_status,
+                    player_name=player_name,
+                    remarks=item.get("remarks"),
                 )
-                if not canonical_team_id:
-                    resolution_status = "unresolved_team"
-                elif player_basic_id:
-                    resolution_status = "resolved"
-                else:
-                    resolution_status = "unresolved_player"
-
-                stmt = select(PlayerMovement).where(
-                    PlayerMovement.movement_date == d_val,
-                    PlayerMovement.team_code == team_code,
-                    PlayerMovement.player_name == player_name,
-                    PlayerMovement.section == item["section"],
-                )
-                existing = session.execute(stmt).scalar_one_or_none()
-
-                if existing:
-                    existing.remarks = item.get("remarks")
-                    existing.canonical_team_id = canonical_team_id
-                    existing.player_basic_id = player_basic_id
-                    existing.resolution_status = resolution_status
-                else:
-                    new_rec = PlayerMovement(
-                        movement_date=d_val,
-                        section=item["section"],
-                        team_code=team_code,
-                        canonical_team_id=canonical_team_id,
-                        player_basic_id=player_basic_id,
-                        resolution_status=resolution_status,
-                        player_name=player_name,
-                        remarks=item.get("remarks"),
-                    )
-                    session.add(new_rec)
-                saved_count += 1
-            session.commit()
+                self.session.add(new_rec)
+            saved_count += 1
         return saved_count
 
     _TEAM_CODE_BY_NAME: ClassVar[dict[str, str]] = {

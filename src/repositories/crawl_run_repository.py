@@ -5,11 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from src.db.engine import SessionLocal
 from src.models.crawl import CrawlRun
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+    from sqlalchemy.orm import Session
 
 
 @dataclass
@@ -29,6 +30,15 @@ class RunStats:
 class CrawlRunRepository:
     """CrawlRunRepository class."""
 
+    def __init__(self, session: Session) -> None:
+        """Initialize a new instance.
+
+        Args:
+            session: Session.
+
+        """
+        self.session = session
+
     def create_run(self, stats: RunStats) -> CrawlRun:
         """Create create run.
 
@@ -41,18 +51,16 @@ class CrawlRunRepository:
             CrawlRun instance.
 
         """
-        with SessionLocal() as session:
-            run = CrawlRun(
-                label=stats.label,
-                started_at=stats.started_at,
-                finished_at=stats.finished_at,
-                active_count=stats.active_count,
-                retired_count=stats.retired_count,
-                staff_count=stats.staff_count,
-                confirmed_profiles=stats.confirmed_profiles,
-                heuristic_only=stats.heuristic_only,
-            )
-            session.add(run)
-            session.commit()
-            session.refresh(run)
-            return run
+        run = CrawlRun(
+            label=stats.label,
+            started_at=stats.started_at,
+            finished_at=stats.finished_at,
+            active_count=stats.active_count,
+            retired_count=stats.retired_count,
+            staff_count=stats.staff_count,
+            confirmed_profiles=stats.confirmed_profiles,
+            heuristic_only=stats.heuristic_only,
+        )
+        self.session.add(run)
+        self.session.flush()
+        return run

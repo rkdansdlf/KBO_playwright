@@ -32,6 +32,8 @@ jobs:
         run: ruff format --check src/ tests/ scripts/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
+      - name: Verify repository transaction ownership
+        run: python scripts/audit_transaction_ownership.py 2>&1
       - name: Workflow YAML lint
         run: |
           if command -v actionlint >/dev/null 2>&1; then
@@ -63,7 +65,17 @@ jobs:
       - name: Clean stale test DBs
         run: find data -maxdepth 1 -type f -name 'test_runtime*.db*' -delete
       - name: Run tests
-        run: COVERAGE_FILE="$RUNNER_TEMP/kbo.coverage" pytest --tb=short -v --durations=10 --cov=src --cov-report=term-missing --cov-report=xml:coverage.xml -n 2 2>&1
+        run: |
+          set -o pipefail
+          COVERAGE_FILE="$RUNNER_TEMP/kbo.coverage" pytest --tb=short -v --durations=10 --cov=src --cov-report=term-missing --cov-report=xml:coverage.xml -n 2 2>&1 | tee pytest-unit.log
+
+      - name: Upload unit test profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-unit-${{ matrix.python-version }}-${{ github.run_number }}
+          path: pytest-unit.log
+          retention-days: 30
 
       - name: Upload coverage artifact
         if: always()
@@ -149,9 +161,19 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./data/kbo_dev.db
       - name: Run integration tests
-        run: pytest -m integration --tb=short -v --durations=10 -n 1 2>&1
+        run: |
+          set -o pipefail
+          pytest -m integration --ignore=tests/crawlers/test_award_crawler.py --tb=short -v --durations=10 -n 1 2>&1 | tee pytest-integration-sqlite.log
         env:
           DATABASE_URL: sqlite:///./data/kbo_dev.db
+
+      - name: Upload SQLite integration profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-integration-sqlite-${{ github.run_number }}
+          path: pytest-integration-sqlite.log
+          retention-days: 30
 
   integration-test-postgres:
     runs-on: ubuntu-latest
@@ -188,9 +210,54 @@ jobs:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
 
       - name: Run PostgreSQL integration tests
-        run: pytest -m integration --tb=short -v --durations=10 -n 1 2>&1
+        run: |
+          set -o pipefail
+          pytest -m integration --ignore=tests/crawlers/test_award_crawler.py --tb=short -v --durations=10 -n 1 2>&1 | tee pytest-integration-postgres.log
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
+
+      - name: Upload PostgreSQL integration profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-integration-postgres-${{ github.run_number }}
+          path: pytest-integration-postgres.log
+          retention-days: 30
+
+  slow-no-network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: test
+    if: always() && needs.test.result == 'success'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          python-version: "3.12"
+          playwright: "true"
+          init-db: 'false'
+      - name: Prepare test data directory
+        run: mkdir -p data
+      - name: Run slow tests without live-network flags
+        run: |
+          set -o pipefail
+          pytest -m slow --tb=short -v --durations=10 -n 1 2>&1 | tee pytest-slow-no-network.log
+        env:
+          DATABASE_URL: sqlite:///./data/kbo_dev.db
+          KBO_RUN_OCI_INTEGRATION: ""
+          KBO_RUN_LIVE_BASIC2_HEADERS: ""
+          RUN_LIVE_DEBUG_TESTS: ""
+          NAVER_CLIENT_ID: ""
+          NAVER_CLIENT_SECRET: ""
+
+      - name: Upload slow test profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-slow-no-network-${{ github.run_number }}
+          path: pytest-slow-no-network.log
+          retention-days: 30
 
   rag-acceptance:
     runs-on: ubuntu-latest

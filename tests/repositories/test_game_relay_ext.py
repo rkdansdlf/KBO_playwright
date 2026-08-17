@@ -5,6 +5,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -69,7 +70,7 @@ def session(engine):
 
 @pytest.fixture(autouse=True)
 def patch_session(session):
-    with patch("src.repositories.game_relay.SessionLocal", return_value=session):
+    with patch("src.repositories.game_relay.get_db_session", side_effect=lambda: contextlib.nullcontext(session)):
         yield
 
 

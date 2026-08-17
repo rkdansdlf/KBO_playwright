@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -23,15 +23,9 @@ def session(engine):
     return Session()
 
 
-@pytest.fixture(autouse=True)
-def patch_session_local(session):
-    with patch("src.repositories.crawl_run_repository.SessionLocal", return_value=session):
-        yield
-
-
 class TestCrawlRunRepository:
-    def test_create_run(self):
-        repo = CrawlRunRepository()
+    def test_create_run(self, session):
+        repo = CrawlRunRepository(session)
         now = datetime.now(UTC).replace(tzinfo=None)
         run = repo.create_run(
             stats=RunStats(
@@ -53,8 +47,8 @@ class TestCrawlRunRepository:
         assert run.confirmed_profiles == 8
         assert run.heuristic_only == 1
 
-    def test_create_run_minimal(self):
-        repo = CrawlRunRepository()
+    def test_create_run_minimal(self, session):
+        repo = CrawlRunRepository(session)
         now = datetime.now(UTC).replace(tzinfo=None)
         run = repo.create_run(
             stats=RunStats(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+import contextlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -24,21 +25,9 @@ def session(engine):
     return Session()
 
 
-@pytest.fixture(autouse=True)
-def patch_session_local(session):
-    with patch("src.repositories.team_stats_repository.SessionLocal", return_value=session):
-        yield
-
-
-@pytest.fixture(autouse=True)
-def patch_dialect():
-    with patch.object(Engine.dialect, "name", "sqlite"):
-        yield
-
-
 class TestRankingRepository:
     def test_save_rankings(self, session):
-        repo = RankingRepository()
+        repo = RankingRepository(session)
         rankings = [
             {
                 "season": 2025,
@@ -55,11 +44,11 @@ class TestRankingRepository:
         assert count == 1
 
     def test_save_rankings_empty(self, session):
-        repo = RankingRepository()
+        repo = RankingRepository(session)
         assert repo.save_rankings([]) == 0
 
     def test_save_rankings_upsert(self, session):
-        repo = RankingRepository()
+        repo = RankingRepository(session)
         r = {
             "season": 2025,
             "metric": "avg",

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
@@ -14,9 +17,9 @@ from .team_stats_repository import BaseStatsUpsertRepository
 class PlayerSeasonFieldingRepository(BaseStatsUpsertRepository):
     """upsert logic for player-level fielding aggregates."""
 
-    def __init__(self) -> None:
+    def __init__(self, session: Session) -> None:
         """Initialize a new instance."""
-        super().__init__(PlayerSeasonFielding, ["player_id", "team_id", "year", "position_id"])
+        super().__init__(session, PlayerSeasonFielding, ["player_id", "team_id", "year", "position_id"])
         self.last_filter_counts: Counter = Counter()
 
     def upsert_many(self, records: list[dict[str, Any]]) -> int:
@@ -42,6 +45,6 @@ class PlayerSeasonFieldingRepository(BaseStatsUpsertRepository):
 class PlayerSeasonBaserunningRepository(BaseStatsUpsertRepository):
     """upsert logic for player-level baserunning aggregates."""
 
-    def __init__(self) -> None:
+    def __init__(self, session: Session) -> None:
         """Initialize a new instance."""
-        super().__init__(PlayerSeasonBaserunning, ["player_id", "team_id", "year"])
+        super().__init__(session, PlayerSeasonBaserunning, ["player_id", "team_id", "year"])
