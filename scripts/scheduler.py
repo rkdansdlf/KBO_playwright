@@ -869,7 +869,7 @@ def _get_live_poll_interval_seconds() -> int:
                 text(
                     "SELECT g.game_status, g.game_lifecycle_state, m.start_time, g.updated_at FROM game g LEFT JOIN game_metadata m ON g.game_id = m.game_id WHERE g.game_date = :today"
                 ),
-                {"today": now.strftime("%Y-%m-%d")},
+                {"today": now.date()},
             ).all()
     except SCHEDULER_JOB_EXCEPTIONS:
         logger.exception("[LiveInterval] Failed to query game states; defaulting to 120s")

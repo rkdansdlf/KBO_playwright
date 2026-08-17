@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
 from src.utils.playwright_pool import AsyncPlaywrightPool
@@ -31,13 +31,14 @@ BACKFILL_EXCEPTIONS = (
 async def backfill_player_movements(years: list[int]):
     print(f"🔄 Starting Player Movement Backfill for years: {years}...")
     crawler = PlayerMovementCrawler()
-    repo = PlayerRepository()
 
     for year in years:
         try:
             movements = await crawler.crawl_years(year, year)
             if movements:
-                count = repo.save_player_movements(movements)
+                with get_db_session() as session:
+                    repo = PlayerRepository(session)
+                    count = repo.save_player_movements(movements)
                 print(f"  ✅ Saved {count} movements for {year}")
         except BACKFILL_EXCEPTIONS as e:
             print(f"  ❌ Error for {year}: {e}")
@@ -61,7 +62,7 @@ async def backfill_daily_rosters(start_date_str: str, end_date_str: str):
             # We crawl one day at a time to manage persistence more reliably
             roster = await crawler.crawl_date_range(d_str, d_str)
             if roster:
-                with SessionLocal() as session:
+                with get_db_session() as session:
                     repo = TeamRepository(session)
                     count = repo.save_daily_rosters(roster)
                     print(f"  ✅ Saved {count} roster records for {d_str}")

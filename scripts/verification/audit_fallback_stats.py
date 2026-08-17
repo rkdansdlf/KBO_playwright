@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
 from src.models.player import (
     PlayerBasic,
     PlayerSeasonBaserunning,
@@ -249,7 +249,17 @@ class StatAudit:
                 backup_name = Path(backup_path_str).name
                 if extra_fields_fn:
                     extra_fields_fn(off, calc, name)
-                save_fn([calc])
+
+                # Check if save_fn accepts session
+                import inspect
+
+                sig = inspect.signature(save_fn)
+                if "session" in sig.parameters:
+                    save_fn([calc], session=session)
+                else:
+                    # For repository classes wrapped in lambda
+                    save_fn([calc], session)
+                session.commit()
                 logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                 fix_count += 1
             except AUDIT_EXCEPTIONS as e:
@@ -275,7 +285,7 @@ class StatAudit:
         **threshold_kwargs,
     ):
         logger.info(f"🕵️  Auditing {title} stats for {year} {series}...")
-        with SessionLocal() as session:
+        with get_db_session() as session:
             official_stats = session.query(model_class).filter(*official_filter(session)).all()
             if not official_stats:
                 logger.info(f"   ⚠️ No official {title.lower()} stats found to compare.")
@@ -400,7 +410,7 @@ class StatAudit:
             ["errors"],
             {"off_errors": ("errors", "errors")},
             [("off_errors", "errors", max_error_diff, "Player {name} (ID:{pid}) has error difference of {diff} ...")],
-            PlayerSeasonFieldingRepository().upsert_many,
+            lambda records, sess: PlayerSeasonFieldingRepository(sess).upsert_many(records),
             lambda off, calc, name: calc.update({"team_id": off.team_id}),
             fix,
             max_mismatches,
@@ -436,7 +446,7 @@ class StatAudit:
                     "Player {name} (ID:{pid}) has caught stealing difference of {diff} ...",
                 ),
             ],
-            PlayerSeasonBaserunningRepository().upsert_many,
+            lambda records, sess: PlayerSeasonBaserunningRepository(sess).upsert_many(records),
             lambda off, calc, name: calc.update({"team_id": off.team_id}),
             fix,
             max_mismatches,
