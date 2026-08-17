@@ -84,8 +84,16 @@ def _run_cli(cmd: Sequence[str], *, dry_run: bool, capture: bool = True) -> int:
     return result.returncode
 
 
-def _load_audit_report() -> dict[str, Any] | None:
+AUDIT_JSON_2001 = Path("data/audit/completeness_2001_2026_report.json")
+
+
+def _load_audit_report(start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR) -> dict[str, Any] | None:
     """Load the most recent completeness audit JSON if present."""
+    specific_path = Path(f"data/audit/completeness_{start_year}_{end_year}_report.json")
+    if specific_path.exists():
+        return json.loads(specific_path.read_text(encoding="utf-8"))
+    if AUDIT_JSON_2001.exists():
+        return json.loads(AUDIT_JSON_2001.read_text(encoding="utf-8"))
     if AUDIT_JSON.exists():
         return json.loads(AUDIT_JSON.read_text(encoding="utf-8"))
     return None

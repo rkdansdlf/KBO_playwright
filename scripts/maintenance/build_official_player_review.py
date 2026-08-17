@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
 from src.models.game import Game, GameBattingStat, GameLineup, GamePitchingStat
 
 if TYPE_CHECKING:
@@ -85,7 +85,7 @@ def load_db_evidence(target: Mapping[str, object]) -> DbEvidence:
     table_counts: dict[str, int] = {}
     row_count = 0
     null_row_count = 0
-    with SessionLocal() as session:
+    with get_db_session() as session:
         for table_name, model, position_column in _model_specs():
             rows = session.execute(
                 select(model.player_id, model.uniform_no, position_column)

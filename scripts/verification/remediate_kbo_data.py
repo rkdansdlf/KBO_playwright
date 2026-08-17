@@ -20,7 +20,7 @@ import logging
 
 from scripts.verification.audit_game_logic import audit_game_logic
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session
 from src.services.game_collection_service import GameCollectionConfig, crawl_and_save_game_details
 from src.services.player_id_resolver import PlayerIdResolver
 
@@ -39,7 +39,7 @@ def get_invalid_games_for_year(year: int) -> list[dict[str, str]]:
 
     # 2. Check for games with completely empty batting stats
     logger.info(f"🕵️  Checking for games with empty batting stats for year {year}...")
-    with SessionLocal() as session:
+    with get_db_session() as session:
         empty_games = (
             session.execute(
                 text("""
@@ -102,7 +102,7 @@ async def remediate_year(year: int, limit: int | None = None, request_delay: flo
         logger.info(f"⚠️ Limit applied: Restricting to first {limit} game(s).")
 
     # Setup resolver and crawlers
-    with SessionLocal() as session:
+    with get_db_session() as session:
         resolver = PlayerIdResolver(
             session,
             strict_game_resolution=True,
@@ -145,7 +145,7 @@ async def main():
 
     if args.game_id:
         logger.info(f"🎯 Target: Specific game ID {args.game_id}")
-        with SessionLocal() as session:
+        with get_db_session() as session:
             game = (
                 session.execute(
                     text("SELECT game_id, game_date FROM game WHERE game_id = :game_id"),

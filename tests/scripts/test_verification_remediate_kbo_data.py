@@ -5,24 +5,24 @@ from scripts.verification.remediate_kbo_data import get_invalid_games_for_year
 
 class TestGetInvalidGamesForYear:
     @patch("scripts.verification.remediate_kbo_data.audit_game_logic")
-    @patch("scripts.verification.remediate_kbo_data.SessionLocal")
-    def test_no_invalid_games(self, mock_session_local, mock_audit):
+    @patch("scripts.verification.remediate_kbo_data.get_db_session")
+    def test_no_invalid_games(self, mock_get_db_session, mock_audit):
         mock_audit.return_value = []
         mock_session = MagicMock()
         mock_session.__enter__.return_value = mock_session
-        mock_session_local.return_value = mock_session
+        mock_get_db_session.return_value = mock_session
         mock_session.execute.return_value.mappings.return_value.all.return_value = []
 
         result = get_invalid_games_for_year(2025)
         assert result == []
 
     @patch("scripts.verification.remediate_kbo_data.audit_game_logic")
-    @patch("scripts.verification.remediate_kbo_data.SessionLocal")
-    def test_with_violations(self, mock_session_local, mock_audit):
+    @patch("scripts.verification.remediate_kbo_data.get_db_session")
+    def test_with_violations(self, mock_get_db_session, mock_audit):
         mock_audit.return_value = [{"game_id": "G1", "game_date": "20250401", "reason": "test"}]
         mock_session = MagicMock()
         mock_session.__enter__.return_value = mock_session
-        mock_session_local.return_value = mock_session
+        mock_get_db_session.return_value = mock_session
 
         mock_row = {"game_id": "G1", "game_date": "2025-04-01"}
 

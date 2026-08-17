@@ -19,15 +19,13 @@ from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.player_profile_crawler import PlayerProfileCrawler
-from src.db.engine import SessionLocal
+from src.db.engine import get_db_session, SessionLocal
 from src.models.player import PlayerBasic
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
 
 async def backfill(limit: int, delay: float, ids: list[str] | None = None):
-    repo = PlayerBasicRepository()
-
     # Target players: missing photo_url, NOT a pseudo ID, and NOT already marked as NOT_FOUND
     with SessionLocal() as session:
         if ids:
@@ -68,36 +66,39 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                     # Fix: upsert_players requires 'name'
                     profile["name"] = p.name
                     # Update DB
-                    repo.upsert_players([profile])
+                    with get_db_session() as session_repo:
+                        repo = PlayerBasicRepository(session_repo)
+                        repo.upsert_players([profile])
 
                     # Update detailed players table
                     try:
                         from src.parsers.player_profile_parser import PlayerProfileParsed
                         from src.repositories.player_repository import PlayerRepository
 
-                        detailed_repo = PlayerRepository()
-                        parsed = PlayerProfileParsed(
-                            player_id=int(p.player_id),
-                            player_name=p.name,
-                            photo_url=profile.get("photo_url"),
-                            batting_hand=profile.get("bats"),
-                            throwing_hand=profile.get("throws"),
-                            height_cm=profile.get("height_cm"),
-                            weight_kg=profile.get("weight_kg"),
-                            entry_year=profile.get("debut_year"),
-                            salary_original=profile.get("salary_original"),
-                            signing_bonus_original=profile.get("signing_bonus_original"),
-                            salary_amount=profile.get("salary_amount"),
-                            salary_currency=profile.get("salary_currency"),
-                            signing_bonus_amount=profile.get("signing_bonus_amount"),
-                            signing_bonus_currency=profile.get("signing_bonus_currency"),
-                            draft_year=profile.get("draft_year"),
-                            draft_round=profile.get("draft_round"),
-                            draft_pick_overall=profile.get("draft_pick_overall"),
-                            draft_type=profile.get("draft_type"),
-                            education_or_career_path=profile.get("education_path") or [],
-                        )
-                        detailed_repo.upsert_player_profile(str(p.player_id), parsed)
+                        with get_db_session() as detailed_session:
+                            detailed_repo = PlayerRepository(detailed_session)
+                            parsed = PlayerProfileParsed(
+                                player_id=int(p.player_id),
+                                player_name=p.name,
+                                photo_url=profile.get("photo_url"),
+                                batting_hand=profile.get("bats"),
+                                throwing_hand=profile.get("throws"),
+                                height_cm=profile.get("height_cm"),
+                                weight_kg=profile.get("weight_kg"),
+                                entry_year=profile.get("debut_year"),
+                                salary_original=profile.get("salary_original"),
+                                signing_bonus_original=profile.get("signing_bonus_original"),
+                                salary_amount=profile.get("salary_amount"),
+                                salary_currency=profile.get("salary_currency"),
+                                signing_bonus_amount=profile.get("signing_bonus_amount"),
+                                signing_bonus_currency=profile.get("signing_bonus_currency"),
+                                draft_year=profile.get("draft_year"),
+                                draft_round=profile.get("draft_round"),
+                                draft_pick_overall=profile.get("draft_pick_overall"),
+                                draft_type=profile.get("draft_type"),
+                                education_or_career_path=profile.get("education_path") or [],
+                            )
+                            detailed_repo.upsert_player_profile(str(p.player_id), parsed)
                     except SQLAlchemyError as repo_err:
                         logger.warning("  ⚠️ Detailed player sync warning: %s", repo_err)
 
@@ -106,9 +107,18 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                 else:
                     logger.warning("  ⚠️ No profile found for %s. Marking as NOT_FOUND.", p.player_id)
                     # Mark as NOT_FOUND to avoid re-crawling
-                    repo.upsert_players(
-                        [{"player_id": p.player_id, "name": p.name, "photo_url": "NOT_FOUND", "status": "NOT_FOUND"}],
-                    )
+                    with get_db_session() as session_repo:
+                        repo = PlayerBasicRepository(session_repo)
+                        repo.upsert_players(
+                            [
+                                {
+                                    "player_id": p.player_id,
+                                    "name": p.name,
+                                    "photo_url": "NOT_FOUND",
+                                    "status": "NOT_FOUND",
+                                }
+                            ],
+                        )
                     fail_count += 1
             except Exception:
                 logger.exception("  ❌ Error processing %s", p.player_id)
