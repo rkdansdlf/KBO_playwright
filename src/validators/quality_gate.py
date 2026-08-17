@@ -268,7 +268,7 @@ class QualityGate:
             )
             partition_by = [model.player_id, model.season, model.league]
             if "level" in columns:
-                partition_by.append(model.level)
+                partition_by.append(func.coalesce(model.level, "KBO1"))
             partition_by.append(self._team_code_expression(model))
             ranked_rows = (
                 select(

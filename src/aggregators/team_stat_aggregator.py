@@ -305,6 +305,7 @@ class TeamStatAggregator:
         self,
         model: type[PlayerSeasonBatting | PlayerSeasonPitching],
         season: int,
+        league: str = "REGULAR",
     ) -> ColumnElement[bool]:
         """Keep one highest-priority source row per player/team season key."""
         source_rank = case(
@@ -313,7 +314,7 @@ class TeamStatAggregator:
         )
         partition_by = [model.player_id, model.season, model.league]
         if hasattr(model, "level"):
-            partition_by.append(model.level)
+            partition_by.append(func.coalesce(model.level, "KBO1"))
         partition_by.append(self._team_code_expression(model))
         ranked_rows = (
             select(
@@ -325,7 +326,7 @@ class TeamStatAggregator:
                 )
                 .label("source_rank"),
             )
-            .where(model.season == season, model.league == "REGULAR")
+            .where(model.season == season, model.league == league)
             .subquery()
         )
         return model.id.in_(select(ranked_rows.c.source_row_id).where(ranked_rows.c.source_rank == 1))
@@ -810,12 +811,15 @@ class TeamStatAggregator:
 
         """
         league = league.upper()
+        aggregator = TeamStatAggregator(session=session)
+        filter_expr = aggregator._source_priority_filter(PlayerSeasonBatting, year, league=league)
 
         # Query all player batting rows for target year and league
         rows = (
             session.query(PlayerSeasonBatting)
             .filter(PlayerSeasonBatting.season == year)
             .filter(PlayerSeasonBatting.league == league)
+            .filter(filter_expr)
             .all()
         )
 
@@ -835,7 +839,6 @@ class TeamStatAggregator:
                 if games > 0:
                     team_games_map[(year, tc)] = games
 
-        aggregator = TeamStatAggregator()
         return aggregator.aggregate_batting(
             TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map),
         )
@@ -853,12 +856,15 @@ class TeamStatAggregator:
 
         """
         league = league.upper()
+        aggregator = TeamStatAggregator(session=session)
+        filter_expr = aggregator._source_priority_filter(PlayerSeasonPitching, year, league=league)
 
         # Query all player pitching rows for target year and league
         rows = (
             session.query(PlayerSeasonPitching)
             .filter(PlayerSeasonPitching.season == year)
             .filter(PlayerSeasonPitching.league == league)
+            .filter(filter_expr)
             .all()
         )
 
@@ -878,7 +884,6 @@ class TeamStatAggregator:
                 if games > 0:
                     team_games_map[(year, tc)] = games
 
-        aggregator = TeamStatAggregator()
         results = aggregator.aggregate_pitching(
             TeamAggregationQuery(rows=rows, team_names=team_names, team_games_map=team_games_map),
         )
