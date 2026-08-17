@@ -696,7 +696,9 @@ async def _resolve_today_games(
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Fetch or fallback today's scheduled games."""
     games = await sched_crawler.crawl_schedule(now.year, now.month)
-    failure_reason = getattr(sched_crawler, "get_last_failure_reason", lambda: None)()
+    failure_reason = getattr(sched_crawler, "get_last_failure_reason", lambda _key: None)(
+        f"{now.year}-{now.month:02d}:all"
+    )
     today_games = [g for g in (games or []) if g.get("game_date", "").replace("-", "") == today_str]
 
     if not today_games and failure_reason and isinstance(failure_reason, str):

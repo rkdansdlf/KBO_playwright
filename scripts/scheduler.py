@@ -17,9 +17,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.cron import CronTrigger
 from requests import RequestException
 import requests
 
+from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.run_daily_update import format_stability_alert_summary
 from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
@@ -115,6 +118,11 @@ from src.scheduler import (
     sync_rag_incremental_job,
     weekly_sla_report_job,
 )
+from src.scheduler.jobs.live import (
+    LAST_LIVE_POLL_INTERVAL,
+    LAST_LIVE_RUN_TIME,
+    LAST_PREGAME_RUN_TIME,
+)
 from src.utils.alerting import SlackWebhookClient
 from src.utils.lock import LockAcquisitionError
 from src.utils.metrics import KBO_SCHEDULER_LOCK_SKIP_TOTAL
@@ -201,6 +209,9 @@ __all__ = [
     "HTTP_STATUS_OK",
     "KBO_SCHEDULER_LOCK_SKIP_TOTAL",
     "KST",
+    "LAST_LIVE_POLL_INTERVAL",
+    "LAST_LIVE_RUN_TIME",
+    "LAST_PREGAME_RUN_TIME",
     "LIVE_LOCK",
     "LOCK_SKIP_ALERT_THRESHOLD",
     "MAINTENANCE_LOCK",
@@ -211,6 +222,8 @@ __all__ = [
     "_LAST_LOCK_SKIP",
     "_SCHEDULER_PID_FILE",
     "_SCHEDULER_REF",
+    "BlockingScheduler",
+    "CronTrigger",
     "LockAcquisitionError",
     "SessionLocal",
     "SlackWebhookClient",
@@ -295,6 +308,7 @@ __all__ = [
     "recalc_milestones_and_rag_job",
     "requests",
     "run_daily_update_main",
+    "run_live_crawler_cycle",
     "selector_drift_sentinel_job",
     "subprocess",
     "sync_rag_incremental_job",

@@ -30,7 +30,8 @@ def test_alert_warning():
         assert "warn_job" in mock_slack.call_args[0][0]
 
 
-def test_alert_success():
+def test_alert_success(monkeypatch):
+    monkeypatch.setenv("NOTIFY_SUCCESS", "1")
     with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_slack:
         alert_success("success_job", "finished")
         mock_slack.assert_called_once()
