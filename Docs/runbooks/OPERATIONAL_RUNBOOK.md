@@ -1,6 +1,6 @@
 # KBO Data Platform - Operational Runbook
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 Release Milestone: `CORE_IMPLEMENTATION_COMPLETE`
 
 ---
@@ -108,12 +108,12 @@ venv/bin/python scripts/verification/verify_oci_live_sync.py --json
 
 ---
 
-## 5. Current Verification Blockers (2026-08-16)
+## 5. Current Verification Status (2026-08-17)
 
 - Oracle wallet files, TCP port 1522, and `KBO_APP` Thin-driver connectivity pass. The full Oracle migration chain, including safety-gated files, is applied on the disposable `ADMIN` verification schema, and the isolated live MERGE/UPDATE/idempotency/cleanup verification is `VERIFIED_COMPLETE`.
 - The disposable `ADMIN` verification schema passes fresh ORM baseline creation, all safety-gated Oracle migrations, reapplication, `--check`, schema audit (`schema_drift=false`), and the repository rollback/upsert smoke profile.
 - CI uses the dedicated `OCI_DB_URL` secret for Oracle acceptance checks. `DATABASE_URL` remains the application primary URL and must not be used by the destructive reset tool.
-- The production `KBO_APP` read-only audit currently reports `schema_drift=false` with one pending verification migration (`065_reconcile_model_indexes.sql`); no production migration write has been approved or executed.
+- The production `KBO_APP` schema is current through migrations `065_reconcile_model_indexes.sql` and `066_restore_rag_chunk_source_identity_unique.sql`; apply, reapply, and `--check` pass, and the final audit reports `schema_drift=false`.
 - The isolated checkpoint recovery verification is also `VERIFIED_COMPLETE`: initial sync 3 rows, resumed sync 1 row, repeated sync 1 row, final target 4 rows, duplicates 0, and cleanup successful.
 - The current Oracle historical audit reports complete game, inning, batting, and pitching row coverage for 1982-2000 with zero duplicates and zero quarantine rows, but the provenance audit classifies the loaded records as deterministic synthetic fixtures; source-verified batting/pitching coverage is 0 for every season.
 - The current 8,236 historical metadata payloads do not contain verified manifest provenance fields (`source_url`, `authorization_ref`, and `sha256`). The strengthened audit therefore reports all 1982-2000 seasons as `PARTIAL` until an approved manifest is registered.
@@ -136,6 +136,8 @@ venv/bin/python scripts/verification/verify_oci_live_sync.py --json
 
 [OCI]
 [x] Oracle ADB connection PASS
+[x] KBO_APP migration ledger current through 066
+[x] KBO_APP schema audit `schema_drift=false`
 [x] INSERT -> MERGE PASS
 [x] Oracle SELECT verification PASS
 [x] UPDATE propagation PASS
