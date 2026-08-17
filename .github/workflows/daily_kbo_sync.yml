@@ -224,6 +224,23 @@ jobs:
           python3 -m scripts.maintenance.full_audit \
             --json --no-write
 
+      - name: Season Completeness Audit
+        continue-on-error: true
+        run: |
+          python3 -m scripts.maintenance.audit_completeness \
+            --start-year ${{ needs.finalize.outputs.year }} \
+            --end-year ${{ needs.finalize.outputs.year }} \
+            --json \
+            --output "$RUNNER_TEMP/completeness_audit.json"
+
+      - name: Upload Completeness Audit Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: completeness-audit-${{ needs.finalize.outputs.date }}
+          path: ${{ runner.temp }}/completeness_audit.json
+          if-no-files-found: warn
+
       - uses: ./.github/actions/notify
         if: always()
         with:

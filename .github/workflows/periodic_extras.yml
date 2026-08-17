@@ -44,6 +44,19 @@ jobs:
           python3 -m src.cli.seed_data_sources
           python3 -m src.cli.crawl_awards --save
 
+      - name: Audit Award Source Contract
+        run: |
+          mkdir -p reports
+          python3 -m src.cli.audit_awards --json --output reports/awards-audit.json
+
+      - name: Upload Award Audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: awards-audit-${{ github.run_id }}
+          path: reports/awards-audit.json
+          if-no-files-found: warn
+
       - name: Monthly Unified Audit (PA Formula + Team Stats)
         run: |
           YEAR="$(TZ='Asia/Seoul' date +'%Y')"
