@@ -188,6 +188,7 @@ class TestCrawlerOrchestration:
         page = MagicMock()
         pool = self._pool(page)
         crawler = ScheduleCrawler(pool=pool)
+        crawler._crawl_naver_month = AsyncMock(return_value=None)
         crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20250625LGSS0"}])
 
         games = await crawler.crawl_schedule(2025, 6)
@@ -204,6 +205,7 @@ class TestCrawlerOrchestration:
         pool = self._pool(page)
         mock_pool_class.return_value = pool
         crawler = ScheduleCrawler()
+        crawler._crawl_naver_month = AsyncMock(return_value=None)
         crawler._crawl_month = AsyncMock(side_effect=RuntimeError("navigation failed"))
 
         assert await crawler.crawl_schedule(2025, 6) == []
@@ -217,6 +219,7 @@ class TestCrawlerOrchestration:
         policy = MagicMock()
         policy.delay_async = AsyncMock()
         crawler = ScheduleCrawler(pool=pool, policy=policy)
+        crawler._crawl_naver_month = AsyncMock(return_value=None)
         crawler._crawl_month = AsyncMock(side_effect=[[{"game_id": "march"}], [{"game_id": "april"}]])
 
         games = await crawler.crawl_season(2025, months=[3, 4], series_id="0")
@@ -267,3 +270,141 @@ class TestCrawlerOrchestration:
         crawler._select_option_with_retry = AsyncMock(side_effect=[(True, "ok"), (False, "month failed")])
 
         assert await crawler._select_year_month(page, 2025, 6) == (False, "month failed")
+
+
+NAVER_SCHEDULE_SAMPLE = {
+    "result": {
+        "games": [
+            {
+                "gameId": "20260819HTHH02026",
+                "gameDate": "2026-08-19",
+                "gameDateTime": "2026-08-19T19:00:00",
+                "awayTeamCode": "HT",
+                "homeTeamCode": "HH",
+                "statusCode": "RESULT",
+                "statusInfo": "9회말",
+                "cancel": False,
+                "suspended": False,
+            },
+            {
+                "gameId": "20260819KTLG02026",
+                "gameDate": "2026-08-19",
+                "gameDateTime": "2026-08-19T19:00:00",
+                "awayTeamCode": "KT",
+                "homeTeamCode": "LG",
+                "statusCode": "BEFORE",
+                "statusInfo": "경기전",
+                "cancel": False,
+                "suspended": False,
+            },
+            {
+                "gameId": "20260819OBNC02026",
+                "gameDate": "2026-08-19",
+                "gameDateTime": "2026-08-19T18:30:00",
+                "awayTeamCode": "OB",
+                "homeTeamCode": "NC",
+                "statusCode": "RESULT",
+                "statusInfo": "경기취소",
+                "cancel": True,
+                "suspended": False,
+            },
+        ]
+    }
+}
+
+
+class TestNaverSchedulePath:
+    def test_naver_game_to_payload_maps_fields(self, crawler):
+        raw = NAVER_SCHEDULE_SAMPLE["result"]["games"][0]
+        game = crawler._naver_game_to_payload(raw, 2026, 8, {})
+
+        assert game["game_id"] == "20260819HTHH0"
+        assert game["game_date"] == "2026-08-19"
+        assert game["season_year"] == 2026
+        assert game["season_type"] == "regular"
+        assert game["away_team_code"] == "HT"
+        assert game["home_team_code"] == "HH"
+        assert game["doubleheader_no"] == 0
+        assert game["game_status"] == "COMPLETED"
+        assert game["crawl_status"] == "naver_api"
+        assert game["game_time"] == "19:00"
+        assert game["stadium"] == "한밭"
+
+    def test_naver_game_to_payload_scheduled_status(self, crawler):
+        raw = NAVER_SCHEDULE_SAMPLE["result"]["games"][1]
+        game = crawler._naver_game_to_payload(raw, 2026, 8, {})
+
+        assert game["game_status"] == "SCHEDULED"
+        assert game["game_time"] == "19:00"
+        assert game["stadium"] == "잠실"
+
+    def test_naver_game_to_payload_skips_cancelled(self, crawler):
+        raw = NAVER_SCHEDULE_SAMPLE["result"]["games"][2]
+
+        assert crawler._naver_game_to_payload(raw, 2026, 8, {}) is None
+
+    def test_naver_game_to_payload_skips_missing_team_codes(self, crawler):
+        raw = dict(NAVER_SCHEDULE_SAMPLE["result"]["games"][0], awayTeamCode="", homeTeamCode="")
+
+        assert crawler._naver_game_to_payload(raw, 2026, 8, {}) is None
+
+    def test_naver_game_to_payload_skips_invalid_date(self, crawler):
+        raw = dict(NAVER_SCHEDULE_SAMPLE["result"]["games"][0], gameDate="not-a-date")
+
+        assert crawler._naver_game_to_payload(raw, 2026, 8, {}) is None
+
+    def test_naver_game_to_payload_assigns_doubleheader_numbers(self, crawler):
+        raw = dict(NAVER_SCHEDULE_SAMPLE["result"]["games"][0], gameDateTime="2026-08-19T14:00:00")
+        dh_counts: dict = {}
+        first = crawler._naver_game_to_payload(raw, 2026, 8, dh_counts)
+        second = crawler._naver_game_to_payload(raw, 2026, 8, dh_counts)
+
+        assert first["doubleheader_no"] == 0
+        assert second["doubleheader_no"] == 1
+
+    @pytest.mark.asyncio
+    async def test_crawl_schedule_prefers_naver_and_skips_browser(self):
+        pool = MagicMock()
+        pool.start = AsyncMock()
+        crawler = ScheduleCrawler(pool=pool)
+        crawler._crawl_naver_month = AsyncMock(return_value=[{"game_id": "20260819HTHH0"}])
+        crawler._crawl_month = AsyncMock(return_value=[])
+
+        games = await crawler.crawl_schedule(2026, 8)
+
+        assert games == [{"game_id": "20260819HTHH0"}]
+        crawler._crawl_month.assert_not_awaited()
+        pool.start.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_crawl_schedule_falls_back_when_naver_unavailable(self):
+        from contextlib import asynccontextmanager
+
+        crawler = ScheduleCrawler()
+        crawler._crawl_naver_month = AsyncMock(return_value=None)
+        crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20250801LGSS0"}])
+
+        @asynccontextmanager
+        async def _mock_page_context():
+            yield AsyncMock()
+
+        crawler.page_context = _mock_page_context
+
+        games = await crawler.crawl_schedule(2025, 8)
+
+        assert games == [{"game_id": "20250801LGSS0"}]
+        crawler._crawl_naver_month.assert_awaited_once_with(2025, 8)
+
+    @pytest.mark.asyncio
+    async def test_crawl_season_uses_naver_per_month_when_available(self):
+        crawler = ScheduleCrawler()
+        crawler._crawl_naver_month = AsyncMock(
+            side_effect=[[{"game_id": "march"}], [{"game_id": "april"}]],
+        )
+        crawler._crawl_month = AsyncMock(return_value=[])
+
+        games = await crawler.crawl_season(2026, months=[3, 4])
+
+        assert games == [{"game_id": "march"}, {"game_id": "april"}]
+        assert crawler._crawl_naver_month.await_count == 2
+        crawler._crawl_month.assert_not_awaited()

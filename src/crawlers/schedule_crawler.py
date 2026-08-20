@@ -7,14 +7,16 @@ Collects game IDs from the KBO schedule page.
 from __future__ import annotations
 
 import asyncio
+import calendar
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import httpx
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
-from src.constants import KST
+from src.constants import DATE_STR_LEN, KST
 from src.crawlers.base import BasePlaywrightCrawler
 from src.urls import SCHEDULE
 from src.utils.compliance import compliance
@@ -41,6 +43,37 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 SCHEDULE_CRAWLER_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, KeyError, OSError)
+
+NAVER_SCHEDULE_API_URL = "https://api-gw.sports.naver.com/schedule/today-games"
+NAVER_SPORTS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+    "Origin": "https://m.sports.naver.com",
+    "Referer": "https://m.sports.naver.com/",
+}
+NAVER_STATUS_TO_GAME_STATUS = {
+    "BEFORE": GAME_STATUS_SCHEDULED,
+    "LIVE": GAME_STATUS_LIVE,
+    "RESULT": GAME_STATUS_COMPLETED,
+    "CANCEL": GAME_STATUS_CANCELLED,
+}
+NAVER_DATETIME_MIN_LEN = 16
+KBO_HOME_STADIUM_BY_TEAM: dict[str, str] = {
+    "OB": "잠실",
+    "LG": "잠실",
+    "WO": "고척",
+    "SK": "문학",
+    "KT": "수원",
+    "HH": "한밭",
+    "HT": "광주",
+    "SS": "대구",
+    "LT": "사직",
+    "NC": "창원",
+    "MBC": "잠실",
+    "TH": "광주",
+    "BG": "한밭",
+    "CW": "인천",
+}
 
 
 class ScheduleCrawler(BasePlaywrightCrawler):
@@ -102,6 +135,13 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         """
         logger.info("🔍 Crawling schedule for %s-%02d (Series: %s)...", year, month, series_id)
 
+        if series_id in (None, "0"):
+            naver_games = await self._crawl_naver_month(year, month)
+            if naver_games is not None:
+                logger.info("✅ Found %s games (Naver API)", len(naver_games))
+                return naver_games
+            logger.info("Naver schedule unavailable for %s-%02d, falling back to KBO page", year, month)
+
         async with self.page_context() as page:
             try:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
@@ -129,13 +169,23 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         months = months or list(range(3, 11))
 
         all_games: list[dict] = []
+        browser_months: list[int] = []
 
-        async with self.page_context() as page:
-            for month in months:
-                await self.policy.delay_async(host="www.koreabaseball.com")
-                month_games = await self._crawl_month(page, year, month, series_id=series_id)
-                all_games.extend(month_games)
-            return all_games
+        for month in months:
+            if series_id in (None, "0"):
+                naver_games = await self._crawl_naver_month(year, month)
+                if naver_games is not None:
+                    all_games.extend(naver_games)
+                    continue
+            browser_months.append(month)
+
+        if browser_months:
+            async with self.page_context() as page:
+                for month in browser_months:
+                    await self.policy.delay_async(host="www.koreabaseball.com")
+                    month_games = await self._crawl_month(page, year, month, series_id=series_id)
+                    all_games.extend(month_games)
+        return all_games
 
     async def _navigate_schedule_page(
         self,
@@ -196,6 +246,115 @@ class ScheduleCrawler(BasePlaywrightCrawler):
             return False, "schedule_navigation_failed"
 
         return True, "ok"
+
+    async def _crawl_naver_month(self, year: int, month: int) -> list[dict] | None:
+        """Fetch a month of games from the Naver sports schedule API.
+
+        Args:
+            year: Season year.
+            month: Month (1-12).
+
+        Returns:
+            Schedule payloads, or None when the API is unreachable (caller falls
+            back to the KBO schedule page).
+
+        """
+        crawl_key = self._schedule_key(year, month, "naver")
+        self._last_failure_reason.pop(crawl_key, None)
+
+        games: list[dict] = []
+        dh_counts: dict[tuple[str, str, str], int] = {}
+        try:
+            async with httpx.AsyncClient(timeout=20.0, headers=NAVER_SPORTS_HEADERS) as client:
+                for day in range(1, calendar.monthrange(year, month)[1] + 1):
+                    await self.policy.delay_async(host="api-gw.sports.naver.com")
+                    params = {
+                        "sectionId": "kbaseball",
+                        "categoryId": "kbo",
+                        "seasonYear": str(year),
+                        "date": f"{year}-{month:02d}-{day:02d}",
+                    }
+                    resp = await client.get(NAVER_SCHEDULE_API_URL, params=params)
+                    resp.raise_for_status()
+                    raw_games = (resp.json().get("result") or {}).get("games") or []
+                    for raw in raw_games:
+                        game = self._naver_game_to_payload(raw, year, month, dh_counts)
+                        if game is not None:
+                            games.append(game)
+        except (httpx.HTTPError, OSError, ValueError, TypeError, KeyError):
+            logger.exception("Naver schedule API failed for %s-%02d", year, month)
+            self._last_failure_reason[crawl_key] = "naver_api_failure"
+            return None
+
+        if not games:
+            self._last_failure_reason[crawl_key] = "naver_api_empty"
+        return games
+
+    def _naver_game_to_payload(
+        self,
+        raw: dict[str, Any],
+        year: int,
+        month: int,
+        dh_counts: dict[tuple[str, str, str], int],
+    ) -> dict[str, Any] | None:
+        """Map a Naver schedule entry to the KBO schedule payload schema.
+
+        Args:
+            raw: Naver schedule game entry.
+            year: Season year.
+            month: Month.
+            dh_counts: Double-header counter keyed by (date, away, home).
+
+        Returns:
+            Schedule payload or None when the entry is not a valid KBO game.
+
+        """
+        if raw.get("cancel") or raw.get("suspended"):
+            return None
+        away_code = str(raw.get("awayTeamCode") or "").strip()
+        home_code = str(raw.get("homeTeamCode") or "").strip()
+        if not away_code or not home_code:
+            return None
+        game_date = str(raw.get("gameDate") or "").replace("-", "")
+        if len(game_date) != DATE_STR_LEN or not game_date.isdigit():
+            return None
+
+        dh_key = (game_date, away_code, home_code)
+        dh_no = dh_counts.get(dh_key, 0)
+        dh_counts[dh_key] = dh_no + 1
+
+        game_id = f"{game_date}{away_code}{home_code}{dh_no}"
+        status = NAVER_STATUS_TO_GAME_STATUS.get(
+            str(raw.get("statusCode") or "").upper(),
+            GAME_STATUS_SCHEDULED,
+        )
+        game_time = None
+        date_time = str(raw.get("gameDateTime") or "")
+        if len(date_time) >= NAVER_DATETIME_MIN_LEN:
+            game_time = date_time[11:16]
+
+        schedule_game = {
+            "game_id": normalize_kbo_game_id(game_id),
+            "game_date": f"{game_date[:4]}-{game_date[4:6]}-{game_date[6:]}",
+            "season_year": year,
+            "season_type": "regular",
+            "away_team_code": away_code,
+            "home_team_code": home_code,
+            "doubleheader_no": dh_no,
+            "game_status": status,
+            "crawl_status": "naver_api",
+            "game_time": game_time,
+            "stadium": KBO_HOME_STADIUM_BY_TEAM.get(home_code),
+        }
+        is_valid, failure_reason = validate_schedule_game_payload(
+            schedule_game,
+            expected_year=year,
+            expected_month=month,
+        )
+        if not is_valid:
+            logger.warning("Filtered Naver schedule row: %s reason=%s", game_id, failure_reason)
+            return None
+        return schedule_game
 
     async def _crawl_month(self, page: Page, year: int, month: int, series_id: str | None = None) -> list[dict]:
         """특정 월의 경기 일정 페이지에서 정보를 추출합니다.
