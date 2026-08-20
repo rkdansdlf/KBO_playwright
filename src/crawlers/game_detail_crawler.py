@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+import httpx
+
 from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, KST, MAX_INNINGS
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,55 @@ from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 from src.utils.type_helpers import parse_innings_to_outs, safe_int_or_none
+
+NAVER_RECORD_API_URL = "https://api-gw.sports.naver.com/schedule/games/{naver_id}/record"
+NAVER_SPORTS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+    "Origin": "https://m.sports.naver.com",
+    "Referer": "https://m.sports.naver.com/",
+}
+NAVER_BATTER_STARTER_MAX_ORDER = 9
+
+
+def _as_int(value: object) -> int | None:
+    """Coerce a value to int or None.
+
+    Args:
+        value: Value.
+
+    Returns:
+        The result of the operation.
+
+    """
+    if value is None:
+        return None
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _naver_rate_to_float(value: object) -> float | None:
+    r"""Coerce a Naver rate string (e.g. "0.286") to float or None.
+
+    Args:
+        value: Value.
+
+    Returns:
+        The result of the operation.
+
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
 
 HITTER_HEADER_MAP = {
     "타석": "plate_appearances",
@@ -471,30 +522,12 @@ class GameDetailCrawler:
             for _ in range(max_concurrency):
                 queue.put_nowait(None)
 
-            async def worker() -> None:
-                """Handle the worker operation."""
-                page = await pool.acquire()
-                try:
-                    while True:
-                        item = await queue.get()
-                        if item is None:
-                            queue.task_done()
-                            break
-                        idx, entry = item
-                        game_id = entry["game_id"]
-                        game_date = entry["game_date"]
-                        try:
-                            payload = await self._crawl_single(page, game_id, game_date, lightweight=lightweight)
-                            results[idx] = payload
-                        except DETAIL_CRAWLER_EXCEPTIONS:  # pragma: no cover - resilience path
-                            self._last_failure_reason[game_id] = "exception"
-                            logger.exception("❌ Error crawling %s", game_id)
-                        finally:
-                            queue.task_done()
-                finally:
-                    await pool.release(page)
-
-            workers = [asyncio.create_task(worker()) for _ in range(max_concurrency)]
+            workers = [
+                asyncio.create_task(
+                    self._crawl_game_worker(pool, queue, results, lightweight=lightweight),
+                )
+                for _ in range(max_concurrency)
+            ]
             # Workers consume the sentinels after all queued entries. Gathering
             # them is sufficient and avoids waiting forever if pool acquisition
             # fails before a worker can acknowledge a queue item.
@@ -504,6 +537,291 @@ class GameDetailCrawler:
                 await pool.close()
 
         return [payload for payload in results if payload]
+
+    async def _crawl_naver_single(self, game_id: str, game_date: str) -> dict[str, Any] | None:
+        """Fetch game details from the Naver sports record API.
+
+        Args:
+            game_id: KBO game ID.
+            game_date: Game date (YYYYMMDD or ISO).
+
+        Returns:
+            Game detail payload or None when Naver has no record for the game.
+
+        """
+        from src.crawlers.relay_crawler import RelayCrawler
+
+        naver_id = RelayCrawler._map_to_naver_id(game_id)  # noqa: SLF001
+        url = NAVER_RECORD_API_URL.format(naver_id=naver_id)
+        try:
+            async with httpx.AsyncClient(timeout=20.0, headers=NAVER_SPORTS_HEADERS) as client:
+                await self.policy.delay_async(host="api-gw.sports.naver.com")
+                resp = await client.get(url)
+                resp.raise_for_status()
+                record = (resp.json().get("result") or {}).get("recordData") or {}
+        except (httpx.HTTPError, OSError, ValueError, TypeError, KeyError):
+            self._last_failure_reason[game_id] = "naver_record_unavailable"
+            logger.debug("Naver record unavailable for %s", game_id)
+            return None
+
+        if not record:
+            self._last_failure_reason[game_id] = "naver_record_empty"
+            return None
+
+        return self._naver_record_to_payload(record, game_id, game_date)
+
+    def _naver_record_to_payload(self, record: dict[str, Any], game_id: str, game_date: str) -> dict[str, Any]:
+        """Convert a Naver record API response into the game detail payload schema.
+
+        Args:
+            record: Naver recordData.
+            game_id: KBO game ID.
+            game_date: Game date.
+
+        Returns:
+            Game detail payload compatible with save_game_detail.
+
+        """
+        game_info = record.get("gameInfo") or {}
+        scoreboard = record.get("scoreBoard") or {}
+        rheb = scoreboard.get("rheb") or {}
+        season_year = int(game_id[:4]) if len(game_id) >= GAME_ID_YEAR_LEN and game_id[:4].isdigit() else None
+
+        away_segment = str(game_info.get("aCode") or game_id[8:10])
+        home_segment = str(game_info.get("hCode") or game_id[10:12])
+        away_code = team_code_from_game_id_segment(away_segment, season_year) or away_segment
+        home_code = team_code_from_game_id_segment(home_segment, season_year) or home_segment
+        away_score = _as_int(rheb.get("away", {}).get("r"))
+        home_score = _as_int(rheb.get("home", {}).get("r"))
+
+        team_info = {
+            "away": {"code": away_code, "name": game_info.get("aName"), "score": away_score},
+            "home": {"code": home_code, "name": game_info.get("hName"), "score": home_score},
+        }
+
+        stadium = str(game_info.get("stadium") or "").strip() or None
+        from src.utils.stadium_codes import resolve_stadium_code
+
+        metadata = {
+            "stadium": stadium,
+            "stadium_code": resolve_stadium_code(stadium) if stadium else None,
+            "attendance": None,
+            "duration_minutes": None,
+            "weather": None,
+        }
+
+        batters = record.get("battersBoxscore") or {}
+        pitchers = record.get("pitchersBoxscore") or {}
+        hitters = {
+            "away": self._naver_batters_to_entries(batters.get("away") or [], away_code),
+            "home": self._naver_batters_to_entries(batters.get("home") or [], home_code),
+        }
+        pitcher_entries = {
+            "away": self._naver_pitchers_to_entries(pitchers.get("away") or [], away_code),
+            "home": self._naver_pitchers_to_entries(pitchers.get("home") or [], home_code),
+        }
+
+        starting_codes = {
+            "away": str(game_info.get("aPCode") or "").strip(),
+            "home": str(game_info.get("hPCode") or "").strip(),
+        }
+        for side, entries in pitcher_entries.items():
+            for entry in entries:
+                if entry.get("player_id") == starting_codes.get(side):
+                    entry["is_starting"] = True
+
+        lifecycle_state = None
+        if away_score is not None or home_score is not None:
+            lifecycle_state = "running"
+
+        return {
+            "game_id": normalize_kbo_game_id(game_id),
+            "game_date": game_date,
+            "metadata": metadata,
+            "summary": self._naver_summary_rows(record, team_info),
+            "teams": team_info,
+            "home_team_code": home_code,
+            "away_team_code": away_code,
+            "hitters": hitters,
+            "pitchers": pitcher_entries,
+            "lifecycle_state": lifecycle_state,
+            "source": "naver_record",
+        }
+
+    def _naver_batters_to_entries(self, rows: list[dict[str, Any]], team_code: str) -> list[dict[str, Any]]:
+        """Convert Naver batter rows to the hitter entry schema.
+
+        Args:
+            rows: Naver batter rows.
+            team_code: Team code.
+
+        Returns:
+            Hitter entries.
+
+        """
+        entries: list[dict[str, Any]] = []
+        for seq, raw in enumerate(rows, start=1):
+            name = str(raw.get("name") or "").strip()
+            if not name:
+                continue
+            batting_order = _as_int(raw.get("batOrder"))
+            at_bats = _as_int(raw.get("ab"))
+            hits = _as_int(raw.get("hit"))
+            entries.append(
+                {
+                    "player_name": name,
+                    "player_id": str(raw.get("playerCode") or "").strip() or None,
+                    "team_code": team_code,
+                    "uniform_no": None,
+                    "batting_order": batting_order,
+                    "is_starter": batting_order is not None and batting_order <= NAVER_BATTER_STARTER_MAX_ORDER,
+                    "appearance_seq": seq,
+                    "position": None,
+                    "stats": {
+                        "plate_appearances": _as_int(raw.get("pa")),
+                        "at_bats": at_bats,
+                        "runs": _as_int(raw.get("run")),
+                        "hits": hits,
+                        "home_runs": _as_int(raw.get("hr")),
+                        "rbi": _as_int(raw.get("rbi")),
+                        "walks": _as_int(raw.get("bb")),
+                        "strikeouts": _as_int(raw.get("kk")),
+                        "stolen_bases": _as_int(raw.get("sb")),
+                        "avg": round(hits / at_bats, 3) if at_bats else None,
+                    },
+                    "extras": {
+                        "source": "naver_record",
+                        "inning_results": {
+                            f"inn{idx}": str(raw.get(f"inn{idx}") or "") for idx in range(1, MAX_INNINGS + 1)
+                        },
+                    },
+                },
+            )
+        return entries
+
+    def _naver_pitchers_to_entries(self, rows: list[dict[str, Any]], team_code: str) -> list[dict[str, Any]]:
+        """Convert Naver pitcher rows to the pitcher entry schema.
+
+        Args:
+            rows: Naver pitcher rows.
+            team_code: Team code.
+
+        Returns:
+            Pitcher entries.
+
+        """
+        entries: list[dict[str, Any]] = []
+        for seq, raw in enumerate(rows, start=1):
+            name = str(raw.get("name") or "").strip()
+            if not name:
+                continue
+            innings_text = str(raw.get("inn") or "").strip()
+            entries.append(
+                {
+                    "player_name": name,
+                    "player_id": str(raw.get("pcode") or "").strip() or None,
+                    "team_code": team_code,
+                    "uniform_no": None,
+                    "is_starting": False,
+                    "appearance_seq": seq,
+                    "stats": {
+                        "innings_outs": parse_innings_to_outs(innings_text) if innings_text else None,
+                        "batters_faced": _as_int(raw.get("pa")),
+                        "pitches": _as_int(raw.get("bf")),
+                        "hits_allowed": _as_int(raw.get("hit")),
+                        "runs_allowed": _as_int(raw.get("r")),
+                        "earned_runs": _as_int(raw.get("er")),
+                        "home_runs_allowed": _as_int(raw.get("hr")),
+                        "walks_allowed": _as_int(raw.get("bb")),
+                        "strikeouts": _as_int(raw.get("kk")),
+                        "hit_batters": _as_int(raw.get("bbhp")),
+                        "wins": _as_int(raw.get("w")),
+                        "losses": _as_int(raw.get("l")),
+                        "saves": _as_int(raw.get("s")),
+                    },
+                    "extras": {"source": "naver_record", "decision": raw.get("tb")},
+                },
+            )
+        return entries
+
+    def _naver_summary_rows(
+        self,
+        record: dict[str, Any],
+        team_info: dict[str, dict[str, Any]],
+    ) -> list[dict[str, str]]:
+        """Build summary rows (winning/losing pitcher etc.) from a Naver record.
+
+        Args:
+            record: Naver recordData.
+            team_info: Team info.
+
+        Returns:
+            Summary rows.
+
+        """
+        rows: list[dict[str, str]] = []
+        pitching_result = record.get("pitchingResult") or []
+        for entry in pitching_result:
+            wls = str(entry.get("wls") or "").strip()
+            label = {
+                "W": "승리투수",
+                "L": "패전투수",
+                "S": "세이브투수",
+                "H": "홀드투수",
+            }.get(wls)
+            name = str(entry.get("name") or "").strip()
+            if label and name:
+                rows.append({"summary_type": label, "detail_text": name})
+        if not rows:
+            away_code = team_info.get("away", {}).get("code")
+            home_code = team_info.get("home", {}).get("code")
+            away_score = team_info.get("away", {}).get("score")
+            home_score = team_info.get("home", {}).get("score")
+            if away_score is not None and home_score is not None:
+                winner = home_code if home_score > away_score else away_code if away_score > home_score else None
+                if winner:
+                    rows.append({"summary_type": "경기결과", "detail_text": f"{winner} 승"})
+        return rows
+
+    async def _crawl_game_worker(
+        self,
+        pool: AsyncPlaywrightPool,
+        queue: asyncio.Queue[tuple[int, dict[str, str]] | None],
+        results: list[dict[str, Any] | None],
+        *,
+        lightweight: bool,
+    ) -> None:
+        """Process one game from the queue, preferring the Naver record API.
+
+        Args:
+            pool: Playwright pool (used for the KBO page fallback).
+            queue: Work queue.
+            results: Result slots by index.
+            lightweight: Lightweight mode.
+
+        """
+        page = await pool.acquire()
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    queue.task_done()
+                    break
+                idx, entry = item
+                game_id = entry["game_id"]
+                game_date = entry["game_date"]
+                try:
+                    payload = await self._crawl_naver_single(game_id, game_date)
+                    if payload is None:
+                        payload = await self._crawl_single(page, game_id, game_date, lightweight=lightweight)
+                    results[idx] = payload
+                except DETAIL_CRAWLER_EXCEPTIONS:  # pragma: no cover - resilience path
+                    self._last_failure_reason[game_id] = "exception"
+                    logger.exception("❌ Error crawling %s", game_id)
+                finally:
+                    queue.task_done()
+        finally:
+            await pool.release(page)
 
     async def _crawl_single(
         self,
