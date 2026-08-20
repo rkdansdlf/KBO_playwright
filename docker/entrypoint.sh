@@ -136,4 +136,11 @@ if [[ "${SQLITE_GUARD_QUARANTINED:-0}" == "1" && "${RUN_INIT_DB:-0}" != "1" ]]; 
   python -c "from src.db.engine import init_db; init_db()"
 fi
 
-exec "$@"
+# CMD를 그대로 사용하는 경우(기본 --help 등)는 그대로 실행하고,
+# docker run으로 CLI 인자만 전달된 경우(예: --season 2026 --month 08)는
+# crawl_text_relay 명령으로 감싼다. exec는 옵션으로 시작하는 인자를 명령으로
+# 해석할 수 없으므로 직접 조립한다.
+if [ "$#" -gt 0 ] && [ "$1" = "python" ]; then
+    exec "$@"
+fi
+exec python -m src.cli.crawl_text_relay "$@"
