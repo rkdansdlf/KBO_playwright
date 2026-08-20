@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from src.crawlers.game_detail_crawler import (
@@ -996,3 +997,223 @@ class TestBoxscoreExtractionFlows:
         cancelled = await GameDetailCrawler()._is_cancelled_boxscore_page(page)
 
         assert cancelled is True
+
+
+NAVER_RECORD_SAMPLE = {
+    "gameInfo": {
+        "aCode": "HT",
+        "hCode": "HH",
+        "aName": "KIA",
+        "hName": "한화",
+        "aPCode": "54843",
+        "hPCode": "56724",
+        "stadium": "대전",
+        "gtime": "19:00",
+        "statusCode": "4",
+    },
+    "scoreBoard": {
+        "rheb": {
+            "away": {"r": 6, "h": 7, "e": 0},
+            "home": {"r": 3, "h": 6, "e": 1},
+        }
+    },
+    "battersBoxscore": {
+        "away": [
+            {
+                "name": "박재현",
+                "playerCode": "55636",
+                "batOrder": 1,
+                "ab": 5,
+                "run": 1,
+                "hit": 2,
+                "hr": 0,
+                "rbi": 2,
+                "bb": 0,
+                "kk": 0,
+                "sb": 0,
+            },
+            {
+                "name": "김도영",
+                "playerCode": "51234",
+                "batOrder": 2,
+                "ab": 4,
+                "run": 0,
+                "hit": 1,
+                "hr": 1,
+                "rbi": 3,
+                "bb": 1,
+                "kk": 1,
+                "sb": 0,
+            },
+            {
+                "name": "대타",
+                "playerCode": "50000",
+                "ab": 1,
+                "run": 0,
+                "hit": 0,
+                "hr": 0,
+                "rbi": 0,
+                "bb": 0,
+                "kk": 1,
+                "sb": 0,
+            },
+        ],
+        "home": [],
+        "awayTotal": {"ab": 10, "hit": 3, "rbi": 5, "run": 1, "sb": 0},
+        "homeTotal": {},
+    },
+    "pitchersBoxscore": {
+        "away": [
+            {
+                "name": "시라카와",
+                "pcode": "54843",
+                "inn": "6 ⅓",
+                "ab": 19,
+                "hit": 2,
+                "hr": 0,
+                "bb": 2,
+                "bbhp": 2,
+                "er": 1,
+                "kk": 3,
+                "l": 4,
+                "w": 3,
+                "s": 0,
+                "r": 1,
+                "pa": 21,
+                "bf": 81,
+            },
+            {
+                "name": "불펜",
+                "pcode": "50001",
+                "inn": "1",
+                "ab": 3,
+                "hit": 0,
+                "hr": 0,
+                "bb": 0,
+                "bbhp": 0,
+                "er": 0,
+                "kk": 1,
+                "l": 0,
+                "w": 0,
+                "s": 0,
+                "r": 0,
+                "pa": 3,
+                "bf": 12,
+            },
+        ],
+        "home": [],
+    },
+    "pitchingResult": [
+        {"name": "이의리", "pCode": "51648", "wls": "S"},
+        {"name": "성영탁", "pCode": "54610", "wls": "W"},
+    ],
+}
+
+
+class TestNaverRecordPath:
+    def _payload(self):
+        crawler = GameDetailCrawler()
+        return crawler._naver_record_to_payload(NAVER_RECORD_SAMPLE, "20260819HTHH0", "2026-08-19")
+
+    def test_teams_and_scores_use_modern_codes(self):
+        payload = self._payload()
+
+        assert payload["away_team_code"] == "KIA"
+        assert payload["home_team_code"] == "HH"
+        assert payload["teams"]["away"]["code"] == "KIA"
+        assert payload["teams"]["away"]["score"] == 6
+        assert payload["teams"]["home"]["score"] == 3
+
+    def test_metadata_stadium_resolved(self):
+        payload = self._payload()
+
+        assert payload["metadata"]["stadium"] == "대전"
+        assert payload["metadata"]["stadium_code"] == "HANBAT"
+
+    def test_batter_entries(self):
+        payload = self._payload()
+        away = payload["hitters"]["away"]
+
+        assert len(away) == 3
+        first = away[0]
+        assert first["player_name"] == "박재현"
+        assert first["player_id"] == "55636"
+        assert first["batting_order"] == 1
+        assert first["is_starter"] is True
+        assert first["stats"]["at_bats"] == 5
+        assert first["stats"]["hits"] == 2
+        assert first["stats"]["avg"] == 0.4
+
+    def test_batter_without_order_is_not_starter(self):
+        payload = self._payload()
+        substitute = payload["hitters"]["away"][2]
+
+        assert substitute["batting_order"] is None
+        assert substitute["is_starter"] is False
+
+    def test_batter_avg_derived_from_game_hits(self):
+        payload = self._payload()
+        batter = payload["hitters"]["away"][1]
+
+        assert batter["stats"]["avg"] == 0.25
+
+    def test_pitcher_entries_with_starting_match(self):
+        payload = self._payload()
+        away = payload["pitchers"]["away"]
+
+        assert len(away) == 2
+        starter = away[0]
+        assert starter["player_name"] == "시라카와"
+        assert starter["is_starting"] is True
+        assert starter["stats"]["innings_outs"] == 19
+        assert starter["stats"]["batters_faced"] == 21
+        assert starter["stats"]["pitches"] == 81
+        assert away[1]["is_starting"] is False
+
+    def test_summary_rows_from_pitching_result(self):
+        payload = self._payload()
+
+        assert {"summary_type": "승리투수", "detail_text": "성영탁"} in payload["summary"]
+        assert {"summary_type": "세이브투수", "detail_text": "이의리"} in payload["summary"]
+
+    def test_summary_fallback_to_winner(self):
+        record = dict(NAVER_RECORD_SAMPLE)
+        record["pitchingResult"] = []
+        crawler = GameDetailCrawler()
+        payload = crawler._naver_record_to_payload(record, "20260819HTHH0", "2026-08-19")
+
+        assert {"summary_type": "경기결과", "detail_text": "KIA 승"} in payload["summary"]
+
+    @pytest.mark.asyncio
+    async def test_crawl_naver_single_returns_none_on_empty_record(self):
+        crawler = GameDetailCrawler()
+        with patch("src.crawlers.game_detail_crawler.httpx.AsyncClient", autospec=True) as client_cls:
+            client = MagicMock()
+            client_cls.return_value.__aenter__.return_value = client
+            resp = MagicMock()
+            resp.json.return_value = {"result": {}}
+            client.get = AsyncMock(return_value=resp)
+
+            result = await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
+
+        assert result is None
+        assert crawler.get_last_failure_reason("20260819HTHH0") == "naver_record_empty"
+
+    @pytest.mark.asyncio
+    async def test_crawl_naver_single_falls_back_on_http_error(self):
+        crawler = GameDetailCrawler()
+        with patch("src.crawlers.game_detail_crawler.httpx.AsyncClient", autospec=True) as client_cls:
+            client = MagicMock()
+            client_cls.return_value.__aenter__.return_value = client
+            resp = MagicMock()
+            resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "404",
+                request=httpx.Request("GET", "https://api-gw.sports.naver.com/x"),
+                response=httpx.Response(404, request=httpx.Request("GET", "https://api-gw.sports.naver.com/x")),
+            )
+            client.get = AsyncMock(return_value=resp)
+
+            result = await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
+
+        assert result is None
+        assert crawler.get_last_failure_reason("20260819HTHH0") == "naver_record_unavailable"
