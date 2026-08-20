@@ -62,10 +62,6 @@ from src.scheduler.jobs.stadium import (
     crawl_transit_time_job,
 )
 from src.scheduler.locks import (
-    DAILY_LOCK,
-    LIVE_LOCK,
-    MAINTENANCE_LOCK,
-    SQLITE_WRITE_LOCK,
     _ensure_single_scheduler_instance,
     lock_skip_monitor_job,
 )
@@ -127,7 +123,11 @@ def _shutdown_handler(signum: int, _frame: object) -> None:
             _SCHEDULER_REF.shutdown(wait=False)
         except (OSError, RuntimeError) as e:
             logger.warning("Error during scheduler shutdown: %s", e)
-    for lock in [LIVE_LOCK, DAILY_LOCK, MAINTENANCE_LOCK, SQLITE_WRITE_LOCK]:
+    mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
+    for lock_name in ("LIVE_LOCK", "DAILY_LOCK", "MAINTENANCE_LOCK", "SQLITE_WRITE_LOCK"):
+        lock = getattr(mod, lock_name, None) if mod else None
+        if lock is None:
+            continue
         try:
             lock.release()
         except (OSError, RuntimeError) as e:
