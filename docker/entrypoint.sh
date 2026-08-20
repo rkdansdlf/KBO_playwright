@@ -70,8 +70,10 @@ if [ "$(id -u)" = '0' ]; then
     fi
 
     # gosu로 appuser 권한으로 재실행
+    # UID/GID를 직접 지정해 usermod가 실패(예: UID 충돌)하더라도
+    # 호스트 볼륨 소유자 권한으로 실행되도록 보장한다.
     if command -v gosu >/dev/null 2>&1; then
-        exec gosu appuser "$0" "$@"
+        exec gosu "${TARGET_UID}:${TARGET_GID}" "$0" "$@"
     else
         echo "⚠️ gosu not found, falling back to runuser"
         exec runuser -u appuser -- "$0" "$@"
