@@ -2,6 +2,15 @@
 DECLARE
     v_exists NUMBER;
 BEGIN
+    -- Deduplicate rows by source identity before adding the constraint
+    -- (mirrors postgresql/052 and sqlite/058).
+    DELETE FROM rag_chunks
+     WHERE rowid NOT IN (
+               SELECT MIN(rowid)
+                 FROM rag_chunks
+                GROUP BY source_table, source_row_id
+           );
+
     SELECT COUNT(*)
       INTO v_exists
       FROM user_constraints
