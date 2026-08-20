@@ -78,6 +78,7 @@ jobs:
             -v "${{ github.workspace }}/data:/app/data" \
             -v "${{ github.workspace }}/logs:/app/logs" \
             -e KBO_REQUEST_DELAY_MIN=1.5 \
+            -e RUN_INIT_DB=1 \
             -e KBO_REQUEST_DELAY_MAX=2.5 \
             kbo-text-relay:latest \
             --game-id ${{ github.event.inputs.game_id }} \
@@ -91,6 +92,7 @@ jobs:
             -v ${{ github.workspace }}/data:/app/data \
             -v ${{ github.workspace }}/logs:/app/logs \
             -e KBO_REQUEST_DELAY_MIN=1.5 \
+            -e RUN_INIT_DB=1 \
             -e KBO_REQUEST_DELAY_MAX=2.5 \
             kbo-text-relay:latest \
             --season ${{ github.event.inputs.season }} \
@@ -112,6 +114,7 @@ jobs:
             -v ${{ github.workspace }}/data:/app/data \
             -v ${{ github.workspace }}/logs:/app/logs \
             -e KBO_REQUEST_DELAY_MIN=1.5 \
+            -e RUN_INIT_DB=1 \
             -e KBO_REQUEST_DELAY_MAX=2.5 \
             kbo-text-relay:latest \
             --season "$YEAR" \
