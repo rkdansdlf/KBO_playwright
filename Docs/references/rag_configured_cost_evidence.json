@@ -1,0 +1,61 @@
+{
+  "status": "final_replay_recorded_pending_budget_approval",
+  "captured_at": "2026-08-21",
+  "environment": {
+    "target": "staging",
+    "embedding_model": "perplexity/pplx-embed-v1-4b",
+    "embedding_dimension": 1536,
+    "batch_size": 50
+  },
+  "corpus_observations": {
+    "source_inventory_rows": 207305,
+    "vector_rows": 207305,
+    "build_cache_entries": 223375,
+    "current_cache_entries_after_evaluation": 223406,
+    "distinct_content_hashes": 223406,
+    "backup_cache_entries_imported": 72354,
+    "initial_cache_hits": 55877,
+    "initial_cache_misses": 151428,
+    "build_cache_entries_added": 151021,
+    "evaluation_query_cache_entries_added": 31,
+    "missing_embeddings": 0
+  },
+  "provider_observations": {
+    "provider": "openrouter",
+    "canary": {
+      "prompt_tokens": 4,
+      "total_tokens": 4,
+      "reported_cost_usd": 0.00000012
+    },
+    "key_usage_before_rebuild": 0.45863019,
+    "key_usage_after_final_replay": 1.20834195,
+    "observed_usage_delta": 0.74971176,
+    "key_usage_scope": "cumulative provider key usage observed across the rebuild and replay interval; not an invoice",
+    "model_pricing_metadata": "unavailable from models endpoint",
+    "activity_endpoint": "unavailable (HTTP 403)"
+  },
+  "full_run_measurements": {
+    "api_call_count": null,
+    "prompt_tokens": null,
+    "total_tokens": null,
+    "provider_cost_usd": null,
+    "reason": "The completed build did not persist per-request usage totals; provider key usage delta is recorded separately and cannot be treated as a billing invoice."
+  },
+  "final_replay": {
+    "dataset_sha256": "6753148748d2a402d11bb7a7306d0dec80089ed84f59b3867e9a5acbde8ca295",
+    "query_count": 30,
+    "top_k": 5,
+    "resolver_hybrid_recall_at_5": 0.9818,
+    "resolver_hybrid_hit_rate": 1.0,
+    "resolver_hybrid_mrr": 0.8889,
+    "resolver_hybrid_latency_p95_ms": 386.91,
+    "routing_accuracy": 1.0,
+    "entity_false_positive_count": 0
+  },
+  "operational_evidence": {
+    "retry_backoff_for_http_429": true,
+    "oracle_long_source_materialization": true,
+    "write_target": "isolated recovery staging only",
+    "promotion_approved": false
+  }
+}

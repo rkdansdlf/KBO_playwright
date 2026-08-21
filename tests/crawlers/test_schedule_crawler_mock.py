@@ -191,7 +191,8 @@ class TestCrawlerOrchestration:
         crawler._crawl_naver_month = AsyncMock(return_value=None)
         crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20250625LGSS0"}])
 
-        games = await crawler.crawl_schedule(2025, 6)
+        with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
+            games = await crawler.crawl_schedule(2025, 6)
 
         assert games == [{"game_id": "20250625LGSS0"}]
         pool.start.assert_awaited_once()
@@ -208,7 +209,8 @@ class TestCrawlerOrchestration:
         crawler._crawl_naver_month = AsyncMock(return_value=None)
         crawler._crawl_month = AsyncMock(side_effect=RuntimeError("navigation failed"))
 
-        assert await crawler.crawl_schedule(2025, 6) == []
+        with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
+            assert await crawler.crawl_schedule(2025, 6) == []
         pool.release.assert_awaited_once_with(page)
         pool.close.assert_awaited_once()
 
@@ -222,7 +224,8 @@ class TestCrawlerOrchestration:
         crawler._crawl_naver_month = AsyncMock(return_value=None)
         crawler._crawl_month = AsyncMock(side_effect=[[{"game_id": "march"}], [{"game_id": "april"}]])
 
-        games = await crawler.crawl_season(2025, months=[3, 4], series_id="0")
+        with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
+            games = await crawler.crawl_season(2025, months=[3, 4], series_id="0")
 
         assert games == [{"game_id": "march"}, {"game_id": "april"}]
         assert policy.delay_async.await_count == 2
@@ -390,10 +393,26 @@ class TestNaverSchedulePath:
 
         crawler.page_context = _mock_page_context
 
-        games = await crawler.crawl_schedule(2025, 8)
+        with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
+            games = await crawler.crawl_schedule(2025, 8)
 
         assert games == [{"game_id": "20250801LGSS0"}]
         crawler._crawl_naver_month.assert_awaited_once_with(2025, 8)
+
+    @pytest.mark.asyncio
+    async def test_crawl_schedule_does_not_open_browser_when_kbo_is_blocked(self):
+        crawler = ScheduleCrawler()
+        crawler._crawl_naver_month = AsyncMock(return_value=None)
+        crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20260801LGSS0"}])
+        crawler.page_context = MagicMock()
+
+        with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=False)):
+            games = await crawler.crawl_schedule(2026, 8)
+
+        assert games == []
+        crawler._crawl_month.assert_not_awaited()
+        crawler.page_context.assert_not_called()
+        assert crawler.get_last_failure_reason("2026-08:all") == "kbo_robots_blocked"
 
     @pytest.mark.asyncio
     async def test_crawl_season_uses_naver_per_month_when_available(self):

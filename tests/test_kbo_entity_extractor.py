@@ -16,6 +16,14 @@ def test_extract_team_and_year() -> None:
     assert res2.team_id == "DB"
 
 
+def test_extract_game_date() -> None:
+    """Extract a validated calendar date for date-scoped retrieval."""
+    result = extract_kbo_entities("2015년 10월 19일 경기 결과")
+
+    assert result.game_date == "2015-10-19"
+    assert result.to_filters()["game_date"] == "2015-10-19"
+
+
 def test_extract_stadium_and_category() -> None:
     """Test extracting stadium and category keywords."""
     res1 = extract_kbo_entities("잠실 야구장 주차장 요금 및 팁")

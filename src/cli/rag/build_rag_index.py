@@ -1,6 +1,7 @@
-"""KBO 전체 데이터를 청킹하여 pgvector RAG 인덱스를 구축합니다.
+"""KBO 전체 데이터를 청킹하여 Oracle AI Vector RAG 인덱스를 구축합니다.
 
-SQLite 메인 DB에서 데이터를 읽어 임베딩을 생성하고 pgvector DB에 저장합니다.
+Oracle source tables에서 데이터를 읽어 임베딩을 생성하고 동일한 Oracle
+``rag_chunks`` 테이블의 native VECTOR column에 저장합니다.
 챗봇이 KBO 관련 모든 질문에 답할 수 있도록 포괄적인 소스를 커버합니다.
 
 지원 소스:
@@ -20,6 +21,7 @@ SQLite 메인 DB에서 데이터를 읽어 임베딩을 생성하고 pgvector DB
    markdown_docs — 일반 로컬 Markdown 문서 (Docs/baseball)
    kbo_definitions — KBO 용어/지표 정의 Markdown 문서
    kbo_regulations — KBO 규정/규칙 Markdown 문서
+   staging_rag_chunks — 기존 staging rag_chunks 본문 (재임베딩)
    all         — 위 소스 전체
 
 사용법:
@@ -31,16 +33,19 @@ SQLite 메인 DB에서 데이터를 읽어 임베딩을 생성하고 pgvector DB
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import islice
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
+from sqlalchemy import select, text
 
 from src.constants import KST
 from src.parsers.text_transformer import TextTransformer
@@ -48,7 +53,7 @@ from src.services.markdown_document_loader import load_local_markdown_docs, mark
 from src.services.rag_index_identity import current_index_version
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
 
     from sqlalchemy.orm import Session
 
@@ -78,6 +83,7 @@ _VALID_SOURCES = (
     "markdown_docs",
     "kbo_definitions",
     "kbo_regulations",
+    "staging_rag_chunks",
     "all",
 )
 
@@ -141,11 +147,16 @@ def _redact_url(url: str | None) -> str:
         return "<redacted-invalid-url>"
 
 
-def _provider_target_errors(embedding_mode: str, target_environment: str, vector_url: str) -> list[str]:
+def _provider_target_errors(
+    embedding_mode: str,
+    target_environment: str,
+    target_url: str,
+    vector_url: str,
+) -> list[str]:
     """Return provider and vector target validation errors."""
     errors: list[str] = []
-    if not vector_url:
-        errors.append("PGVECTOR_URL or PGVECTOR_TEST_URL is required")
+    if not vector_url and not target_url.startswith("oracle"):
+        errors.append("PGVECTOR_URL or PGVECTOR_TEST_URL is required for PostgreSQL vector targets")
     if embedding_mode == "deterministic" and target_environment != "staging":
         errors.append("deterministic embedding requires RAG_TARGET_ENV=staging")
     if embedding_mode == "configured" and not os.getenv("OPENROUTER_API_KEY"):
@@ -153,44 +164,100 @@ def _provider_target_errors(embedding_mode: str, target_environment: str, vector
     return errors
 
 
-def _write_target_errors(source_url: str, sparse_url: str, vector_url: str, target_environment: str) -> list[str]:
-    """Return write-target safety errors for a staging build."""
+def _oracle_write_target_errors(
+    sparse_url: str,
+    vector_url: str,
+    target_environment: str,
+) -> list[str]:
+    """Return Oracle single-store safety errors."""
     errors: list[str] = []
-    if not sparse_url:
-        errors.append("non-dry-run builds require an explicit RAG_INDEX_DB_URL")
-    if target_environment != "staging":
-        errors.append("non-dry-run builds require RAG_TARGET_ENV=staging")
-    if os.getenv("RAG_INDEX_ALLOW_WRITE") != "1":
-        errors.append("non-dry-run builds require RAG_INDEX_ALLOW_WRITE=1")
+    if target_environment == "production" and sparse_url and not sparse_url.startswith("oracle"):
+        errors.append("Oracle production builds must leave RAG_INDEX_DB_URL unset or target Oracle")
+    if target_environment == "production" and vector_url and not vector_url.startswith("oracle"):
+        errors.append("Oracle production builds must not use PGVECTOR_URL or PGVECTOR_TEST_URL")
+    if not sparse_url and (os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL")):
+        errors.append("Oracle single-store builds must leave PGVECTOR_URL and PGVECTOR_TEST_URL unset")
+    return errors
+
+
+def _index_target_errors(
+    source_url: str,
+    sparse_url: str,
+    vector_url: str,
+    *,
+    is_oracle: bool,
+) -> list[str]:
+    """Return cross-database target separation and dialect errors."""
+    errors: list[str] = []
     if sparse_url and _redact_url(source_url) == _redact_url(sparse_url):
         errors.append("source and sparse index targets must be different")
-    if sparse_url and vector_url and _redact_url(sparse_url) == _redact_url(vector_url):
+    if sparse_url and vector_url and not is_oracle and _redact_url(sparse_url) == _redact_url(vector_url):
         errors.append("sparse index and vector targets must be different")
-    if sparse_url and not urlsplit(sparse_url).scheme.startswith("postgres"):
+    if sparse_url and not is_oracle and not urlsplit(sparse_url).scheme.startswith("postgres"):
         errors.append("RAG_INDEX_DB_URL must target PostgreSQL for staging writes")
+    return errors
+
+
+def _write_target_errors(
+    source_url: str,
+    target_url: str,
+    sparse_url: str,
+    vector_url: str,
+    target_environment: str,
+) -> list[str]:
+    """Return write-target safety errors for a staging build."""
+    errors: list[str] = []
+    is_oracle = target_url.startswith("oracle")
+    if not sparse_url and not is_oracle:
+        errors.append("non-dry-run builds require an explicit RAG_INDEX_DB_URL")
+    if target_environment not in ({"staging", "production"} if is_oracle else {"staging"}):
+        errors.append("non-dry-run builds require RAG_TARGET_ENV=staging or production for Oracle")
+    if os.getenv("RAG_INDEX_ALLOW_WRITE") != "1":
+        errors.append("non-dry-run builds require RAG_INDEX_ALLOW_WRITE=1")
+    if is_oracle and target_environment == "production" and os.getenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE") != "1":
+        errors.append("production Oracle builds require RAG_INDEX_ALLOW_PRODUCTION_WRITE=1")
+    if is_oracle:
+        errors.extend(_oracle_write_target_errors(sparse_url, vector_url, target_environment))
+    errors.extend(_index_target_errors(source_url, sparse_url, vector_url, is_oracle=is_oracle))
     return errors
 
 
 def _resolve_build_targets(
     source_db_url: str,
     *,
+    target_db_url: str | None = None,
     embedding_mode: str,
     dry_run: bool,
 ) -> BuildTargets:
     """Resolve and validate explicit source, sparse, and vector build targets."""
+    target_db_url = target_db_url or source_db_url
     configured_sparse_url = os.getenv("RAG_INDEX_DB_URL", "")
-    vector_db = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL", "")
+    configured_vector_url = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL", "")
+    if configured_sparse_url:
+        vector_db = target_db_url if configured_sparse_url.startswith("oracle") else configured_vector_url
+    elif target_db_url.startswith("oracle"):
+        vector_db = target_db_url
+    else:
+        vector_db = configured_vector_url
     target_environment = os.getenv("RAG_TARGET_ENV", "").strip().lower()
-    errors = _provider_target_errors(embedding_mode, target_environment, vector_db)
+    errors = _provider_target_errors(embedding_mode, target_environment, target_db_url, vector_db)
     if not dry_run:
-        errors.extend(_write_target_errors(source_db_url, configured_sparse_url, vector_db, target_environment))
+        errors.extend(
+            _write_target_errors(
+                source_db_url,
+                target_db_url,
+                configured_sparse_url,
+                vector_db,
+                target_environment,
+            )
+        )
     if errors:
         details = "; ".join(errors)
         error_message = f"RAG target guard failed: {details}"
         raise ValueError(error_message)
     return BuildTargets(
         source_db=source_db_url,
-        sparse_index_db=configured_sparse_url or source_db_url,
+        sparse_index_db=configured_sparse_url or target_db_url,
         vector_db=vector_db,
         target_environment=target_environment,
         write_enabled=not dry_run,
@@ -230,7 +297,7 @@ def _iter_player_chunks(session: Session, _season: int | None, limit: int | None
     """player_basic 테이블에서 선수 프로파일 청크를 생성합니다."""
     from src.models.player import PlayerBasic
 
-    query = session.query(PlayerBasic).filter(PlayerBasic.name.is_not(None))
+    query = session.query(PlayerBasic).filter(PlayerBasic.name.is_not(None)).order_by(PlayerBasic.player_id)
     if limit:
         query = query.limit(limit)
 
@@ -1086,6 +1153,85 @@ def _iter_regulation_chunks(_session: Session, _season: int | None, limit: int |
     yield from _iter_local_markdown_chunks("kbo_regulations", limit)
 
 
+def _row_value(row: Mapping[str, Any], *keys: str) -> object:
+    """Return the first non-null value from a source row."""
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _row_metadata(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize metadata from either KBO RAG schema variant."""
+    value = _row_value(row, "meta", "metadata")
+    if isinstance(value, dict):
+        metadata = dict(value)
+    elif isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            parsed = {}
+        metadata = dict(parsed) if isinstance(parsed, dict) else {}
+    else:
+        metadata = {}
+    for key in (
+        "source_type",
+        "source_uri",
+        "embedding_model",
+        "embedding_dim",
+        "embedding_version",
+        "chunking_version",
+        "quality_score",
+    ):
+        value = row.get(key)
+        if value is not None:
+            metadata.setdefault(key, value)
+    return metadata
+
+
+def _iter_staging_rag_chunks(session: Session, _season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
+    """Yield staging RAG content while deliberately discarding old vectors."""
+    rows = session.execute(text("SELECT * FROM rag_chunks ORDER BY id")).mappings()
+    yielded = 0
+    for row in rows:
+        if row.get("is_active") is False or row.get("is_active") == 0:
+            continue
+        if str(row.get("index_status") or "").upper() in {"DELETED", "TOMBSTONED", "PURGED"}:
+            continue
+        content = str(row.get("content") or "").strip()
+        if not content:
+            continue
+        metadata = _row_metadata(row)
+        source_table = str(_row_value(row, "source_table", "source_type") or "rag_chunks")
+        source_row_id = str(_row_value(row, "source_row_id", "chunk_hash", "id") or "")
+        if not source_row_id:
+            continue
+        document_type = _row_value(row, "document_type") or metadata.get("document_type")
+        source_url = _row_value(row, "source_url", "source_uri") or metadata.get("source_url")
+        yield {
+            "source_table": source_table,
+            "source_row_id": source_row_id,
+            "title": _row_value(row, "title") or "",
+            "content": content,
+            "team_id": _row_value(row, "team_id") or metadata.get("team_id"),
+            "player_id": _row_value(row, "player_id") or metadata.get("player_id"),
+            "season_year": _row_value(row, "season_year") or metadata.get("season_year"),
+            "season_id": _row_value(row, "season_id") or metadata.get("season_id"),
+            "league_type_code": _row_value(row, "league_type_code") or metadata.get("league_type_code"),
+            "document_type": document_type,
+            "game_date": _row_value(row, "game_date") or metadata.get("game_date"),
+            "published_at": _row_value(row, "published_at", "valid_from") or metadata.get("published_at"),
+            "source_url": source_url,
+            "language": _row_value(row, "language") or metadata.get("language") or _DEFAULT_LANGUAGE,
+            "content_hash": row.get("content_hash"),
+            "meta": metadata,
+        }
+        yielded += 1
+        if limit and yielded >= limit:
+            return
+
+
 # ─── 소스 매핑 ────────────────────────────────────────────────────────────────
 
 _SOURCE_MAP = {
@@ -1106,6 +1252,7 @@ _SOURCE_MAP = {
     "markdown_docs": _iter_markdown_chunks,
     "kbo_definitions": _iter_definition_chunks,
     "kbo_regulations": _iter_regulation_chunks,
+    "staging_rag_chunks": _iter_staging_rag_chunks,
 }
 
 
@@ -1120,8 +1267,32 @@ def _dedupe_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
+def _skip_existing_index_rows(chunk_iter: Iterator[dict[str, Any]], index_session: Session) -> Iterator[dict[str, Any]]:
+    """Yield only chunks without an already populated target vector."""
+    from src.models.rag_chunk import RagChunk
+
+    existing_keys = {
+        (str(source_table), str(source_row_id))
+        for source_table, source_row_id in index_session.execute(
+            select(RagChunk.source_table, RagChunk.source_row_id).where(RagChunk.embedding.is_not(None)),
+        ).all()
+    }
+    for chunk in chunk_iter:
+        key = (str(chunk["source_table"]), str(chunk["source_row_id"]))
+        if key not in existing_keys:
+            yield chunk
+
+
 def _persist_index_batch(batch: list[dict[str, Any]], index_session: Session) -> None:
     """Publish one batch through pending and final sparse/vector states."""
+    from src.db.vector_engine import is_oracle_vector_backend
+
+    if is_oracle_vector_backend():
+        from src.services.rag_index_propagation import publish_single_store_batch
+
+        publish_single_store_batch(index_session, batch)
+        return
+
     from src.db.vector_engine import get_vector_session
     from src.services.rag_index_propagation import publish_index_batch
 
@@ -1189,7 +1360,7 @@ def _prepare_source_chunks(
     the source session release its connection before OpenRouter work begins.
     """
     chunk_iter = chunk_fn(source_session, season, limit)
-    if source_name not in {"games", "lineups", "pbp"}:
+    if source_name in {"markdown_docs", "kbo_definitions", "kbo_regulations"}:
         return chunk_iter
 
     chunks = list(chunk_iter)
@@ -1204,7 +1375,7 @@ def main(argv: list[str] | None = None) -> None:
     """KBO RAG 인덱스를 구축합니다."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    parser = argparse.ArgumentParser(description="Oracle KBO 데이터를 별도 PostgreSQL/pgvector RAG 인덱스에 저장")
+    parser = argparse.ArgumentParser(description="Oracle KBO 데이터를 Oracle AI Vector RAG 인덱스에 저장")
     parser.add_argument(
         "--source",
         choices=_VALID_SOURCES,
@@ -1224,6 +1395,17 @@ def main(argv: list[str] | None = None) -> None:
         help="소스당 최대 처리 행 수 (테스트용)",
     )
     parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="소스 iterator에서 건너뛸 행 수 (중단된 staged run 재개용)",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="target에 이미 vector가 있는 identity는 건너뜀",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="임베딩만 생성하고 DB에 저장하지 않음",
@@ -1237,11 +1419,18 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     from src.db.engine import DATABASE_URL
-    from src.db.vector_engine import init_vector_db, is_pgvector_available
+    from src.db.vector_engine import (
+        init_vector_db,
+        is_oracle_vector_backend,
+        is_oracle_vector_schema_available,
+        is_pgvector_available,
+    )
 
     try:
+        source_db_url = os.getenv("RAG_SOURCE_DB_URL") or DATABASE_URL
         targets = _resolve_build_targets(
-            DATABASE_URL,
+            source_db_url,
+            target_db_url=DATABASE_URL,
             embedding_mode=args.embedding_mode,
             dry_run=args.dry_run,
         )
@@ -1260,14 +1449,14 @@ def main(argv: list[str] | None = None) -> None:
         targets.write_enabled,
     )
 
-    if not is_pgvector_available():
-        logger.error(
-            "pgvector DB에 연결할 수 없습니다. "
-            "docker-compose up pgvector -d 후 run_pgvector_migration을 먼저 실행하세요."
-        )
+    if is_oracle_vector_backend() and not is_oracle_vector_schema_available():
+        logger.error("Oracle RAG vector schema is unavailable. Apply Oracle migrations before indexing.")
+        sys.exit(1)
+    if not is_oracle_vector_backend() and not is_pgvector_available():
+        logger.error("vector DB에 연결할 수 없습니다. Oracle vector migration 또는 local pgvector setup을 확인하세요.")
         sys.exit(1)
 
-    if not args.dry_run:
+    if not args.dry_run and not is_oracle_vector_backend():
         logger.info("pgvector 테이블 초기화 확인 중...")
         init_vector_db()
 
@@ -1287,12 +1476,12 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     # Source와 sparse index는 별도 DB 세션을 사용한다.
-    from src.db.engine import get_db_session, get_rag_index_session, init_rag_index_db
+    from src.db.engine import get_rag_index_session, get_rag_source_session, init_rag_index_db
 
     grand_total = 0
     if not args.dry_run:
         init_rag_index_db()
-    with get_db_session() as source_session, get_rag_index_session() as index_session:
+    with get_rag_source_session() as source_session, get_rag_index_session() as index_session:
         for source_name in sources:
             logger.info("▶ [%s] 처리 시작...", source_name)
             chunk_fn = _SOURCE_MAP[source_name]
@@ -1303,6 +1492,10 @@ def main(argv: list[str] | None = None) -> None:
                 args.season,
                 args.limit,
             )
+            if args.offset:
+                chunk_iter = islice(chunk_iter, args.offset, None)
+            if args.skip_existing:
+                chunk_iter = _skip_existing_index_rows(chunk_iter, index_session)
             count = _process_source(
                 source_name,
                 chunk_iter,

@@ -75,7 +75,7 @@ def test_inventory_validates_profile_with_separate_source_and_index_sessions() -
         patch("src.cli.inventory_rag_corpus.get_rag_index_session", return_value=index_session),
         patch.dict("src.cli.inventory_rag_corpus.build_rag_index._SOURCE_MAP", {"awards": source_chunks}),
     ):
-        assert main(["--source", "awards", "--profile", "production", "--json"]) == 0
+        assert main(["--source", "awards", "--json"]) == 0
 
     index_session.execute.assert_called_once()
 

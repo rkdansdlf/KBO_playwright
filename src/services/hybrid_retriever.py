@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from src.db.vector_engine import is_pgvector_available
+from src.db.vector_engine import is_oracle_vector_backend, is_pgvector_available
 from src.services.kbo_entity_resolver import resolve_kbo_entities
 from src.services.rag_search_engine import RagSearchEngine
 from src.utils.kbo_entity_extractor import extract_kbo_entities
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+BM25_RRF_WEIGHT = 1.0
 DEFAULT_RRF_K = 2
 DEFAULT_DENSE_RRF_WEIGHT = 2.0
 _SOURCE_FILTERS_WITHOUT_RELIABLE_TEAM_SEASON = {
@@ -30,6 +31,17 @@ class EmbeddingProvider(Protocol):
 
     def get_embedding(self, text: str) -> list[float]:
         """Return one embedding for a query string."""
+
+
+def _dense_repository() -> object:
+    """Build the repository for the configured dense backend."""
+    if is_oracle_vector_backend():
+        from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
+
+        return OracleVectorSearchRepository()
+    from src.repositories.vector_search_repository import VectorSearchRepository
+
+    return VectorSearchRepository()
 
 
 @dataclass
@@ -71,16 +83,15 @@ def _fetch_dense_vectors(  # noqa: PLR0913
     rank_map: dict[str, dict[str, Any]],
     embedding_service: EmbeddingProvider | None = None,
 ) -> tuple[int, float]:
-    """Query pgvector and update rank_map."""
-    if not is_pgvector_available():
+    """Query the configured dense backend and update rank_map."""
+    if not is_pgvector_available() and not is_oracle_vector_backend():
         return 0, 0.0
 
     try:
-        from src.repositories.vector_search_repository import VectorSearchRepository
         from src.services.embedding_service import EmbeddingService
 
         embedder = embedding_service or EmbeddingService()
-        vector_repo = VectorSearchRepository()
+        vector_repo = _dense_repository()
         embedding_started = time.perf_counter()
         query_vector = embedder.get_embedding(query)
         embedding_ms = round((time.perf_counter() - embedding_started) * 1000, 3)
@@ -93,6 +104,7 @@ def _fetch_dense_vectors(  # noqa: PLR0913
             "source_table": merged_filters.get("source_table"),
             "player_id": merged_filters.get("player_id"),
             "document_type": target_category,
+            "game_date": merged_filters.get("game_date"),
         }
         if merged_filters.get("index_version"):
             vector_kwargs["index_version"] = merged_filters["index_version"]
@@ -260,7 +272,7 @@ class HybridRetriever:
 
             score = 0.0
             if bm25_r is not None:
-                score += 1.0 / (self.k + bm25_r)
+                score += BM25_RRF_WEIGHT / (self.k + bm25_r)
             if vector_r is not None:
                 score += self.dense_weight / (self.k + vector_r)
 

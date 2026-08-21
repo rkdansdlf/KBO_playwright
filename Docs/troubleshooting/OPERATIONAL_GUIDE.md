@@ -16,7 +16,11 @@ Throttling and stability can be tuned via `.env`:
 | `NOTIFY_SUCCESS` | `0` | Set to `1` to receive success alerts. |
 | `DATABASE_URL` | - | Oracle Autonomous Database URL (`oracle+oracledb://...`). |
 | `TNS_ADMIN` | - | Oracle Wallet/TNS directory. |
-| `PGVECTOR_URL` | - | Separate PostgreSQL/pgvector URL for dense RAG search. |
+| `RAG_INDEX_ALLOW_PRODUCTION_WRITE` | `0` | Explicit second gate for production Oracle RAG writes. |
+
+RAG dense embeddings are stored in Oracle `rag_chunks.embedding_vector` using
+the native `VECTOR(1536, FLOAT32, DENSE)` type. PostgreSQL/pgvector variables
+are not required for production.
 
 ### Oracle Initial Load
 Run the schema bootstrap and a read-only preview before writing the verified

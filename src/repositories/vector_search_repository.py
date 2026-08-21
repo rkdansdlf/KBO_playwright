@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.vector_engine import get_vector_session, is_pgvector_available
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SEARCH_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
+_DATE_SCOPED_SOURCE_TABLES = frozenset({"game", "game_highlights", "game_play_by_play"})
 
 
 class VectorSearchRepository:
@@ -133,6 +134,11 @@ class VectorSearchRepository:
         stmt = stmt.where(RagChunkVector.embedding.is_not(None))
         stmt = stmt.order_by(distance_expr).limit(top_k)
 
+        return self._load_filtered_search_results(session, stmt, source_table, game_date)
+
+    @staticmethod
+    def _load_search_results(session: Session, stmt: object) -> list[dict[str, Any]]:
+        """Load vector rows from a prepared statement."""
         results: list[dict[str, Any]] = []
         for chunk, score in session.execute(stmt):
             results.append(
@@ -159,6 +165,30 @@ class VectorSearchRepository:
                     "meta": chunk.meta or {},
                 }
             )
+        return results
+
+    @classmethod
+    def _load_filtered_search_results(
+        cls,
+        session: Session,
+        stmt: object,
+        source_table: str | None,
+        game_date: str | None,
+    ) -> list[dict[str, Any]]:
+        """Load filtered rows with exact fallback for pgvector ANN gaps."""
+        if source_table in _DATE_SCOPED_SOURCE_TABLES and game_date:
+            # Date-scoped game rows are small enough for an exact filtered scan
+            # and avoid approximate HNSW candidate loss within one day.
+            session.execute(text("SET LOCAL enable_indexscan = off"))
+            return cls._load_search_results(session, stmt)
+
+        results = cls._load_search_results(session, stmt)
+        if not results and source_table:
+            # Older pgvector HNSW builds can discard all filtered candidates
+            # before applying the source predicate. Prefer correctness for the
+            # rare empty filtered result over returning no relevant document.
+            session.execute(text("SET LOCAL enable_indexscan = off"))
+            results = cls._load_search_results(session, stmt)
         return results
 
     def upsert_chunk(self, session: Session, chunk_data: dict[str, Any]) -> None:

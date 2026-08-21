@@ -196,9 +196,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     configured_url = os.getenv("DATABASE_URL")
-    url = args.url or os.getenv("ORACLE_TARGET_URL") or os.getenv("OCI_DB_URL")
-    if not url and configured_url and configured_url.startswith("oracle"):
-        url = configured_url
+    # OCI_DB_URL is a disposable verification target and must never silently
+    # override the application primary DATABASE_URL.
+    url = args.url or os.getenv("ORACLE_TARGET_URL") or configured_url
     if not url and DATABASE_URL.startswith("oracle"):
         url = DATABASE_URL
     if not url or not url.startswith("oracle"):

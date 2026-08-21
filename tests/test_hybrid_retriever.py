@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from src.services.hybrid_retriever import HybridRetriever, HybridSearchResult
+import pytest
+
+from src.services.hybrid_retriever import BM25_RRF_WEIGHT, HybridRetriever, HybridSearchResult
 
 
 def test_hybrid_retriever_bm25_only() -> None:
@@ -85,16 +87,24 @@ def test_hybrid_retriever_fuses_dense_and_sparse_by_source_identity() -> None:
     ):
         embedding_cls.return_value.get_embedding.return_value = [0.1]
         repo_cls.return_value.search_by_cosine.return_value = [dense]
-        results = retriever.retrieve("김도영 선수", top_k=1, filters={"team_id": "KIA"})
+        results = retriever.retrieve(
+            "김도영 선수",
+            top_k=1,
+            filters={"team_id": "KIA", "game_date": "2026-08-20"},
+        )
 
     assert len(results) == 1
     assert results[0].chunk_id == "player_basic:78224"
     assert results[0].bm25_rank == 1
     assert results[0].vector_rank == 1
+    assert results[0].rrf_score == pytest.approx(
+        BM25_RRF_WEIGHT / (retriever.k + 1) + retriever.dense_weight / (retriever.k + 1)
+    )
     assert results[0].source_url == "https://example.com/player/78224"
     sparse_search.assert_called_once()
     assert sparse_search.call_args.kwargs["filters"]["team_id"] == "KIA"
     assert repo_cls.return_value.search_by_cosine.call_args.kwargs["player_id"] is None
+    assert repo_cls.return_value.search_by_cosine.call_args.kwargs["game_date"] == "2026-08-20"
 
 
 def test_hybrid_retriever_keeps_cross_source_rows_distinct() -> None:

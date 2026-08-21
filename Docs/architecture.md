@@ -59,8 +59,9 @@ crawlers ──→ parsers ──→ repositories ──→ models
 
 - **운영 야구 데이터**: Oracle Autonomous Database (`DATABASE_URL`)
 - **초기 적재 원본/개발·테스트**: SQLite (`data/kbo_*.db`)
-- **RAG BM25 원문**: Oracle `rag_chunks`
-- **RAG dense vector**: 별도 PostgreSQL/pgvector (`PGVECTOR_URL`)
+- **RAG sparse/BM25 원문**: Oracle `rag_chunks`
+- **RAG dense vector**: 같은 Oracle `rag_chunks.embedding_vector` (`VECTOR(1536, FLOAT32, DENSE)`)
+- **Local acceptance only**: PostgreSQL/pgvector 경로는 production target이 아닌 격리된 테스트용
 
 ## 설정
 

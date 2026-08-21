@@ -1,14 +1,14 @@
 {
   "dataset": "Docs/references/rag_golden_queries.json",
-  "dataset_sha256": "6df63f4924ee878a0f52c74cdace0dbe52643287b0654b0202676e3b05a66930",
+  "dataset_sha256": "6753148748d2a402d11bb7a7306d0dec80089ed84f59b3867e9a5acbde8ca295",
   "query_count": 30,
   "top_k": 5,
   "embedding_mode": "configured",
   "embedding_model": "perplexity/pplx-embed-v1-4b",
   "embedding_dimension": 1536,
-  "corpus_chunks": 207259,
-  "sparse_chunks": 207259,
-  "vector_chunks": 207259,
+  "corpus_chunks": 207305,
+  "sparse_chunks": 207305,
+  "vector_chunks": 207305,
   "audit": {
     "consistent": true,
     "sparse_only": 0,
@@ -16,28 +16,42 @@
     "hash_mismatch": 0,
     "version_mismatch": 0,
     "embedding_missing": 0,
-    "hnsw_index": "idx_rag_chunks_embedding_hnsw"
+    "hnsw_indexes": [
+      "idx_rag_chunks_embedding_hnsw",
+      "idx_rag_chunks_pbp_embedding_hnsw"
+    ],
+    "game_date_filter_index": "idx_rag_chunks_game_date_filter",
+    "sparse_text_index": "idx_rag_chunks_search_tsvector",
+    "sparse_game_date_index": "idx_rag_chunks_source_game_date"
   },
   "variants": {
     "bm25": {
-      "recall_at_5": 0.3333,
-      "mrr": 0.2833,
-      "latency_p95_ms": 466.719
+      "recall_at_5": 0.6,
+      "precision_at_5": 0.12,
+      "mrr": 0.5444,
+      "hit_rate": 0.6,
+      "latency_p95_ms": 384.48
     },
     "vector": {
-      "recall_at_5": 0.9333,
-      "mrr": 0.8056,
-      "latency_p95_ms": 350.578
+      "recall_at_5": 0.9818,
+      "precision_at_5": 0.2267,
+      "mrr": 0.8722,
+      "hit_rate": 1.0,
+      "latency_p95_ms": 2664.915
     },
     "hybrid": {
-      "recall_at_5": 0.9333,
-      "mrr": 0.8056,
-      "latency_p95_ms": 396.233
+      "recall_at_5": 0.9818,
+      "precision_at_5": 0.2267,
+      "mrr": 0.8889,
+      "hit_rate": 1.0,
+      "latency_p95_ms": 1057.414
     },
     "resolver_hybrid": {
-      "recall_at_5": 0.9333,
-      "mrr": 0.8222,
-      "latency_p95_ms": 396.622
+      "recall_at_5": 0.9818,
+      "precision_at_5": 0.2267,
+      "mrr": 0.8889,
+      "hit_rate": 1.0,
+      "latency_p95_ms": 386.91
     }
   },
   "routing": {
@@ -48,20 +62,19 @@
     "entity_false_positive_count": 0
   },
   "approval": {
-    "golden_labels": "approved",
+    "golden_labels": "multi_label_corrected_pending_human_review",
     "thresholds": {
-      "resolver_hybrid_recall_at_5_min": 0.9,
-      "resolver_hybrid_mrr_min": 0.8,
-      "retrieval_latency_p95_ms_max": 500,
-      "routing_accuracy_required": 1.0,
-      "entity_false_positive_count_max": 0
+      "status": "pending_approval"
     },
     "cost_policy": {
       "model": "perplexity/pplx-embed-v1-4b",
-      "price_usd_per_million_input_tokens": 0.03,
-      "incremental_embeddings": "approved",
+      "price_usd_per_million_input_tokens": null,
+      "pricing_source": "not available from provider models endpoint",
+      "incremental_embeddings": "pending_budget_approval",
       "full_reembed": "requires_separate_approval"
     }
   },
-  "status": "staging_acceptance_approved_for_production_promotion"
+  "status": "staging_acceptance_pending_threshold_budget_approval",
+  "measurement_note": "Metrics are from the configured-provider replay after restoring the backup cache, rebuilding the 207305-row staging corpus, applying date/text filter indexes, and correcting the multi-label highlight case. Latency is a single local replay and should be interpreted with the recorded p50/p95 context.",
+  "promotion_approved": false
 }

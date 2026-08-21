@@ -1,8 +1,121 @@
 {
   "rag_sources": {
-    "awards": {
+    "players": {
+      "classification": "core",
       "production": "required",
       "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "batting": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "pitching": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "games": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "standings": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "movements": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "lineups": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "pbp": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "rankings": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "teams": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "team_history": {
+      "classification": "core",
+      "production": "required",
+      "staging": "required",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "awards": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "events": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "highlights": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "markdown_docs": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "kbo_definitions": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
+      "fixture": "optional",
+      "dev": "optional"
+    },
+    "kbo_regulations": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
       "fixture": "optional",
       "dev": "optional"
     }

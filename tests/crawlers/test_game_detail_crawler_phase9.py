@@ -791,6 +791,7 @@ class TestBoxscoreExtractionFlows:
         pool.release = AsyncMock()
         pool.close = AsyncMock()
         crawler = GameDetailCrawler(resolver=MagicMock(), pool=pool)
+        crawler._crawl_naver_single = AsyncMock(return_value=None)
 
         async def _crawl_single(_page, game_id, _game_date, *, lightweight):
             return {"game_id": game_id, "lightweight": lightweight}
@@ -801,13 +802,34 @@ class TestBoxscoreExtractionFlows:
             {"game_id": "20250502KTSS0", "game_date": "20250502"},
         ]
 
-        payloads = await crawler.crawl_games(games, concurrency=2, lightweight=True)
+        with patch("src.crawlers.game_detail_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
+            payloads = await crawler.crawl_games(games, concurrency=2, lightweight=True)
 
         assert [payload["game_id"] for payload in payloads] == ["20250501LGOB0", "20250502KTSS0"]
         assert all(payload["lightweight"] for payload in payloads)
         pool.start.assert_awaited_once()
         assert pool.release.await_count == 2
         pool.close.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_crawl_games_skips_kbo_fallback_when_robots_blocks(self):
+        pool = MagicMock(max_pages=1)
+        pool.start = AsyncMock()
+        pool.acquire = AsyncMock(return_value=MagicMock())
+        pool.release = AsyncMock()
+        crawler = GameDetailCrawler(resolver=MagicMock(), pool=pool)
+        crawler._crawl_naver_single = AsyncMock(return_value=None)
+        crawler._crawl_single = AsyncMock(return_value={"game_id": "20250501LGOB0"})
+
+        with patch("src.crawlers.game_detail_crawler.compliance.is_allowed", new=AsyncMock(return_value=False)):
+            payloads = await crawler.crawl_games(
+                [{"game_id": "20250501LGOB0", "game_date": "20250501"}],
+                concurrency=1,
+            )
+
+        assert payloads == []
+        crawler._crawl_single.assert_not_awaited()
+        assert crawler.get_last_failure_reason("20250501LGOB0") == "kbo_robots_blocked"
 
     async def test_crawl_games_returns_when_pool_acquisition_fails(self):
         pool = MagicMock(max_pages=1)
@@ -1031,6 +1053,7 @@ NAVER_RECORD_SAMPLE = {
                 "bb": 0,
                 "kk": 0,
                 "sb": 0,
+                "inn1": "사구",
             },
             {
                 "name": "김도영",
@@ -1044,6 +1067,7 @@ NAVER_RECORD_SAMPLE = {
                 "bb": 1,
                 "kk": 1,
                 "sb": 0,
+                "inn1": "희타",
             },
             {
                 "name": "대타",
@@ -1143,6 +1167,8 @@ class TestNaverRecordPath:
         assert first["stats"]["at_bats"] == 5
         assert first["stats"]["hits"] == 2
         assert first["stats"]["avg"] == 0.4
+        assert first["stats"]["plate_appearances"] == 6
+        assert first["stats"]["hbp"] == 1
 
     def test_batter_without_order_is_not_starter(self):
         payload = self._payload()
@@ -1156,6 +1182,8 @@ class TestNaverRecordPath:
         batter = payload["hitters"]["away"][1]
 
         assert batter["stats"]["avg"] == 0.25
+        assert batter["stats"]["plate_appearances"] == 6
+        assert batter["stats"]["sacrifice_hits"] == 1
 
     def test_pitcher_entries_with_starting_match(self):
         payload = self._payload()

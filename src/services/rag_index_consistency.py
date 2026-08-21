@@ -163,7 +163,8 @@ def compare_index_rows(
         if not primary_version or not vector_version or primary_version != vector_version:
             issue = "INDEX_VERSION_MISMATCH" if primary_version and vector_version else "INDEX_VERSION_MISSING"
             findings.append(IndexConsistencyFinding(source_key, issue, **finding_kwargs))
-        if _embedding_is_missing(vector_row):
+        deleted_statuses = {"DELETED", "TOMBSTONED", "PURGED"}
+        if not ({primary_status, vector_status} & deleted_statuses) and _embedding_is_missing(vector_row):
             findings.append(IndexConsistencyFinding(source_key, "VECTOR_EMBEDDING_MISSING", **finding_kwargs))
         primary_status = primary_status or "ACTIVE"
         vector_status = vector_status or "ACTIVE"
@@ -208,3 +209,26 @@ def audit_index_sessions(primary_session: Session, vector_session: Session) -> I
         .all()
     )
     return compare_index_rows(primary_rows, vector_rows)
+
+
+def audit_single_store_session(session: Session) -> IndexConsistencyReport:
+    """Audit Oracle's combined sparse/vector ``rag_chunks`` table."""
+    from sqlalchemy import select
+
+    from src.models.rag_chunk import RagChunk
+
+    rows = (
+        session.execute(
+            select(
+                RagChunk.source_table,
+                RagChunk.source_row_id,
+                RagChunk.content_hash,
+                RagChunk.index_version,
+                RagChunk.index_status,
+                RagChunk.embedding.is_not(None).label("embedding_present"),
+            ),
+        )
+        .mappings()
+        .all()
+    )
+    return compare_index_rows(rows, rows)

@@ -1,8 +1,6 @@
--- Oracle port of 030_create_hnsw_vector_index.sql.
---
--- The PostgreSQL pgvector HNSW index is intentionally not created here.
--- Oracle Vector support and the target embedding column type must be confirmed
--- before selecting an Oracle vector index implementation.
+-- Historical no-op retained for migration numbering compatibility.
+-- Native Oracle AI Vector Search is created by
+-- 067_add_rag_vector_search.sql after the VECTOR column is present.
 BEGIN
     NULL;
 END;

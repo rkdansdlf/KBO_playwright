@@ -33,7 +33,6 @@ services:
       TZ: Asia/Seoul
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the Oracle Autonomous Database}
       TNS_ADMIN: /run/oracle-wallet
-      PGVECTOR_URL: postgresql://postgres:${PGVECTOR_PASSWORD:-kbo_rag_dev}@pgvector:5432/kbo_rag
       RUN_INIT_DB: "1"
       CHOWN_BIND_MOUNTS: "0"
       SQLITE_STARTUP_GUARD: "0"
@@ -41,8 +40,6 @@ services:
       SQLITE_SYNCHRONOUS: ${SQLITE_SYNCHRONOUS:-FULL}
       PLAYWRIGHT_WS_ENDPOINT: ws://browserless:3000/chromium/playwright
     depends_on:
-      pgvector:
-        condition: service_healthy
       browserless:
         condition: service_started
     volumes:
@@ -75,7 +72,6 @@ services:
       TZ: Asia/Seoul
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the Oracle Autonomous Database}
       TNS_ADMIN: /run/oracle-wallet
-      PGVECTOR_URL: postgresql://postgres:${PGVECTOR_PASSWORD:-kbo_rag_dev}@pgvector:5432/kbo_rag
       RUN_INIT_DB: "1"
       CHOWN_BIND_MOUNTS: "0"
       SQLITE_STARTUP_GUARD: "0"
@@ -87,9 +83,6 @@ services:
       - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
     ports:
       - "8000:8000"
-    depends_on:
-      pgvector:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s
@@ -155,9 +148,10 @@ services:
 
   # ──────────────────────────────────────────────
   # pgvector: 로컬 RAG 임베딩 전용 PostgreSQL
-  # 접속: postgresql://postgres:kbo_rag_dev@localhost:5433/kbo_rag
+  # Production does not use this service. Start explicitly with --profile local-rag.
   # ──────────────────────────────────────────────
   pgvector:
+    profiles: ["local-rag"]
     image: pgvector/pgvector:pg16
     restart: always
     container_name: kbo_pgvector

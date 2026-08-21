@@ -12,10 +12,10 @@ pypdf>=4.0.0
 tzdata>=2024.1
 
 # Database
-SQLAlchemy>=2.0.0
+SQLAlchemy>=2.0.41       # Oracle VECTOR type support
 psycopg2-binary>=2.9.9    # PostgreSQL adapter (local development / pgvector)
 mysql-connector-python>=8.0.33
-oracledb>=2.0.0           # Oracle Autonomous Database driver (Wallet/TNS)
+oracledb>=4.0.0           # Oracle Autonomous Database driver (Wallet/TNS/Vector)
 python-dotenv>=1.0.0
 
 # Scheduling

@@ -83,19 +83,20 @@ blocking corpus defect, not a retrieval-quality failure.
 Use `--require-source` for domains that must be present in a production
 corpus; an empty optional source is reported but does not fail the command.
 The tracked source contract is `Docs/references/rag_source_contract.json`.
-Production and staging currently require `awards`; fixture and dev treat it as
-optional.
+Production and staging require the core player, statistics, game, lineup, PBP,
+standings, ranking, team, and movement sources. Awards, events, highlights, and
+documentation sources are enrichment and remain optional.
 The complete-scope manifest includes per-source `source_rows`, `chunks_generated`,
 `new`, `unchanged`, `updated`, `deleted`, `elapsed_ms`, and defect counts, plus
 aggregate totals. Do not use a run with `--limit` as the production baseline.
-Before staging indexing, require both `PGVECTOR_URL` and an embedding provider
-key; configured embedding runs use `OPENROUTER_API_KEY`. When the source and
-sparse index are isolated, `RAG_SOURCE_DB_URL` is read-only input and
-`RAG_INDEX_DB_URL` is the sparse-index write target. `audit_rag_index
---require-nonempty` must be run after migrations and after the batch publish.
-Non-dry-run staging builds also require `RAG_TARGET_ENV=staging` and
-`RAG_INDEX_ALLOW_WRITE=1`; deterministic embeddings are rejected for every
-other target environment. The target URLs are redacted in build logs.
+Before staging or production indexing, require the Oracle `DATABASE_URL` and an
+embedding provider key; configured embedding runs use `OPENROUTER_API_KEY`.
+Oracle uses one `rag_chunks` table for sparse and dense state, so
+`RAG_INDEX_DB_URL` is normally unset. `audit_rag_index --require-nonempty` must
+be run after Oracle migrations and after the batch publish. Non-dry-run staging
+builds require `RAG_TARGET_ENV=staging` and `RAG_INDEX_ALLOW_WRITE=1`; production
+builds additionally require `RAG_TARGET_ENV=production` and
+`RAG_INDEX_ALLOW_PRODUCTION_WRITE=1`. The target URL is redacted in logs.
 `RAG_EMBED_BATCH_SIZE` defaults to 50 to keep long source documents below
 provider batch/rate limits; increase it only after a provider-specific canary.
 The manifest exposes `deleted_identities` so stale chunks can be reviewed
@@ -105,24 +106,53 @@ For staging lifecycle/scale acceptance without an external embedding provider,
 metrics as production retrieval-quality evidence; use `--embedding-mode
 configured` with the selected provider for the production baseline.
 
-The latest local staging run indexed the current source iterator census of
-207,259 chunks into both sparse and configured-vector stores. The final audit
-reported 207,259 healthy rows, zero sparse-only/vector-only rows, zero hash or
-version mismatches, zero missing embeddings, and `consistent=true`. The
-configured vector store uses `perplexity/pplx-embed-v1-4b`, 1536 dimensions, and
-the valid `idx_rag_chunks_embedding_hnsw` cosine index. This is a runtime
+The latest isolated recovery-staging run indexed the current source iterator
+census of `207,305` chunks into both sparse and configured-vector stores. The
+final audit reported `207,305` healthy rows, zero sparse-only/vector-only rows,
+zero hash/version mismatches, zero missing embeddings, and `consistent=true`.
+The configured vector store uses `perplexity/pplx-embed-v1-4b`, 1536 dimensions,
+valid full/PBP HNSW indexes, and date/text filter indexes. This is a staging
 checkpoint, not a permanent corpus-size contract; regenerate the complete
 inventory when the source database changes.
 
-The configured-provider production-golden draft currently contains 30 queries.
-The latest all-variant run reports BM25 Recall@5 `0.3333` / MRR `0.2833`,
-vector Recall@5 `0.9333` / MRR `0.8056`, hybrid Recall@5 `0.9333` / MRR
-`0.8056`, and resolver-hybrid Recall@5 `0.9333` / MRR `0.8222`; retrieval p95
-latencies are approximately `467ms`, `351ms`, `396ms`, and `397ms` respectively.
-Routing remains `100/100` for intent, route, and entity accuracy with zero
-false positives. The 30 golden labels, quality thresholds, and incremental
-provider cost policy are approved. Production promotion remains a separate
-controlled step; full re-embedding requires a new cost approval.
+The configured-provider golden set contains 30 queries and uses a multi-label
+correction for the 2026-06-26 HH-SSG BIG_PLAY question. The final replay reports
+BM25 Recall@5 `0.6000` / MRR `0.5444`, vector `0.9818` / `0.8722`, hybrid
+`0.9818` / `0.8889`, and resolver-hybrid `0.9818` / `0.8889`; all dense and
+hybrid variants have hit rate `1.0`. Resolver-hybrid p95 latency was `386.91ms`
+in the recorded replay. Routing remains `100/100` for intent, route, and
+entity accuracy with zero false positives. Golden-label confirmation, quality
+thresholds, and provider budget remain pending human approval. See
+`Docs/references/rag_configured_cost_evidence.json` for measured and explicitly
+unmeasured cost fields. Production promotion remains blocked.
+
+## Current Oracle Cutover Status (2026-08-21)
+
+The current Oracle RAG corpus has completed its configured embedding batch.
+The native `rag_chunks.embedding_vector VECTOR(1536)` column and HNSW index
+are valid, and the final audit reports `21,589` sparse/vector identities,
+`21,583` active rows with embeddings, six deleted tombstones without vectors,
+zero sparse-only/vector-only rows, zero hash/version mismatches, zero stale
+rows, `embedding_missing=0`, and `consistent=true`. Direct Oracle cosine
+retrieval returned results from both documentation and player-stat sources.
+
+This is complete for the current Oracle corpus, not a claim that the separate
+`207,305`-chunk source-iterator census has been copied into Oracle. The
+production source decision is now direct Oracle (`DATABASE_URL`); do not set
+`RAG_SOURCE_DB_URL` unless a separate source database is intentionally used.
+
+The PostgreSQL recovery vector database is an isolated staging artifact only.
+It contains the `207,305`-row configured replay corpus and must not be treated
+as the Oracle production corpus. The production runtime configuration still
+contains the legacy `EMBED_DIM=256` and `text-embedding-3-small` settings, and
+no AI runtime container is currently serving traffic.
+
+The embedding provider/model, 1536 dimensions, direct Oracle source, and
+Oracle write window were approved and used for the batch. The final runtime
+restart/cutover remains pending because the AI backend still targets
+PostgreSQL/pgvector. Keep IVFFlat indexes in place until the selected runtime
+has passed the Oracle retrieval smoke test; index cleanup is a separate
+approval.
 
 Audit the awards source path before attempting a production save:
 

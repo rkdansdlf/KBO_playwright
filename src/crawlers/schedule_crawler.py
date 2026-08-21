@@ -137,10 +137,16 @@ class ScheduleCrawler(BasePlaywrightCrawler):
 
         if series_id in (None, "0"):
             naver_games = await self._crawl_naver_month(year, month)
-            if naver_games is not None:
+            if naver_games:
                 logger.info("✅ Found %s games (Naver API)", len(naver_games))
                 return naver_games
-            logger.info("Naver schedule unavailable for %s-%02d, falling back to KBO page", year, month)
+            if naver_games == []:
+                logger.info("Naver schedule returned no games for %s-%02d", year, month)
+
+        schedule_key = self._schedule_key(year, month, series_id)
+        if not await self._kbo_fallback_allowed(schedule_key):
+            return []
+        logger.info("Naver schedule unavailable for %s-%02d, falling back to KBO page", year, month)
 
         async with self.page_context() as page:
             try:
@@ -174,18 +180,28 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         for month in months:
             if series_id in (None, "0"):
                 naver_games = await self._crawl_naver_month(year, month)
-                if naver_games is not None:
+                if naver_games:
                     all_games.extend(naver_games)
                     continue
             browser_months.append(month)
 
         if browser_months:
+            if not await self._kbo_fallback_allowed(f"{year}:season"):
+                return all_games
             async with self.page_context() as page:
                 for month in browser_months:
                     await self.policy.delay_async(host="www.koreabaseball.com")
                     month_games = await self._crawl_month(page, year, month, series_id=series_id)
                     all_games.extend(month_games)
         return all_games
+
+    async def _kbo_fallback_allowed(self, key: str) -> bool:
+        """Check whether a KBO page fallback is permitted by robots policy."""
+        if await compliance.is_allowed(self.base_url):
+            return True
+        self._last_failure_reason[key] = "kbo_robots_blocked"
+        logger.info("[COMPLIANCE] KBO schedule fallback blocked for %s", key)
+        return False
 
     async def _navigate_schedule_page(
         self,

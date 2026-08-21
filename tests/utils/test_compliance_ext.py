@@ -23,7 +23,7 @@ class TestSingleton:
 
 class TestEnsureLoadedExtended:
     @pytest.mark.asyncio
-    async def test_non_ok_response_falls_back_to_allow_all(self):
+    async def test_non_ok_response_blocks_by_default(self):
         checker = ComplianceChecker()
         checker.last_fetch_time = 0
         with patch.object(checker, "_lock", new=MagicMock()):
@@ -41,10 +41,10 @@ class TestEnsureLoadedExtended:
                 await checker._ensure_loaded()
 
                 assert checker.last_fetch_time > 0
-                assert checker.parser.can_fetch("*", "https://www.koreabaseball.com/anything")
+                assert not checker.parser.can_fetch("*", "https://www.koreabaseball.com/anything")
 
     @pytest.mark.asyncio
-    async def test_http_error_falls_back_to_allow_all(self):
+    async def test_http_error_blocks_by_default(self):
         checker = ComplianceChecker()
         checker.last_fetch_time = 0
         with patch.object(checker, "_lock", new=MagicMock()):
@@ -60,7 +60,7 @@ class TestEnsureLoadedExtended:
                 await checker._ensure_loaded()
 
                 assert checker.last_fetch_time > 0
-                assert checker.parser.can_fetch("*", "https://www.koreabaseball.com/anything")
+                assert not checker.parser.can_fetch("*", "https://www.koreabaseball.com/anything")
 
     @pytest.mark.asyncio
     async def test_snapshot_saved_on_success(self, tmp_path):
@@ -127,7 +127,7 @@ class TestIsAllowedSyncExtended:
             allowed = checker.is_allowed_sync("https://www.koreabaseball.com/Schedule", "*")
             assert allowed
 
-    def test_sync_fetch_non_ok_falls_back(self):
+    def test_sync_fetch_non_ok_blocks_by_default(self):
         checker = ComplianceChecker()
         checker.last_fetch_time = 0
         with patch("httpx.get") as mock_get:
@@ -136,16 +136,16 @@ class TestIsAllowedSyncExtended:
             mock_get.return_value = mock_response
 
             allowed = checker.is_allowed_sync("https://www.koreabaseball.com/Schedule", "*")
-            assert allowed
+            assert not allowed
 
-    def test_sync_fetch_http_error_falls_back(self):
+    def test_sync_fetch_http_error_blocks_by_default(self):
         checker = ComplianceChecker()
         checker.last_fetch_time = 0
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = httpx.HTTPError("boom")
 
             allowed = checker.is_allowed_sync("https://www.koreabaseball.com/Schedule", "*")
-            assert allowed
+            assert not allowed
 
     def test_sync_no_fetch_when_recent(self):
         checker = ComplianceChecker()

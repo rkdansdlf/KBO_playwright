@@ -2,7 +2,7 @@
 
 GitHub Actions 기반, 14개 워크플로와 3개 Composite Action으로 구성됩니다.
 
-운영 DB는 Oracle Autonomous Database이며, RAG dense 검색은 별도 PostgreSQL/pgvector를 사용합니다. 현재 workflow의 기본 DB fallback은 허용하지 않습니다.
+운영 DB와 RAG sparse/dense 검색은 모두 Oracle Autonomous Database를 사용합니다. PostgreSQL/pgvector는 production target이 아닌 격리된 local acceptance용으로만 유지합니다. 현재 workflow의 기본 DB fallback은 허용하지 않습니다.
 
 ## Composite Actions
 
