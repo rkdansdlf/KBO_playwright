@@ -79,6 +79,7 @@ from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import save_game_snapshot, save_relay_data
+from src.utils.compliance import compliance
 from src.utils.game_state import (
     TERMINAL_STATES,
     derive_lifecycle_from_naver_status,
@@ -318,6 +319,11 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
 
     """
     try:
+        kbo_url = f"https://www.koreabaseball.com/Game/LiveText.aspx?gameId={game_id}&gyear={game_id[:4]}"
+        if not await compliance.is_allowed(kbo_url):
+            logger.info("[COMPLIANCE] KBO PBP fallback skipped for %s", game_id)
+            return
+
         from src.crawlers.pbp_crawler import PBPCrawler
         from src.utils.alerting import SlackWebhookClient
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.crawlers.pbp_crawler import PBPCrawler
+from src.utils.compliance import compliance
 from src.utils.team_codes import normalize_kbo_game_id
 
 from .base import NormalizedRelayResult, RelaySourceAdapter, events_have_minimum_state
@@ -39,6 +40,14 @@ class KboRelayAdapter(RelaySourceAdapter):
 
         """
         game_id = normalize_kbo_game_id(game_id)
+
+        url = f"https://www.koreabaseball.com/Game/LiveText.aspx?gameId={game_id}&gyear={game_id[:4]}"
+        if not await compliance.is_allowed(url):
+            return NormalizedRelayResult(
+                game_id=game_id,
+                source_name=self.source_name,
+                notes="unsupported: kbo relay blocked by robots.txt",
+            )
 
         result = await self.crawler.crawl_game_events(game_id)
         events = list((result or {}).get("events") or [])
