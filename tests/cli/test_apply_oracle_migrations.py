@@ -77,3 +77,18 @@ def test_main_bootstraps_and_checks_oracle_schema() -> None:
 
     bootstrap.assert_called_once_with(fake_engine)
     fake_engine.dispose.assert_called_once()
+
+
+def test_main_prefers_database_url_over_disposable_oci_url(monkeypatch) -> None:
+    """Never route a default migration run to OCI_DB_URL accidentally."""
+    fake_engine = MagicMock()
+    monkeypatch.setenv("DATABASE_URL", "oracle+oracledb://app:pass@production/service")
+    monkeypatch.setenv("OCI_DB_URL", "oracle+oracledb://admin:pass@disposable/service")
+    with (
+        patch("src.cli.apply_oracle_migrations.create_engine_for_url", return_value=fake_engine) as create_engine,
+        patch("src.cli.apply_oracle_migrations._bootstrap_orm_schema"),
+        patch("src.cli.apply_oracle_migrations.apply_migrations", return_value=[]),
+    ):
+        assert main([]) == 0
+
+    create_engine.assert_called_once_with("oracle+oracledb://app:pass@production/service")

@@ -667,6 +667,39 @@ class GameDetailCrawler:
             batting_order = _as_int(raw.get("batOrder"))
             at_bats = _as_int(raw.get("ab"))
             hits = _as_int(raw.get("hit"))
+            inning_cells = {key: str(value) for key, value in raw.items() if key.startswith("inn") and value}
+            derived = self._derive_hitter_stats_from_inning_cells(inning_cells)
+            walks = _as_int(raw.get("bb"))
+            if walks in (None, 0):
+                walks = derived["walks"]
+            strikeouts = _as_int(raw.get("kk"))
+            if strikeouts in (None, 0):
+                strikeouts = derived["strikeouts"]
+            hbp = _as_int(raw.get("hbp"))
+            if hbp in (None, 0):
+                hbp = derived["hbp"]
+            sacrifice_hits = _as_int(raw.get("sacrificeHits"))
+            if sacrifice_hits in (None, 0):
+                sacrifice_hits = derived["sacrifice_hits"]
+            sacrifice_flies = _as_int(raw.get("sacrificeFlies"))
+            if sacrifice_flies in (None, 0):
+                sacrifice_flies = derived["sacrifice_flies"]
+            stats = {
+                "plate_appearances": _as_int(raw.get("pa")),
+                "at_bats": at_bats,
+                "runs": _as_int(raw.get("run")),
+                "hits": hits,
+                "home_runs": _as_int(raw.get("hr")),
+                "rbi": _as_int(raw.get("rbi")),
+                "walks": walks,
+                "hbp": hbp,
+                "strikeouts": strikeouts,
+                "sacrifice_hits": sacrifice_hits,
+                "sacrifice_flies": sacrifice_flies,
+                "stolen_bases": _as_int(raw.get("sb")),
+                "avg": round(hits / at_bats, 3) if at_bats else None,
+            }
+            self._backfill_hitter_plate_appearances(stats)
             entries.append(
                 {
                     "player_name": name,
@@ -677,18 +710,7 @@ class GameDetailCrawler:
                     "is_starter": batting_order is not None and batting_order <= NAVER_BATTER_STARTER_MAX_ORDER,
                     "appearance_seq": seq,
                     "position": None,
-                    "stats": {
-                        "plate_appearances": _as_int(raw.get("pa")),
-                        "at_bats": at_bats,
-                        "runs": _as_int(raw.get("run")),
-                        "hits": hits,
-                        "home_runs": _as_int(raw.get("hr")),
-                        "rbi": _as_int(raw.get("rbi")),
-                        "walks": _as_int(raw.get("bb")),
-                        "strikeouts": _as_int(raw.get("kk")),
-                        "stolen_bases": _as_int(raw.get("sb")),
-                        "avg": round(hits / at_bats, 3) if at_bats else None,
-                    },
+                    "stats": stats,
                     "extras": {
                         "source": "naver_record",
                         "inning_results": {
@@ -812,7 +834,7 @@ class GameDetailCrawler:
                 game_date = entry["game_date"]
                 try:
                     payload = await self._crawl_naver_single(game_id, game_date)
-                    if payload is None:
+                    if payload is None and await self._kbo_fallback_allowed(game_id, game_date):
                         payload = await self._crawl_single(page, game_id, game_date, lightweight=lightweight)
                     results[idx] = payload
                 except DETAIL_CRAWLER_EXCEPTIONS:  # pragma: no cover - resilience path
@@ -822,6 +844,15 @@ class GameDetailCrawler:
                     queue.task_done()
         finally:
             await pool.release(page)
+
+    async def _kbo_fallback_allowed(self, game_id: str, game_date: str) -> bool:
+        """Check whether the KBO detail fallback is permitted by robots policy."""
+        url = self._section_url(game_id, game_date, "REVIEW")
+        if await compliance.is_allowed(url):
+            return True
+        self._last_failure_reason[game_id] = "kbo_robots_blocked"
+        logger.info("[COMPLIANCE] KBO detail fallback blocked for %s", game_id)
+        return False
 
     async def _crawl_single(
         self,
@@ -2552,7 +2583,7 @@ class GameDetailCrawler:
                 derived["walks"] += 1
             if "사구" in val or "몸에 맞는 볼" in val:
                 derived["hbp"] += 1
-            if "희번" in val or "희생번트" in val:
+            if "희타" in val or "희번" in val or "희생번트" in val:
                 derived["sacrifice_hits"] += 1
             if "희비" in val or "희생플라이" in val:
                 derived["sacrifice_flies"] += 1

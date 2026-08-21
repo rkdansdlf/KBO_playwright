@@ -25,6 +25,8 @@ DEFAULT_OPENROUTER_EMBEDDING_MODEL = "perplexity/pplx-embed-v1-4b"
 OPENROUTER_RATE_LIMIT_RETRIES = 6
 OPENROUTER_RATE_LIMIT_BASE_DELAY_SECONDS = 2.0
 OPENROUTER_RATE_LIMIT_MAX_DELAY_SECONDS = 60.0
+OPENROUTER_TRANSPORT_RETRIES = 3
+OPENROUTER_TRANSPORT_BASE_DELAY_SECONDS = 1.0
 
 
 def _is_zero_vector(embedding: list[float]) -> bool:
@@ -264,8 +266,28 @@ class EmbeddingService:
         """
         try:
             with httpx.Client(headers=headers, timeout=30.0) as client:
+                transport_attempts = 0
                 for attempt in range(OPENROUTER_RATE_LIMIT_RETRIES + 1):
-                    response = client.post(url, json=payload)
+                    try:
+                        response = client.post(url, json=payload)
+                    except (httpx.TransportError, OSError):
+                        if transport_attempts >= OPENROUTER_TRANSPORT_RETRIES:
+                            logger.exception("OpenRouter transport retries exhausted")
+                            return None
+                        delay = min(
+                            OPENROUTER_TRANSPORT_BASE_DELAY_SECONDS * (2**transport_attempts),
+                            OPENROUTER_RATE_LIMIT_MAX_DELAY_SECONDS,
+                        )
+                        transport_attempts += 1
+                        logger.warning(
+                            "OpenRouter transport error; retrying in %.1fs (%d/%d)",
+                            delay,
+                            transport_attempts,
+                            OPENROUTER_TRANSPORT_RETRIES,
+                        )
+                        time.sleep(delay)
+                        continue
+                    transport_attempts = 0
                     if response.status_code != HTTPStatus.TOO_MANY_REQUESTS:
                         return response
                     if attempt == OPENROUTER_RATE_LIMIT_RETRIES:

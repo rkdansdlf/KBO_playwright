@@ -25,6 +25,11 @@ Both targets use `TNS_ADMIN` for the Autonomous Database wallet. Never use
 numbered `.sql` files here for changes that cannot be represented safely by the
 ORM baseline.
 
+Migration `067_add_rag_vector_search.sql` adds the native Oracle AI Vector
+Search column and HNSW index to `rag_chunks`. It intentionally leaves the
+legacy JSON-compatible `EMBEDDING` column in place while the application uses
+`EMBEDDING_VECTOR` for dense retrieval.
+
 The initial `000_orm_baseline` version records the schema created by
 `Base.metadata.create_all()`. Migration files must be Oracle-compatible and
 idempotent when the deployment contract requires reapplication.

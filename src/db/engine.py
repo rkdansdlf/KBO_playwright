@@ -27,11 +27,9 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-DATABASE_URL = (
-    os.getenv("RAG_SOURCE_DB_URL")
-    or os.getenv("RAG_TEST_DB_URL")
-    or os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
-)
+# DATABASE_URL is always the application primary/target database. A separate
+# RAG_SOURCE_DB_URL is opened only by the explicit source-read path below.
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("RAG_TEST_DB_URL", "sqlite:///./data/kbo_dev.db")
 DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 DB_SESSION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 
@@ -315,6 +313,33 @@ def get_db_session() -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+@contextmanager
+def get_rag_source_session() -> Iterator[Session]:
+    """Open the optional RAG source database without changing the primary target."""
+    source_url = os.getenv("RAG_SOURCE_DB_URL")
+    if not source_url or source_url == DATABASE_URL:
+        with get_db_session() as session:
+            yield session
+        return
+
+    source_engine = create_engine_for_url(source_url)
+    source_session_factory = sessionmaker(
+        bind=source_engine,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )
+    session = source_session_factory()
+    try:
+        yield session
+    except DB_SESSION_EXCEPTIONS:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+        source_engine.dispose()
 
 
 @contextmanager

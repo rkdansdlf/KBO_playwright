@@ -8,8 +8,8 @@ import sys
 from typing import TYPE_CHECKING
 
 from src.db.engine import get_rag_index_session
-from src.db.vector_engine import get_vector_session, is_pgvector_available
-from src.services.rag_index_consistency import audit_index_sessions
+from src.db.vector_engine import get_vector_session, is_oracle_vector_backend, is_pgvector_available
+from src.services.rag_index_consistency import audit_index_sessions, audit_single_store_session
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,14 +31,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if not is_pgvector_available():
-        payload = {"consistent": False, "error": "pgvector is unavailable"}
+    if not is_pgvector_available() and not is_oracle_vector_backend():
+        payload = {"consistent": False, "error": "pgvector is unavailable; Oracle VECTOR backend is also unavailable"}
         rendered = json.dumps(payload, ensure_ascii=False) if args.as_json else payload["error"]
         sys.stdout.write(rendered + "\n")
         return 2
 
-    with get_rag_index_session() as primary_session, get_vector_session() as vector_session:
-        report = audit_index_sessions(primary_session, vector_session)
+    if is_oracle_vector_backend():
+        with get_rag_index_session() as primary_session:
+            report = audit_single_store_session(primary_session)
+    else:
+        with get_rag_index_session() as primary_session, get_vector_session() as vector_session:
+            report = audit_index_sessions(primary_session, vector_session)
     payload = report.to_dict()
     nonempty = report.primary_count > 0 and report.vector_count > 0
     consistent = report.is_consistent and (nonempty or not args.require_nonempty)

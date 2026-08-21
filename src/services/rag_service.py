@@ -1,6 +1,6 @@
 """RAG(Retrieval-Augmented Generation) 서비스.
 
-자연어 쿼리를 임베딩으로 변환하고 pgvector에서 유사한 KBO 지식 청크를 검색합니다.
+자연어 쿼리를 임베딩으로 변환하고 Oracle AI Vector Search에서 유사한 KBO 지식 청크를 검색합니다.
 LLM 답변 생성은 포함하지 않으며, 검색 결과(컨텍스트) 반환에 집중합니다.
 """
 
@@ -11,13 +11,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.db.vector_engine import is_pgvector_available
+from src.db.vector_engine import is_oracle_vector_backend, is_pgvector_available
 from src.repositories.vector_search_repository import VectorSearchRepository
 from src.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
-_PGVECTOR_UNAVAILABLE_MSG = "pgvector DB를 사용할 수 없습니다. docker-compose up pgvector -d 로 서비스를 기동하세요."
+_VECTOR_UNAVAILABLE_MSG = "pgvector/Oracle VECTOR 검색을 사용할 수 없습니다. Oracle vector migration을 먼저 적용하세요."
 
 _MAX_CACHE_SIZE = 128
 
@@ -62,12 +62,17 @@ class RagResult:
 
 
 class RagService:
-    """쿼리 임베딩 → pgvector 검색 → 결과 반환 오케스트레이터."""
+    """쿼리 임베딩 → Oracle VECTOR 검색 → 결과 반환 오케스트레이터."""
 
     def __init__(self) -> None:
         """Initialize a new instance."""
         self._embedding_service = EmbeddingService()
-        self._search_repo = VectorSearchRepository()
+        if is_oracle_vector_backend():
+            from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
+
+            self._search_repo = OracleVectorSearchRepository()
+        else:
+            self._search_repo = VectorSearchRepository()
 
     def search(
         self,
@@ -88,11 +93,11 @@ class RagService:
             - timings: embedding_ms, search_ms 포함 성능 측정값.
 
         Raises:
-            RuntimeError: pgvector DB에 연결할 수 없는 경우.
+            RuntimeError: configured vector DB에 연결할 수 없는 경우.
 
         """
-        if not is_pgvector_available():
-            raise RuntimeError(_PGVECTOR_UNAVAILABLE_MSG)
+        if not is_pgvector_available() and not is_oracle_vector_backend():
+            raise RuntimeError(_VECTOR_UNAVAILABLE_MSG)
 
         filters = filters or {}
         timings: dict[str, float] = {}

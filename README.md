@@ -8,7 +8,7 @@ Two-track data pipeline:
 - **Core (src/)**: CLI entrypoints (`src/cli/`), Playwright crawlers (`src/crawlers/`), parsers, SQLAlchemy ORM models, and repositories (UPSERT).
 - **Scripts (scripts/)**: Batch utilities for crawling, maintenance, verification, and historical backfill.
 
-**Database**: Oracle Autonomous Database is the primary database; SQLite is used for local tests and one-time initial-load source data. PostgreSQL/pgvector remains the separate dense RAG search store. All save logic uses **UPSERT** for idempotency.
+**Database**: Oracle Autonomous Database is the primary database and the single production RAG store. SQLite is used for local tests and one-time initial-load source data. Oracle `VECTOR` stores dense embeddings beside the canonical `rag_chunks` rows; PostgreSQL remains optional for isolated local acceptance tests. All save logic uses **UPSERT** for idempotency.
 
 ## Quick Start
 
@@ -48,7 +48,7 @@ python3 -m src.cli.sync_sqlite_to_oci \
 python3 -m src.cli.quality_gate_check --year 2025
 python3 -m src.cli.monthly_unified_audit --year 2025
 
-# Restore local Markdown sources to the pgvector search database
+# Index local Markdown sources in Oracle AI Vector Search
 python3 -m src.cli.build_rag_index --source markdown_docs
 python3 -m src.cli.build_rag_index --source kbo_definitions
 python3 -m src.cli.build_rag_index --source kbo_regulations

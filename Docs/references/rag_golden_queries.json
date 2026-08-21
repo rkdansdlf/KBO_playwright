@@ -184,7 +184,19 @@
   {
     "id": "prod_highlight_027",
     "query": "2026년 6월 26일 한화와 SSG 경기의 빅플레이는?",
-    "relevantChunkIds": ["game_highlights:1"],
+    "relevantChunkIds": [
+      "game_highlights:1",
+      "game_highlights:2",
+      "game_highlights:4",
+      "game_highlights:5",
+      "game_highlights:8",
+      "game_highlights:9",
+      "game_highlights:10",
+      "game_highlights:12",
+      "game_highlights:13",
+      "game_highlights:14",
+      "game_highlights:15"
+    ],
     "filters": {"source_table": "game_highlights", "document_type": "highlight"},
     "tags": ["game"]
   },
@@ -192,7 +204,7 @@
     "id": "prod_pbp_028",
     "query": "2015년 10월 19일 경기에서 김현수의 타석 결과는?",
     "relevantChunkIds": ["game_play_by_play:999993"],
-    "filters": {"source_table": "game_play_by_play", "document_type": "game_play_by_play"},
+    "filters": {"source_table": "game_play_by_play", "document_type": "game_play_by_play", "game_date": "2015-10-19"},
     "tags": ["game"]
   },
   {

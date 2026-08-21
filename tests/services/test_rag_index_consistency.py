@@ -114,3 +114,21 @@ def test_compare_index_rows_rejects_vector_rows_without_embeddings() -> None:
 
     assert not report.is_consistent
     assert report.to_dict()["embedding_missing"] == 1
+
+
+def test_compare_index_rows_allows_deleted_rows_without_embeddings() -> None:
+    """Do not require vectors for rows intentionally removed from retrieval."""
+    row = {
+        "source_table": "game",
+        "source_row_id": "deleted-1",
+        "content_hash": "h1",
+        "index_version": "v1",
+        "index_status": "DELETED",
+        "embedding": None,
+    }
+
+    report = compare_index_rows([row], [row])
+
+    assert report.is_consistent
+    assert report.to_dict()["embedding_missing"] == 0
+    assert report.to_dict()["deleted"] == 1

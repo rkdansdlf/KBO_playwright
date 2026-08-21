@@ -13,9 +13,9 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - **Primary operational database**: Oracle Autonomous Database via `DATABASE_URL=oracle+oracledb://...`.
 - **Oracle Wallet**: `TNS_ADMIN` and optional `OCI_WALLET_PASSWORD`; wallet files remain outside version control.
 - **SQLite**: Local tests and the verified source for the one-time SQLite→Oracle initial load.
-- **RAG**: Oracle stores `rag_chunks` for source/BM25 search; PostgreSQL/pgvector via `PGVECTOR_URL` stores dense embeddings.
+- **RAG**: Oracle stores both sparse/BM25 chunks and dense embeddings in `rag_chunks.embedding_vector` using native `VECTOR`; PostgreSQL/pgvector is local acceptance-only.
 - **Initial load**: Use `src.cli.apply_oracle_migrations` first, then `src.cli.sync_sqlite_to_oci` with explicit source and target URLs. Always run dry-run and data-quality checks before `--apply`.
-- **PostgreSQL**: Keep only for local development/integration and the separate pgvector service; it is not the primary baseball-data store.
+- **PostgreSQL**: Keep only for local development/integration acceptance; it is not used by the production RAG path or primary baseball-data store.
 
 ## Agent Skill Defaults
 Agents should apply the repository's crawler-oriented skill set automatically; the user should not need to invoke these skills one by one.

@@ -99,16 +99,14 @@ class ComplianceChecker:
                                 logger.info("[COMPLIANCE] robots.txt loaded successfully.")
                             else:
                                 logger.warning(
-                                    "Failed to fetch robots.txt (Status %s). Using fallback.",
+                                    "Failed to fetch robots.txt (Status %s). Blocking KBO requests.",
                                     response.status_code,
                                 )
-                                # Fallback: assume everything is allowed or use a default
-                                self.parser.parse(["User-agent: *", "Disallow:"])
+                                self.parser.parse(["User-agent: *", "Disallow: /"])
                                 self.last_fetch_time = now
                     except httpx.HTTPError:
                         logger.exception("[COMPLIANCE] Error fetching robots.txt")
-                        # Fallback on error
-                        self.parser.parse(["User-agent: *", "Disallow:"])
+                        self.parser.parse(["User-agent: *", "Disallow: /"])
                         self.last_fetch_time = now
 
     async def is_allowed(self, url: str, user_agent: str = "*") -> bool:
@@ -160,11 +158,11 @@ class ComplianceChecker:
                     self.parser.parse(response.text.splitlines())
                     self.last_fetch_time = now
                 else:
-                    self.parser.parse(["User-agent: *", "Disallow:"])
+                    self.parser.parse(["User-agent: *", "Disallow: /"])
                     self.last_fetch_time = now
             except httpx.HTTPError:
                 logger.exception("[COMPLIANCE] Error sync fetching robots.txt")
-                self.parser.parse(["User-agent: *", "Disallow:"])
+                self.parser.parse(["User-agent: *", "Disallow: /"])
                 self.last_fetch_time = now
 
         allowed = self.parser.can_fetch(user_agent, url)

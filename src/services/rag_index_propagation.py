@@ -186,7 +186,7 @@ def _bulk_upsert_sparse(session: Session, payloads: list[dict[str, Any]], index_
             "index_version",
             "index_status",
             "indexed_at",
-            "embedding",
+            "embedding_vector",
             "meta",
             "updated_at",
         )
@@ -301,6 +301,87 @@ def publish_index_batch(
     sparse_repo.upsert_chunks(primary_session, active_payloads)
     primary_session.commit()
     return len(payloads)
+
+
+def publish_single_store_batch(session: Session, payloads: list[dict[str, Any]]) -> int:
+    """Publish a batch into Oracle's single sparse/vector ``rag_chunks`` table."""
+    if not payloads:
+        return 0
+    for payload in payloads:
+        _reject_single_store_purged_row(session, str(payload["source_table"]), str(payload["source_row_id"]))
+
+    repository = RagChunkRepository(session)
+    pending_payloads = [dict(payload, index_status="PENDING") for payload in payloads]
+    repository.upsert_chunks(session, pending_payloads)
+
+    active_payloads = [dict(payload, index_status="ACTIVE") for payload in payloads]
+    repository.upsert_chunks(session, active_payloads)
+    session.commit()
+    return len(payloads)
+
+
+def _reject_single_store_purged_row(session: Session, source_table: str, source_row_id: str) -> None:
+    """Reject updates for rows explicitly purged from the Oracle index."""
+    row = _row(session, RagChunk, source_table, source_row_id)
+    if row is not None and getattr(row, "index_status", None) == "PURGED":
+        message = f"Cannot mutate purged RAG index row: {source_table}:{source_row_id}"
+        raise ValueError(message)
+
+
+def propagate_single_store_update(
+    session: Session,
+    chunk_data: dict[str, Any],
+    embedding: list[float],
+    *,
+    index_version: str | None = None,
+    indexed_at: datetime | None = None,
+) -> IndexPropagationResult:
+    """Update one Oracle row through the single-store lifecycle."""
+    source_table = str(chunk_data["source_table"])
+    source_row_id = str(chunk_data["source_row_id"])
+    version = index_version or current_index_version()
+    timestamp = indexed_at or datetime.now(KST)
+    payload = dict(chunk_data)
+    payload.update({"embedding": embedding, "index_version": version, "indexed_at": timestamp})
+    publish_single_store_batch(session, [payload])
+    return IndexPropagationResult(
+        f"{source_table}:{source_row_id}",
+        "update",
+        "ACTIVE",
+        "ACTIVE",
+        chunk_content_hash(chunk_data.get("title"), chunk_data["content"]),
+        version,
+    )
+
+
+def propagate_single_store_delete(
+    session: Session,
+    source_table: str,
+    source_row_id: str,
+    *,
+    purge: bool = False,
+) -> IndexPropagationResult:
+    """Mark or purge one Oracle RAG row."""
+    row = _row(session, RagChunk, source_table, source_row_id)
+    source_key = f"{source_table}:{source_row_id}"
+    if row is None:
+        return IndexPropagationResult(
+            source_key,
+            "delete",
+            "MISSING",
+            "MISSING",
+            missing_primary=True,
+            missing_vector=True,
+        )
+    _reject_single_store_purged_row(session, source_table, source_row_id)
+    row.index_status = "DELETE_PENDING"
+    session.commit()
+    row.index_status = "DELETED"
+    session.commit()
+    if purge:
+        session.delete(row)
+        session.commit()
+    return IndexPropagationResult(source_key, "purge" if purge else "delete", "DELETED", "DELETED")
 
 
 def propagate_index_delete(

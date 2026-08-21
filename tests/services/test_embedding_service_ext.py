@@ -174,10 +174,32 @@ class TestFetchOpenRouterException:
     def test_http_exception_returns_fallback(self):
         svc = EmbeddingService()
         svc.api_key = "sk-or-v1-test"
-        with patch("httpx.Client") as mock_client:
+        with (
+            patch("httpx.Client") as mock_client,
+            patch("src.services.embedding_service.time.sleep"),
+        ):
             mock_client.return_value.__enter__.return_value.post.side_effect = httpx.ConnectError("fail")
             result = svc._fetch_openrouter_embeddings(["hello"])
             assert result == [[0.0] * 1536]
+
+    def test_transport_exception_retries_then_succeeds(self):
+        svc = EmbeddingService()
+        svc.api_key = "sk-or-v1-test"
+        with (
+            patch("httpx.Client") as mock_client,
+            patch("src.services.embedding_service.time.sleep") as sleep,
+        ):
+            post = mock_client.return_value.__enter__.return_value.post
+            post.side_effect = [
+                httpx.ConnectError("connection reset"),
+                httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.1] * 1536}]}),
+            ]
+
+            result = svc._fetch_openrouter_embeddings(["hello"])
+
+        assert result == [[0.1] * 1536]
+        assert post.call_count == 2
+        sleep.assert_called_once_with(1.0)
 
     def test_dimensions_accepted_first_attempt(self):
         svc = EmbeddingService()

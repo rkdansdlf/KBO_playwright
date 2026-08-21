@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 MIN_PLAYER_NAME_LEN = 2
@@ -194,6 +195,7 @@ class ExtractedKboEntities:
 
     team_id: str | None = None
     season_year: int | None = None
+    game_date: str | None = None
     stadium: str | None = None
     category: str | None = None
     player_name: str | None = None
@@ -207,6 +209,8 @@ class ExtractedKboEntities:
             f["team_id"] = self.team_id
         if self.season_year:
             f["season_year"] = self.season_year
+        if self.game_date:
+            f["game_date"] = self.game_date
         if self.category:
             f["document_type"] = self.category
         if self.stadium:
@@ -240,6 +244,17 @@ def _extract_category(query_lower: str) -> str | None:
     return None
 
 
+def _extract_game_date(query: str) -> str | None:
+    """Extract a validated calendar date from a Korean date expression."""
+    match = re.search(r"(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일", query)
+    if not match:
+        return None
+    try:
+        return date(int(match.group(1)), int(match.group(2)), int(match.group(3))).isoformat()
+    except ValueError:
+        return None
+
+
 def _extract_player_candidate(query: str) -> str | None:
     for w in query.split():
         clean_w = re.sub(r"[^가-힣]", "", w)
@@ -266,6 +281,7 @@ def extract_kbo_entities(query: str, *, extract_player: bool = True) -> Extracte
     if year_match:
         result.season_year = int(year_match.group(1))
 
+    result.game_date = _extract_game_date(query)
     result.team_id = _extract_team(query_lower)
     result.stadium = _extract_stadium(query_lower)
     result.category = _extract_category(query_lower)

@@ -19,6 +19,24 @@ logger = logging.getLogger(__name__)
 
 BM25_POSTGRES_CANDIDATE_MULTIPLIER = 100
 BM25_POSTGRES_MIN_CANDIDATES = 1000
+BM25_POSTGRES_MIN_PER_KEYWORD = 100
+SEARCH_TOKEN_SUFFIXES = (
+    "으로",
+    "에서",
+    "에게",
+    "께서",
+    "의",
+    "은",
+    "는",
+    "이",
+    "가",
+    "을",
+    "를",
+    "와",
+    "과",
+    "도",
+    "에",
+)
 
 
 class RagSearchEngine:
@@ -47,13 +65,13 @@ class RagSearchEngine:
             top_k: Maximum number of results to return.
             category: Optional category filter.
             filters: Optional metadata filters such as team_id, season_year, source_table,
-                player_id, player_name, and stadium.
+                game_date, player_id, player_name, and stadium.
 
         Returns:
             List of chunk dictionaries with relevance scores.
 
         """
-        keywords = [k.strip() for k in query.split() if len(k.strip()) > 1]
+        keywords = _search_keywords(query)
         if not keywords:
             keywords = [query.strip()]
 
@@ -155,20 +173,51 @@ class RagSearchEngine:
             func.coalesce(RagChunk.title, "") + " " + RagChunk.content,
         )
         ts_queries = [func.plainto_tsquery("simple", keyword) for keyword in keywords]
-        match_condition = or_(*(search_vector.op("@@")(query) for query in ts_queries))
         candidate_limit = max(top_k * BM25_POSTGRES_CANDIDATE_MULTIPLIER, BM25_POSTGRES_MIN_CANDIDATES)
-        stmt = (
-            select(RagChunk)
-            .where(match_condition)
-            .where(
-                or_(
-                    RagChunk.index_status.is_(None),
-                    RagChunk.index_status.in_(tuple(RETRIEVABLE_INDEX_STATUSES)),
-                )
-            )
-            .limit(candidate_limit)
+        per_keyword_limit = max(
+            BM25_POSTGRES_MIN_PER_KEYWORD,
+            math.ceil(candidate_limit / len(ts_queries)),
         )
-        stmt = self._apply_postgresql_filters(stmt, filters or {})
+        candidates: dict[int, RagChunk] = {}
+        for ts_query in ts_queries:
+            stmt = (
+                select(RagChunk)
+                .where(search_vector.op("@@")(ts_query))
+                .where(
+                    or_(
+                        RagChunk.index_status.is_(None),
+                        RagChunk.index_status.in_(tuple(RETRIEVABLE_INDEX_STATUSES)),
+                    )
+                )
+                .limit(per_keyword_limit)
+            )
+            stmt = self._apply_postgresql_filters(stmt, filters or {})
+            for chunk in self.session.execute(stmt).scalars().all():
+                candidates[chunk.id] = chunk
+        if candidates:
+            return list(candidates.values())
+        return self._legacy_candidates(keywords, top_k, filters, candidate_limit)
+
+    def _legacy_candidates(
+        self,
+        keywords: list[str],
+        top_k: int,
+        filters: dict[str, Any] | None,
+        candidate_limit: int | None = None,
+    ) -> list[RagChunk]:
+        """Use portable substring matching when PostgreSQL text search has no candidates."""
+        conditions = [
+            or_(
+                RagChunk.title.icontains(keyword),
+                RagChunk.content.icontains(keyword),
+            )
+            for keyword in keywords
+        ]
+        stmt = select(RagChunk).where(or_(*conditions))
+        if filters and filters.get("source_table"):
+            stmt = stmt.where(RagChunk.source_table == filters["source_table"])
+        if candidate_limit is not None:
+            stmt = stmt.limit(max(top_k * BM25_POSTGRES_CANDIDATE_MULTIPLIER, candidate_limit))
         return list(self.session.execute(stmt).scalars().all())
 
     @staticmethod
@@ -189,6 +238,8 @@ class RagSearchEngine:
             stmt = stmt.where(or_(column == filters[key], column.is_(None)))
         if filters.get("source_table"):
             stmt = stmt.where(RagChunk.source_table == filters["source_table"])
+        if filters.get("game_date"):
+            stmt = stmt.where(RagChunk.meta["game_date"].as_string() == str(filters["game_date"]))
         return stmt
 
     @staticmethod
@@ -229,6 +280,7 @@ class RagSearchEngine:
             "team_id": chunk.team_id or meta.get("team_id"),
             "season_year": chunk.season_year or meta.get("season_year"),
             "source_table": chunk.source_table,
+            "game_date": meta.get("game_date"),
             "player_id": chunk.player_id or meta.get("player_id"),
             "index_version": chunk.index_version or meta.get("index_version"),
         }
@@ -278,3 +330,17 @@ class RagSearchEngine:
             "chunks": chunks,
             "chunk_count": len(chunks),
         }
+
+
+def _search_keywords(query: str) -> list[str]:
+    """Normalize whitespace-delimited search terms and remove Korean particles."""
+    keywords: list[str] = []
+    for raw_keyword in query.split():
+        keyword = raw_keyword.strip()
+        for suffix in SEARCH_TOKEN_SUFFIXES:
+            if len(keyword) > len(suffix) + 1 and keyword.endswith(suffix):
+                keyword = keyword[: -len(suffix)]
+                break
+        if len(keyword) > 1:
+            keywords.append(keyword)
+    return keywords

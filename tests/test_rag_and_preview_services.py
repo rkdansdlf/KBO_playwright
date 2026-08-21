@@ -17,7 +17,7 @@ from src.models.kbo_press_release import KboPressRelease
 from src.models.player_milestone import PlayerMilestone
 from src.models.rag_chunk import RagChunk
 from src.services.game_preview_generator import GamePreviewGenerator
-from src.services.rag_search_engine import RagSearchEngine
+from src.services.rag_search_engine import RagSearchEngine, _search_keywords
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -66,18 +66,81 @@ def test_rag_search_engine(db_session: Session) -> None:
     assert "https://example.com/2" in qa["sources"]
 
 
+def test_rag_search_engine_applies_game_date_metadata_filter(db_session: Session) -> None:
+    """Apply game-date filters on the portable sparse-search path."""
+    db_session.add_all(
+        [
+            RagChunk(
+                source_table="game_play_by_play",
+                source_row_id="target",
+                title="김현수 타석 결과",
+                content="2015년 경기 타석 결과",
+                meta={"game_date": "2015-10-19", "document_type": "game_play_by_play"},
+            ),
+            RagChunk(
+                source_table="game_play_by_play",
+                source_row_id="other",
+                title="김현수 타석 결과",
+                content="2015년 경기 타석 결과",
+                meta={"game_date": "2015-10-18", "document_type": "game_play_by_play"},
+            ),
+        ]
+    )
+    db_session.commit()
+
+    results = RagSearchEngine(db_session).search(
+        "김현수 타석 결과",
+        filters={"source_table": "game_play_by_play", "game_date": "2015-10-19"},
+    )
+
+    assert [result["chunk_id"] for result in results] == ["game_play_by_play:target"]
+
+
 def test_postgresql_search_uses_bounded_tsvector_candidates() -> None:
     """Use the indexed PostgreSQL lexical path instead of loading every match."""
     session = MagicMock()
     session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
-    session.execute.return_value.scalars.return_value.all.return_value = []
+    session.execute.return_value.scalars.return_value.all.return_value = [
+        RagChunk(
+            id=1,
+            source_table="press_release",
+            source_row_id="1",
+            title="올스타전",
+            content="올스타전 개최",
+        )
+    ]
 
     RagSearchEngine(session).search("올스타전", top_k=5)
 
-    statement = session.execute.call_args.args[0]
+    statement = session.execute.call_args_list[0].args[0]
     compiled = str(statement.compile(dialect=postgresql.dialect()))
     assert "to_tsvector" in compiled
     assert "LIMIT" in compiled
+
+
+def test_postgresql_search_applies_game_date_metadata_filter() -> None:
+    """Apply exact game-date filters before ranking sparse candidates."""
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    session.execute.return_value.scalars.return_value.all.return_value = []
+
+    RagSearchEngine(session).search(
+        "김현수 타석 결과",
+        top_k=5,
+        filters={"source_table": "game_play_by_play", "game_date": "2015-10-19"},
+    )
+
+    statement = session.execute.call_args_list[0].args[0]
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+    assert "rag_chunks.meta" in compiled
+    compiled_params = statement.compile(dialect=postgresql.dialect()).params
+    assert "game_play_by_play" in compiled_params.values()
+    assert "2015-10-19" in compiled_params.values()
+
+
+def test_search_keywords_remove_korean_particles() -> None:
+    """Normalize attached Korean particles before lexical retrieval."""
+    assert _search_keywords("김도영의 2026시즌 KT와") == ["김도영", "2026시즌", "KT"]
 
 
 def test_game_preview_generator(db_session: Session) -> None:

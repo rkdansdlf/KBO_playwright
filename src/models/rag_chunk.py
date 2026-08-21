@@ -2,13 +2,48 @@
 
 from __future__ import annotations
 
+import array
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy.dialects.oracle import VECTOR, VectorStorageFormat, VectorStorageType
 from sqlalchemy.orm import Mapped, mapped_column
 
+from src.constants import RAG_EMBEDDING_DIMENSION
+
 from .base import Base, TimestampMixin
+
+
+class OracleVectorType(TypeDecorator[list[float] | None]):
+    """Bind Python embedding lists as Oracle's native dense FLOAT32 vectors."""
+
+    impl = VECTOR(
+        RAG_EMBEDDING_DIMENSION,
+        VectorStorageFormat.FLOAT32,
+        VectorStorageType.DENSE,
+    )
+    cache_ok = True
+
+    def process_bind_param(self, value: object, _dialect: object) -> object:
+        """Convert list values to the array representation expected by oracledb."""
+        if value is None or isinstance(value, array.array):
+            return value
+        if isinstance(value, (list, tuple)):
+            return array.array("f", value)
+        message = "Oracle VECTOR values must be lists, tuples, or array.array instances"
+        raise TypeError(message)
+
+    def process_result_value(self, value: object, _dialect: object) -> list[float] | None:
+        """Return fetched Oracle vectors as ordinary Python lists."""
+        if value is None:
+            return None
+        if isinstance(value, array.array):
+            return list(value)
+        return value  # type: ignore[return-value]
+
+
+_ORACLE_EMBEDDING_TYPE = OracleVectorType()
 
 
 class RagChunk(Base, TimestampMixin):
@@ -50,8 +85,13 @@ class RagChunk(Base, TimestampMixin):
     index_status: Mapped[str] = mapped_column(String(24), nullable=False, default="ACTIVE", server_default="ACTIVE")
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # Store embedding as JSON serialized list of floats
-    embedding: Mapped[Any | None] = mapped_column(JSON, nullable=True, comment="Float embedding vector")
+    # Keep the old JSON column untouched on Oracle; vector search uses the new VECTOR column.
+    embedding: Mapped[Any | None] = mapped_column(
+        "embedding_vector",
+        JSON().with_variant(_ORACLE_EMBEDDING_TYPE, "oracle"),
+        nullable=True,
+        comment="Float embedding vector (Oracle VECTOR; JSON elsewhere)",
+    )
     meta: Mapped[dict[str, Any]] = mapped_column(
         JSON,
         nullable=True,
