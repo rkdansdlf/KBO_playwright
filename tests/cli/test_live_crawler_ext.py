@@ -26,6 +26,7 @@ from src.cli.live_crawler import (
     _lookup_naver_status,
     _query_enriched_game_state,
     _raise_empty_kbo_pbp,
+    _run_kbo_fallback_healing,
     _resolve_live_lifecycle,
     _save_live_relay_and_snapshot,
     _select_live_shard,
@@ -38,6 +39,14 @@ class TestRaiseEmptyKboPbp:
     def test_raises(self) -> None:
         with pytest.raises(ValueError, match="no events"):
             _raise_empty_kbo_pbp()
+
+
+class TestKboFallbackHealing:
+    @pytest.mark.asyncio
+    async def test_skips_when_robots_blocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(live_crawler.compliance, "is_allowed", AsyncMock(return_value=False))
+
+        await _run_kbo_fallback_healing("20260819HTHH0")
 
 
 class TestHasEndingHeader:

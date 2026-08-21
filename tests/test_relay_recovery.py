@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from unittest.mock import AsyncMock
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -342,7 +343,9 @@ def test_read_manifest_entries_merges_multiple_files(tmp_path):
     ]
 
 
-def test_kbo_adapter_marks_auth_failure_as_unsupported():
+def test_kbo_adapter_marks_auth_failure_as_unsupported(monkeypatch):
+    monkeypatch.setattr("src.sources.relay.kbo.compliance.is_allowed", AsyncMock(return_value=True))
+
     class _FakeCrawler:
         def __init__(self):
             self.last_failure_reason = "auth_required"
@@ -355,6 +358,19 @@ def test_kbo_adapter_marks_auth_failure_as_unsupported():
 
     assert result.is_empty is True
     assert result.notes == "unsupported: kbo relay auth required"
+
+
+def test_kbo_adapter_skips_request_when_robots_blocks(monkeypatch):
+    monkeypatch.setattr("src.sources.relay.kbo.compliance.is_allowed", AsyncMock(return_value=False))
+
+    class _FailCrawler:
+        async def crawl_game_events(self, game_id: str):
+            raise AssertionError("KBO crawler must not be called")
+
+    result = asyncio.run(KboRelayAdapter(_FailCrawler()).fetch_game("20250405LGSS0"))
+
+    assert result.is_empty is True
+    assert result.notes == "unsupported: kbo relay blocked by robots.txt"
 
 
 def test_orchestrator_skips_cached_unsupported_source(tmp_path):
