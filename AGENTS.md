@@ -937,3 +937,12 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **운영 참고**: 원격과 로컬이 분기된 경우(동일 내용 커밋이 서로 다른 해시로 존재) `git diff`로 동일성 확인 후 `git rebase --onto`로 재배치 — 내용 충돌 없음 확인됨.
 - **참고**: 사용자 프로세스가 RAG 검색 엔진 개선 작업 진행 중 — `src/repositories/vector_search_repository.py`, `src/services/rag_search_engine.py`, `tests/test_rag_and_preview_services.py` 3파일 미커밋 상태.
 - **Verification**: `ruff check src/ tests/ scripts/` = 0 errors; pytest = **9,523 passed, 3 skipped** (103s).
+
+### Phase 84 Complete (2026-08-23) — 워크스페이스 정리 및 위생 규칙
+
+- **상위 폴더 정리**: `/Users/mac/project/`의 커밋 분석 잔재 16개 파일(bd2742bb_*/d2f2c765_* patch·dump — 대상 커밋 main 존재 확인), `backup/KBO_platform`(2.6GB, 사용자 확인) 삭제. 총 ~2.8GB 확보.
+- **worktree 정리**: `kbo-rag-recovery`(branch `recovery/rag-oracle-single-store`, 스테이지 핵심 파일 main HEAD와 동일 확인)와 `KBO_playwright-oracle`(구식 detach, 폐기된 OCI 헬퍼 되살림 diff)을 `git worktree remove --force`로 제거. 제거 전 전체 diff를 패치로 백업.
+- **RAG reconciliation 산출물 보관**: `rag_reconciliation_20260823`(179MB)의 NDJSON 3개를 tar.gz(28MB)로 압축, 요약 JSON/diff와 함께 `data/archive/workspace_cleanup_20260823/`으로 이관. 매니페스트: 동 폴더 `MANIFEST.md`.
+- **저장소 루트 잔재 정리**: `fake.db`·`coverage_report.txt`(0B)·`futures_total_debug.html` 삭제, `scratch/`·`debug_shots/`·Oracle 시대 로그(`load_sqlite_to_oci*.log`) 아카이브 이관. 전부 런타임 재생성 산출물.
+- **문서**: 경로 계약·worktree 규칙·월간 점검 체크리스트 → `Docs/runbooks/WORKSPACE_HYGIENE.md` 신규.
+- **참고**: 스케줄러 `sync_rag_incremental_job`은 저장소 내부(`Docs/baseball`)만 기록 — 상위 폴더 오염 주체는 스케줄러가 아닌 수동 세션 산출물이었음.
