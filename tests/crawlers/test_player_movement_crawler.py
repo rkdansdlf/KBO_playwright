@@ -13,6 +13,11 @@ def crawler():
     return PlayerMovementCrawler()
 
 
+@pytest.fixture(autouse=True)
+def allow_kbo_source(monkeypatch):
+    monkeypatch.setattr("src.crawlers.player_movement_crawler.compliance.is_allowed", AsyncMock(return_value=True))
+
+
 class TestExtractTable:
     @mark.asyncio
     async def test_returns_empty_when_no_rows(self, crawler):

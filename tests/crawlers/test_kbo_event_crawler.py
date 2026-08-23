@@ -14,6 +14,11 @@ from src.crawlers.kbo_event_crawler import (
 )
 
 
+@pytest.fixture(autouse=True)
+def allow_kbo_source(monkeypatch):
+    monkeypatch.setattr("src.crawlers.kbo_event_crawler.compliance.is_allowed", AsyncMock(return_value=True))
+
+
 class TestKboEventCrawlerFunctions:
     def test_extract_kbo_event_links_matches_keywords(self):
         html = """

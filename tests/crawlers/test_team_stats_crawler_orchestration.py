@@ -58,6 +58,7 @@ def test_collect_tries_fallback_url_after_empty_primary_result(monkeypatch, modu
     monkeypatch.setattr(module, "install_sync_resource_blocking", MagicMock())
     monkeypatch.setattr(module, parser_name, parser)
     monkeypatch.setattr(crawler, "_select_season", MagicMock(return_value=True))
+    monkeypatch.setattr(module.compliance, "is_allowed_sync", lambda _url: True)
 
     result = crawler._collect_from_site(2026, {"LG": "LG"}, headless=True)
 
@@ -109,6 +110,7 @@ def test_collect_skips_urls_when_season_selection_fails(monkeypatch, module, cra
     monkeypatch.setattr(module, "install_sync_resource_blocking", MagicMock())
     monkeypatch.setattr(module, parser_name, parser)
     monkeypatch.setattr(crawler, "_select_season", MagicMock(return_value=False))
+    monkeypatch.setattr(module.compliance, "is_allowed_sync", lambda _url: True)
 
     assert crawler._collect_from_site(2021, {"LG": "LG"}, headless=True) == []
     assert parser.call_count == 0

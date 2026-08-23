@@ -132,7 +132,10 @@ class HistoricalSeasonCrawler:
         )
 
         now = datetime.now(UTC)
+        failure_reason = self.schedule_crawler.get_last_failure_reason(f"{year}:season")
         source_name = "kbo_official_schedule"
+        if failure_reason:
+            source_name = f"{source_name}:{failure_reason}"
 
         if not raw_games:
             logger.warning("[HistoricalCrawler] No games returned from KBO official site for %d", year)
@@ -141,7 +144,7 @@ class HistoricalSeasonCrawler:
                 games_found=0,
                 games_saved=0,
                 source_name=source_name,
-                provenance_verified=False,
+                provenance_verified=failure_reason is None,
                 crawled_at=now,
             )
 

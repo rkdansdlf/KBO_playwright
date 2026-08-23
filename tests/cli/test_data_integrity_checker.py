@@ -21,6 +21,7 @@ from src.cli.data_integrity_checker import (
     check_no_null_player_ids,
     check_pa_formula_integrity,
     check_scores_populated,
+    check_season_stat_team_code,
     main,
     run_integrity_checks,
 )
@@ -231,6 +232,7 @@ class TestRunIntegrityChecks:
         session = MagicMock()
         session.query.return_value.filter.return_value.count.return_value = 5
         session.query.return_value.filter.return_value.all.return_value = []
+        session.execute.return_value.fetchall.return_value = [(0, 0, 0), (0, 0, 0)]
 
         with patch.object(checker_module, "SessionLocal") as mock_local:
             mock_local.return_value.__enter__.return_value = session
@@ -245,6 +247,35 @@ class TestRunIntegrityChecks:
     def test_invalid_date_raises(self) -> None:
         with pytest.raises(ValueError, match="Invalid date format"):
             run_integrity_checks("invalid")
+
+
+class TestCheckSeasonStatTeamCode:
+    def test_source_limited_rows_pass_without_team_code_mutation(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.fetchall.return_value = [(3, 3, 0), (2, 0, 2)]
+
+        result = check_season_stat_team_code(session)
+
+        assert result.passed is True
+        assert result.details == {
+            "batting_null": 3,
+            "pitching_null": 2,
+            "batting_source_limited": 3,
+            "pitching_source_limited": 2,
+            "source_limited": 5,
+            "unresolved": 0,
+            "total_null": 5,
+        }
+
+    def test_unclassified_rows_fail(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.fetchall.return_value = [(3, 1, 1), (2, 0, 1)]
+
+        result = check_season_stat_team_code(session)
+
+        assert result.passed is False
+        assert result.message == "2 season stats have unresolved team_code gaps"
+        assert result.details["unresolved"] == 2
 
 
 class TestMain:

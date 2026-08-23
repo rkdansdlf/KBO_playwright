@@ -682,7 +682,7 @@ class TestBattingPageParsers:
         with (
             patch("src.crawlers.player_batting_all_series_crawler.sync_playwright", return_value=manager),
             patch("src.crawlers.player_batting_all_series_crawler.install_sync_resource_blocking"),
-            patch("src.crawlers.player_batting_all_series_crawler.compliance.is_allowed_sync", return_value=True),
+            patch("src.crawlers.player_batting_all_series_crawler.compliance") as mock_compliance,
             patch("src.crawlers.player_batting_all_series_crawler._select_season_and_series"),
             patch(
                 "src.crawlers.player_batting_all_series_crawler._get_team_options",
@@ -693,6 +693,7 @@ class TestBattingPageParsers:
             patch("src.crawlers.player_batting_all_series_crawler._finalize_batting_summary", return_value=crawled),
             patch("src.crawlers.player_batting_all_series_crawler._save_batting_if_needed") as save,
         ):
+            mock_compliance.is_allowed_sync.return_value = True
             result = crawl_series_batting_stats(
                 BattingSeriesCrawlRequest(year=2025, series_key="regular", save_to_db=True, headless=True),
             )
@@ -701,6 +702,45 @@ class TestBattingPageParsers:
         playwright.chromium.launch.assert_called_once_with(headless=True)
         browser.close.assert_called_once()
         save.assert_called_once_with(crawled, save_to_db=True)
+
+    def test_crawl_series_uses_db_fallback_when_kbo_page_is_blocked(self):
+        page = MagicMock()
+        browser = MagicMock()
+        context = MagicMock()
+        context.new_page.return_value = page
+        browser.new_context.return_value = context
+        playwright = MagicMock()
+        playwright.chromium.launch.return_value = browser
+        manager = MagicMock()
+        manager.__enter__.return_value = playwright
+        manager.__exit__.return_value = False
+        fallback_rows = [{"player_id": 123, "player_name": "홍길동", "source": "FALLBACK"}]
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler.sync_playwright", return_value=manager),
+            patch("src.crawlers.player_batting_all_series_crawler.install_sync_resource_blocking"),
+            patch("src.crawlers.player_batting_all_series_crawler.compliance") as mock_compliance,
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.fallback_batting_from_db",
+                return_value=fallback_rows,
+            ) as db_fallback,
+            patch("src.crawlers.player_batting_all_series_crawler.FallbackMonitor.log_fallback"),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler._finalize_batting_summary",
+                side_effect=lambda rows, _series_info: rows,
+            ),
+            patch("src.crawlers.player_batting_all_series_crawler._save_batting_if_needed") as save,
+        ):
+            mock_compliance.is_allowed_sync.return_value = False
+            result = crawl_series_batting_stats(
+                BattingSeriesCrawlRequest(year=2025, series_key="regular", save_to_db=True, headless=True),
+            )
+
+        assert result == [{"player_id": 123, "player_name": "홍길동", "source": "FALLBACK_AUTO"}]
+        db_fallback.assert_called_once_with(2025, "regular", reason="KBO robots.txt blocked")
+        page.goto.assert_not_called()
+        save.assert_called_once_with(result, save_to_db=True)
+        browser.close.assert_called_once()
 
     def test_crawl_series_rejects_unknown_series_before_browser_start(self):
         with patch("src.crawlers.player_batting_all_series_crawler.sync_playwright") as browser:

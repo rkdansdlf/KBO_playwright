@@ -13,7 +13,18 @@ from fastapi.openapi.utils import get_openapi
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.api.auth import API_KEY_NAME
-from src.api.routers import futures, games, health, milestones, notices, players, rag, stadiums
+from src.api.routers import (
+    analytics,
+    futures,
+    games,
+    health,
+    milestones,
+    notices,
+    pipeline,
+    players,
+    rag,
+    stadiums,
+)
 from src.db.engine import init_db
 
 if TYPE_CHECKING:
@@ -37,6 +48,14 @@ TAGS_METADATA = [
     {
         "name": "KBO RAG & AI Hybrid Search",
         "description": "Dense Vector + BM25 RRF 융합 지식 하이브리드 검색 REST API",
+    },
+    {
+        "name": "KBO Sabermetrics & Matchup Analytics",
+        "description": "KBO 리그 세이버메트릭스(wOBA, wRC+, FIP, WAR), BvP 상대전적 및 스플릿 조회 API",
+    },
+    {
+        "name": "KBO Pipeline & Self-Healing",
+        "description": "KBO 일일 데이터 파이프라인 관리, 결함 진단, 자가 치유 및 품질 허브 리포트 API",
     },
     {
         "name": "Players & Teams",
@@ -144,6 +163,8 @@ app.include_router(games.router)
 app.include_router(players.router)
 app.include_router(stadiums.router)
 app.include_router(rag.router)
+app.include_router(analytics.router)
+app.include_router(pipeline.router)
 app.include_router(notices.router)
 app.include_router(milestones.router)
 app.include_router(futures.router)

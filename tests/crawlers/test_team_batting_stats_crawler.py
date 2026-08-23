@@ -342,6 +342,7 @@ class TestTeamBattingStatsCrawlerOrchestration:
         monkeypatch.setattr(batting_module, "install_sync_resource_blocking", MagicMock())
         monkeypatch.setattr(batting_module, "parse_team_batting_html", parser)
         monkeypatch.setattr(crawler, "_select_season", MagicMock(return_value=True))
+        monkeypatch.setattr(batting_module.compliance, "is_allowed_sync", lambda _url: True)
 
         assert crawler._collect_from_site(2026, {"LG": "LG"}, headless=False) == []
         assert page.goto.call_count == len(batting_module.TEAM_BATTING_URLS)

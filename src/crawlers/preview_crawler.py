@@ -19,6 +19,7 @@ from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from src.crawlers.base import BasePlaywrightCrawler
+from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -296,6 +297,10 @@ class PreviewCrawler(BasePlaywrightCrawler):
         """
         headers = dict(self.BASE_HEADERS)
 
+        if not await compliance.is_allowed(url):
+            logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
+            return None
+
         headers["Referer"] = referer
 
         # 1) Direct API call.
@@ -414,6 +419,9 @@ class PreviewCrawler(BasePlaywrightCrawler):
         list_payload = {"leId": "1", "srId": "0,1,3,4,5,7,9", "date": game_date}
         list_data = await self._fetch_api_json(self.GAME_LIST_URL, list_payload, self.BASE_REFERER)
         if list_data is None:
+            if not await compliance.is_allowed(self.GAME_LIST_URL):
+                logger.info("[COMPLIANCE] Preview fallback blocked for %s.", game_date)
+                return pool, page, owns_pool, {}
             pool, page, owns_pool, list_data = await self._fetch_game_list_with_playwright(
                 list_payload,
                 pool,

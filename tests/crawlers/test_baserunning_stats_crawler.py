@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from playwright.sync_api import Error as PlaywrightError
 
+import src.crawlers.baserunning_stats_crawler as baserunning_module
 from src.crawlers.baserunning_stats_crawler import crawl_baserunning_stats, save_baserunning_stats
 
 
@@ -20,6 +21,11 @@ def mock_browser():
     mock_context.new_page.return_value = mock_page
 
     return mock_playwright, mock_browser, mock_context, mock_page
+
+
+@pytest.fixture(autouse=True)
+def allow_kbo_source(monkeypatch):
+    monkeypatch.setattr(baserunning_module.compliance, "is_allowed_sync", lambda _url: True)
 
 
 class TestCrawlBaserunningStats:

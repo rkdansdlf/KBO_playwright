@@ -15,6 +15,7 @@ from src.db.engine import SessionLocal
 from src.models.team import Team
 from src.models.team_history import TeamHistory
 from src.repositories.source_registry_repository import save_raw_snapshots
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.team_codes import resolve_team_code
 
@@ -41,6 +42,11 @@ class TeamHistoryCrawler:
         self.playwright: Playwright | None = None
         self.context: BrowserContext | None = None
         self._raw_pages: list[dict] = []
+        self._last_failure_reason: str | None = None
+
+    def get_last_failure_reason(self) -> str | None:
+        """Return the latest crawl failure reason, if any."""
+        return self._last_failure_reason
 
     async def start(self) -> None:
         """Handle the start operation."""
@@ -67,6 +73,11 @@ class TeamHistoryCrawler:
 
         """
         logger.info("📜 Crawling Team History from %s", self.BASE_URL)
+
+        if not await compliance.is_allowed(self.BASE_URL):
+            self._last_failure_reason = log_source_limited("team_history", self.BASE_URL)
+            return []
+        self._last_failure_reason = None
 
         if not self.page:
             await self.start()

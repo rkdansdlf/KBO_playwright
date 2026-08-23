@@ -26,6 +26,7 @@ from src.parsers.ticket_parser import parse_ticket_page
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.ticket_open_rule_repository import TicketOpenRuleRepository
 from src.repositories.ticket_price_repository import TicketPriceRepository
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.throttle import throttle
 
@@ -130,6 +131,11 @@ class TicketCrawler(BaseHttpCrawler):
         self.kbo_ticket_url = "https://www.koreabaseball.com/Kbo/League/Map.aspx"
         self.current_season = datetime.now(KST).year
         self._raw_pages: list[dict] = []
+        self._last_failure_reason: str | None = None
+
+    def get_last_failure_reason(self) -> str | None:
+        """Return the latest KBO source failure reason, if any."""
+        return self._last_failure_reason
 
     TICKET_SOURCE_KEY_MAP: ClassVar[dict[str, str]] = {
         "LG": "lg_twins_ticket",
@@ -175,6 +181,11 @@ class TicketCrawler(BaseHttpCrawler):
 
     async def _crawl_kbo_ticket_map(self) -> list[dict[str, Any]]:
         """Crawl the KBO ticket map page to extract team ticket URLs, then crawl each team's page."""
+        if not await compliance.is_allowed(self.kbo_ticket_url):
+            self._last_failure_reason = log_source_limited("kbo_ticket_map", self.kbo_ticket_url)
+            return []
+        self._last_failure_reason = None
+
         async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
             try:
                 host = urlparse(self.kbo_ticket_url).hostname or "koreabaseball.com"

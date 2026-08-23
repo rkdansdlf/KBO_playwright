@@ -13,6 +13,11 @@ def crawler():
     return TeamInfoCrawler()
 
 
+@pytest.fixture(autouse=True)
+def allow_kbo_source(monkeypatch):
+    monkeypatch.setattr("src.crawlers.team_info_crawler.compliance.is_allowed", AsyncMock(return_value=True))
+
+
 class TestStartAndClose:
     @mark.asyncio
     @patch("src.crawlers.team_info_crawler.async_playwright")

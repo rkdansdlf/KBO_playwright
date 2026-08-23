@@ -25,6 +25,18 @@ import httpx
 from src.constants import KST
 
 logger = logging.getLogger(__name__)
+KBO_ROBOTS_BLOCKED_REASON = "kbo_robots_blocked"
+
+
+def log_source_limited(source: str, url: str) -> str:
+    """Record a source-limited result caused by the KBO robots policy."""
+    logger.warning(
+        "[SOURCE_LIMITED] source=%s reason=%s url=%s",
+        source,
+        KBO_ROBOTS_BLOCKED_REASON,
+        url,
+    )
+    return KBO_ROBOTS_BLOCKED_REASON
 
 
 def _save_robots_snapshot(robots_url: str, content: str) -> Path:

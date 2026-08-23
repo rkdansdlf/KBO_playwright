@@ -339,3 +339,18 @@ def crawl_fan_culture_job() -> None:
             logger.info("[FanCulture] Fan culture data crawl completed")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Fan culture job failed")
+
+
+@_with_lock_skip_guard
+def cleanup_stale_data_job() -> None:
+    """Clean up stale temp files, expired manifests, empty logs, and old backups."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Stale Data Cleanup Job ===")
+        try:
+            from scripts.maintenance.cleanup_data import archive_data
+
+            results = archive_data()
+            total_cleaned = sum(len(v) for v in results.values())
+            logger.info("=== Stale Data Cleanup Completed (%d files cleaned) ===", total_cleaned)
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Stale data cleanup job failed")

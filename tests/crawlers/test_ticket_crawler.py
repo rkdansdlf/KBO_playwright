@@ -8,6 +8,11 @@ import src.crawlers.ticket_crawler as ticket_module
 from src.crawlers.ticket_crawler import TEAM_TICKET_INFO, TicketCrawler
 
 
+@pytest.fixture(autouse=True)
+def allow_kbo_source(monkeypatch):
+    monkeypatch.setattr(ticket_module.compliance, "is_allowed", AsyncMock(return_value=True))
+
+
 class FakeAsyncClient:
     def __init__(self, response):
         self.response = response

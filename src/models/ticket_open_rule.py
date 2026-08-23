@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import time
 
-from sqlalchemy import ForeignKey, Integer, String, Text, Time, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
+
+from src.db.types import OracleCompatibleTime
 
 from .base import Base, TimestampMixin
 
@@ -27,7 +29,11 @@ class TicketOpenRule(Base, TimestampMixin):
         nullable=False,
         comment="Days before game day (e.g. 7 = N일 전)",
     )
-    open_time: Mapped[time] = mapped_column(Time, nullable=False, comment="Opening time on open day (e.g. 11:00)")
+    open_time: Mapped[time] = mapped_column(
+        OracleCompatibleTime(),
+        nullable=False,
+        comment="Opening time on open day (e.g. 11:00)",
+    )
     sales_close_rule: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Sales close rule description")
     max_tickets_per_user: Mapped[int | None] = mapped_column(
         Integer,

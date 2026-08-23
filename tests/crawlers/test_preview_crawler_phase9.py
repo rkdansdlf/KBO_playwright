@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import AsyncMock, patch
+
 from src.crawlers.preview_crawler import PreviewCrawler
 
 
@@ -35,6 +38,19 @@ class TestCoerceApiPayload:
     def test_nested_d_in_list(self):
         result = PreviewCrawler._coerce_api_payload({"d": '{"nested": true}'})
         assert result == {"nested": True}
+
+
+def test_crawl_preview_stops_before_playwright_when_kbo_api_is_blocked() -> None:
+    crawler = PreviewCrawler()
+
+    with (
+        patch("src.crawlers.preview_crawler.compliance.is_allowed", new=AsyncMock(return_value=False)),
+        patch("src.crawlers.preview_crawler.AsyncPlaywrightPool") as pool,
+    ):
+        result = asyncio.run(crawler.crawl_preview_for_date("20260822"))
+
+    assert result == []
+    pool.assert_not_called()
 
 
 class TestExtractListPayload:

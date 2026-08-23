@@ -43,6 +43,7 @@ from src.scheduler.jobs.maintenance import (
     aggregate_team_defense_job,
     auto_heal_games_job,
     backup_db_job,
+    cleanup_stale_data_job,
     compute_park_factor_job,
     compute_rankings_job,
     compute_standings_job,
@@ -307,6 +308,12 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         (sparse_terms_catchup_job, trigger_cls(hour=5, minute=40), "sparse_terms_catchup", 7200),
         (rag_audit_sentinel_job, trigger_cls(hour=6, minute=5), "rag_audit_sentinel", 7200),
         (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
+        (
+            cleanup_stale_data_job,
+            trigger_cls(day_of_week="sun", hour=2, minute=30),
+            "cleanup_stale_data_weekly",
+            7200,
+        ),
     ]
     for fn, trigger, job_id, grace in tier2_jobs:
         scheduler.add_job(fn, trigger=trigger, id=job_id, name=job_id, misfire_grace_time=grace, max_instances=1)

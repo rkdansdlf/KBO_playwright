@@ -7,19 +7,29 @@ import json
 
 import pytest
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from src.cli.ingest_historical_archive import HistoricalArchiveIngestor, main
-from src.db.engine import SessionLocal, init_db
+from src.models.base import Base
 from src.models.game import Game, GameBattingStat, GameInningScore, GameMetadata, GamePitchingStat
 from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 from scripts.converters.convert_kbo_archive_records import generate_season_dataset
 
 
-@pytest.fixture(autouse=True)
-def _setup_db():
-    init_db()
+@pytest.fixture
+def session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    sess = session_factory()
+    try:
+        yield sess
+    finally:
+        sess.close()
 
 
-def test_ingest_season_archive_provenance() -> None:
+def test_ingest_season_archive_provenance(session) -> None:
     """HistoricalArchiveIngestor should parse structured historical payload and save provenance metadata."""
     payload = {
         "games": [
@@ -112,43 +122,42 @@ def test_ingest_season_archive_provenance() -> None:
         ],
     }
 
-    with SessionLocal() as session:
-        ingestor = HistoricalArchiveIngestor(session)
-        summary = ingestor.ingest_season_archive(1980, payload, source_name="kbo_official_archive")
+    ingestor = HistoricalArchiveIngestor(session)
+    summary = ingestor.ingest_season_archive(1980, payload, source_name="kbo_official_archive")
 
-        assert summary.season == 1980
-        assert summary.games_ingested == 1
-        assert summary.innings_records_ingested == 2
-        assert summary.game_batting_records_ingested == 1
-        assert summary.game_pitching_records_ingested == 1
-        assert summary.batting_records_ingested == 1
-        assert summary.pitching_records_ingested == 1
-        assert summary.source_name == "kbo_official_archive"
-        assert summary.provenance_verified is True
+    assert summary.season == 1980
+    assert summary.games_ingested == 1
+    assert summary.innings_records_ingested == 2
+    assert summary.game_batting_records_ingested == 1
+    assert summary.game_pitching_records_ingested == 1
+    assert summary.batting_records_ingested == 1
+    assert summary.pitching_records_ingested == 1
+    assert summary.source_name == "kbo_official_archive"
+    assert summary.provenance_verified is True
 
-        # Verify DB records
-        game = session.query(Game).filter(Game.game_id == "19800327SSMB0").first()
-        assert game is not None
-        assert game.home_score == 11
-        assert game.away_score == 7
+    # Verify DB records
+    game = session.query(Game).filter(Game.game_id == "19800327SSMB0").first()
+    assert game is not None
+    assert game.home_score == 11
+    assert game.away_score == 7
 
-        meta = session.query(GameMetadata).filter(GameMetadata.game_id == "19800327SSMB0").first()
-        assert meta is not None
-        assert meta.source_payload["source_name"] == "kbo_official_archive"
+    meta = session.query(GameMetadata).filter(GameMetadata.game_id == "19800327SSMB0").first()
+    assert meta is not None
+    assert meta.source_payload["source_name"] == "kbo_official_archive"
 
-        # Verify Inning Score
-        innings = session.query(GameInningScore).filter(GameInningScore.game_id == "19800327SSMB0").all()
-        assert len(innings) == 2
+    # Verify Inning Score
+    innings = session.query(GameInningScore).filter(GameInningScore.game_id == "19800327SSMB0").all()
+    assert len(innings) == 2
 
-        # Verify Game Batting Stat
-        gb = session.query(GameBattingStat).filter(GameBattingStat.game_id == "19800327SSMB0").first()
-        assert gb is not None
-        assert gb.hits == 3
+    # Verify Game Batting Stat
+    gb = session.query(GameBattingStat).filter(GameBattingStat.game_id == "19800327SSMB0").first()
+    assert gb is not None
+    assert gb.hits == 3
 
-        # Verify Game Pitching Stat
-        gp = session.query(GamePitchingStat).filter(GamePitchingStat.game_id == "19800327SSMB0").first()
-        assert gp is not None
-        assert gp.strikeouts == 8
+    # Verify Game Pitching Stat
+    gp = session.query(GamePitchingStat).filter(GamePitchingStat.game_id == "19800327SSMB0").first()
+    assert gp is not None
+    assert gp.strikeouts == 8
 
 
 def test_ingest_historical_archive_cli_execution(tmp_path, capsys) -> None:
@@ -181,23 +190,21 @@ def test_historical_archive_requires_manifest(tmp_path) -> None:
     assert main(["--file", str(archive_path), "--season", "1982"]) == 2
 
 
-def test_ingestor_rejects_historical_write_without_provenance() -> None:
-    with SessionLocal() as session:
-        ingestor = HistoricalArchiveIngestor(session)
-        with pytest.raises(ValueError, match="provenance is required"):
-            ingestor.ingest_season_archive(1982, {"games": []})
+def test_ingestor_rejects_historical_write_without_provenance(session) -> None:
+    ingestor = HistoricalArchiveIngestor(session)
+    with pytest.raises(ValueError, match="provenance is required"):
+        ingestor.ingest_season_archive(1982, {"games": []})
 
 
-def test_ingestor_rejects_synthetic_archive_payload() -> None:
+def test_ingestor_rejects_synthetic_archive_payload(session) -> None:
     """Generated fixture payloads must never be stored as historical facts."""
-    with SessionLocal() as session:
-        ingestor = HistoricalArchiveIngestor(session)
-        with pytest.raises(ValueError, match="Synthetic archive payload"):
-            ingestor.ingest_season_archive(
-                1982,
-                generate_season_dataset(1982),
-                provenance={"source_name": "fixture"},
-            )
+    ingestor = HistoricalArchiveIngestor(session)
+    with pytest.raises(ValueError, match="Synthetic archive payload"):
+        ingestor.ingest_season_archive(
+            1982,
+            generate_season_dataset(1982),
+            provenance={"source_name": "fixture"},
+        )
 
 
 def test_historical_archive_manifest_checksum_and_dry_run(tmp_path, capsys) -> None:

@@ -15,6 +15,7 @@ from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.crawlers.base import BaseCrawler
 from src.db.engine import SessionLocal, get_db_session
 from src.repositories.team_stats_repository import TeamSeasonBattingRepository
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.team_mapping import get_team_mapping_for_year
@@ -125,6 +126,11 @@ class TeamBattingStatsCrawler(BaseCrawler):
         """
         super().__init__(request_delay=request_delay, policy=policy)
         self.league = league
+        self._last_failure_reason: str | None = None
+
+    def get_last_failure_reason(self) -> str | None:
+        """Return the latest site collection failure reason, if any."""
+        return self._last_failure_reason
 
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
         """Crawl crawl.
@@ -143,12 +149,16 @@ class TeamBattingStatsCrawler(BaseCrawler):
 
         """
         team_mapping = get_team_mapping_for_year(season)
+        self._last_failure_reason = None
 
         stats = []
         try:
             stats = self._collect_from_site(season, team_mapping, headless=headless)
         except TEAM_BATTING_CRAWL_EXCEPTIONS as crawl_err:
             logger.warning("Team batting crawl failed: %s. Falling back...", crawl_err)
+
+        if self._last_failure_reason == "kbo_robots_blocked":
+            return []
 
         if not stats:
             logger.warning("⚠️ KBO 팀 타격 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: %s)...", season)
@@ -193,12 +203,18 @@ class TeamBattingStatsCrawler(BaseCrawler):
         *,
         headless: bool,
     ) -> list[dict[str, Any]]:
+        self._last_failure_reason = None
+        allowed_urls = [url for url in TEAM_BATTING_URLS if compliance.is_allowed_sync(url)]
+        if not allowed_urls:
+            self._last_failure_reason = log_source_limited("team_batting", TEAM_BATTING_URLS[0])
+            return []
+
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context(**self.policy.build_context_kwargs(locale="ko-KR"))
             install_sync_resource_blocking(context)
             page = context.new_page()
-            for url in TEAM_BATTING_URLS:
+            for url in allowed_urls:
                 try:
                     self.policy.delay()
                     self.policy.run_with_retry(page.goto, url, wait_until="networkidle", timeout=LONG_TIMEOUT)

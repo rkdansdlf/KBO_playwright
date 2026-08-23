@@ -54,3 +54,20 @@ async def test_crawl_and_save_season_mock() -> None:
             assert summary.games_saved == 2
             assert summary.source_name == "kbo_official_schedule"
             assert summary.provenance_verified is True
+
+
+@pytest.mark.asyncio
+async def test_crawl_and_save_season_marks_robots_limited_source() -> None:
+    crawler = HistoricalSeasonCrawler(request_delay=0.1)
+
+    with (
+        patch.object(crawler.schedule_crawler, "crawl_season", new_callable=AsyncMock, return_value=[]),
+        patch.object(crawler.schedule_crawler, "get_last_failure_reason", return_value="kbo_robots_blocked"),
+    ):
+        with SessionLocal() as session:
+            summary = await crawler.crawl_and_save_season(session, 1982, dry_run=False)
+
+    assert summary.games_found == 0
+    assert summary.games_saved == 0
+    assert summary.source_name == "kbo_official_schedule:kbo_robots_blocked"
+    assert summary.provenance_verified is False

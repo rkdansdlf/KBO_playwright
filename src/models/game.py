@@ -15,11 +15,11 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
-    Time,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
+from src.db.types import OracleCompatibleTime
 from src.models.base import Base, TimestampMixin
 
 
@@ -132,8 +132,8 @@ class GameMetadata(Base, TimestampMixin):
     stadium_code = Column(String(30))
     stadium_name = Column(String(64))
     attendance = Column(Integer)
-    start_time = Column(Time)
-    end_time = Column(Time)
+    start_time = Column(OracleCompatibleTime())
+    end_time = Column(OracleCompatibleTime())
     game_time_minutes = Column(Integer)
     weather = Column(String(32))
     source_payload = Column(JSON)

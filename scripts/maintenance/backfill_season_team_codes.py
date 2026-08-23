@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from src.db.engine import SessionLocal
 from src.models.team import TeamDailyRoster
 from src.parsers.player_profile_parser import TEAM_CODE_MAP
+from src.validators.season_team_code import ALL_STAR_TEAM_CODES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -261,8 +262,11 @@ def _resolve_unique_evidence(codes: set[str], source: str) -> TeamCodeResolution
 
 
 def _resolve_batting_team_code(session: Session, player_id: int, season: int) -> TeamCodeResolution:
+    game_codes = _game_team_codes(session, player_id, season, "batting")
+    if game_codes and game_codes <= ALL_STAR_TEAM_CODES:
+        return TeamCodeResolution(None, "source_limited_all_star")
     game_evidence = _resolve_unique_evidence(
-        _game_team_codes(session, player_id, season, "batting"),
+        game_codes,
         "same_season_game",
     )
     if game_evidence is not None:
@@ -283,8 +287,11 @@ def _resolve_batting_team_code(session: Session, player_id: int, season: int) ->
 
 
 def _resolve_pitching_team_code(session: Session, player_id: int, season: int) -> TeamCodeResolution:
+    game_codes = _game_team_codes(session, player_id, season, "pitching")
+    if game_codes and game_codes <= ALL_STAR_TEAM_CODES:
+        return TeamCodeResolution(None, "source_limited_all_star")
     game_evidence = _resolve_unique_evidence(
-        _game_team_codes(session, player_id, season, "pitching"),
+        game_codes,
         "same_season_game",
     )
     if game_evidence is not None:

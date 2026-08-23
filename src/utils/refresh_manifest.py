@@ -102,3 +102,31 @@ def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: ob
     path = output_path / f"{stamp}_{spec.phase}.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+def prune_expired_manifests(
+    manifest_dir: Path | None = None,
+    max_age_days: int = 7,
+    *,
+    dry_run: bool = False,
+) -> list[Path]:
+    """Prune manifest files older than max_age_days.
+
+    Returns:
+        List of pruned (or would-be pruned) manifest Paths.
+
+    """
+    target_dir = manifest_dir or DEFAULT_MANIFEST_DIR
+    if not target_dir.exists():
+        return []
+    cutoff = datetime.now(KST).timestamp() - (max_age_days * 86400)
+    pruned: list[Path] = []
+    for entry in target_dir.glob("*.json"):
+        try:
+            if entry.stat().st_mtime < cutoff:
+                if not dry_run:
+                    entry.unlink()
+                pruned.append(entry)
+        except OSError:
+            pass
+    return pruned

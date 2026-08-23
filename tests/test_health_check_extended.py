@@ -64,6 +64,7 @@ def test_run_health_check_json(db_session: Session) -> None:
         assert "timestamp" in report
         assert "overall_healthy" in report
         assert "datasources" in report
+        assert "freshness_issue_count" in report["datasources"]
         assert "tables" in report
         assert "rag_chunks" in report
         assert report["rag_chunks"]["total_chunks"] == 1
@@ -76,7 +77,8 @@ def test_table_issue_counts_separate_optional_tables() -> None:
     rows = [
         {"table": "game", "rows": 1},
         {"table": "kbo_press_releases", "rows": 0},
+        {"table": "player_milestones", "rows": 0},
         {"table": "stadium_congestion", "rows": "ERR"},
     ]
 
-    assert _table_issue_counts(rows) == (0, 2)
+    assert _table_issue_counts(rows) == (0, 3)

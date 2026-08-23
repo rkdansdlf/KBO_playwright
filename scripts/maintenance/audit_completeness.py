@@ -40,6 +40,7 @@ from src.validators.coverage_contract_matrix import TableContractStatus, evaluat
 from src.validators.data_quality_regression_pack import run_regression_pack
 from src.validators.lineup_rules import classify_appearance_type
 from src.validators.quality_gate import run_quality_gate
+from src.validators.season_team_code import audit_season_team_codes
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -484,37 +485,41 @@ def run_quality_gate_audit(session_factory: Any, start_year: int, end_year: int)
 
 
 def check_team_code_null_rate(conn: Connection, start_year: int, end_year: int) -> list[dict[str, Any]]:
-    """Report player_season_batting.team_code NULL rate per year."""
+    """Classify missing season team codes by source limitation or unresolved evidence."""
     findings: list[dict[str, Any]] = []
     for year in range(start_year, end_year + 1):
-        rows = _execute(
-            conn,
-            """
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN team_code IS NULL THEN 1 ELSE 0 END) AS nulls
-            FROM player_season_batting
-            WHERE season = :year
-            """,
-            {"year": year},
-        )
-        row = rows[0]
-        total = int(row["total"] or 0)
-        nulls = int(row["nulls"] or 0)
-        if total == 0 or nulls == 0:
+        audit = audit_season_team_codes(conn, season=year)
+        if audit.total_missing == 0:
             continue
-        rate = nulls / total
-        classification = "DEFECT" if rate > TEAM_CODE_NULL_ALERT_RATE else "KNOWN_LIMITATION"
-        findings.append(
-            {
-                "dimension": "season_team_code_null",
-                "year": year,
-                "classification": classification,
-                "count": nulls,
-                "detail": f"NULL team_code={nulls}/{total} ({rate:.1%})",
-                "sample_ids": [],
-            },
-        )
+        if audit.total_source_limited:
+            findings.append(
+                {
+                    "dimension": "season_team_code_source_limited",
+                    "year": year,
+                    "classification": "KNOWN_LIMITATION",
+                    "count": audit.total_source_limited,
+                    "detail": (
+                        f"source-limited team_code={audit.total_source_limited}/{audit.total_missing} "
+                        f"(archive={audit.batting_archive + audit.pitching_archive}, "
+                        f"all_star={audit.batting_all_star + audit.pitching_all_star})"
+                    ),
+                    "sample_ids": [],
+                },
+            )
+        if audit.total_unresolved:
+            findings.append(
+                {
+                    "dimension": "season_team_code_unresolved",
+                    "year": year,
+                    "classification": "DEFECT",
+                    "count": audit.total_unresolved,
+                    "detail": (
+                        f"unresolved team_code={audit.total_unresolved}/{audit.total_missing} "
+                        f"after source-limited classification"
+                    ),
+                    "sample_ids": [],
+                },
+            )
     return findings
 
 
@@ -552,6 +557,9 @@ REMEDIATION_COMMANDS: dict[str, str] = {
     "quality_gate:futures_batting": "python3 -m src.cli.crawl_futures --season <Y>",
     "quality_gate:futures_pitching": "python3 -m src.cli.crawl_futures --season <Y>",
     "season_team_code_null": "python3 -m src.cli.recalc_season_stats --year <Y>",
+    "season_team_code_unresolved": (
+        "python3 -m scripts.maintenance.backfill_season_team_codes --year <Y>   # dry-run; review before --apply"
+    ),
 }
 
 

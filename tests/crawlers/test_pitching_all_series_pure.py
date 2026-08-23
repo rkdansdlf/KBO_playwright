@@ -534,6 +534,7 @@ class TestPitchingPageParsers:
 
         with (
             patch("src.crawlers.player_pitching_all_series_crawler.sync_playwright", return_value=manager),
+            patch("src.crawlers.player_pitching_all_series_crawler.compliance.is_allowed_sync", return_value=True),
             patch("src.crawlers.player_pitching_all_series_crawler.setup_pitcher_page", return_value=True),
             patch(
                 "src.crawlers.player_pitching_all_series_crawler._get_pitcher_team_options",
@@ -561,6 +562,25 @@ class TestPitchingPageParsers:
         collect_basic2.assert_called_once()
         save.assert_called_once_with([stats.to_repository_payload()])
         browser.close.assert_called_once()
+
+    def test_crawl_pitcher_series_uses_db_fallback_when_kbo_page_is_blocked(self):
+        stats = PitcherStats(player_id=123, season=2025, league="REGULAR", player_name="홍길동")
+
+        with (
+            patch("src.crawlers.player_pitching_all_series_crawler.compliance.is_allowed_sync", return_value=False),
+            patch(
+                "src.crawlers.player_pitching_all_series_crawler._handle_pitching_fallback",
+                return_value=[stats],
+            ) as fallback,
+            patch("src.crawlers.player_pitching_all_series_crawler.sync_playwright") as playwright,
+        ):
+            result = crawl_pitcher_series(
+                PitchingSeriesCrawlRequest(year=2025, series_key="regular", save_to_db=True),
+            )
+
+        assert result == [stats]
+        fallback.assert_called_once_with(2025, "regular", "KBO robots.txt blocked", save_to_db=True)
+        playwright.assert_not_called()
 
     def test_crawl_pitcher_series_rejects_unknown_series(self):
         with pytest.raises(ValueError, match="지원하지 않는 시리즈"):

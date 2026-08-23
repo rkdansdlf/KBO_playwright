@@ -243,6 +243,7 @@ class TestFieldingCrawlerFlow:
         with (
             patch("src.crawlers.fielding_stats_crawler.sync_playwright", return_value=manager),
             patch("src.crawlers.fielding_stats_crawler.install_sync_resource_blocking"),
+            patch("src.crawlers.fielding_stats_crawler.compliance.is_allowed_sync", return_value=True),
             patch("src.crawlers.fielding_stats_crawler._init_fielding_page", return_value=True),
             patch("src.crawlers.fielding_stats_crawler._get_team_list", return_value=[("LG", "LG")]),
             patch("src.crawlers.fielding_stats_crawler._crawl_team_fielding_basic", side_effect=collect_team),

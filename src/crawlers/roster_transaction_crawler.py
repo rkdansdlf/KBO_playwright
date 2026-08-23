@@ -28,6 +28,7 @@ from src.db.engine import SessionLocal
 from src.repositories.roster_transaction_repository import RosterTransactionRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.urls import REGISTER
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
@@ -105,6 +106,10 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
             if target_date
             else datetime.now(KST).date()
         )
+
+        if not await compliance.is_allowed(self.mobile_url):
+            log_source_limited("roster_transaction", self.mobile_url)
+            return []
 
         # Try mobile page first (simpler, structured)
         data = await self._crawl_mobile_page(crawl_date)
@@ -274,6 +279,10 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
 
         """
         transactions = []
+
+        if not await compliance.is_allowed(self.register_url):
+            log_source_limited("roster_transaction", self.register_url)
+            return []
 
         async with self.page_context() as page:
             await self.goto_with_retry(page, self.register_url, timeout=NAV_TIMEOUT)

@@ -39,6 +39,7 @@ from src.utils.game_status import (
     is_terminal_status,
 )
 from src.utils.team_codes import normalize_kbo_game_id
+from src.validators.season_team_code import audit_season_team_codes
 
 FUTURES_BATTING_TOLERANCE = 0.005
 FUTURES_PITCHING_TOLERANCE = 0.01
@@ -711,24 +712,29 @@ CHECKS = [
 
 
 def check_season_stat_team_code(session: Session) -> CheckResult:
-    """Verify team_code is populated in player_season_batting/pitching."""
-    from sqlalchemy import text
-
-    batting_null = session.execute(
-        text("SELECT COUNT(*) FROM player_season_batting WHERE team_code IS NULL"),
-    ).scalar()
-    pitching_null = session.execute(
-        text("SELECT COUNT(*) FROM player_season_pitching WHERE team_code IS NULL OR team_code = ''"),
-    ).scalar()
-    total_null = batting_null + pitching_null  # type: ignore[operator]
-    passed = total_null == 0
+    """Verify season team codes or an accepted source-limited explanation."""
+    audit = audit_season_team_codes(session)
+    total_null = audit.total_missing
+    total_unresolved = audit.total_unresolved
+    passed = total_unresolved == 0
+    if passed and audit.total_source_limited:
+        message = f"All season stats have team_code or accepted source-limited rows ({audit.total_source_limited})"
+    elif passed:
+        message = "All season stats have team_code"
+    else:
+        message = f"{total_unresolved} season stats have unresolved team_code gaps"
     return CheckResult(
         name="season_stat_team_code",
         passed=passed,
-        message="All season stats have team_code" if passed else f"{total_null} NULL team_code rows",
+        message=message,
         details={
-            "batting_null": batting_null,
-            "pitching_null": pitching_null,
+            "batting_null": audit.batting_missing,
+            "pitching_null": audit.pitching_missing,
+            "batting_source_limited": audit.batting_source_limited,
+            "pitching_source_limited": audit.pitching_source_limited,
+            "source_limited": audit.total_source_limited,
+            "unresolved": total_unresolved,
+            "total_null": total_null,
         },
     )
 

@@ -1,6 +1,6 @@
 # Known Data Limitations
 
-Last updated: 2026-08-17
+Last updated: 2026-08-23
 
 This document tracks known data quality issues and their current status.
 
@@ -64,38 +64,35 @@ history and treat that recovery as a separate migration project.
 | Game season_id | ✅ Resolved | 100% (0 orphan) |
 | Game team codes | ✅ Resolved | 100% (0 legacy) |
 | game_metadata stadium_code | ✅ Resolved | 100% (0 NULL) |
-| player_season team_code | ⚠️ 1 accepted residual | 99.99% (1 NULL batting = 김택연 665/2025, accepted; 이병헌 52204/2026 resolves to DB via player_basic.team evidence) |
+| player_season team_code | ⚠️ Source-limited residuals classified | Integrity checks distinguish raw missing rows from unresolved rows; no source-limited row is written back as a guessed team |
 
 ---
 
-## player_season NULL team_code (1 accepted residual)
+## player_season team_code Source-Limited Residuals (2026-08-23)
 
-**Status**: 1 intentional residual (김택연 665/2025); 이병헌 52204/2026 resolvable
+**Status**: Known source-limited rows are accepted by the integrity checker; unresolved regular-season rows remain blocking.
 
-**Affected**: After the backfill enhancement (`feat: player_season 팀코드 백필에 player_basic.team 최후 증거 추가`, commit `1b0ee693`), `player_season_pitching` is fully resolved and `player_season_batting` has a single remaining NULL: **김택연 (665, 2025)**, which has no team evidence of any kind and is accepted as an intentional residual.
+The local SQLite audit on 2026-08-23 found 19 rows with no usable `team_code`:
 
-**History**:
-- Originally 1,248 NULL rows (6%, 620 players) across 2010-2026.
-- A conservative, evidence-based backfill (`scripts/maintenance/backfill_season_team_codes.py`)
-  resolved all rows with a single, unambiguous team code from
-  `player_game_batting` / `player_game_pitching` (same season) → `team_daily_roster`
-  (same year) → `player_basic.career` → `player_basic.team` (current team, last resort).
-- The backfill previously left 2 batting rows unresolved: **김택연 (665, 2025)** had no
-  evidence at all, and **이병헌 (52204, 2026)** had conflicting same-season roster codes.
-  The `_resolve_from_player_team` helper (commit `1b0ee693`) now treats a populated
-  `player_basic.team` (normalized via `FULL_TEAM_MAP`) as a last-resort, non-ambiguous
-  evidence: 이병헌's `player_basic.team='두산'` yields `DB`, so running `--apply` resolves
-  it. 김택연 has `team=None` and `career=None`, so no evidence exists and it stays NULL.
+- 7 rows from the 1982 `OFFICIAL_ARCHIVE` player-level source (3 batting, 4 pitching).
+- 12 rows whose only same-season player-game evidence is the All-Star `EA`/`WE` raw team code (6 batting, 6 pitching).
 
-**Root cause (residual gap)**:
-- **김택연 (665, 2025)**: has a season-level batting record but no corresponding
-  `player_game_batting` data for 2025, no `team_daily_roster` entry, an empty
-  `player_basic.career`, and a NULL `player_basic.team`. There is genuinely no usable
-  evidence, so the row is **accepted as an intentional residual** rather than force-assigned.
-- The backfill intentionally **skips** ambiguous or evidence-less rows rather than
-  inventing a team code. 김택연 is the sole remaining such row.
+The configured database can contain a different count as source coverage changes. The policy is evidence-based and does not whitelist player IDs.
 
-**Impact**: Minimal - 1 edge-case row out of ~19,600 batting rows.
+**Classification policy**:
+- A 1982 row with `source = OFFICIAL_ARCHIVE` is source-limited because the archive does not provide a reliable player-to-team mapping for these rows.
+- A missing season row is source-limited when its same-season player-game rows contain only `EA`/`WE` and no regular team code. These are All-Star participation records, not canonical regular-season team assignments.
+- Rows with no evidence, conflicting evidence, or regular-season evidence that cannot be resolved remain unresolved and fail the integrity check.
+
+**Backfill safety**:
+- `scripts/maintenance/backfill_season_team_codes.py` remains conservative and writes only when `--apply` is explicitly provided.
+- All-Star-only `EA`/`WE` evidence is reported as `source_limited_all_star` and is never written as a canonical season team code.
+- Ambiguous or evidence-less rows remain unchanged.
+
+**Integrity/report behavior**:
+- `data_integrity_checker` reports `batting_null` and `pitching_null` as raw missing counts, while `source_limited` and `unresolved` make the decision explicit.
+- The `season_stat_team_code` check passes when `unresolved = 0`, not when raw missing count is zero.
+- `gap_report` keeps raw missing rows visible, but alerts only when the unresolved rate exceeds `SEASON_TEAM_CODE_GAP_ALERT_RATE` (default 10%).
 
 **Mitigation**: When aggregating player stats by team, filter out NULL team_code rows:
 ```sql
@@ -105,7 +102,17 @@ WHERE team_code IS NOT NULL
 GROUP BY team_code;
 ```
 
-**Monitoring**: `gap_report` SEASON_TEAM_CODE check reports `ok = (batting_null == 0 and pitching_null == 0)`. After `--apply` for 이병헌, only 김택연 (665/2025) remains NULL, so the check stays `False` by design and is accepted. Alerts are suppressed below `SEASON_TEAM_CODE_GAP_ALERT_RATE` (default 10%), while the residual remains visible in the report.
+**Read-only verification**:
+```bash
+DATABASE_URL=sqlite:///./data/kbo_dev.db \
+  venv/bin/python -m src.cli.data_integrity_checker --date YYYYMMDD --json
+DATABASE_URL=sqlite:///./data/kbo_dev.db \
+  venv/bin/python -m src.cli.gap_report --dry-run --no-alert
+DATABASE_URL=sqlite:///./data/kbo_dev.db \
+  venv/bin/python -m scripts.maintenance.backfill_season_team_codes --table all
+```
+
+Do not add `--apply` during source classification. A source-specific remediation decision is required before any data mutation.
 
 **Database propagation**: The backfill is dialect-agnostic (roster lookup uses SQLAlchemy `extract` instead of SQLite `strftime`) and runs against the configured `DATABASE_URL`. The local development database already has the approved fix applied.
 

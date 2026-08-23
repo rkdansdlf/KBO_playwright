@@ -63,7 +63,7 @@ class TestDailyRosterCrawler:
         assert records == []
 
     @pytest.mark.asyncio
-    async def test_crawl_date_range_saves_sync_results_and_releases_injected_pool(self):
+    async def test_crawl_date_range_saves_sync_results_and_releases_injected_pool(self, monkeypatch):
         page = AsyncMock()
         pool = MagicMock()
         pool.start = AsyncMock()
@@ -73,6 +73,7 @@ class TestDailyRosterCrawler:
         crawler = DailyRosterCrawler(pool=pool)
         crawler._crawl_date = AsyncMock(return_value=[{"player_id": 1}])
         save_callback = MagicMock()
+        monkeypatch.setattr("src.crawlers.daily_roster_crawler.compliance.is_allowed", AsyncMock(return_value=True))
 
         records = await crawler.crawl_date_range("2025-05-01", "2025-05-02", save_callback)
 

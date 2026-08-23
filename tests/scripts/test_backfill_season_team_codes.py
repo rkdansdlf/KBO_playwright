@@ -53,6 +53,24 @@ def test_batting_resolver_uses_unique_same_season_game_evidence() -> None:
     assert session.execute.call_count == 1
 
 
+def test_batting_resolver_skips_all_star_only_evidence() -> None:
+    session = MagicMock()
+    session.execute.return_value = _query_result(rows=[("EA",)])
+
+    resolution = _resolve_batting_team_code(session, 20, 2023)
+
+    assert resolution == TeamCodeResolution(None, "source_limited_all_star")
+
+
+def test_pitching_resolver_skips_all_star_only_evidence() -> None:
+    session = MagicMock()
+    session.execute.return_value = _query_result(rows=[("WE",)])
+
+    resolution = _resolve_pitching_team_code(session, 30, 2022)
+
+    assert resolution == TeamCodeResolution(None, "source_limited_all_star")
+
+
 def test_batting_resolver_rejects_conflicting_same_season_game_evidence() -> None:
     session = MagicMock()
     session.execute.return_value = _query_result(rows=[("SS",), ("HH",)])
