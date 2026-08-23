@@ -31,6 +31,11 @@
 ## 로그 관리
 
 - `logs/scheduler.launchd.err.log`는 운영 로그로 유지 (lock-health가 말미 8MB만 스캔).
+- 16MB 초과 시 트림 (말미 보존, 헤드는 gzip 아카이브):
+  ```bash
+  python3 -m scripts.maintenance.trim_scheduler_log --file logs/scheduler.launchd.err.log --keep 16M
+  ```
+  launchd가 fd를 유지하므로 파일 교체 없이 in-place 절단한다. 아카이브 위치: `data/archive/logs/`.
 - 세대가 끝난 마이그레이션/실험 로그(예: Oracle 동기화 시대)는 `data/archive/`로 이관.
 
 ## 월간 점검 체크리스트
@@ -38,4 +43,5 @@
 - [ ] `du -sh /Users/mac/project/*` — 저장소 밖 잔재 없는지
 - [ ] `git worktree list` — 불필요한 worktree 없는지
 - [ ] `du -sh logs/ data/` — 급증 여부
+- [ ] `python3 -m scripts.maintenance.trim_scheduler_log --file logs/scheduler.launchd.err.log --keep 16M --dry-run` — 16MB 초과 시 실제 트림 실행
 - [ ] `ls data/archive/` — 오래된 작업 폴더 압축/정리

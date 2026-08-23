@@ -59,6 +59,45 @@ python3 -m src.cli.ingest_historical_archive \
 python3 -m src.cli.audit_historical_lake --start-year 1982 --end-year 2000
 ```
 
+### 3) RAG 인덱스 역사 재인덱스 (프로덕션 갭 해소)
+
+2026-08-23 reconciliation으로 확인된 프로덕션 갭(역사 9,252청크) 해소 절차.
+계약 배경: `Docs/references/RAG_RECONCILIATION.md`. **임베딩 비용이 발생하므로
+dry-run → 샘플 시즌 → 나머지 순으로 단계 실행.**
+
+```bash
+# 0) 사전 확인: 소스 테이블에 역사 시즌 데이터 존재 여부
+python3 -m src.cli.rag.inventory_rag_corpus --json | head -40
+
+# 1) 파이프라인 dry-run (저장 없음, 임베딩 생성만)
+python3 -m src.cli.rag.build_rag_index --source all --season 1982 --dry-run
+
+# 2) 샘플 시즌 실적재 후 reconcile로 확인
+python3 -m src.cli.rag.build_rag_index --source all --season 1982 --skip-existing
+python3 -m src.cli.rag.reconcile_rag_stores export --side primary \
+  --out reports/rag_reconciliation/primary_1982.ndjson
+
+# 3) 나머지 시즌 루프 (--skip-existing으로 재실행 안전)
+for y in $(seq 1983 2001); do
+  python3 -m src.cli.rag.build_rag_index --source all --season "$y" --skip-existing || break
+done
+
+# 4) 최종 검증: staging 기준 매니페스트와 compare
+tar xzf data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823_identity_ndjson.tar.gz \
+  -C reports/rag_reconciliation/ staging_sparse_identity.ndjson
+python3 -m src.cli.rag.reconcile_rag_stores export --side primary \
+  --out reports/rag_reconciliation/primary_after.ndjson
+python3 -m src.cli.rag.reconcile_rag_stores compare \
+  --left reports/rag_reconciliation/primary_after.ndjson \
+  --right reports/rag_reconciliation/staging_sparse_identity.ndjson \
+  --fail-on-unexplained
+```
+
+롤백: 잘못 인덱싱한 시즌은 `tombstone_rag_chunks`로 무효화한다.
+주의: player_season_*의 `source_row_id`는 팀 코드를 포함하므로(§ RAG_RECONCILIATION
+"갭 원인 규명") 코드 정규화 계약을 확정하기 전에는 해당 소스를 재인덱스하지 않는다 —
+드리프트가 재발한다.
+
 ---
 
 ## 4. OCI Live Database Sync & Diagnosis
