@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime
 
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -23,6 +24,15 @@ from src.scheduler.locks import (
 )
 
 logger = logging.getLogger("src.scheduler.jobs.maintenance")
+
+# Write-intent gates required by build_rag_index._write_target_errors for the
+# production Oracle RAG target. Scoped to this job only so manual CLI builds
+# stay guarded by default.
+_RAG_INCREMENTAL_WRITE_ENV = {
+    "RAG_TARGET_ENV": "production",
+    "RAG_INDEX_ALLOW_WRITE": "1",
+    "RAG_INDEX_ALLOW_PRODUCTION_WRITE": "1",
+}
 
 
 @retry(
@@ -211,14 +221,31 @@ def data_integrity_check_job() -> None:
 
 @_with_lock_skip_guard
 def sync_rag_incremental_job() -> None:
-    """RAG Vector DB Incremental Sync Job: sync latest season data to pgvector RAG index."""
+    """RAG Vector DB Incremental Sync Job: sync latest season data into the Oracle RAG index."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting RAG Vector DB Incremental Sync ===")
         try:
             from src.cli.build_rag_index import main as build_rag_index_main
 
-            current_year = datetime.now(KST).year
-            build_rag_index_main(["--source", "all", "--season", str(current_year)])
+            previous_env = {key: os.environ.get(key) for key in _RAG_INCREMENTAL_WRITE_ENV}
+            os.environ.update(_RAG_INCREMENTAL_WRITE_ENV)
+            try:
+                current_year = datetime.now(KST).year
+                build_rag_index_main(
+                    [
+                        "--source",
+                        "all",
+                        "--season",
+                        str(current_year),
+                        "--skip-existing",
+                    ]
+                )
+            finally:
+                for key, value in previous_env.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
             logger.info("=== RAG Vector DB Incremental Sync Completed Successfully ===")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("RAG Vector DB Incremental Sync job failed")
