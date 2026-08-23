@@ -1,4 +1,4 @@
-"""Canary check for KBO website selector drift."""
+"""Canary checks for KBO website selector drift and RAG index consistency."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ import logging
 import requests
 from requests import RequestException
 
-from src.scheduler.config import ALERT_EXCEPTIONS
+from src.scheduler.alerting import alert_warning
+from src.scheduler.config import ALERT_EXCEPTIONS, SCHEDULER_JOB_EXCEPTIONS
 
 logger = logging.getLogger("src.scheduler.jobs.sentinel")
 
@@ -58,3 +59,25 @@ def selector_drift_sentinel_job() -> None:
             logger.exception("[Sentinel] Failed to send drift alert")
     except (RequestException, RuntimeError, ValueError, TypeError, OSError):
         logger.exception("[Sentinel] Selector drift canary check failed")
+
+
+def rag_audit_sentinel_job() -> None:
+    """Daily RAG index consistency gate after the sparse catch-up window."""
+    try:
+        from src.cli.rag.audit_rag_index import main as audit_main
+
+        exit_code = audit_main(["--require-nonempty", "--require-postings", "--json"])
+    except SCHEDULER_JOB_EXCEPTIONS:
+        logger.exception("[Sentinel] RAG index audit crashed")
+        alert_warning("rag_audit_sentinel", "RAG index audit crashed; see scheduler logs")
+        return
+
+    if exit_code == 0:
+        logger.info("[Sentinel] RAG index audit passed (sparse postings and vectors consistent).")
+        return
+
+    alert_warning(
+        "rag_audit_sentinel",
+        f"RAG index audit failed (exit {exit_code}); retrievable chunks are missing "
+        "embeddings or sparse postings. Run build_oracle_sparse_index --catch-up if needed.",
+    )

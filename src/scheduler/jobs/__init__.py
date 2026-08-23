@@ -60,7 +60,7 @@ from src.scheduler.jobs.maintenance import (
     sync_rag_incremental_job,
     weekly_sla_report_job,
 )
-from src.scheduler.jobs.sentinel import selector_drift_sentinel_job
+from src.scheduler.jobs.sentinel import rag_audit_sentinel_job, selector_drift_sentinel_job
 from src.scheduler.jobs.stadium import (
     crawl_congestion_job,
     crawl_operation_notices_job,
@@ -121,6 +121,7 @@ __all__ = [
     "data_integrity_check_job",
     "heal_unverified_pbp_job",
     "lock_health_check_job",
+    "rag_audit_sentinel_job",
     "recalc_milestones_and_rag_job",
     "selector_drift_sentinel_job",
     "sparse_terms_catchup_job",
