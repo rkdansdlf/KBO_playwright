@@ -179,8 +179,9 @@ rows, or active chunks missing postings. `IDX_RAG_CHUNK_TERMS_TOKEN_CHUNK`,
 `IDX_RAG_CHUNK_TERMS_SOURCE_DATE` are `VALID`, and table/index statistics were
 gathered after the rebuild.
 
-`RAG_ORACLE_SPARSE_MODE` remains `legacy` by default. In the `terms` canary,
-both retrieval legs are index-bounded:
+As of 2026-08-23 `RAG_ORACLE_SPARSE_MODE` defaults to `terms`; set it to
+`legacy` to roll back to the CLOB candidate path. Both retrieval legs are
+index-bounded:
 
 Sparse: one STOPKEY postings slice per token (`TOKEN` prefix of
 `IDX_RAG_CHUNK_TERMS_TOKEN_CHUNK`, or `IDX_RAG_CHUNK_TERMS_TOKEN_SOURCE` when a
@@ -202,10 +203,12 @@ worst golden query. Golden quality holds at BM25 Recall@5 `0.6000` / MRR
 `0.4667`, resolver-hybrid Recall@5 `0.9485` / MRR `0.8306`, hit rate
 `0.9667`. Cold-cache first touches and concurrent writer contention can still
 inflate single-run p95 into seconds; repeated-load canaries should gate any
-latency decision. Term maintenance is connected to `RagChunkRepository` only
-when the terms flag is explicitly enabled on Oracle. Do not make terms the
-production default until a repeated warm/cold canary on a quiet instance is
-accepted.
+further latency decisions. Term maintenance runs whenever an Oracle session
+writes chunks while the mode resolves to `terms` (now the default);
+`RAG_ORACLE_SPARSE_MODE=legacy` disables both the postings search and
+incremental maintenance. A repeated warm/cold canary on a quiet instance is
+still outstanding — the first attempt was aborted by Oracle listener
+connection refusals (`DPY-6000`) under concurrent load.
 
 Postings freshness is operationally guarded:
 
