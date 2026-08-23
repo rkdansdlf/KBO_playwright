@@ -252,6 +252,32 @@ def sync_rag_incremental_job() -> None:
 
 
 @_with_lock_skip_guard
+def sparse_terms_catchup_job() -> None:
+    """Sparse postings catch-up for chunks published after the last build (daily 05:40 KST)."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Sparse Terms Catch-up ===")
+        try:
+            from src.cli.rag.build_oracle_sparse_index import main as sparse_main
+
+            previous_env = {key: os.environ.get(key) for key in _RAG_INCREMENTAL_WRITE_ENV}
+            os.environ.update(_RAG_INCREMENTAL_WRITE_ENV)
+            try:
+                exit_code = sparse_main(["--apply", "--catch-up", "--batch-size", "40", "--json"])
+            finally:
+                for key, value in previous_env.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+            if exit_code == 0:
+                logger.info("=== Sparse Terms Catch-up Completed Successfully ===")
+            else:
+                logger.warning("=== Sparse Terms Catch-up Failed (exit %s) ===", exit_code)
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Sparse terms catch-up job failed")
+
+
+@_with_lock_skip_guard
 def backup_db_job() -> None:
     """Weekly SQLite Backup & Integrity Check Job (Sunday 02:00 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
