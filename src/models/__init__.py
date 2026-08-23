@@ -7,6 +7,21 @@ from .award import Award as Award
 from .broadcast import GameBroadcast as GameBroadcast
 from .crawl import CrawlRun as CrawlRun
 from .crawl_evidence import CrawlEvidence as CrawlEvidence
+from .dto import (
+    ColumnSchemaMeta as ColumnSchemaMeta,
+)
+from .dto import (
+    ColumnTypeCategory as ColumnTypeCategory,
+)
+from .dto import (
+    SchemaDriftIssue as SchemaDriftIssue,
+)
+from .dto import (
+    SchemaParityReport as SchemaParityReport,
+)
+from .dto import (
+    TableSchemaMeta as TableSchemaMeta,
+)
 from .embedding_cache import EmbeddingCache as EmbeddingCache
 from .external_season_stat import ExternalSeasonStat as ExternalSeasonStat
 from .fa_contract import FAContract as FAContract
@@ -31,6 +46,7 @@ from .game import GameSummary as GameSummary
 from .game import GameValidationMetrics as GameValidationMetrics
 from .game_mvp import GameMvp as GameMvp
 from .injury import InjuryEntry as InjuryEntry
+from .inspector import ModelInspector as ModelInspector
 from .kbo_press_release import KboPressRelease as KboPressRelease
 from .manager_change import ManagerChange as ManagerChange
 from .matchup import BatterHomeAwaySplit as BatterHomeAwaySplit
