@@ -70,8 +70,9 @@ curl -H "X-API-Key: $API_KEY" \
 
 ## 5. RAG hybrid 검색
 
-Oracle은 BM25 원문과 metadata를 저장하고, dense vector는 별도 PostgreSQL/pgvector에
-저장합니다. 두 backend가 모두 준비되어야 hybrid 검색이 완전하게 동작합니다.
+Oracle 단일 저장소를 사용합니다. sparse(BM25 후보)는 `RAG_CHUNK_TERMS` postings
+인덱스(기본 `RAG_ORACLE_SPARSE_MODE=terms`), dense는 같은 테이블의 네이티브
+`VECTOR` 컬럼과 HNSW 인덱스로 처리합니다.
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/rag/hybrid-search" \
@@ -90,4 +91,8 @@ RAG index build 명령:
 python3 -m src.cli.index_rag_knowledge
 python3 -m src.cli.build_rag_index --source all --dry-run
 python3 -m src.cli.build_rag_index --source all
+
+# sparse postings 색인/감사 (전체 옵션은 COMMAND_REFERENCE.md §RAG 인덱스 관리)
+python3 -m src.cli.rag.build_oracle_sparse_index --apply --catch-up --batch-size 40
+python3 -m src.cli.audit_rag_index --require-nonempty --require-postings --json
 ```
