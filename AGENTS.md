@@ -946,3 +946,4 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **저장소 루트 잔재 정리**: `fake.db`·`coverage_report.txt`(0B)·`futures_total_debug.html` 삭제, `scratch/`·`debug_shots/`·Oracle 시대 로그(`load_sqlite_to_oci*.log`) 아카이브 이관. 전부 런타임 재생성 산출물.
 - **문서**: 경로 계약·worktree 규칙·월간 점검 체크리스트 → `Docs/runbooks/WORKSPACE_HYGIENE.md` 신규.
 - **참고**: 스케줄러 `sync_rag_incremental_job`은 저장소 내부(`Docs/baseball`)만 기록 — 상위 폴더 오염 주체는 스케줄러가 아닌 수동 세션 산출물이었음.
+- **RAG reconciliation 도구 신규** (`src/cli/rag/reconcile_rag_stores.py` + `src/services/rag_reconciliation.py`): 매니페스트 export/비교 CLI. `--as-of` 커트오프로 시점 드리프트(TIME_EXPLAINABLE)와 진짜 드리프트(UNEXPLAINED)를 분리. 보관 데이터 재검증 결과: adb 리빌드(08-21) 이전 시점 비교에서 staging 전용 13,760청크가 갭으로 확정되었고, 원인 규명 완료 — 팀 코드 ID 드리프트 4,321(player_season_*의 정규화/원본 코드 불일치), 역사 데이터 미인덱스 9,252(adb에 1980·90년대 game 청크 0건), 잔여 187. 계약 문서: `Docs/references/RAG_RECONCILIATION.md`, 증거: 아카이브 폴더 `comparison_summary_asof_*.json`·`gap_resolution_summary.json`.
