@@ -70,10 +70,12 @@ def validate(games: list[dict[str, Any]], year: int) -> dict[str, Any]:
 
     if len(set(team_counter.values())) > 1:
         findings.append(f"팀별 경기수 불균형: {dict(team_counter)}")
-    expected_per_matchup = games_per_team * 2 // (n_teams - 1)
-    odd_matchups = {m: c for m, c in matchup_counter.items() if c != expected_per_matchup}
-    if odd_matchups:
-        findings.append(f"매치업 편수 이상(각 {expected_per_matchup}회): {odd_matchups}")
+    # 매치업 편수는 절대 균일이 아닌 분산 리그(1999-2000 드림/매직 등)를 고려해
+    # 상대 분포로만 판정한다.
+    mc_min, mc_max = min(matchup_counter.values()), max(matchup_counter.values())
+    if matchup_counter and mc_max - mc_min >= 2:
+        odd_matchups = {m: c for m, c in matchup_counter.items() if c != mc_min}
+        findings.append(f"매치업 편수 불균형({mc_min}~{mc_max}회): {odd_matchups}")
 
     # --- 2. anchors ------------------------------------------------------
     anchors = load_anchors(year)
@@ -167,7 +169,7 @@ def validate(games: list[dict[str, Any]], year: int) -> dict[str, Any]:
     if twins:
         report["twin_box_candidates"] = twins
         # 매치업 편수·앵커가 모두 정상이면 스코어 우연 일치로 판단해 정보만 남긴다.
-        surplus_exists = bool(odd_matchups) or any(not r["match"] for r in anchor_rows)
+        surplus_exists = mc_max - mc_min >= 2 or any(not r["match"] for r in anchor_rows)
         if surplus_exists:
             findings.append(f"쌍둥이 박스 의심(±3일 동일 스코어·구장·조합): {len(twins)}쌍 {list(twins.items())[:8]}")
         else:

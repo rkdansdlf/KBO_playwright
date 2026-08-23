@@ -43,14 +43,41 @@ def main(argv: list[str] | None = None) -> int:
         sig_boxes[(p,) + sig].append(g)
 
     # CONFLICT: 같은 날짜·매치업에서 문서별 버전 집합이 서로 다른 경우
-    # (양 문서가 동일한 DH 2박스를 함께 보유한 경우는 제외)
+    # 분류: STADIUM(구장 명칭 변형만), SWAP(팀 라벨 교차), SCORE(스코어 불일치),
+    #       DOCS(한쪽 문서 박스 수 부족)
     conflicts = []
     for (date, p), docs in sorted(by_date_pair.items()):
         versions = [frozenset(b) for b in docs.values()]
         if len(versions) > 1 and len(set(versions)) > 1:
             conflicts.append((date, p, docs))
     for date, p, docs in conflicts:
-        sys.stdout.write(f"CONFLICT {args.year}-{date} {'-'.join(p)}\n")
+        union = set().union(*docs.values())
+        all_stadia = {v[4] for v in union}
+        scores_per_doc = [frozenset((v[1], v[2]) for v in docs[d]) for d in docs]
+        teams_canonical = {tuple(sorted((v[0], v[3]))) for v in union}
+        if len(all_stadia) > 1 and len(scores_per_doc) == 1 and len(teams_canonical) == 1 and all(
+            len(s) == len(docs[d]) for s, d in zip(scores_per_doc, docs)
+        ):
+            kind = "STADIUM"
+            sys.stdout.write(f"STADIUM {args.year}-{date} {'-'.join(p)} :: {sorted(all_stadia)}\n")
+            continue
+        kinds = []
+        if len(set(scores_per_doc)) == 1 and len(teams_canonical) == 1:
+            pass  # 스코어·조합 동일 → 아래 박스수 편차로 판단
+        else:
+            label_sets = [frozenset((v[0], v[3]) for v in docs[d]) for d in docs]
+            swapped = (
+                len(label_sets) == 2
+                and len(label_sets[0]) == 1
+                and label_sets[0] == label_sets[1]
+                and len(set(scores_per_doc)) == 1
+            )
+            kinds.append("SWAP" if swapped else "SCORE")
+        counts = {d: len(docs[d]) for d in docs}
+        if len(set(counts.values())) > 1:
+            kinds.append(f"DOCS{sorted(counts.items())}")
+        tag = "+".join(kinds) or "DOCS-EQ"
+        sys.stdout.write(f"{tag} {args.year}-{date} {'-'.join(p)}\n")
         for doc in sorted(docs):
             for v in sorted(docs[doc]):
                 sys.stdout.write(f"   [{doc}] {v[0]} {v[1]}:{v[2]} {v[3]} @ {v[4]}\n")
@@ -72,6 +99,14 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.write(
         f"\nsummary: conflicts={len(conflicts)} twins={len(twins)} boxes={len(raw)}\n"
     )
+    # SINGLE: 한쪽 문서에만 존재하는 날짜·매치업 (상대 월문서 결손이면 정상)
+    single_docs = defaultdict(list)
+    for (date, p), docs in by_date_pair.items():
+        if len(docs) == 1:
+            (doc,) = docs.keys()
+            single_docs[doc].append(date)
+    for doc, dates in sorted(single_docs.items()):
+        sys.stdout.write(f"SINGLE {doc}: {len(dates)}건 {sorted(dates)[:8]}\n")
     return 0
 
 
