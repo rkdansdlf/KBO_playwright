@@ -211,13 +211,22 @@ def audit_index_sessions(primary_session: Session, vector_session: Session) -> I
     return compare_index_rows(primary_rows, vector_rows)
 
 
+_SINGLE_STORE_STALE_STATUSES = frozenset({"STALE", "REINDEX_REQUIRED", "DELETE_PENDING"})
+_SINGLE_STORE_DELETED_STATUSES = frozenset({"DELETED", "TOMBSTONED"})
+_SINGLE_STORE_EMBEDDING_EXEMPT_STATUSES = frozenset({"DELETED", "TOMBSTONED", "PURGED"})
+
+
 def audit_single_store_session(session: Session) -> IndexConsistencyReport:
-    """Audit Oracle's combined sparse/vector ``rag_chunks`` table."""
-    from sqlalchemy import select
+    """Audit Oracle's combined sparse/vector ``rag_chunks`` table via bounded aggregate queries."""
+    from sqlalchemy import and_, func, or_, select
 
     from src.models.rag_chunk import RagChunk
 
-    rows = (
+    distinct_identity = select(RagChunk.source_table, RagChunk.source_row_id).distinct().subquery()
+    total_keys = int(session.scalar(select(func.count()).select_from(distinct_identity)) or 0)
+
+    exempt_statuses = tuple(sorted(_SINGLE_STORE_EMBEDDING_EXEMPT_STATUSES))
+    defect_rows = (
         session.execute(
             select(
                 RagChunk.source_table,
@@ -226,9 +235,61 @@ def audit_single_store_session(session: Session) -> IndexConsistencyReport:
                 RagChunk.index_version,
                 RagChunk.index_status,
                 RagChunk.embedding.is_not(None).label("embedding_present"),
-            ),
+            ).where(
+                or_(
+                    RagChunk.content_hash.is_(None),
+                    RagChunk.content_hash == "",
+                    RagChunk.index_version.is_(None),
+                    RagChunk.index_version == "",
+                    and_(
+                        RagChunk.embedding.is_(None),
+                        RagChunk.index_status.not_in(exempt_statuses),
+                    ),
+                )
+            )
         )
         .mappings()
         .all()
     )
-    return compare_index_rows(rows, rows)
+
+    findings: list[IndexConsistencyFinding] = []
+    for row in defect_rows:
+        source_key = _source_key(row)
+        finding_kwargs = {
+            "primary_hash": _value(row, "content_hash"),
+            "vector_hash": _value(row, "content_hash"),
+            "primary_version": _value(row, "index_version"),
+            "vector_version": _value(row, "index_version"),
+        }
+        if not _value(row, "content_hash"):
+            findings.append(IndexConsistencyFinding(source_key, "CONTENT_HASH_MISSING", **finding_kwargs))
+        if not _value(row, "index_version"):
+            findings.append(IndexConsistencyFinding(source_key, "INDEX_VERSION_MISSING", **finding_kwargs))
+        if _value(row, "index_status") not in _SINGLE_STORE_EMBEDDING_EXEMPT_STATUSES and not bool(
+            _value(row, "embedding_present")
+        ):
+            findings.append(IndexConsistencyFinding(source_key, "VECTOR_EMBEDDING_MISSING", **finding_kwargs))
+
+    lifecycle_rows = session.execute(
+        select(RagChunk.source_table, RagChunk.source_row_id, RagChunk.index_status).where(
+            RagChunk.index_status.in_((*_SINGLE_STORE_STALE_STATUSES, *_SINGLE_STORE_DELETED_STATUSES))
+        )
+    ).all()
+    stale_keys: set[str] = set()
+    deleted_keys: set[str] = set()
+    for source_table, source_row_id, index_status in lifecycle_rows:
+        key = f"{source_table}:{source_row_id}"
+        if index_status in _SINGLE_STORE_STALE_STATUSES:
+            stale_keys.add(key)
+        else:
+            deleted_keys.add(key)
+
+    findings.sort(key=lambda finding: finding.source_key)
+    return IndexConsistencyReport(
+        total_keys,
+        total_keys,
+        tuple(findings),
+        total_keys=total_keys,
+        stale_keys=tuple(sorted(stale_keys)),
+        deleted_keys=tuple(sorted(deleted_keys)),
+    )
