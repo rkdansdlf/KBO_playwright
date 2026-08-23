@@ -63,9 +63,14 @@ staging 빌드(08-20)는 역사 백필이 반영된 소스에서 전체 스코�
 또한 선수 시즌 ID에 팀 코드가 포함되어 코드 정규화 시점 차이가 identity 불일치를 만듦.
 
 **후속 조치 권고**:
-1. 프로덕션에 역사 소스(1982~2001) 재인덱스 실행 (`ingest_historical_archive` → `build_rag_index`)
+1. 프로덕션에 역사 소스(1982~2001) 재인덱스 — 실행 절차는
+   `Docs/runbooks/OPERATIONAL_RUNBOOK.md` §3-3 참조
 2. `source_row_id`의 팀 코드 자리를 연도·선수만 남기거나, 코드 정규화 규칙을 양쪽 동일 적용
    (identity 계약: `Docs/references/rag_source_contract.json` 갱신 필요)
 3. `awards` 등 autoincrement 숫자 ID는 저장소 간 불안정 — 안정 키(year+award_type+player_name 등)로 전환 검토
+
+정합성 게이트(주간 권장): 양쪽 매니페스트를 export 후
+`python3 -m src.cli.rag.reconcile_rag_stores compare --as-of <공통 시점> --fail-on-unexplained`.
+unexplained > 0이면 원인 조사, TIME_EXPLAINABLE만 증가하면 정상 증분.
 
 증거: `data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823/gap_resolution_summary.json`, `exhaustive_resolution.json`
