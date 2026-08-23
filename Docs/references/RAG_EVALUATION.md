@@ -333,3 +333,19 @@ client. Hybrid RRF is now RTT-bound on hydration of sparse-only survivors
 (~25ms/row remote); it must be re-measured from the production server next to
 the ADB before declaring the latency gate closed. The exact-document tool
 path remains the documented Oracle CLOB-scan limitation.
+
+### Golden Query Evaluation After Corpus Growth (2026-08-23)
+
+Re-ran `evaluate_rag_retrieval --embedding-mode configured --top-k 5`
+against live ADB (30 golden queries, dataset sha256 `6753148…`):
+
+```text
+variant          recall@5   mrr      hit_rate   p50        p95
+hybrid           0.9485     0.8306   0.9667     1.71s      7.57s
+resolver_hybrid  0.9485     0.8472   0.9667     1.12s      2.18s
+```
+
+Recall/hit-rate hold at the approved levels after the corpus grew from
+`207,270` to `209,537` rows; resolver-hybrid MRR improved (`0.8361 →
+0.8472`). Remote-client latency remains RTT-dominated and must be re-read
+from the production server after cutover.
