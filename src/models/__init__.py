@@ -51,6 +51,7 @@ from .player_splits_stat import PlayerSplitsStat as PlayerSplitsStat
 from .projection import PlayerProjection as PlayerProjection
 from .quarantine import QuarantinedRecord as QuarantinedRecord
 from .rag_chunk import RagChunk as RagChunk
+from .rag_chunk_term import RagChunkTerm as RagChunkTerm
 from .rankings import StatRanking as StatRanking
 from .roster_transaction import RosterTransaction as RosterTransaction
 from .season import KboSeason as KboSeason
