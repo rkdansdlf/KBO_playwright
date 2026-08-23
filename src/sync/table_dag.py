@@ -201,6 +201,12 @@ TABLE_REGISTRY: list[TableMeta] = [
         natural_keys=["text_hash", "model_name"],
     ),
     TableMeta("rag_chunks", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
+    TableMeta(
+        "rag_chunk_terms",
+        level=3,
+        strategy=SyncStrategy.INCREMENTAL,
+        natural_keys=["rag_chunk_id", "token"],
+    ),
     TableMeta("matchup_batter_home_away", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("matchup_batter_splits", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("matchup_batter_stadium_split", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
