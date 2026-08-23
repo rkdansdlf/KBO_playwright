@@ -282,13 +282,79 @@ class TestDropBoxFixes:
         assert "WARN drop target" in capsys.readouterr().out
 
     def test_1985_pipeline_merges_330(self) -> None:
-        """DROP_BOXES + SCORE_FIXES 적용 후 1985 answer set이 앵커와 일치해야 한다."""
+        """DROP_BOXES + SCORE_FIXES + STADIUM_FIXES 적용 후 1985가 앵커와 일치해야 한다."""
         raw = json.loads((nsb.RAW_DIR / "1985_namu_raw.json").read_text(encoding="utf-8"))
         games = nsb.merge_games(nsb.drop_box_fixes(raw, 1985))
-        final = nsb.finalize_games(nsb.apply_score_fixes(games, 1985), 1985)
+        final = nsb.finalize_games(nsb.apply_stadium_fixes(nsb.apply_score_fixes(games, 1985), 1985), 1985)
         anchors = json.loads(nsb.ANCHORS.read_text(encoding="utf-8"))["1985"]
         assert len(final) == 330
         assert nsb.verify(final, 1985, anchors) is True
+        # 라벨 스왑 폐기 확인: 6/18·19 구덕 경기는 홈=LT (MBC 문서 버전 제거)
+        for g in final:
+            if g["game_date"] in ("1985-06-18", "1985-06-19") and {g["home_team"], g["away_team"]} == {"LT", "MBC"}:
+                assert g["home_team"] == "LT"
+                assert g["stadium"] == "구덕" or g["stadium"]
+
+    def test_stadium_fix_replaces_typo(self) -> None:
+        """STADIUM_FIXES — 양 문서 복사 오기 구장 교정 (매치업 키로 타 경기 보호)."""
+        games = [
+            {"date": "05-04", "stadium": "숭의야구장", "team1": "CB", "team2": "OB", "score1": 3, "score2": 4},
+            {
+                "date": "05-04",
+                "stadium": "대구시민운동장 야구장",
+                "team1": "MBC",
+                "team2": "SS",
+                "score1": 5,
+                "score2": 3,
+            },
+            {"date": "05-03", "stadium": "동대문야구장", "team1": "CB", "team2": "OB", "score1": 10, "score2": 2},
+        ]
+        fixed = nsb.apply_stadium_fixes(games, 1985)
+        assert fixed[0]["stadium"] == "동대문야구장"
+        assert fixed[1]["stadium"] == "대구시민운동장 야구장"
+        assert fixed[2]["stadium"] == "동대문야구장"
+
+    def test_stadium_fix_noop_for_other_year(self) -> None:
+        games = [{"date": "05-04", "stadium": "숭의야구장", "team1": "CB", "team2": "OB", "score1": 3, "score2": 4}]
+        fixed = nsb.apply_stadium_fixes(games, 1986)
+        assert fixed[0]["stadium"] == "숭의야구장"
+
+    def test_matchup_key_protects_other_boxes(self) -> None:
+        """3원 키(date, team_doc, matchup) — 같은 날짜의 타 매치업 정상 박스는 보호된다."""
+        boxes = [
+            {
+                "date": "04-12",
+                "month_doc": "3~4월",
+                "stadium": "춘천공설운동장 야구장",
+                "team1": "BE",
+                "team2": "CB",
+                "score1": 8,
+                "score2": 9,
+                "team_doc": "CB",
+            },
+            {
+                "date": "04-12",
+                "month_doc": "3~4월",
+                "stadium": "숭의야구장",
+                "team1": "OB",
+                "team2": "CB",
+                "score1": 3,
+                "score2": 9,
+                "team_doc": "CB",
+            },
+        ]
+        kept = nsb.drop_box_fixes(boxes, 1986)
+        assert len(kept) == 1
+        assert (kept[0]["team1"], kept[0]["team2"]) == ("OB", "CB")
+
+    def test_1986_pipeline_merges_378(self) -> None:
+        """DROP_BOXES 적용 후 1986 answer set이 앵커와 일치해야 한다."""
+        raw = json.loads((nsb.RAW_DIR / "1986_namu_raw.json").read_text(encoding="utf-8"))
+        games = nsb.merge_games(nsb.drop_box_fixes(raw, 1986))
+        final = nsb.finalize_games(nsb.apply_stadium_fixes(nsb.apply_score_fixes(games, 1986), 1986), 1986)
+        anchors = json.loads(nsb.ANCHORS.read_text(encoding="utf-8"))["1986"]
+        assert len(final) == 378
+        assert nsb.verify(final, 1986, anchors) is True
 
 
 class TestPipelineRoundTrip:

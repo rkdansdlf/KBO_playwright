@@ -228,29 +228,50 @@ SCORE_FIXES: dict[tuple[int, str], dict[str, int]] = {
     # 문서 헤더 "1패"·캘린더(삼미 4:3)·양팀 누적표·위키 앵커가 모두 삼미 승을 지지.
     # 6개 신호 교차검증으로 OB 3-4 확정. (Docs/references/HISTORICAL_1983_2000_PLAN.md)
     (1983, "09-24"): {"OB": 3, "SM": 4},
-    # 1985-06-18/19 LT-MBC (구덕): MBC 문서 박스가 팀 라벨 스왑 오기 — 이닝 라인은
-    # LT 문서와 동일하나 팀명만 뒤집혀 "LT 3:1 MBC"로 기록됨. 양 문서 섹션 헤더가 모두
-    # "피스윕"(롯데 기준) / "스윕"(MBC 기준)으로 MBC 2승을 지지. 팀코드 기준 스코어 교정.
-    (1985, "06-18"): {"LT": 1, "MBC": 3},
-    (1985, "06-19"): {"LT": 2, "MBC": 4},
+}
+
+# 박스 구장 표기 오기 교정. 키: (연도, 날짜 MM-DD, matchup) → 올바른 구장명.
+# matchup은 정렬된 팀코드 "-" 연결 — 같은 날짜 타 경기를 보호하기 위해 필요.
+STADIUM_FIXES: dict[tuple[int, str, str], str] = {
+    # 1985-05-04 CB-OB: 양 문서 헤더 모두 "5월 3~6일 VS 삼미/OB (동대문) 동률 시리즈",
+    # 전후 경기(05-03)도 동대문인데 이 박스만 숭의로 복사 오기.
+    (1985, "05-04", "CB-OB"): "동대문야구장",
 }
 
 # 같은 날짜·매치업에 스코어가 다른 박스가 각 문서에서 1개씩 나올 때,
-# 실제 더블헤더가 아니라 한쪽 문서의 스코어 오기인 경우 — 폐기할 (date, team_doc).
-# (merge_games가 스코어 시그니처로 중복 판별하므로 다른 스코어는 DH로 오인됨)
-DROP_BOXES: dict[int, set[tuple[str, str]]] = {
-    # 1985-07-14 CB-OB (동대문): OB 문서가 7:5, 청보 문서가 7:6. 당일 스케줄·청보
-    # 문서 헤더("위닝 시리즈")는 단일 경기. 청보 문서가 선발/승패까지 상세하므로 채택.
-    1985: {("07-14", "OB")},
+# 실제 더블헤더가 아니라 한쪽 문서의 스코어 오기인 경우 — 폐기할 (date, team_doc, matchup).
+# matchup은 정렬된 팀코드를 "-"로 연결 ("BE-CB"). 날짜 오기 유령은 동일 박스가 문서마다
+# 다른 날짜로 기재되므로, 같은 날짜의 정상 박스 보호를 위해 매치업까지 지정한다.
+DROP_BOXES: dict[int, set[tuple[str, str, str]]] = {
+    1985: {
+        # 07-14 CB-OB (동대문): OB 문서가 7:5, 청보 문서가 7:6. 당일 스케줄·청보
+        # 문서 헤더("위닝 시리즈")는 단일 경기. 청보 문서가 선발/승패까지 상세하므로 채택.
+        ("07-14", "OB", "CB-OB"),
+        # 06-18/19 LT-MBC (구덕): MBC 문서 박스가 팀 라벨 스왑 오기 — 이닝 라인은 LT 문서와
+        # 동일하나 팀명만 뒤집혀 "LT 3:1 MBC"로 기록됨. 양 문서 섹션 헤더가 모두 MBC 스윕을
+        # 지지하며, LT 문서 버전(team1=MBC)이 원래 올바른 순서이므로 MBC 문서 박스를 폐기.
+        ("06-18", "MBC", "LT-MBC"),
+        ("06-19", "MBC", "LT-MBC"),
+    },
+    # 날짜 오기 유령 — 동일 박스(스코어·구장 동일)가 문서마다 다른 날짜로 기재된 케이스.
+    1986: {
+        ("04-12", "CB", "BE-CB"),  # 진짜 04-06 (BE doc). CB는 4/12에 OB전 (헤더 "4/12~13 VS OB")
+        ("05-25", "CB", "CB-MBC"),  # 춘천 경기 진짜 05-24 (MBC doc, 헤더 "5/24~25 스윕")
+        ("09-10", "OB", "LT-OB"),  # 진짜 05-10 (LT doc, 헤더 "5/10~11 동률"). OB는 9/10에 청보전
+    },
 }
 
-# 경기장 소유 홈 팀 (순회/공동 홈 경기장은 제외: 잠실 1990+, 마산 등은 박스 순서 유지).
+# 경기장 소유 홈 팀 — 단일 구단 전용 구장만 등록 (크로스체크용).
+# 공동/순회 구장(잠실 1986+ MBC·OB, 동대문 82-84 MBC·85 OB, 마산 등)은 박스 순서
+# 규칙(홈=team2)이 처리하므로 미등록.
 # 다년도 코드는 stadium_home()에서 시즌별로 보정:
-#   OT(숭의/인천): SM→CB→TP→HU→SK, BE(한밭/청주): BE→HH, 잠실: OB→공동, 동대문: MBC
+#   OT(숭의/인천): SM→CB→TP→HU→SK, BE(한밭/청주): BE→HH, CC(춘천): SM→CB
 HOME_BY_STADIUM: dict[str, str] = {
     "구덕 야구장": "LT",
     "구덕운동장 야구장": "LT",
     "구덕종합운동장 야구장": "LT",
+    "사직 야구장": "LT",  # 1985 개장 — 롯데 홈 (구덕 대체)
+    "사직야구장": "LT",
     "대구시민운동장 야구장": "SS",
     "대구시민구장": "SS",
     "대구 야구장": "SS",
@@ -259,11 +280,8 @@ HOME_BY_STADIUM: dict[str, str] = {
     "광주야구장": "HT",
     "광주무등경기장 야구장": "HT",
     "숭의야구장": "OT",  # SM/CB/TP/HU/SK — 시즌별 코드로 보정
-    "춘천공설운동장 야구장": "SM",
-    "춘천야구장": "SM",
-    "동대문야구장": "MBC",
-    "서울종합운동장 야구장": "OB",  # 1990+ 잠실은 공동 홈 → 박스 순서 유지
-    "잠실야구장": "OB",
+    "춘천공설운동장 야구장": "CC",  # 삼미(≤1984)/청보(1985-87) 순회 홈 — 시즌별 보정
+    "춘천야구장": "CC",
     "한밭 야구장": "BE",
     "한밭종합운동장 야구장": "BE",
     "한밭구장": "BE",
@@ -282,6 +300,8 @@ STADIUM_SHORT = {
     "구덕 야구장": "부산",
     "구덕운동장 야구장": "부산",
     "구덕종합운동장 야구장": "부산",
+    "사직 야구장": "부산",
+    "사직야구장": "부산",
     "대구시민운동장 야구장": "대구",
     "대구시민구장": "대구",
     "대구 야구장": "대구",
@@ -487,29 +507,34 @@ def drop_box_fixes(raw: list[dict], year: int) -> list[dict]:
     """DROP_BOXES 등록 박스를 병합 전에 폐기.
 
     같은 날짜·매치업에 스코어가 다른 박스가 각 문서에서 1개씩 나올 때, 실제로는
-    단일 경기인데 한쪽 문서의 스코어가 오기인 경우를 처리한다. 해당 (date, team_doc)
+    단일 경기인데 한쪽 문서의 스코어 오기인 경우와 동일 박스가 문서마다 다른
+    날짜로 기재된 날짜 오기 유령을 처리한다. 해당 (date, team_doc, matchup)
     박스를 제거하면 상대 문서 박스가 merge에서 단일 경기로 남는다.
-    만약 지정된 박스가 없어 폐기가 불가능하면 경고를 남긴다.
+    지정된 박스가 없어 폐기가 불가능하면 경고를 남긴다.
     """
     drops = DROP_BOXES.get(year, set())
     if not drops:
         return raw
     kept: list[dict] = []
     for g in raw:
-        key = (g["date"], g["team_doc"])
+        key = (g["date"], g["team_doc"], "-".join(sorted([g["team1"], g["team2"]])))
         if key in drops:
             print(
                 f"DROP {year}-{g['date']} {g['team_doc']} box "
-                f"({g['team1']} {g['score1']}:{g['score2']} {g['team2']}): "
-                f"동일 날짜 타 문서와 스코어 상이 — 상대 문서 채택",
+                f"({g['team1']} {g['score1']}:{g['score2']} {g['team2']} @ {g['stadium']}): "
+                f"날짜/스코어 오기 — 상대 문서 채택",
                 flush=True,
             )
             continue
         kept.append(g)
-    dropped = {key for key in drops if key in {(g["date"], g["team_doc"]) for g in raw}}
+    dropped = {
+        key
+        for key in drops
+        if key in {(g["date"], g["team_doc"], "-".join(sorted([g["team1"], g["team2"]]))) for g in raw}
+    }
     if dropped != drops:
         for key in drops - dropped:
-            print(f"WARN drop target {year}-{key[0]} {key[1]} 없음 (이미 폐기됨?)", flush=True)
+            print(f"WARN drop target {year}-{key[0]} {key[1]} {key[2]} 없음 (이미 폐기됨?)", flush=True)
     return kept
 
 
@@ -555,27 +580,29 @@ def merge_games(raw: list[dict]) -> list[dict]:
     return games
 
 
+_OT_SEASON_HOME: list[tuple[int, str]] = [(1984, "SM"), (1987, "CB"), (1995, "TP"), (1999, "HU")]
+_CC_SEASON_HOME: list[tuple[int, str]] = [(1984, "SM"), (1987, "CB")]
+
+
+def _year_bounded_home(boundaries: list[tuple[int, str]], default: str | None, year: int) -> str | None:
+    """연도 상한 구간표로 시즌별 홈 구단을 반환한다."""
+    for max_year, code in boundaries:
+        if year <= max_year:
+            return code
+    return default
+
+
 def stadium_home(stadium: str, year: int) -> str | None:
-    """경기장 홈 팀 (시즌별 코드 보정: 숭의/한밭/잠실/동대문)."""
+    """경기장 홈 팀 (시즌별 코드 보정: 숭의/한밭/춘천)."""
     code = HOME_BY_STADIUM.get(stadium)
     if code == "OT":  # 숭의/인천 — 연도별 홈 구단
-        if year <= 1984:
-            return "SM"  # 삼미 (1982-84)
-        if year <= 1987:
-            return "CB"  # 청보 (1985-87, 삼미→청보 개명이 1985 후반기)
-        if year <= 1995:
-            return "TP"
-        if year <= 1999:
-            return "HU"
-        return "SK"  # 2000+
+        return _year_bounded_home(_OT_SEASON_HOME, "SK", year)
+    if code == "CC":  # 춘천 — 삼미(≤1984) → 청보(1985-87), 이후 기록 없음
+        return _year_bounded_home(_CC_SEASON_HOME, None, year)
     if code == "BE":  # 한밭/청주 — 빙그레(1986-93) → 한화(1994+)
         if year < 1986:
             return None
-        return "HH" if year >= 1994 else "BE"
-    if code == "OB" and stadium in ("서울종합운동장 야구장", "잠실야구장") and year >= 1990:
-        return None  # 잠실 공동 홈 (LG/OB) — 박스 순서 유지
-    if code == "MBC" and year >= 1990:
-        return None  # 동대문은 MBC 시절만 홈
+        return _year_bounded_home([(1993, "BE")], "HH", year)
     return code
 
 
@@ -603,22 +630,39 @@ def apply_score_fixes(games: list[dict], year: int) -> list[dict]:
     return games
 
 
+def apply_stadium_fixes(games: list[dict], year: int) -> list[dict]:
+    """STADIUM_FIXES 등록 구장 오기를 병합 결과에 교체 (재현 가능한 수동 교정)."""
+    applied = 0
+    for g in games:
+        key = (year, g["date"], "-".join(sorted([g["team1"], g["team2"]])))
+        fix = STADIUM_FIXES.get(key)
+        if not fix or g["stadium"] == fix:
+            continue
+        print(f"STADIUM FIX {year}-{g['date']} {g['team1']}-{g['team2']}: {g['stadium']} -> {fix}", flush=True)
+        g["stadium"] = fix
+        applied += 1
+    if applied:
+        print(f"stadium fixes applied: {applied}")
+    return games
+
+
 def finalize_games(games: list[dict], year: int) -> list[dict]:
-    """game_id/홈-원정/경기장 단축명 부여."""
+    """game_id/홈-원정/경기장 단축명 부여.
+
+    나무위키 박스는 항상 원정팀이 첫 행, 홈팀이 둘째 행 (1986 데이터 258/258
+    검증, 문서별 전체 일관). 따라서 항상 team2를 홈으로 삼고, stadium_home의
+    기대 코드와 다르면 크로스체크 경고만 남긴다 — 공동 홈(잠실 등)·순회
+    구장도 매핑 없이 올바르게 라벨링된다.
+    """
     out = []
     cnt: Counter = Counter()
-    unknown_stadiums: Counter = Counter()
+    home_mismatch: Counter = Counter()
     for g in games:
-        home = stadium_home(g["stadium"], year)
-        if not home:
-            unknown_stadiums[g["stadium"] or "<none>"] += 1
-        a, b = g["team1"], g["team2"]
-        if home == a:
-            ht, at, hs, a_s = a, b, g["score1"], g["score2"]
-        elif home == b:
-            ht, at, hs, a_s = b, a, g["score2"], g["score1"]
-        else:  # 순회(중립) 경기장: 박스 순서 유지
-            ht, at, hs, a_s = a, b, g["score1"], g["score2"]
+        ht, at = g["team2"], g["team1"]
+        hs, a_s = g["score2"], g["score1"]
+        expected_home = stadium_home(g["stadium"], year)
+        if expected_home and expected_home != ht:
+            home_mismatch[f"{g['date']} {g['stadium']}:{expected_home}≠{ht}"] += 1
         key = (g["date"], ht, at)
         out.append(
             {
@@ -632,8 +676,8 @@ def finalize_games(games: list[dict], year: int) -> list[dict]:
             }
         )
         cnt[key] += 1
-    if unknown_stadiums:
-        print("unknown stadiums:", dict(unknown_stadiums))
+    if home_mismatch:
+        print("stadium-home crosscheck mismatches:", dict(home_mismatch))
     return out
 
 
@@ -754,7 +798,7 @@ def main(argv: list[str] | None = None) -> int:
         raw = json.loads(raw_path.read_text(encoding="utf-8"))
 
     games = merge_games(drop_box_fixes(raw, year))
-    final = finalize_games(apply_score_fixes(games, year), year)
+    final = finalize_games(apply_stadium_fixes(apply_score_fixes(games, year), year), year)
     ok = verify(final, year, anchors)
     # 검증 통과한 경우에만 answer set 교체 (실패 상태로 파일을 덮어쓰지 않음).
     if ok:
