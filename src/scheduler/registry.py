@@ -51,6 +51,7 @@ from src.scheduler.jobs.maintenance import (
     data_integrity_check_job,
     heal_unverified_pbp_job,
     recalc_milestones_and_rag_job,
+    sparse_terms_catchup_job,
     sync_rag_incremental_job,
     weekly_sla_report_job,
 )
@@ -303,6 +304,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         (heal_unverified_pbp_job, trigger_cls(hour=4, minute=30), "heal_pbp", 7200),
         (data_integrity_check_job, trigger_cls(hour=4, minute=45), "data_integrity_check", 7200),
         (sync_rag_incremental_job, trigger_cls(hour=5, minute=0), "sync_rag_incremental", 7200),
+        (sparse_terms_catchup_job, trigger_cls(hour=5, minute=40), "sparse_terms_catchup", 7200),
         (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
     ]
     for fn, trigger, job_id, grace in tier2_jobs:

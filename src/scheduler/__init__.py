@@ -77,6 +77,7 @@ from src.scheduler.jobs import (
     lock_health_check_job,
     recalc_milestones_and_rag_job,
     selector_drift_sentinel_job,
+    sparse_terms_catchup_job,
     sync_rag_incremental_job,
     weekly_sla_report_job,
 )
@@ -202,6 +203,7 @@ __all__ = [
     "main",
     "recalc_milestones_and_rag_job",
     "selector_drift_sentinel_job",
+    "sparse_terms_catchup_job",
     "sync_rag_incremental_job",
     "weekly_sla_report_job",
 ]
