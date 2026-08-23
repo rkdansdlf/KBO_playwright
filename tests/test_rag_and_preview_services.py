@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects import oracle, postgresql
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.models.base import Base
@@ -116,6 +116,69 @@ def test_postgresql_search_uses_bounded_tsvector_candidates() -> None:
     compiled = str(statement.compile(dialect=postgresql.dialect()))
     assert "to_tsvector" in compiled
     assert "LIMIT" in compiled
+
+
+def test_oracle_search_uses_bounded_candidates_without_vectors(monkeypatch) -> None:
+    """Bound Oracle sparse candidates and avoid transferring dense embeddings."""
+    monkeypatch.setenv("RAG_ORACLE_SPARSE_MODE", "legacy")
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="oracle"))
+    session.execute.return_value.scalars.return_value.all.return_value = []
+
+    RagSearchEngine(session).search("올스타전", top_k=5)
+
+    statement = session.execute.call_args_list[0].args[0]
+    compiled = str(statement.compile(dialect=oracle.dialect()))
+    assert "FETCH FIRST" in compiled
+    assert "instr" in compiled.lower()
+    assert "CASE" in compiled
+    assert "embedding_vector" not in compiled
+
+
+def test_oracle_search_can_skip_candidate_sorting(monkeypatch) -> None:
+    """Support the faster sparse candidate path used by Oracle hybrid retrieval."""
+    monkeypatch.setenv("RAG_ORACLE_SPARSE_MODE", "legacy")
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="oracle"))
+    session.execute.return_value.scalars.return_value.all.return_value = []
+
+    RagSearchEngine(session).search("올스타전", top_k=5, oracle_ranked_candidates=False)
+
+    statement = session.execute.call_args_list[0].args[0]
+    compiled = str(statement.compile(dialect=oracle.dialect()))
+    assert "CASE" not in compiled
+    assert "FETCH FIRST" in compiled
+
+
+def test_oracle_term_mode_uses_postings_table(monkeypatch) -> None:
+    """Select the feature-flagged postings path without touching CLOB search."""
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="oracle"))
+    session.scalar.return_value = 1
+    session.execute.return_value.scalars.return_value.all.return_value = []
+    monkeypatch.setenv("RAG_ORACLE_SPARSE_MODE", "terms")
+
+    RagSearchEngine(session).search("OPS", top_k=5)
+
+    statement = session.execute.call_args_list[0].args[0]
+    compiled = str(statement.compile(dialect=oracle.dialect()))
+    assert "rag_chunk_terms" in compiled.lower()
+    assert "lower(rag_chunks.content)" not in compiled.lower()
+
+
+def test_oracle_sparse_mode_defaults_to_terms(monkeypatch) -> None:
+    """Route Oracle keyword search through the postings index without env setup."""
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="oracle"))
+    monkeypatch.delenv("RAG_ORACLE_SPARSE_MODE", raising=False)
+
+    with patch(
+        "src.repositories.oracle_sparse_search_repository.OracleSparseSearchRepository.search_candidates",
+        return_value=[],
+    ) as repo_search:
+        RagSearchEngine(session).search("OPS", top_k=5)
+
+    repo_search.assert_called_once()
 
 
 def test_postgresql_search_applies_game_date_metadata_filter() -> None:

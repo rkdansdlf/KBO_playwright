@@ -98,7 +98,7 @@ def _fetch_dense_vectors(  # noqa: PLR0913
 
         vector_kwargs: dict[str, Any] = {
             "query_vector": query_vector,
-            "top_k": top_k * 3,
+            "top_k": top_k if is_oracle_vector_backend() else top_k * 3,
             "team_id": merged_filters.get("team_id"),
             "season_year": merged_filters.get("season_year"),
             "source_table": merged_filters.get("source_table"),
@@ -226,11 +226,13 @@ class HybridRetriever:
 
         # 1. BM25 Search
         bm25_started = time.perf_counter()
+        sparse_top_k = top_k if is_oracle_vector_backend() else top_k * 3
         bm25_chunks = self.bm25_engine.search(
             query=query,
-            top_k=top_k * 3,
+            top_k=sparse_top_k,
             category=target_category,
             filters=merged_filters,
+            oracle_ranked_candidates=not is_oracle_vector_backend(),
         )
         bm25_ms = round((time.perf_counter() - bm25_started) * 1000, 3)
         rank_map: dict[str, dict[str, Any]] = {}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -30,6 +31,94 @@ def test_distance_expression_uses_oracle_vector_distance() -> None:
     assert "vector_distance" in rendered.lower()
     assert "cosine" in rendered.lower()
     assert "<=>" not in rendered
+
+
+def test_search_uses_oracle_approximate_fetch() -> None:
+    """Use the Oracle HNSW index instead of an exact vector scan."""
+    session = MagicMock()
+    session.execute.return_value.all.return_value = []
+    context = MagicMock()
+    context.__enter__.return_value = session
+    context.__exit__.return_value = False
+
+    with patch("src.repositories.oracle_vector_search_repository.get_rag_index_session", return_value=context):
+        OracleVectorSearchRepository().search_by_cosine([0.1] * 1536)
+
+    statement = session.execute.call_args.args[0]
+    rendered = str(statement.compile(dialect=oracle.dialect()))
+    assert "FETCH APPROX FIRST" in rendered
+    select_head = re.split(r"\bFROM\b", rendered, maxsplit=1, flags=re.IGNORECASE)[0].lower()
+    # Deferred loading keeps the embedding out of the entity columns; only the
+    # distance expression itself may reference it.
+    assert select_head.count("embedding_vector") == 1
+
+
+def test_unfiltered_search_skips_candidate_id_lookup() -> None:
+    """Run a single vector query without a scalar-filter ID pre-pass."""
+    session = MagicMock()
+    session.execute.return_value.all.return_value = []
+    context = MagicMock()
+    context.__enter__.return_value = session
+    context.__exit__.return_value = False
+
+    with patch("src.repositories.oracle_vector_search_repository.get_rag_index_session", return_value=context):
+        OracleVectorSearchRepository().search_by_cosine([0.1] * 1536)
+
+    session.scalars.assert_not_called()
+    assert session.execute.call_count == 1
+
+
+def test_filtered_search_restricts_distance_to_matching_ids() -> None:
+    """Bound filtered vector distance to the scalar-filter candidate IDs."""
+    session = MagicMock()
+    session.scalars.return_value.all.return_value = [11, 22]
+    session.execute.return_value.all.return_value = []
+    context = MagicMock()
+    context.__enter__.return_value = session
+    context.__exit__.return_value = False
+
+    with patch("src.repositories.oracle_vector_search_repository.get_rag_index_session", return_value=context):
+        OracleVectorSearchRepository().search_by_cosine([0.1] * 1536, top_k=5, player_id="78224")
+
+    statement = session.execute.call_args.args[0]
+    rendered = str(statement.compile(dialect=oracle.dialect()))
+    assert "IN (" in rendered
+    assert ":player_id" not in rendered
+    assert "FETCH APPROX FIRST 25 ROWS ONLY" in rendered
+
+
+def test_filtered_search_short_circuits_without_matching_ids() -> None:
+    """Skip the vector query entirely when the scalar filter matches nothing."""
+    session = MagicMock()
+    session.scalars.return_value.all.return_value = []
+    context = MagicMock()
+    context.__enter__.return_value = session
+    context.__exit__.return_value = False
+
+    with patch("src.repositories.oracle_vector_search_repository.get_rag_index_session", return_value=context):
+        results = OracleVectorSearchRepository().search_by_cosine([0.1] * 1536, player_id="missing")
+
+    assert results == []
+    session.execute.assert_not_called()
+
+
+def test_oversized_filtered_search_falls_back_to_global_post_filter() -> None:
+    """Use the global approximate fetch plus Python filtering for huge matches."""
+    session = MagicMock()
+    session.scalars.return_value.all.return_value = list(range(10001))
+    session.execute.return_value.all.return_value = []
+    context = MagicMock()
+    context.__enter__.return_value = session
+    context.__exit__.return_value = False
+
+    with patch("src.repositories.oracle_vector_search_repository.get_rag_index_session", return_value=context):
+        OracleVectorSearchRepository().search_by_cosine([0.1] * 1536, top_k=5, player_id="wide")
+
+    statement = session.execute.call_args.args[0]
+    rendered = str(statement.compile(dialect=oracle.dialect()))
+    assert "rag_chunks.id IN" not in rendered.lower()
+    assert ":player_id" not in rendered
+    assert "FETCH APPROX FIRST 100 ROWS ONLY" in rendered
 
 
 def test_oracle_vector_type_converts_lists_to_float32_arrays() -> None:
@@ -67,8 +156,7 @@ def test_render_rows_maps_metadata_to_dense_result() -> None:
 
     result = OracleVectorSearchRepository._render_rows(
         [(chunk, 0.1)],
-        document_type="player_profile",
-        game_date=None,
+        filters={"source_table": "player_basic", "document_type": "player_profile"},
         top_k=5,
     )
 
