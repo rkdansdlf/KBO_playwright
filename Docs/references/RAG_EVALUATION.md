@@ -349,3 +349,18 @@ Recall/hit-rate hold at the approved levels after the corpus grew from
 `207,270` to `209,537` rows; resolver-hybrid MRR improved (`0.8361 →
 0.8472`). Remote-client latency remains RTT-dominated and must be re-read
 from the production server after cutover.
+
+### Production Promotion Gates (approved 2026-08-23)
+
+Operator-approved minimums for the live Oracle RAG index:
+
+```text
+Recall@5      >= 0.90   (golden 30-query set, configured embeddings)
+MRR           >= 0.80
+Hit rate      >= 0.95
+Routing acc   >= 0.98
+```
+
+Current values pass all four gates (0.9485 / 0.8472 / 0.9667 / 100%).
+Latency stays excluded from the hard gate until the server-side hybrid p95
+re-measurement lands post-cutover.
