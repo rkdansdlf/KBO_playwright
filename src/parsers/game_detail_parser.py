@@ -54,7 +54,7 @@ class GameDetailParser(BaseHtmlParser[dict[str, Any]]):
 
         """
         soup = self.soup
-        dataframes = pd.read_html(StringIO(self.html))
+        dataframes = pd.read_html(StringIO(self.html), flavor="bs4")
 
         scoreboard_df = _extract_scoreboard(dataframes)
         hitter_tables = _extract_hitter_tables(dataframes)

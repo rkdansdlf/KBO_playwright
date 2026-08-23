@@ -30,7 +30,7 @@ async def main():
             await br.close()
 
     # Analyze
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
     tables = soup.find_all("table")
     print(f"\nTotal tables: {len(tables)}")
 

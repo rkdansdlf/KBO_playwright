@@ -10,7 +10,7 @@ if not html_file.exists():
     exit(1)
 
 html = html_file.read_text(encoding="utf-8")
-soup = BeautifulSoup(html, "lxml")
+soup = BeautifulSoup(html, "html.parser")
 
 print("=== DIV IDs containing 'Futures' ===")
 futures_divs = soup.find_all("div", id=lambda x: x and "Futures" in x if x else False)
