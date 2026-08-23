@@ -1,0 +1,278 @@
+{
+  "report_type": "rag_corpus_reconciliation",
+  "report_version": 1,
+  "status": "not_comparable",
+  "captured_at": "2026-08-22T17:40:39.347882Z",
+  "write_policy": "read_only",
+  "comparison_policy": {
+    "production_and_staging_must_share_snapshot": true,
+    "unknown_values_are_not_interpreted_as_zero": true,
+    "different_census_scopes_are_not_reconciled_by_arithmetic": true
+  },
+  "evaluation_dataset_sha256": "6753148748d2a402d11bb7a7306d0dec80089ed84f59b3867e9a5acbde8ca295",
+  "snapshots": {
+    "production": {
+      "identifier": "unknown",
+      "timestamp": "unknown",
+      "status": "live_read_only_observation",
+      "schema": "KBO_APP",
+      "tablespace": "DATA",
+      "reason": "Live Oracle ADB was queried read-only; no immutable production snapshot manifest was available."
+    },
+    "recovery_staging": {
+      "identifier": "unknown",
+      "timestamp": "unknown",
+      "status": "observed_without_immutable_manifest",
+      "container": "kbo_rag_recovery_staging",
+      "sparse_database": "kbo_rag_sparse_staging",
+      "vector_database": "kbo_rag_vector_configured_staging",
+      "reason": "The database write bounds are known, but no immutable source snapshot manifest was recorded.",
+      "observed_write_bounds": {
+        "sparse_created_min": "2026-08-20 13:50:19.67637",
+        "sparse_created_max": "2026-08-20 16:25:41.461289",
+        "sparse_updated_min": "2026-08-20 13:50:20.043375",
+        "sparse_updated_max": "2026-08-20 16:25:41.715814",
+        "vector_created_min": "2026-08-20 13:50:19.77594",
+        "vector_created_max": "2026-08-20 16:25:41.53248",
+        "vector_updated_min": "2026-08-20 13:50:19.914685",
+        "vector_updated_max": "2026-08-20 16:25:41.631984"
+      }
+    }
+  },
+  "production_observations": {
+    "source_table_count": 19,
+    "source_identity_count": 209537,
+    "chunk_count": 209537,
+    "sparse_searchable_count": 209537,
+    "vector_present_count": 209537,
+    "active_count": 209537,
+    "pending_count": 0,
+    "delete_pending_count": 0,
+    "deleted_tombstone_count": 0,
+    "missing_vector_count": 0,
+    "duplicate_identity_chunk_count": 0,
+    "missing_hash_count": 0,
+    "missing_version_count": 0,
+    "hash_version_mismatch_count": "unknown",
+    "orphan_identity_count": "unknown",
+    "observed_write_bounds": {
+      "created_min": "2026-08-21 21:08:15",
+      "created_max": "2026-08-23 01:29:30",
+      "updated_min": "2026-08-21 21:08:42",
+      "updated_max": "2026-08-23 02:39:21"
+    },
+    "vector_schema": {
+      "legacy_embedding_column": "EMBEDDING CLOB",
+      "native_vector_column": "EMBEDDING_VECTOR VECTOR",
+      "hnsw_index": "IDX_RAG_CHUNKS_EMBEDDING_HNSW",
+      "hnsw_index_status": "VALID"
+    },
+    "embedding_cache": {
+      "total_rows": 25407,
+      "configured_model_rows": 25405,
+      "legacy_model_rows": 2,
+      "golden_query_cache_hits": 30,
+      "golden_query_cache_misses": 0
+    }
+  },
+  "manifest_evidence": {
+    "external_directory": "/Users/mac/project/rag_reconciliation_20260823",
+    "adb": {
+      "raw_manifest_sha256": "4411472bc84cbd8ab34f56938fdb838df5590106702da0f9e38de4b1a6ea8885",
+      "identity_sha256": "b6b9f98ae7e61969d243cb32674657beb1a0e92c8500e3809d6707d8d7956c56",
+      "semantic_sha256": "63d71b7388a2a1422f65b2ec1d61e83e2ea76f0efb0e09ab8c01c2eb61ba8f31"
+    },
+    "staging_sparse": {
+      "raw_manifest_sha256": "17902baa8735d2f49b3e1a546834e731f80dfb8b71827c3d6bb4b8d7f619962f",
+      "identity_sha256": "a4f5f2c2147b5ce9bef43f2260e1401f8fd7ab2d294f4327f11289bc6660b7c5",
+      "semantic_sha256": "4a89a0aeef8f4a2dfd4ff8feb3c8f4d2e7500fbbce4c406e7c70ef2f6b4b8cbb"
+    },
+    "staging_vector": {
+      "raw_manifest_sha256": "449d3c036141023b5bcd125bf16b652194b9c2e1919d08f8e89c08dd8d17b521",
+      "identity_sha256": "a4f5f2c2147b5ce9bef43f2260e1401f8fd7ab2d294f4327f11289bc6660b7c5",
+      "semantic_sha256": "4a89a0aeef8f4a2dfd4ff8feb3c8f4d2e7500fbbce4c406e7c70ef2f6b4b8cbb"
+    },
+    "adb_vs_staging_sparse": {
+      "common_identity_count": 193545,
+      "adb_only_count": 15992,
+      "staging_only_count": 13760,
+      "content_hash_mismatch_count": 668,
+      "index_version_mismatch_count": 0,
+      "status_mismatch_count": 0,
+      "embedding_presence_mismatch_count": 0,
+      "adb_only_by_source": {
+        "awards": 2,
+        "futures_schedule": 126,
+        "game": 468,
+        "game_highlights": 89,
+        "game_lineups": 979,
+        "game_play_by_play": 9111,
+        "player_movements": 401,
+        "player_season_batting": 2502,
+        "player_season_pitching": 1954,
+        "press_release": 39,
+        "team_events": 4,
+        "team_standings_daily": 317
+      },
+      "staging_only_by_source": {
+        "awards": 2,
+        "game": 8242,
+        "game_lineups": 74,
+        "game_play_by_play": 350,
+        "player_season_batting": 2528,
+        "player_season_pitching": 1980,
+        "team_standings_daily": 584
+      }
+    },
+    "staging_sparse_vs_vector": {
+      "common_identity_count": 207305,
+      "left_only_count": 0,
+      "right_only_count": 0,
+      "content_hash_mismatch_count": 0,
+      "index_version_mismatch_count": 0,
+      "status_mismatch_count": 0,
+      "embedding_presence_mismatch_count": 0,
+      "semantic_consistency": "consistent"
+    }
+  },
+  "staging_observations": {
+    "source_inventory": {
+      "source_identity_count": 207305,
+      "generated_chunk_count": 207305,
+      "evidence": "Docs/references/rag_configured_cost_evidence.json",
+      "snapshot_comparable": false
+    },
+    "sparse_index": {
+      "source_identity_count": 207305,
+      "chunk_count": 207305,
+      "sparse_searchable_count": 207305,
+      "vector_present_count": 207305,
+      "active_count": 207305,
+      "pending_count": 0,
+      "delete_pending_count": 0,
+      "deleted_tombstone_count": 0,
+      "missing_vector_count": 0,
+      "duplicate_identity_chunk_count": 0,
+      "missing_hash_count": 0,
+      "missing_version_count": 0,
+      "hash_version_mismatch_count": "unknown",
+      "orphan_identity_count": "unknown"
+    },
+    "vector_index": {
+      "source_identity_count": 207305,
+      "chunk_count": 207305,
+      "sparse_searchable_count": 207305,
+      "vector_present_count": 207305,
+      "active_count": 207305,
+      "pending_count": 0,
+      "delete_pending_count": 0,
+      "deleted_tombstone_count": 0,
+      "missing_vector_count": 0,
+      "duplicate_identity_chunk_count": 0,
+      "missing_hash_count": 0,
+      "missing_version_count": 0,
+      "hash_version_mismatch_count": "unknown",
+      "orphan_identity_count": "unknown"
+    }
+  },
+  "storage_observations": {
+    "scope": "KBO_APP visible DATA tablespace extents and user segments",
+    "tablespace": "DATA",
+    "visible_free_extents_bytes": 606535680,
+    "visible_free_extents_mib": 578.4375,
+    "visible_free_extents_gib": 0.5649,
+    "visible_free_ratio_against_user_segments_plus_free": 0.082723,
+    "user_tablespace_quota_bytes": 6725632000,
+    "user_tablespace_quota_max_bytes": -1,
+    "user_tablespace_quota_max_interpretation": "unlimited user quota; not an ADB service storage limit",
+    "current_schema_allocated_segment_bytes": 6725632000,
+    "rag_table_bytes": 1749024768,
+    "rag_backup_bytes": 59768832,
+    "rag_index_and_vector_aux_bytes": 123207680,
+    "rag_related_segment_bytes": 1932001280,
+    "service_level_remaining_bytes": "unknown",
+    "service_level_reason": "DBA_TABLESPACE_USAGE_METRICS, V$PDBS, and DBA_CLOUD_LIMITS are not visible to KBO_APP."
+  },
+  "retrieval_smoke": {
+    "status": "completed",
+    "previous_attempt": {
+      "status": "timed_out",
+      "timeout_seconds": 600
+    },
+    "execution": "official_cli",
+    "artifact_path": "/tmp/opencode/rag_eval_live_20260823.json",
+    "variant": "all_variants",
+    "golden_query_count": 30,
+    "corpus_requirement": "passed",
+    "provider_calls_required": false,
+    "cached_query_embeddings": 30,
+    "missing_query_embeddings": 0,
+    "quality_metrics": {
+      "bm25": {
+        "recall_at_k": 0.6,
+        "precision_at_k": 0.12,
+        "mrr": 0.4666666667,
+        "hit_rate": 0.6,
+        "latency_ms": {
+          "p50": 926.236,
+          "p95": 1946.678,
+          "max": 2123.4
+        }
+      },
+      "vector": {
+        "recall_at_k": 0.9151515152,
+        "precision_at_k": 0.2133333333,
+        "mrr": 0.7972222222,
+        "hit_rate": 0.9333333333,
+        "latency_ms": {
+          "p50": 501.431,
+          "p95": 888.622,
+          "max": 921.508
+        }
+      },
+      "hybrid": {
+        "recall_at_k": 0.9484848485,
+        "precision_at_k": 0.22,
+        "mrr": 0.8305555556,
+        "hit_rate": 0.9666666667,
+        "latency_ms": {
+          "p50": 1451.439,
+          "p95": 3383.681,
+          "max": 7619.542
+        }
+      },
+      "resolver_hybrid": {
+        "recall_at_k": 0.9484848485,
+        "precision_at_k": 0.22,
+        "mrr": 0.8305555556,
+        "hit_rate": 0.9666666667,
+        "latency_ms": {
+          "p50": 1434.249,
+          "p95": 2022.949,
+          "max": 2037.154
+        }
+      }
+    },
+    "write_policy": "read_only",
+    "interpretation": "The initial all-variant run timed out, but the official cached-only rerun completed with corpus validation. Hybrid and resolver-hybrid achieved 0.9485 Recall@5 and 0.8306 MRR; the hybrid path has a 7.62s maximum query latency."
+  },
+  "observed_count_difference": {
+    "production_chunk_count_minus_staging_chunk_count": 2232,
+    "gross_identity_difference": {
+      "production_only": 15992,
+      "staging_only": 13760,
+      "common": 193545,
+      "common_content_hash_mismatch": 668
+    },
+    "interpretation": "not_comparable_without_a_shared_immutable_snapshot"
+  },
+  "relationship": {
+    "source_identity_to_generated_chunks": "observed_in_staging_only",
+    "generated_chunks_to_sparse_searchable": "observed_in_staging_only",
+    "sparse_searchable_to_vectorized": "observed_in_staging_only",
+    "vectorized_to_lifecycle_state": "observed_in_staging_only",
+    "lifecycle_to_tombstone_state": "observed_in_staging_only",
+    "production_to_staging_reconciliation": "not_comparable"
+  },
+  "conclusion": "Live Oracle ADB contains 209537 active vectorized RAG rows and a valid native VECTOR/HNSW path. Recovery staging contains 207305 rows and its sparse/vector pair is semantically consistent. Identity-level comparison found 15992 ADB-only identities, 13760 staging-only identities, and 668 content-hash differences among 193545 common identities. These differences are not classified as defects because the two populations do not yet have a shared immutable source snapshot. Visible DATA free extents are approximately 578.4 MiB and the ADB service-level remaining capacity is unknown to the application user. The cached-only official retrieval evaluation completed with corpus validation; hybrid and resolver-hybrid achieved 0.9485 Recall@5 and 0.8306 MRR, with resolver-hybrid p95 latency of 2.02s."
+}
