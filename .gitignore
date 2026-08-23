@@ -111,3 +111,4 @@ coverage_report.txt
 !/data/player_id_row_overrides.csv
 !/data/seed/
 !/data/seed/team_rivalries.csv
+!/data/manifests/

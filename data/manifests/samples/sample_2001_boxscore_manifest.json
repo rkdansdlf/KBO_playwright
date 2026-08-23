@@ -1,0 +1,22 @@
+{
+  "manifest_version": "1.0",
+  "season": 2001,
+  "source_name": "kbo_historical_archive_2001",
+  "provenance": {
+    "publisher": "KBO / Verified Community Archive",
+    "capture_timestamp": "2026-08-24T00:00:00Z",
+    "curator": "data-integrity-team"
+  },
+  "entries": [
+    {
+      "game_id": "20010405LTHU0",
+      "game_date": "2001-04-05",
+      "home_team": "HU",
+      "away_team": "LT",
+      "payload_path": "payloads/20010405LTHU0.json",
+      "payload_type": "json_boxscore",
+      "sha256": "805b4de1bee8479b18ffc64141f254003e7450b9283e2cc925579680da72586b",
+      "status": "ok"
+    }
+  ]
+}

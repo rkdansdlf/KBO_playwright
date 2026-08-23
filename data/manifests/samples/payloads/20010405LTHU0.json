@@ -1,0 +1,58 @@
+{
+  "game_id": "20010405LTHU0",
+  "game_date": "2001-04-05",
+  "season": 2001,
+  "home_team": "HU",
+  "away_team": "LT",
+  "home_score": 6,
+  "away_score": 4,
+  "stadium": "수원",
+  "innings": [
+    {
+      "inning": 1,
+      "away_score": 0,
+      "home_score": 2
+    },
+    {
+      "inning": 2,
+      "away_score": 1,
+      "home_score": 0
+    }
+  ],
+  "batting": [
+    {
+      "team_code": "HU",
+      "player_name": "박재홍",
+      "ab": 4,
+      "hits": 2,
+      "rbi": 3,
+      "runs": 2
+    },
+    {
+      "team_code": "LT",
+      "player_name": "호세",
+      "ab": 4,
+      "hits": 2,
+      "rbi": 2,
+      "runs": 1
+    }
+  ],
+  "pitching": [
+    {
+      "team_code": "HU",
+      "player_name": "정민태",
+      "ip": "7",
+      "hits": 5,
+      "er": 3,
+      "so": 6
+    },
+    {
+      "team_code": "LT",
+      "player_name": "손민한",
+      "ip": "6",
+      "hits": 7,
+      "er": 5,
+      "so": 4
+    }
+  ]
+}
