@@ -19,6 +19,14 @@ from src.models.player_splits_stat import PlayerSplitsStat
 from src.models.rag_chunk import RagChunk
 from src.services.rag_indexer import RagKnowledgeIndexer
 
+
+class FakeEmbeddingService:
+    """Offline provider returning a fixed-size vector per text."""
+
+    def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
@@ -86,7 +94,7 @@ def test_index_incremental_all(db_session: Session) -> None:
     )
     db_session.commit()
 
-    indexer = RagKnowledgeIndexer(db_session)
+    indexer = RagKnowledgeIndexer(db_session, embedding_service=FakeEmbeddingService())
     counts = indexer.index_incremental_all(season=2026)
 
     assert counts["press_releases"] == 1
@@ -110,7 +118,7 @@ def test_indexer_can_write_to_a_separate_sparse_session(db_session: Session) -> 
     index_session = Session(bind=db_session.get_bind())
 
     try:
-        indexer = RagKnowledgeIndexer(db_session, index_session=index_session)
+        indexer = RagKnowledgeIndexer(db_session, index_session=index_session, embedding_service=FakeEmbeddingService())
         assert indexer.index_press_releases() == 1
         assert index_session.scalar(select(RagChunk).where(RagChunk.source_row_id == str(release.id))) is not None
     finally:

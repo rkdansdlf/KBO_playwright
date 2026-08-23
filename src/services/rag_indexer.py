@@ -12,6 +12,7 @@ from src.models.kbo_press_release import KboPressRelease
 from src.models.player_milestone import PlayerMilestone
 from src.models.player_splits_stat import PlayerSplitsStat
 from src.repositories.rag_chunk_repository import RagChunkRepository
+from src.services.embedding_service import EmbeddingService
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -22,10 +23,29 @@ logger = logging.getLogger(__name__)
 class RagKnowledgeIndexer:
     """Indexer service for building RAG chunks from KBO data sources."""
 
-    def __init__(self, session: Session, index_session: Session | None = None) -> None:
-        """Initialize the source reader and sparse-index writer sessions."""
+    def __init__(
+        self,
+        session: Session,
+        index_session: Session | None = None,
+        embedding_service: EmbeddingService | None = None,
+    ) -> None:
+        """Initialize the source reader, sparse-index writer sessions, and embedding provider."""
         self.session = session
         self.rag_repo = RagChunkRepository(index_session or session)
+        self.embedding_service = embedding_service or EmbeddingService(cache_enabled=True)
+
+    def _embed_chunks(self, chunks: list[dict[str, Any]]) -> None:
+        """Attach dense embeddings to chunk payloads before persistence."""
+        texts = [f"{chunk['title']}\n{chunk['content']}" for chunk in chunks]
+        embeddings = self.embedding_service.get_embeddings_batch(texts)
+        if len(embeddings) != len(chunks):
+            message = f"Embedding provider returned {len(embeddings)} vectors for {len(chunks)} chunks"
+            raise RuntimeError(message)
+        if any(not embedding or all(value == 0.0 for value in embedding) for embedding in embeddings):
+            message = "Embedding provider returned an empty or zero vector"
+            raise RuntimeError(message)
+        for chunk, embedding in zip(chunks, embeddings, strict=True):
+            chunk["embedding"] = embedding
 
     def index_press_releases(self) -> int:
         """Index KBO press releases as RAG chunks.
@@ -53,6 +73,7 @@ class RagKnowledgeIndexer:
             )
 
         if chunks:
+            self._embed_chunks(chunks)
             count = self.rag_repo.upsert_chunks(chunks)
             logger.info("Indexed %d press release RAG chunks.", count)
             return count
@@ -94,6 +115,7 @@ class RagKnowledgeIndexer:
             )
 
         if chunks:
+            self._embed_chunks(chunks)
             count = self.rag_repo.upsert_chunks(chunks)
             logger.info("Indexed %d milestone RAG chunks for season %d.", count, season)
             return count
@@ -134,6 +156,7 @@ class RagKnowledgeIndexer:
             )
 
         if chunks:
+            self._embed_chunks(chunks)
             count = self.rag_repo.upsert_chunks(self.session, chunks)
             logger.info("Indexed %d futures schedule RAG chunks for season %d.", count, season)
             return count
@@ -172,6 +195,7 @@ class RagKnowledgeIndexer:
             )
 
         if chunks:
+            self._embed_chunks(chunks)
             count = self.rag_repo.upsert_chunks(self.session, chunks)
             logger.info("Indexed %d player splits RAG chunks for season %d.", count, season)
             return count

@@ -13,6 +13,15 @@ from src.models.kbo_press_release import KboPressRelease
 from src.models.player_milestone import PlayerMilestone
 from src.services.context_aggregator import ContextAggregator
 from src.services.rag_indexer import RagKnowledgeIndexer
+
+
+class FakeEmbeddingService:
+    """Offline provider returning a fixed-size vector per text."""
+
+    def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+
 from src.services.stat_recalculator import StatRecalculator
 
 
@@ -74,7 +83,7 @@ def test_rag_knowledge_indexer(session: Session) -> None:
     session.add(m)
     session.commit()
 
-    indexer = RagKnowledgeIndexer(session)
+    indexer = RagKnowledgeIndexer(session, embedding_service=FakeEmbeddingService())
     pr_count = indexer.index_press_releases()
     ms_count = indexer.index_milestones(season=2026)
 

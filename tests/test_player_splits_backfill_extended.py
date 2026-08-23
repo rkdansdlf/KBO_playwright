@@ -16,6 +16,14 @@ from src.models.base import Base
 from src.repositories.player_splits_repository import PlayerSplitsRepository
 from src.services.rag_indexer import RagKnowledgeIndexer
 
+
+class FakeEmbeddingService:
+    """Offline provider returning a fixed-size vector per text."""
+
+    def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
@@ -62,6 +70,6 @@ async def test_crawl_all_splits_and_reindex(db_session: Session) -> None:
         for item in results:
             repo.save_splits_entry(item)
 
-        indexer = RagKnowledgeIndexer(db_session)
+        indexer = RagKnowledgeIndexer(db_session, embedding_service=FakeEmbeddingService())
         count = indexer.index_player_splits(season=2026)
         assert count == 3
