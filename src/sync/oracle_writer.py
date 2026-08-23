@@ -267,9 +267,8 @@ class OracleWriter:
             return bind
 
         data_type = column_types.get(column.upper(), "").upper()
-        if data_type == "CLOB":
-            return f"TO_CLOB({bind})"
         cast_types = {
+            "CLOB": "VARCHAR2(4000)",
             "VARCHAR2": "VARCHAR2(4000)",
             "CHAR": "VARCHAR2(4000)",
             "NCHAR": "VARCHAR2(4000)",
@@ -379,7 +378,7 @@ class OracleWriter:
                             synced_total += 1
                         except (oracledb.Error, RuntimeError) as row_err:
                             error_total += 1
-                            logger.debug("[%s] Row execution failed: %s (payload: %s)", table, row_err, payload)
+                            logger.warning("[%s] Row execution failed: %s (payload: %s)", table, row_err, payload)
             return synced_total, error_total
         finally:
             cursor.close()
