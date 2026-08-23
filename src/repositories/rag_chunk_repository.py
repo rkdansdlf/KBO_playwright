@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, insert, select, update
 
 from src.constants import KST
 from src.db.engine import get_rag_index_session
 from src.models.rag_chunk import RagChunk
+from src.models.rag_chunk_term import RagChunkTerm
 from src.services.rag_index_identity import ACTIVE_INDEX_STATUS, chunk_content_hash, current_index_version
+from src.services.rag_sparse_terms import build_term_rows
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -49,13 +52,14 @@ class RagChunkRepository:
                 return self._upsert_chunks(managed_session, payloads)
         return self._upsert_chunks(session, payloads)
 
-    def _upsert_chunks(
+    def _upsert_chunks(  # noqa: PLR0915
         self,
         session: Session,
         chunks: list[dict[str, Any]],
     ) -> int:
         """Upsert chunks into an explicitly managed session."""
         upserted_count = 0
+        terms_enabled = self._term_index_enabled(session)
 
         now = datetime.now(KST)
 
@@ -107,6 +111,7 @@ class RagChunkRepository:
                 existing_chunk.index_status = index_status
                 existing_chunk.indexed_at = now
                 existing_chunk.updated_at = now
+                managed_chunk = existing_chunk
             else:
                 # Insert new chunk
                 new_chunk = RagChunk(
@@ -129,6 +134,11 @@ class RagChunkRepository:
                     updated_at=now,
                 )
                 session.add(new_chunk)
+                managed_chunk = new_chunk
+
+            if terms_enabled:
+                session.flush()
+                self._sync_term_rows(session, managed_chunk)
 
             upserted_count += 1
             if upserted_count % 100 == 0:
@@ -136,3 +146,55 @@ class RagChunkRepository:
 
         session.flush()
         return upserted_count
+
+    @staticmethod
+    def _term_index_enabled(session: Session) -> bool:
+        """Return whether Oracle term postings should be maintained for this session."""
+        if os.getenv("RAG_ORACLE_SPARSE_MODE", "terms").strip().lower() != "terms":
+            return False
+        dialect = getattr(session.get_bind(), "dialect", None)
+        return getattr(dialect, "name", None) == "oracle"
+
+    @staticmethod
+    def _sync_term_rows(session: Session, chunk: RagChunk) -> None:
+        """Synchronize one chunk's postings without replacing identical primary keys."""
+        chunk_id = int(chunk.id)
+        rows = build_term_rows(
+            chunk_id,
+            chunk.title,
+            chunk.content,
+            chunk.meta if isinstance(chunk.meta, dict) else None,
+            source_table=str(chunk.source_table),
+        )
+        existing_tokens = set(
+            session.scalars(select(RagChunkTerm.token).where(RagChunkTerm.rag_chunk_id == chunk_id)).all(),
+        )
+        new_tokens = {str(row["token"]) for row in rows}
+        stale_tokens = existing_tokens - new_tokens
+        if stale_tokens:
+            session.execute(
+                delete(RagChunkTerm).where(
+                    RagChunkTerm.rag_chunk_id == chunk_id,
+                    RagChunkTerm.token.in_(stale_tokens),
+                ),
+            )
+
+        for row in rows:
+            if row["token"] in existing_tokens:
+                session.execute(
+                    update(RagChunkTerm)
+                    .where(
+                        RagChunkTerm.rag_chunk_id == chunk_id,
+                        RagChunkTerm.token == row["token"],
+                    )
+                    .values(
+                        source_table=row["source_table"],
+                        term_count=row["term_count"],
+                        title_count=row["title_count"],
+                        game_date=row["game_date"],
+                    ),
+                )
+
+        inserts = [row for row in rows if row["token"] not in existing_tokens]
+        if inserts:
+            session.execute(insert(RagChunkTerm), inserts)

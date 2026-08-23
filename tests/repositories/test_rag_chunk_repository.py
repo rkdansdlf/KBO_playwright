@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from src.models.rag_chunk import RagChunk
+from src.models.rag_chunk_term import RagChunkTerm
 from src.repositories.rag_chunk_repository import RagChunkRepository
 
 
@@ -114,3 +115,34 @@ class TestRagChunkRepository:
 
         row = session.execute(select(RagChunk)).scalars().one()
         assert row.source_table == "kbo_regulations"
+
+    def test_terms_mode_synchronizes_changed_chunk_postings(self, monkeypatch):
+        engine = self._engine()
+        self._init_tables(engine)
+        RagChunkTerm.__table__.create(engine)
+        session = self._session(engine)
+        repo = RagChunkRepository(session)
+        monkeypatch.setattr(repo, "_term_index_enabled", lambda _session: True)
+
+        repo.upsert_chunks(
+            [
+                {
+                    "title": "OPS 기록",
+                    "content": "OPS 선수 기록",
+                    "meta": {"category": "stats", "source_row_id": "s1"},
+                },
+            ],
+        )
+        repo.upsert_chunks(
+            [
+                {
+                    "title": "타율 기록",
+                    "content": "타율 선수 기록",
+                    "meta": {"category": "stats", "source_row_id": "s1"},
+                },
+            ],
+        )
+
+        terms = set(session.execute(select(RagChunkTerm.token)).scalars())
+        assert "ops" not in terms
+        assert "타율" in terms

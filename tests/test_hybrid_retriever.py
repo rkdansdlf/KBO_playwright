@@ -107,6 +107,20 @@ def test_hybrid_retriever_fuses_dense_and_sparse_by_source_identity() -> None:
     assert repo_cls.return_value.search_by_cosine.call_args.kwargs["game_date"] == "2026-08-20"
 
 
+def test_oracle_hybrid_uses_fast_sparse_candidates() -> None:
+    """Skip Oracle CLOB candidate sorting when dense retrieval is also active."""
+    retriever = HybridRetriever(MagicMock())
+    with (
+        patch.object(retriever.bm25_engine, "search", return_value=[]) as sparse_search,
+        patch("src.services.hybrid_retriever.is_pgvector_available", return_value=False),
+        patch("src.services.hybrid_retriever.is_oracle_vector_backend", return_value=True),
+        patch("src.services.hybrid_retriever._fetch_dense_vectors", return_value=(0, 0.0)),
+    ):
+        retriever.retrieve("올스타전 일정", top_k=5)
+
+    assert sparse_search.call_args.kwargs["oracle_ranked_candidates"] is False
+
+
 def test_hybrid_retriever_keeps_cross_source_rows_distinct() -> None:
     """Test that equal row IDs from different source tables do not collide."""
     retriever = HybridRetriever(MagicMock())

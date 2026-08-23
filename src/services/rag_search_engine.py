@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import bindparam, case, func, or_, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import defer
 
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_identity import RETRIEVABLE_INDEX_STATUSES
@@ -20,6 +23,8 @@ logger = logging.getLogger(__name__)
 BM25_POSTGRES_CANDIDATE_MULTIPLIER = 100
 BM25_POSTGRES_MIN_CANDIDATES = 1000
 BM25_POSTGRES_MIN_PER_KEYWORD = 100
+BM25_ORACLE_CANDIDATE_MULTIPLIER = 20
+BM25_ORACLE_MIN_CANDIDATES = 100
 SEARCH_TOKEN_SUFFIXES = (
     "으로",
     "에서",
@@ -57,6 +62,8 @@ class RagSearchEngine:
         top_k: int = 5,
         category: str | None = None,
         filters: dict[str, Any] | None = None,
+        *,
+        oracle_ranked_candidates: bool = True,
     ) -> list[dict[str, Any]]:
         """Search relevant RAG chunks using keyword matching and scoring.
 
@@ -66,6 +73,7 @@ class RagSearchEngine:
             category: Optional category filter.
             filters: Optional metadata filters such as team_id, season_year, source_table,
                 game_date, player_id, player_name, and stadium.
+            oracle_ranked_candidates: Sort Oracle sparse candidates before Python BM25 scoring.
 
         Returns:
             List of chunk dictionaries with relevance scores.
@@ -84,6 +92,13 @@ class RagSearchEngine:
         ]
         if self._uses_postgresql():
             chunks = self._postgresql_candidates(keywords, top_k, filters)
+        elif self._uses_oracle():
+            chunks = self._oracle_candidates_for_backend(
+                keywords,
+                top_k,
+                filters,
+                rank_candidates=oracle_ranked_candidates,
+            )
         else:
             stmt = select(RagChunk)
             if conditions:
@@ -160,6 +175,80 @@ class RagSearchEngine:
         bind = self.session.get_bind()
         dialect = getattr(bind, "dialect", None)
         return getattr(dialect, "name", None) == "postgresql"
+
+    def _uses_oracle(self) -> bool:
+        """Return whether the session uses the Oracle sparse/vector backend."""
+        bind = self.session.get_bind()
+        dialect = getattr(bind, "dialect", None)
+        return getattr(dialect, "name", None) == "oracle"
+
+    def _oracle_candidates_for_backend(
+        self,
+        keywords: list[str],
+        top_k: int,
+        filters: dict[str, Any] | None,
+        *,
+        rank_candidates: bool,
+    ) -> list[RagChunk]:
+        """Select the term index when enabled and retain the CLOB fallback."""
+        if os.getenv("RAG_ORACLE_SPARSE_MODE", "terms").strip().lower() != "terms":
+            return self._oracle_candidates(keywords, top_k, filters, rank_candidates=rank_candidates)
+        try:
+            from src.repositories.oracle_sparse_search_repository import OracleSparseSearchRepository
+
+            return OracleSparseSearchRepository().search_candidates(
+                self.session,
+                keywords,
+                top_k=top_k,
+                filters=filters,
+            )
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+            logger.warning("Oracle sparse term search failed; falling back to the CLOB path", exc_info=True)
+            return self._oracle_candidates(keywords, top_k, filters, rank_candidates=rank_candidates)
+
+    def _oracle_candidates(
+        self,
+        keywords: list[str],
+        top_k: int,
+        filters: dict[str, Any] | None,
+        *,
+        rank_candidates: bool,
+    ) -> list[RagChunk]:
+        """Fetch bounded Oracle lexical candidates without transferring vectors."""
+        conditions = []
+        relevance_terms = []
+        for index, keyword in enumerate(keywords):
+            title_match = (
+                func.instr(
+                    RagChunk.title,
+                    bindparam(f"oracle_title_keyword_{index}", value=keyword),
+                )
+                > 0
+            )
+            content_match = (
+                func.instr(
+                    RagChunk.content,
+                    bindparam(f"oracle_content_keyword_{index}", value=keyword),
+                )
+                > 0
+            )
+            conditions.append(or_(title_match, content_match))
+            relevance_terms.append(case((title_match, 2), else_=0) + case((content_match, 1), else_=0))
+        candidate_limit = max(top_k * BM25_ORACLE_CANDIDATE_MULTIPLIER, BM25_ORACLE_MIN_CANDIDATES)
+        stmt = (
+            select(RagChunk)
+            .options(defer(RagChunk.embedding))
+            .where(
+                or_(*conditions),
+                RagChunk.index_status.in_(tuple(RETRIEVABLE_INDEX_STATUSES)),
+            )
+        )
+        if filters and filters.get("source_table"):
+            stmt = stmt.where(RagChunk.source_table == filters["source_table"])
+        if rank_candidates:
+            stmt = stmt.order_by(sum(relevance_terms).desc())
+        stmt = stmt.limit(candidate_limit)
+        return list(self.session.execute(stmt).scalars().all())
 
     def _postgresql_candidates(
         self,
