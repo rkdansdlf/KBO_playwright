@@ -24,6 +24,7 @@ from playwright.async_api import BrowserContext, Page, async_playwright
 from playwright.async_api import Error as PlaywrightError
 
 from src.urls import REGISTER
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -307,6 +308,9 @@ class StaffRegisterCrawler(BasePlaywrightCrawler):
         targets = team_codes or list(KBO_TEAM_MAP.keys())
 
         all_records: list[dict] = []
+        if not await compliance.is_allowed(REGISTER_URL):
+            log_source_limited("staff_register", REGISTER_URL)
+            return []
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=self.headless)

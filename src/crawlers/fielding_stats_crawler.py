@@ -22,12 +22,14 @@ from src.crawlers.selectors import FIELDING_STATS
 from src.db.engine import SessionLocal, get_database_type
 from src.models.player import PlayerSeasonFielding
 from src.repositories.oracle_upsert import upsert_model_by_unique_keys
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.type_helpers import parse_innings, safe_float, safe_int
 
 logger = logging.getLogger(__name__)
 MIN_FIELDING_ROW_CELLS = 13
 MIN_CATCHER_DETAIL_ROW_CELLS = 17
+FIELDING_URL = "https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx"
 CRAWLER_EXCEPTIONS = (
     PlaywrightError,
     PlaywrightTimeoutError,
@@ -332,6 +334,10 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
     """
     if year is None:
         year = datetime.now(KST).year
+    if not compliance.is_allowed_sync(FIELDING_URL):
+        log_source_limited("fielding", FIELDING_URL)
+        return []
+
     fielding_data = []
     fielding_data_map: dict[tuple[str, str, str], dict[str, Any]] = {}  # (player_id, team_id, position_id) -> record
     policy = RequestPolicy()
@@ -342,7 +348,7 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
         page = context.new_page()
         install_sync_resource_blocking(page)
 
-        url = "https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx"
+        url = FIELDING_URL
         if not _init_fielding_page(page, url, year, policy):
             browser.close()
             return []

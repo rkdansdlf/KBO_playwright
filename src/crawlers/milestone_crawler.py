@@ -7,10 +7,19 @@ from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
 
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
+
+
+async def _milestone_sources_allowed(urls: list[tuple[str, str]]) -> bool:
+    """Return whether every milestone source is allowed by robots policy."""
+    for url, _ in urls:
+        if not await compliance.is_allowed(url):
+            return False
+    return True
 
 
 class MilestoneCrawler:
@@ -40,12 +49,21 @@ class MilestoneCrawler:
             List of milestone items.
 
         """
-        results: list[dict[str, Any]] = []
-
         urls = [
             (self.HIT_MILESTONE_URL, "통산 안타/홈런"),
             (self.PIT_MILESTONE_URL, "통산 다승/탈삼진"),
         ]
+        return await self._crawl_if_allowed(season, urls)
+
+    async def _crawl_if_allowed(self, season: int, urls: list[tuple[str, str]]) -> list[dict[str, Any]]:
+        if not await _milestone_sources_allowed(urls):
+            log_source_limited("milestone", self.HIT_MILESTONE_URL)
+            return []
+        return await self._crawl_sources(season, urls)
+
+    async def _crawl_sources(self, season: int, urls: list[tuple[str, str]]) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+
         try:
             async with AsyncPlaywrightPool() as pool, pool.page() as page:
                 for url, category_label in urls:

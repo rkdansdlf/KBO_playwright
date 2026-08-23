@@ -7,6 +7,11 @@ import pytest
 from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 
 
+@pytest.fixture(autouse=True)
+def allow_kbo_source(monkeypatch):
+    monkeypatch.setattr("src.crawlers.roster_transaction_crawler.compliance.is_allowed", AsyncMock(return_value=True))
+
+
 class FakeAsyncClient:
     def __init__(self, response):
         self.response = response

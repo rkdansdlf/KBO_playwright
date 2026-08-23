@@ -10,6 +10,7 @@ from playwright.async_api import Error as PlaywrightError
 
 from src.constants import KST
 from src.crawlers.base import BasePlaywrightCrawler
+from src.utils.compliance import compliance, log_source_limited
 
 if TYPE_CHECKING:
     from src.utils.playwright_pool import AsyncPlaywrightPool
@@ -50,6 +51,9 @@ class PressReleaseCrawler(BasePlaywrightCrawler):
 
         """
         results: list[dict[str, Any]] = []
+        if not await compliance.is_allowed(self.PRESS_URL):
+            log_source_limited("press_release", self.PRESS_URL)
+            return []
 
         try:
             async with self.page_context() as page:

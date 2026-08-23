@@ -7,6 +7,7 @@ from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
 
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
 
@@ -52,6 +53,10 @@ class PlayerSplitsCrawler:
             "runner_on_base": "주자상황시",
         }
         split_key_label = split_key_map.get(split_type, "득점권시")
+
+        if not await compliance.is_allowed(self.RECORD_URL):
+            log_source_limited("player_splits", self.RECORD_URL)
+            return []
 
         try:
             async with AsyncPlaywrightPool() as pool, pool.page() as page:

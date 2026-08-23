@@ -326,10 +326,12 @@ class SqliteToOciSynchronizer:
             )
 
         char_sizes = ctx.writer.get_char_sizes(table)
+        column_names = ctx.writer.get_column_names(table)
         oci_pks = ctx.writer.get_pk_columns(table)
-        pk_cols = [k.upper() for k in (ctx.meta.natural_keys or [p.lower() for p in oci_pks])]
+        default_keys = [p.lower() for p in oci_pks]
+        pk_cols = [column_names.get(k.upper(), k.upper()) for k in (ctx.meta.natural_keys or default_keys)]
         if not pk_cols:
-            pk_cols = [p.upper() for p in oci_pks]
+            pk_cols = [column_names.get(p.upper(), p.upper()) for p in oci_pks]
 
         oci_lower = {c.lower(): c for c in oci_cols}
         sync_columns = [c for c in ctx.sq_cols if c.lower() in oci_lower]
@@ -353,9 +355,9 @@ class SqliteToOciSynchronizer:
             ctx.meta.strategy == SyncStrategy.TRUNCATE_INSERT and not ctx.meta.natural_keys
         ):
             ctx.writer.truncate_table(table)
-            sync_sql = ctx.writer.build_insert_sql(table, sync_columns)
+            sync_sql = ctx.writer.build_insert_sql(table, sync_columns, column_names=column_names)
         else:
-            sync_sql = ctx.writer.build_merge_sql(table, sync_columns, pk_cols)
+            sync_sql = ctx.writer.build_merge_sql(table, sync_columns, pk_cols, column_names=column_names)
 
         ctx.writer.set_table_triggers(table, enable=False)
         sync_start_time = datetime.now(_KST)
@@ -369,6 +371,8 @@ class SqliteToOciSynchronizer:
             char_sizes=char_sizes,
             sync_sql=sync_sql,
             writer=ctx.writer,
+            pk_columns=pk_cols,
+            column_names=column_names,
         )
         synced_total, error_total = self._execute_write_batches(batch_ctx)
 

@@ -1236,7 +1236,13 @@ def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
 
         if not compliance.is_allowed_sync(HITTER_BASIC1):
             logger.info("[COMPLIANCE] Navigation to %s aborted.", HITTER_BASIC1)
-            return []
+            ctx.all_players_data = _handle_batting_fallback(
+                ctx.year,
+                ctx.series_key,
+                "KBO robots.txt blocked",
+                save_to_db=False,
+            )
+            return ctx.all_players_data
 
         ctx.policy.delay(host="www.koreabaseball.com")
         page.goto(HITTER_BASIC1, wait_until="load", timeout=NAV_TIMEOUT)
@@ -1247,8 +1253,8 @@ def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
         except CRAWLER_EXCEPTIONS as e:
             reason = f"Season/Series selection error: {e}"
             logger.exception("Season/Series selection error, falling back to DB aggregation")
-            context.close()
-            return _handle_batting_fallback(ctx.year, ctx.series_key, reason, save_to_db=ctx.save_to_db)
+            ctx.all_players_data = _handle_batting_fallback(ctx.year, ctx.series_key, reason, save_to_db=False)
+            return ctx.all_players_data
 
         team_options = _get_team_options(page, by_team=ctx.by_team)
         _collect_batting_stats_loop(

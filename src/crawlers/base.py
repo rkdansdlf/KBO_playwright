@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from http import HTTPStatus
@@ -14,6 +13,8 @@ from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from src.crawlers.dto import CrawlExecutionStats
+from src.crawlers.resilience import AdaptiveRateLimiter
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: TC001
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -49,11 +50,18 @@ class BaseCrawler:
         self.request_delay = request_delay
         self.policy = policy or RequestPolicy.with_delay(request_delay)
         self.logger = logging.getLogger(self.__class__.__module__)
+        self.stats = CrawlExecutionStats()
+        self.rate_limiter = AdaptiveRateLimiter(base_delay_seconds=request_delay)
 
     async def throttle(self) -> None:
-        """Apply request throttling based on request_delay."""
+        """Apply request throttling based on request_delay and adaptive rate limiting."""
         if self.request_delay > 0:
-            await asyncio.sleep(self.request_delay)
+            waited = await self.rate_limiter.acquire()
+            self.stats.record_throttle(waited)
+
+    def get_stats(self) -> CrawlExecutionStats:
+        """Return the accumulated execution metrics for this crawler."""
+        return self.stats
 
     @property
     def crawler_name(self) -> str:

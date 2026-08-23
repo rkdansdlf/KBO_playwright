@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository, save_raw_snapshots
 from src.repositories.team_event_repository import TeamEventRepository
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,11 @@ class KboEventCrawler:
 
         """
         events: list[dict[str, object]] = []
+
+        for url in self.urls:
+            if not await compliance.is_allowed(url):
+                log_source_limited("kbo_event", url)
+                return []
 
         seen_urls: set[str] = set()
         for url in self.urls:

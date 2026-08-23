@@ -20,8 +20,9 @@ async def test_crawl_raises_when_start_does_not_initialize_page() -> None:
     crawler = TeamHistoryCrawler()
     crawler.start = AsyncMock()
 
-    with pytest.raises(RuntimeError, match="Page not initialized"):
-        await crawler.crawl()
+    with patch("src.crawlers.team_history_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
+        with pytest.raises(RuntimeError, match="Page not initialized"):
+            await crawler.crawl()
 
 
 @pytest.mark.asyncio

@@ -149,7 +149,8 @@ class TestStaffRegisterCrawler:
         manager.__aexit__ = AsyncMock(return_value=None)
         mock_playwright.return_value = manager
 
-        records = await crawler.crawl_all_teams(team_codes=["LG", "SS"])
+        with patch("src.crawlers.staff_register_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
+            records = await crawler.crawl_all_teams(team_codes=["LG", "SS"])
 
         assert records == [{"name": "manager"}]
         assert crawler.crawl_team.await_count == 2

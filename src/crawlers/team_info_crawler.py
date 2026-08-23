@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from src.db.engine import SessionLocal, get_db_session
 from src.models.franchise import Franchise
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.throttle import throttle
 
@@ -66,6 +67,10 @@ class TeamInfoCrawler:
 
         """
         logger.info("Crawling Team Info from %s", self.BASE_URL)
+
+        if not await compliance.is_allowed(self.BASE_URL):
+            log_source_limited("team_info", self.BASE_URL)
+            return []
 
         if not self.page:
             await self.start()

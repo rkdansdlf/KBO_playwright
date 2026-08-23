@@ -1,3 +1,4 @@
+from datetime import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -6,6 +7,9 @@ from sqlalchemy.dialects import oracle
 from sqlalchemy.schema import CreateTable
 
 from src.db.engine import normalize_oracle_url
+from src.db.types import OracleCompatibleTime
+from src.models.game import GameMetadata
+from src.models.ticket_open_rule import TicketOpenRule
 
 
 def test_normalize_oracle_url_encodes_special_password_characters() -> None:
@@ -141,6 +145,30 @@ def test_install_oracle_json_compiler_patches_missing_visit_json(monkeypatch) ->
     engine._install_oracle_json_compiler()
 
     assert OracleTypeCompiler.visit_JSON(object(), object()) == "CLOB"
+
+
+def test_oracle_compatible_time_binds_and_reads_string_values() -> None:
+    time_type = OracleCompatibleTime()
+    dialect = oracle.dialect()
+
+    bind_processor = time_type.bind_processor(dialect)
+    result_processor = time_type.result_processor(dialect, None)
+
+    assert bind_processor is not None
+    assert result_processor is not None
+    assert bind_processor(time(11, 0)) == "11:00:00"
+    assert result_processor("11:00:00") == time(11, 0)
+
+
+def test_oracle_time_columns_compile_as_varchar() -> None:
+    dialect = oracle.dialect()
+
+    metadata_ddl = str(CreateTable(GameMetadata.__table__).compile(dialect=dialect))
+    rule_ddl = str(CreateTable(TicketOpenRule.__table__).compile(dialect=dialect))
+
+    assert "start_time VARCHAR2(32 CHAR)" in metadata_ddl
+    assert "end_time VARCHAR2(32 CHAR)" in metadata_ddl
+    assert "open_time VARCHAR2(32 CHAR)" in rule_ddl
 
 
 def test_oracle_fk_restrict_is_omitted_and_constraint_is_restored() -> None:

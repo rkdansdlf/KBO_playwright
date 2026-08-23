@@ -514,3 +514,189 @@ class GameHighlightsResponse(BaseModel):
     game_id: str = Field(..., example="20260809LGKIA0")
     count: int = Field(..., example=1)
     highlights: list[GameHighlightItemSchema] = Field(default_factory=list)
+
+
+# --- Analytics & Sabermetrics Schemas ---
+
+
+class LeagueConstantsResponse(BaseModel):
+    """Response schema for GET /api/analytics/constants."""
+
+    year: int = Field(..., example=2025)
+    level: str = Field("KBO1", example="KBO1")
+    woba_scale: float = Field(..., example=1.25)
+    w_bb: float = Field(..., example=0.69)
+    w_hbp: float = Field(..., example=0.72)
+    w_1b: float = Field(..., example=0.89)
+    w_2b: float = Field(..., example=1.27)
+    w_3b: float = Field(..., example=1.62)
+    w_hr: float = Field(..., example=2.10)
+    league_woba: float = Field(..., example=0.330)
+    league_era: float = Field(..., example=4.20)
+    fip_constant: float = Field(..., example=3.80)
+    runs_per_win: float = Field(..., example=10.0)
+
+
+class BattingSabermetricsResponse(BaseModel):
+    """Response schema for GET /api/analytics/batting."""
+
+    player_id: int = Field(..., example=78224)
+    season: int = Field(..., example=2025)
+    plate_appearances: int = Field(..., example=500)
+    at_bats: int = Field(..., example=420)
+    hits: int = Field(..., example=130)
+    woba: float = Field(..., example=0.395)
+    wraa: float = Field(..., example=22.5)
+    wrc: float = Field(..., example=82.5)
+    wrc_plus: float = Field(..., example=138.4)
+    babip: float = Field(..., example=0.320)
+    iso: float = Field(..., example=0.210)
+    ops_plus: float = Field(..., example=138.4)
+    war: float = Field(..., example=4.85)
+    bb_pct: float = Field(..., example=12.5)
+    k_pct: float = Field(..., example=15.0)
+
+
+class PitchingSabermetricsResponse(BaseModel):
+    """Response schema for GET /api/analytics/pitching."""
+
+    player_id: int = Field(..., example=61234)
+    season: int = Field(..., example=2025)
+    innings_pitched: float = Field(..., example=165.1)
+    earned_runs: int = Field(..., example=55)
+    era: float = Field(..., example=3.0)
+    fip: float = Field(..., example=3.25)
+    kfip: float = Field(..., example=3.30)
+    whip: float = Field(..., example=1.15)
+    era_plus: float = Field(..., example=140.0)
+    fip_minus: float = Field(..., example=77.4)
+    babip: float = Field(..., example=0.285)
+    k_per_9: float = Field(..., example=8.5)
+    bb_per_9: float = Field(..., example=2.1)
+    hr_per_9: float = Field(..., example=0.6)
+    war: float = Field(..., example=4.20)
+
+
+class MatchupBvpResponse(BaseModel):
+    """Response schema for GET /api/analytics/matchup/bvp."""
+
+    batter_id: int = Field(..., example=78224)
+    pitcher_id: int = Field(..., example=61234)
+    plate_appearances: int = Field(..., example=15)
+    at_bats: int = Field(..., example=12)
+    hits: int = Field(..., example=4)
+    doubles: int = Field(..., example=1)
+    triples: int = Field(..., example=0)
+    home_runs: int = Field(..., example=1)
+    walks: int = Field(..., example=3)
+    strikeouts: int = Field(..., example=2)
+    hbp: int = Field(..., example=0)
+    avg: float = Field(..., example=0.333)
+    obp: float = Field(..., example=0.467)
+    slg: float = Field(..., example=0.667)
+    ops: float = Field(..., example=1.134)
+
+
+class SplitMetricsResponse(BaseModel):
+    """Response schema for GET /api/analytics/splits."""
+
+    category: str = Field(..., example="risp")
+    entity_id: int = Field(..., example=78224)
+    season: int = Field(..., example=2025)
+    split_key: str = Field(..., example="RISP")
+    sample_size: int = Field(..., example=110)
+    stats: dict[str, Any] = Field(default_factory=dict)
+
+
+# --- Pipeline & Quality Schemas ---
+
+
+class PipelineDefectItemSchema(BaseModel):
+    """Schema for individual pipeline defect item."""
+
+    game_id: str = Field(..., example="20250615LGSS0")
+    defect_type: str = Field(..., example="STUCK_SCHEDULED")
+    severity: str = Field(..., example="ERROR")
+    description: str = Field(..., example="Game is stuck in SCHEDULED status")
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineDefectReportResponse(BaseModel):
+    """Response schema for GET /api/pipeline/defects."""
+
+    target_date: str = Field(..., example="2025-06-15")
+    total_defects: int = Field(..., example=2)
+    summary_by_type: dict[str, int] = Field(default_factory=dict)
+    timestamp: str = Field(..., example="2025-06-16T04:00:00")
+    defects: list[PipelineDefectItemSchema] = Field(default_factory=list)
+
+
+class PipelineHealingActionResponse(BaseModel):
+    """Response schema for POST /api/pipeline/heal."""
+
+    game_id: str = Field(..., example="20250615LGSS0")
+    action_taken: str = Field(..., example="update_status_to_COMPLETED")
+    status: str = Field(..., example="SUCCESS")
+    error_message: str | None = Field(None, example=None)
+    elapsed_seconds: float = Field(..., example=0.05)
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineStageResultSchema(BaseModel):
+    """Schema for single stage result in a pipeline run."""
+
+    stage_name: str = Field(..., example="Stage 1: Finalize")
+    status: str = Field(..., example="SUCCESS")
+    duration_seconds: float = Field(..., example=1.5)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+
+
+class PipelineRunResponse(BaseModel):
+    """Response schema for POST /api/pipeline/run."""
+
+    run_id: str = Field(..., example="pipeline_20250615_abc123")
+    target_date: str = Field(..., example="2025-06-15")
+    overall_status: str = Field(..., example="SUCCESS")
+    total_duration_seconds: float = Field(..., example=4.2)
+    timestamp: str = Field(..., example="2025-06-16T04:00:00")
+    stages: list[PipelineStageResultSchema] = Field(default_factory=list)
+    healed_defects: list[PipelineHealingActionResponse] = Field(default_factory=list)
+
+
+class QualityHubSummaryResponse(BaseModel):
+    """Response schema for GET /api/pipeline/quality."""
+
+    timestamp: str = Field(..., example="2025-06-16T04:00:00")
+    overall_status: str = Field(..., example="PASS")
+    quality_score: int = Field(..., example=98)
+    remediation_hints: list[str] = Field(default_factory=list)
+    pa_formula: dict[str, Any] | None = None
+    team_stats: dict[str, Any] | None = None
+    freshness: dict[str, Any] | None = None
+    gaps: dict[str, Any] | None = None
+    invariants: dict[str, Any] | None = None
+
+
+# --- RAG Evaluation Schemas ---
+
+
+class RagEvaluateRequest(BaseModel):
+    """Request schema for POST /api/rag/evaluate."""
+
+    query: str = Field(..., example="최형우 1500타점 달성")
+    retrieved_chunk_ids: list[str] = Field(..., example=["chunk_1", "chunk_2", "chunk_3"])
+    golden_relevant_chunk_ids: list[str] = Field(..., example=["chunk_1"])
+    k: int = Field(5, ge=1, le=50, example=5)
+
+
+class RagEvaluateResponse(BaseModel):
+    """Response schema for POST /api/rag/evaluate."""
+
+    query: str = Field(..., example="최형우 1500타점 달성")
+    k: int = Field(5, example=5)
+    precision_at_k: float = Field(..., example=0.2)
+    recall_at_k: float = Field(..., example=1.0)
+    mrr: float = Field(..., example=1.0)
+    ndcg: float = Field(..., example=1.0)
+    hit_rate: float = Field(..., example=1.0)

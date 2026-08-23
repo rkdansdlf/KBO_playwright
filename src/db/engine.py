@@ -145,6 +145,10 @@ def _install_oracle_fk_restrict_compiler() -> None:
         pass
 
 
+_install_oracle_json_compiler()
+_install_oracle_fk_restrict_compiler()
+
+
 def _create_sqlite_engine(url: str, *, sqlite_synchronous: str | None = None) -> SQLAlchemyEngine:
     """Create a SQLite engine and register the connection pragmas."""
     synchronous_mode = _normalize_sqlite_synchronous(sqlite_synchronous or SQLITE_SYNCHRONOUS)

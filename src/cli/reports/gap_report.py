@@ -28,6 +28,7 @@ from src.constants import MIN_KBO_PLAYER_ID
 from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
 from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
+from src.validators.season_team_code import audit_season_team_codes
 from src.validators.standings_integrity import validate_standings_integrity
 
 if TYPE_CHECKING:
@@ -148,36 +149,41 @@ def check_team_stats_gaps() -> dict[str, Any]:
 
 
 def check_season_stat_team_code_gaps() -> dict[str, Any]:
-    """Check NULL team_code in player_season_batting/pitching tables."""
+    """Check unresolved season team codes after source-limited classification."""
     with SessionLocal() as session:
-        batting_null = session.execute(
-            text("SELECT COUNT(*) FROM player_season_batting WHERE team_code IS NULL"),
-        ).scalar()
         batting_total = session.execute(
             text("SELECT COUNT(*) FROM player_season_batting"),
-        ).scalar()
-        pitching_null = session.execute(
-            text("SELECT COUNT(*) FROM player_season_pitching WHERE team_code IS NULL OR team_code = ''"),
         ).scalar()
         pitching_total = session.execute(
             text("SELECT COUNT(*) FROM player_season_pitching"),
         ).scalar()
+        audit = audit_season_team_codes(session)
 
-        batting_rate = (batting_null / batting_total * 100) if batting_total else 0
-        pitching_rate = (pitching_null / pitching_total * 100) if pitching_total else 0
+        batting_rate = (audit.batting_missing / batting_total * 100) if batting_total else 0
+        pitching_rate = (audit.pitching_missing / pitching_total * 100) if pitching_total else 0
+        batting_unresolved_rate = (audit.batting_unresolved / batting_total * 100) if batting_total else 0
+        pitching_unresolved_rate = (audit.pitching_unresolved / pitching_total * 100) if pitching_total else 0
         alert_threshold = _season_team_code_alert_rate()
 
         return {
-            "ok": batting_null == 0 and pitching_null == 0,
-            "alert": batting_rate > alert_threshold or pitching_rate > alert_threshold,
+            "ok": audit.total_unresolved == 0,
+            "alert": batting_unresolved_rate > alert_threshold or pitching_unresolved_rate > alert_threshold,
             "alert_threshold_rate": alert_threshold,
-            "batting_null": batting_null,
+            "batting_null": audit.batting_missing,
             "batting_total": batting_total,
             "batting_null_rate": round(batting_rate, 1),
-            "pitching_null": pitching_null,
+            "batting_unresolved": audit.batting_unresolved,
+            "batting_unresolved_rate": round(batting_unresolved_rate, 1),
+            "pitching_null": audit.pitching_missing,
             "pitching_total": pitching_total,
             "pitching_null_rate": round(pitching_rate, 1),
-            "total_null": batting_null + pitching_null,  # type: ignore[operator]
+            "pitching_unresolved": audit.pitching_unresolved,
+            "pitching_unresolved_rate": round(pitching_unresolved_rate, 1),
+            "batting_source_limited": audit.batting_source_limited,
+            "pitching_source_limited": audit.pitching_source_limited,
+            "source_limited": audit.total_source_limited,
+            "total_null": audit.total_missing,
+            "total_unresolved": audit.total_unresolved,
         }
 
 
@@ -390,12 +396,13 @@ def _team_stats_summary_parts(gap_data: dict[str, Any]) -> list[str]:
 
 
 def _season_team_code_summary_parts(gap_data: dict[str, Any]) -> list[str]:
-    """Format season team-code NULL counts and the configured alert threshold."""
+    """Format season team-code counts and the configured alert threshold."""
     return [
         (
-            f"{gap_data.get('total_null', 0)} NULL team_codes "
-            f"(batting={gap_data.get('batting_null_rate', 0):.1f}%, "
-            f"pitching={gap_data.get('pitching_null_rate', 0):.1f}%, "
+            f"{gap_data.get('total_unresolved', gap_data.get('total_null', 0))} unresolved team_codes "
+            f"(missing={gap_data.get('total_null', 0)}, source_limited={gap_data.get('source_limited', 0)}, "
+            f"batting={gap_data.get('batting_unresolved_rate', gap_data.get('batting_null_rate', 0)):.1f}%, "
+            f"pitching={gap_data.get('pitching_unresolved_rate', gap_data.get('pitching_null_rate', 0)):.1f}%, "
             f"alert_threshold={gap_data.get('alert_threshold_rate', DEFAULT_SEASON_TEAM_CODE_ALERT_RATE):.1f}%)"
         ),
     ]

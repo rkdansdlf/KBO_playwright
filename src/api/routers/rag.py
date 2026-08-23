@@ -11,8 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.auth import get_api_key
-from src.api.schemas import HybridSearchResponse, RagAskResponse
+from src.api.schemas import HybridSearchResponse, RagAskResponse, RagEvaluateRequest, RagEvaluateResponse
 from src.db.engine import get_db_session
+from src.rag.evaluation import RagEvaluator
 from src.services.hybrid_retriever import HybridRetriever
 from src.services.query_router import QueryRouter, RetrievalRoute
 from src.services.structured_retriever import StructuredRetriever
@@ -241,3 +242,31 @@ def rag_ask(request: RagSearchRequest) -> dict[str, Any]:
     except Exception as e:
         logger.exception("RAG Q&A failed")
         raise HTTPException(status_code=500, detail="RAG 질의응답 오류") from e
+
+
+@router.post(
+    "/api/rag/evaluate",
+    response_model=RagEvaluateResponse,
+    dependencies=[Depends(get_api_key)],
+    summary="RAG 검색 품질 및 IR 랭킹 정확도 벤치마크 평가",
+)
+def evaluate_retrieval(req: RagEvaluateRequest) -> RagEvaluateResponse:
+    """Evaluate retrieval rankings against ground truth using RagEvaluator."""
+    try:
+        metrics = RagEvaluator.evaluate_query(
+            retrieved_ids=req.retrieved_chunk_ids,
+            relevant_ids=req.golden_relevant_chunk_ids,
+            k=req.k,
+        )
+        return RagEvaluateResponse(
+            query=req.query,
+            k=req.k,
+            precision_at_k=round(metrics.precision_at_k, 3),
+            recall_at_k=round(metrics.recall_at_k, 3),
+            mrr=round(metrics.mrr, 3),
+            ndcg=round(metrics.ndcg, 3),
+            hit_rate=round(metrics.hit_rate, 3),
+        )
+    except Exception as exc:
+        logger.exception("RAG evaluation failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -32,6 +32,7 @@ from src.cli.gap_report import (
     run_gap_report,
     send_gap_alerts,
 )
+from src.validators.season_team_code import SeasonTeamCodeAudit
 
 
 class TestGapReport:
@@ -373,23 +374,31 @@ class TestCheckPaFormulaGaps:
 
 class TestCheckSeasonStatTeamCodeGaps:
     def test_ok(self):
-        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.cli.gap_report.audit_season_team_codes") as mock_audit,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_execute = MagicMock()
-            mock_execute.scalar.side_effect = [0, 100, 0, 100]
+            mock_execute.scalar.side_effect = [100, 100]
             mock_session.execute.return_value = mock_execute
+            mock_audit.return_value = SeasonTeamCodeAudit(0, 0, 0, 0, 0, 0)
             result = check_season_stat_team_code_gaps()
             assert result["ok"] is True
             assert result["total_null"] == 0
 
     def test_finds_nulls(self):
-        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.cli.gap_report.audit_season_team_codes") as mock_audit,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_execute = MagicMock()
-            mock_execute.scalar.side_effect = [5, 100, 3, 100]
+            mock_execute.scalar.side_effect = [100, 100]
             mock_session.execute.return_value = mock_execute
+            mock_audit.return_value = SeasonTeamCodeAudit(5, 0, 0, 3, 0, 0)
             result = check_season_stat_team_code_gaps()
             assert result["ok"] is False
             assert result["batting_null"] == 5
@@ -400,12 +409,16 @@ class TestCheckSeasonStatTeamCodeGaps:
 
     def test_below_threshold_is_reported_without_alert(self, monkeypatch):
         monkeypatch.setenv("SEASON_TEAM_CODE_GAP_ALERT_RATE", "10")
-        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.cli.gap_report.audit_season_team_codes") as mock_audit,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_execute = MagicMock()
-            mock_execute.scalar.side_effect = [1, 100, 0, 100]
+            mock_execute.scalar.side_effect = [100, 100]
             mock_session.execute.return_value = mock_execute
+            mock_audit.return_value = SeasonTeamCodeAudit(1, 0, 0, 0, 0, 0)
 
             result = check_season_stat_team_code_gaps()
 
@@ -416,12 +429,16 @@ class TestCheckSeasonStatTeamCodeGaps:
 
     def test_above_threshold_triggers_alert(self, monkeypatch):
         monkeypatch.setenv("SEASON_TEAM_CODE_GAP_ALERT_RATE", "1")
-        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.cli.gap_report.audit_season_team_codes") as mock_audit,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_execute = MagicMock()
-            mock_execute.scalar.side_effect = [2, 100, 0, 100]
+            mock_execute.scalar.side_effect = [100, 100]
             mock_session.execute.return_value = mock_execute
+            mock_audit.return_value = SeasonTeamCodeAudit(2, 0, 0, 0, 0, 0)
 
             result = check_season_stat_team_code_gaps()
 
@@ -429,29 +446,58 @@ class TestCheckSeasonStatTeamCodeGaps:
         assert _gap_severity(result) == "warning"
 
     def test_zero_total_handling(self):
-        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.cli.gap_report.audit_season_team_codes") as mock_audit,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_execute = MagicMock()
-            mock_execute.scalar.side_effect = [0, 0, 0, 0]
+            mock_execute.scalar.side_effect = [0, 0]
             mock_session.execute.return_value = mock_execute
+            mock_audit.return_value = SeasonTeamCodeAudit(0, 0, 0, 0, 0, 0)
             result = check_season_stat_team_code_gaps()
             assert result["ok"] is True
             assert result["batting_null_rate"] == 0
             assert result["pitching_null_rate"] == 0
 
     def test_pitching_only_nulls(self):
-        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.cli.gap_report.audit_season_team_codes") as mock_audit,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_execute = MagicMock()
-            mock_execute.scalar.side_effect = [0, 100, 5, 200]
+            mock_execute.scalar.side_effect = [100, 200]
             mock_session.execute.return_value = mock_execute
+            mock_audit.return_value = SeasonTeamCodeAudit(0, 0, 0, 5, 0, 0)
             result = check_season_stat_team_code_gaps()
             assert result["ok"] is False
             assert result["batting_null"] == 0
             assert result["pitching_null"] == 5
             assert result["total_null"] == 5
+
+    def test_source_limited_rows_are_visible_but_do_not_alert(self, monkeypatch):
+        monkeypatch.setenv("SEASON_TEAM_CODE_GAP_ALERT_RATE", "0")
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.cli.gap_report.audit_season_team_codes") as mock_audit,
+        ):
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_execute = MagicMock()
+            mock_execute.scalar.side_effect = [100, 100]
+            mock_session.execute.return_value = mock_execute
+            mock_audit.return_value = SeasonTeamCodeAudit(1, 1, 0, 1, 0, 1)
+
+            result = check_season_stat_team_code_gaps()
+
+        assert result["total_null"] == 2
+        assert result["source_limited"] == 2
+        assert result["total_unresolved"] == 0
+        assert result["ok"] is True
+        assert result["alert"] is False
 
 
 class TestFormatReportSummary:

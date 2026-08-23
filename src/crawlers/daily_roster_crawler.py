@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.base import BasePlaywrightCrawler
 from src.urls import REGISTER
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.team_codes import resolve_team_code
 
@@ -81,6 +82,10 @@ class DailyRosterCrawler(BasePlaywrightCrawler):
         e_date = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=KST).date()
 
         results = []
+        if not await compliance.is_allowed(self.base_url):
+            log_source_limited("daily_roster", self.base_url)
+            return []
+
         async with self.page_context() as page:
             await self.goto_with_retry(page, self.base_url, timeout=NAV_TIMEOUT)
 

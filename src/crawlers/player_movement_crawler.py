@@ -18,6 +18,7 @@ from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt,
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 
@@ -55,6 +56,11 @@ class PlayerMovementCrawler:
         self.request_delay = request_delay
         self.pool = pool
         self._raw_pages: list[dict[str, object]] = []
+        self._last_failure_reason: str | None = None
+
+    def get_last_failure_reason(self) -> str | None:
+        """Return the latest crawl failure reason, if any."""
+        return self._last_failure_reason
 
     async def crawl_years(
         self,
@@ -72,6 +78,11 @@ class PlayerMovementCrawler:
 
         """
         results = []
+
+        if not await compliance.is_allowed(self.base_url):
+            self._last_failure_reason = log_source_limited("player_movement", self.base_url)
+            return []
+        self._last_failure_reason = None
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None

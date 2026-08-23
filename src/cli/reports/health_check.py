@@ -105,6 +105,10 @@ def _check_table_health(session: Session) -> list[dict[str, Any]]:
 _OPTIONAL_TABLES = frozenset(
     {
         "kbo_press_releases",
+        "futures_game_schedules",
+        "player_draft_histories",
+        "player_milestones",
+        "player_splits_stats",
         "stadium_congestion",
         "stadium_transit_times",
         "stadium_operation_notices",
@@ -212,9 +216,13 @@ def run_health_check(*, json_format: bool = False) -> dict[str, Any]:
 
     stale_count = sum(1 for r in ds_rows if r["stale"].startswith("STALE"))
     never_count = sum(1 for r in ds_rows if r["stale"] == "NEVER")
-    empty_count = sum(1 for r in table_rows if r["rows"] == 0 or r["rows"] == "ERR")
+    source_freshness_issue_count = stale_count + never_count
+    core_issue_count, optional_issue_count = _table_issue_counts(table_rows)
+    empty_count = core_issue_count + optional_issue_count
 
-    overall_healthy = empty_count == 0 and rag_health["healthy"] and api_health["healthy"]
+    overall_healthy = (
+        source_freshness_issue_count == 0 and core_issue_count == 0 and rag_health["healthy"] and api_health["healthy"]
+    )
 
     report_payload = {
         "timestamp": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"),
@@ -223,11 +231,15 @@ def run_health_check(*, json_format: bool = False) -> dict[str, Any]:
             "active": len(ds_rows),
             "stale": stale_count,
             "never_crawled": never_count,
+            "freshness_issue_count": source_freshness_issue_count,
+            "freshness_healthy": source_freshness_issue_count == 0,
             "rows": ds_rows,
         },
         "tables": {
             "total_checked": len(table_rows),
             "issue_count": empty_count,
+            "required_issue_count": core_issue_count,
+            "optional_issue_count": optional_issue_count,
             "rows": table_rows,
         },
         "rag_chunks": rag_health,

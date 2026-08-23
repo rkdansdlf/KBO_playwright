@@ -36,6 +36,7 @@ from src.models.game import Game, GamePitchingStat
 from src.models.player import PlayerBasic
 from src.models.season import KboSeason
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
+from src.utils.compliance import compliance
 from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 from src.utils.player_stats_helpers import extract_rows_fast
@@ -1031,6 +1032,20 @@ def _handle_pitching_fallback(
     return stats_list
 
 
+def _pitching_compliance_fallback(
+    year: int,
+    series_key: str,
+    *,
+    save_to_db: bool,
+) -> list[PitcherStats] | None:
+    """Return DB fallback data when the KBO pitching page is blocked."""
+    if compliance.is_allowed_sync(BASIC1_URL):
+        return None
+    reason = "KBO robots.txt blocked"
+    logger.info("[COMPLIANCE] Navigation to %s aborted.", BASIC1_URL)
+    return _handle_pitching_fallback(year, series_key, reason, save_to_db=save_to_db)
+
+
 def _get_pitcher_team_options(page: Page, *, by_team: bool) -> list[dict]:
     if not by_team:
         return [{"value": "", "text": "전체"}]
@@ -1195,12 +1210,14 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
         msg = f"지원하지 않는 시리즈 키: {series_key}"
         raise ValueError(msg)
 
-    series_info = SERIES_MAPPING[series_key]
-    league_name = series_info.get("league", "REGULAR")
+    league_name = (series_info := SERIES_MAPPING[series_key]).get("league", "REGULAR")
     logger.info("\n📊 %s년 %s 수집 시작 (by_team=%s)", year, series_info["name"], by_team)
 
     pitchers: dict[int | tuple[int, str | None], PitcherStats] = {}
     policy = RequestPolicy()
+
+    if (compliance_fallback := _pitching_compliance_fallback(year, series_key, save_to_db=save_to_db)) is not None:
+        return compliance_fallback
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=headless)

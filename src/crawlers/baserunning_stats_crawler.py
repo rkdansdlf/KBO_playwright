@@ -16,6 +16,7 @@ from src.constants import KST
 from src.db.engine import SessionLocal, get_database_type
 from src.models.player import PlayerSeasonBaserunning
 from src.repositories.oracle_upsert import upsert_model_by_unique_keys
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -24,6 +25,7 @@ from src.utils.type_helpers import safe_float, safe_int
 
 logger = logging.getLogger(__name__)
 MIN_BASERUNNING_ROW_CELLS = 10
+BASERUNNING_URL = "https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx"
 
 BASERUNNING_CRAWL_EXCEPTIONS = (
     PlaywrightError,
@@ -69,6 +71,10 @@ def crawl_baserunning_stats(
     """
     if year is None:
         year = datetime.now(KST).year
+    if not compliance.is_allowed_sync(BASERUNNING_URL):
+        log_source_limited("baserunning", BASERUNNING_URL)
+        return []
+
     baserunning_data: list[dict[str, Any]] = []
     policy = RequestPolicy()
 
@@ -95,7 +101,7 @@ def crawl_baserunning_stats(
 
 
 def _load_baserunning_page(page: Page, policy: RequestPolicy, max_retries: int, timeout: int) -> bool:
-    url = "https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx"
+    url = BASERUNNING_URL
     for attempt in range(max_retries):
         try:
             page.goto(url, wait_until="load", timeout=timeout)

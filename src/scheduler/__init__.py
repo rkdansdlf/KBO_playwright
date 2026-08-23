@@ -22,6 +22,13 @@ from src.scheduler.config import (
     log_path,
     logger,
 )
+from src.scheduler.dto import (
+    JobExecutionRecord,
+    JobTier,
+    LockStatusReport,
+    ScheduledJobMeta,
+    SchedulerHealthSummary,
+)
 from src.scheduler.jobs import (
     _analyze_game_rows,
     _backfill_phase_detail,
@@ -82,6 +89,7 @@ from src.scheduler.jobs import (
     sync_rag_incremental_job,
     weekly_sla_report_job,
 )
+from src.scheduler.lock_manager import SchedulerLockManager
 from src.scheduler.locks import (
     _LAST_LOCK_SKIP,
     _SCHEDULER_PID_FILE,
@@ -102,6 +110,7 @@ from src.scheduler.metrics import (
     job_lifecycle_listener,
     job_start_times,
 )
+from src.scheduler.orchestrator import SchedulerOrchestrator
 from src.scheduler.registry import (
     _SCHEDULER_REF,
     _dispatch_single_run,
@@ -126,6 +135,13 @@ __all__ = [
     "_LAST_LOCK_SKIP",
     "_SCHEDULER_PID_FILE",
     "_SCHEDULER_REF",
+    "JobExecutionRecord",
+    "JobTier",
+    "LockStatusReport",
+    "ScheduledJobMeta",
+    "SchedulerHealthSummary",
+    "SchedulerLockManager",
+    "SchedulerOrchestrator",
     "_LockSkipped",
     "_analyze_game_rows",
     "_backfill_phase_detail",

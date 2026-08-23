@@ -122,13 +122,70 @@ def test_season_aggregate_check_scopes_player_games_to_each_year() -> None:
 def test_team_code_check_reports_only_nonzero_null_rates() -> None:
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE player_season_batting (season INTEGER, team_code TEXT)"))
+        conn.execute(
+            text("CREATE TABLE player_season_batting (season INTEGER, source TEXT, team_code TEXT, player_id INTEGER)"),
+        )
         conn.execute(
             text(
-                "INSERT INTO player_season_batting VALUES (2024, 'LG'), (2024, NULL), (2025, 'LG'), (2025, 'SS')",
+                "CREATE TABLE player_season_pitching (season INTEGER, source TEXT, team_code TEXT, player_id INTEGER)",
+            ),
+        )
+        conn.execute(text("CREATE TABLE player_game_batting (player_id INTEGER, game_id TEXT, team_code TEXT)"))
+        conn.execute(text("CREATE TABLE player_game_pitching (player_id INTEGER, game_id TEXT, team_code TEXT)"))
+        conn.execute(
+            text(
+                "INSERT INTO player_season_batting VALUES "
+                "(2024, 'AGGREGATED', 'LG', 1), (2024, 'AGGREGATED', NULL, 2), "
+                "(2025, 'AGGREGATED', 'LG', 3), (2025, 'AGGREGATED', 'SS', 4)",
             ),
         )
 
         findings = check_team_code_null_rate(conn, 2024, 2025)
 
     assert [(finding["year"], finding["count"]) for finding in findings] == [(2024, 1)]
+
+
+def test_team_code_check_classifies_source_limited_rows() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE player_season_batting (season INTEGER, source TEXT, team_code TEXT, player_id INTEGER)",
+            ),
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE player_season_pitching (season INTEGER, source TEXT, team_code TEXT, player_id INTEGER)",
+            ),
+        )
+        conn.execute(text("CREATE TABLE player_game_batting (player_id INTEGER, game_id TEXT, team_code TEXT)"))
+        conn.execute(text("CREATE TABLE player_game_pitching (player_id INTEGER, game_id TEXT, team_code TEXT)"))
+        conn.execute(
+            text(
+                "INSERT INTO player_season_batting VALUES (2023, 'AGGREGATED', NULL, 1), (2023, 'AGGREGATED', NULL, 2)",
+            ),
+        )
+        conn.execute(text("INSERT INTO player_season_pitching VALUES (2023, 'AGGREGATED', NULL, 3)"))
+        conn.execute(text("INSERT INTO player_game_batting VALUES (1, '20230715EAWE0', 'EA')"))
+        conn.execute(text("INSERT INTO player_game_pitching VALUES (3, '20230715EAWE0', 'WE')"))
+
+        findings = check_team_code_null_rate(conn, 2023, 2023)
+
+    assert findings == [
+        {
+            "dimension": "season_team_code_source_limited",
+            "year": 2023,
+            "classification": "KNOWN_LIMITATION",
+            "count": 2,
+            "detail": "source-limited team_code=2/3 (archive=0, all_star=2)",
+            "sample_ids": [],
+        },
+        {
+            "dimension": "season_team_code_unresolved",
+            "year": 2023,
+            "classification": "DEFECT",
+            "count": 1,
+            "detail": "unresolved team_code=1/3 after source-limited classification",
+            "sample_ids": [],
+        },
+    ]

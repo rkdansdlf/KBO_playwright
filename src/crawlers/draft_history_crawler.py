@@ -7,6 +7,7 @@ from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
 
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
 
@@ -40,6 +41,9 @@ class DraftHistoryCrawler:
 
         """
         results: list[dict[str, Any]] = []
+        if not await compliance.is_allowed(self.DRAFT_URL):
+            log_source_limited("draft_history", self.DRAFT_URL)
+            return []
 
         try:
             async with AsyncPlaywrightPool() as pool, pool.page() as page:
