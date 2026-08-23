@@ -18,6 +18,12 @@ from scripts.historical import namu_season_boxscores as nsb
 TEAMS_1983 = nsb.SEASONS[1983]
 
 
+def _requires_raw(year: int) -> pytest.MarkDecorator:
+    """Skip test when local archive file is absent (CI has no data/archives/)."""
+    path = nsb.RAW_DIR / f"{year}_namu_raw.json"
+    return pytest.mark.skipif(not path.exists(), reason=f"{path} not found")
+
+
 def _box_table(
     date_head: str,
     rows: list[list[str]],
@@ -281,6 +287,7 @@ class TestDropBoxFixes:
         assert len(kept) == 1
         assert "WARN drop target" in capsys.readouterr().out
 
+    @_requires_raw(1985)
     def test_1985_pipeline_merges_330(self) -> None:
         """DROP_BOXES + SCORE_FIXES + STADIUM_FIXES 적용 후 1985가 앵커와 일치해야 한다."""
         raw = json.loads((nsb.RAW_DIR / "1985_namu_raw.json").read_text(encoding="utf-8"))
@@ -347,6 +354,7 @@ class TestDropBoxFixes:
         assert len(kept) == 1
         assert (kept[0]["team1"], kept[0]["team2"]) == ("OB", "CB")
 
+    @_requires_raw(1986)
     def test_1986_pipeline_merges_378(self) -> None:
         """DROP_BOXES 적용 후 1986 answer set이 앵커와 일치해야 한다."""
         raw = json.loads((nsb.RAW_DIR / "1986_namu_raw.json").read_text(encoding="utf-8"))
@@ -360,6 +368,7 @@ class TestDropBoxFixes:
 class TestPipelineRoundTrip:
     """crawl → 병합 → finalize → verify 왕복 (순수 함수만)."""
 
+    @_requires_raw(1983)
     def test_1983_raw_merge_consistency(self, tmp_path: pytest.TempPathFactory) -> None:
         raw = json.loads((nsb.RAW_DIR / "1983_namu_raw.json").read_text(encoding="utf-8"))
         merged = nsb.merge_games(raw)
@@ -376,6 +385,7 @@ class TestPipelineRoundTrip:
             assert len(final) == 300
             assert nsb.verify(final, 1983, anchors) is True
 
+    @_requires_raw(1983)
     def test_1983_relaunch_merges_300(self) -> None:
         """재수집된(플래그 포함) 파이프라인 원데이터로 300경기 수렴을 보인다.
 
