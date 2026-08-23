@@ -126,33 +126,107 @@ thresholds, and provider budget remain pending human approval. See
 `Docs/references/rag_configured_cost_evidence.json` for measured and explicitly
 unmeasured cost fields. Production promotion remains blocked.
 
-## Current Oracle Cutover Status (2026-08-21)
+## Current Oracle Cutover Status (2026-08-22)
 
-The current Oracle RAG corpus has completed its configured embedding batch.
-The native `rag_chunks.embedding_vector VECTOR(1536)` column and HNSW index
-are valid, and the final audit reports `21,589` sparse/vector identities,
-`21,583` active rows with embeddings, six deleted tombstones without vectors,
-zero sparse-only/vector-only rows, zero hash/version mismatches, zero stale
-rows, `embedding_missing=0`, and `consistent=true`. Direct Oracle cosine
-retrieval returned results from both documentation and player-stat sources.
+The approved Oracle production cutover is complete. The external
+`207,270`-chunk source snapshot was loaded into the canonical Oracle
+`rag_chunks` table, with `207,270` active rows, `207,270` native
+`EMBEDDING_VECTOR` values, and `207,270` distinct source identities. The
+rollback table `RAG_CHUNKS_BAK_20260821` preserves the pre-cutover contents.
 
-This is complete for the current Oracle corpus, not a claim that the separate
-`207,305`-chunk source-iterator census has been copied into Oracle. The
-production source decision is now direct Oracle (`DATABASE_URL`); do not set
-`RAG_SOURCE_DB_URL` unless a separate source database is intentionally used.
+The native `VECTOR(1536,FLOAT32,DENSE)` column and
+`IDX_RAG_CHUNKS_EMBEDDING_HNSW` index are valid and visible. The final
+`audit_rag_index --require-nonempty --json` report is consistent with
+`healthy=207270` and zero sparse-only, vector-only, orphan, hash/version,
+stale, missing-embedding, or deleted rows. `apply_oracle_migrations --check`
+also reports the Oracle migration chain in sync.
 
-The PostgreSQL recovery vector database is an isolated staging artifact only.
-It contains the `207,305`-row configured replay corpus and must not be treated
-as the Oracle production corpus. The production runtime configuration still
-contains the legacy `EMBED_DIM=256` and `text-embedding-3-small` settings, and
-no AI runtime container is currently serving traffic.
+The PostgreSQL `kbo_pgvector_promotion_target:55434` database remains an
+isolated canary/staging artifact and is not the production backend. Oracle is
+selected through `DATABASE_URL`; `RAG_INDEX_DB_URL`, `PGVECTOR_URL`, and
+`PGVECTOR_TEST_URL` must remain unset for the production evaluation path.
 
-The embedding provider/model, 1536 dimensions, direct Oracle source, and
-Oracle write window were approved and used for the batch. The final runtime
-restart/cutover remains pending because the AI backend still targets
-PostgreSQL/pgvector. Keep IVFFlat indexes in place until the selected runtime
-has passed the Oracle retrieval smoke test; index cleanup is a separate
-approval.
+The configured 30-query Oracle replay passes the quality gates: vector Recall@5
+`0.9152` / MRR `0.8028`, resolver-hybrid Recall@5 `0.9485` / MRR `0.8361`, and
+hit rate `0.9667`. Routing remains `100/100` with zero entity false positives.
+Oracle hybrid latency is still above the historical `500ms` p95 target and is
+variable across remote runs (approximately `1.4s` to `5.5s` p95). The
+remaining performance gap is an Oracle sparse/CLOB search limitation; do not
+declare the latency gate closed until an Oracle-native sparse index or an
+explicit threshold decision is made.
+
+### Live Reconciliation (2026-08-22)
+
+The approved snapshot remains `207,270` rows. A post-cutover read-only census
+found `165` pre-existing active rows outside that snapshot (`futures_schedule`
+126 and `press_release` 39). They were not deleted; they were embedded with
+the approved `perplexity/pplx-embed-v1-4b` 1536-dimensional configuration.
+The current live Oracle audit therefore reports `207,435` identities and
+`207,435` valid vectors with `consistent=true`. Keep the rollback table until
+the operator confirms whether these 165 rows are part of the permanent
+production corpus.
+
+### Oracle Sparse Term Index (2026-08-22)
+
+Oracle Text is unavailable in the production service, so the opt-in sparse
+term path uses the derived `RAG_CHUNK_TERMS` postings table. Migrations
+`068_create_rag_chunk_terms.sql` and `069_add_rag_chunk_term_source_scope.sql`
+are applied. After the scheduler's 2026-08-22 incremental publish and a
+catch-up resume build, the live table contains `4,095,932` postings covering
+all `209,537` active/indexed chunks, with zero NULL source scopes, orphan
+rows, or active chunks missing postings. `IDX_RAG_CHUNK_TERMS_TOKEN_CHUNK`,
+`IDX_RAG_CHUNK_TERMS_GAME_DATE`, `IDX_RAG_CHUNK_TERMS_SOURCE_TOKEN`, and
+`IDX_RAG_CHUNK_TERMS_SOURCE_DATE` are `VALID`, and table/index statistics were
+gathered after the rebuild.
+
+`RAG_ORACLE_SPARSE_MODE` remains `legacy` by default. In the `terms` canary,
+both retrieval legs are index-bounded:
+
+Sparse: one STOPKEY postings slice per token (`TOKEN` prefix of
+`IDX_RAG_CHUNK_TERMS_TOKEN_CHUNK`, or `IDX_RAG_CHUNK_TERMS_TOKEN_SOURCE` when a
+source filter is present), then weighted counts by primary key and a Python
+merge. Chunk-column filters (team/season/player/index_version) keep the joined
+scored path. Full rows are fetched only for the top-scored buffer (top_k x 8,
+floor 40). Query keywords are punctuation-stripped like document tokens.
+
+Vector: `defer(embedding)` keeps the 1536-dim column out of every fetch;
+scalar-filtered searches pre-resolve candidate IDs via new B-tree indexes
+(`IDX_RAG_CHUNKS_TEAM_ID`, `IDX_RAG_CHUNKS_SEASON_YEAR`,
+`IDX_RAG_CHUNKS_PLAYER_ID`, `IDX_RAG_CHUNKS_TEAM_SEASON`) and run exact
+distance over the ID set when it is small (<=200); larger sets use the global
+approximate fetch plus Python post-filter.
+
+Measured steady-state (warm cache, quiet instance): resolver 60-106ms,
+sparse 117-149ms, vector 326-349ms, end-to-end ~536-572ms on the previously
+worst golden query. Golden quality holds at BM25 Recall@5 `0.6000` / MRR
+`0.4667`, resolver-hybrid Recall@5 `0.9485` / MRR `0.8306`, hit rate
+`0.9667`. Cold-cache first touches and concurrent writer contention can still
+inflate single-run p95 into seconds; repeated-load canaries should gate any
+latency decision. Term maintenance is connected to `RagChunkRepository` only
+when the terms flag is explicitly enabled on Oracle. Do not make terms the
+production default until a repeated warm/cold canary on a quiet instance is
+accepted.
+
+Postings freshness is operationally guarded:
+
+```bash
+# Daily 05:40 KST job — insert-only resume after the last indexed chunk
+python3 -m src.cli.rag.build_oracle_sparse_index --apply --catch-up --batch-size 40
+
+# Coverage gate — fails when retrievable chunks lack postings
+python3 -m src.cli.audit_rag_index --require-nonempty --require-postings --json
+```
+
+`sparse_terms_catchup_job` runs after the 05:00 incremental publish so chunks
+added without the terms flag are indexed on the same schedule;
+`--catch-up` resolves the resume point from `max(rag_chunk_id)` and never
+rewrites existing postings (the Oracle delete-then-reinsert path deadlocks).
+The audit reports `postings_missing` on every run and `--require-postings`
+turns any gap into an exit-code failure for CI/alerting.
+APScheduler loads jobs at process startup, so a running scheduler must be
+restarted once (`launchctl kickstart -k gui/$UID/com.kbo-playwright.scheduler`)
+before the 05:40 registration takes effect; until then run the catch-up
+command above manually after each publish.
 
 Audit the awards source path before attempting a production save:
 
@@ -206,3 +280,53 @@ python3 -m src.cli.propagate_rag_index \
   --source-table team_events --source-row-id 123 \
   --payload /path/to/chunk-update.json --apply --embedding-mode configured --json
 ```
+
+### AI Runtime Oracle Cutover Readiness (2026-08-23)
+
+The KBO_platform `bega_AI` runtime now ships a native-Oracle RAG adapter
+(`app/core/oracle_rag.py`) validated against the live ADB wallet connection:
+
+- Live smoke (10/10 green): pool open, readiness (`209,537` rows / vectors,
+  dim 1536, HNSW valid), dense cosine search, dense+sparse RRF fusion, exact
+  CLOB document search with dict metadata, source-filtered search, MERGE
+  upsert with term postings (verified in-transaction), rollback residual 0.
+- Adapter fixes surfaced by the live run: sync-return `create_pool_async`,
+  `wallet_location` + PEM passphrase fallback (`OCI_WALLET_PASSWORD` or the
+  URL password), async LOB reads for `title`/`content`/`meta`, and CLOB-safe
+  ordering.
+- The PostgreSQL-only batch writer is refused at startup when
+  `AI_RAG_DB_URL` is an Oracle URL; manual `/ai/ingest` writes both
+  `rag_chunks` and `rag_chunk_terms`.
+- Operator decisions (2026-08-23): the post-snapshot growth is retained as
+  production corpus (live total `209,537` and continuing via the concurrent
+  writer); the rollback table `RAG_CHUNKS_BAK_20260821` and the PostgreSQL
+  IVFFlat index are kept until a later maintenance cycle.
+
+Server cutover remains: activate the three `.env.prod` values (already staged
+locally), rebuild/restart the `ai-chatbot` container, then verify
+`/ready` `checks.db_rag` and `checks.vector_index.ready=true`.
+
+### Oracle Adapter Latency Gate (2026-08-23)
+
+Live probes from a remote client (home network, ADB `medium`) isolated and
+fixed three compounding costs in the new AI-runtime adapter:
+
+| Fix | Effect |
+| --- | --- |
+| `oracledb.defaults.fetch_lobs = False` | CLOB/JSON columns return inline; 24-row dense hit dropped from ~16.5s to ~110ms of transfer |
+| `FETCH APPROX FIRST` dense ordering | HNSW-eligible plan documented; scan itself was never the bottleneck (~200ms raw) |
+| Per-token postings top-N + Python merge, identity-only candidates, hydrate fused survivors only | hybrid RRF fell from >60s timeout → 4.5s → **0.77–0.96s** |
+
+Measured after fixes (limit=24, remote client):
+
+```text
+dense_only   p50 ~300ms   best 215ms
+hybrid_rrf   ~0.8-1.0s    (was: timeout at 60s)
+exact_doc    0.14-1.5s    (legacy CLOB substring path, tools-level)
+```
+
+Dense retrieval meets the historical `500ms` target even from the remote
+client. Hybrid RRF is now RTT-bound on hydration of sparse-only survivors
+(~25ms/row remote); it must be re-measured from the production server next to
+the ADB before declaring the latency gate closed. The exact-document tool
+path remains the documented Oracle CLOB-scan limitation.
