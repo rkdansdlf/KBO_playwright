@@ -137,7 +137,7 @@ class FuturesProfileCrawler:
 
         await self._wait()
         html_content = await page.content()
-        soup = BeautifulSoup(html_content, "lxml")
+        soup = BeautifulSoup(html_content, "html.parser")
         tables = self._extract_known_futures_tables(soup)
         if tables:
             return tables

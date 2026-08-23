@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 
 html_file = Path("debug_futures_clicked.html")
 html = html_file.read_text(encoding="utf-8")
-soup = BeautifulSoup(html, "lxml")
+soup = BeautifulSoup(html, "html.parser")
 
 all_tables = soup.find_all("table")
 print(f"Total tables: {len(all_tables)}\n")

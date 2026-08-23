@@ -17,7 +17,7 @@ def test_parse_table_with_bs4_caption_headers_and_rows():
           </tbody>
         </table>
         """,
-        "lxml",
+        "html.parser",
     )
 
     parsed = FuturesProfileCrawler(request_delay=0)._parse_table_with_bs4(soup.table)
@@ -38,7 +38,7 @@ def test_parse_table_with_bs4_promotes_first_row_to_headers():
           <tr><td>2025</td><td>한화</td></tr>
         </table>
         """,
-        "lxml",
+        "html.parser",
     )
 
     parsed = FuturesProfileCrawler(request_delay=0)._parse_table_with_bs4(soup.table)
@@ -49,7 +49,7 @@ def test_parse_table_with_bs4_promotes_first_row_to_headers():
 
 
 def test_parse_table_with_bs4_returns_none_for_empty_table():
-    soup = BeautifulSoup("<table><tbody><tr><td></td></tr></tbody></table>", "lxml")
+    soup = BeautifulSoup("<table><tbody><tr><td></td></tr></tbody></table>", "html.parser")
 
     parsed = FuturesProfileCrawler(request_delay=0)._parse_table_with_bs4(soup.table)
 
@@ -62,7 +62,7 @@ def test_extract_known_futures_tables_marks_hitter_and_pitcher():
         <table id="tblHitterRecord"><thead><tr><th>연도</th></tr></thead><tbody><tr><td>2026</td></tr></tbody></table>
         <table id="tblPitcherRecord"><thead><tr><th>연도</th></tr></thead><tbody><tr><td>2025</td></tr></tbody></table>
         """,
-        "lxml",
+        "html.parser",
     )
 
     tables = FuturesProfileCrawler(request_delay=0)._extract_known_futures_tables(soup)
@@ -82,7 +82,7 @@ def test_extract_fallback_futures_tables_from_futures_divs():
           <table><thead><tr><th>구분</th></tr></thead><tbody><tr><td>정규</td></tr></tbody></table>
         </div>
         """,
-        "lxml",
+        "html.parser",
     )
 
     tables = FuturesProfileCrawler(request_delay=0)._extract_fallback_futures_tables(soup)

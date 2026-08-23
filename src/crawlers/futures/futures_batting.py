@@ -278,7 +278,7 @@ async def fetch_and_parse_futures_batting(
         if owns_pool:
             await active_pool.close()
 
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
     table = _pick_futures_table(soup)
 
     if not table:

@@ -111,28 +111,28 @@ class TestComputeMissing:
 class TestExtractTableHeaders:
     def test_thead_th(self):
         html = "<table><thead><tr><th>연도</th><th>타율</th></tr></thead></table>"
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         headers = _extract_table_headers(table)
         assert headers == ["season", "AVG"]
 
     def test_thead_td(self):
         html = "<table><thead><tr><td>연도</td><td>타율</td></tr></thead></table>"
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         headers = _extract_table_headers(table)
         assert headers == ["season", "AVG"]
 
     def test_fallback_to_first_row(self):
         html = "<table><tr><th>연도</th><th>타율</th></tr><tr><td>2023</td><td>0.300</td></tr></table>"
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         headers = _extract_table_headers(table)
         assert headers == ["season", "AVG"]
 
     def test_empty_table(self):
         html = "<table></table>"
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         headers = _extract_table_headers(table)
         assert headers == []
@@ -210,7 +210,7 @@ class TestParseTable:
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         rows = _parse_table(table)
         assert len(rows) == 2
@@ -228,7 +228,7 @@ class TestParseTable:
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         rows = _parse_table(table)
         assert len(rows) == 1
@@ -244,7 +244,7 @@ class TestParseTable:
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         rows = _parse_table(table)
         assert len(rows) == 1
@@ -258,7 +258,7 @@ class TestParseTable:
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         rows = _parse_table(table)
         assert len(rows) == 1
@@ -272,7 +272,7 @@ class TestPickFuturesTable:
             <table><thead><tr><th>연도</th></tr></thead></table>
         </body></html>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = _pick_futures_table(soup)
         assert table is not None
 
@@ -284,13 +284,13 @@ class TestPickFuturesTable:
             </table>
         </body></html>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = _pick_futures_table(soup)
         assert table is not None
 
     def test_no_table(self):
         html = "<html><body><p>No stats</p></body></html>"
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = _pick_futures_table(soup)
         assert table is None
 
@@ -302,6 +302,6 @@ class TestPickFuturesTable:
             </table>
         </body></html>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = _pick_futures_table(soup)
         assert table is None

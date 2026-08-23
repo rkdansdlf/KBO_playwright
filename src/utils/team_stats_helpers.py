@@ -189,7 +189,7 @@ def parse_team_stats_html(html: str, context: TeamStatsParseContext) -> list[dic
         List of results.
 
     """
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
 
     table = soup.select_one("table.tData01") or soup.select_one("table")
     if not table:

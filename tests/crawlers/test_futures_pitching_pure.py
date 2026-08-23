@@ -119,7 +119,7 @@ class TestParseTable:
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         rows = _parse_table(table)
         assert len(rows) == 2
@@ -137,7 +137,7 @@ class TestParseTable:
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         rows = _parse_table(table)
         assert len(rows) == 1
@@ -152,7 +152,7 @@ class TestParseTable:
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         rows = _parse_table(table)
         assert len(rows) == 1
@@ -166,7 +166,7 @@ class TestParseTable:
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         rows = _parse_table(table)
         assert len(rows) == 1
@@ -182,7 +182,7 @@ class TestPickFuturesPitchingTable:
             </table>
         </body></html>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = _pick_futures_pitching_table(soup)
         assert table is not None
 
@@ -194,13 +194,13 @@ class TestPickFuturesPitchingTable:
             </table>
         </body></html>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = _pick_futures_pitching_table(soup)
         assert table is not None
 
     def test_no_table(self):
         html = "<html><body><p>No stats</p></body></html>"
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = _pick_futures_pitching_table(soup)
         assert table is None
 
@@ -212,7 +212,7 @@ class TestPickFuturesPitchingTable:
             </table>
         </body></html>
         """
-        soup = BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
         table = _pick_futures_pitching_table(soup)
         assert table is None
 
