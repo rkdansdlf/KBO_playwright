@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import or_, select, text, true
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.freshness_gate import collect_freshness_issues
@@ -64,7 +64,7 @@ def check_relay_gaps() -> dict[str, Any]:
     with SessionLocal() as session:
         stmt = select(Game.game_id).where(
             Game.game_date >= start,
-            Game.is_primary.is_(True),
+            Game.is_primary == true(),
             Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
             ~Game.game_id.in_(select(GamePlayByPlay.game_id).distinct()),
         )
