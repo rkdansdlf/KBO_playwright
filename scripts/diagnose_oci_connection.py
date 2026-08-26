@@ -116,7 +116,7 @@ def diagnose_environment() -> dict[str, Any]:
     db_url = next(
         (
             value
-            for key in ("ORACLE_TARGET_URL", "OCI_DB_URL", "TARGET_DATABASE_URL", "DATABASE_URL")
+            for key in ("DATABASE_URL", "ORACLE_TARGET_URL", "OCI_DB_URL", "TARGET_DATABASE_URL")
             if (value := os.getenv(key)) and "oracle" in value.lower()
         ),
         "",

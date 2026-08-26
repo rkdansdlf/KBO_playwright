@@ -1,8 +1,6 @@
-"""Seed script to populate stadium_info and stadium_regulations tables.
-This data is static and should be updated manually when stadiums change.
-"""
-
+import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -10,10 +8,24 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
-from src.db.engine import SessionLocal
 from src.repositories.stadium_info_repository import StadiumInfoRepository
+
+
+def SessionLocal() -> Session:
+    target_url = os.environ.get("DATABASE_URL") or "sqlite:///./data/kbo_dev.db"
+    try:
+        engine = create_engine(target_url)
+        factory = sessionmaker(bind=engine)
+        return factory()
+    except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError):
+        engine = create_engine("sqlite:///./data/kbo_dev.db")
+        factory = sessionmaker(bind=engine)
+        return factory()
+
 
 STADIUM_DATA = [
     {
@@ -172,7 +184,212 @@ STADIUM_DATA = [
         "is_dome": False,
         "is_active": True,
     },
+    {
+        "stadium_code": "MUDEUNG",
+        "name_kr": "광주 무등경기장 야구장",
+        "name_en": "Gwangju Mudeung Baseball Stadium",
+        "home_team_id": "HT",
+        "capacity": 12500,
+        "opened_year": 1965,
+        "location": "광주광역시 북구",
+        "address": "광주광역시 북구 임동 90",
+        "parking_info": "광주무등경기장 주차장.",
+        "public_transport": {"subway": ["양동시장역 (1호선)"], "bus": ["16", "26", "51"]},
+        "facilities": {"restaurant": False, "shop": True, "disabled_access": True, "kids_zone": False},
+        "latitude": 35.1661,
+        "longitude": 126.8887,
+        "is_dome": False,
+        "is_active": False,
+    },
+    {
+        "stadium_code": "DONGDAEMUN",
+        "name_kr": "동대문야구장",
+        "name_en": "Dongdaemun Baseball Stadium",
+        "home_team_id": "MBC",
+        "capacity": 25000,
+        "opened_year": 1959,
+        "location": "서울특별시 중구",
+        "address": "서울특별시 중구 을지로7가 2",
+        "parking_info": "동대문운동장 주차장 (철거).",
+        "public_transport": {"subway": ["동대문역사문화공원역 (2, 4, 5호선)"], "bus": []},
+        "facilities": {"restaurant": False, "shop": False, "disabled_access": False, "kids_zone": False},
+        "latitude": 37.5678,
+        "longitude": 127.0094,
+        "is_dome": False,
+        "is_active": False,
+    },
+    {
+        "stadium_code": "JEONJU",
+        "name_kr": "전주종합운동장 야구장",
+        "name_en": "Jeonju Baseball Stadium",
+        "home_team_id": "SL",
+        "capacity": 10000,
+        "opened_year": 1977,
+        "location": "전북특별자치도 전주시",
+        "address": "전북특별자치도 전주시 덕진구 기린대로 451",
+        "parking_info": "전주종합운동장 주차장.",
+        "public_transport": {"subway": [], "bus": ["104", "165", "380"]},
+        "facilities": {"restaurant": False, "shop": False, "disabled_access": False, "kids_zone": False},
+        "latitude": 35.8407,
+        "longitude": 127.1309,
+        "is_dome": False,
+        "is_active": False,
+    },
+    {
+        "stadium_code": "MASAN",
+        "name_kr": "마산야구장",
+        "name_en": "Masan Baseball Stadium",
+        "home_team_id": "NC",
+        "capacity": 11000,
+        "opened_year": 1982,
+        "location": "경상남도 창원시 마산회원구",
+        "address": "경상남도 창원시 마산회원구 삼호로 63",
+        "parking_info": "마산종합운동장 주차장.",
+        "public_transport": {"subway": [], "bus": ["100", "101", "108"]},
+        "facilities": {"restaurant": True, "shop": True, "disabled_access": True, "kids_zone": False},
+        "latitude": 35.2227,
+        "longitude": 128.5824,
+        "is_dome": False,
+        "is_active": True,
+    },
+    {
+        "stadium_code": "CHEONGJU",
+        "name_kr": "청주종합운동장 야구장",
+        "name_en": "Cheongju Baseball Stadium",
+        "home_team_id": "HH",
+        "capacity": 10500,
+        "opened_year": 1979,
+        "location": "충청북도 청주시 서원구",
+        "address": "충청북도 청주시 서원구 사직대로 229",
+        "parking_info": "청주예술의전당/체육관 주차장.",
+        "public_transport": {"subway": [], "bus": ["30-1", "30-2", "407"]},
+        "facilities": {"restaurant": False, "shop": True, "disabled_access": True, "kids_zone": False},
+        "latitude": 36.6397,
+        "longitude": 127.4728,
+        "is_dome": False,
+        "is_active": True,
+    },
+    {
+        "stadium_code": "GUNSAN",
+        "name_kr": "군산월명종합운동장 야구장",
+        "name_en": "Gunsan Wolmyeong Baseball Stadium",
+        "home_team_id": "KIA",
+        "capacity": 10000,
+        "opened_year": 1989,
+        "location": "전북특별자치도 군산시",
+        "address": "전북특별자치도 군산시 번영로 281",
+        "parking_info": "월명종합경기장 주차장.",
+        "public_transport": {"subway": [], "bus": ["1", "2", "3", "7", "8"]},
+        "facilities": {"restaurant": False, "shop": False, "disabled_access": True, "kids_zone": False},
+        "latitude": 35.9752,
+        "longitude": 126.7369,
+        "is_dome": False,
+        "is_active": True,
+    },
+    {
+        "stadium_code": "CHUNCHEON",
+        "name_kr": "춘천야구장",
+        "name_en": "Chuncheon Baseball Stadium",
+        "home_team_id": "SM",
+        "capacity": 7000,
+        "opened_year": 1982,
+        "location": "강원특별자치도 춘천시",
+        "address": "강원특별자치도 춘천시 송암길 25",
+        "parking_info": "송암스포츠타운 주차장.",
+        "public_transport": {"subway": [], "bus": ["16", "100"]},
+        "facilities": {"restaurant": False, "shop": False, "disabled_access": True, "kids_zone": False},
+        "latitude": 37.8541,
+        "longitude": 127.6908,
+        "is_dome": False,
+        "is_active": False,
+    },
+    {
+        "stadium_code": "JEJU",
+        "name_kr": "제주 오라야구장",
+        "name_en": "Jeju Ora Baseball Stadium",
+        "home_team_id": "OB",
+        "capacity": 8500,
+        "opened_year": 1984,
+        "location": "제주특별자치도 제주시",
+        "address": "제주특별자치도 제주시 오라1동 1163-4",
+        "parking_info": "제주종합경기장 주차장.",
+        "public_transport": {"subway": [], "bus": ["311", "312", "325"]},
+        "facilities": {"restaurant": False, "shop": False, "disabled_access": True, "kids_zone": False},
+        "latitude": 33.4988,
+        "longitude": 126.5165,
+        "is_dome": False,
+        "is_active": False,
+    },
+    {
+        "stadium_code": "SIMIN",
+        "name_kr": "대구시민운동장 야구장",
+        "name_en": "Daegu Civic Baseball Stadium",
+        "home_team_id": "SS",
+        "capacity": 10000,
+        "opened_year": 1948,
+        "location": "대구광역시 북구",
+        "address": "대구광역시 북구 고성로 191",
+        "parking_info": "대구시민운동장 주차장.",
+        "public_transport": {"subway": ["북구청역 (3호선)"], "bus": ["300", "323", "523"]},
+        "facilities": {"restaurant": False, "shop": True, "disabled_access": True, "kids_zone": False},
+        "latitude": 35.8812,
+        "longitude": 128.5878,
+        "is_dome": False,
+        "is_active": False,
+    },
+    {
+        "stadium_code": "MOKDONG",
+        "name_kr": "목동야구장",
+        "name_en": "Mokdong Baseball Stadium",
+        "home_team_id": "WO",
+        "capacity": 10500,
+        "opened_year": 1989,
+        "location": "서울특별시 양천구",
+        "address": "서울특별시 양천구 안양천로 939",
+        "parking_info": "목동종합운동장 주차장.",
+        "public_transport": {"subway": ["오목교역 (5호선)"], "bus": ["571", "603", "6624"]},
+        "facilities": {"restaurant": True, "shop": True, "disabled_access": True, "kids_zone": False},
+        "latitude": 37.5303,
+        "longitude": 126.8821,
+        "is_dome": False,
+        "is_active": True,
+    },
+    {
+        "stadium_code": "POHANG",
+        "name_kr": "포항야구장",
+        "name_en": "Pohang Baseball Stadium",
+        "home_team_id": "SS",
+        "capacity": 12000,
+        "opened_year": 2012,
+        "location": "경상북도 포항시 남구",
+        "address": "경상북도 포항시 남구 희망대로 790",
+        "parking_info": "포항종합운동장 주차장.",
+        "public_transport": {"subway": [], "bus": ["107", "209", "308"]},
+        "facilities": {"restaurant": False, "shop": True, "disabled_access": True, "kids_zone": False},
+        "latitude": 35.9986,
+        "longitude": 129.3582,
+        "is_dome": False,
+        "is_active": True,
+    },
+    {
+        "stadium_code": "ULSAN",
+        "name_kr": "울산문수야구장",
+        "name_en": "Ulsan Munsu Baseball Stadium",
+        "home_team_id": "LT",
+        "capacity": 12000,
+        "opened_year": 2014,
+        "location": "울산광역시 남구",
+        "address": "울산광역시 남구 문수로 44",
+        "parking_info": "문수체육공원 주차장.",
+        "public_transport": {"subway": [], "bus": ["106", "407", "714"]},
+        "facilities": {"restaurant": False, "shop": True, "disabled_access": True, "kids_zone": False},
+        "latitude": 35.5342,
+        "longitude": 129.2625,
+        "is_dome": False,
+        "is_active": True,
+    },
 ]
+
 
 REGULATION_DATA = [
     {
@@ -220,8 +437,14 @@ REGULATION_DATA = [
 ]
 
 
-def seed_stadium_info():
-    session = SessionLocal()
+def seed_stadium_info(session: Session | None = None, db_url: str | None = None) -> int:
+    if session is None:
+        if db_url:
+            engine = create_engine(db_url)
+            session = sessionmaker(bind=engine)()
+        else:
+            session = SessionLocal()
+
     repo = StadiumInfoRepository(session)
     count = 0
     try:
@@ -232,13 +455,25 @@ def seed_stadium_info():
             repo.save_regulation(reg)
         session.commit()
         logger.info("Seeded %s stadiums and %s regulations.", count, len(REGULATION_DATA))
+        return count
+
     except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
         session.rollback()
-        logger.exception("Error")
+        logger.exception("Error seeding stadium info")
         raise
     finally:
         session.close()
 
 
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Seed stadium info and regulations.")
+    parser.add_argument("--db-url", type=str, default=None, help="Target database URL")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO)
+    seed_stadium_info(db_url=args.db_url)
+    return 0
+
+
 if __name__ == "__main__":
-    seed_stadium_info()
+    sys.exit(main())

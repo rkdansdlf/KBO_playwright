@@ -14,34 +14,33 @@ id 체계 변경은 전면 재색인을 수반하므로 단독 선반영하지 �
 
 ## 규칙
 
-- **R1 (정규값 원칙)**: `source_row_id` 구성 요소에는 빌더 실행 시점의 저장소 상태에
-  의존하는 값을 쓰지 않는다. 팀 코드 자리는 반드시
-  `src.utils.team_codes.resolve_team_code()`의 정규 결과(현행 코드)를 사용하고,
-  원본 보존이 필요하면 청크 메타데이터(`team_id`)에만 둔다.
-- **R2 (콘텐츠 유도 키)**: autoincremnet PK를 identity로 쓰지 않는다. 저장소 공통으로
-  재현 가능한 속성 조합으로 대체한다:
-  - `awards`: `{year}_{award_type}_{player_name}` (동명 이인 분기 필요 시 `_` + team_code 정규값)
-  - `player_movements`: `{movement_date}_{player_id}_{before_team}->{after_team}`
-    (`player_id` 결손분은 이름 해시 접미사로 대체)
-  - `game_play_by_play` / `game_events`: `{game_id}_{inning}_{play_seq}`
-    (provider 이벤트 번호는 메타데이터로만 보존)
+- **R1 (정규값 원칙)**: `source_row_id`는 **현재 주(primary) DB의 정규 저장값**에서만
+  조립한다. 프로덕션 `player_season_*`는 현대 정규 코드(LG/KIA/DB…)를,
+  `team_standings_daily`는 시대 코드(MB/HT…)를 저장하며 각 표 규약이 곧 기준이다.
+  빌더가 임의로 코드를 재해석(`resolve_team_code` 등)하지 않는다 — 재색인이 곧
+  정규화된 id를 생성하는 경로다. 원본 보존이 필요하면 청크 메타데이터(`team_id`)에만 둔다.
+- **R2 (콘텐츠 유도 키 — 별도 사이클로 연기)**: autoincrement PK 의존
+  (`awards`, `player_movements`, `game_play_by_play`, `game_highlights`)은 대량
+  기존 청크(12만+)를 재색인해야 하는 변경이라 본 사이클에서 제외한다. 역사 재색인
+  대상(game·standings·player_season)과 무관한 소스이며, 전환 시 별도 사이클을
+  열어 아래 방향을 유지한다:
+  - `awards`: `{year}_{award_type}_{player_name}`
+  - `player_movements`: `{movement_date}_{player_id}_{before}->{after}`
+  - `game_play_by_play`: `{game_id}_{inning}_{play_seq}`
   - `game_highlights`: `{game_id}_{document_type}_{seq}`
 - **R3 (계약 버전)**: id 체계 변경 시 `rag_chunks.index_version`을 올리고
-  `Docs/references/rag_source_contract.json`의 `source_row_id_rules`를 함께 갱신한다.
+  `Docs/references/rag_source_contract.json`의 규격을 함께 갱신한다.
   구버전 id 청크는 `tombstone_rag_chunks`로 무효화한다.
 
-## 적용 대상 매핑 (build_rag_index)
+## 적용 대상 매핑 (역사 재색인 사이클)
 
 | source_table | 현행 | 변경 후 |
 | --- | --- | --- |
-| player_season_batting | `{pid}_{season}_{RAW team}_{league}` | `{pid}_{season}_{정규 team}_{league}` |
+| player_season_batting | `{pid}_{season}_{team}_{league}` | **변경 없음** — 현재 DB 정규값 사용(재색인으로 구버전 raw-id 청크 자동 대체) |
 | player_season_pitching | 동일 | 동일 |
-| team_standings_daily | `{standings_date}_{RAW team}` | `{standings_date}_{정규 team}` |
-| awards | `str(id)` | R2 |
-| player_movements | `str(id)` | R2 |
-| game_play_by_play / events | `str(event.id)` | R2 |
-| game_highlights | `str(id)` | R2 |
-| game / game_lineups / stat_rankings / team_profiles | — | 유지 |
+| team_standings_daily | `{standings_date}_{시대 team}` | **변경 없음** — 동일 |
+| game | `{game_id}` | **변경 없음** — 안정 자연키 |
+| awards / movements / pbp / highlights | `str(id)` | R2 (별도 사이클) |
 
 ## 마이그레이션 경로
 

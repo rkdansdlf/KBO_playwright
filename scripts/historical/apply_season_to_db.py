@@ -147,12 +147,35 @@ def delete_existing(session, year: int) -> int:
     return result.rowcount or 0
 
 
-def insert_rows(session, rows: list[dict]) -> int:
-    """Game 행 일괄 INSERT (교체 후 신규 적재)."""
-    from src.models.game import Game
+def insert_rows(session, rows: list[dict], year: int) -> int:
+    """Game 및 GameMetadata 행 일괄 INSERT (교체 후 신규 적재)."""
+    from datetime import UTC, datetime
 
-    stmt = Game.__table__.insert()
-    session.execute(stmt, rows)
+    from scripts.maintenance.backfill_historical_stadium_codes import HISTORICAL_STADIUM_NAMES, clean_stadium_name
+    from src.models.game import Game, GameMetadata
+    from src.utils.stadium_codes import resolve_stadium_code
+
+    meta_rows = []
+    for r in rows:
+        cleaned_stadium = clean_stadium_name(r["stadium"], r["home_team"])
+        stadium_code = resolve_stadium_code(cleaned_stadium, season_year=year) or "JAMSIL"
+        stadium_name = HISTORICAL_STADIUM_NAMES.get(stadium_code, f"{cleaned_stadium}야구장")
+        meta_rows.append(
+            {
+                "game_id": r["game_id"],
+                "stadium_code": stadium_code,
+                "stadium_name": stadium_name,
+                "source_payload": {
+                    "source": "historical_boxscore",
+                    "raw_stadium": r["stadium"],
+                    "cleaned_stadium": cleaned_stadium,
+                    "applied_at": datetime.now(UTC).isoformat(),
+                },
+            }
+        )
+
+    session.execute(Game.__table__.insert(), rows)
+    session.execute(GameMetadata.__table__.insert(), meta_rows)
     session.commit()
     return len(rows)
 
@@ -227,8 +250,9 @@ def apply_year(session, year: int, *, do_apply: bool) -> int:
     print(f"backed up existing rows -> {backup_path} ({backed})")
     deleted = delete_existing(session, year)
     print(f"deleted: {deleted}")
-    written = insert_rows(session, rows)
+    written = insert_rows(session, rows, year)
     print(f"inserted: {written}")
+
     print(f"applied season {year}: {written} games (backup {backed})")
     return 0
 
