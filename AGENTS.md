@@ -948,3 +948,15 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **참고**: 스케줄러 `sync_rag_incremental_job`은 저장소 내부(`Docs/baseball`)만 기록 — 상위 폴더 오염 주체는 스케줄러가 아닌 수동 세션 산출물이었음.
 - **RAG reconciliation 도구 신규** (`src/cli/rag/reconcile_rag_stores.py` + `src/services/rag_reconciliation.py`): 매니페스트 export/비교 CLI. `--as-of` 커트오프로 시점 드리프트(TIME_EXPLAINABLE)와 진짜 드리프트(UNEXPLAINED)를 분리. 보관 데이터 재검증 결과: adb 리빌드(08-21) 이전 시점 비교에서 staging 전용 13,760청크가 갭으로 확정되었고, 원인 규명 완료 — 팀 코드 ID 드리프트 4,321(player_season_*의 정규화/원본 코드 불일치), 역사 데이터 미인덱스 9,252(adb에 1980·90년대 game 청크 0건), 잔여 187. 계약 문서: `Docs/references/RAG_RECONCILIATION.md`, 증거: 아카이브 폴더 `comparison_summary_asof_*.json`·`gap_resolution_summary.json`.
 - **운영 도구 보강**: `scripts/maintenance/trim_scheduler_log.py` 신규(in-place 로그 트림 + gzip 헤드 아카이브, 8 tests) — scheduler.launchd.err.log 51MB→16MB 적용. 역사 재인덱스 실행 절차는 `OPERATIONAL_RUNBOOK.md` §3-3, 주간 정합성 게이트는 `RAG_RECONCILIATION.md`에 문서화.
+
+### Phase 85 Complete (2026-08-23) — Oracle sparse term index 전환 및 검색 지연 개선
+
+- **Sparse term postings 인프라**: migrations/oracle 068(`RAG_CHUNK_TERMS` 생성)·069(SOURCE_TABLE 비정규화, TRUNCATE+rebuild 계약)·070(rag_chunks team/season/player B-tree)·071(team+season 복합, ONLINE)·072(TOKEN+SOURCE slice 인덱스). 라이브 postings 4,095,932 / chunks 209,537, orphan·NULL source·미커버 0.
+- **검색 경로 재작성**: sparse는 토큰별 STOPKEY slice(index-only, `IDX_RAG_CHUNK_TERMS_TOKEN_CHUNK`/`_TOKEN_SOURCE`) → PK 상세 조회 → Python 병합, chunk-column 필터 시에만 join scored 경로, full-row fetch는 top_k×8(하한 40) buffer로 축소. vector는 `defer(embedding)` + 스칼라 필터 ID 사전조회 후 ≤200건 exact IN distance / 초과 시 전역 approx 후필터. 쿼리 구두점 버그 수정(`search_keywords`가 문서측 regex와 일치).
+- **기본값 전환**: `RAG_ORACLE_SPARSE_MODE` 기본 `legacy`→`terms`(롤백은 env 한 줄). 검색 경로와 `RagChunkRepository._sync_term_rows`(토큰 diff 기반 update/insert/delete-by-token, ORA-12860 회피) 증분 유지가 함께 활성화. 장애 시 CLOB 경로 자동 fallback 유지.
+- **운영 셀프힐 루프**: builder에 `--catch-up`(max(rag_chunk_id) 자산 산출 insert-only resume), 스케줄러 `sparse_terms_catchup_job`(05:40, MAINTENANCE_LOCK), 타 스트림 커밋 `30cd72ee`의 `rag_audit_sentinel_job`(06:05)이 `audit --require-nonempty --require-postings` 게이트→alert_warning 연결. 라이브에서 drift 발생→수 분 내 자가 소멸 실증 확인.
+- **Canary (한산 인스턴스)**: BM25 Recall@5 0.6000/MRR 0.4667, p50 183–318ms/p95 433–659ms — **sparse 단독 500ms p95 게이트 통과**. resolver-hybrid Recall 0.9485/MRR 0.8306, warm p50 509–636ms(순차 leg 하한). 고빈도 토큰 폭주(최대 60s)와 필터 vector 저하(4.4s) 모두 해소.
+- **문서**: `RAG_EVALUATION.md`(아키텍처·측정·운영 절차), `COMMAND_REFERENCE.md` 신규 §RAG 인덱스 관리, `API_EXAMPLES.md` 단일 저장소 정정.
+- **커밋**: `1ab9017a` feat(rag) 인프라, `74d25453` perf(rag) 검색 경로, `a0c97c45` feat(scheduler) catch-up+게이트, `844f21df`·`4fee77a4` docs.
+- **남음**: hybrid end-to-end는 순차 실행 하한이라 500ms 강제 시 leg 병렬화(resolver + max(bm25,vector))가 다음 레버. 스케줄러 재시작(launchd kickstart) 전까지는 구 프로세스로 publish되지만 catch-up/sentinel이 보완.
+- **Verification**: targeted suites(scheduler/repositories/migrations/services/cli) 930 passed, `ruff check src tests scripts` = 0 errors, audit consistent(postings_missing=0), migration chain in sync.
