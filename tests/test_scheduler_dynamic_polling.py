@@ -210,3 +210,36 @@ def test_crawl_live_refresh_skips_when_live_lock_busy(monkeypatch):
         scheduler.LIVE_LOCK.release()
 
     assert calls == []
+
+
+def test_crawl_live_refresh_applies_backoff_on_failure(monkeypatch):
+    calls = []
+    live_lock = MagicMock()
+    live_lock.acquire.return_value = True
+    monkeypatch.setattr(scheduler, "LIVE_LOCK", live_lock)
+    monkeypatch.setattr(scheduler, "_get_live_poll_interval_seconds", lambda: 10)
+    monkeypatch.setattr(scheduler, "_should_skip_live_for_pregame", lambda: False)
+    monkeypatch.setattr(scheduler, "_live_refresh_max_games_per_cycle", lambda: 1)
+
+    async def failing_cycle(**_kw):
+        calls.append("called")
+        raise RuntimeError("DB connection failed")
+
+    monkeypatch.setattr(scheduler, "run_live_crawler_cycle", failing_cycle)
+    scheduler.LAST_LIVE_RUN_TIME = None
+    scheduler.LAST_LIVE_POLL_INTERVAL = None
+
+    # First run fails and raises exception
+    with pytest.raises(RuntimeError, match="DB connection failed"):
+        scheduler.crawl_live_refresh()
+
+    assert calls == ["called"]
+    # Verify that LAST_LIVE_RUN_TIME was recorded (not left as None)
+    assert scheduler.LAST_LIVE_RUN_TIME is not None
+    # Verify interval is backed off to at least 60 seconds
+    assert scheduler.LAST_LIVE_POLL_INTERVAL >= 60
+
+    # Second run immediately after (10s elapsed < 60s backoff) -> should skip execution
+    calls.clear()
+    scheduler.crawl_live_refresh()
+    assert calls == []

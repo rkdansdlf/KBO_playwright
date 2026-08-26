@@ -196,3 +196,71 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch, tmp_path):
     assert ids_to_trigger["crawl_live_refresh_night"] == {"hour": 23, "minute": "0-30", "second": "*/10"}
     assert ids_to_kwargs["crawl_live_refresh_day"]["max_instances"] == 1
     assert ids_to_kwargs["crawl_live_refresh_night"]["max_instances"] == 1
+
+
+def test_job_lifecycle_listener_throttles_rapid_consecutive_alerts(monkeypatch):
+    from apscheduler.events import EVENT_JOB_ERROR
+    from src.scheduler import metrics
+
+    sent = []
+    monkeypatch.setattr(
+        metrics.SlackWebhookClient,
+        "send_error_alert",
+        lambda message: sent.append(message) or True,
+    )
+    metrics._LAST_ALERT_SENT_AT.clear()
+
+    event = SimpleNamespace(
+        code=EVENT_JOB_ERROR,
+        job_id="crawl_live_refresh_day",
+        exception=RuntimeError("DPY-6000: connection refused"),
+    )
+
+    # 1. First error -> sends alert
+    metrics.job_lifecycle_listener(event)
+    assert len(sent) == 1
+
+    # 2. Second immediate error -> throttled (not sent)
+    metrics.job_lifecycle_listener(event)
+    assert len(sent) == 1
+
+    # 3. Simulate cooldown expired (305s elapsed)
+    metrics._LAST_ALERT_SENT_AT["crawl_live_refresh_day"] -= 305
+    metrics.job_lifecycle_listener(event)
+    assert len(sent) == 2
+
+
+def test_job_lifecycle_listener_resets_throttle_after_success(monkeypatch):
+    from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+    from src.scheduler import metrics
+
+    sent = []
+    monkeypatch.setattr(
+        metrics.SlackWebhookClient,
+        "send_error_alert",
+        lambda message: sent.append(message) or True,
+    )
+    metrics._LAST_ALERT_SENT_AT.clear()
+
+    err_event = SimpleNamespace(
+        code=EVENT_JOB_ERROR,
+        job_id="crawl_live_refresh_day",
+        exception=RuntimeError("DPY-6000: connection refused"),
+    )
+    ok_event = SimpleNamespace(
+        code=EVENT_JOB_EXECUTED,
+        job_id="crawl_live_refresh_day",
+    )
+
+    # First error
+    metrics.job_lifecycle_listener(err_event)
+    assert len(sent) == 1
+    assert "crawl_live_refresh_day" in metrics._LAST_ALERT_SENT_AT
+
+    # Successful execution resets cooldown
+    metrics.job_lifecycle_listener(ok_event)
+    assert "crawl_live_refresh_day" not in metrics._LAST_ALERT_SENT_AT
+
+    # Subsequent error immediately sends alert again
+    metrics.job_lifecycle_listener(err_event)
+    assert len(sent) == 2

@@ -405,6 +405,19 @@ def _get_live_poll_interval_seconds() -> int:
     )
 
 
+def _sync_live_poll_interval(mod: object | None, interval: int) -> None:
+
+    if interval != _STATE.last_live_poll_interval:
+        logger.info(
+            "[LiveInterval] Polling interval changed: %s -> %ds",
+            f"{_STATE.last_live_poll_interval}s" if _STATE.last_live_poll_interval else "None",
+            interval,
+        )
+        _STATE.last_live_poll_interval = interval
+        if mod and hasattr(mod, "LAST_LIVE_POLL_INTERVAL"):
+            mod.LAST_LIVE_POLL_INTERVAL = interval
+
+
 def crawl_live_refresh() -> None:
     """Execute live polling crawler cycle if due."""
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
@@ -418,18 +431,10 @@ def crawl_live_refresh() -> None:
     now = datetime.now(KST)
     interval_fn = getattr(mod, "_get_live_poll_interval_seconds", None) or _get_live_poll_interval_seconds
     interval = interval_fn()
-
-    if interval != _STATE.last_live_poll_interval:
-        logger.info(
-            "[LiveInterval] Polling interval changed: %s -> %ds",
-            f"{_STATE.last_live_poll_interval}s" if _STATE.last_live_poll_interval else "None",
-            interval,
-        )
-        _STATE.last_live_poll_interval = interval
-        if mod and hasattr(mod, "LAST_LIVE_POLL_INTERVAL"):
-            mod.LAST_LIVE_POLL_INTERVAL = interval
+    _sync_live_poll_interval(mod, interval)
 
     last_live_run = getattr(mod, "LAST_LIVE_RUN_TIME", _STATE.last_live_run_time) if mod else _STATE.last_live_run_time
+
     if last_live_run is not None:
         elapsed = (now - last_live_run).total_seconds()
         if elapsed < interval:
@@ -456,9 +461,12 @@ def crawl_live_refresh() -> None:
             )
 
     except SCHEDULER_JOB_EXCEPTIONS:
-        _STATE.last_live_run_time = None
+        _STATE.last_live_run_time = now
+        _STATE.last_live_poll_interval = max(interval, 60)
         if mod and hasattr(mod, "LAST_LIVE_RUN_TIME"):
-            mod.LAST_LIVE_RUN_TIME = None
+            mod.LAST_LIVE_RUN_TIME = now
+        if mod and hasattr(mod, "LAST_LIVE_POLL_INTERVAL"):
+            mod.LAST_LIVE_POLL_INTERVAL = _STATE.last_live_poll_interval
         raise
     finally:
         live_lock.release()
