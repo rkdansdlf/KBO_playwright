@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.dialects import oracle
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.gap_report import (
@@ -174,6 +175,19 @@ class TestCheckRelayGaps:
             result = check_relay_gaps()
             assert result["ok"] is False
             assert result["missing_count"] == 1
+
+    def test_primary_game_predicate_is_oracle_compatible(self):
+        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_session.execute.return_value.scalars.return_value.all.return_value = []
+
+            check_relay_gaps()
+
+            statement = mock_session.execute.call_args.args[0]
+        compiled = str(statement.compile(dialect=oracle.dialect()))
+        assert "IS 1" not in compiled
+        assert "is_primary = 1" in compiled
 
 
 class TestCheckProfileGaps:
