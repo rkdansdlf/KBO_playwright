@@ -197,18 +197,34 @@ scalar-filtered searches pre-resolve candidate IDs via new B-tree indexes
 distance over the ID set when it is small (<=200); larger sets use the global
 approximate fetch plus Python post-filter.
 
-Measured steady-state on a quiet instance (2026-08-23 canary, configured
-embeddings): BM25 Recall@5 `0.6000` / MRR `0.4667` at p50 `183-318ms`, p95
-`433-659ms`; resolver-hybrid Recall@5 `0.9485` / MRR `0.8306`, hit rate
-`0.9667`, warm p50 `509-636ms`. The sparse-only path meets the historical
-`500ms` p95 target. Hybrid p50 remains sequential-leg bound
-(resolver + bm25 + vector); leg parallelization is the next lever if the
-end-to-end `500ms` target is enforced. Cold-cache first touches and concurrent
-writer contention can still inflate single-run p95 into seconds. Term
-maintenance runs whenever an Oracle session writes chunks while the mode
-resolves to `terms` (now the default);
-`RAG_ORACLE_SPARSE_MODE=legacy` disables both the postings search and
-incremental maintenance.
+Measured pre-parallel steady-state on a quiet instance (2026-08-23 canary,
+configured embeddings): BM25 Recall@5 `0.6000` / MRR `0.4667` at p50
+`183-318ms`, p95 `433-659ms`; resolver-hybrid Recall@5 `0.9485` / MRR
+`0.8306`, hit rate `0.9667`, warm p50 `509-636ms`. The sparse-only path
+meets the historical `500ms` p95 target. Hybrid was sequential-leg bound
+until the leg-parallel change documented below. Cold-cache first touches and
+concurrent writer contention can still inflate single-run p95 into seconds.
+Term maintenance runs whenever an Oracle session writes chunks while the mode
+resolves to `terms` (now the default); `RAG_ORACLE_SPARSE_MODE=legacy` disables
+both the postings search and incremental maintenance.
+
+### Parallel Hybrid Canary (2026-08-26)
+
+`HybridRetriever` now overlaps the dense leg with the foreground BM25 leg;
+fusion still runs after both legs complete. Three consecutive runs against the
+30-query configured-embedding golden set held quality at Recall@5 `0.9485`,
+MRR `0.8306`, and hit rate `0.9667`:
+
+```text
+run   p50       p95       max
+1     233.046ms 466.859ms 693.753ms
+2     162.055ms 376.774ms 569.397ms
+3     156.738ms 362.485ms 549.355ms
+```
+
+These quiet-instance runs meet the `500ms` hybrid p95 target. Repeat the
+canary after scheduler cutover and under normal writer load before treating
+the result as a permanent production SLO.
 
 Postings freshness is operationally guarded:
 

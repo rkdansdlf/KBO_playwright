@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -126,10 +127,11 @@ def _merge_dense_results(
     rank_map: dict[str, dict[str, Any]],
     vector_results: list[dict[str, Any]],
     target_category: str | None,
+    merged_filters: dict[str, Any],
 ) -> None:
     """Fuse dense ranks into the shared rank map without dropping sparse state."""
     for rank, v_item in enumerate(vector_results, start=1):
-        if not _matches_dense_filters(v_item, {}):
+        if not _matches_dense_filters(v_item, merged_filters):
             continue
         key = _result_key(v_item, fallback=str(v_item.get("id") or rank))
         if key in rank_map:
@@ -238,44 +240,50 @@ class HybridRetriever:
         resolver_ms = round((time.perf_counter() - resolve_started) * 1000, 3)
         target_category = category if category is not None else merged_filters.get("document_type")
 
-        # 1. BM25 Search
-        bm25_started = time.perf_counter()
-        sparse_top_k = top_k if is_oracle_vector_backend() else top_k * 3
-        bm25_chunks = self.bm25_engine.search(
-            query=query,
-            top_k=sparse_top_k,
-            category=target_category,
-            filters=merged_filters,
-            oracle_ranked_candidates=not is_oracle_vector_backend(),
-        )
-        bm25_ms = round((time.perf_counter() - bm25_started) * 1000, 3)
-        rank_map: dict[str, dict[str, Any]] = {}
+        # Dense owns a separate repository session, so overlap it with BM25.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            dense_future = executor.submit(
+                _search_dense,
+                query,
+                top_k,
+                merged_filters,
+                target_category,
+                self.embedding_service,
+            )
 
-        for rank, item in enumerate(bm25_chunks, start=1):
-            key = _result_key(item, fallback=str(item["chunk_id"]))
-            rank_map[key] = {
-                "title": item.get("title"),
-                "content": item.get("content", ""),
-                "source_url": item.get("source_url"),
-                "category": item.get("category") or target_category or "general",
-                "source_table": item.get("source_table"),
-                "source_row_id": item.get("source_row_id"),
-                "content_hash": item.get("content_hash"),
-                "index_version": item.get("index_version"),
-                "bm25_rank": rank,
-                "vector_rank": None,
-                "meta": item.get("meta", {}),
-            }
+            # 1. BM25 Search
+            bm25_started = time.perf_counter()
+            sparse_top_k = top_k if is_oracle_vector_backend() else top_k * 3
+            bm25_chunks = self.bm25_engine.search(
+                query=query,
+                top_k=sparse_top_k,
+                category=target_category,
+                filters=merged_filters,
+                oracle_ranked_candidates=not is_oracle_vector_backend(),
+            )
+            bm25_ms = round((time.perf_counter() - bm25_started) * 1000, 3)
+            rank_map: dict[str, dict[str, Any]] = {}
 
-        # 2. Dense Vector Search
-        vector_candidates, embedding_ms, vector_ms = _search_dense(
-            query,
-            top_k,
-            merged_filters,
-            target_category,
-            self.embedding_service,
-        )
-        _merge_dense_results(rank_map, vector_candidates, target_category)
+            for rank, item in enumerate(bm25_chunks, start=1):
+                key = _result_key(item, fallback=str(item["chunk_id"]))
+                rank_map[key] = {
+                    "title": item.get("title"),
+                    "content": item.get("content", ""),
+                    "source_url": item.get("source_url"),
+                    "category": item.get("category") or target_category or "general",
+                    "source_table": item.get("source_table"),
+                    "source_row_id": item.get("source_row_id"),
+                    "content_hash": item.get("content_hash"),
+                    "index_version": item.get("index_version"),
+                    "bm25_rank": rank,
+                    "vector_rank": None,
+                    "meta": item.get("meta", {}),
+                }
+
+            # 2. Dense Vector Search
+            vector_results, embedding_ms, vector_ms = dense_future.result()
+
+        _merge_dense_results(rank_map, vector_results, target_category, merged_filters)
 
         # 3. Compute Reciprocal Rank Fusion (RRF) scores
         fusion_started = time.perf_counter()
@@ -315,7 +323,7 @@ class HybridRetriever:
             "rerank_candidates": 0,
             "structured_candidates": 0,
             "bm25_candidates": len(bm25_chunks),
-            "vector_candidates": vector_candidates,
+            "vector_candidates": len(vector_results),
             "returned": min(len(results), top_k),
             "filters": merged_filters,
             "latency_ms": {

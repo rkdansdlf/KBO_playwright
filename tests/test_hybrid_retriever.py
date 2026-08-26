@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import Event
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -114,11 +115,34 @@ def test_oracle_hybrid_uses_fast_sparse_candidates() -> None:
         patch.object(retriever.bm25_engine, "search", return_value=[]) as sparse_search,
         patch("src.services.hybrid_retriever.is_pgvector_available", return_value=False),
         patch("src.services.hybrid_retriever.is_oracle_vector_backend", return_value=True),
-        patch("src.services.hybrid_retriever._fetch_dense_vectors", return_value=(0, 0.0)),
+        patch("src.services.hybrid_retriever._search_dense", return_value=([], 0.0, 0.0)),
     ):
         retriever.retrieve("올스타전 일정", top_k=5)
 
     assert sparse_search.call_args.kwargs["oracle_ranked_candidates"] is False
+
+
+def test_hybrid_retriever_overlaps_dense_and_sparse_legs() -> None:
+    """Start dense retrieval before the foreground BM25 search completes."""
+    retriever = HybridRetriever(MagicMock())
+    dense_started = Event()
+    sparse_started = Event()
+
+    def dense_search(*_args: object, **_kwargs: object) -> tuple[list[dict[str, object]], float, float]:
+        dense_started.set()
+        assert sparse_started.wait(timeout=1)
+        return [], 0.0, 0.01
+
+    def sparse_search(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        sparse_started.set()
+        assert dense_started.wait(timeout=1)
+        return []
+
+    with (
+        patch.object(retriever.bm25_engine, "search", side_effect=sparse_search),
+        patch("src.services.hybrid_retriever._search_dense", side_effect=dense_search),
+    ):
+        retriever.retrieve("올스타전 일정", top_k=5)
 
 
 def test_hybrid_retriever_keeps_cross_source_rows_distinct() -> None:
