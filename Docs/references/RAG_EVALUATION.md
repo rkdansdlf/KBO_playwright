@@ -197,18 +197,18 @@ scalar-filtered searches pre-resolve candidate IDs via new B-tree indexes
 distance over the ID set when it is small (<=200); larger sets use the global
 approximate fetch plus Python post-filter.
 
-Measured steady-state (warm cache, quiet instance): resolver 60-106ms,
-sparse 117-149ms, vector 326-349ms, end-to-end ~536-572ms on the previously
-worst golden query. Golden quality holds at BM25 Recall@5 `0.6000` / MRR
-`0.4667`, resolver-hybrid Recall@5 `0.9485` / MRR `0.8306`, hit rate
-`0.9667`. Cold-cache first touches and concurrent writer contention can still
-inflate single-run p95 into seconds; repeated-load canaries should gate any
-further latency decisions. Term maintenance runs whenever an Oracle session
-writes chunks while the mode resolves to `terms` (now the default);
+Measured steady-state on a quiet instance (2026-08-23 canary, configured
+embeddings): BM25 Recall@5 `0.6000` / MRR `0.4667` at p50 `183-318ms`, p95
+`433-659ms`; resolver-hybrid Recall@5 `0.9485` / MRR `0.8306`, hit rate
+`0.9667`, warm p50 `509-636ms`. The sparse-only path meets the historical
+`500ms` p95 target. Hybrid p50 remains sequential-leg bound
+(resolver + bm25 + vector); leg parallelization is the next lever if the
+end-to-end `500ms` target is enforced. Cold-cache first touches and concurrent
+writer contention can still inflate single-run p95 into seconds. Term
+maintenance runs whenever an Oracle session writes chunks while the mode
+resolves to `terms` (now the default);
 `RAG_ORACLE_SPARSE_MODE=legacy` disables both the postings search and
-incremental maintenance. A repeated warm/cold canary on a quiet instance is
-still outstanding — the first attempt was aborted by Oracle listener
-connection refusals (`DPY-6000`) under concurrent load.
+incremental maintenance.
 
 Postings freshness is operationally guarded:
 
