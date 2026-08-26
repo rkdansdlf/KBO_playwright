@@ -960,3 +960,11 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **커밋**: `1ab9017a` feat(rag) 인프라, `74d25453` perf(rag) 검색 경로, `a0c97c45` feat(scheduler) catch-up+게이트, `844f21df`·`4fee77a4` docs.
 - **남음**: hybrid end-to-end는 순차 실행 하한이라 500ms 강제 시 leg 병렬화(resolver + max(bm25,vector))가 다음 레버. 스케줄러 재시작(launchd kickstart) 전까지는 구 프로세스로 publish되지만 catch-up/sentinel이 보완.
 - **Verification**: targeted suites(scheduler/repositories/migrations/services/cli) 930 passed, `ruff check src tests scripts` = 0 errors, audit consistent(postings_missing=0), migration chain in sync.
+
+### Phase 86 Complete (2026-08-26) — hybrid dense/sparse leg 병렬화 및 canary 검증
+
+- **병렬 실행**: `src/services/hybrid_retriever.py`에서 dense 검색을 `ThreadPoolExecutor(max_workers=1)`로 먼저 시작하고 foreground BM25와 겹쳐 실행. dense repository는 자체 DB session을 사용하며 fusion rank-map 병합은 메인 스레드에서 수행해 SQLAlchemy session 공유와 상태 경쟁을 피함.
+- **정합성 보존**: dense 필터 전달, source identity 병합, content-hash stale-hit 방지, `last_trace`의 leg별 latency 및 wall-clock total을 기존 계약대로 유지.
+- **Canary**: 30-query configured-embedding golden set 3회 연속 Recall@5 `0.9485` / MRR `0.8306` / hit rate `0.9667`; p50 `157–233ms`, p95 `362–467ms`, max `549–694ms` — **hybrid 500ms p95 gate 통과**.
+- **Tests**: dense/BM25 동시 시작을 검증하는 event-based regression test 추가; 관련 RAG suite 33 passed, 광역 unit suite **9,916 passed, 1 skipped**.
+- **남음**: launchd scheduler 재시작 후 catch-up/sentinel 실제 등록·실행 확인 및 정상 writer 부하 canary. 안정성 확인 전까지 leg 병렬화 결과는 quiet-instance evidence로 취급.
