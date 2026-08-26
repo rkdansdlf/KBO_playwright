@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
     from sqlalchemy.orm import Session
+    from sqlalchemy.sql import Select
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -94,6 +95,8 @@ _DEFAULT_LANGUAGE = "ko"
 # 순위 청크당 상위 N위까지만 포함
 _RANKING_TOP_N = 20
 _PBP_SCAN_BATCH_SIZE = 5_000
+_SEASON_ID_YEAR_THRESHOLD = 100_000
+_SEASON_ID_YEAR_MULTIPLIER = 100
 _PBP_KEYWORDS = (
     "홈런",
     "적시타",
@@ -108,6 +111,23 @@ _PBP_KEYWORDS = (
     "역전타",
     "득점권",
 )
+
+
+def _regular_season_ids(season: int) -> Select:
+    """Return all stored IDs for a regular season year."""
+    from src.models.season import KboSeason
+
+    return select(KboSeason.season_id).where(
+        KboSeason.season_year == season,
+        KboSeason.league_type_code == _REGULAR_SEASON_CODE,
+    )
+
+
+def _season_year_from_id(season_id: int | None) -> int | None:
+    """Return the calendar year represented by a canonical season ID."""
+    if season_id is None:
+        return None
+    return season_id // _SEASON_ID_YEAR_MULTIPLIER if season_id >= _SEASON_ID_YEAR_THRESHOLD else season_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -468,7 +488,7 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
 
     query = session.query(Game).filter(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
     if season:
-        query = query.filter(Game.season_id == season)
+        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
     query = query.order_by(Game.game_date.desc())
     if limit:
         query = query.limit(limit)
@@ -490,7 +510,7 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
             "content": content,
             "team_id": None,
             "player_id": None,
-            "season_year": game.season_id,
+            "season_year": game.game_date.year if game.game_date else _season_year_from_id(game.season_id),
             "document_type": "game_result",
             "game_date": game.game_date,
             "published_at": None,
@@ -661,7 +681,7 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
         )
     )
     if season:
-        query = query.filter(Game.season_id == season)
+        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
 
     for count, (key, group) in enumerate(
         groupby(query.yield_per(2000), key=lambda row: (row[0].game_id, row[0].team_side)),
@@ -691,7 +711,7 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
             "content": content,
             "team_id": team_code,
             "player_id": None,
-            "season_year": season_id,
+            "season_year": game_date.year if game_date else _season_year_from_id(season_id),
             "document_type": "lineup",
             "game_date": str(game_date) if game_date else None,
             "published_at": None,
@@ -866,7 +886,7 @@ def _iter_highlight_chunks(session: Session, season: int | None, limit: int | No
         .order_by(Game.game_date.desc(), GameHighlight.wpa.desc())
     )
     if season:
-        query = query.filter(Game.season_id == season)
+        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
     if limit:
         query = query.limit(limit)
 
@@ -885,7 +905,7 @@ def _iter_highlight_chunks(session: Session, season: int | None, limit: int | No
             "content": content,
             "team_id": game.home_team,
             "player_id": None,
-            "season_year": game.season_id,
+            "season_year": game.game_date.year if game.game_date else _season_year_from_id(game.season_id),
             "document_type": "highlight",
             "game_date": str(game.game_date),
             "published_at": None,
@@ -948,7 +968,7 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
         .filter(GamePlayByPlay.play_description.is_not(None))
     )
     if season:
-        query = query.filter(Game.season_id == season)
+        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
 
     keywords = [
         "홈런",
@@ -986,7 +1006,7 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
             "content": content,
             "team_id": game.home_team,
             "player_id": str(pbp.player_id) if pbp.player_id else None,
-            "season_year": game.season_id,
+            "season_year": game.game_date.year if game.game_date else _season_year_from_id(game.season_id),
             "document_type": "game_play_by_play",
             "game_date": str(game.game_date),
             "published_at": None,
@@ -1034,7 +1054,7 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
             .filter(GamePlayByPlay.id > last_id, GamePlayByPlay.play_description.is_not(None), keyword_filter)
         )
         if season:
-            query = query.filter(Game.season_id == season)
+            query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
         rows = query.order_by(GamePlayByPlay.id.asc()).limit(_PBP_SCAN_BATCH_SIZE).all()
         if not rows:
             return
@@ -1067,7 +1087,7 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
                 "content": content,
                 "team_id": home_team,
                 "player_id": str(player_id) if player_id else None,
-                "season_year": season_id,
+                "season_year": game_date.year if game_date else _season_year_from_id(season_id),
                 "document_type": "game_play_by_play",
                 "game_date": str(game_date),
                 "published_at": None,
