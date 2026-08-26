@@ -25,7 +25,6 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from src.db.engine import SessionLocal
 
 ANSWER_DIR = Path("data/archives")
 
@@ -160,6 +159,27 @@ def insert_rows(session, rows: list[dict]) -> int:
 
 def anchor_checks(rows: list[dict], year: int) -> bool:
     """Answer set 로드 상태에서 verify (앵커 ·매치업 균형 ·무승부)."""
+    if year == 1982:
+        import importlib
+
+        mod_1982 = importlib.import_module("scripts.historical.1982_namu_boxscores")
+        verify_1982 = mod_1982.verify
+
+        games_1982 = [
+            {
+                "game_date": r["game_date"].isoformat()
+                if hasattr(r["game_date"], "isoformat")
+                else str(r["game_date"]),
+                "home_team": r["home_team"],
+                "away_team": r["away_team"],
+                "home_score": r["home_score"],
+                "away_score": r["away_score"],
+                "stadium": r["stadium"],
+            }
+            for r in rows
+        ]
+        return verify_1982(games_1982)
+
     from scripts.historical.namu_season_boxscores import ANCHORS, verify
 
     anchors = json.loads(ANCHORS.read_text(encoding="utf-8")).get(str(year), {})
@@ -218,13 +238,24 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--apply", action="store_true", help="실제 교체 실행 (기본 dry-run)")
+    parser.add_argument("--db-url", type=str, default=None, help="Target database URL (default: SessionLocal)")
     args = parser.parse_args(argv)
 
     if args.year < 1982 or args.year > 2000:
         print(f"unsupported year {args.year}; supported: 1982-2000")
         return 2
 
-    session = SessionLocal()
+    if args.db_url:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        engine = create_engine(args.db_url)
+        session = Session(engine)
+    else:
+        from src.db.engine import SessionLocal
+
+        session = SessionLocal()
+
     try:
         return apply_year(session, args.year, do_apply=args.apply)
     finally:

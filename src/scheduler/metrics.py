@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 import sentry_sdk
@@ -18,6 +19,8 @@ from src.utils.metrics import (
 logger = logging.getLogger("src.scheduler.metrics")
 
 job_start_times: dict[str, float] = {}
+_LAST_ALERT_SENT_AT: dict[str, float] = {}
+ALERT_THROTTLE_SECONDS = float(os.getenv("SCHEDULER_ALERT_THROTTLE_SECONDS", "300"))
 
 
 def job_lifecycle_listener(event: object) -> None:
@@ -34,6 +37,7 @@ def job_lifecycle_listener(event: object) -> None:
 
         KBO_SCHEDULER_JOB_TOTAL.labels(job_id=job_id, status="success").inc()
         KBO_SCHEDULER_JOB_DURATION_SECONDS.labels(job_id=job_id).observe(duration)
+        _LAST_ALERT_SENT_AT.pop(job_id, None)
 
     elif event_code == EVENT_JOB_ERROR:
         start_time = job_start_times.pop(job_id, None)
@@ -51,6 +55,18 @@ def job_lifecycle_listener(event: object) -> None:
 
             sentry_sdk.capture_exception(exc)
 
+            now = time.time()
+            last_alert_time = _LAST_ALERT_SENT_AT.get(job_id, 0.0)
+            if now - last_alert_time < ALERT_THROTTLE_SECONDS:
+                logger.warning(
+                    "Throttling Slack alert for failed job %s (last alert sent %.1fs ago, cooldown is %ds)",
+                    job_id,
+                    now - last_alert_time,
+                    int(ALERT_THROTTLE_SECONDS),
+                )
+                return
+
+            _LAST_ALERT_SENT_AT[job_id] = now
             try:
                 SlackWebhookClient.send_error_alert(f"🚨 <b>Scheduler Job Failed: {job_id}</b>\nError: {exc}\n\n{tb}")
             except ALERT_EXCEPTIONS:

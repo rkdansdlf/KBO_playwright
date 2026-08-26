@@ -296,6 +296,14 @@ DROP_BOXES: dict[int, set[tuple[str, str, str]]] = {
         # 승자는 TP이므로 TP 문서의 0:10을 채택하고 LT 문서의 06-21 박스 폐기.
         ("06-21", "LT", "LT-TP"),
     },
+    1990: {
+        # 07-05 BE-LT (한밭): 스코어 불일치 복사본 (BE 10:4 vs 15:4, 승자 BE 동일) -> LT 문서 박스 폐기
+        ("07-05", "LT", "BE-LT"),
+        # 08-22 OB-TP (잠실 DH2): OB 문서 'TP 4:6 OB'(OB 승) vs TP 문서 'TP 6:4 OB'(TP 승) -> 앵커 방향상 TP 승이 정답, OB 문서 박스 폐기
+        ("08-22", "OB", "OB-TP"),
+        # 09-20 HT-LT (무등): 스코어 불일치 복사본 (HT 3:0 vs 6:0, 승자 HT 동일) -> LT 문서 박스 폐기
+        ("09-20", "LT", "HT-LT"),
+    },
     1993: {
         # 08-13~15 LT-OB (사직 3연전): OB 문서가 팀 라벨을 교차 기재
         # ('LT 1:7 OB' 등) — LT 문서 버전('OB 1:7 LT', 홈=LT)이 구장 규칙 부합.
@@ -310,6 +318,29 @@ DROP_BOXES: dict[int, set[tuple[str, str, str]]] = {
         # 09-14 HH-SS (대구): 스코어 충돌 복사본(HH 3:5 vs 3:4) — 승자(SS)는
         # 동일하나 이중 계입된 초과분. 원격팀(HH) 문서 박스 폐기.
         ("09-14", "HH", "HH-SS"),
+    },
+    1995: {
+        # 06-25 HH-TP (숭의): 스코어 충돌 복사본 (HH 4:3 vs 4:2, 승자 HH 동일) -> TP 문서 박스 폐기
+        ("06-25", "TP", "HH-TP"),
+        # 07-20 HT-LG (잠실): 스코어 충돌 복사본 (HT 4:2 vs 3:2, 승자 HT 동일) -> LG 문서 박스 폐기
+        ("07-20", "LG", "HT-LG"),
+        # 08-27 HH-HT (한밭): 스코어 충돌 복사본 (HT 1:0 vs 2:1, 승자 HT 동일) -> HH 문서 박스 폐기
+        ("08-27", "HH", "HH-HT"),
+    },
+    1996: {
+        # 06-04 / 06-06 HU-OB (동대문): OB 문서가 팀 라벨을 스왑해 'HU 3:8 OB', 'HU 3:4 OB'로 기재 (HU 승 지지하는 HU 문서 채택)
+        ("06-04", "OB", "HU-OB"),
+        ("06-06", "OB", "HU-OB"),
+    },
+    1998: {
+        # 06-24 HH-HT: 8월 문서에 수록된 6/24 재경기 오기 박스 (HH 4:2 HT) 폐기 (6월 문서의 진짜 06-24 HH 4:1 HT 보존)
+        ("06-24", "HH", "HH-HT", "8월"),
+        ("06-24", "HT", "HH-HT", "8월"),
+    },
+    1999: {
+        # 06-21 HU-LG: 서스펜디드 2:2 무승부 박스 폐기 (당일 완봉 재경기 10:3 박스 보존)
+        ("06-21", "HU", "HU-LG", (2, 2)),
+        ("06-21", "LG", "HU-LG", (2, 2)),
     },
     2000: {
         # 05-11 DB-HT (무등): 스코어 충돌 복사본(DB 11:2 vs 8:2, 승자 DB 동일).
@@ -571,32 +602,38 @@ def drop_box_fixes(raw: list[dict], year: int) -> list[dict]:
     같은 날짜·매치업에 스코어가 다른 박스가 각 문서에서 1개씩 나올 때, 실제로는
     단일 경기인데 한쪽 문서의 스코어 오기인 경우와 동일 박스가 문서마다 다른
     날짜로 기재된 날짜 오기 유령을 처리한다. 해당 (date, team_doc, matchup)
-    박스를 제거하면 상대 문서 박스가 merge에서 단일 경기로 남는다.
-    지정된 박스가 없어 폐기가 불가능하면 경고를 남긴다.
+    또는 (date, team_doc, matchup, month_doc) 박스를 제거하면 상대 문서 박스가
+    merge에서 단일 경기로 남는다.
     """
     drops = DROP_BOXES.get(year, set())
     if not drops:
         return raw
     kept: list[dict] = []
+    matched_drops = set()
     for g in raw:
-        key = (g["date"], g["team_doc"], "-".join(sorted([g["team1"], g["team2"]])))
-        if key in drops:
+        key3 = (g["date"], g.get("team_doc"), "-".join(sorted([g["team1"], g["team2"]])))
+        key4 = (g["date"], g.get("team_doc"), "-".join(sorted([g["team1"], g["team2"]])), g.get("month_doc"))
+        key_score = (
+            g["date"],
+            g.get("team_doc"),
+            "-".join(sorted([g["team1"], g["team2"]])),
+            (g["score1"], g["score2"]),
+        )
+        if key3 in drops or key4 in drops or key_score in drops:
+            matched_drops.add(key3 if key3 in drops else (key4 if key4 in drops else key_score))
             print(
-                f"DROP {year}-{g['date']} {g['team_doc']} box "
-                f"({g['team1']} {g['score1']}:{g['score2']} {g['team2']} @ {g['stadium']}): "
+                f"DROP {year}-{g['date']} {g.get('team_doc')} box "
+                f"({g['team1']} {g['score1']}:{g['score2']} {g['team2']} @ {g.get('stadium', '')}): "
                 f"날짜/스코어 오기 — 상대 문서 채택",
                 flush=True,
             )
             continue
         kept.append(g)
-    dropped = {
-        key
-        for key in drops
-        if key in {(g["date"], g["team_doc"], "-".join(sorted([g["team1"], g["team2"]]))) for g in raw}
-    }
-    if dropped != drops:
-        for key in drops - dropped:
+
+    if matched_drops != drops:
+        for key in drops - matched_drops:
             print(f"WARN drop target {year}-{key[0]} {key[1]} {key[2]} 없음 (이미 폐기됨?)", flush=True)
+
     return kept
 
 
@@ -607,6 +644,7 @@ def merge_games(raw: list[dict]) -> list[dict]:
       1. R열 오기(r_mismatch=True) 박스는 이닝 합이 신뢰 가능한 박스와 다를 때
          유령 중복으로 간주해 폐기한다 (1983년 4/30 HT-MBC 사례).
       2. R열이 정상인 박스가 여럿이면 실제 더블헤더로 보고 유지한다.
+      3. 동일 스코어의 더블헤더(단일 문서 내 복수 박스)를 올바르게 보존한다.
     """
     by: dict[tuple, list[dict]] = defaultdict(list)
     for g in raw:
@@ -614,31 +652,34 @@ def merge_games(raw: list[dict]) -> list[dict]:
         by[key].append(g)
     games = []
     for _k, v in by.items():
-        seen = set()
-        healthy: list[dict] = []
+        by_doc: dict[str, list[dict]] = defaultdict(list)
         for g in v:
-            if g.get("r_mismatch"):
-                continue
-            sig = (g["score1"], g["score2"])
-            if sig in seen:
-                continue
-            seen.add(sig)
-            healthy.append(g)
-        if healthy:
-            games.extend(healthy)
-            continue
-        # 전부 R열 오기 — 원본 보존 + 경고 (스코어 자체가 오기일 수 있음)
-        seen = set()
-        kept = 0
-        for g in v:
-            sig = (g["score1"], g["score2"])
-            if sig in seen:
-                continue
-            seen.add(sig)
-            games.append(g)
-            kept += 1
-        if kept > 1:
-            print(f"WARN multiple R-mismatched boxes on {_k[0]} {_k[1]}: {sorted(seen)}", flush=True)
+            if not g.get("r_mismatch"):
+                doc_key = g.get("team_doc", g.get("team1"))
+                by_doc[doc_key].append(g)
+
+        if not by_doc:
+            for g in v:
+                doc_key = g.get("team_doc", g.get("team1"))
+                by_doc[doc_key].append(g)
+
+        max_boxes = max(len(boxes) for boxes in by_doc.values())
+        if max_boxes == 1:
+            first_doc = next(iter(by_doc))
+            games.append(by_doc[first_doc][0])
+        else:
+            doc_with_max = next(d for d in by_doc if len(by_doc[d]) == max_boxes)
+            selected = by_doc[doc_with_max]
+            seen = set()
+            unique_selected = []
+            for b in selected:
+                sig = (b["score1"], b["score2"])
+                if sig in seen and len(by_doc) == 1 and all(g.get("team_doc") is None for g in v):
+                    continue
+                seen.add(sig)
+                unique_selected.append(b)
+            games.extend(unique_selected)
+
     return games
 
 
