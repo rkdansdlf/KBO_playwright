@@ -17,13 +17,19 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select
+import os
 
-from src.db.engine import SessionLocal
+from sqlalchemy import create_engine, func, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
+
+
 from src.models.game import Game, GameInningScore, GameMetadata
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from sqlalchemy.orm import Session
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -41,11 +47,26 @@ class InvariantAuditResult:
     is_valid: bool
 
 
-def audit_historical_season_invariants(season: int) -> InvariantAuditResult:
+def audit_historical_season_invariants(
+    season: int,
+    session: Session | None = None,
+    db_url: str | None = None,
+) -> InvariantAuditResult:
     """Audit mathematical invariants for a specific historical season."""
     prefix = f"{season}%"
+    close_session = False
+    if session is None:
+        target_url = db_url or os.environ.get("DATABASE_URL") or "sqlite:///./data/kbo_dev.db"
+        try:
+            engine = create_engine(target_url)
+            session = sessionmaker(bind=engine)()
+        except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError):
+            engine = create_engine("sqlite:///./data/kbo_dev.db")
+            session = sessionmaker(bind=engine)()
 
-    with SessionLocal() as session:
+        close_session = True
+
+    try:
         # 1. Total games
         games = list(session.execute(select(Game).where(Game.game_id.like(prefix))).scalars().all())
         total_games = len(games)
@@ -108,6 +129,9 @@ def audit_historical_season_invariants(season: int) -> InvariantAuditResult:
             missing_provenance=missing_provenance,
             is_valid=is_valid,
         )
+    finally:
+        if close_session and session:
+            session.close()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -115,6 +139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Audit Mathematical Invariants for Historical Games (1982-2000)")
     parser.add_argument("--start-year", type=int, default=1982, help="Start season year")
     parser.add_argument("--end-year", type=int, default=2000, help="End season year")
+    parser.add_argument("--db-url", type=str, default=None, help="Database connection URL")
     parser.add_argument("--json", action="store_true", default=False, help="Output JSON result")
 
     args = parser.parse_args(argv)
@@ -128,7 +153,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("-" * 85)
 
     for year in range(args.start_year, args.end_year + 1):
-        res = audit_historical_season_invariants(year)
+        res = audit_historical_season_invariants(year, db_url=args.db_url)
         results.append(res)
         if not res.is_valid:
             all_valid = False

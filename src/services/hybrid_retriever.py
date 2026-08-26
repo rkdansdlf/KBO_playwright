@@ -75,17 +75,21 @@ class HybridSearchResult:
         }
 
 
-def _fetch_dense_vectors(  # noqa: PLR0913
+def _search_dense(
     query: str,
     top_k: int,
     merged_filters: dict[str, Any],
     target_category: str | None,
-    rank_map: dict[str, dict[str, Any]],
     embedding_service: EmbeddingProvider | None = None,
-) -> tuple[int, float]:
-    """Query the configured dense backend and update rank_map."""
+) -> tuple[list[dict[str, Any]], float, float]:
+    """Query the configured dense backend without touching fusion state.
+
+    Safe to run on a worker thread: the repository opens its own database
+    session, so no caller-owned SQLAlchemy session is shared.
+    """
+    started_wall = time.perf_counter()
     if not is_pgvector_available() and not is_oracle_vector_backend():
-        return 0, 0.0
+        return [], 0.0, 0.0
 
     try:
         from src.services.embedding_service import EmbeddingService
@@ -109,40 +113,50 @@ def _fetch_dense_vectors(  # noqa: PLR0913
         if merged_filters.get("index_version"):
             vector_kwargs["index_version"] = merged_filters["index_version"]
         vector_results = vector_repo.search_by_cosine(**vector_kwargs)
-
-        for rank, v_item in enumerate(vector_results, start=1):
-            if not _matches_dense_filters(v_item, merged_filters):
-                continue
-            key = _result_key(v_item, fallback=str(v_item.get("id") or rank))
-            if key in rank_map:
-                sparse_hash = rank_map[key].get("content_hash")
-                dense_hash = v_item.get("content_hash")
-                if sparse_hash != dense_hash and (sparse_hash or dense_hash):
-                    logger.warning("Skipping stale dense hit for %s: sparse/vector content hashes differ", key)
-                    continue
-                rank_map[key]["vector_rank"] = rank
-                if not rank_map[key]["source_url"] and v_item.get("source_url"):
-                    rank_map[key]["source_url"] = v_item["source_url"]
-                if not rank_map[key]["meta"] and v_item.get("meta"):
-                    rank_map[key]["meta"] = v_item["meta"]
-            else:
-                rank_map[key] = {
-                    "title": v_item.get("title"),
-                    "content": v_item.get("content", ""),
-                    "source_url": v_item.get("source_url"),
-                    "category": v_item.get("document_type") or target_category or "general",
-                    "source_table": v_item.get("source_table"),
-                    "source_row_id": v_item.get("source_row_id"),
-                    "content_hash": v_item.get("content_hash"),
-                    "index_version": v_item.get("index_version"),
-                    "bm25_rank": None,
-                    "vector_rank": rank,
-                    "meta": v_item.get("meta", {}),
-                }
-        return len(vector_results), embedding_ms
+        elapsed_ms = round((time.perf_counter() - started_wall) * 1000, 3)
     except (RuntimeError, ValueError, OSError, TypeError, KeyError, IndexError):
         logger.warning("Dense vector retrieval failed; falling back to BM25 sparse scoring only", exc_info=True)
-        return 0, 0.0
+        elapsed_ms = round((time.perf_counter() - started_wall) * 1000, 3)
+        return [], 0.0, elapsed_ms
+    else:
+        return vector_results, embedding_ms, elapsed_ms
+
+
+def _merge_dense_results(
+    rank_map: dict[str, dict[str, Any]],
+    vector_results: list[dict[str, Any]],
+    target_category: str | None,
+) -> None:
+    """Fuse dense ranks into the shared rank map without dropping sparse state."""
+    for rank, v_item in enumerate(vector_results, start=1):
+        if not _matches_dense_filters(v_item, {}):
+            continue
+        key = _result_key(v_item, fallback=str(v_item.get("id") or rank))
+        if key in rank_map:
+            sparse_hash = rank_map[key].get("content_hash")
+            dense_hash = v_item.get("content_hash")
+            if sparse_hash != dense_hash and (sparse_hash or dense_hash):
+                logger.warning("Skipping stale dense hit for %s: sparse/vector content hashes differ", key)
+                continue
+            rank_map[key]["vector_rank"] = rank
+            if not rank_map[key]["source_url"] and v_item.get("source_url"):
+                rank_map[key]["source_url"] = v_item["source_url"]
+            if not rank_map[key]["meta"] and v_item.get("meta"):
+                rank_map[key]["meta"] = v_item["meta"]
+        else:
+            rank_map[key] = {
+                "title": v_item.get("title"),
+                "content": v_item.get("content", ""),
+                "source_url": v_item.get("source_url"),
+                "category": v_item.get("document_type") or target_category or "general",
+                "source_table": v_item.get("source_table"),
+                "source_row_id": v_item.get("source_row_id"),
+                "content_hash": v_item.get("content_hash"),
+                "index_version": v_item.get("index_version"),
+                "bm25_rank": None,
+                "vector_rank": rank,
+                "meta": v_item.get("meta", {}),
+            }
 
 
 def _result_key(item: dict[str, Any], fallback: str) -> str:
@@ -254,16 +268,14 @@ class HybridRetriever:
             }
 
         # 2. Dense Vector Search
-        vector_started = time.perf_counter()
-        vector_candidates, embedding_ms = _fetch_dense_vectors(
+        vector_candidates, embedding_ms, vector_ms = _search_dense(
             query,
             top_k,
             merged_filters,
             target_category,
-            rank_map,
             self.embedding_service,
         )
-        vector_ms = round((time.perf_counter() - vector_started) * 1000, 3)
+        _merge_dense_results(rank_map, vector_candidates, target_category)
 
         # 3. Compute Reciprocal Rank Fusion (RRF) scores
         fusion_started = time.perf_counter()

@@ -147,7 +147,7 @@ class TestApplyYearFlow:
             lambda s, y, out: order.append("backup") or 4,
         )
         monkeypatch.setattr(ap, "delete_existing", lambda s, y: order.append("delete") or 4)
-        monkeypatch.setattr(ap, "insert_rows", lambda s, rows: order.append("insert") or 4)
+        monkeypatch.setattr(ap, "insert_rows", lambda s, rows, *a: order.append("insert") or 4)
         monkeypatch.setattr(ap, "ANSWER_DIR", tmp_path)  # 백업은 mock이 대신 처리
         rc = ap.apply_year(object(), 1983, do_apply=True)
         assert rc == 0
@@ -160,7 +160,8 @@ class TestApplyYearFlow:
         monkeypatch.setattr(ap, "anchor_checks", lambda rows, y: False)
         monkeypatch.setattr(ap, "backup_existing", lambda s, y, out: 0)
         monkeypatch.setattr(ap, "delete_existing", lambda s, y: 0)
-        monkeypatch.setattr(ap, "insert_rows", lambda s, rows: 0)
+        monkeypatch.setattr(ap, "insert_rows", lambda s, rows, *a: 0)
+
         rc = ap.apply_year(object(), 1983, do_apply=True)
         assert rc == 2
 
