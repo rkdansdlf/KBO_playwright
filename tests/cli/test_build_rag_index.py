@@ -8,6 +8,22 @@ from src.cli import build_rag_index
 from src.models.rankings import StatRanking
 
 
+@pytest.mark.parametrize("season", [1988, 2025])
+def test_game_season_filter_uses_regular_season_metadata(season) -> None:
+    statement = str(build_rag_index._regular_season_ids(season))
+
+    assert "kbo_seasons.season_year" in statement
+    assert "kbo_seasons.league_type_code" in statement
+
+
+@pytest.mark.parametrize(
+    ("season_id", "expected"),
+    [(None, None), (1988, 1988), (198800, 1988), (202500, 2025)],
+)
+def test_game_chunk_season_metadata_uses_season_year(season_id, expected) -> None:
+    assert build_rag_index._season_year_from_id(season_id) == expected
+
+
 def test_local_markdown_iterators_emit_the_three_vector_sources(tmp_path, monkeypatch):
     docs_root = tmp_path / "baseball"
     (docs_root / "kbo_rulebook" / "league_regulations").mkdir(parents=True)

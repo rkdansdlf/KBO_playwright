@@ -784,6 +784,38 @@ class TestBoxscoreExtractionFlows:
         assert teams["home"]["code"] == "DB"
         crawler._fetch_scoreboard_inning_scores.assert_awaited_once_with(page, "20250501LGOB0", "LG", "OB")
 
+    async def test_extract_team_info_queries_scoreboard_when_live_scores_are_missing(self):
+        page = AsyncMock()
+        page.evaluate.return_value = None
+        crawler = GameDetailCrawler()
+        crawler._extract_live_scores = AsyncMock(return_value=None)
+        crawler._fetch_scoreboard_inning_scores = AsyncMock(
+            return_value={
+                "away": {
+                    "name": "LG",
+                    "code": "LG",
+                    "score": 3,
+                    "hits": 7,
+                    "errors": 0,
+                    "line_score": [1, 0, 2],
+                },
+                "home": {
+                    "name": "두산",
+                    "code": "OB",
+                    "score": 1,
+                    "hits": 5,
+                    "errors": 1,
+                    "line_score": [0, 1, 0],
+                },
+            },
+        )
+
+        teams = await crawler._extract_team_info(page, "20250501LGOB0", 2025)
+
+        assert teams["away"]["line_score"] == [1, 0, 2]
+        assert teams["home"]["line_score"] == [0, 1, 0]
+        crawler._fetch_scoreboard_inning_scores.assert_awaited_once_with(page, "20250501LGOB0", "LG", "OB")
+
     async def test_crawl_games_uses_injected_pool_and_preserves_input_order(self):
         pool = MagicMock(max_pages=2)
         pool.start = AsyncMock()
@@ -1037,7 +1069,11 @@ NAVER_RECORD_SAMPLE = {
         "rheb": {
             "away": {"r": 6, "h": 7, "e": 0},
             "home": {"r": 3, "h": 6, "e": 1},
-        }
+        },
+        "inn": {
+            "away": [1, 0, 2, 0, 0, 0, 3, 0, 0],
+            "home": [0, 1, 0, 0, 0, 0, 2, 0, 0],
+        },
     },
     "battersBoxscore": {
         "away": [
@@ -1147,6 +1183,12 @@ class TestNaverRecordPath:
         assert payload["teams"]["away"]["code"] == "KIA"
         assert payload["teams"]["away"]["score"] == 6
         assert payload["teams"]["home"]["score"] == 3
+
+    def test_teams_include_naver_inning_scores(self):
+        payload = self._payload()
+
+        assert payload["teams"]["away"]["line_score"] == [1, 0, 2, 0, 0, 0, 3, 0, 0]
+        assert payload["teams"]["home"]["line_score"] == [0, 1, 0, 0, 0, 0, 2, 0, 0]
 
     def test_metadata_stadium_resolved(self):
         payload = self._payload()

@@ -61,25 +61,41 @@ python3 -m src.cli.audit_historical_lake --start-year 1982 --end-year 2000
 
 ### 3) RAG 인덱스 역사 재인덱스 (프로덕션 갭 해소)
 
-2026-08-23 reconciliation으로 확인된 프로덕션 갭(역사 9,252청크) 해소 절차.
-계약 배경: `Docs/references/RAG_RECONCILIATION.md`. **임베딩 비용이 발생하므로
-dry-run → 샘플 시즌 → 나머지 순으로 단계 실행.**
+2026-08-23 reconciliation으로 확인된 프로덕션 갭(역사 game·standings 및
+player-season identity)을 해소하는 절차. 계약 배경:
+`Docs/references/RAG_RECONCILIATION.md`. **임베딩 비용이 발생하므로 dry-run →
+샘플 시즌 → 나머지 순으로 단계 실행.** `--season`은 달력 연도(예: `1988`)이며,
+빌더가 `kbo_seasons`의 정규시즌 ID를 조회한다. `198800`을 직접 전달하지 않는다.
+
+역사 재색인의 1차 대상은 현재 원본이 존재하는 `games`, `standings`, `batting`,
+`pitching`이다. `lineups`, `highlights`, `pbp`는 해당 역사 원본 행이 존재할 때만
+추가한다. 2026-08-26 읽기 전용 사전 집계는 생성 14,299청크, 기존 동일 identity
+3,409청크, 신규 10,890청크, 이전 stale identity 후보 2,021건이었다.
 
 ```bash
-# 0) 사전 확인: 소스 테이블에 역사 시즌 데이터 존재 여부
-python3 -m src.cli.rag.inventory_rag_corpus --json | head -40
+# 0) 비용 없는 1개 시즌 파이프라인 검증
+RAG_TARGET_ENV=staging python3 -m src.cli.rag.build_rag_index \
+  --source games --season 1982 --dry-run --embedding-mode deterministic
+RAG_TARGET_ENV=staging python3 -m src.cli.rag.build_rag_index \
+  --source batting --season 1982 --dry-run --embedding-mode deterministic
+RAG_TARGET_ENV=staging python3 -m src.cli.rag.build_rag_index \
+  --source pitching --season 1982 --dry-run --embedding-mode deterministic
 
-# 1) 파이프라인 dry-run (저장 없음, 임베딩 생성만)
-python3 -m src.cli.rag.build_rag_index --source all --season 1982 --dry-run
+# 1) 사전 집계 결과와 현재 target을 확인한 뒤, 승인된 provider로 샘플 적재
+#    (OPENROUTER 임베딩 비용 및 production write gate 필요)
+python3 -m src.cli.rag.build_rag_index --source games --season 1982 --limit 50 \
+  --embedding-mode configured
 
 # 2) 샘플 시즌 실적재 후 reconcile로 확인
-python3 -m src.cli.rag.build_rag_index --source all --season 1982 --skip-existing
 python3 -m src.cli.rag.reconcile_rag_stores export --side primary \
   --out reports/rag_reconciliation/primary_1982.ndjson
 
-# 3) 나머지 시즌 루프 (--skip-existing으로 재실행 안전)
-for y in $(seq 1983 2001); do
-  python3 -m src.cli.rag.build_rag_index --source all --season "$y" --skip-existing || break
+# 3) 나머지 역사 대상 루프 (--skip-existing은 신규 identity만 처리)
+for y in $(seq 1982 2000); do
+  for source in games standings batting pitching; do
+    python3 -m src.cli.rag.build_rag_index --source "$source" --season "$y" \
+      --skip-existing || break 2
+  done
 done
 
 # 4) 최종 검증: staging 기준 매니페스트와 compare
@@ -93,10 +109,12 @@ python3 -m src.cli.rag.reconcile_rag_stores compare \
   --fail-on-unexplained
 ```
 
-롤백: 잘못 인덱싱한 시즌은 `tombstone_rag_chunks`로 무효화한다.
-주의: player_season_*의 `source_row_id`는 팀 코드를 포함하므로(§ RAG_RECONCILIATION
-"갭 원인 규명") 코드 정규화 계약을 확정하기 전에는 해당 소스를 재인덱스하지 않는다 —
-드리프트가 재발한다.
+롤백: 잘못 인덱싱한 시즌은 `tombstone_rag_chunks`로 무효화한다. 재색인 후
+현재 원본에 없는 이전 identity는 stale 후보로 별도 manifest를 만들어 검토한 뒤
+tombstone한다. `--skip-existing`은 기존 identity의 내용 변경을 갱신하지 않으므로,
+사전 집계에서 `updated`가 있으면 해당 소스는 `--skip-existing` 없이 재색인한다.
+player_season_*의 팀 코드 규약은 `Docs/references/RAG_IDENTITY_CONTRACT.md`의
+현재 primary DB 저장값 원칙을 따른다.
 
 ---
 

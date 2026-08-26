@@ -585,6 +585,7 @@ class GameDetailCrawler:
         game_info = record.get("gameInfo") or {}
         scoreboard = record.get("scoreBoard") or {}
         rheb = scoreboard.get("rheb") or {}
+        inning_scores = scoreboard.get("inn") or {}
         season_year = int(game_id[:4]) if len(game_id) >= GAME_ID_YEAR_LEN and game_id[:4].isdigit() else None
 
         away_segment = str(game_info.get("aCode") or game_id[8:10])
@@ -595,8 +596,18 @@ class GameDetailCrawler:
         home_score = _as_int(rheb.get("home", {}).get("r"))
 
         team_info = {
-            "away": {"code": away_code, "name": game_info.get("aName"), "score": away_score},
-            "home": {"code": home_code, "name": game_info.get("hName"), "score": home_score},
+            "away": {
+                "code": away_code,
+                "name": game_info.get("aName"),
+                "score": away_score,
+                "line_score": [_as_int(value) for value in (inning_scores.get("away") or [])],
+            },
+            "home": {
+                "code": home_code,
+                "name": game_info.get("hName"),
+                "score": home_score,
+                "line_score": [_as_int(value) for value in (inning_scores.get("home") or [])],
+            },
         }
 
         stadium = str(game_info.get("stadium") or "").strip() or None
@@ -1822,6 +1833,19 @@ class GameDetailCrawler:
                 else:
                     away_info = live_scores["away"]
                     home_info = live_scores["home"]
+            else:
+                # The review page may not expose the live-score container after
+                # a game finishes. Query the dedicated scoreboard directly so
+                # completed games still retain their inning line scores.
+                scoreboard = await self._fetch_scoreboard_inning_scores(
+                    page,
+                    game_id,
+                    game_id[8:10],
+                    game_id[10:12],
+                )
+                if scoreboard:
+                    away_info = scoreboard["away"]
+                    home_info = scoreboard["home"]
 
         # Fallback to gameId decoding for missing/generic team info (common in All-Star)
         away_segment = game_id[8:10] if len(game_id) >= GAME_ID_MIN_LEN else None

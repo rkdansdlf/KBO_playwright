@@ -57,3 +57,11 @@ def test_oracle_id_generator_final_migration_fetches_advanced_value() -> None:
 
     assert "INTO V_CURRENT_VALUE" in sql
     assert "INTO V_ADVANCED_VALUE" in sql
+
+
+def test_oracle_id_generators_reenable_disabled_triggers() -> None:
+    sql = Path("migrations/oracle/073_reenable_oracle_id_generators.sql").read_text(encoding="utf-8").upper()
+
+    assert "STATUS = 'DISABLED'" in sql
+    assert "ALTER TRIGGER" in sql
+    assert "ENABLE" in sql
