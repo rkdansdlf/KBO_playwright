@@ -416,7 +416,7 @@ def _search_keywords(query: str) -> list[str]:
 def _resolved_search_filters(query: str, filters: dict[str, Any] | None) -> dict[str, Any]:
     """Add an explicit query year without overriding a caller-provided filter."""
     resolved = dict(filters or {})
-    if resolved.get("season_year") is None:
+    if resolved.get("season_year") is None and resolved.get("game_date") is None:
         season_year = _query_season_year(query)
         if season_year is not None:
             resolved["season_year"] = season_year

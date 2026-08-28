@@ -17,7 +17,12 @@ from src.models.kbo_press_release import KboPressRelease
 from src.models.player_milestone import PlayerMilestone
 from src.models.rag_chunk import RagChunk
 from src.services.game_preview_generator import GamePreviewGenerator
-from src.services.rag_search_engine import RagSearchEngine, _query_season_year, _search_keywords
+from src.services.rag_search_engine import (
+    RagSearchEngine,
+    _query_season_year,
+    _resolved_search_filters,
+    _search_keywords,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -126,6 +131,12 @@ def test_query_season_year_rejects_out_of_range_years() -> None:
     """Accept only years covered by the KBO season contract."""
     assert _query_season_year("1988-04-02") == 1988
     assert _query_season_year("2101 season") is None
+
+
+def test_game_date_filter_does_not_add_redundant_season_filter() -> None:
+    filters = {"source_table": "game", "game_date": "2026-07-21"}
+
+    assert _resolved_search_filters("2026년 7월 21일 경기", filters) == filters
 
 
 def test_postgresql_search_uses_bounded_tsvector_candidates() -> None:
