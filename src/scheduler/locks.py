@@ -32,7 +32,7 @@ logger = logging.getLogger("src.scheduler.locks")
 _SCHEDULER_PID_FILE = PROJECT_ROOT / "data" / "locks" / "scheduler.pid"
 
 # Granular locking to prevent long-running batch jobs from blocking real-time updates
-LIVE_LOCK = ProcessLock("live_refresh")
+LIVE_LOCK = ForceProcessLock("live_refresh")
 DAILY_LOCK = ForceProcessLock("daily_update")
 MAINTENANCE_LOCK = ForceProcessLock("maintenance")
 SQLITE_WRITE_LOCK = ForceProcessLock("sqlite_writer")

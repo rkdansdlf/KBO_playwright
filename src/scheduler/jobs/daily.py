@@ -8,6 +8,10 @@ import logging
 import subprocess
 import sys
 from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -32,6 +36,42 @@ logger = logging.getLogger("src.scheduler.jobs.daily")
 P1P2_RUN_MARKER = PROJECT_ROOT / "data" / "last_runs" / "p1p2_data.json"
 COMPACT_DATE_LEN = 8
 MIN_REAL_PLAYER_ID = 10000
+
+
+def _run_legacy_daily_update(
+    target_date: str,
+    run_main: Callable[..., object],
+    fmt_fn: Callable[[object], str],
+    alert_succ: Callable[[str, str], None],
+    alert_warn: Callable[[str, str], None],
+) -> None:
+    """Fallback runner executing procedural daily update."""
+    args = ["--date", target_date, "--seed-tomorrow-preview"]
+
+    if _env_enabled("DAILY_SKIP_SEASON_STATS", "0"):
+        logger.info("Skipping season stat crawl for daily update (DAILY_SKIP_SEASON_STATS=1)")
+        args.append("--skip-season-stats")
+
+    if _env_enabled("DAILY_AUTO_REMEDIATION", "1"):
+        logger.info("Auto-remediation enabled for daily update (DAILY_AUTO_REMEDIATION=1)")
+        args.append("--fix")
+    else:
+        logger.info("Auto-remediation disabled (DAILY_AUTO_REMEDIATION=0)")
+
+    update_result = run_main(args, acquire_lock=False)
+
+    logger.info("=== Daily Games Crawl Completed Successfully ===")
+    alert_succ("crawl_daily_games", fmt_fn(update_result))
+
+    if isinstance(update_result, dict):
+        stability = update_result.get("stability", {})
+        detail = stability.get("detail", {}) if isinstance(stability, dict) else {}
+        detail_recovery = stability.get("detail_recovery", {}) if isinstance(stability, dict) else {}
+        detail_counts = detail.get("failure_counts", {}) if isinstance(detail, dict) else {}
+        repeated_failures = detail_recovery.get("escalation_game_ids") if isinstance(detail_recovery, dict) else []
+        total_failures = sum(detail_counts.values()) if isinstance(detail_counts, dict) else 0
+        if repeated_failures or total_failures > 0:
+            alert_warn("crawl_daily_games", fmt_fn(update_result))
 
 
 @retry(
@@ -63,38 +103,41 @@ def crawl_daily_games() -> None:
 
         try:
             target_date = prev_day_fn()
-            logger.info("Running run_daily_update for target_date=%s", target_date)
+            logger.info("Running daily sync pipeline for target_date=%s", target_date)
 
-            args = ["--date", target_date, "--seed-tomorrow-preview"]
+            if _env_enabled("DAILY_USE_DAG_ORCHESTRATOR", "1"):
+                from src.orchestration.master import MasterWorkflowOrchestrator
 
-            if _env_enabled("DAILY_SKIP_SEASON_STATS", "0"):
-                logger.info("Skipping season stat crawl for daily update (DAILY_SKIP_SEASON_STATS=1)")
-                args.append("--skip-season-stats")
-
-            # Auto-remediation: fix stats discrepancies detected by the audit step
-            if _env_enabled("DAILY_AUTO_REMEDIATION", "1"):
-                logger.info("Auto-remediation enabled for daily update (DAILY_AUTO_REMEDIATION=1)")
-                args.append("--fix")
-            else:
-                logger.info("Auto-remediation disabled (DAILY_AUTO_REMEDIATION=0)")
-
-            update_result = run_main(args, acquire_lock=False)
-
-            logger.info("=== Daily Games Crawl Completed Successfully ===")
-            alert_succ("crawl_daily_games", fmt_fn(update_result))
-
-            # Check for partial failures (games that failed detail collection)
-            if isinstance(update_result, dict):
-                stability = update_result.get("stability", {})
-                detail = stability.get("detail", {}) if isinstance(stability, dict) else {}
-                detail_recovery = stability.get("detail_recovery", {}) if isinstance(stability, dict) else {}
-                detail_counts = detail.get("failure_counts", {}) if isinstance(detail, dict) else {}
-                repeated_failures = (
-                    detail_recovery.get("escalation_game_ids") if isinstance(detail_recovery, dict) else []
+                orch = MasterWorkflowOrchestrator.build_daily_sync_workflow()
+                ctx = {
+                    "date": target_date,
+                    "skip_season_stats": _env_enabled("DAILY_SKIP_SEASON_STATS", "0"),
+                    "auto_remediation": _env_enabled("DAILY_AUTO_REMEDIATION", "1"),
+                    "run_main": run_main,
+                }
+                report = orch.execute_workflow(f"daily_sync_{target_date}", context=ctx)
+                logger.info(
+                    "=== Master DAG Daily Sync Completed: %s (%d/%d stages) ===",
+                    report.overall_status,
+                    report.completed_stages,
+                    report.total_stages,
                 )
-                total_failures = sum(detail_counts.values()) if isinstance(detail_counts, dict) else 0
-                if repeated_failures or total_failures > 0:
-                    alert_warn("crawl_daily_games", fmt_fn(update_result))
+
+                if report.overall_status == "SUCCESS":
+                    msg = f"Daily DAG Sync completed ({report.completed_stages}/{report.total_stages} stages)"
+                    alert_succ("crawl_daily_games", msg)
+                elif report.overall_status == "PARTIAL_FAILURE":
+                    msg = (
+                        f"Daily DAG Sync partial failure "
+                        f"({report.failed_stages} failed, {report.skipped_stages} skipped)"
+                    )
+                    alert_warn("crawl_daily_games", msg)
+                else:
+                    err_msg = f"Master DAG Daily Sync failed: {report.overall_status}"
+                    raise RuntimeError(err_msg)
+                return
+
+            _run_legacy_daily_update(target_date, run_main, fmt_fn, alert_succ, alert_warn)
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Daily games crawl attempt failed")
             raise
