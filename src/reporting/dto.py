@@ -23,6 +23,7 @@ class ReportCategory(StrEnum):
     GAP_ANALYSIS = "gap_analysis"
     FRESHNESS = "freshness"
     EXECUTIVE_DASHBOARD = "executive_dashboard"
+    SCOUTING = "scouting"
 
 
 @dataclass

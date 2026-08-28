@@ -1035,3 +1035,17 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **위키백과 공식 순위 앵커 검증**: 19개 전 시즌 팀별 승/무/패 및 86개 무승부, 더블헤더 기록이 위키백과 공식 순위표와 100% 일치 (`namu_season_boxscores.py --verify-only` PASS).
 - **구장 메타데이터 전수 정규화 (`scripts/maintenance/backfill_historical_stadium_codes.py`)**: 1982~2000 8,237경기에 대한 `game_metadata` 레코드 100% 생성 및 `stadium_code` 정규화 완료 (NULL 구장 0건).
 - **문서 갱신**: `KNOWN_LIMITATIONS.md` 및 `HISTORICAL_1983_2000_PLAN.md` 19개 시즌 전수 해결(100% Resolved) 상태 반영.
+
+### Phase 94 Complete (2026-08-28) — FastAPI Real-time WebSocket Stream & Server Gateway (P11-5 & P11-6)
+
+- **WebSocket Connection Manager (`src/api/websocket_manager.py`)**: Created `ConnectionManager` for game-specific and global WebSocket subscription tracking with safe multi-client JSON broadcasting and auto-disconnect cleanup.
+- **Real-time Live Stream Router (`src/api/routers/live_stream.py`)**: Implemented `/ws/live/{game_id}` WebSocket endpoint and `/api/v1/live/{game_id}/simulate` REST simulation trigger with real-time `LiveStreamProcessor` event broadcasting and `GET /api/v1/live/stats` monitoring.
+- **Master CLI Router Integration (`src/cli/kbo.py`, `src/cli/serve_api.py`)**: Registered `serve` 14th subcommand (`kbo serve --host 0.0.0.0 --port 8000 --reload`).
+- **Verification & Tests**: Added unit and E2E tests in `tests/api/test_websocket_stream.py` and `tests/cli/test_serve_cli.py`; full test suite = **10,031 passed, 3 skipped** in 1m 42s; `ruff check src/ tests/ scripts/` = **0 errors**.
+
+### Phase 95 Complete (2026-08-28) — KBO Crawler Smart Circuit Breaker & Fault Isolation Engine (P11-7)
+
+- **Circuit Breaker DTOs (`src/crawlers/circuit_breaker_dto.py`)**: Created `CircuitState` (`CLOSED`, `OPEN`, `HALF_OPEN`), `CircuitBreakerStats`, and `CircuitOpenError` DTOs.
+- **Smart Circuit Breaker & Registry (`src/crawlers/circuit_breaker.py`)**: Implemented thread-safe `CircuitBreaker`, global `circuit_registry` singleton, and `@circuit_breaker` decorator supporting automatic fallback invocation.
+- **Diagnostics & Auto-Healing Integration (`src/diagnostics/engine.py`)**: Integrated circuit breaker state audits into `diagnose_crawlers()` with `CRITICAL`/`WARNING` flags and added automated circuit reset in `auto_heal("crawler")`.
+- **Verification & Tests**: Added comprehensive tests in `tests/crawlers/test_circuit_breaker.py`; full test suite = **10,048 passed, 3 skipped** in 59.04s; `ruff check src/ tests/ scripts/` = **0 errors**.

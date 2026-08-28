@@ -17,14 +17,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--category",
         type=str,
         default="all",
-        choices=["all", "quality", "gap", "freshness", "executive"],
+        choices=["all", "quality", "gap", "freshness", "executive", "scouting"],
         help="Report category to generate (default: all/executive).",
+    )
+    parser.add_argument(
+        "--player",
+        "-p",
+        type=str,
+        default="김도영",
+        help="Target player name or ID for scouting reports.",
     )
     parser.add_argument(
         "--year",
         type=int,
         default=None,
-        help="Target season year for quality reports.",
+        help="Target season year for quality/scouting reports.",
     )
     parser.add_argument(
         "--format",
@@ -55,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         report = engine.generate_gap_report()
     elif args.category == "freshness":
         report = engine.generate_freshness_report()
+    elif args.category == "scouting":
+        report = engine.generate_scouting_report(player_name_or_id=args.player, year=args.year)
     else:  # all / executive
         report = engine.generate_executive_dashboard()
 

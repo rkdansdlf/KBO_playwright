@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.crawlers.circuit_breaker import circuit_registry
+from src.crawlers.circuit_breaker_dto import CircuitState
 from src.db.engine import Engine, SessionLocal
 from src.diagnostics.dto import (
     DiagnosticSeverity,
@@ -164,8 +166,63 @@ class SystemDiagnosticsEngine:
         return checks
 
     def diagnose_crawlers(self) -> list[SubsystemCheckItem]:
-        """Diagnose crawler logs for timeout patterns or rate-limiting."""
+        """Diagnose crawler logs and active circuit breaker states."""
         checks: list[SubsystemCheckItem] = []
+
+        # 1. Circuit Breaker Health Check
+        breaker_stats = circuit_registry.get_all_stats()
+        if not breaker_stats:
+            checks.append(
+                SubsystemCheckItem(
+                    name="crawler_circuit_breakers",
+                    subsystem=SubsystemType.CRAWLER,
+                    severity=DiagnosticSeverity.HEALTHY,
+                    status="OK",
+                    message="No active crawler circuit breakers registered (Clean state).",
+                )
+            )
+        else:
+            tripped = [s for s in breaker_stats if s.state == CircuitState.OPEN]
+            probing = [s for s in breaker_stats if s.state == CircuitState.HALF_OPEN]
+
+            if tripped:
+                checks.append(
+                    SubsystemCheckItem(
+                        name="crawler_circuit_breakers",
+                        subsystem=SubsystemType.CRAWLER,
+                        severity=DiagnosticSeverity.CRITICAL,
+                        status="FAIL",
+                        message=f"{len(tripped)} crawler circuit breaker(s) are OPEN (Tripped): "
+                        + ", ".join(f"{s.name} ({s.consecutive_failures} fails)" for s in tripped),
+                        remediation_hint="Verify target service availability and run auto_heal('crawler').",
+                        metrics={"tripped_count": len(tripped), "total_breakers": len(breaker_stats)},
+                    )
+                )
+            elif probing:
+                checks.append(
+                    SubsystemCheckItem(
+                        name="crawler_circuit_breakers",
+                        subsystem=SubsystemType.CRAWLER,
+                        severity=DiagnosticSeverity.WARNING,
+                        status="WARN",
+                        message=f"{len(probing)} crawler circuit breaker(s) are HALF_OPEN (Probing recovery): "
+                        + ", ".join(s.name for s in probing),
+                        metrics={"probing_count": len(probing), "total_breakers": len(breaker_stats)},
+                    )
+                )
+            else:
+                checks.append(
+                    SubsystemCheckItem(
+                        name="crawler_circuit_breakers",
+                        subsystem=SubsystemType.CRAWLER,
+                        severity=DiagnosticSeverity.HEALTHY,
+                        status="OK",
+                        message=f"All {len(breaker_stats)} registered crawler circuit breakers are CLOSED and healthy.",
+                        metrics={"total_breakers": len(breaker_stats)},
+                    )
+                )
+
+        # 2. Crawler Logs Health Check
         if not self.logs_dir.exists():
             checks.append(
                 SubsystemCheckItem(
@@ -340,5 +397,15 @@ class SystemDiagnosticsEngine:
                     msg = "Removed stale scheduler PID file."
                     logger.info(msg)
                     healed.append(msg)
+
+        # Heal tripped crawler circuit breakers
+        if sub_val in (None, "all", SubsystemType.CRAWLER.value):
+            stats = circuit_registry.get_all_stats()
+            tripped_or_probing = [s for s in stats if s.state != CircuitState.CLOSED]
+            if tripped_or_probing:
+                reset_count = circuit_registry.reset_all()
+                msg = f"Reset {reset_count} crawler circuit breaker(s) to CLOSED state."
+                logger.info(msg)
+                healed.append(msg)
 
         return healed

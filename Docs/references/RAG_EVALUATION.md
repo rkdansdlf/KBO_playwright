@@ -280,6 +280,26 @@ extracts explicit four-digit years and aligns punctuation tokenization with
 the Oracle postings builder; an exact `1988-04-02 OB 4 LT 0` smoke query
 returns `game:19880402OBLT0` first.
 
+The latency path was then optimized in two small ways. A query year is no
+longer added when an explicit `game_date` already determines it, and
+`source_table + game_date` are pushed into the bounded Oracle postings slice
+using the corresponding composite index. Representative sparse calls changed
+from cold/warm samples of up to `38.7s` for a redundant season join to
+`680/146/120ms` for game, `386/119/131ms` for PBP, and `199/121/130ms` for
+highlight date filters. Retrieval quality was unchanged.
+
+Three subsequent configured resolver-hybrid golden-set runs reported:
+
+```text
+run  recall@5  MRR     hit rate  p50       p95       max
+1    0.9485    0.8306  0.9667    188ms     267ms     373ms
+2    0.9485    0.8306  0.9667    228ms     287ms     411ms
+3    0.9485    0.8306  0.9667    223ms     277ms     390ms
+```
+
+This is a passing optimized-path canary, but the permanent `500ms` SLO
+remains pending confirmation during a scheduled writer-load cycle.
+
 Postings freshness is operationally guarded:
 
 ```bash
