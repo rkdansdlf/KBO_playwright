@@ -111,22 +111,43 @@
     {"run": 2, "p50_ms": 280.505, "p95_ms": 463.476, "max_ms": 576.623},
     {"run": 3, "p50_ms": 221.993, "p95_ms": 420.287, "max_ms": 492.406}
   ],
-  "latency_trace_samples": [
+  "date_filter_optimization": {
+    "implementation_commit": "d9cfb441",
+    "change": "Do not add a redundant query season_year when game_date is already present; push source_table and game_date into the bounded Oracle postings slice.",
+    "representative_sparse_samples_ms": {
+      "game_date": [679.728, 145.697, 120.393],
+      "game_play_by_play_date": [386.006, 118.975, 131.376],
+      "game_highlights_date": [198.804, 121.339, 129.894]
+    },
+    "configured_resolver_hybrid_runs": [
+      {"run": 1, "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 188.292, "p95_ms": 266.569, "max_ms": 372.809},
+      {"run": 2, "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 227.945, "p95_ms": 287.292, "max_ms": 411.069},
+      {"run": 3, "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 222.778, "p95_ms": 276.743, "max_ms": 389.925}
+    ]
+  },
+  "latency_trace_samples_before_date_filter_optimization": [
     {"case_id": "prod_bat_001", "query": "김도영의 2026시즌 타격 성적을 알려줘", "total_ms": 1214.546, "resolver_ms": 512.551, "bm25_ms": 264.686, "vector_ms": 701.394},
     {"case_id": "prod_game_025", "query": "2026년 7월 21일 한화와 KIA 경기 결과", "total_ms": 712.685, "resolver_ms": 9.803, "bm25_ms": 697.897, "vector_ms": 194.774},
     {"case_id": "prod_highlight_027", "query": "2026년 6월 26일 한화와 SSG 경기의 빅플레이는?", "total_ms": 488.774, "resolver_ms": 16.59, "bm25_ms": 470.167, "vector_ms": 371.964}
+  ],
+  "latency_trace_samples_after_date_filter_optimization": [
+    {"case_id": "prod_bat_001", "query": "김도영의 2026시즌 타격 성적을 알려줘", "total_ms": 1202.86, "resolver_ms": 845.196, "bm25_ms": 174.445, "vector_ms": 357.446},
+    {"case_id": "prod_profile_030", "query": "양현종 선수의 프로필과 소속팀은?", "total_ms": 267.064, "resolver_ms": 7.993, "bm25_ms": 258.235, "vector_ms": 146.296},
+    {"case_id": "prod_pitch_008", "query": "2026년 LG 유영찬 세이브와 투구 성적", "total_ms": 208.423, "resolver_ms": 38.152, "bm25_ms": 152.285, "vector_ms": 169.821}
   ],
   "gates": {
     "index_consistency": true,
     "historical_source_identity": true,
     "retrieval_quality_baseline": true,
     "hybrid_p95_under_500ms_all_runs": false,
-    "resolver_hybrid_p95_under_500ms_all_runs": false
+    "resolver_hybrid_p95_under_500ms_all_runs": false,
+    "resolver_hybrid_p95_under_500ms_after_date_filter_all_runs": true
   },
-  "status": "quality_pass_latency_slo_pending",
+  "status": "quality_pass_resolver_latency_canary_pass_permanent_slo_pending",
   "notes": [
     "The three canaries and post-repair replay preserved retrieval quality exactly.",
-    "Latency is variable across remote Oracle/provider runs; the 500ms SLO is not declared closed.",
+    "The date-filter optimization preserved retrieval quality and produced three configured resolver-hybrid p95 runs below 500ms.",
+    "The permanent 500ms SLO is not declared closed until the optimized path is confirmed across a scheduled writer-load cycle.",
     "The corpus manifest contains source identity/lifecycle fields and does not include season_year metadata."
   ]
 }

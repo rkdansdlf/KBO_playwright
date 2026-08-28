@@ -18,6 +18,7 @@ from src.api.routers import (
     futures,
     games,
     health,
+    live_stream,
     milestones,
     notices,
     pipeline,
@@ -68,6 +69,10 @@ TAGS_METADATA = [
     {
         "name": "Stadiums & Facilities",
         "description": "KBO 경기장 목록, 주차장, 식음료(F&B), 좌석 구역 및 예매 정보 조회 API",
+    },
+    {
+        "name": "KBO Live Stream & WebSocket",
+        "description": "실시간 KBO 문자중계(PBP), WPA 승률 변동 및 WebSocket 실시간 브로드캐스팅 API",
     },
     {
         "name": "Health & System",
@@ -168,3 +173,4 @@ app.include_router(pipeline.router)
 app.include_router(notices.router)
 app.include_router(milestones.router)
 app.include_router(futures.router)
+app.include_router(live_stream.router)

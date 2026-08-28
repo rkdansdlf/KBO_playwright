@@ -53,6 +53,13 @@ def test_build_master_parser_subcommands() -> None:
     assert args.apply is True
     assert args.strict is True
 
+    # Test serve subcommand parsing
+    args = parser.parse_args(["serve", "--host", "0.0.0.0", "--port", "9000", "--reload"])
+    assert args.command == "serve"
+    assert args.host == "0.0.0.0"
+    assert args.port == 9000
+    assert args.reload is True
+
 
 def test_master_cli_no_args_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = main([])

@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine as SqlEngine
     from sqlalchemy.orm import Session
 
+    from src.reporting.scouting_dto import ScoutingReport
+
 logger = logging.getLogger(__name__)
 
 
@@ -257,6 +259,57 @@ class ReportingEngine:
             generated_at=datetime.now(UTC).isoformat(),
             overall_status=overall,
             summary_metrics=combined_metrics,
+            sections=sections,
+        )
+
+    def generate_scouting_report(
+        self,
+        player_name_or_id: str | int = "김도영",
+        year: int | None = None,
+        session: Session | None = None,
+    ) -> UnifiedExecutiveReport:
+        """Generate a 5-axis sabermetric scouting report for a player."""
+        target_year = year or 2024
+        report_id = f"scouting_{player_name_or_id}_{target_year}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
+
+        def _run_scout(s: Session) -> ScoutingReport:
+            from src.reporting.scouting_engine import ScoutingReportEngine
+
+            scout_engine = ScoutingReportEngine(s)
+            return scout_engine.generate_scouting_report(player_name_or_id, year=target_year)
+
+        if session is not None:
+            scout_rep = _run_scout(session)
+        else:
+            with get_db_session() as s:
+                scout_rep = _run_scout(s)
+
+        sections = [
+            ReportSection(
+                title=f"5-Axis Scouting Radar: {scout_rep.player_name} ({scout_rep.overall_grade})",
+                content_markdown=f"```\n{scout_rep.to_ascii_card()}\n```",
+                metrics={
+                    "overall_grade": scout_rep.overall_grade,
+                    "tier": scout_rep.scouting_tier,
+                    "dimensions": [d.to_dict() for d in scout_rep.dimensions],
+                },
+                status="PASS",
+            ),
+            ReportSection(
+                title="Detailed Scouting Breakdown",
+                content_markdown=scout_rep.to_markdown(),
+                metrics={"classic": scout_rep.classic_stats, "advanced": scout_rep.advanced_stats},
+                status="PASS",
+            ),
+        ]
+
+        return UnifiedExecutiveReport(
+            report_id=report_id,
+            category=ReportCategory.SCOUTING,
+            title=f"KBO Scouting Report: {scout_rep.player_name} ({scout_rep.team_code}, {target_year})",
+            generated_at=datetime.now(UTC).isoformat(),
+            overall_status="PASS",
+            summary_metrics={"overall_grade": scout_rep.overall_grade, "tier": scout_rep.scouting_tier},
             sections=sections,
         )
 

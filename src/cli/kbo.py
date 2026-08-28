@@ -31,13 +31,14 @@ def _add_core_subparsers(subparsers: argparse._SubParsersAction[argparse.Argumen
     p_diag.add_argument("--json", action="store_true", help="Output report as JSON.")
 
     # 3. Report
-    p_rep = subparsers.add_parser("report", help="Generate quality, gap, freshness, or executive reports.")
+    p_rep = subparsers.add_parser("report", help="Generate quality, gap, freshness, scouting, or executive reports.")
     p_rep.add_argument(
         "--category",
         type=str,
         default="all",
-        choices=["all", "quality", "gap", "freshness", "executive"],
+        choices=["all", "quality", "gap", "freshness", "executive", "scouting"],
     )
+    p_rep.add_argument("--player", "-p", type=str, default="김도영", help="Target player name/ID for scouting.")
     p_rep.add_argument("--year", type=int, default=None, help="Target season year.")
     p_rep.add_argument("--format", type=str, default="markdown", choices=["markdown", "json", "html"])
     p_rep.add_argument("--output", type=str, default=None, help="Output file path.")
@@ -174,6 +175,13 @@ def _add_advanced_subparsers(subparsers: argparse._SubParsersAction[argparse.Arg
     p_drift.add_argument("--strict", action="store_true", help="Exit 1 if any drift is detected.")
     p_drift.add_argument("--json", action="store_true", help="Output report as JSON.")
 
+    # 14. Serve
+    p_srv = subparsers.add_parser("serve", help="Start FastAPI REST & WebSocket server gateway.")
+    p_srv.add_argument("--host", type=str, default="127.0.0.1", help="Network host interface to bind.")
+    p_srv.add_argument("--port", "-p", type=int, default=8000, help="Port to listen on.")
+    p_srv.add_argument("--reload", action="store_true", help="Enable auto-reloading on code changes.")
+    p_srv.add_argument("--workers", "-w", type=int, default=1, help="Number of worker processes.")
+
 
 def build_master_parser() -> argparse.ArgumentParser:
     """Build root command-line parser with all platform subcommands."""
@@ -202,6 +210,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     from src.cli.run_workflow import main as wf_main
     from src.cli.seed_synthetic_data import main as seed_main
     from src.cli.send_notification import main as notif_main
+    from src.cli.serve_api import main as srv_main
     from src.cli.simulate_game import main as sim_main
     from src.cli.sync_sqlite_to_oci import main as sync_main
     from src.cli.validate_config import main as conf_main
@@ -238,6 +247,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "simulate": sim_main,
         "drift": drift_main,
         "detect-drift": drift_main,
+        "serve": srv_main,
     }
 
 
