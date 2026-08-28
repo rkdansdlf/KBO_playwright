@@ -37,7 +37,7 @@ jobs:
           mkdir -p "$TNS_ADMIN"
           printf '%s' "$ORACLE_WALLET_B64" | base64 --decode > "$RUNNER_TEMP/oracle-wallet.zip"
           unzip -oq "$RUNNER_TEMP/oracle-wallet.zip" -d "$TNS_ADMIN"
-          echo "wallet files: $(ls -1 "$TNS_ADMIN" | wc -l)"
+          echo "wallet files: $(find "$TNS_ADMIN" -maxdepth 1 -type f -print | wc -l)"
 
       - name: Diagnose target (credential-free)
         run: |
@@ -55,21 +55,40 @@ jobs:
       - name: Probe (read-only --check)
         run: |
           set +e
-          python3 -m src.cli.apply_oracle_migrations --url "$OCI_DB_URL" --check 2>&1 | tee probe.log
+          set -o pipefail
+          python3 -c '
+          import logging
+          import sys
+          logging.basicConfig(level=logging.INFO)
+          from src.cli.sync.apply_oracle_migrations import main
+          raise SystemExit(main(sys.argv[1:]))
+          ' --url "$OCI_DB_URL" --check 2>&1 | tee probe.log
+          probe_status=${PIPESTATUS[0]}
+          printf '%s\n' "$probe_status" > probe.exit
+          echo "probe_exit=$probe_status"
           set -e
 
       - name: Classify result
         if: always()
         run: |
           echo "--- 판정 ---"
+          probe_status="$(cat probe.exit 2>/dev/null || echo 99)"
+          echo "probe_exit=$probe_status"
           if   grep -qiE 'ORA-12506|ORA-12514|DPY-6000|listener refused' probe.log; then
             echo "ACL/리스너 차단 -> ADB 네트워크 설정 확인"
+            exit 1
           elif grep -qiE 'ORA-01017|invalid cred'                        probe.log; then
             echo "자격증명 실패 -> 크롤러 시크릿도 로테이션 이전 값이다"
+            exit 1
           elif grep -qiE 'sqlite|kbo_dev\.db'                            probe.log; then
             echo "SQLite 폴백 -> URL 이 전달되지 않았다"
+            exit 1
           elif grep -qiE 'pending|not applied|ORA-00942'                 probe.log; then
             echo "접속 성공. 스키마 pending -> apply_oracle_migrations 가 다음 단계"
+            exit 1
+          elif [ "$probe_status" -ne 0 ]; then
+            echo "읽기 전용 probe 실패(exit=$probe_status) -> 상세 로그 확인"
+            exit 1
           else
             echo "접속 성공, 마이그레이션 최신 상태"
           fi
