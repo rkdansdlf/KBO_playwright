@@ -5,14 +5,17 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import bindparam, case, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import defer
 
+from src.constants import KBO_FOUNDING_YEAR, KBO_MAX_VALID_SEASON
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_identity import RETRIEVABLE_INDEX_STATUSES
+from src.services.rag_sparse_terms import search_keywords as _sparse_search_keywords
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -20,28 +23,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_SEASON_YEAR_PATTERN = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+
 BM25_POSTGRES_CANDIDATE_MULTIPLIER = 100
 BM25_POSTGRES_MIN_CANDIDATES = 1000
 BM25_POSTGRES_MIN_PER_KEYWORD = 100
 BM25_ORACLE_CANDIDATE_MULTIPLIER = 20
 BM25_ORACLE_MIN_CANDIDATES = 100
-SEARCH_TOKEN_SUFFIXES = (
-    "으로",
-    "에서",
-    "에게",
-    "께서",
-    "의",
-    "은",
-    "는",
-    "이",
-    "가",
-    "을",
-    "를",
-    "와",
-    "과",
-    "도",
-    "에",
-)
 
 
 class RagSearchEngine:
@@ -82,6 +70,7 @@ class RagSearchEngine:
         keywords = _search_keywords(query)
         if not keywords:
             keywords = [query.strip()]
+        filters = _resolved_search_filters(query, filters)
 
         conditions = [
             or_(
@@ -104,8 +93,6 @@ class RagSearchEngine:
             if conditions:
                 stmt = stmt.where(or_(*conditions))
             chunks = list(self.session.execute(stmt).scalars().all())
-
-        filters = filters or {}
 
         filtered_chunks = [
             c
@@ -423,13 +410,23 @@ class RagSearchEngine:
 
 def _search_keywords(query: str) -> list[str]:
     """Normalize whitespace-delimited search terms and remove Korean particles."""
-    keywords: list[str] = []
-    for raw_keyword in query.split():
-        keyword = raw_keyword.strip()
-        for suffix in SEARCH_TOKEN_SUFFIXES:
-            if len(keyword) > len(suffix) + 1 and keyword.endswith(suffix):
-                keyword = keyword[: -len(suffix)]
-                break
-        if len(keyword) > 1:
-            keywords.append(keyword)
-    return keywords
+    return _sparse_search_keywords(query)
+
+
+def _resolved_search_filters(query: str, filters: dict[str, Any] | None) -> dict[str, Any]:
+    """Add an explicit query year without overriding a caller-provided filter."""
+    resolved = dict(filters or {})
+    if resolved.get("season_year") is None:
+        season_year = _query_season_year(query)
+        if season_year is not None:
+            resolved["season_year"] = season_year
+    return resolved
+
+
+def _query_season_year(query: str) -> int | None:
+    """Extract a valid KBO season year from a free-text query."""
+    for value in _SEASON_YEAR_PATTERN.findall(query):
+        year = int(value)
+        if KBO_FOUNDING_YEAR <= year <= KBO_MAX_VALID_SEASON:
+            return year
+    return None
