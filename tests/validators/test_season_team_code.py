@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-from src.validators.season_team_code import audit_season_team_codes
+from src.validators.season_team_code import _query_for_session, audit_season_team_codes
 
 
 def test_audit_classifies_archive_all_star_and_unresolved_rows() -> None:
@@ -106,3 +108,18 @@ def test_audit_classifies_archive_all_star_and_unresolved_rows() -> None:
     assert audit.pitching_all_star == 1
     assert audit.pitching_unresolved == 1
     assert audit.total_unresolved == 2
+
+
+def test_oracle_query_uses_oracle_cast_and_alias_syntax() -> None:
+    session = MagicMock()
+    session.dialect = None
+    session.bind.dialect.name = "oracle"
+
+    query = _query_for_session(session)
+
+    assert "FROM player_season_batting ps" in query
+    assert "CAST(ps.season AS TEXT)" not in query
+    assert "TO_CHAR(ps.season)" in query
+    assert "COALESCE(TRIM(ps.team_code), '')" not in query
+    assert "NVL(TRIM(ps.team_code), ' ') = ' '" in query
+    assert "NVL(TRIM(pg.team_code), ' ') <> ' '" in query

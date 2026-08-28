@@ -7,11 +7,15 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.dialects import oracle
 
 from src.cli import data_integrity_checker as checker_module
 from src.cli.data_integrity_checker import (
     CheckResult,
     IntegrityReport,
+    _primary_game_predicate,
+    _target_date_predicate,
     check_all_terminal_status,
     check_child_stats_exist,
     check_duplicate_games,
@@ -25,6 +29,8 @@ from src.cli.data_integrity_checker import (
     main,
     run_integrity_checks,
 )
+from src.models.game import Game
+from src.models.player import PlayerSeasonBatting
 
 
 def _make_session(
@@ -56,6 +62,33 @@ def _make_session(
     session.query.return_value.filter.return_value.scalar.side_effect = lambda: 0
 
     return session
+
+
+def _oracle_session() -> MagicMock:
+    session = MagicMock()
+    session.bind.dialect.name = "oracle"
+    return session
+
+
+def test_oracle_primary_game_predicate_avoids_is_numeric_boolean() -> None:
+    sql = str(
+        select(Game)
+        .where(_primary_game_predicate(_oracle_session(), Game.is_primary))
+        .compile(dialect=oracle.dialect()),
+    )
+
+    assert " IS 1" not in sql
+    assert "game.is_primary =" in sql
+
+
+def test_oracle_target_date_predicate_uses_trunc_for_timestamps() -> None:
+    sql = str(
+        select(PlayerSeasonBatting)
+        .where(_target_date_predicate(_oracle_session(), PlayerSeasonBatting.updated_at, _date(2026, 8, 18)))
+        .compile(dialect=oracle.dialect()),
+    )
+
+    assert "TRUNC(" in sql.upper()
 
 
 class TestCheckGamesExist:

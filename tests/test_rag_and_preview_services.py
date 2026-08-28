@@ -17,7 +17,7 @@ from src.models.kbo_press_release import KboPressRelease
 from src.models.player_milestone import PlayerMilestone
 from src.models.rag_chunk import RagChunk
 from src.services.game_preview_generator import GamePreviewGenerator
-from src.services.rag_search_engine import RagSearchEngine, _search_keywords
+from src.services.rag_search_engine import RagSearchEngine, _query_season_year, _search_keywords
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -94,6 +94,38 @@ def test_rag_search_engine_applies_game_date_metadata_filter(db_session: Session
     )
 
     assert [result["chunk_id"] for result in results] == ["game_play_by_play:target"]
+
+
+def test_rag_search_engine_extracts_season_from_query(db_session: Session) -> None:
+    """Use an explicit year in a query to scope historical retrieval."""
+    db_session.add_all(
+        [
+            RagChunk(
+                source_table="game",
+                source_row_id="19880402OBLT0",
+                title="1988-04-02 OB vs LT",
+                content="1988-04-02 KBO 경기: OB 4 - LT 0",
+                season_year=1988,
+            ),
+            RagChunk(
+                source_table="player_basic",
+                source_row_id="ob-lt-profile",
+                title="OB LT 선수 프로필",
+                content="OB와 LT 선수 정보",
+            ),
+        ],
+    )
+    db_session.commit()
+
+    results = RagSearchEngine(db_session).search("1988-04-02 OB 4 LT 0")
+
+    assert results[0]["chunk_id"] == "game:19880402OBLT0"
+
+
+def test_query_season_year_rejects_out_of_range_years() -> None:
+    """Accept only years covered by the KBO season contract."""
+    assert _query_season_year("1988-04-02") == 1988
+    assert _query_season_year("2101 season") is None
 
 
 def test_postgresql_search_uses_bounded_tsvector_candidates() -> None:
@@ -204,6 +236,11 @@ def test_postgresql_search_applies_game_date_metadata_filter() -> None:
 def test_search_keywords_remove_korean_particles() -> None:
     """Normalize attached Korean particles before lexical retrieval."""
     assert _search_keywords("김도영의 2026시즌 KT와") == ["김도영", "2026시즌", "KT"]
+
+
+def test_search_keywords_split_punctuation_like_sparse_index() -> None:
+    """Keep query tokenization aligned with the Oracle postings builder."""
+    assert _search_keywords("1988-04-02 OB와 LT") == ["1988", "04", "02", "OB", "LT"]
 
 
 def test_game_preview_generator(db_session: Session) -> None:
