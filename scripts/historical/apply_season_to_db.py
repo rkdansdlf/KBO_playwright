@@ -140,9 +140,10 @@ def backup_existing(session, year: int, out: Path) -> int:
 
 
 def delete_existing(session, year: int) -> int:
-    """기존 {year}% game 행 삭제."""
+    """기존 {year}% game 및 game_metadata 행 삭제."""
     from sqlalchemy import text
 
+    session.execute(text(f"DELETE FROM game_metadata WHERE game_id LIKE '{year}%'"))
     result = session.execute(text(f"DELETE FROM game WHERE game_id LIKE '{year}%'"))
     return result.rowcount or 0
 
