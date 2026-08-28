@@ -39,6 +39,19 @@ jobs:
           unzip -oq "$RUNNER_TEMP/oracle-wallet.zip" -d "$TNS_ADMIN"
           echo "wallet files: $(ls -1 "$TNS_ADMIN" | wc -l)"
 
+      - name: Diagnose target (credential-free)
+        run: |
+          echo "--- 월렛 tnsnames.ora 에 있는 별칭 ---"
+          grep -oE '^[a-z0-9_]+ *=' "$TNS_ADMIN/tnsnames.ora" | tr -d ' =' | sort -u
+          echo "--- OCI_DB_URL 이 요청하는 대상 (자격증명 제거) ---"
+          # 마지막 @ 뒤만 남긴다. 사용자명/비밀번호는 그 앞에 있으므로 노출되지 않는다.
+          echo "$OCI_DB_URL" | sed -E 's|.*@||'
+          echo "--- 엔드포인트 TCP 도달성 ---"
+          host=$(grep -oE 'host=[a-zA-Z0-9._-]+' "$TNS_ADMIN/tnsnames.ora" | head -1 | cut -d= -f2)
+          port=$(grep -oE 'port=[0-9]+' "$TNS_ADMIN/tnsnames.ora" | head -1 | cut -d= -f2)
+          echo "endpoint=$host:$port"
+          timeout 10 bash -c "</dev/tcp/$host/$port" && echo "TCP 도달 가능" || echo "TCP 도달 불가"
+
       - name: Probe (read-only --check)
         run: |
           set +e
