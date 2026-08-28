@@ -714,6 +714,26 @@ python3 -m src.cli.audit_rag_index --require-nonempty --require-postings --json
 
 JSON의 `postings_missing`은 retrievable 청크 중 postings가 없는 수입니다.
 
+### 2-1. 경기 계열 season_year 메타데이터 보정
+
+구버전 빌더가 `season_id` surrogate 값을 `rag_chunks.season_year`에 저장한
+경기 계열 청크를 source game ID의 달력 연도로 보정합니다. content, vector,
+content hash, lifecycle status는 변경하지 않습니다. 기본은 dry-run입니다.
+
+```bash
+# 보정 대상과 건수만 확인
+python3 -m src.cli.rag.repair_season_year_metadata --dry-run --json
+
+# production 적용 시 양쪽 write gate를 명시
+env RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION_WRITE=1 \
+  python3 -m src.cli.rag.repair_season_year_metadata --apply --json
+```
+
+현재 검증된 대상은 `game`, `game_lineups`, `game_play_by_play`,
+`game_highlights`이며 153,970건이 보정되었습니다. apply 후 dry-run의
+`candidate_count`가 `0`인지 확인하고 `audit_rag_index --require-postings`를
+재실행합니다.
+
 ### 3. 일일 자동 파이프라인 (스케줄러 등록)
 
 | 시각(KST) | 잡 | 역할 |

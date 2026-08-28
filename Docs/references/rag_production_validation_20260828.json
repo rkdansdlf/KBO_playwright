@@ -1,0 +1,132 @@
+{
+  "as_of": "2026-08-28",
+  "environment": "production",
+  "database_contract": "DATABASE_URL canonical Oracle rag_chunks",
+  "dataset": "Docs/references/rag_golden_queries.json",
+  "dataset_sha256": "6753148748d2a402d11bb7a7306d0dec80089ed84f59b3867e9a5acbde8ca295",
+  "query_count": 30,
+  "top_k": 5,
+  "embedding_mode": "configured",
+  "embedding_model": "perplexity/pplx-embed-v1-4b",
+  "embedding_dimension": 1536,
+  "index_version": "rag-v1",
+  "corpus_manifest": {
+    "rows": 221554,
+    "primary_sha256": "d4e2085fa1b88492c985dcaa9fe7830c2749f57ea6c1e4c8053da0d9846a6f4d",
+    "staging_sha256": "62000700b7ac161bcdd53f2a1f49dc16725e0de9bd79a1df99ff620a64324300"
+  },
+  "index_audit": {
+    "primary_count": 221554,
+    "vector_count": 221554,
+    "total": 221554,
+    "healthy": 219533,
+    "deleted": 2021,
+    "sparse_only": 0,
+    "vector_only": 0,
+    "orphan": 0,
+    "hash_mismatch": 0,
+    "version_mismatch": 0,
+    "embedding_missing": 0,
+    "stale": 0,
+    "postings_missing": 0,
+    "consistent": true
+  },
+  "reconciliation": {
+    "primary_rows": 221554,
+    "staging_rows": 221554,
+    "unexplained": 0,
+    "clean": true,
+    "independent_staging": false,
+    "note": "PGVECTOR_URL is unset in this environment; the staging side falls back to the canonical Oracle session."
+  },
+  "historical_reindex": {
+    "season_range": "1982-2000",
+    "new_embeddings": 10890,
+    "reused_identities": 3409,
+    "active_source_counts": {
+      "game": 8237,
+      "team_standings_daily": 584,
+      "player_season_batting": 2960,
+      "player_season_pitching": 2518
+    }
+  },
+  "season_year_repair": {
+    "source_tables": [
+      "game",
+      "game_lineups",
+      "game_play_by_play",
+      "game_highlights"
+    ],
+    "scanned": 174241,
+    "updated": 153970,
+    "already_correct": 20271,
+    "invalid_game_id": 0,
+    "candidate_count_after_apply": 0,
+    "content_or_embedding_updated": false
+  },
+  "canary_runs_before_metadata_repair": [
+    {
+      "run": 1,
+      "variants": {
+        "bm25": {"recall_at_5": 0.5666666667, "mrr": 0.45, "hit_rate": 0.5666666667, "p50_ms": 1020.082, "p95_ms": 18753.688, "max_ms": 21041.223},
+        "vector": {"recall_at_5": 0.9151515152, "mrr": 0.7972222222, "hit_rate": 0.9333333333, "p50_ms": 364.077, "p95_ms": 1107.452, "max_ms": 16534.165},
+        "hybrid": {"recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 468.067, "p95_ms": 3070.478, "max_ms": 3256.799},
+        "resolver_hybrid": {"recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 256.044, "p95_ms": 693.845, "max_ms": 9736.546}
+      }
+    },
+    {
+      "run": 2,
+      "variants": {
+        "bm25": {"recall_at_5": 0.5666666667, "mrr": 0.45, "hit_rate": 0.5666666667, "p50_ms": 214.975, "p95_ms": 656.33, "max_ms": 884.779},
+        "vector": {"recall_at_5": 0.9151515152, "mrr": 0.7972222222, "hit_rate": 0.9333333333, "p50_ms": 238.467, "p95_ms": 563.471, "max_ms": 570.287},
+        "hybrid": {"recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 228.495, "p95_ms": 359.114, "max_ms": 376.121},
+        "resolver_hybrid": {"recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 231.394, "p95_ms": 561.259, "max_ms": 870.039}
+      }
+    },
+    {
+      "run": 3,
+      "variants": {
+        "bm25": {"recall_at_5": 0.5666666667, "mrr": 0.45, "hit_rate": 0.5666666667, "p50_ms": 279.765, "p95_ms": 487.601, "max_ms": 556.672},
+        "vector": {"recall_at_5": 0.9151515152, "mrr": 0.7972222222, "hit_rate": 0.9333333333, "p50_ms": 207.619, "p95_ms": 430.692, "max_ms": 438.926},
+        "hybrid": {"recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 233.581, "p95_ms": 511.558, "max_ms": 831.12},
+        "resolver_hybrid": {"recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 357.936, "p95_ms": 674.235, "max_ms": 712.154}
+      }
+    }
+  ],
+  "post_repair_replay": {
+    "variants": {
+      "bm25": {"recall_at_5": 0.5666666667, "mrr": 0.45, "hit_rate": 0.5666666667, "p50_ms": 876.096, "p95_ms": 11256.203, "max_ms": 18760.714},
+      "vector": {"recall_at_5": 0.9151515152, "mrr": 0.7972222222, "hit_rate": 0.9333333333, "p50_ms": 258.977, "p95_ms": 2180.497, "max_ms": 2575.595},
+      "hybrid": {"recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 410.891, "p95_ms": 3437.763, "max_ms": 3514.124},
+      "resolver_hybrid": {"recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 217.095, "p95_ms": 743.134, "max_ms": 789.238}
+    }
+  },
+  "resolver_hybrid_control_runs_after_metadata_repair": [
+    {"run": 1, "embedding_mode": "configured", "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 215.108, "p95_ms": 380.903, "max_ms": 484.076},
+    {"run": 2, "embedding_mode": "configured", "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 619.726, "p95_ms": 20256.109, "max_ms": 20938.013},
+    {"run": 3, "embedding_mode": "configured", "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 273.21, "p95_ms": 497.584, "max_ms": 742.14}
+  ],
+  "deterministic_latency_control_runs": [
+    {"run": 1, "p50_ms": 236.478, "p95_ms": 603.031, "max_ms": 684.17},
+    {"run": 2, "p50_ms": 280.505, "p95_ms": 463.476, "max_ms": 576.623},
+    {"run": 3, "p50_ms": 221.993, "p95_ms": 420.287, "max_ms": 492.406}
+  ],
+  "latency_trace_samples": [
+    {"case_id": "prod_bat_001", "query": "김도영의 2026시즌 타격 성적을 알려줘", "total_ms": 1214.546, "resolver_ms": 512.551, "bm25_ms": 264.686, "vector_ms": 701.394},
+    {"case_id": "prod_game_025", "query": "2026년 7월 21일 한화와 KIA 경기 결과", "total_ms": 712.685, "resolver_ms": 9.803, "bm25_ms": 697.897, "vector_ms": 194.774},
+    {"case_id": "prod_highlight_027", "query": "2026년 6월 26일 한화와 SSG 경기의 빅플레이는?", "total_ms": 488.774, "resolver_ms": 16.59, "bm25_ms": 470.167, "vector_ms": 371.964}
+  ],
+  "gates": {
+    "index_consistency": true,
+    "historical_source_identity": true,
+    "retrieval_quality_baseline": true,
+    "hybrid_p95_under_500ms_all_runs": false,
+    "resolver_hybrid_p95_under_500ms_all_runs": false
+  },
+  "status": "quality_pass_latency_slo_pending",
+  "notes": [
+    "The three canaries and post-repair replay preserved retrieval quality exactly.",
+    "Latency is variable across remote Oracle/provider runs; the 500ms SLO is not declared closed.",
+    "The corpus manifest contains source identity/lifecycle fields and does not include season_year metadata."
+  ]
+}

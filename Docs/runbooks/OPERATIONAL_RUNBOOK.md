@@ -98,14 +98,17 @@ for y in $(seq 1982 2000); do
   done
 done
 
-# 4) 최종 검증: staging 기준 매니페스트와 compare
-tar xzf data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823_identity_ndjson.tar.gz \
-  -C reports/rag_reconciliation/ staging_sparse_identity.ndjson
+# 4) 최종 검증: canonical Oracle audit와 source identity census
+python3 -m src.cli.rag.audit_rag_index --require-nonempty --require-postings --json
 python3 -m src.cli.rag.reconcile_rag_stores export --side primary \
   --out reports/rag_reconciliation/primary_after.ndjson
+
+# 독립 pgvector endpoint가 실제 설정된 경우에만 staging export/compare 수행
+python3 -m src.cli.rag.reconcile_rag_stores export --side staging \
+  --out reports/rag_reconciliation/staging_after.ndjson
 python3 -m src.cli.rag.reconcile_rag_stores compare \
   --left reports/rag_reconciliation/primary_after.ndjson \
-  --right reports/rag_reconciliation/staging_sparse_identity.ndjson \
+  --right reports/rag_reconciliation/staging_after.ndjson \
   --fail-on-unexplained
 ```
 
@@ -115,6 +118,25 @@ tombstone한다. `--skip-existing`은 기존 identity의 내용 변경을 갱신
 사전 집계에서 `updated`가 있으면 해당 소스는 `--skip-existing` 없이 재색인한다.
 player_season_*의 팀 코드 규약은 `Docs/references/RAG_IDENTITY_CONTRACT.md`의
 현재 primary DB 저장값 원칙을 따른다.
+
+### 4) RAG season_year 메타데이터 보정
+
+역사 재색인 이후 구버전 경기 계열 청크가 `season_id` surrogate 값을
+`season_year`에 보유할 수 있다. 다음 보정은 `source_row_id` 또는 source
+metadata의 game ID에서 달력 연도를 도출하며 vector/content를 재생성하지
+않는다.
+
+```bash
+python3 -m src.cli.rag.repair_season_year_metadata --dry-run --json
+env RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION_WRITE=1 \
+  python3 -m src.cli.rag.repair_season_year_metadata --apply --json
+python3 -m src.cli.rag.repair_season_year_metadata --dry-run --json
+python3 -m src.cli.rag.audit_rag_index --require-nonempty --require-postings --json
+```
+
+2026-08-28 production verification: 174,241 rows scanned, 153,970 updated,
+20,271 already correct, and zero remaining dry-run candidates. The detailed
+validation record is `Docs/references/rag_production_validation_20260828.json`.
 
 ---
 

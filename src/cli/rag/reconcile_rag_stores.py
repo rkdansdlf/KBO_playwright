@@ -27,10 +27,7 @@ if TYPE_CHECKING:
 _DEFAULT_OUTPUT_ROOT = Path("reports") / "rag_reconciliation"
 _SIDES = ("primary", "staging")
 
-_IDENTITY_SELECT_PREFIX = (
-    "SELECT source_table, source_row_id, content_hash, index_version, index_status, "
-    "CASE WHEN embedding IS NULL THEN 0 ELSE 1 END AS embedding_present"
-)
+_IDENTITY_SELECT_PREFIX = "SELECT source_table, source_row_id, content_hash, index_version, index_status, "
 _WITH_TIMESTAMPS_SUFFIX = ", created_at, updated_at FROM rag_chunks"
 _PLAIN_SUFFIX = " FROM rag_chunks"
 
@@ -49,14 +46,23 @@ def _entry_from_db_row(row: Mapping[str, object]) -> ManifestEntry:
     return entry_from_manifest_row(mapping)
 
 
+def _identity_select_prefix(session: Session) -> str:
+    """Build the identity projection using the active backend's vector column."""
+    bind = session.get_bind()
+    dialect = getattr(getattr(bind, "dialect", None), "name", None)
+    embedding_column = "embedding_vector" if dialect == "oracle" else "embedding"
+    return f"{_IDENTITY_SELECT_PREFIX}CASE WHEN {embedding_column} IS NULL THEN 0 ELSE 1 END AS embedding_present"
+
+
 def fetch_identity_entries(session: Session) -> list[ManifestEntry]:
     """Load identity projections, preferring timestamp columns when present."""
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
 
+    prefix = _identity_select_prefix(session)
     for suffix in (_WITH_TIMESTAMPS_SUFFIX, _PLAIN_SUFFIX):
         try:
-            rows = session.execute(text(_IDENTITY_SELECT_PREFIX + suffix)).mappings().all()
+            rows = session.execute(text(prefix + suffix)).mappings().all()
         except SQLAlchemyError:
             continue
         return [_entry_from_db_row(row) for row in rows]

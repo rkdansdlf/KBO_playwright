@@ -1012,5 +1012,12 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **RAG Evaluation Gateway (`src/rag/evaluation_gateway.py`)**: Implemented `RagEvaluationGateway` for automated retrieval accuracy benchmarking (Recall@K, Precision@K, MRR, NDCG@K, Hit Rate) and latency percentile profiling (p50, p90, p95, p99) against `Docs/references/rag_golden_queries.json` with SLA validation (`Recall@5 >= 0.85`, `p95 < 500ms`).
 - **RAG Evaluation DTOs (`src/rag/dto.py`)**: Added `RagGoldenQuery`, `RagLatencyBreakdown`, and `RagEvaluationReport` dataclasses.
 - **Interactive Query & Evaluation CLI (`src/cli/rag/query.py`, `src/cli/rag/evaluate.py`)**: Built `query` CLI for interactive hybrid search with metadata and `evaluate` CLI for benchmark runs.
-- **Master CLI Router Integration (`src/cli/kbo.py`)**: Registered `rag` 11th subcommand supporting `kbo rag query` and `kbo rag evaluate`.
 - **Verification & Tests**: Added unit and CLI tests in `tests/rag/test_evaluation_gateway.py` and `tests/cli/test_rag_cli.py`; full test suite = **10,006 passed, 3 skipped** in 1m 50s; `ruff check src/ tests/ scripts/` = **0 errors**.
+
+### Phase 91 Complete (2026-08-28) — KBO Live Game Event Simulator & Real-time WPA Stream Processor (P11-4)
+
+- **Simulation Package & DTOs (`src/simulation/`)**: Created `src/simulation/` package exporting `SimulationEvent`, `SimulationGameState`, and `SimulationSummary` DTOs with serializable mappings.
+- **Game Stream Generator (`src/simulation/stream_generator.py`)**: Implemented `GameStreamGenerator` for 9-inning regulation/extra inning play generation with baseball rules state machine (singles, extra-base hits, walks, double plays, sac flies, walk-offs).
+- **Live Stream Processor (`src/simulation/live_stream_processor.py`)**: Implemented `LiveStreamProcessor` for real-time play-by-play processing with speed pacing, `WPACalculator` integration, Leverage Index (LI) heuristics, hot-moment alert dispatching via `NotificationDispatcher`, and MVP/LVP calculation.
+- **Master CLI Router Integration (`src/cli/kbo.py`, `src/cli/simulate_game.py`)**: Registered `simulate` 12th subcommand (`kbo simulate --innings 9 --speed 10 --notify`).
+- **Verification & Tests**: Added unit and CLI tests in `tests/simulation/test_stream_generator.py`, `tests/simulation/test_live_stream_processor.py`, and `tests/cli/test_simulate_cli.py`; full test suite = **10,015 passed, 3 skipped** in 2m 15s; `ruff check src/ tests/ scripts/` = **0 errors**.

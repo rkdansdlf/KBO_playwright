@@ -102,3 +102,18 @@ python3 -m src.cli.rag.audit_rag_tombstones --json --fail-on-unexplained
 
 The default command only reports findings. `--fail-on-unexplained` is the
 explicit gate for automation; it never restores, purges, or reindexes rows.
+
+## 2026-08-28 Exporter Verification
+
+The identity exporter now selects the backend-specific vector column:
+`embedding_vector` for Oracle native VECTOR and `embedding` for PostgreSQL
+pgvector. The previous generic `embedding` expression produced a false
+`EMBEDDING_MISSING` result against Oracle even though the native vector audit
+was healthy.
+
+After the fix, primary and staging exports each contained `221,554` rows and
+the reconciliation reported `unexplained=0`. This local environment has no
+`PGVECTOR_URL`, so `staging` intentionally falls back to the canonical Oracle
+session; the result is a clean self-comparison, not independent PostgreSQL
+staging evidence. An independent staging gate remains pending until a
+separate pgvector endpoint or preserved staging manifest is available.
