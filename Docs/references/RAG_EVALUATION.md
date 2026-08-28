@@ -226,6 +226,39 @@ These quiet-instance runs meet the `500ms` hybrid p95 target. Repeat the
 canary after scheduler cutover and under normal writer load before treating
 the result as a permanent production SLO.
 
+### Historical Production Reindex (2026-08-27)
+
+The validated 1982-2000 historical corpus was embedded into the canonical
+Oracle `rag_chunks` table using the configured OpenRouter provider. The scoped
+build covered `game`, `team_standings_daily`, `player_season_batting`, and
+`player_season_pitching`: `10,890` new embeddings were published, while
+`3,409` matching identities were reused. Provider rate-limit responses were
+handled by the configured retry policy.
+
+The post-build Oracle audit reports `220,429` total rows, `218,408` healthy
+retrievable rows, `2,021` explicitly `DELETED` stale identities, zero
+sparse-only/vector-only/orphan/hash/version/embedding findings, and zero
+active chunks missing sparse postings. The historical active identity census
+matches the primary source exactly: `game=8,237`,
+`team_standings_daily=584`, `player_season_batting=2,960`, and
+`player_season_pitching=2,518`.
+
+A 30-query configured replay against this production corpus reported:
+
+```text
+variant          recall@5  MRR     hit rate  p50       p95
+bm25             0.5667    0.4500  0.5667    618ms     26,282ms
+vector           0.9152    0.7972  0.9333    248ms     1,789ms
+hybrid           0.9485    0.8306  0.9667    325ms     1,746ms
+resolver_hybrid  0.9485    0.8306  0.9667    196ms     670ms
+```
+
+This replay is evidence after the historical reindex, not a replacement for
+the quiet-instance canary or a permanent SLO decision. The query path now
+extracts explicit four-digit years and aligns punctuation tokenization with
+the Oracle postings builder; an exact `1988-04-02 OB 4 LT 0` smoke query
+returns `game:19880402OBLT0` first.
+
 Postings freshness is operationally guarded:
 
 ```bash
@@ -380,3 +413,19 @@ Routing acc   >= 0.98
 Current values pass all four gates (0.9485 / 0.8472 / 0.9667 / 100%).
 Latency stays excluded from the hard gate until the server-side hybrid p95
 re-measurement lands post-cutover.
+
+### Current Corpus Canary (2026-08-28)
+
+The live index audit now reports `221,554` total/vector rows, `219,533`
+healthy active rows, `2,021` tombstoned rows, and zero orphan, hash, version,
+embedding, or sparse-posting gaps. A fresh 30-query configured-embedding
+`resolver_hybrid` run remains above the approved quality gates:
+
+```text
+Recall@5  0.9485   MRR 0.8306   hit rate 0.9667
+p50 408ms         p95 17.2s     max 29.2s
+```
+
+The quality result is accepted. The remote-client p95 is highly variable and
+is not promoted to a hard latency gate until measured from the production
+server or an ADB-adjacent runner.
