@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, true
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -49,7 +49,7 @@ def get_stadiums() -> list[dict[str, Any]]:
     """Query list of all registered KBO stadiums."""
     try:
         with get_db_session() as session:
-            stmt = select(StadiumInfo).where(StadiumInfo.is_active.is_(True)).order_by(StadiumInfo.stadium_code)
+            stmt = select(StadiumInfo).where(StadiumInfo.is_active == true()).order_by(StadiumInfo.stadium_code)
             stadiums = list(session.execute(stmt).scalars().all())
 
             results = []

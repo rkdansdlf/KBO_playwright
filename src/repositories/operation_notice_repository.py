@@ -11,7 +11,7 @@ import logging
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, true
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
@@ -163,7 +163,7 @@ class OperationNoticeRepository:
             ),
         )
         if urgent_only:
-            stmt = stmt.where(StadiumOperationNotice.is_urgent.is_(True))
+            stmt = stmt.where(StadiumOperationNotice.is_urgent == true())
         stmt = stmt.order_by(StadiumOperationNotice.published_at.desc().nullslast())
         return list(self.session.execute(stmt).scalars().all())
 
