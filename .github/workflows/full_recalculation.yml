@@ -39,6 +39,10 @@ jobs:
         with:
           init-db: 'true'
 
+      - name: Validate Environment Configuration
+        run: |
+          python3 -m src.cli.kbo config --env ci --strict
+
       - name: Run Recalculation
         run: |
           python3 -m src.cli.recalc_season_stats \
@@ -51,6 +55,14 @@ jobs:
           python3 -m src.cli.recalc_player_game_stats \
             --season ${{ github.event.inputs.year }} \
             --save
+
+      - name: Run Automated Maintenance (PA Formula & Null IDs)
+        run: |
+          python3 -m src.cli.kbo maintenance --task all --apply
+
+      - name: Generate Quality Report
+        run: |
+          python3 -m src.cli.kbo report --category quality --format markdown
 
       - name: Verify PlayerGame Data Quality
         if: always()

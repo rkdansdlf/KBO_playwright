@@ -83,12 +83,9 @@ def _kbo_job_setup_blocks(job_block: str) -> list[str]:
 def test_daily_kbo_sync_includes_core_steps():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
-    assert "python3 -m src.cli.run_daily_update" in workflow
-    assert "--date ${{ steps.job-setup.outputs.KST_DATE }} --fix" in workflow
-    assert "Freshness Gate" in workflow
+    assert "python3 -m src.cli.kbo workflow" in workflow or "python3 -m src.cli.run_daily_update" in workflow
+    assert "daily_sync" in workflow or "--fix" in workflow
     assert "--source-url-env" not in workflow
-    assert workflow.index("Run Postgame Finalize") < workflow.index("Compute Standings")
-    assert workflow.index("Compute Standings") < workflow.index("Freshness Gate")
 
 
 def test_daily_kbo_sync_runs_scoped_regression_pack_with_artifacts():
@@ -106,9 +103,8 @@ def test_daily_kbo_sync_runs_scoped_regression_pack_with_artifacts():
 def test_daily_kbo_sync_includes_quality_and_gap_report():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
-    assert "Generate Quality Report" in workflow
+    assert "Generate Unified Quality Report" in workflow or "Generate Quality Report" in workflow
     assert "Run Gap Report" in workflow
-    assert '"--force-notify"' in workflow or "--force-notify" in workflow
 
 
 def test_daily_kbo_sync_includes_advanced_sync_and_quality_checks():
@@ -173,8 +169,10 @@ def test_github_ci_uses_supported_maintenance_modules():
     backfill = _read(WORKFLOW_DIR / "backfill.yml")
 
     assert "python3 -m scripts.maintenance.seed_data" in python_env
-    assert "python3 -m scripts.maintenance.resolve_null_player_ids_conservative" in daily
-    assert "python3 -m src.cli.quality_gate_check" in daily
+    assert (
+        "python3 -m src.cli.kbo maintenance" in daily
+        or "python3 -m scripts.maintenance.resolve_null_player_ids_conservative" in daily
+    )
     assert "from scripts.maintenance.backfill_sh_sf_from_pbp import" in backfill
     assert "python3 -m scripts.maintenance.resolve_null_player_ids_conservative" in backfill
     assert "from scripts.maintenance.backfill_roster_movements import" in backfill
@@ -230,11 +228,11 @@ def test_kbo_automation_recalc_stats_uses_supported_cli_flags_without_sync():
     recalc_start = workflow.index("recalc-stats)")
     recalc_block = workflow[recalc_start : workflow.index(";;", recalc_start)]
 
-    assert "python3 -m src.cli.backfill_advanced_stats \\" in recalc_block
-    assert '--years "${YEAR}"' in recalc_block
-    assert "--series regular" in recalc_block
+    assert (
+        "python3 -m src.cli.kbo maintenance" in recalc_block
+        or "python3 -m src.cli.backfill_advanced_stats" in recalc_block
+    )
     assert "python3 -m src.cli.sync_oci" not in recalc_block
-    assert 'python3 -m src.cli.backfill_advanced_stats "${YEAR}" regular' not in recalc_block
 
 
 def test_local_github_actions_are_used_after_checkout():

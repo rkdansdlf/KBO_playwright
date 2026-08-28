@@ -37,6 +37,14 @@ jobs:
           python3 -m src.cli.refresh_source_snapshots \
             --all --max-hours 168
 
+      - name: Run Unified Subsystem Diagnostics
+        run: |
+          python3 -m src.cli.kbo diagnose --subsystem all
+
+      - name: Run Automated Maintenance (PA Formula & Null IDs)
+        run: |
+          python3 -m src.cli.kbo maintenance --task all --apply
+
       - name: Run Weekly Maintenance
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
