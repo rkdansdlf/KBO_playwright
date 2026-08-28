@@ -77,6 +77,29 @@ WHERE COALESCE(TRIM(ps.team_code), '') = ''
 """
 
 
+def _is_oracle_session(session: Session | Connection) -> bool:
+    """Return whether a session or connection uses Oracle."""
+    candidates = (
+        getattr(session, "dialect", None),
+        getattr(getattr(session, "bind", None), "dialect", None),
+    )
+    return any(getattr(candidate, "name", None) == "oracle" for candidate in candidates)
+
+
+def _query_for_session(session: Session | Connection) -> str:
+    """Return the season team-code query adapted to the active SQL dialect."""
+    if not _is_oracle_session(session):
+        return _SEASON_TEAM_CODE_AUDIT_QUERY
+
+    return (
+        _SEASON_TEAM_CODE_AUDIT_QUERY.replace(" AS ps", " ps")
+        .replace(" AS pg", " pg")
+        .replace("CAST(ps.season AS TEXT)", "TO_CHAR(ps.season)")
+        .replace("COALESCE(TRIM(ps.team_code), '') = ''", "NVL(TRIM(ps.team_code), ' ') = ' '")
+        .replace("COALESCE(TRIM(pg.team_code), '') <> ''", "NVL(TRIM(pg.team_code), ' ') <> ' '")
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SeasonTeamCodeAudit:
     """Summarize missing and accepted source-limited season team codes."""
@@ -136,7 +159,7 @@ def audit_season_team_codes(
 ) -> SeasonTeamCodeAudit:
     """Count unresolved season team codes and known source-limited rows."""
     rows = session.execute(
-        text(_SEASON_TEAM_CODE_AUDIT_QUERY),
+        text(_query_for_session(session)),
         {
             "archive_source": OFFICIAL_ARCHIVE_SOURCE,
             "archive_season": OFFICIAL_ARCHIVE_SEASON,
