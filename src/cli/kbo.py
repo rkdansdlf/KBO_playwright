@@ -188,7 +188,6 @@ def build_master_parser() -> argparse.ArgumentParser:
     _add_core_subparsers(subparsers)
     _add_maintenance_and_config_subparsers(subparsers)
     _add_data_and_ops_subparsers(subparsers)
-    _add_advanced_subparsers(subparsers)
 
     return parser
 
