@@ -104,6 +104,27 @@ def test_source_filter_slices_postings_within_the_scope() -> None:
     assert "FETCH FIRST" in compiled
 
 
+def test_source_and_game_date_filters_use_the_date_slice() -> None:
+    """Apply source and game-date predicates before the bounded token slice."""
+    session = MagicMock()
+    empty_rows = MagicMock()
+    empty_rows.all.return_value = []
+    session.execute.side_effect = [empty_rows]
+
+    OracleSparseSearchRepository().search_candidates(
+        session,
+        ["경기"],
+        top_k=5,
+        filters={"source_table": "game_play_by_play", "game_date": "2015-10-19"},
+    )
+
+    statement = session.execute.call_args.args[0]
+    compiled = str(statement.compile(dialect=oracle.dialect()))
+    assert "source_table" in compiled
+    assert "game_date" in compiled
+    assert "FETCH FIRST" in compiled
+
+
 def test_chunk_column_filters_keep_the_joined_scored_path() -> None:
     """Apply team/season filters through rag_chunks during per-token lookups."""
     session = MagicMock()

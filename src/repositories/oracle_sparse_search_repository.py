@@ -94,6 +94,8 @@ class OracleSparseSearchRepository:
         slice_stmt: Select = select(RagChunkTerm.rag_chunk_id).where(RagChunkTerm.token == token)
         if filters and filters.get("source_table"):
             slice_stmt = slice_stmt.where(RagChunkTerm.source_table == filters["source_table"])
+        if filters and filters.get("game_date"):
+            slice_stmt = slice_stmt.where(RagChunkTerm.game_date == str(filters["game_date"]))
         slice_stmt = slice_stmt.order_by(RagChunkTerm.rag_chunk_id).limit(per_token_limit)
         sliced_ids = [int(row[0]) for row in session.execute(slice_stmt).all()]
         if not sliced_ids:

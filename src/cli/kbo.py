@@ -113,8 +113,6 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     p_sync.add_argument("--verify", action="store_true", help="Verify row counts between source and target.")
     p_sync.add_argument("--mode", type=str, default="full", choices=["full", "incremental"])
 
-    _add_advanced_subparsers(subparsers)
-
 
 def _add_advanced_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add RAG, simulate, and schema drift subparsers."""
@@ -188,6 +186,7 @@ def build_master_parser() -> argparse.ArgumentParser:
     _add_core_subparsers(subparsers)
     _add_maintenance_and_config_subparsers(subparsers)
     _add_data_and_ops_subparsers(subparsers)
+    _add_advanced_subparsers(subparsers)
 
     return parser
 
