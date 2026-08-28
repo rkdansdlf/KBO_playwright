@@ -359,7 +359,8 @@ class SqliteToOciSynchronizer:
         else:
             sync_sql = ctx.writer.build_merge_sql(table, sync_columns, pk_cols, column_names=column_names)
 
-        ctx.writer.set_table_triggers(table, enable=False)
+        if not ctx.meta.omit_id:
+            ctx.writer.set_table_triggers(table, enable=False)
         sync_start_time = datetime.now(_KST)
 
         batch_ctx = WriteBatchContext(
@@ -376,7 +377,8 @@ class SqliteToOciSynchronizer:
         )
         synced_total, error_total = self._execute_write_batches(batch_ctx)
 
-        ctx.writer.set_table_triggers(table, enable=True)
+        if not ctx.meta.omit_id:
+            ctx.writer.set_table_triggers(table, enable=True)
         self.checkpoint_mgr.record_success(table, synced_at=sync_start_time, rows_synced=synced_total)
         oci_count = ctx.writer.count_table(table)
 

@@ -4,7 +4,7 @@ The Naver/KBO box score HTML often omits the SH/SF columns, causing
 game_batting_stats.sacrifice_hits and .sacrifice_flies to remain 0.
 
 This module derives those values from play-by-play event descriptions:
-  - SH = description contains '희생번트' (sacrifice bunt)
+  - SH = description contains '희생번트' without an error-on-reach result
   - SF = description contains '희생플라이' (sacrifice fly), outs_before < 2
 
 For modern PBP data (2025+), uses batter_id join.
@@ -53,7 +53,7 @@ def derive_sh_sf_for_game(session: Session, game_id: str) -> dict[int | str, dic
 
     for row in event_rows:
         desc = cast("str", getattr(row, "description", None) or "")
-        is_sh = "희생번트" in desc
+        is_sh = "희생번트" in desc and "실책" not in desc
         is_sf = "희생플라이" in desc
         if not is_sh and not is_sf:
             continue
@@ -122,7 +122,7 @@ def count_sh_sf_from_events(
     result: dict[int | str, dict[str, int]] = {}
     for row in event_rows:
         desc = cast("str", getattr(row, "description", None) or "")
-        is_sh = "희생번트" in desc
+        is_sh = "희생번트" in desc and "실책" not in desc
         is_sf = "희생플라이" in desc
         if not is_sh and not is_sf:
             continue

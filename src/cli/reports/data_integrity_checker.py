@@ -48,6 +48,7 @@ FUTURES_FIP_TOLERANCE = 0.02
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+    from sqlalchemy.sql.elements import ColumnElement
 
     from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
@@ -58,6 +59,31 @@ PLAYER_ID_TABLES = [
     ("game_pitching_stats", "player_id"),
     ("game_lineups", "player_id"),
 ]
+
+
+def _is_oracle_session(session: Session) -> bool:
+    """Return whether a session is bound to an Oracle engine."""
+    bind = getattr(session, "bind", None)
+    dialect = getattr(bind, "dialect", None)
+    return getattr(dialect, "name", None) == "oracle"
+
+
+def _primary_game_predicate(session: Session, column: ColumnElement[bool]) -> ColumnElement[bool]:
+    """Build a cross-dialect predicate for the Oracle NUMBER-backed flag."""
+    if _is_oracle_session(session):
+        return column == 1
+    return column.is_(True)
+
+
+def _target_date_predicate(
+    session: Session,
+    column: ColumnElement[object],
+    target: date,
+) -> ColumnElement[bool]:
+    """Build a cross-dialect date comparison for timestamp columns."""
+    if _is_oracle_session(session):
+        return func.trunc(column) == target
+    return func.date(column) == target
 
 
 @dataclass
@@ -107,7 +133,9 @@ def check_games_exist(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    count = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).count()
+    count = (
+        session.query(Game).filter(Game.game_date == target, _primary_game_predicate(session, Game.is_primary)).count()
+    )
     if count == 0:
         return CheckResult(
             name="games_exist",
@@ -133,7 +161,9 @@ def check_all_terminal_status(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    games = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).all()
+    games = (
+        session.query(Game).filter(Game.game_date == target, _primary_game_predicate(session, Game.is_primary)).all()
+    )
     if not games:
         return CheckResult(
             name="all_terminal_status",
@@ -185,7 +215,7 @@ def check_child_stats_exist(session: Session, target: date) -> CheckResult:
         session.query(Game)
         .filter(
             Game.game_date == target,
-            Game.is_primary.is_(True),
+            _primary_game_predicate(session, Game.is_primary),
             Game.game_status.in_(["COMPLETED", "DRAW"]),
         )
         .all()
@@ -251,7 +281,9 @@ def check_no_null_player_ids(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    games = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).all()
+    games = (
+        session.query(Game).filter(Game.game_date == target, _primary_game_predicate(session, Game.is_primary)).all()
+    )
     if not games:
         return CheckResult(
             name="no_null_player_ids",
@@ -311,12 +343,14 @@ def check_game_status_populated(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    total = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).count()
+    total = (
+        session.query(Game).filter(Game.game_date == target, _primary_game_predicate(session, Game.is_primary)).count()
+    )
     null_status = (
         session.query(Game)
         .filter(
             Game.game_date == target,
-            Game.is_primary.is_(True),
+            _primary_game_predicate(session, Game.is_primary),
             Game.game_status.is_(None),
         )
         .count()
@@ -352,7 +386,7 @@ def check_scores_populated(session: Session, target: date) -> CheckResult:
         session.query(Game)
         .filter(
             Game.game_date == target,
-            Game.is_primary.is_(True),
+            _primary_game_predicate(session, Game.is_primary),
             Game.game_status.in_(["COMPLETED", "DRAW"]),
         )
         .all()
@@ -398,7 +432,7 @@ def check_winning_team_consistency(session: Session, target: date) -> CheckResul
         session.query(Game)
         .filter(
             Game.game_date == target,
-            Game.is_primary.is_(True),
+            _primary_game_predicate(session, Game.is_primary),
             Game.game_status.in_(["COMPLETED", "DRAW"]),
         )
         .all()
@@ -452,7 +486,9 @@ def check_duplicate_games(session: Session, target: date) -> CheckResult:
     """
     from src.models.game import Game
 
-    games = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).all()
+    games = (
+        session.query(Game).filter(Game.game_date == target, _primary_game_predicate(session, Game.is_primary)).all()
+    )
     games_by_slot: dict[str, list[str]] = {}
     for game in games:
         canonical_slot = normalize_kbo_game_id(game.game_id)
@@ -596,7 +632,7 @@ def check_futures_daily_integrity(session: Session, target: date) -> CheckResult
         session.query(PlayerSeasonBatting)
         .filter(
             PlayerSeasonBatting.league == "FUTURES",
-            func.date(PlayerSeasonBatting.updated_at) == target,
+            _target_date_predicate(session, PlayerSeasonBatting.updated_at, target),
         )
         .all()
     )
@@ -605,7 +641,7 @@ def check_futures_daily_integrity(session: Session, target: date) -> CheckResult
         session.query(PlayerSeasonPitching)
         .filter(
             PlayerSeasonPitching.league == "FUTURES",
-            func.date(PlayerSeasonPitching.updated_at) == target,
+            _target_date_predicate(session, PlayerSeasonPitching.updated_at, target),
         )
         .all()
     )
@@ -653,7 +689,9 @@ def check_pa_formula_integrity(session: Session, target: date) -> CheckResult:
     """Verify PA = AB + BB + HBP + SH + SF formula for game_batting_stats on target date."""
     from src.models.game import Game, GameBattingStat
 
-    games = session.query(Game).filter(Game.game_date == target, Game.is_primary.is_(True)).all()
+    games = (
+        session.query(Game).filter(Game.game_date == target, _primary_game_predicate(session, Game.is_primary)).all()
+    )
     if not games:
         return CheckResult(
             name="pa_formula_integrity",
