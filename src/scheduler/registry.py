@@ -122,7 +122,9 @@ def _shutdown_handler(signum: int, _frame: object) -> None:
     logger.info("Received signal %s. Stopping scheduler gracefully...", signum)
     if _SCHEDULER_REF is not None:
         try:
-            _SCHEDULER_REF.shutdown(wait=False)
+            # Wait for an in-flight crawler before launchd starts a replacement
+            # process, otherwise both processes can write the same game rows.
+            _SCHEDULER_REF.shutdown(wait=True)
         except (OSError, RuntimeError) as e:
             logger.warning("Error during scheduler shutdown: %s", e)
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
