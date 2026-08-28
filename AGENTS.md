@@ -1021,3 +1021,17 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Live Stream Processor (`src/simulation/live_stream_processor.py`)**: Implemented `LiveStreamProcessor` for real-time play-by-play processing with speed pacing, `WPACalculator` integration, Leverage Index (LI) heuristics, hot-moment alert dispatching via `NotificationDispatcher`, and MVP/LVP calculation.
 - **Master CLI Router Integration (`src/cli/kbo.py`, `src/cli/simulate_game.py`)**: Registered `simulate` 12th subcommand (`kbo simulate --innings 9 --speed 10 --notify`).
 - **Verification & Tests**: Added unit and CLI tests in `tests/simulation/test_stream_generator.py`, `tests/simulation/test_live_stream_processor.py`, and `tests/cli/test_simulate_cli.py`; full test suite = **10,015 passed, 3 skipped** in 2m 15s; `ruff check src/ tests/ scripts/` = **0 errors**.
+
+### Phase 92 Complete (2026-08-28) — Database Schema Drift Detector & DDL Generator (P11-5)
+
+- **Schema Drift DTOs (`src/db/drift_dto.py`)**: Created `DriftType`, `DriftSeverity`, `SchemaDriftItem`, and `SchemaDriftReport` DTOs with markdown rendering and JSON serialization.
+- **Schema Drift Detector & DDL Generator (`src/db/drift_detector.py`)**: Implemented `SchemaDriftDetector` comparing live database catalogs via SQLAlchemy Inspector against ORM metadata (`Base.metadata.tables`) with dialect-specific type mapping and automated `ALTER TABLE ADD` / `CREATE INDEX` DDL generation.
+- **Master CLI Router Integration (`src/cli/kbo.py`, `src/cli/detect_schema_drift.py`)**: Registered `drift` (with alias `detect-drift`) as the 13th master CLI subcommand (`kbo drift --dialect sqlite --apply`).
+- **Verification & Tests**: Added unit and CLI tests in `tests/db/test_drift_detector.py` and `tests/cli/test_drift_cli.py`; full test suite = **10,024 passed, 3 skipped** in 2m 38s; `ruff check src/ tests/ scripts/` = **0 errors**.
+
+### Phase 93 Complete (2026-08-28) — 1982~2000 과거 19개 시즌 실측 박스스코어 데이터 100% 전량 교체 완료
+
+- **1982~2000 전 시즌 실측 데이터 교체 (`scripts/historical/apply_season_to_db.py`)**: 잔여 7개 시즌(1990, 1992, 1995, 1996, 1997, 1998, 1999 — 총 3,468경기)을 포함하여 1982~2000 과거 19개 전 시즌 총 **8,237경기**의 합성(추정) 데이터를 나무위키 실측 박스스코어 정답셋으로 100% 교체 완료.
+- **위키백과 공식 순위 앵커 검증**: 19개 전 시즌 팀별 승/무/패 및 86개 무승부, 더블헤더 기록이 위키백과 공식 순위표와 100% 일치 (`namu_season_boxscores.py --verify-only` PASS).
+- **구장 메타데이터 전수 정규화 (`scripts/maintenance/backfill_historical_stadium_codes.py`)**: 1982~2000 8,237경기에 대한 `game_metadata` 레코드 100% 생성 및 `stadium_code` 정규화 완료 (NULL 구장 0건).
+- **문서 갱신**: `KNOWN_LIMITATIONS.md` 및 `HISTORICAL_1983_2000_PLAN.md` 19개 시즌 전수 해결(100% Resolved) 상태 반영.
