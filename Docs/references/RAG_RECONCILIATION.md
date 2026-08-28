@@ -74,3 +74,31 @@ staging 빌드(08-20)는 역사 백필이 반영된 소스에서 전체 스코�
 unexplained > 0이면 원인 조사, TIME_EXPLAINABLE만 증가하면 정상 증분.
 
 증거: `data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823/gap_resolution_summary.json`, `exhaustive_resolution.json`
+
+## 2026-08-28 Oracle Tombstone Audit
+
+The production single-store audit reported 2,021 deleted rows while keeping the
+index consistent. A read-only identity audit confirmed that all 2,021 deleted
+rows were historical team-code rekeys, not missing source records:
+
+- `player_season_batting`: 1,175 deleted legacy identities, each with exactly
+  one current `REGULAR/KBO1` row under a canonical team code.
+- `player_season_pitching`: 846 deleted legacy identities, each with exactly
+  one current `REGULAR/KBO1` row under a canonical team code.
+- Legacy-to-canonical mappings were `BE→HH`, `HT→KIA`, `MBC→LG`, `OB→DB`,
+  and `SK→SSG`.
+- All deletions were updated in the same bounded batch at
+  `2026-08-27T01:33:02` through `2026-08-27T01:33:25`.
+
+This is classified as `EXPECTED_IDENTITY_REKEY`; no restore, purge, or full
+reindex is indicated. Evidence is preserved in
+`data/recovery/rag_tombstone_identity_rekey_audit_20260828.json`.
+
+The classification is reproducible with the read-only audit command:
+
+```bash
+python3 -m src.cli.rag.audit_rag_tombstones --json --fail-on-unexplained
+```
+
+The default command only reports findings. `--fail-on-unexplained` is the
+explicit gate for automation; it never restores, purges, or reindexes rows.

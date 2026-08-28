@@ -5,6 +5,28 @@ Last verified: 2026-08-23
 This is a read-only triage of the local SQLite completeness audit. It is a
 source and remediation decision record, not permission to apply database fixes.
 
+## Supplemental Historical Pitching Audit
+
+On 2026-08-27, a read-only audit compared `FINAL_VERIFICATION` regular-season
+KBO1 pitching rows from 2001-2008 and 2010 with regular-season KBO1 `PROFILE`
+rows. The audit covered 1,537 target rows and 344 profile rows:
+
+- 300 rows had a unique-name PROFILE match; 25 were ambiguous and 1,212 had no
+  usable PROFILE evidence.
+- The repair fields (`wins`, `losses`, `saves`, and `holds`) were already equal
+  for all 300 matched rows, so the dry-run found zero actual value changes.
+- The broader column comparison found that PROFILE is a partial snapshot while
+  `FINAL_VERIFICATION` contains additional regular-season fields. These rows
+  must not be replaced wholesale with PROFILE values.
+- 294 matched rows had the same team code and 6 had a team-code mismatch. The
+  mismatches remain unapproved because team-code disagreement does not establish
+  which source is authoritative.
+
+The detailed report is `data/recovery/historical_pitching_full_column_audit_20260827.json`.
+The candidate report is
+`data/recovery/historical_pitching_repair_candidates_20260827.json`. No repair
+was applied; future changes require a source-specific full-stat contract.
+
 ## Audit Snapshot
 
 The audit covered 2009-2025 and produced 129 checks:

@@ -29,6 +29,16 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - Verification should normally include the narrowest relevant `pytest` target plus `ruff check src/ tests/`; for CLI behavior, prefer a dry-run or read-only command before any save/sync operation.
 
 ## Build, Test, and Development Commands
+- `python3 -m src.cli.kbo <subcommand>` (or `python3 -m src.cli <subcommand>`): Unified Master CLI for all platform tasks (workflow, diagnose, report, maintenance, config, notify, migrate, seed, detect, sync).
+- `python3 -m src.cli.kbo workflow --workflow daily_sync --dry-run`: Execute master DAG workflow pipeline.
+- `python3 -m src.cli.kbo diagnose --subsystem all`: Run multi-subsystem health diagnostics and auto-healing.
+- `python3 -m src.cli.kbo report --category all --format markdown`: Generate quality, gap, freshness, and executive reports.
+- `python3 -m src.cli.kbo maintenance --task all --apply`: Run automated PA formula and NULL player ID maintenance.
+- `python3 -m src.cli.kbo config --env production --strict`: Audit environment configuration and credentials.
+- `python3 -m src.cli.kbo notify --channel telegram --title "Title" --body "Body"`: Dispatch multi-channel notifications.
+- `python3 -m src.cli.kbo detect --sensitivity medium --json`: Run statistical anomaly detection.
+- `python3 -m src.cli.kbo migrate --dialect oracle --status`: Inspect database schema migration status.
+- `python3 -m src.cli.kbo seed --season 2026 --games-per-team 2`: Generate synthetic KBO scenario data.
 - `python3 -m venv venv && source venv/bin/activate`: Create and activate virtual environment.
 - `pip3 install -r requirements.txt`: Install Python dependencies.
 - `playwright install chromium`: Install Playwright browser binaries.
@@ -968,3 +978,39 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Canary**: 30-query configured-embedding golden set 3회 연속 Recall@5 `0.9485` / MRR `0.8306` / hit rate `0.9667`; p50 `157–233ms`, p95 `362–467ms`, max `549–694ms` — **hybrid 500ms p95 gate 통과**.
 - **Tests**: dense/BM25 동시 시작을 검증하는 event-based regression test 추가; 관련 RAG suite 33 passed, 광역 unit suite **9,916 passed, 1 skipped**.
 - **남음**: launchd scheduler 재시작 후 catch-up/sentinel 실제 등록·실행 확인 및 정상 writer 부하 canary. 안정성 확인 전까지 leg 병렬화 결과는 quiet-instance evidence로 취급.
+
+### Phase 87 Complete (2026-08-27) — Platform Modernization & Master Architecture (Phases 1-10)
+
+- **Phase 1 (Repository Contract & Transaction Boundaries)**: Migrated all 18 repositories to caller-managed `session: Session` contract; eliminated internal commit/rollback/SessionLocal; verified session sharing and transaction atomicity with dedicated contract test suite (`tests/repositories/test_repository_contract.py`).
+- **Phase 2 (CLI Domain Re-organization & Historical Lake Audit)**: Modularized CLI inventory into domain subpackages (`calc/`, `backfill/`, `reports/`, `pipelines/`, `live/`, `collection/`, `alerts/`, `rag/`, `sync/`); built historical lake audit engine (`src/services/historical_lake_auditor.py`).
+- **Phase 3 (Service Layer Modularization & Domain Engine)**: Built centralized `QualityHub` (`src/services/quality_hub.py`), Oracle native Vector RAG pipeline (`src/rag/`), and daily data pipeline auto-healer (`src/pipeline/`).
+- **Phase 4 (Sabermetrics, FastAPI Gateway & OCI Incremental Sync)**: Built advanced sabermetrics engine (`src/analytics/`), FastAPI RESTful gateway (`src/api/`), and native MERGE bulk OCI sync engine (`src/sync/`).
+- **Phase 5 (Crawler Execution Engine, Scheduler Lock Hierarchy & CI Integrity)**: Built resilient crawler framework with exponential backoff (`src/crawlers/base.py`), multi-tier process lock daemon (`src/scheduler/locks.py`), and CI workflow verification engine (`src/ci/`).
+- **Phase 6 (Declarative Schema Parity, Migration Runner & Synthetic Data)**: Implemented declarative schema parity engine (`src/models/parity.py`), multi-engine DDL migration runner (`src/db/migration_runner.py`), and synthetic KBO data generator (`src/testing/generator.py`).
+- **Phase 7 (Unified System Diagnostics, Maintenance Orchestrator & Reporting Engine)**: Implemented multi-subsystem diagnostics engine with auto-healing (`src/diagnostics/`), unified maintenance task orchestrator (`src/maintenance/`), and multi-format reporting engine (`src/reporting/`).
+- **Phase 8 (Multi-Channel Notification Dispatcher & Intelligent Anomaly Detection)**: Built multi-channel notification dispatcher (`src/notifications/`) and statistical Z-score/IQR anomaly detector (`src/monitoring/`).
+- **Phase 9 (Unified Configuration Manager & Master Workflow DAG Orchestrator)**: Built type-safe configuration manager (`src/config/`) and master DAG workflow orchestrator (`src/orchestration/`).
+- **Phase 10 (Unified Master CLI & Architecture Blueprint)**: Built master CLI router `src/cli/kbo.py` and entrypoint `src/cli/__main__.py` uniting all 10 domain subcommands; published blueprint `Docs/architecture/PLATFORM_ARCHITECTURE.md`.
+- **Verification**: `ruff check src/ tests/ scripts/` = **0 errors**; full test suite = **9,972 passed, 3 skipped** with 0 regressions.
+
+### Phase 88 Complete (2026-08-28) — Master DAG Daily Sync Pipeline & Scheduler Integration (P11-1)
+
+- **Master DAG Domain Handlers (`src/orchestration/master.py`)**: Bound production domain modules across all 6 pipeline stages in `MasterWorkflowOrchestrator.build_daily_sync_workflow()` (Stage 1 Ingestion via `run_daily_update_main`, Stage 2 Processing via `StandingsCalculator`, Stage 3 Analytics via `SabermetricsEngine` + `rebuild_rankings`, Stage 4 Quality Gate via `QualityHub.run_full_audit`, Stage 5 Cloud Sync via `OciSyncEngine`, Stage 6 Notification via `NotificationDispatcher`).
+- **Scheduler Integration (`src/scheduler/jobs/daily.py`)**: Integrated `MasterWorkflowOrchestrator` into `crawl_daily_games()` daily batch job with feature flag support (`DAILY_USE_DAG_ORCHESTRATOR`), failure isolation, safe stage skipping, and multi-channel alerting.
+- **Verification & Test Suite**: Added `tests/orchestration/test_master_daily_pipeline.py` and `tests/scheduler/test_scheduler_daily_dag.py`; verified all 62 targeted scheduler/DAG tests passing; full repository test suite = **9,983 passed, 3 skipped** in 2m 01s; `ruff check src/ tests/ scripts/` = **0 errors**.
+
+### Phase 89 Complete (2026-08-28) — GitHub Actions CI/CD Modernization & Master CLI Integration (P11-2)
+
+- **Daily Pipeline Modernization (`.github/workflows/daily_kbo_sync.yml`)**: Integrated `python3 -m src.cli.kbo workflow --workflow daily_sync` (Master DAG), `kbo report --category quality/gap`, `kbo detect --sensitivity medium`, and `kbo sync --apply --mode incremental`.
+- **Automation Dispatcher Modernization (`.github/workflows/kbo_automation.yml`)**: Refactored all 8 phase branches with `kbo` master CLI subcommands (`workflow`, `report`, `maintenance`).
+- **Maintenance & Recalculation Modernization (`.github/workflows/weekly_maintenance.yml`, `full_recalculation.yml`)**: Integrated `kbo maintenance --task all --apply`, `kbo diagnose --subsystem all`, and `kbo config --env ci --strict`.
+- **CI Smoke & Config Gates (`.github/workflows/test_suite.yml`)**: Added `python3 -m src.cli.kbo --help` and `python3 -m src.cli.kbo config --env ci --strict` verification gates into CI linting pipeline.
+- **Verification & Tests**: Validated all 16 workflow YAML definitions; verified 26 targeted CI workflow tests passing; full repository test suite = **9,985 passed, 3 skipped** in 2m 50s; `ruff check src/ tests/ scripts/` = **0 errors**.
+
+### Phase 90 Complete (2026-08-28) — Oracle Native Vector RAG Evaluation Gateway & Interactive Query CLI (P11-3)
+
+- **RAG Evaluation Gateway (`src/rag/evaluation_gateway.py`)**: Implemented `RagEvaluationGateway` for automated retrieval accuracy benchmarking (Recall@K, Precision@K, MRR, NDCG@K, Hit Rate) and latency percentile profiling (p50, p90, p95, p99) against `Docs/references/rag_golden_queries.json` with SLA validation (`Recall@5 >= 0.85`, `p95 < 500ms`).
+- **RAG Evaluation DTOs (`src/rag/dto.py`)**: Added `RagGoldenQuery`, `RagLatencyBreakdown`, and `RagEvaluationReport` dataclasses.
+- **Interactive Query & Evaluation CLI (`src/cli/rag/query.py`, `src/cli/rag/evaluate.py`)**: Built `query` CLI for interactive hybrid search with metadata and `evaluate` CLI for benchmark runs.
+- **Master CLI Router Integration (`src/cli/kbo.py`)**: Registered `rag` 11th subcommand supporting `kbo rag query` and `kbo rag evaluate`.
+- **Verification & Tests**: Added unit and CLI tests in `tests/rag/test_evaluation_gateway.py` and `tests/cli/test_rag_cli.py`; full test suite = **10,006 passed, 3 skipped** in 1m 50s; `ruff check src/ tests/ scripts/` = **0 errors**.
