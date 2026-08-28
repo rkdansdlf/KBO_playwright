@@ -243,6 +243,13 @@ matches the primary source exactly: `game=8,237`,
 `team_standings_daily=584`, `player_season_batting=2,960`, and
 `player_season_pitching=2,518`.
 
+The subsequent metadata-only repair normalized `153,970` legacy
+`season_year` values across `game`, `game_lineups`, `game_play_by_play`, and
+`game_highlights`; `20,271` rows were already correct. It changed no content,
+embedding, hash, or lifecycle fields, and the immediate idempotency dry-run
+reported zero remaining candidates. The durable validation record is
+`Docs/references/rag_production_validation_20260828.json`.
+
 A 30-query configured replay against this production corpus reported:
 
 ```text
@@ -252,6 +259,20 @@ vector           0.9152    0.7972  0.9333    248ms     1,789ms
 hybrid           0.9485    0.8306  0.9667    325ms     1,746ms
 resolver_hybrid  0.9485    0.8306  0.9667    196ms     670ms
 ```
+
+The post-repair replay retained the same quality metrics. Its p95 values were
+`11,256ms` for BM25, `2,180ms` for vector, `3,438ms` for hybrid, and `743ms`
+for resolver-hybrid. These remote-run measurements keep the `500ms` latency
+SLO open despite the earlier quiet-instance canary passing; repeat under a
+controlled cache and writer-load condition before making an SLO decision.
+
+An additional resolver-only replay showed the source of the variability: two
+runs were below `500ms` p95 (`381ms` and `498ms`), while one reached `20,256ms`.
+A deterministic embedding control still varied between `420ms` and `603ms`
+p95, so the tail is not attributable to the provider alone. Query traces point
+to both Oracle sparse/date-filter work and occasional resolver/vector calls;
+the detailed measurements are preserved in
+`Docs/references/rag_production_validation_20260828.json`.
 
 This replay is evidence after the historical reindex, not a replacement for
 the quiet-instance canary or a permanent SLO decision. The query path now

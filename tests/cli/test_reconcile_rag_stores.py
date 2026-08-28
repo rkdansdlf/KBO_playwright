@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -91,6 +92,26 @@ class TestFetchIdentityEntries:
         entries = fetch_identity_entries(session)
 
         assert entries[0].updated_at is not None
+
+    def test_oracle_projection_uses_native_vector_column(self) -> None:
+        session = Mock()
+        session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="oracle"))
+        session.execute.return_value = _FakeResult([_row("game", "9")])
+
+        fetch_identity_entries(session)
+
+        assert "embedding_vector" in str(session.execute.call_args.args[0])
+
+    def test_postgresql_projection_uses_embedding_column(self) -> None:
+        session = Mock()
+        session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+        session.execute.return_value = _FakeResult([_row("game", "9")])
+
+        fetch_identity_entries(session)
+
+        query = str(session.execute.call_args.args[0])
+        assert "CASE WHEN embedding IS NULL" in query
+        assert "embedding_vector" not in query
 
 
 class TestExportCommand:
