@@ -162,8 +162,9 @@ def test_cdc_daemon_graceful_shutdown(mock_sqlite_source: str) -> None:
     )
     stop_event = threading.Event()
 
-    with patch.object(daemon, "sync_once") as mock_sync_once:
-        mock_sync_once.return_value = CDCSyncSummary(
+    def _mock_sync(*_args: object, **_kwargs: object) -> CDCSyncSummary:
+        stop_event.set()
+        return CDCSyncSummary(
             synced_tables_count=1,
             total_rows_synced=5,
             duration_seconds=0.1,
@@ -171,13 +172,6 @@ def test_cdc_daemon_graceful_shutdown(mock_sqlite_source: str) -> None:
             timestamp=datetime.now(UTC),
         )
 
-        def _stopper():
-            stop_event.set()
-
-        timer = threading.Timer(0.1, _stopper)
-        timer.start()
-
+    with patch.object(daemon, "sync_once", side_effect=_mock_sync) as mock_sync_once:
         daemon.run_daemon_loop(stop_event, dry_run=True)
-        timer.join()
-
         assert mock_sync_once.called

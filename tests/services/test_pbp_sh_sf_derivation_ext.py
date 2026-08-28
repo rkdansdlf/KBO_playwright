@@ -18,6 +18,16 @@ class TestCountShSfFromEvents:
         result = count_sh_sf_from_events([row], {})
         assert result == {1: {"sh": 1, "sf": 0}}
 
+    def test_bunt_reaching_on_error_is_not_a_sacrifice_hit(self) -> None:
+        row = MagicMock(
+            batter_id=1,
+            batter_name="Kim",
+            description="희생번트 실책으로 출루",
+            outs=None,
+        )
+
+        assert count_sh_sf_from_events([row], {}) == {}
+
     def test_single_sacrifice_fly(self) -> None:
         row = MagicMock(batter_id=1, batter_name="Kim", description="희생플라이", outs=0)
         result = count_sh_sf_from_events([row], {})

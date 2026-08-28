@@ -115,6 +115,12 @@ def test_daily_lock_is_force_process_lock():
     assert isinstance(scheduler.DAILY_LOCK, ForceProcessLock)
 
 
+def test_live_lock_is_force_process_lock():
+    from src.utils.lock import ForceProcessLock
+
+    assert isinstance(scheduler.LIVE_LOCK, ForceProcessLock)
+
+
 def test_crawl_p1p2_data_job_retry_policy():
     """crawl_p1p2_data_job must retry on lock contention with a longer backoff
     than the original stop_after_attempt(2)/min=60 policy.

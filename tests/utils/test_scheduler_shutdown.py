@@ -46,7 +46,7 @@ def test_scheduler_signal_shutdown(tmp_path, monkeypatch) -> None:
             handler(signal.SIGTERM, None)
 
             # Assertions
-            mock_scheduler.shutdown.assert_called_once_with(wait=False)
+            mock_scheduler.shutdown.assert_called_once_with(wait=True)
             mock_live_lock.release.assert_called_once()
             mock_daily_lock.release.assert_called_once()
             mock_maintenance_lock.release.assert_called_once()
