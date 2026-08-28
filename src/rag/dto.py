@@ -164,3 +164,74 @@ class RagEvaluationMetrics:
             "hit_rate": round(self.hit_rate, 4),
             "sample_count": self.sample_count,
         }
+
+
+@dataclass
+class RagGoldenQuery:
+    """Represents a ground truth evaluation item for RAG benchmarking."""
+
+    id: str
+    query: str
+    relevant_chunk_ids: list[str] = field(default_factory=list)
+    filters: dict[str, Any] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
+    category: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert golden query to dictionary."""
+        return {
+            "id": self.id,
+            "query": self.query,
+            "relevant_chunk_ids": self.relevant_chunk_ids,
+            "filters": self.filters,
+            "tags": self.tags,
+            "category": self.category,
+        }
+
+
+@dataclass
+class RagLatencyBreakdown:
+    """Latency percentile breakdown across evaluated queries."""
+
+    p50_ms: float = 0.0
+    p90_ms: float = 0.0
+    p95_ms: float = 0.0
+    p99_ms: float = 0.0
+    max_ms: float = 0.0
+    avg_ms: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert latency metrics to dictionary."""
+        return {
+            "p50_ms": round(self.p50_ms, 2),
+            "p90_ms": round(self.p90_ms, 2),
+            "p95_ms": round(self.p95_ms, 2),
+            "p99_ms": round(self.p99_ms, 2),
+            "max_ms": round(self.max_ms, 2),
+            "avg_ms": round(self.avg_ms, 2),
+        }
+
+
+@dataclass
+class RagEvaluationReport:
+    """Comprehensive evaluation summary for RAG retrieval benchmark."""
+
+    metrics: RagEvaluationMetrics
+    latency: RagLatencyBreakdown
+    total_evaluated: int
+    top_k: int
+    sla_passed: bool
+    sla_violations: list[str] = field(default_factory=list)
+    details: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert evaluation report to dictionary."""
+        return {
+            "metrics": self.metrics.to_dict(),
+            "latency": self.latency.to_dict(),
+            "total_evaluated": self.total_evaluated,
+            "top_k": self.top_k,
+            "sla_passed": self.sla_passed,
+            "sla_violations": self.sla_violations,
+            "details": self.details,
+        }
