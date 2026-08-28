@@ -13,6 +13,11 @@ from src.models.player_milestone import PlayerMilestone
 from src.models.player_splits_stat import PlayerSplitsStat
 from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.services.embedding_service import EmbeddingService
+from src.services.rag_index_identity import (
+    stable_futures_source_row_id,
+    stable_milestone_source_row_id,
+    stable_splits_source_row_id,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -107,7 +112,11 @@ class RagKnowledgeIndexer:
                     "content": content,
                     "meta": {
                         "category": "milestone",
-                        "source_row_id": str(m.id),
+                        "source_row_id": stable_milestone_source_row_id(
+                            season,
+                            m.player_id,
+                            m.milestone_category,
+                        ),
                         "season_year": season,
                         "player_id": m.player_id,
                     },
@@ -148,7 +157,7 @@ class RagKnowledgeIndexer:
                     "content": content,
                     "meta": {
                         "category": "futures_schedule",
-                        "source_row_id": str(g.id),
+                        "source_row_id": stable_futures_source_row_id(g.game_id or str(g.id)),
                         "game_id": g.game_id,
                         "season_year": season,
                     },
@@ -187,7 +196,12 @@ class RagKnowledgeIndexer:
                     "content": content,
                     "meta": {
                         "category": "player_splits",
-                        "source_row_id": str(s.id),
+                        "source_row_id": stable_splits_source_row_id(
+                            season,
+                            s.player_id,
+                            s.split_type,
+                            s.split_key,
+                        ),
                         "season_year": season,
                         "player_id": s.player_id,
                     },

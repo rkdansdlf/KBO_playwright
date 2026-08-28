@@ -19,28 +19,30 @@ id 체계 변경은 전면 재색인을 수반하므로 단독 선반영하지 �
   `team_standings_daily`는 시대 코드(MB/HT…)를 저장하며 각 표 규약이 곧 기준이다.
   빌더가 임의로 코드를 재해석(`resolve_team_code` 등)하지 않는다 — 재색인이 곧
   정규화된 id를 생성하는 경로다. 원본 보존이 필요하면 청크 메타데이터(`team_id`)에만 둔다.
-- **R2 (콘텐츠 유도 키 — 별도 사이클로 연기)**: autoincrement PK 의존
-  (`awards`, `player_movements`, `game_play_by_play`, `game_highlights`)은 대량
-  기존 청크(12만+)를 재색인해야 하는 변경이라 본 사이클에서 제외한다. 역사 재색인
-  대상(game·standings·player_season)과 무관한 소스이며, 전환 시 별도 사이클을
-  열어 아래 방향을 유지한다:
-  - `awards`: `{year}_{award_type}_{player_name}`
-  - `player_movements`: `{movement_date}_{player_id}_{before}->{after}`
-  - `game_play_by_play`: `{game_id}_{inning}_{play_seq}`
-  - `game_highlights`: `{game_id}_{document_type}_{seq}`
+- **R2 (콘텐츠 유도 자연키 원칙 — 2026-08-28 확정 적용)**: autoincrement PK 의존을
+  제거하고 저장소 간 100% 일관된 결정론적 자연키를 생성한다:
+  - `awards`: `{year}_{award_type}_{category or 'NONE'}_{player_name}` (예: `2025_골든글러브_투수_원태인`)
+  - `team_history`: `{season}_{team_code}` (예: `1990_LG`)
+  - `milestones`: `{season}_{player_id}_{category}` (예: `2026_50001_홈런`)
+  - `futures_schedules`: `{game_id}` (예: `20260401OBHT0`)
+  - `player_splits`: `{season}_{player_id}_{split_type}_{split_key}`
 - **R3 (계약 버전)**: id 체계 변경 시 `rag_chunks.index_version`을 올리고
   `Docs/references/rag_source_contract.json`의 규격을 함께 갱신한다.
   구버전 id 청크는 `tombstone_rag_chunks`로 무효화한다.
 
-## 적용 대상 매핑 (역사 재색인 사이클)
+## 적용 대상 매핑 (확정)
 
-| source_table | 현행 | 변경 후 |
-| --- | --- | --- |
-| player_season_batting | `{pid}_{season}_{team}_{league}` | **변경 없음** — 현재 DB 정규값 사용(재색인으로 구버전 raw-id 청크 자동 대체) |
-| player_season_pitching | 동일 | 동일 |
-| team_standings_daily | `{standings_date}_{시대 team}` | **변경 없음** — 동일 |
-| game | `{game_id}` | **변경 없음** — 안정 자연키 |
-| awards / movements / pbp / highlights | `str(id)` | R2 (별도 사이클) |
+| source_table | 현행 규격 | 변경 후 (자연키 표준) | 비고 |
+| --- | --- | --- | --- |
+| player_season_batting | `{pid}_{season}_{team}_{league}` | 동일 | DB 정규 팀코드 기반 |
+| player_season_pitching | 동일 | 동일 | DB 정규 팀코드 기반 |
+| team_standings_daily | `{standings_date}_{시대 team}` | 동일 | 표준 날짜+팀코드 |
+| game | `{game_id}` | 동일 | 13자리 표준 자연키 |
+| awards | `str(id)` (PK) | `{year}_{award_type}_{category}_{name}` | **자연키 전환 완료** |
+| team_history | `str(id)` (PK) | `{season}_{team_code}` | **자연키 전환 완료** |
+| milestones | `str(id)` (PK) | `{season}_{pid}_{category}` | **자연키 전환 완료** |
+| futures_schedules | `str(id)` (PK) | `{game_id}` | **자연키 전환 완료** |
+| player_splits | `str(id)` (PK) | `{season}_{pid}_{type}_{key}` | **자연키 전환 완료** |
 
 ## 마이그레이션 경로
 

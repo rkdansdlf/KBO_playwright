@@ -50,7 +50,11 @@ from sqlalchemy import select, text
 from src.constants import KST
 from src.parsers.text_transformer import TextTransformer
 from src.services.markdown_document_loader import load_local_markdown_docs, markdown_source_table
-from src.services.rag_index_identity import current_index_version
+from src.services.rag_index_identity import (
+    current_index_version,
+    stable_award_source_row_id,
+    stable_team_history_source_row_id,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
@@ -856,7 +860,7 @@ def _iter_team_history_chunks(session: Session, season: int | None, limit: int |
         )
         yield {
             "source_table": "team_history",
-            "source_row_id": str(row.id),
+            "source_row_id": stable_team_history_source_row_id(row.season, row.team_code),
             "title": f"{row.season} {row.team_name}",
             "content": content,
             "team_id": row.team_code,
@@ -937,7 +941,12 @@ def _iter_award_chunks(session: Session, season: int | None, limit: int | None) 
         content = f"{award.year}시즌 KBO {award.award_type}{category_str}: {award.player_name} ({award.team_name})"
         yield {
             "source_table": "awards",
-            "source_row_id": str(award.id),
+            "source_row_id": stable_award_source_row_id(
+                award.year,
+                award.award_type,
+                award.category,
+                award.player_name,
+            ),
             "title": f"{award.year} {award.award_type}{category_str}",
             "content": content,
             "team_id": None,
