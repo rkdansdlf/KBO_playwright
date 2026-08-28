@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import false, select
 
 from src.models.player_milestone import PlayerMilestone
 
@@ -80,7 +80,7 @@ class MilestoneRepository:
         """
         stmt = (
             select(PlayerMilestone)
-            .where(PlayerMilestone.season == season, PlayerMilestone.is_achieved.is_(False))
+            .where(PlayerMilestone.season == season, PlayerMilestone.is_achieved == false())
             .order_by(PlayerMilestone.remaining_val.asc())
         )
         return list(self.session.execute(stmt).scalars().all())

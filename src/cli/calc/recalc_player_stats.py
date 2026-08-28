@@ -17,7 +17,7 @@ import logging
 import sys
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import case, delete, func, text
+from sqlalchemy import case, delete, func, text, true
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -284,7 +284,7 @@ def _aggregate_pitching(
             func.sum(case((GamePitchingStat.decision == "H", 1), else_=0)).label("holds"),
             func.sum(GamePitchingStat.batters_faced).label("batters_faced"),
             func.sum(GamePitchingStat.pitches).label("pitches"),
-            func.sum(case((GamePitchingStat.is_starting.is_(True), 1), else_=0)).label("games_started"),
+            func.sum(case((GamePitchingStat.is_starting == true(), 1), else_=0)).label("games_started"),
         )
         .join(Game, Game.game_id == GamePitchingStat.game_id)
         .filter(

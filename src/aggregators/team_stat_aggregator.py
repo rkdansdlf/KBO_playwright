@@ -11,11 +11,10 @@ from dataclasses import dataclass
 from datetime import date as date_type
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import Executable, case, func, or_, select, text
+from sqlalchemy import case, func, or_, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import get_database_type
 from src.models.game import Game
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.standings import TeamStandingsDaily
@@ -563,16 +562,8 @@ class TeamStatAggregator:
         from src.repositories.team_stats_repository import TeamSeasonBattingRepository
 
         repo = TeamSeasonBattingRepository(session)
-        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
-
-        db_type = get_database_type()
         try:
-            if db_type == "sqlite":
-                session.execute(text("PRAGMA foreign_keys = OFF"))
-            for payload in cleaned:
-                stmt = repo._build_insert_stmt(payload)
-                session.execute(cast("Executable", stmt))
-
+            repo.upsert_many(records)
             session.commit()
         except SQLAlchemyError:
             session.rollback()
@@ -585,22 +576,12 @@ class TeamStatAggregator:
         from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 
         repo = TeamSeasonPitchingRepository(session)
-        cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
-
-        db_type = get_database_type()
         try:
-            if db_type == "sqlite":
-                session.execute(text("PRAGMA foreign_keys = OFF"))
-            for payload in cleaned:
-                stmt = repo._build_insert_stmt(payload)
-                session.execute(cast("Executable", stmt))
+            repo.upsert_many(records)
             session.commit()
         except SQLAlchemyError:
             session.rollback()
             raise
-        finally:
-            if db_type == "sqlite":
-                session.execute(text("PRAGMA foreign_keys = ON"))
 
     @staticmethod
     def _aggregate_batting_mem(

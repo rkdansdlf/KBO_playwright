@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, inspect, text
+from sqlalchemy import func, inspect, text, true
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN
@@ -248,7 +248,7 @@ def _lineup_sides_by_game(session: Session, game_ids: Iterable[str]) -> dict[str
         return {}
     rows = _safe_rows(
         session.query(GameLineup.game_id, GameLineup.team_side)
-        .filter(GameLineup.game_id.in_(ids), GameLineup.is_starter.is_(True))
+        .filter(GameLineup.game_id.in_(ids), GameLineup.is_starter == true())
         .group_by(GameLineup.game_id, GameLineup.team_side),
     )
     sides: dict[str, set[str]] = {}

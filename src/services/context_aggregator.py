@@ -11,7 +11,7 @@ import json
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import and_, desc, false, func, or_, select
 
 from src.models.game import (
     Game,
@@ -643,7 +643,7 @@ class ContextAggregator:
             .filter(
                 GamePitchingStat.game_id.in_(game_ids),
                 GamePitchingStat.team_code == team_code,
-                GamePitchingStat.is_starting.is_(False),
+                GamePitchingStat.is_starting == false(),
             )
             .first()
         )
@@ -1203,7 +1203,7 @@ class ContextAggregator:
             select(PlayerMilestone)
             .where(
                 PlayerMilestone.season == season,
-                PlayerMilestone.is_achieved.is_(False),
+                PlayerMilestone.is_achieved == false(),
                 PlayerMilestone.team_code.in_([away_team, home_team]),
             )
             .order_by(PlayerMilestone.remaining_val.asc())

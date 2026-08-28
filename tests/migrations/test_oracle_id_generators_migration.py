@@ -65,3 +65,17 @@ def test_oracle_id_generators_reenable_disabled_triggers() -> None:
     assert "STATUS = 'DISABLED'" in sql
     assert "ALTER TRIGGER" in sql
     assert "ENABLE" in sql
+
+
+def test_oracle_id_generators_realign_after_bulk_load() -> None:
+    sql = (
+        Path("migrations/oracle/074_realign_oracle_id_generators_after_bulk_load.sql")
+        .read_text(encoding="utf-8")
+        .upper()
+    )
+
+    assert "USER_SEQUENCES" in sql
+    assert "MAX(ID)" in sql
+    assert "INTO V_CURRENT_VALUE" in sql
+    assert "ALTER SEQUENCE" in sql
+    assert "INTO V_ADVANCED_VALUE" in sql

@@ -472,91 +472,45 @@ class TestSaveRecords:
         mock_session = MagicMock()
         agg = TeamStatAggregator(mock_session)
         mock_repo = MagicMock()
-        mock_repo._filter_model_fields.side_effect = lambda x: x
-        mock_repo._filter_none.side_effect = lambda x: x
-        mock_repo._build_insert_stmt.return_value = MagicMock()
         with patch("src.repositories.team_stats_repository.TeamSeasonBattingRepository", return_value=mock_repo):
-            with patch("src.aggregators.team_stat_aggregator.get_database_type", return_value="postgresql"):
-                agg._save_batting_records([{"team_id": "OB", "season": 2025}])
+            records = [{"team_id": "OB", "season": 2025}]
+            agg._save_batting_records(records)
+        mock_repo.upsert_many.assert_called_once_with(records)
         mock_session.commit.assert_called_once()
 
     def test_save_pitching_records_commits(self):
         mock_session = MagicMock()
         agg = TeamStatAggregator(mock_session)
         mock_repo = MagicMock()
-        mock_repo._filter_model_fields.side_effect = lambda x: x
-        mock_repo._filter_none.side_effect = lambda x: x
-        mock_repo._build_insert_stmt.return_value = MagicMock()
         with patch("src.repositories.team_stats_repository.TeamSeasonPitchingRepository", return_value=mock_repo):
-            with patch("src.aggregators.team_stat_aggregator.get_database_type", return_value="postgresql"):
-                agg._save_pitching_records([{"team_id": "OB", "season": 2025}])
+            records = [{"team_id": "OB", "season": 2025}]
+            agg._save_pitching_records(records)
+        mock_repo.upsert_many.assert_called_once_with(records)
         mock_session.commit.assert_called_once()
 
     def test_save_batting_records_rollback_on_error(self):
         from sqlalchemy.exc import SQLAlchemyError
 
         mock_session = MagicMock()
-        mock_session.execute.side_effect = SQLAlchemyError("DB error")
         agg = TeamStatAggregator(mock_session)
         mock_repo = MagicMock()
-        mock_repo._filter_model_fields.side_effect = lambda x: x
-        mock_repo._filter_none.side_effect = lambda x: x
-        mock_repo._build_insert_stmt.return_value = MagicMock()
+        mock_repo.upsert_many.side_effect = SQLAlchemyError("DB error")
         with patch("src.repositories.team_stats_repository.TeamSeasonBattingRepository", return_value=mock_repo):
-            with patch("src.aggregators.team_stat_aggregator.get_database_type", return_value="postgresql"):
-                with pytest.raises(SQLAlchemyError, match="DB error"):
-                    agg._save_batting_records([{"team_id": "OB", "season": 2025}])
+            with pytest.raises(SQLAlchemyError, match="DB error"):
+                agg._save_batting_records([{"team_id": "OB", "season": 2025}])
         mock_session.rollback.assert_called_once()
 
     def test_save_pitching_records_rollback_on_error(self):
         from sqlalchemy.exc import SQLAlchemyError
 
         mock_session = MagicMock()
-        mock_session.execute.side_effect = SQLAlchemyError("DB error")
         agg = TeamStatAggregator(mock_session)
         mock_repo = MagicMock()
-        mock_repo._filter_model_fields.side_effect = lambda x: x
-        mock_repo._filter_none.side_effect = lambda x: x
-        mock_repo._build_insert_stmt.return_value = MagicMock()
+        mock_repo.upsert_many.side_effect = SQLAlchemyError("DB error")
         with patch("src.repositories.team_stats_repository.TeamSeasonPitchingRepository", return_value=mock_repo):
-            with patch("src.aggregators.team_stat_aggregator.get_database_type", return_value="postgresql"):
-                with pytest.raises(SQLAlchemyError):
-                    agg._save_pitching_records([{"team_id": "OB", "season": 2025}])
-        mock_session.rollback.assert_called_once()
-
-    def test_save_pitching_records_sqlite_pragma(self):
-        mock_session = MagicMock()
-        agg = TeamStatAggregator(mock_session)
-        mock_repo = MagicMock()
-        mock_repo._filter_model_fields.side_effect = lambda x: x
-        mock_repo._filter_none.side_effect = lambda x: x
-        mock_repo._build_insert_stmt.return_value = MagicMock()
-        with patch("src.repositories.team_stats_repository.TeamSeasonPitchingRepository", return_value=mock_repo):
-            with patch("src.aggregators.team_stat_aggregator.get_database_type", return_value="sqlite"):
+            with pytest.raises(SQLAlchemyError):
                 agg._save_pitching_records([{"team_id": "OB", "season": 2025}])
-        pragma_calls = [
-            c for c in mock_session.execute.call_args_list if hasattr(c[0][0], "text") and "PRAGMA" in c[0][0].text
-        ]
-        assert len(pragma_calls) == 2
-        pragma_texts = [c[0][0].text for c in pragma_calls]
-        assert any("OFF" in t for t in pragma_texts)
-        assert any("ON" in t for t in pragma_texts)
-
-    def test_save_batting_records_sqlite_pragma(self):
-        mock_session = MagicMock()
-        agg = TeamStatAggregator(mock_session)
-        mock_repo = MagicMock()
-        mock_repo._filter_model_fields.side_effect = lambda x: x
-        mock_repo._filter_none.side_effect = lambda x: x
-        mock_repo._build_insert_stmt.return_value = MagicMock()
-        with patch("src.repositories.team_stats_repository.TeamSeasonBattingRepository", return_value=mock_repo):
-            with patch("src.aggregators.team_stat_aggregator.get_database_type", return_value="sqlite"):
-                agg._save_batting_records([{"team_id": "OB", "season": 2025}])
-        pragma_calls = [
-            c for c in mock_session.execute.call_args_list if hasattr(c[0][0], "text") and "PRAGMA" in c[0][0].text
-        ]
-        assert len(pragma_calls) == 1
-        assert "OFF" in pragma_calls[0][0][0].text
+        mock_session.rollback.assert_called_once()
 
 
 class TestGetTeamRecordFromStandings:
