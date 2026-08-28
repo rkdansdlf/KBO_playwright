@@ -40,6 +40,11 @@ jobs:
           resolve-date: 'true'
           target-date: ${{ github.event.inputs.target_date || '' }}
 
+      - name: Validate Environment Configuration & Diagnostics
+        run: |
+          python3 -m src.cli.kbo config --env ci --strict
+          python3 -m src.cli.kbo diagnose --subsystem db
+
       - name: Verify target-date game completeness before publish (local, preflight)
         id: preflight_local
         if: github.event_name == 'workflow_dispatch'
@@ -61,13 +66,14 @@ jobs:
             --json \
             --output "$RUNNER_TEMP/data_quality_regression_local.json"
 
-      - name: Run Postgame Finalize & Sync
+      - name: Run Master Daily Sync DAG Workflow
         env:
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
         run: |
-          python3 -m src.cli.run_daily_update \
-            --date ${{ steps.job-setup.outputs.KST_DATE }} --fix
+          python3 -m src.cli.kbo workflow \
+            --workflow daily_sync \
+            --date "${{ steps.job-setup.outputs.KST_DATE }}"
 
       - name: Verify target-date game completeness after publish (local, post-run)
         id: postsync_local
@@ -93,33 +99,6 @@ jobs:
           name: data-quality-regression-${{ steps.job-setup.outputs.KST_DATE }}
           path: ${{ runner.temp }}/data_quality_regression_*.json
           if-no-files-found: warn
-
-      - name: Compute Standings
-        run: |
-          python3 -m src.cli.calculate_standings \
-            --year ${{ steps.job-setup.outputs.KST_YEAR }}
-
-      - name: Aggregate Team Defense
-        run: |
-          python3 -c "
-          from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
-          from src.db.engine import SessionLocal
-          from src.models.team import Team
-          year = ${{ steps.job-setup.outputs.KST_YEAR }}
-          with SessionLocal() as session:
-              teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
-              TeamFieldingAggregator(session).run_all(year, teams)
-          "
-
-      - name: Compute Rankings
-        run: |
-          python3 -m src.cli.calculate_rankings \
-            --year ${{ steps.job-setup.outputs.KST_YEAR }}
-
-      - name: Freshness Gate
-        run: |
-          python3 -m src.cli.freshness_gate \
-            --date ${{ steps.job-setup.outputs.KST_DATE }}
 
       - uses: ./.github/actions/notify
         if: always()
@@ -170,11 +149,18 @@ jobs:
         with:
           init-db: 'true'
 
-      - name: Generate Quality Report
+      - name: Generate Unified Quality Report
         run: |
-          python3 -m src.cli.generate_quality_report \
+          python3 -m src.cli.kbo report \
+            --category quality \
             --date ${{ needs.finalize.outputs.date }} \
-            --force-notify
+            --format markdown
+
+      - name: Run Statistical Anomaly Detection
+        run: |
+          python3 -m src.cli.kbo detect \
+            --sensitivity medium \
+            --json
 
       - name: Quality Dashboard
         run: |
@@ -195,7 +181,7 @@ jobs:
           TELEGRAM_CHAT_ID_PROFILE: ${{ secrets.TELEGRAM_CHAT_ID_PROFILE || secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_ID_FRESHNESS: ${{ secrets.TELEGRAM_CHAT_ID_FRESHNESS || secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python3 -m src.cli.gap_report --send-summary
+          python3 -m src.cli.kbo report --category gap
 
       - name: Data Freshness Monitor
         run: |
@@ -295,13 +281,13 @@ jobs:
           python3 -m src.cli.send_milestone_daily_summary --season ${{ needs.finalize.outputs.year }} --channels telegram
 
 
-      - name: Resolve Null Player IDs
+      - name: Run Automated Maintenance (PA Formula & Null IDs)
         run: |
-          python3 -m scripts.maintenance.resolve_null_player_ids_conservative \
-            --years ${{ needs.finalize.outputs.year }} \
-            --apply \
-            --no-backup \
-            --delete-duplicates
+          python3 -m src.cli.kbo maintenance --task all --apply
+
+      - name: Incremental OCI Cloud Data Lake Sync
+        run: |
+          python3 -m src.cli.kbo sync --apply --mode incremental
 
       - name: Reference Integrity Gate
         run: |

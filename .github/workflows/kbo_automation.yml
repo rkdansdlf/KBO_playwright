@@ -74,34 +74,25 @@ jobs:
               python3 -m src.cli.live_crawler --run-once
               ;;
             finalize)
-              python3 -m src.cli.run_daily_update --date "${TARGET_DATE}" --fix
+              python3 -m src.cli.kbo workflow --workflow daily_sync --date "${TARGET_DATE}"
               ;;
             freshness)
-              python3 -m src.cli.freshness_gate --date "${TARGET_DATE}"
+              python3 -m src.cli.kbo report --category freshness
               ;;
             quality-report)
-              python3 -m src.cli.generate_quality_report --date "${TARGET_DATE}" --force-notify
-              python3 -c "
-          from src.monitoring.trend_tracker import TrendTracker
-          TrendTracker().send_degradation_alert(days=14)
-          "
+              python3 -m src.cli.kbo report --category quality --format markdown --date "${TARGET_DATE}"
+              python3 -m src.cli.kbo detect --sensitivity medium --json
               ;;
             gap-report)
-              python3 -m src.cli.gap_report
+              python3 -m src.cli.kbo report --category gap
               ;;
             backfill)
-              python3 -c "
-          from scripts.scheduler import backfill_missed_daily_crawls
-          result = backfill_missed_daily_crawls()
-          print(f'Backfilled: {result}')
-          "
+              python3 -m src.cli.kbo maintenance --task all --apply
               ;;
             recalc-stats)
               YEAR="${TARGET_DATE:0:4}"
               python3 -m src.cli.recalc_season_stats --year "${YEAR}" --all --save
-              python3 -m src.cli.backfill_advanced_stats \
-                --years "${YEAR}" \
-                --series regular
+              python3 -m src.cli.kbo maintenance --task pa_formula --apply
               ;;
             *)
               echo "Unsupported phase: ${{ github.event.inputs.phase }}"
