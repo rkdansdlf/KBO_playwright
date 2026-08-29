@@ -1,10 +1,19 @@
 {
-  "audit_type": "INDEPENDENT_DUAL_PATH_CENSUS",
+  "audit_type": "LOCAL_SAMPLE_DUAL_PYTHON_AUDIT",
   "scope": "LOCAL_SQLITE_BASELINE",
+  "sampling_mode": "LIMITED_NON_STRATIFIED_SAMPLE",
+  "sample_limit": 500,
+  "unique_entities": 1000,
+  "selection_order": [
+    "season DESC",
+    "plate_appearances DESC"
+  ],
   "season": null,
   "category": null,
   "total_metrics_evaluated": 33,
-  "total_entities_checked": 16500,
+  "metric_evaluations": 16500,
+  "defined_count": 16311,
+  "undefined_count": 189,
   "reproducible_count": 16500,
   "divergent_count": 0,
   "reproducibility_ratio": 1.0,
@@ -216,6 +225,6 @@
       "reproducibility_ratio": 1.0
     }
   },
-  "duration_ms": 286.82,
+  "duration_ms": 218.5,
   "is_compliant": true
 }

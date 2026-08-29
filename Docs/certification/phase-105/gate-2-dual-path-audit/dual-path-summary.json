@@ -1,14 +1,30 @@
 {
-  "gate": "GATE_2_INDEPENDENT_DUAL_PATH_AUDIT",
-  "status": "PASSED",
+  "gate": "GATE_2_LOCAL_SAMPLE_DUAL_PYTHON_AUDIT",
+  "status": "PROVISIONAL_PASS_EVIDENCE_REOPENED",
   "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
   "environment": "sqlite_local_baseline",
-  "audit_type": "INDEPENDENT_DUAL_PATH_CENSUS",
+  "audit_type": "LOCAL_SAMPLE_DUAL_PYTHON_AUDIT",
+  "sampling_mode": "LIMITED_NON_STRATIFIED_SAMPLE",
+  "sample_limit_per_category": 500,
+  "unique_entities_selected": 1000,
+  "selection_order": [
+    "season DESC",
+    "plate_appearances DESC (batting) / innings_outs DESC (pitching)"
+  ],
   "total_metrics_evaluated": 33,
   "total_evaluations_checked": 16500,
-  "reproducible_count": 16500,
+  "numeric_defined_evaluations": 16311,
+  "exact_count": 16277,
+  "rounded_contract_count": 34,
+  "undefined_count": 189,
   "divergent_count": 0,
   "reproducibility_ratio": 1.0,
+  "agreement_summary": {
+    "raw_exact_percentage_of_defined": 99.7916,
+    "rounding_contract_percentage_of_defined": 0.2084,
+    "undefined_contract_agreement": "189/189 (100.0%)",
+    "divergence_rate": 0.0
+  },
   "parity_breakdown": {
     "EXACT": 16277,
     "ROUNDED_CONTRACT": 34,
@@ -17,10 +33,10 @@
     "EXCLUDED": 0,
     "DIVERGENT": 0
   },
-  "oracle_architectures": {
-    "path_a": "FormulaRegistry (pure declarative mathematical definitions with Decimal ROUND_HALF_UP precision)",
-    "path_b": "IndependentFormulaOracle (independent pure functional cross-checker with zero shared state)"
+  "evaluators": {
+    "path_a": "FormulaRegistry / FormulaEngine (declarative definitions with Decimal ROUND_HALF_UP)",
+    "path_b": "PythonReferenceCalculator (isolated functional reference implementation)"
   },
   "is_compliant": true,
-  "generated_at_utc": "2026-08-30T02:13:07Z"
+  "generated_at_utc": "2026-08-30T02:28:40Z"
 }

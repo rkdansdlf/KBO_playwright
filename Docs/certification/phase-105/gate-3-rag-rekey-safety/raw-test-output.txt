@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/mac/project/KBO_playwright/venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/mac/project/KBO_playwright
+configfile: pytest.ini
+plugins: cov-7.1.0, xdist-3.8.0, asyncio-0.26.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 35 items
+
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_1_normal_apply_exact_mutation PASSED [  2%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_2_idempotency_zero_mutations_on_reapply PASSED [  5%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_3_cas_stale_content_hash_fail_closed PASSED [  8%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_4_cas_stale_legacy_id_fail_closed PASSED [ 11%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_5_cas_stale_index_status_fail_closed PASSED [ 14%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_6_cas_stale_index_version_fail_closed PASSED [ 17%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_7_atomicity_batch_rollback_on_failure PASSED [ 20%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_8_target_collision_disposition_tombstone PASSED [ 22%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_9_preconverted_rows_untouched PASSED [ 25%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_10_manifest_tampering_rejected PASSED [ 28%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_11_snapshot_binding_fingerprint_mismatch_rejected PASSED [ 31%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_12_inverse_rollback_manifest_restores_state PASSED [ 34%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_13_fault_injection_mid_process_abort PASSED [ 37%]
+tests/services/test_rag_rekey_safety_gate3.py::TestRagRekeySafetyGate3::test_14_dsn_and_production_guard_fail_closed PASSED [ 40%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_help_exits_zero PASSED [ 42%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_missing_manifest_fails PASSED [ 45%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_invalid_json_fails PASSED [ 48%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_missing_header_fails PASSED [ 51%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_apply_requires_env_gate PASSED [ 54%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_dry_run_normal_rekey PASSED [ 57%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_dry_run_tombstone PASSED [ 60%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_apply_normal_rekey PASSED [ 62%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_apply_tombstone PASSED [ 65%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_stale_legacy_id_rejected PASSED [ 68%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_stale_content_hash_rejected PASSED [ 71%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_wrong_index_status_rejected PASSED [ 74%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_wrong_index_version_rejected PASSED [ 77%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_manifest_tampering_rejected PASSED [ 80%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_git_sha_mismatch_rejected PASSED [ 82%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_wrong_db_fingerprint_rejected PASSED [ 85%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_apply_idempotent_rerun PASSED [ 88%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_lock_failure_aborts PASSED [ 91%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_partial_failure_continues PASSED [ 94%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_skip_entries_preserved_in_output PASSED [ 97%]
+tests/cli/test_apply_rag_rekey.py::TestApplyRekey::test_manifest_with_mixed_dispositions PASSED [100%]
+
+============================== 35 passed in 9.04s ==============================
