@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KBO Platform Claim-Level Evidence Matrix",
+  "generated_at_kst": "2026-08-30T01:59:00+09:00",
+  "evidence_level_definitions": {
+    "LEVEL_0_NOT_TESTED": "Code not executed in test environment.",
+    "LEVEL_1_IMPLEMENTED": "Feature/module code written and syntactically valid.",
+    "LEVEL_2_UNIT_VERIFIED": "Isolated unit tests passing in mock/in-memory environment.",
+    "LEVEL_3_INTEGRATION_VERIFIED": "Local database / CLI end-to-end integration tests passing.",
+    "LEVEL_4_STAGING_ATTESTED": "Verified against fixed Staging snapshot / SCN with rollback rehearsal.",
+    "LEVEL_5_PRODUCTION_ATTESTED": "Verified against Production snapshot with immutable full-digest bundle."
+  },
+  "claims": [
+    {
+      "claim_id": "formula.registry_catalog.v1",
+      "component": "src/formulas/registry.py",
+      "statement": "33 Sabermetrics metrics declared with formula version, inputs, outputs, LaTeX, and validation rules.",
+      "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
+      "environment": "sqlite_local_baseline",
+      "dataset_snapshot_id": "local_kbo_dev_20260829",
+      "scope": "33_METRICS_CATALOG",
+      "promotion_decision": "NO_GO",
+      "remediation_status": "GATE_1_REMEDIATION_COMPLETE"
+    },
+    {
+      "claim_id": "formula.sample_reproducibility.v1",
+      "component": "src/formulas/engine.py",
+      "statement": "Sample reproducibility audit on 33 metrics x 500 samples (16,500 evaluations) with 0 divergences.",
+      "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
+      "environment": "sqlite_local_baseline",
+      "dataset_snapshot_id": "local_kbo_dev_20260829",
+      "scope": "16500_SAMPLE_EVALUATIONS",
+      "promotion_decision": "NO_GO",
+      "remediation_status": "PENDING_GATE_1_REMEDIATION"
+    },
+    {
+      "claim_id": "lineage.entity_provenance.v1",
+      "component": "src/lineage/engine.py",
+      "statement": "3,623,449 entities traced from source to DB row in local SQLite corpus.",
+      "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
+      "environment": "sqlite_local_baseline",
+      "dataset_snapshot_id": "local_kbo_dev_20260829",
+      "scope": "LOCAL_SQLITE_3623449_ROWS",
+      "promotion_decision": "NO_GO",
+      "remediation_status": "STAGING_REHEARSAL_REQUIRED"
+    },
+    {
+      "claim_id": "rag.natural_key_rekey_safety.v1",
+      "component": "src/cli/rag/apply_rag_rekey.py",
+      "statement": "R2 Natural Key Rekey CAS, manifest validation, and rollback generation implemented.",
+      "evidence_level": "LEVEL_2_UNIT_VERIFIED",
+      "environment": "in_memory_and_mock_session",
+      "dataset_snapshot_id": "unapplied_manifest_v1",
+      "scope": "REKEY_APPLY_SAFETY_PIPELINE",
+      "promotion_decision": "NO_GO",
+      "remediation_status": "PENDING_PHASE_105B"
+    }
+  ]
+}

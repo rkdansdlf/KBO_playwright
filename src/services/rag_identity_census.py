@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import re
+import subprocess
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import or_, select
 
+from src.constants import KST
 from src.models.award import Award
 from src.models.futures_schedule import FuturesGameSchedule
 from src.models.game import Game, GameHighlight, GamePlayByPlay
@@ -191,15 +199,67 @@ class IdentityCensusReport:
 
     def to_manifest_dict(self) -> dict[str, object]:
         """Serialize the complete manifest for a later apply-gated rekey."""
+        entries_data = [entry.to_dict() for entry in self.entries]
+        totals = self.totals()
+        disposition_counts = Counter(e.disposition for e in self.entries)
+
+        # Build manifest header
+        header = self._build_manifest_header(len(self.entries), dict(disposition_counts))
+
         return {
+            "manifest_header": header,
             "manifest_version": self.manifest_version,
             "target_index_version": self.target_index_version,
             "read_only": True,
             "source_tables": list(self.source_tables),
-            "totals": self.totals(),
+            "totals": totals,
             "unsafe_entry_count": self.unsafe_entry_count,
             "sources": [summary.to_dict() for summary in self.summaries],
-            "entries": [entry.to_dict() for entry in self.entries],
+            "entries": entries_data,
+        }
+
+    def _build_manifest_header(self, entry_count: int, disposition_counts: dict[str, int]) -> dict[str, object]:
+        """Build manifest header with metadata for validation."""
+        # Compute manifest SHA (excluding header)
+        manifest_content = json.dumps(
+            {
+                "manifest_version": self.manifest_version,
+                "target_index_version": self.target_index_version,
+                "read_only": True,
+                "source_tables": list(self.source_tables),
+                "totals": self.totals(),
+                "unsafe_entry_count": self.unsafe_entry_count,
+                "sources": [summary.to_dict() for summary in self.summaries],
+                "entries": [entry.to_dict() for entry in self.entries],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        manifest_sha = hashlib.sha256(manifest_content).hexdigest()
+
+        # Get current git SHA
+        try:
+            git_sha = subprocess.run(
+                ["/usr/bin/git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=Path.cwd()
+            ).stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+            git_sha = "unknown"
+
+        # Database fingerprint
+        db_url = os.getenv("DATABASE_URL", "")
+        safe_url = re.sub(r"://[^:]+:[^@]+@", "://***:***@", db_url)
+        fp_content = f"{safe_url}|{os.getenv('RAG_INDEX_VERSION', 'rag-v1')}".encode()
+        db_fingerprint = hashlib.sha256(fp_content).hexdigest()[:16]
+
+        return {
+            "manifest_schema_version": "r2-rekey-manifest-v1",
+            "identity_schema_version": "r2",
+            "generated_at": datetime.now(KST).isoformat(),
+            "database_fingerprint": db_fingerprint,
+            "git_commit_sha": git_sha,
+            "manifest_sha256": manifest_sha,
+            "expected_entry_count": entry_count,
+            "expected_disposition_counts": disposition_counts,
         }
 
 

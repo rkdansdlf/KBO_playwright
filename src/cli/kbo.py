@@ -306,6 +306,24 @@ def _add_cert_and_lineage_subparsers(subparsers: argparse._SubParsersAction[argp
     )
     p_lin.add_argument("--json", action="store_true", help="Output result in JSON format.")
 
+    # 20. Formula
+    p_form = subparsers.add_parser(
+        "formula",
+        help="Inspect sabermetric formulas, linear weights, and reproducibility audits.",
+    )
+    p_form.add_argument(
+        "subcommand",
+        choices=["list", "explain", "eval", "audit"],
+        help="Formula subcommand to execute.",
+    )
+    p_form.add_argument("metric", nargs="?", default=None, help="Target metric identifier (e.g. wOBA, OPS_PLUS, FIP).")
+    p_form.add_argument("--player", "-p", type=str, default=None, help="Player name or ID.")
+    p_form.add_argument("--season", "-s", type=int, default=None, help="Season year.")
+    p_form.add_argument("--category", "-c", type=str, default=None, help="Metric category.")
+    p_form.add_argument("--sample", type=int, default=None, help="Sample count limit.")
+    p_form.add_argument("--save-artifact", type=str, default=None, help="Path to save report JSON.")
+    p_form.add_argument("--json", action="store_true", help="Output result in JSON format.")
+
 
 def build_master_parser() -> argparse.ArgumentParser:
     """Build root command-line parser with all platform subcommands."""
@@ -332,6 +350,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     from src.cli.detect_anomalies import main as det_main
     from src.cli.detect_schema_drift import main as drift_main
     from src.cli.diagnose_system import main as diag_main
+    from src.cli.formula import main as form_main
     from src.cli.generate_reports import main as rep_main
     from src.cli.lineage import main as lin_main
     from src.cli.predict_matchups import main as pred_main
@@ -388,6 +407,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "compare": cmp_main,
         "certify": cert_main,
         "lineage": lin_main,
+        "formula": form_main,
     }
 
 

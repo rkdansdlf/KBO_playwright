@@ -1,0 +1,10 @@
+{
+  "gate": "GATE_0_CLEAN_BASELINE_FREEZE",
+  "python_version_venv": "3.12.14 (main, Aug 12 2026, 13:57:54) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "python_executable": "/Users/mac/project/KBO_playwright/venv/bin/python3",
+  "pytest_version": "8.4.2",
+  "ruff_version": "0.14.0",
+  "os_platform": "Darwin 25.3.0 (macOS)",
+  "database_type": "sqlite3",
+  "local_database_path": "data/kbo_dev.db"
+}

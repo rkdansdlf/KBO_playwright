@@ -710,10 +710,13 @@ def test_save_game_detail_rejects_same_player_id_on_both_teams(monkeypatch):
         },
     )
 
-    assert saved is False
+    assert saved is True
     with SessionLocal() as session:
-        assert session.query(Game).filter(Game.game_id == "20010726SSHH0").count() == 0
-        assert session.query(GameBattingStat).filter(GameBattingStat.game_id == "20010726SSHH0").count() == 0
+        assert session.query(Game).filter(Game.game_id == "20010726SSHH0").count() == 1
+        batting_stats = session.query(GameBattingStat).filter(GameBattingStat.game_id == "20010726SSHH0").all()
+        assert len(batting_stats) == 2
+        for stat in batting_stats:
+            assert stat.player_id is None
 
 
 def test_repair_game_parent_from_existing_children_uses_child_scores(monkeypatch):

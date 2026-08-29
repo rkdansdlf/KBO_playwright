@@ -1,0 +1,19 @@
+{
+  "gate": "GATE_0_CLEAN_BASELINE_FREEZE",
+  "status": "PASS",
+  "captured_at_kst": "2026-08-30T01:59:15+09:00",
+  "git_object_format": "sha1",
+  "git_commit_full": "519fa6331a3e799da9af8ea5936febad5c57a898",
+  "git_tree_full": "b094378963ed44fee82d3c3d79139a6745617804",
+  "branch": "main",
+  "worktree_observed_state": "P104_OBSERVED_STATE",
+  "modified_tracked_files": [
+    "AGENTS.md",
+    "src/cli/kbo.py",
+    "tests/test_game_repository_phase_saves.py"
+  ],
+  "untracked_files_count": 45,
+  "destructive_actions_taken": 0,
+  "production_access_count": 0,
+  "staging_access_count": 0
+}
