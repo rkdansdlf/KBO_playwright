@@ -64,6 +64,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     p_aud.add_argument("--sample", type=int, default=None, help="Limit number of player records evaluated.")
     p_aud.add_argument(
+        "--dual-path",
+        action="store_true",
+        help="Execute independent dual-path cross-verification audit.",
+    )
+    p_aud.add_argument(
         "--save-artifact",
         type=str,
         default=None,
@@ -116,6 +121,37 @@ def _handle_eval(engine: FormulaEngine, args: argparse.Namespace) -> int:
 def _handle_audit(engine: FormulaEngine, args: argparse.Namespace) -> int:
     """Handle audit sub-action."""
     cat = MetricCategory[args.category] if args.category else None
+
+    if getattr(args, "dual_path", False):
+        from src.formulas.dual_path import DualPathAuditEngine
+
+        census_data = DualPathAuditEngine.run_census_audit(
+            engine=engine.engine,
+            season=args.season,
+            category=cat,
+            sample=args.sample,
+        )
+        json_str = FormulaReporter.render_json(census_data)
+
+        if args.save_artifact:
+            p = Path(args.save_artifact)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json_str, encoding="utf-8")
+            sys.stdout.write(f"📁 Dual-Path Audit report saved to {p}\n")
+
+        if args.json:
+            sys.stdout.write(json_str + "\n")
+        else:
+            rep_pct = census_data["reproducibility_ratio"] * 100.0
+            sys.stdout.write(
+                "=== INDEPENDENT DUAL-PATH AUDIT CENSUS ===\n"
+                f"Total Checked: {census_data['total_entities_checked']}\n"
+                f"Reproducible: {census_data['reproducible_count']} ({rep_pct:.3f}%)\n"
+                f"Divergent: {census_data['divergent_count']}\n"
+                f"Parity Breakdown: {census_data['parity_breakdown']}\n"
+            )
+        return 0 if census_data["is_compliant"] else 1
+
     report = engine.audit_reproducibility(season=args.season, category=cat, sample=args.sample)
 
     json_str = FormulaReporter.render_json(report)

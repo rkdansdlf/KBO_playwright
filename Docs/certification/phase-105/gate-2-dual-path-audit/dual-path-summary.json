@@ -1,0 +1,26 @@
+{
+  "gate": "GATE_2_INDEPENDENT_DUAL_PATH_AUDIT",
+  "status": "PASSED",
+  "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
+  "environment": "sqlite_local_baseline",
+  "audit_type": "INDEPENDENT_DUAL_PATH_CENSUS",
+  "total_metrics_evaluated": 33,
+  "total_evaluations_checked": 16500,
+  "reproducible_count": 16500,
+  "divergent_count": 0,
+  "reproducibility_ratio": 1.0,
+  "parity_breakdown": {
+    "EXACT": 16277,
+    "ROUNDED_CONTRACT": 34,
+    "FLOATING_TOLERANCE": 0,
+    "UNDEFINED": 189,
+    "EXCLUDED": 0,
+    "DIVERGENT": 0
+  },
+  "oracle_architectures": {
+    "path_a": "FormulaRegistry (pure declarative mathematical definitions with Decimal ROUND_HALF_UP precision)",
+    "path_b": "IndependentFormulaOracle (independent pure functional cross-checker with zero shared state)"
+  },
+  "is_compliant": true,
+  "generated_at_utc": "2026-08-30T02:13:07Z"
+}
