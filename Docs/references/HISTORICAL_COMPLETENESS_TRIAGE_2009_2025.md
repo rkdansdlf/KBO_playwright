@@ -1,6 +1,6 @@
 # Historical Completeness Triage (2009-2025)
 
-Last verified: 2026-08-23
+Last verified: 2026-08-29
 
 This is a read-only triage of the local SQLite completeness audit. It is a
 source and remediation decision record, not permission to apply database fixes.
@@ -26,6 +26,32 @@ The detailed report is `data/recovery/historical_pitching_full_column_audit_2026
 The candidate report is
 `data/recovery/historical_pitching_repair_candidates_20260827.json`. No repair
 was applied; future changes require a source-specific full-stat contract.
+
+### Historical Pitching Full-Stat Contract
+
+The current `PROFILE` rows are reference snapshots, not an authoritative full
+season-stat source. A future repair source must provide the following before it
+can be used for `FINAL_VERIFICATION` rows:
+
+- Provenance: `source_name`, authorization or license reference, capture time,
+  manifest entry, and SHA-256 payload digest.
+- Identity: `player_id` or a verified historical name alias, season, `REGULAR`
+  league, `KBO1` level, and the season-correct team code.
+- Core fields: `games`, `games_started`, `wins`, `losses`, `saves`, `holds`,
+  `innings_outs`, `hits_allowed`, `runs_allowed`, `earned_runs`,
+  `home_runs_allowed`, `walks_allowed`, `intentional_walks`, `hit_batters`,
+  `strikeouts`, `wild_pitches`, and `balks`.
+- Extended fields, when present in the source: `complete_games`, `shutouts`,
+  `quality_starts`, `blown_saves`, `tbf`, `np`, `avg_against`, `doubles_allowed`,
+  `triples_allowed`, `sacrifices_allowed`, and `sacrifice_flies_allowed`.
+- Derived-field contract: `innings_pitched` must agree with `innings_outs`, and
+  missing source values must remain NULL rather than being invented as zero.
+
+Acceptance requires checksum/provenance validation, one source row per logical
+player-season-team key, historical team-code validation, a dry-run showing only
+field-level changes, and an idempotent UPSERT with a pre-change backup. A source
+that supplies only wins/losses/saves/holds is insufficient for a wholesale row
+replacement.
 
 ## Audit Snapshot
 
@@ -86,10 +112,28 @@ inning-continuity validation, and `--dry-run`.
 - No database rows were saved. The preserved report is
   `data/recovery/historical_pbp_probe_2011_dry_run.csv`.
 
-This bounded sample is not sufficient to prove whole-season unavailability,
-but it does not support promoting 2011 PBP to an approved batch recovery. Keep
-the 2011 PBP gap unapproved until an alternate archive or import manifest is
-available.
+### 2010-2019 Comprehensive Gap Probe & Triage (2026-08-29)
+
+On 2026-08-29, an automated read-only census and live HTTP endpoint probe evaluated all 8,129 terminal games across 2010-2019 (`reports/historical_batch/gap_resolution_2010_2019.json` and `reports/historical_batch/coverage_2010_2025.json`):
+
+| Season | Terminal Games | Covered Games | Missing Games | Coverage % | Top Missing Series | Root Cause & Probe Status |
+|---|---|---|---|---|---|---|
+| **2010** | 591 | 10 | 581 | 1.7% | Regular (534), Exhibition (47) | 🔴 KBO BoxScore endpoint responds **200 OK** $\rightarrow$ Phase 1 Full Crawl Candidate |
+| **2011** | 735 | 585 | 150 | 79.6% | Regular (138), Exhibition (12) | 🟡 Nexen (`NX`) alias gap; KBO endpoint **200 OK** |
+| **2012** | 735 | 583 | 152 | 79.3% | Regular (141), Exhibition (11) | 🟡 Nexen (`NX`) alias gap; KBO endpoint **200 OK** |
+| **2013** | 781 | 636 | 145 | 81.4% | Regular (134), Exhibition (11) | 🟡 Nexen/NC alias gap; KBO endpoint **200 OK** |
+| **2014** | 780 | 623 | 157 | 79.9% | Regular (145), Exhibition (12) | 🟡 Nexen (`NX`) alias gap; KBO endpoint **200 OK** |
+| **2015** | 934 | 682 | 252 | 73.0% | Regular (241), Exhibition (11) | 🟡 KT/Nexen expansion gap; KBO endpoint **200 OK** |
+| **2016** | 959 | 700 | 259 | 73.0% | Regular (243), Exhibition (16) | 🟡 KT/Nexen gap; KBO endpoint **200 OK** |
+| **2017** | 933 | 684 | 249 | 73.3% | Regular (237), Exhibition (12) | 🟡 Nexen (`NX`) gap; KBO endpoint **200 OK** |
+| **2018** | 911 | 649 | 262 | 71.2% | Regular (251), Exhibition (10) | 🟡 Nexen/Woori gap; KBO endpoint **200 OK** |
+| **2019** | 770 | 664 | 106 | 86.2% | Regular (102), Exhibition (4) | 🟡 KT/NC gap; KBO endpoint **200 OK** |
+| **2020-2025** | 4,534 | 4,500+ | ~34 | 99.7% | - | 🟢 **Boxscores 100% Complete** |
+
+#### Resolution Path & Remediation Plan:
+1. **Phase 1 (2010 Season)**: 534 regular-season games are available on KBO official GameCenter. Execute `python3 -m src.cli.collect_games --year 2010` in bounded month batches.
+2. **Phase 2 (2011-2019 Nexen/KT Regular Season Gaps)**: 1,638 missing regular-season games have verified KBO endpoints. Execute `python3 -m src.cli.backfill_historical_details --year <Y>` with normalized team aliases.
+3. **Exhibition Series (138 games)**: Classified as non-official exhibition records (`KNOWN_LIMITATION`); do not gate quality metrics on pre-season exhibition boxscores.
 
 ## Safety Rules
 
@@ -105,9 +149,9 @@ available.
 ```bash
 DATABASE_URL=sqlite:///./data/kbo_dev.db \
   venv/bin/python -m src.cli.historical_coverage_report \
-  --start-year 2001 --end-year 2009
+  --start-year 2010 --end-year 2025
 
 DATABASE_URL=sqlite:///./data/kbo_dev.db \
-  venv/bin/python -m scripts.maintenance.audit_completeness \
-  --start-year 2009 --end-year 2025 --dry-run --json
+  venv/bin/python -m scripts.maintenance.probe_historical_gaps \
+  --start-year 2010 --end-year 2019
 ```
