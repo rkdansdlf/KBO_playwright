@@ -214,7 +214,42 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-08-29
+Last updated: 2026-08-30
+
+### Phase 105: Certification Evidence Closure & Independent Staging Attestation — STATUS: GATE 0 & GATE 1 COMPLETE (NO-GO ON PROMOTION / WRITE 0 MAINTAINED)
+- **Claim-Level Evidence Ledger**: Full granular status tracked in `Docs/certification/phase-105/evidence-level-matrix.json`.
+- **Gate 0: Clean Baseline Freeze (PASSED)**:
+  - Commit `519fa6331a3e799da9af8ea5936febad5c57a898`, Tree `b094378963ed44fee82d3c3d79139a6745617804`.
+  - Baseline tests: 10,202 passed, 3 skipped in 65.84s; Ruff: 0 errors; Artifacts: `Docs/certification/phase-105/gate-0-observed-baseline/`.
+- **Gate 1: Formula Contract Remediation (PASSED)**:
+  - Strict 45-season resolver (1982~2026); 2001~2013 uncalibrated fail-closed.
+  - Canonical No-Park identifiers (`WRC_INDEX_NO_PARK`, `OPS_INDEX_NO_PARK`, `ERA_INDEX_NO_PARK`) + deprecated aliases.
+  - Undefined / Zero-denominator contract + Decimal `ROUND_HALF_UP` + 4-tier validation severity (`DOMAIN`, `ALGEBRAIC`, `SOURCE_SCHEMA_INTEGRITY`, `PLAUSIBILITY`).
+  - Candidate tests: **10,211 passed (+9 delta), 3 skipped in 59.66s (0 failures, 0 errors)**; Ruff: **0 errors**.
+  - Artifacts: `Docs/certification/phase-105/gate-1-formula-contract/`.
+
+### Phase 104: Sabermetrics Formula Registry & Metric Reproducibility Certification (`kbo formula`) — STATUS: COMPLETED
+- **Declarative Formula Registry Contract**: Standardized catalog of 33 versioned metrics (`AVG`, `OBP`, `SLG`, `OPS`, `ISO`, `BABIP_BAT`, `BB_PCT_BAT`, `K_PCT_BAT`, `BB_TO_K_BAT`, `wOBA`, `wRAA`, `wRC`, `wRC_PLUS`, `OPS_PLUS`, `GPA`, `SecA`, `RC`, `ERA`, `WHIP`, `FIP`, `K_9`, `BB_9`, `HR_9`, `K_PCT_PIT`, `BB_PCT_PIT`, `K_BB_PIT`, `BABIP_PIT`, `LOB_PCT`, `ERA_PLUS`, `DICE`, `SB_PCT`, `FPCT`, `RF_9`).
+- **45-Season League Context & Linear Weights Engine**: Era-calibrated constants for 1982~2026 (`DEAD_BALL_1980S`, `EXPANSION_1990S`, `OFFENSE_EXPLOSION_2014_2018`, modern baseline) with dynamic aggregation for $\text{lg}wOBA, wOBA\_scale, c_{FIP}, \text{lg}ERA, \text{lg}OBP, \text{lg}SLG, \text{lg}OPS, \text{lg}BA, \text{lg}R/\text{lg}PA$.
+- **100% Mathematical Reproducibility Census**:
+  - Total Metrics Evaluated: **33**
+  - Total Entities Audited: **16,500** across all 45 seasons (1982~2026)
+  - Exact / Tolerant Matches: **16,500 / 16,500 (100.000%)**
+  - Divergent Calculations: **0**
+  - Reproducibility Ratio: **100.000% (STATUS: FULLY REPRODUCIBLE)**
+- **Cryptographic Evidence Bundle & Artifact Hashing**:
+  - `git_sha`, `generated_at_utc`, and `sha256_checksum` bundled into immutable certification audit report (`data/certification/formula_audit_report.json`).
+- **CLI Subcommands**:
+  - `kbo formula list [--category <cat>] [--json]`
+  - `kbo formula explain <metric_id> [--season <YYYY>] [--json]`
+  - `kbo formula eval <metric_id> --player <name|id> --season <YYYY> [--json]`
+  - `kbo formula audit [--season <YYYY>] [--category <cat>] [--sample N] [--save-artifact <path>]`
+- **Quality & Test Metrics**:
+  - `tests/formulas/`: **19 passed in 0.90s**.
+  - `tests/lineage/`: **21 passed in 2.16s**.
+  - `tests/certification/`: **32 passed in 2.60s**.
+  - Full repository regression: **10,202 passed, 3 skipped in 59.81s (Exit Code: 0)**.
+  - Static quality: `ruff check src/ tests/ scripts/` & `ruff format --check` -> **0 errors**.
 
 ### Phase 103: Data Lineage & Provenance (`kbo lineage`) — STATUS: COMPLETED (Phase 103.7 Lineage Completeness Closure)
 - **Formal Provenance Contract**: $\text{Traceable}(v) \iff \exists P(v) = (n_0, e_1, \dots, n_k),\quad n_k=v, \quad n_0 \in \text{OriginType}$.

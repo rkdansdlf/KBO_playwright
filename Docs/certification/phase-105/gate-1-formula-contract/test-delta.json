@@ -1,0 +1,24 @@
+{
+  "gate": "GATE_1_FORMULA_CONTRACT_REMEDIATION",
+  "candidate_label": "P105_GATE1_CANDIDATE",
+  "baseline_tests_passed": 10202,
+  "candidate_tests_passed": 10211,
+  "test_increase_delta": 9,
+  "new_tdd_test_file": "tests/formulas/test_formula_contract_gate1.py",
+  "new_tests": [
+    "TestSeasonResolverContract::test_all_45_seasons_resolve_exactly_once",
+    "TestSeasonResolverContract::test_2001_2013_uncalibrated_status",
+    "TestSeasonResolverContract::test_out_of_bounds_seasons_fail_closed",
+    "TestMetricNamingAndAliases::test_canonical_no_park_metrics_exist",
+    "TestMetricNamingAndAliases::test_deprecated_aliases_forward_with_warning",
+    "TestZeroDenominatorAndUndefinedContract::test_zero_ab_returns_undefined_status",
+    "TestZeroDenominatorAndUndefinedContract::test_zero_outs_returns_undefined_status",
+    "TestValidationSeverityContract::test_algebraic_failure_marks_hard_fail",
+    "TestValidationSeverityContract::test_plausibility_warning_does_not_fail_evaluation"
+  ],
+  "failures": 0,
+  "errors": 0,
+  "skips": 3,
+  "skip_delta": 0,
+  "gate_outcome": "PASS"
+}
