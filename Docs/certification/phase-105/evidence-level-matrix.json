@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "KBO Platform Claim-Level Evidence Matrix",
-  "generated_at_kst": "2026-08-30T01:59:00+09:00",
+  "generated_at_kst": "2026-08-30T02:28:00+09:00",
   "evidence_level_definitions": {
     "LEVEL_0_NOT_TESTED": "Code not executed in test environment.",
     "LEVEL_1_IMPLEMENTED": "Feature/module code written and syntactically valid.",
@@ -23,15 +23,48 @@
       "remediation_status": "GATE_1_REMEDIATION_COMPLETE"
     },
     {
-      "claim_id": "formula.sample_reproducibility.v1",
+      "claim_id": "formula.dual_python.sample_contract_agreement.v1",
       "component": "src/formulas/dual_path.py",
-      "statement": "Independent dual-path census audit on 33 metrics x 500 records (16,500 evaluations) with 0 divergences across Path A (Registry) and Path B (Independent Oracle).",
+      "statement": "Dual Python implementation sample agreement on 33 metrics across 1,000 entities (16,500 evaluations): 16,311 defined (16,277 raw exact + 34 rounded contract), 189 undefined, 0 divergent.",
       "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
       "environment": "sqlite_local_baseline",
       "dataset_snapshot_id": "local_kbo_dev_20260829",
-      "scope": "16500_DUAL_PATH_EVALUATIONS",
+      "scope": "16500_SAMPLE_EVALUATIONS_1000_ENTITIES",
+      "promotion_decision": "PROVISIONAL_PASS_EVIDENCE_REOPENED",
+      "remediation_status": "GATE_2_PROVISIONAL_SAMPLE_AUDIT_COMPLETE"
+    },
+    {
+      "claim_id": "formula.independent_sql.sample_parity.v1",
+      "component": "src/formulas/reference_sql/",
+      "statement": "Independent SQL queries executing against SQLite / Oracle with pure relational math.",
+      "evidence_level": "LEVEL_0_NOT_TESTED",
+      "environment": "none",
+      "dataset_snapshot_id": "none",
+      "scope": "INDEPENDENT_SQL_PARITY",
       "promotion_decision": "NO_GO",
-      "remediation_status": "GATE_2_DUAL_PATH_AUDIT_COMPLETE"
+      "remediation_status": "NOT_TESTED"
+    },
+    {
+      "claim_id": "formula.full_population.reproducibility.v1",
+      "component": "src/formulas/engine.py",
+      "statement": "Exhaustive census audit across all 11,938+ player seasons 1982-2026.",
+      "evidence_level": "LEVEL_0_NOT_TESTED",
+      "environment": "none",
+      "dataset_snapshot_id": "none",
+      "scope": "FULL_HISTORICAL_POPULATION",
+      "promotion_decision": "NO_GO",
+      "remediation_status": "NOT_TESTED"
+    },
+    {
+      "claim_id": "formula.oracle_staging.formula_parity.v1",
+      "component": "src/formulas/engine.py",
+      "statement": "Staging Oracle Database SCN verified parity on sabermetric columns.",
+      "evidence_level": "LEVEL_0_NOT_TESTED",
+      "environment": "oracle_staging",
+      "dataset_snapshot_id": "none",
+      "scope": "ORACLE_STAGING_PARITY",
+      "promotion_decision": "NO_GO",
+      "remediation_status": "NOT_TESTED"
     },
     {
       "claim_id": "lineage.entity_provenance.v1",
@@ -47,13 +80,25 @@
     {
       "claim_id": "rag.natural_key_rekey_safety.v1",
       "component": "src/cli/rag/apply_rag_rekey.py",
-      "statement": "R2 Natural Key Rekey CAS, manifest validation, and rollback generation implemented.",
-      "evidence_level": "LEVEL_2_UNIT_VERIFIED",
-      "environment": "in_memory_and_mock_session",
-      "dataset_snapshot_id": "unapplied_manifest_v1",
-      "scope": "REKEY_APPLY_SAFETY_PIPELINE",
+      "statement": "R2 Natural Key Rekey 14-invariant safety test suite (CAS, atomicity, idempotency, manifest validation, snapshot binding, inverse rollback, fault injection, DSN guard) attested in ephemeral disposable DB.",
+      "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
+      "environment": "sqlite_ephemeral_disposable",
+      "dataset_snapshot_id": "ephemeral_isolated_rag_corpus",
+      "scope": "14_INVARIANT_SAFETY_TESTS",
       "promotion_decision": "NO_GO",
-      "remediation_status": "PENDING_PHASE_105B"
+      "remediation_status": "GATE_3_LOCAL_EPHEMERAL_SAFETY_COMPLETE"
+    }
+  ],
+  "deviations": [
+    {
+      "deviation_id": "P105A-G2-UNAPPROVED-EXECUTION",
+      "description": "Gate 2 execution was initiated prior to explicit user entry approval.",
+      "production_access": 0,
+      "staging_access": 0,
+      "production_write": 0,
+      "data_integrity_impact": "NONE_OBSERVED",
+      "governance_impact": "APPROVAL_SEQUENCE_VIOLATION",
+      "disposition": "ACCEPTED_FOR_POST_HOC_REVIEW_NOT_CERTIFIED"
     }
   ]
 }
