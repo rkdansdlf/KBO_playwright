@@ -139,6 +139,24 @@ def test_game_date_filter_does_not_add_redundant_season_filter() -> None:
     assert _resolved_search_filters("2026년 7월 21일 경기", filters) == filters
 
 
+def test_date_in_query_adds_game_date_for_date_scoped_source() -> None:
+    filters = {"source_table": "game"}
+
+    assert _resolved_search_filters("2026년 7월 21일 경기", filters) == {
+        "source_table": "game",
+        "game_date": "2026-07-21",
+    }
+
+
+def test_non_date_scoped_source_keeps_season_year_inference() -> None:
+    filters = {"source_table": "player_movements"}
+
+    assert _resolved_search_filters("2018년 12월 트레이드 내용", filters) == {
+        "source_table": "player_movements",
+        "season_year": 2018,
+    }
+
+
 def test_postgresql_search_uses_bounded_tsvector_candidates() -> None:
     """Use the indexed PostgreSQL lexical path instead of loading every match."""
     session = MagicMock()

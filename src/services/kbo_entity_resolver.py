@@ -36,7 +36,7 @@ class ResolvedKboEntities:
 
 def resolve_kbo_entities(
     session: Session,
-    query: str,
+    query: str | ExtractedKboEntities,
     filters: dict[str, Any] | None = None,
     *,
     extract_player: bool = True,
@@ -45,7 +45,10 @@ def resolve_kbo_entities(
     explicit_filters = filters or {}
     has_null_player = "player_name" in explicit_filters and explicit_filters["player_name"] is None
     extract_player = extract_player and not has_null_player
-    extracted = extract_kbo_entities(query, extract_player=extract_player)
+    if isinstance(query, ExtractedKboEntities):
+        extracted = query
+    else:
+        extracted = extract_kbo_entities(query, extract_player=extract_player)
     explicit_player_id = explicit_filters.get("player_id")
     if explicit_player_id is not None:
         return ResolvedKboEntities(extracted, player_id=str(explicit_player_id))

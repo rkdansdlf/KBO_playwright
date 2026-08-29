@@ -51,8 +51,12 @@ from src.constants import KST
 from src.parsers.text_transformer import TextTransformer
 from src.services.markdown_document_loader import load_local_markdown_docs, markdown_source_table
 from src.services.rag_index_identity import (
+    PbpSourceIdentity,
     current_index_version,
     stable_award_source_row_id,
+    stable_highlight_source_row_id,
+    stable_pbp_source_row_id,
+    stable_player_movement_source_row_id,
     stable_team_history_source_row_id,
 )
 
@@ -651,7 +655,12 @@ def _iter_movement_chunks(session: Session, season: int | None, limit: int | Non
 
         yield {
             "source_table": "player_movements",
-            "source_row_id": str(mv.id),
+            "source_row_id": stable_player_movement_source_row_id(
+                mv.movement_date,
+                mv.team_code,
+                mv.player_name,
+                mv.section,
+            ),
             "title": f"{mv.player_name} {mv.section}",
             "content": content,
             "team_id": mv.canonical_team_id or mv.team_code,
@@ -904,7 +913,12 @@ def _iter_highlight_chunks(session: Session, season: int | None, limit: int | No
         )
         yield {
             "source_table": "game_highlights",
-            "source_row_id": str(highlight.id),
+            "source_row_id": stable_highlight_source_row_id(
+                game.game_id,
+                highlight.highlight_type,
+                highlight.event_seq,
+                highlight.description,
+            ),
             "title": f"[{game.game_date}] {game.away_team} vs {game.home_team} 하이라이트",
             "content": content,
             "team_id": game.home_team,
@@ -1007,7 +1021,20 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
         )
         yield {
             "source_table": "game_play_by_play",
-            "source_row_id": str(pbp.id),
+            "source_row_id": stable_pbp_source_row_id(
+                PbpSourceIdentity(
+                    game_id=pbp.game_id,
+                    source_row_index=pbp.source_row_index,
+                    inning=pbp.inning,
+                    inning_half=pbp.inning_half,
+                    pitcher_name=pbp.pitcher_name,
+                    batter_name=pbp.batter_name,
+                    play_description=desc,
+                    event_type=pbp.event_type,
+                    result=pbp.result,
+                    source_name=pbp.source_name,
+                )
+            ),
             "title": (
                 f"[{game.game_date}] {game.away_team} vs {game.home_team} "
                 f"{pbp.inning}회{pbp.inning_half or ''} {pbp.batter_name or ''}"
@@ -1053,7 +1080,10 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
                 GamePlayByPlay.batter_name,
                 GamePlayByPlay.play_description,
                 GamePlayByPlay.event_type,
+                GamePlayByPlay.result,
                 GamePlayByPlay.player_id,
+                GamePlayByPlay.source_row_index,
+                GamePlayByPlay.source_name,
                 Game.game_date,
                 Game.away_team,
                 Game.home_team,
@@ -1077,7 +1107,10 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
                 batter_name,
                 desc,
                 event_type,
+                result,
                 player_id,
+                source_row_index,
+                source_name,
                 game_date,
                 away_team,
                 home_team,
@@ -1091,7 +1124,20 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
             )
             yield {
                 "source_table": "game_play_by_play",
-                "source_row_id": str(pbp_id),
+                "source_row_id": stable_pbp_source_row_id(
+                    PbpSourceIdentity(
+                        game_id=game_id,
+                        source_row_index=source_row_index,
+                        inning=inning,
+                        inning_half=inning_half,
+                        pitcher_name=pitcher_name,
+                        batter_name=batter_name,
+                        play_description=desc,
+                        event_type=event_type,
+                        result=result,
+                        source_name=source_name,
+                    )
+                ),
                 "title": f"[{game_date}] {away_team} vs {home_team} {inning}회{inning_half or ''} {batter_name or ''}",
                 "content": content,
                 "team_id": home_team,
@@ -1219,9 +1265,20 @@ def _row_metadata(row: Mapping[str, Any]) -> dict[str, Any]:
     return metadata
 
 
-def _iter_staging_rag_chunks(session: Session, _season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
+def _iter_staging_rag_chunks(
+    session: Session,
+    _season: int | None,
+    limit: int | None,
+    *,
+    skip_populated: bool = False,
+) -> Iterator[dict[str, Any]]:
     """Yield staging RAG content while deliberately discarding old vectors."""
-    rows = session.execute(text("SELECT * FROM rag_chunks ORDER BY id")).mappings()
+    query = "SELECT * FROM rag_chunks ORDER BY id"
+    if skip_populated:
+        dialect_name = getattr(getattr(session.get_bind(), "dialect", None), "name", "")
+        embedding_column = "embedding_vector" if dialect_name == "oracle" else "embedding"
+        query = f"SELECT * FROM rag_chunks WHERE {embedding_column} IS NULL ORDER BY id"  # noqa: S608
+    rows = session.execute(text(query)).mappings()
     yielded = 0
     for row in rows:
         if row.get("is_active") is False or row.get("is_active") == 0:
@@ -1261,6 +1318,15 @@ def _iter_staging_rag_chunks(session: Session, _season: int | None, limit: int |
             return
 
 
+def _iter_staging_missing_rag_chunks(
+    session: Session,
+    season: int | None,
+    limit: int | None,
+) -> Iterator[dict[str, Any]]:
+    """Yield only staging rows without a populated vector in the same store."""
+    return _iter_staging_rag_chunks(session, season, limit, skip_populated=True)
+
+
 # ─── 소스 매핑 ────────────────────────────────────────────────────────────────
 
 _SOURCE_MAP = {
@@ -1284,6 +1350,26 @@ _SOURCE_MAP = {
     "staging_rag_chunks": _iter_staging_rag_chunks,
 }
 
+_SOURCE_TABLE_BY_SOURCE = {
+    "players": "player_basic",
+    "batting": "player_season_batting",
+    "pitching": "player_season_pitching",
+    "games": "game",
+    "standings": "team_standings_daily",
+    "events": "team_events",
+    "movements": "player_movements",
+    "awards": "awards",
+    "lineups": "game_lineups",
+    "rankings": "stat_rankings",
+    "teams": "teams",
+    "team_history": "team_history",
+    "highlights": "game_highlights",
+    "pbp": "game_play_by_play",
+    "markdown_docs": "markdown_docs",
+    "kbo_definitions": "kbo_definitions",
+    "kbo_regulations": "kbo_regulations",
+}
+
 
 # ─── 임베딩 + 저장 ─────────────────────────────────────────────────────────────
 
@@ -1296,15 +1382,20 @@ def _dedupe_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
-def _skip_existing_index_rows(chunk_iter: Iterator[dict[str, Any]], index_session: Session) -> Iterator[dict[str, Any]]:
+def _skip_existing_index_rows(
+    chunk_iter: Iterator[dict[str, Any]],
+    index_session: Session,
+    *,
+    source_table: str | None = None,
+) -> Iterator[dict[str, Any]]:
     """Yield only chunks without an already populated target vector."""
     from src.models.rag_chunk import RagChunk
 
+    stmt = select(RagChunk.source_table, RagChunk.source_row_id).where(RagChunk.embedding.is_not(None))
+    if source_table:
+        stmt = stmt.where(RagChunk.source_table == source_table)
     existing_keys = {
-        (str(source_table), str(source_row_id))
-        for source_table, source_row_id in index_session.execute(
-            select(RagChunk.source_table, RagChunk.source_row_id).where(RagChunk.embedding.is_not(None)),
-        ).all()
+        (str(source_table), str(source_row_id)) for source_table, source_row_id in index_session.execute(stmt).all()
     }
     for chunk in chunk_iter:
         key = (str(chunk["source_table"]), str(chunk["source_row_id"]))
@@ -1513,7 +1604,12 @@ def main(argv: list[str] | None = None) -> None:
     with get_rag_source_session() as source_session, get_rag_index_session() as index_session:
         for source_name in sources:
             logger.info("▶ [%s] 처리 시작...", source_name)
-            chunk_fn = _SOURCE_MAP[source_name]
+            staging_same_target = (
+                source_name == "staging_rag_chunks"
+                and args.skip_existing
+                and _redact_url(targets.source_db) == _redact_url(targets.sparse_index_db)
+            )
+            chunk_fn = _iter_staging_missing_rag_chunks if staging_same_target else _SOURCE_MAP[source_name]
             chunk_iter = _prepare_source_chunks(
                 source_name,
                 chunk_fn,
@@ -1523,8 +1619,12 @@ def main(argv: list[str] | None = None) -> None:
             )
             if args.offset:
                 chunk_iter = islice(chunk_iter, args.offset, None)
-            if args.skip_existing:
-                chunk_iter = _skip_existing_index_rows(chunk_iter, index_session)
+            if args.skip_existing and not staging_same_target:
+                chunk_iter = _skip_existing_index_rows(
+                    chunk_iter,
+                    index_session,
+                    source_table=_SOURCE_TABLE_BY_SOURCE.get(source_name),
+                )
             count = _process_source(
                 source_name,
                 chunk_iter,

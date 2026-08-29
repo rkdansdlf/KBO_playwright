@@ -211,7 +211,7 @@ def _parse_oracle_connection(
         if tns_admin:
             connect_args["config_dir"] = tns_admin
             connect_args["wallet_location"] = tns_admin
-            resolved_wallet_password = wallet_password or os.getenv("OCI_WALLET_PASSWORD")
+            resolved_wallet_password = wallet_password or os.getenv("OCI_WALLET_PASSWORD") or password
             if resolved_wallet_password:
                 connect_args["wallet_password"] = resolved_wallet_password
 

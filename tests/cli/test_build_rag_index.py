@@ -97,6 +97,37 @@ def test_staging_rag_chunk_iterator_reembeds_content_without_reusing_vectors() -
     assert "embedding" not in rows[0]
 
 
+def test_staging_rag_chunk_iterator_can_skip_populated_oracle_vectors() -> None:
+    """Avoid materializing populated single-store Oracle vectors during resume."""
+    session = MagicMock()
+    session.get_bind.return_value.dialect.name = "oracle"
+    session.execute.return_value.mappings.return_value = []
+
+    rows = list(build_rag_index._iter_staging_rag_chunks(session, None, None, skip_populated=True))
+
+    assert rows == []
+    statement = str(session.execute.call_args.args[0])
+    assert "embedding_vector IS NULL" in statement
+
+
+def test_prepare_staging_chunks_uses_populated_vector_filter() -> None:
+    """Apply the single-store staging optimization through source preparation."""
+    session = MagicMock()
+    session.get_bind.return_value.dialect.name = "oracle"
+    session.execute.return_value.mappings.return_value = []
+
+    prepared = build_rag_index._prepare_source_chunks(
+        "staging_rag_chunks",
+        build_rag_index._iter_staging_missing_rag_chunks,
+        session,
+        None,
+        None,
+    )
+
+    assert list(prepared) == []
+    assert "embedding_vector IS NULL" in str(session.execute.call_args.args[0])
+
+
 def test_rankings_iterator_orders_ties_deterministically() -> None:
     """Include stable tie-break columns in ranking source queries."""
     query = MagicMock()
@@ -159,6 +190,24 @@ def test_skip_existing_index_rows_filters_populated_identities(monkeypatch) -> N
     result = list(build_rag_index._skip_existing_index_rows(chunks, index_session))
 
     assert result == [{"source_table": "player_basic", "source_row_id": "2"}]
+
+
+def test_skip_existing_index_rows_scopes_lookup_to_source_table() -> None:
+    """Limit the populated-vector lookup to the source currently being built."""
+    index_session = MagicMock()
+    index_session.execute.return_value.all.return_value = []
+
+    list(
+        build_rag_index._skip_existing_index_rows(
+            iter(()),
+            index_session,
+            source_table="player_basic",
+        ),
+    )
+
+    statement = index_session.execute.call_args.args[0]
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    assert "player_basic" in compiled
 
 
 def test_prepare_long_database_sources_releases_session() -> None:

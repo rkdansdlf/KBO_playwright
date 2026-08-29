@@ -204,6 +204,28 @@ class OracleVectorSearchRepository:
         except _SEARCH_EXCEPTIONS:
             return 0
 
+    def search_similar(
+        self,
+        query_vector: list[float],
+        top_k: int = 5,
+        category: str | None = None,  # noqa: ARG002 (compat with dense retriever)
+        filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Compatibility wrapper for dense retriever - delegates to search_by_cosine."""
+        if filters is None:
+            filters = {}
+        return self.search_by_cosine(
+            query_vector=query_vector,
+            top_k=top_k,
+            source_table=filters.get("source_table"),
+            team_id=filters.get("team_id"),
+            season_year=filters.get("season_year"),
+            player_id=filters.get("player_id"),
+            league_type_code=filters.get("league_type_code"),
+            document_type=filters.get("document_type"),
+            game_date=filters.get("game_date"),
+        )
+
 
 def _iso_value(value: object) -> str | None:
     """Serialize date-like metadata values without changing strings."""

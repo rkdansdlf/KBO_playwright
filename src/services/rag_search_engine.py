@@ -16,6 +16,7 @@ from src.constants import KBO_FOUNDING_YEAR, KBO_MAX_VALID_SEASON
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_identity import RETRIEVABLE_INDEX_STATUSES
 from src.services.rag_sparse_terms import search_keywords as _sparse_search_keywords
+from src.utils.kbo_entity_extractor import extract_kbo_entities
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -24,6 +25,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SEASON_YEAR_PATTERN = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+_DATE_SCOPED_SOURCE_TABLES = frozenset(
+    {
+        "game",
+        "game_lineups",
+        "game_play_by_play",
+        "game_highlights",
+        "team_standings_daily",
+    }
+)
 
 BM25_POSTGRES_CANDIDATE_MULTIPLIER = 100
 BM25_POSTGRES_MIN_CANDIDATES = 1000
@@ -414,12 +424,17 @@ def _search_keywords(query: str) -> list[str]:
 
 
 def _resolved_search_filters(query: str, filters: dict[str, Any] | None) -> dict[str, Any]:
-    """Add an explicit query year without overriding a caller-provided filter."""
+    """Add a date or year from the query without overriding caller filters."""
     resolved = dict(filters or {})
     if resolved.get("season_year") is None and resolved.get("game_date") is None:
-        season_year = _query_season_year(query)
-        if season_year is not None:
-            resolved["season_year"] = season_year
+        if resolved.get("source_table") in _DATE_SCOPED_SOURCE_TABLES:
+            game_date = extract_kbo_entities(query, extract_player=False).game_date
+            if game_date is not None:
+                resolved["game_date"] = game_date
+        if resolved.get("game_date") is None:
+            season_year = _query_season_year(query)
+            if season_year is not None:
+                resolved["season_year"] = season_year
     return resolved
 
 

@@ -17,7 +17,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--workflow",
         type=str,
         default="daily_sync",
-        choices=["daily_sync", "historical_recovery"],
+        choices=["daily_sync", "historical_recovery", "bulk_load"],
         help="Workflow pipeline to execute (default: daily_sync).",
     )
     parser.add_argument(
@@ -46,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.workflow == "historical_recovery":
         orchestrator = MasterWorkflowOrchestrator.build_historical_recovery_workflow()
+    elif args.workflow == "bulk_load":
+        orchestrator = MasterWorkflowOrchestrator.build_bulk_load_workflow()
     else:
         orchestrator = MasterWorkflowOrchestrator.build_daily_sync_workflow()
 

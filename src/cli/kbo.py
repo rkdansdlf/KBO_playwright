@@ -14,7 +14,12 @@ def _add_core_subparsers(subparsers: argparse._SubParsersAction[argparse.Argumen
     """Add workflow, diagnose, and report subparsers."""
     # 1. Workflow
     p_workflow = subparsers.add_parser("workflow", help="Execute multi-stage DAG workflow pipelines.")
-    p_workflow.add_argument("--workflow", type=str, default="daily_sync", choices=["daily_sync", "historical_recovery"])
+    p_workflow.add_argument(
+        "--workflow",
+        type=str,
+        default="daily_sync",
+        choices=["daily_sync", "historical_recovery", "bulk_load"],
+    )
     p_workflow.add_argument("--date", type=str, default=None, help="Target date (YYYYMMDD).")
     p_workflow.add_argument("--dry-run", action="store_true", help="Simulate execution.")
     p_workflow.add_argument("--json", action="store_true", help="Output report as JSON.")
@@ -115,8 +120,8 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     p_sync.add_argument("--mode", type=str, default="full", choices=["full", "incremental"])
 
 
-def _add_advanced_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add RAG, simulate, and schema drift subparsers."""
+def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add RAG and simulation subparsers."""
     # 11. RAG
     p_rag = subparsers.add_parser("rag", help="Query knowledge base or benchmark RAG retrieval performance.")
     rag_subs = p_rag.add_subparsers(dest="rag_command", help="RAG action to execute")
@@ -144,6 +149,26 @@ def _add_advanced_subparsers(subparsers: argparse._SubParsersAction[argparse.Arg
     p_rag_eval.add_argument("--strict", action="store_true", help="Exit 1 if SLA is violated.")
     p_rag_eval.add_argument("--json", action="store_true", help="Output JSON format.")
 
+    p_rag_census = rag_subs.add_parser("census", help="Run read-only R2 RAG identity census & write manifest.")
+    p_rag_census.add_argument(
+        "--source",
+        action="append",
+        choices=None,
+        help="Limit the census to one source table; repeat for multiple",
+    )
+    p_rag_census.add_argument("--season", type=int, help="Limit source records to one season/year")
+    p_rag_census.add_argument("--sample", type=int, default=20, help="Number of unsafe entries to print in JSON output")
+    p_rag_census.add_argument("--output", type=str, help="Write the complete apply-gated JSON manifest to this path")
+    p_rag_census.add_argument("--dry-run", action="store_true", help="Explicitly confirm read-only mode")
+    p_rag_census.add_argument(
+        "--fail-on-unsafe",
+        action="store_true",
+        help="Return exit code 1 when orphan, collision, or target-conflict rows exist",
+    )
+    p_rag_census.add_argument("--json", action="store_true", help="Render the summary as JSON")
+
+    # 12. Simulate
+
     # 12. Simulate
     p_sim = subparsers.add_parser("simulate", help="Simulate live KBO game event stream & real-time WPA.")
     p_sim.add_argument("--game-id", type=str, default="20260401LGHT0", help="Game ID identifier.")
@@ -154,6 +179,11 @@ def _add_advanced_subparsers(subparsers: argparse._SubParsersAction[argparse.Arg
     p_sim.add_argument("--notify", action="store_true", help="Dispatch hot moment alerts.")
     p_sim.add_argument("--seed", type=int, default=None, help="RNG seed for deterministic playback.")
     p_sim.add_argument("--json", action="store_true", help="Output summary as JSON.")
+
+
+def _add_advanced_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add schema drift, serve, predict, and bulk load subparsers."""
+    _add_rag_and_sim_subparsers(subparsers)
 
     # 13. Schema Drift
     p_drift = subparsers.add_parser(
@@ -182,6 +212,100 @@ def _add_advanced_subparsers(subparsers: argparse._SubParsersAction[argparse.Arg
     p_srv.add_argument("--reload", action="store_true", help="Enable auto-reloading on code changes.")
     p_srv.add_argument("--workers", "-w", type=int, default=1, help="Number of worker processes.")
 
+    # 15. Predict
+    p_pred = subparsers.add_parser("predict", help="Predict KBO game win probabilities & expected scores.")
+    p_pred.add_argument("--game-id", "-g", type=str, default=None, help="Target Game ID identifier.")
+    p_pred.add_argument("--home", type=str, default=None, help="Home team code.")
+    p_pred.add_argument("--away", type=str, default=None, help="Away team code.")
+    p_pred.add_argument("--starter-home", type=str, default=None, help="Home starter pitcher name.")
+    p_pred.add_argument("--starter-away", type=str, default=None, help="Away starter pitcher name.")
+    p_pred.add_argument("--year", "--season", type=int, default=2024, help="Season year (default: 2024).")
+    p_pred.add_argument("--date", type=str, default=None, help="Game date (YYYY-MM-DD).")
+    p_pred.add_argument(
+        "--format",
+        choices=["text", "ascii", "markdown", "json"],
+        default="text",
+        help="Output format.",
+    )
+    p_pred.add_argument("--json", action="store_true", help="Output JSON format.")
+
+    # 16. Bulk Load
+    p_bulk = subparsers.add_parser(
+        "bulk-load",
+        aliases=["bulk_load"],
+        help="High-throughput parallel chunk loader with atomic checkpoints for KBO data.",
+    )
+    p_bulk.add_argument(
+        "--category",
+        type=str,
+        default="pbp",
+        choices=["pbp", "boxscore", "season_stats", "schedule", "all"],
+        help="Target data category (default: pbp).",
+    )
+    p_bulk.add_argument("--start-year", type=int, default=2020, help="Start season year (default: 2020).")
+    p_bulk.add_argument("--end-year", type=int, default=2024, help="End season year (default: 2024).")
+    p_bulk.add_argument("--concurrency", type=int, default=4, help="Worker concurrency (default: 4).")
+    p_bulk.add_argument("--chunk-size", type=int, default=1, help="Years per chunk (default: 1).")
+    p_bulk.add_argument("--resume", action="store_true", help="Resume from existing checkpoint.")
+    p_bulk.add_argument("--reset-checkpoint", action="store_true", help="Delete checkpoint before run.")
+    p_bulk.add_argument("--json", action="store_true", help="Output result as JSON.")
+
+    # 17. Compare
+    p_cmp = subparsers.add_parser(
+        "compare",
+        help="Search for similar KBO players or perform 1:1 head-to-head sabermetric comparisons.",
+    )
+    p_cmp.add_argument("--player1", "-p1", type=str, default=None, help="Player 1 name or ID.")
+    p_cmp.add_argument("--player2", "-p2", type=str, default=None, help="Player 2 name or ID.")
+    p_cmp.add_argument("--year1", "--season1", type=int, default=None, help="Season year for Player 1.")
+    p_cmp.add_argument("--year2", "--season2", type=int, default=None, help="Season year for Player 2.")
+    p_cmp.add_argument("--find-similar", "-s", type=str, default=None, help="Find similar players for name/ID.")
+    p_cmp.add_argument("--top-k", "-k", type=int, default=5, help="Number of similar players (default: 5).")
+    p_cmp.add_argument(
+        "--format",
+        choices=["text", "ascii", "markdown", "json"],
+        default="ascii",
+        help="Output format.",
+    )
+    p_cmp.add_argument("--json", action="store_true", help="Output result in JSON format.")
+
+
+def _add_cert_and_lineage_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add certification and lineage inspection subparsers."""
+    # 18. Certify
+    p_cert = subparsers.add_parser(
+        "certify",
+        help="Execute end-to-end KBO Platform Production Certification Gate.",
+    )
+    p_cert.add_argument("--production", action="store_true", help="Run full production certification.")
+    p_cert.add_argument("--local", action="store_true", help="Run local certification mode.")
+    p_cert.add_argument(
+        "--json-out",
+        type=str,
+        default="data/certification/report.json",
+        help="Path to output report JSON artifact.",
+    )
+    p_cert.add_argument("--gate", type=str, default=None, help="Execute specific gate.")
+    p_cert.add_argument("--fail-fast", action="store_true", help="Stop on first failure.")
+    p_cert.add_argument("--json", action="store_true", help="Output JSON report to stdout.")
+
+    # 19. Lineage
+    p_lin = subparsers.add_parser(
+        "lineage",
+        help="Inspect data provenance, transformation DAGs, and entity lineage.",
+    )
+    p_lin.add_argument("subcommand", choices=["game", "player", "audit"], help="Target lineage entity to inspect.")
+    p_lin.add_argument("identifier", nargs="?", default=None, help="Target game ID or player name/ID.")
+    p_lin.add_argument("--season", "-s", type=int, default=None, help="Season year.")
+    p_lin.add_argument("--metric", "-m", type=str, default="hits", help="Target metric name (hits, hr, avg, etc.).")
+    p_lin.add_argument(
+        "--format",
+        choices=["tree", "mermaid", "json"],
+        default="tree",
+        help="Output visualization format.",
+    )
+    p_lin.add_argument("--json", action="store_true", help="Output result in JSON format.")
+
 
 def build_master_parser() -> argparse.ArgumentParser:
     """Build root command-line parser with all platform subcommands."""
@@ -195,16 +319,22 @@ def build_master_parser() -> argparse.ArgumentParser:
     _add_maintenance_and_config_subparsers(subparsers)
     _add_data_and_ops_subparsers(subparsers)
     _add_advanced_subparsers(subparsers)
+    _add_cert_and_lineage_subparsers(subparsers)
 
     return parser
 
 
 def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     """Return map of subcommand strings to their respective module main entrypoints."""
+    from src.cli.bulk_load import main as bulk_main
+    from src.cli.certify import main as cert_main
+    from src.cli.compare_players import main as cmp_main
     from src.cli.detect_anomalies import main as det_main
     from src.cli.detect_schema_drift import main as drift_main
     from src.cli.diagnose_system import main as diag_main
     from src.cli.generate_reports import main as rep_main
+    from src.cli.lineage import main as lin_main
+    from src.cli.predict_matchups import main as pred_main
     from src.cli.run_maintenance import main as maint_main
     from src.cli.run_migrations import main as mig_main
     from src.cli.run_workflow import main as wf_main
@@ -217,7 +347,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
 
     def _rag_dispatcher(sub_args: list[str]) -> int:
         if not sub_args:
-            print("Usage: kbo rag <query|evaluate> [options]")  # noqa: T201
+            print("Usage: kbo rag <query|evaluate|census> [options]")  # noqa: T201
             return 1
         subcmd = sub_args[0]
         rest = sub_args[1:]
@@ -229,7 +359,11 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
             from src.cli.rag.evaluate import main as eval_main
 
             return eval_main(rest)
-        print(f"Unknown rag subcommand: {subcmd}. Use 'query' or 'evaluate'.")  # noqa: T201
+        if subcmd == "census":
+            from src.cli.rag.census_rag_identity import main as census_main
+
+            return census_main(rest)
+        print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")  # noqa: T201
         return 1
 
     return {
@@ -248,6 +382,12 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "drift": drift_main,
         "detect-drift": drift_main,
         "serve": srv_main,
+        "predict": pred_main,
+        "bulk-load": bulk_main,
+        "bulk_load": bulk_main,
+        "compare": cmp_main,
+        "certify": cert_main,
+        "lineage": lin_main,
     }
 
 

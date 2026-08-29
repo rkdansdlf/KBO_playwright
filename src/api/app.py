@@ -13,6 +13,7 @@ from fastapi.openapi.utils import get_openapi
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.api.auth import API_KEY_NAME
+from src.api.rate_limiter import RateLimitMiddleware
 from src.api.routers import (
     analytics,
     futures,
@@ -127,6 +128,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RateLimitMiddleware)
 
 
 def custom_openapi() -> dict[str, Any]:

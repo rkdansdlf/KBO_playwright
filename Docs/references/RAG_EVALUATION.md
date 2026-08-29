@@ -300,6 +300,16 @@ run  recall@5  MRR     hit rate  p50       p95       max
 This is a passing optimized-path canary, but the permanent `500ms` SLO
 remains pending confirmation during a scheduled writer-load cycle.
 
+A controlled writer-load cycle was then executed through the same scheduler
+job path. The incremental sync completed successfully with `11` new chunks
+(`awards=1`, `team_history=10`), and sparse catch-up completed with
+`chunks_scanned=0`. Three configured resolver-hybrid runs during the write
+cycle preserved the quality metrics and reported p95 values of `512ms`,
+`428ms`, and `263ms`. Because the first run exceeded the target by `12ms`, the
+permanent latency SLO remains pending. The post-cycle audit grew to `221,565`
+rows with `postings_missing=0`, `consistent=true`, and zero unexplained
+tombstones.
+
 Postings freshness is operationally guarded:
 
 ```bash

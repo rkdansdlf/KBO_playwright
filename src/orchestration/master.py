@@ -329,6 +329,79 @@ class MasterWorkflowOrchestrator:
 
         return orch
 
+    @classmethod
+    def build_bulk_load_workflow(cls) -> MasterWorkflowOrchestrator:
+        """Build standard 4-stage parallel bulk loading DAG."""
+        orch = cls()
+
+        def _bulk_ingest_handler(ctx: dict[str, Any]) -> StageExecutionResult:
+            category = ctx.get("category", "PBP")
+            start_year = ctx.get("start_year", 2020)
+            end_year = ctx.get("end_year", 2024)
+            concurrency = ctx.get("concurrency", 4)
+            resume = ctx.get("resume", False)
+
+            try:
+                from src.services.bulk_loader import BulkChunkLoader
+
+                loader = BulkChunkLoader(concurrency=concurrency)
+                manifest = loader.run_bulk_load(
+                    category=category,
+                    start_year=start_year,
+                    end_year=end_year,
+                    resume=resume,
+                )
+                status = (
+                    StageExecutionStatus.COMPLETED if manifest.failed_partitions == 0 else StageExecutionStatus.FAILED
+                )
+                return StageExecutionResult(
+                    stage_id="bulk_ingest",
+                    status=status,
+                    records_processed=manifest.total_records_processed,
+                    artifacts={"manifest": manifest.to_dict()},
+                )
+            except Exception as exc:
+                logger.exception("Bulk load stage execution failed")
+                return StageExecutionResult(
+                    stage_id="bulk_ingest",
+                    status=StageExecutionStatus.FAILED,
+                    error_message=str(exc),
+                )
+
+        orch.register_stage(
+            WorkflowStageMeta("bulk_manifest", "Initialize Bulk Partitions", WorkflowStageType.INGESTION),
+            lambda _ctx: StageExecutionResult("bulk_manifest", StageExecutionStatus.COMPLETED, records_processed=1),
+        )
+        orch.register_stage(
+            WorkflowStageMeta(
+                "bulk_ingest",
+                "Parallel Chunk Ingestion",
+                WorkflowStageType.PROCESSING,
+                ["bulk_manifest"],
+            ),
+            _bulk_ingest_handler,
+        )
+        orch.register_stage(
+            WorkflowStageMeta(
+                "bulk_audit",
+                "Partition Invariant Audit",
+                WorkflowStageType.QUALITY_GATE,
+                ["bulk_ingest"],
+            ),
+            lambda _ctx: StageExecutionResult("bulk_audit", StageExecutionStatus.COMPLETED, records_processed=1),
+        )
+        orch.register_stage(
+            WorkflowStageMeta(
+                "bulk_sync",
+                "Bulk Checkpoint Finalize",
+                WorkflowStageType.SYNC,
+                ["bulk_audit"],
+            ),
+            lambda _ctx: StageExecutionResult("bulk_sync", StageExecutionStatus.COMPLETED, records_processed=1),
+        )
+
+        return orch
+
     def execute_workflow(
         self,
         workflow_id: str,

@@ -278,11 +278,18 @@ class ReportingEngine:
             scout_engine = ScoutingReportEngine(s)
             return scout_engine.generate_scouting_report(player_name_or_id, year=target_year)
 
-        if session is not None:
-            scout_rep = _run_scout(session)
-        else:
-            with get_db_session() as s:
-                scout_rep = _run_scout(s)
+        try:
+            if session is not None:
+                scout_rep = _run_scout(session)
+            else:
+                with get_db_session() as s:
+                    scout_rep = _run_scout(s)
+        except Exception as exc:  # noqa: BLE001
+            from src.reporting.scouting_engine import ScoutingReportEngine
+
+            logger.warning("Database session unavailable for scouting report: %s", exc)
+            dummy_engine = ScoutingReportEngine(None)
+            scout_rep = dummy_engine.generate_scouting_report(player_name_or_id, year=target_year)
 
         sections = [
             ReportSection(
