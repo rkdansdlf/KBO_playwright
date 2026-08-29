@@ -117,3 +117,16 @@ the reconciliation reported `unexplained=0`. This local environment has no
 session; the result is a clean self-comparison, not independent PostgreSQL
 staging evidence. An independent staging gate remains pending until a
 separate pgvector endpoint or preserved staging manifest is available.
+
+## Tombstone Gate Policy
+
+`rag_audit_sentinel_job` currently runs the sparse/vector consistency and sparse
+postings checks only. The tombstone classifier remains a separate read-only
+command because a deleted game or document can be intentional and is not
+automatically an identity rekey.
+
+- Use `audit_rag_tombstones --json` for report-only monitoring.
+- Use `--fail-on-unexplained` only for an explicit review gate; it does not
+  restore, purge, or reindex rows.
+- Do not add the fail flag to the daily sentinel until approved intentional
+  deletion identities have a documented allowlist or source-level reason.

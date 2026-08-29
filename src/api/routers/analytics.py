@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -163,3 +163,80 @@ def get_risp_splits(
     except Exception as exc:
         logger.exception("Failed to calculate RISP splits")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get(
+    "/predict/{game_id}",
+    dependencies=[Depends(get_api_key)],
+    summary="KBO 경기 승부 예측 및 세이버메트릭스 승률/예상 스코어 조회",
+)
+def predict_game_matchup(
+    game_id: str,
+) -> dict[str, Any]:
+    """Predict KBO game win probabilities and expected scores."""
+    from src.analytics.predictor import MatchupPredictor
+    from src.db.engine import get_db_session
+
+    try:
+        with get_db_session() as session:
+            predictor = MatchupPredictor(session)
+            result = predictor.predict_game(game_id)
+            return result.to_dict()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("DB failure during game prediction: %s. Using fallback prediction.", exc)
+        predictor = MatchupPredictor(None)
+        result = predictor.predict_game(game_id)
+        return result.to_dict()
+
+
+@router.get(
+    "/compare",
+    dependencies=[Depends(get_api_key)],
+    summary="KBO 두 선수의 5대 역량 세이버메트릭스 1:1 맞대결 비교",
+)
+def compare_players_endpoint(
+    player1: Annotated[str, Query(description="Player 1 name or ID")] = "김도영",
+    player2: Annotated[str, Query(description="Player 2 name or ID")] = "이종범",
+    season1: Annotated[int | None, Query(description="Season year for Player 1")] = None,
+    season2: Annotated[int | None, Query(description="Season year for Player 2")] = None,
+) -> dict[str, Any]:
+    """Perform 1:1 head-to-head comparison between two players."""
+    from src.analytics.similarity import PlayerSimilarityEngine
+    from src.db.engine import get_db_session
+
+    try:
+        with get_db_session() as session:
+            engine = PlayerSimilarityEngine(session)
+            return engine.compare_players(player1, player2, season1, season2).to_dict()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("DB failure during player comparison: %s. Using fallback.", exc)
+        engine = PlayerSimilarityEngine(None)
+        return engine.compare_players(player1, player2, season1, season2).to_dict()
+
+
+@router.get(
+    "/similarity/{player_id}",
+    dependencies=[Depends(get_api_key)],
+    summary="KBO 특정 선수와 가장 유사한 역대/현역 선수 검색 (Top-K 유사도)",
+)
+def find_similar_players_endpoint(
+    player_id: str,
+    season: Annotated[int | None, Query(description="Target season year")] = None,
+    role: Annotated[str | None, Query(description="Role filter: BATTER or PITCHER")] = None,
+    top_k: Annotated[int, Query(description="Number of similar players", ge=1, le=20)] = 5,
+) -> dict[str, Any]:
+    """Search for top-K similar players based on 5-axis sabermetric vectors."""
+    from src.analytics.similarity import PlayerSimilarityEngine
+    from src.analytics.similarity_dto import PlayerRole
+    from src.db.engine import get_db_session
+
+    role_enum = PlayerRole(role) if role else None
+
+    try:
+        with get_db_session() as session:
+            engine = PlayerSimilarityEngine(session)
+            return engine.find_similar_players(player_id, season=season, role=role_enum, top_k=top_k).to_dict()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("DB failure during similarity search: %s. Using fallback.", exc)
+        engine = PlayerSimilarityEngine(None)
+        return engine.find_similar_players(player_id, season=season, role=role_enum, top_k=top_k).to_dict()

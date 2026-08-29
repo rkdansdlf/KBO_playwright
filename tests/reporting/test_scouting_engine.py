@@ -83,7 +83,7 @@ def test_scouting_engine_evaluate_batter_db() -> None:
     b1 = PlayerSeasonBatting(
         player_id=10001,
         season=2024,
-        team_id=1,
+        team_code="KIA",
         plate_appearances=500,
         at_bats=450,
         hits=150,
@@ -97,7 +97,7 @@ def test_scouting_engine_evaluate_batter_db() -> None:
     b2 = PlayerSeasonBatting(
         player_id=10002,
         season=2024,
-        team_id=2,
+        team_code="SSG",
         plate_appearances=400,
         at_bats=360,
         hits=90,
@@ -111,7 +111,7 @@ def test_scouting_engine_evaluate_batter_db() -> None:
     b3 = PlayerSeasonBatting(
         player_id=10003,
         season=2024,
-        team_id=3,
+        team_code="LG",
         plate_appearances=350,
         at_bats=320,
         hits=80,
@@ -149,13 +149,13 @@ def test_scouting_engine_evaluate_pitcher_db() -> None:
     p_stat1 = PlayerSeasonPitching(
         player_id=20001,
         season=2024,
-        team_id=1,
+        team_code="SS",
         games=28,
-        outs_pitched=480,  # 160 IP
-        hits=140,
+        innings_outs=480,  # 160 IP
+        hits_allowed=140,
         earned_runs=55,
-        home_runs=12,
-        walks=35,
+        home_runs_allowed=12,
+        walks_allowed=35,
         strikeouts=130,
         wins=15,
         losses=6,
@@ -163,18 +163,26 @@ def test_scouting_engine_evaluate_pitcher_db() -> None:
     p_stat2 = PlayerSeasonPitching(
         player_id=20002,
         season=2024,
-        team_id=2,
+        team_code="OB",
         games=25,
-        outs_pitched=300,  # 100 IP
-        hits=120,
+        innings_outs=300,  # 100 IP
+        hits_allowed=120,
         earned_runs=60,
-        home_runs=20,
-        walks=50,
+        home_runs_allowed=20,
+        walks_allowed=50,
         strikeouts=70,
         wins=5,
         losses=10,
     )
-    session.add_all([p_stat1, p_stat2])
+    two_way_batting = PlayerSeasonBatting(
+        player_id=20001,
+        season=2024,
+        team_code="SS",
+        plate_appearances=100,
+        at_bats=90,
+        hits=20,
+    )
+    session.add_all([p_stat1, p_stat2, two_way_batting])
     session.commit()
 
     scout_engine = ScoutingReportEngine(session)
@@ -206,7 +214,9 @@ def test_generate_reports_cli_scouting(capsys) -> None:
     assert exit_code == 0
 
     captured = capsys.readouterr().out
-    data = json.loads(captured)
+    json_start = captured.find("{")
+    assert json_start != -1
+    data = json.loads(captured[json_start:])
     assert data["category"] == "scouting"
     assert "김도영" in data["title"]
 

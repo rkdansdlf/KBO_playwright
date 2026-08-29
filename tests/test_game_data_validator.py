@@ -31,10 +31,10 @@ def test_validate_game_data_detects_score_mismatch():
 def test_validate_game_data_detects_invalid_team_code():
     html = FIXTURE_FILE.read_text(encoding="utf-8")
     payload = parse_game_detail_html(html, "20251001NCLG0", "20251001")
-    payload["teams"]["home"]["code"] = "KI"
+    payload["teams"]["home"]["code"] = "XX"
     valid, errors, warnings = validate_game_data(payload)
     assert not valid
-    assert any("Invalid home team code: 'KI'" in err for err in errors)
+    assert any("Invalid home team code: 'XX'" in err for err in errors)
 
 
 class TestValidateGameDataPure:

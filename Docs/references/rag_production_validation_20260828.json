@@ -125,6 +125,34 @@
       {"run": 3, "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 222.778, "p95_ms": 276.743, "max_ms": 389.925}
     ]
   },
+  "writer_load_cycle_20260829": {
+    "started_at": "2026-08-29T00:48:58+09:00",
+    "completed_at": "2026-08-29T01:01:22+09:00",
+    "incremental_sync": {
+      "season": 2026,
+      "sources": "all",
+      "skip_existing": true,
+      "chunks_processed": 11,
+      "by_source": {"awards": 1, "team_history": 10}
+    },
+    "sparse_catchup": {"chunks_scanned": 0, "chunks_with_terms": 0, "term_rows": 0, "dry_run": false, "rebuilt": false},
+    "configured_resolver_hybrid_canary": [
+      {"run": 1, "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 268.339, "p95_ms": 512.494, "max_ms": 610.021},
+      {"run": 2, "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 213.418, "p95_ms": 428.2, "max_ms": 621.849},
+      {"run": 3, "recall_at_5": 0.9484848485, "mrr": 0.8305555556, "hit_rate": 0.9666666667, "p50_ms": 201.803, "p95_ms": 262.549, "max_ms": 402.332}
+    ],
+    "post_audit": {
+      "primary_count": 221565,
+      "vector_count": 221565,
+      "healthy": 219544,
+      "deleted": 2021,
+      "postings_missing": 0,
+      "consistent": true,
+      "tombstone_unexplained": 0
+    },
+    "latency_slo_passed_all_runs": false,
+    "note": "The first writer-load run exceeded the 500ms p95 target by 12.494ms; no permanent SLO promotion was made."
+  },
   "latency_trace_samples_before_date_filter_optimization": [
     {"case_id": "prod_bat_001", "query": "김도영의 2026시즌 타격 성적을 알려줘", "total_ms": 1214.546, "resolver_ms": 512.551, "bm25_ms": 264.686, "vector_ms": 701.394},
     {"case_id": "prod_game_025", "query": "2026년 7월 21일 한화와 KIA 경기 결과", "total_ms": 712.685, "resolver_ms": 9.803, "bm25_ms": 697.897, "vector_ms": 194.774},
@@ -141,7 +169,9 @@
     "retrieval_quality_baseline": true,
     "hybrid_p95_under_500ms_all_runs": false,
     "resolver_hybrid_p95_under_500ms_all_runs": false,
-    "resolver_hybrid_p95_under_500ms_after_date_filter_all_runs": true
+    "resolver_hybrid_p95_under_500ms_after_date_filter_all_runs": true,
+    "resolver_hybrid_p95_under_500ms_writer_load_all_runs": false,
+    "writer_load_post_audit_consistent": true
   },
   "status": "quality_pass_resolver_latency_canary_pass_permanent_slo_pending",
   "notes": [

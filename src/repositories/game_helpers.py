@@ -924,6 +924,34 @@ def _dedupe_exact_player_rows(game_id: str, dataset: str, mappings: list[dict[st
     return deduped
 
 
+def _sanitize_player_team_collisions(game_id: str, dataset: str, mappings: list[dict[str, Any]]) -> None:
+    by_player: dict[int, set[tuple[str, str]]] = {}
+    for mapping in mappings:
+        player_id = _normalize_player_id(mapping.get("player_id"))
+        if player_id is None:
+            continue
+        team_key = (
+            str(mapping.get("team_side") or "").strip(),
+            str(mapping.get("team_code") or "").strip(),
+        )
+        by_player.setdefault(player_id, set()).add(team_key)
+
+    collisions = {player_id for player_id, team_keys in by_player.items() if len(team_keys) > 1}
+    if not collisions:
+        return
+
+    logger.warning(
+        "[COLLISION] Nulling out %d colliding player_ids in %s for %s: %s",
+        len(collisions),
+        dataset,
+        game_id,
+        collisions,
+    )
+    for mapping in mappings:
+        if _normalize_player_id(mapping.get("player_id")) in collisions:
+            mapping["player_id"] = None
+
+
 def _assert_no_player_team_collisions(game_id: str, dataset: str, mappings: list[dict[str, Any]]) -> None:
     by_player: dict[int, set[tuple[str, str]]] = {}
     for mapping in mappings:

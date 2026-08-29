@@ -52,41 +52,124 @@ class GameStateInvariant(BaseHistoricalInvariant):
         seasons: list[int],
         _context: CertificationContext,
     ) -> list[InvariantResult]:
-        """Audit games for impossible score/winner discrepancies and negative run values."""
+        """Audit games for impossible score/winner discrepancies with canonical franchise & DRAW awareness."""
         agg_sql = """
+        WITH aliased_game AS (
+            SELECT
+                g.game_id,
+                CAST(SUBSTR(g.game_id, 1, 4) AS INT) AS season_year,
+                g.home_score,
+                g.away_score,
+                g.winning_score,
+                CASE
+                    WHEN g.home_team IN ('OB', 'DB') THEN 'DB'
+                    WHEN g.home_team IN ('HT', 'KIA') THEN 'KIA'
+                    WHEN g.home_team IN ('MBC', 'MB', 'LG') THEN 'LG'
+                    WHEN g.home_team IN ('WO', 'NX', 'KH') THEN 'KH'
+                    WHEN g.home_team IN ('SK', 'SSG') THEN 'SSG'
+                    WHEN g.home_team IN ('BG', 'HH') THEN 'HH'
+                    WHEN g.home_team IN ('SM', 'CB', 'TP', 'HD', 'HU') THEN 'HU'
+                    ELSE g.home_team
+                END AS h_canon,
+                CASE
+                    WHEN g.away_team IN ('OB', 'DB') THEN 'DB'
+                    WHEN g.away_team IN ('HT', 'KIA') THEN 'KIA'
+                    WHEN g.away_team IN ('MBC', 'MB', 'LG') THEN 'LG'
+                    WHEN g.away_team IN ('WO', 'NX', 'KH') THEN 'KH'
+                    WHEN g.away_team IN ('SK', 'SSG') THEN 'SSG'
+                    WHEN g.away_team IN ('BG', 'HH') THEN 'HH'
+                    WHEN g.away_team IN ('SM', 'CB', 'TP', 'HD', 'HU') THEN 'HU'
+                    ELSE g.away_team
+                END AS a_canon,
+                CASE
+                    WHEN g.winning_team IN ('OB', 'DB') THEN 'DB'
+                    WHEN g.winning_team IN ('HT', 'KIA') THEN 'KIA'
+                    WHEN g.winning_team IN ('MBC', 'MB', 'LG') THEN 'LG'
+                    WHEN g.winning_team IN ('WO', 'NX', 'KH') THEN 'KH'
+                    WHEN g.winning_team IN ('SK', 'SSG') THEN 'SSG'
+                    WHEN g.winning_team IN ('BG', 'HH') THEN 'HH'
+                    WHEN g.winning_team IN ('SM', 'CB', 'TP', 'HD', 'HU') THEN 'HU'
+                    WHEN g.winning_team IN ('무', 'DRAW', 'TIE', 'draw', 'tie', '') THEN 'DRAW'
+                    ELSE g.winning_team
+                END AS w_canon
+            FROM game g
+            WHERE g.game_id IS NOT NULL
+        )
         SELECT
-            CAST(SUBSTR(g.game_id, 1, 4) AS INT) AS season_year,
+            season_year,
             SUM(CASE
-                WHEN g.home_score < 0 OR g.away_score < 0 THEN 1
-                WHEN g.winning_score IS NOT NULL AND g.winning_score < 0 THEN 1
-                WHEN g.winning_team IS NOT NULL AND g.winning_team != ''
-                     AND g.home_score > g.away_score AND g.winning_team != g.home_team THEN 1
-                WHEN g.winning_team IS NOT NULL AND g.winning_team != ''
-                     AND g.away_score > g.home_score AND g.winning_team != g.away_team THEN 1
-                WHEN g.winning_team IS NOT NULL AND g.winning_team != ''
-                     AND g.home_score = g.away_score AND g.winning_team NOT IN ('무', 'DRAW', 'TIE') THEN 1
+                WHEN home_score < 0 OR away_score < 0 THEN 1
+                WHEN winning_score IS NOT NULL AND winning_score < 0 THEN 1
+                WHEN w_canon IS NOT NULL AND w_canon NOT IN ('DRAW', '')
+                     AND home_score > away_score AND w_canon != h_canon THEN 1
+                WHEN w_canon IS NOT NULL AND w_canon NOT IN ('DRAW', '')
+                     AND away_score > home_score AND w_canon != a_canon THEN 1
+                WHEN w_canon IS NOT NULL AND w_canon NOT IN ('DRAW', '')
+                     AND home_score = away_score AND w_canon != 'DRAW' THEN 1
                 ELSE 0
             END) AS violations,
             COUNT(*) AS total_games
-        FROM game g
-        WHERE g.game_id IS NOT NULL
-        GROUP BY CAST(SUBSTR(g.game_id, 1, 4) AS INT)
+        FROM aliased_game
+        GROUP BY season_year
         """
 
         sample_sql = """
-        SELECT g.game_id, g.game_date, g.home_team, g.away_team,
-               g.home_score, g.away_score, g.winning_team, g.winning_score
-        FROM game g
-        WHERE g.game_id LIKE :season || '%'
-          AND (
-            g.home_score < 0 OR g.away_score < 0
-            OR (g.winning_team IS NOT NULL AND g.winning_team != ''
-                AND g.home_score > g.away_score AND g.winning_team != g.home_team)
-            OR (g.winning_team IS NOT NULL AND g.winning_team != ''
-                AND g.away_score > g.home_score AND g.winning_team != g.away_team)
-            OR (g.winning_team IS NOT NULL AND g.winning_team != ''
-                AND g.home_score = g.away_score AND g.winning_team NOT IN ('무', 'DRAW', 'TIE'))
-          )
+        WITH aliased_game AS (
+            SELECT
+                g.game_id,
+                g.game_date,
+                g.home_team,
+                g.away_team,
+                g.home_score,
+                g.away_score,
+                g.winning_team,
+                g.winning_score,
+                CASE
+                    WHEN g.home_team IN ('OB', 'DB') THEN 'DB'
+                    WHEN g.home_team IN ('HT', 'KIA') THEN 'KIA'
+                    WHEN g.home_team IN ('MBC', 'MB', 'LG') THEN 'LG'
+                    WHEN g.home_team IN ('WO', 'NX', 'KH') THEN 'KH'
+                    WHEN g.home_team IN ('SK', 'SSG') THEN 'SSG'
+                    WHEN g.home_team IN ('BG', 'HH') THEN 'HH'
+                    WHEN g.home_team IN ('SM', 'CB', 'TP', 'HD', 'HU') THEN 'HU'
+                    ELSE g.home_team
+                END AS h_canon,
+                CASE
+                    WHEN g.away_team IN ('OB', 'DB') THEN 'DB'
+                    WHEN g.away_team IN ('HT', 'KIA') THEN 'KIA'
+                    WHEN g.away_team IN ('MBC', 'MB', 'LG') THEN 'LG'
+                    WHEN g.away_team IN ('WO', 'NX', 'KH') THEN 'KH'
+                    WHEN g.away_team IN ('SK', 'SSG') THEN 'SSG'
+                    WHEN g.away_team IN ('BG', 'HH') THEN 'HH'
+                    WHEN g.away_team IN ('SM', 'CB', 'TP', 'HD', 'HU') THEN 'HU'
+                    ELSE g.away_team
+                END AS a_canon,
+                CASE
+                    WHEN g.winning_team IN ('OB', 'DB') THEN 'DB'
+                    WHEN g.winning_team IN ('HT', 'KIA') THEN 'KIA'
+                    WHEN g.winning_team IN ('MBC', 'MB', 'LG') THEN 'LG'
+                    WHEN g.winning_team IN ('WO', 'NX', 'KH') THEN 'KH'
+                    WHEN g.winning_team IN ('SK', 'SSG') THEN 'SSG'
+                    WHEN g.winning_team IN ('BG', 'HH') THEN 'HH'
+                    WHEN g.winning_team IN ('SM', 'CB', 'TP', 'HD', 'HU') THEN 'HU'
+                    WHEN g.winning_team IN ('무', 'DRAW', 'TIE', 'draw', 'tie', '') THEN 'DRAW'
+                    ELSE g.winning_team
+                END AS w_canon
+            FROM game g
+            WHERE g.game_id LIKE :season || '%'
+        )
+        SELECT game_id, game_date, home_team, away_team, home_score, away_score, winning_team, winning_score
+        FROM aliased_game
+        WHERE (
+            home_score < 0 OR away_score < 0
+            OR (winning_score IS NOT NULL AND winning_score < 0)
+            OR (w_canon IS NOT NULL AND w_canon NOT IN ('DRAW', '')
+                AND home_score > away_score AND w_canon != h_canon)
+            OR (w_canon IS NOT NULL AND w_canon NOT IN ('DRAW', '')
+                AND away_score > home_score AND w_canon != a_canon)
+            OR (w_canon IS NOT NULL AND w_canon NOT IN ('DRAW', '')
+                AND home_score = away_score AND w_canon != 'DRAW')
+        )
         LIMIT 20
         """
 

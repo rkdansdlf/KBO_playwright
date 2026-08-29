@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 from src.reporting.scouting_dto import PlayerRole, ScoutingDimension, ScoutingReport
 
@@ -29,7 +31,7 @@ MIN_PITCHER_OUTS = 15
 class ScoutingReportEngine:
     """Calculates 5-axis percentiles and generates comprehensive scouting reports."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session | None) -> None:
         """Initialize scouting report engine with database session."""
         self.session = session
 
@@ -80,50 +82,69 @@ class ScoutingReportEngine:
             return f"로테이션 / 롤플레이어 {role_label}"
         return f"퓨처스 조정 및 육성 필요 {role_label}"
 
+    @staticmethod
+    def _pitcher_outs(pitcher: PlayerSeasonPitching) -> int:
+        """Return a pitcher's recorded outs, supporting legacy field names."""
+        return (
+            getattr(pitcher, "innings_outs", None)
+            or getattr(pitcher, "outs_pitched", None)
+            or int((getattr(pitcher, "innings_pitched", 0) or 0) * 3)
+            or 1
+        )
+
     def generate_scouting_report(self, player_name_or_id: str | int, year: int = 2024) -> ScoutingReport:
         """Generate a complete 5-axis sabermetric scouting report for a player in a season."""
-        # 1. Resolve player
         player_id: int | None = None
         player_name = str(player_name_or_id)
 
-        if isinstance(player_name_or_id, int) or (isinstance(player_name_or_id, str) and player_name_or_id.isdigit()):
-            player_id = int(player_name_or_id)
-            p_basic = self.session.query(PlayerBasic).filter_by(player_id=player_id).first()
-            if p_basic:
-                player_name = p_basic.name
-        else:
-            p_basic = self.session.query(PlayerBasic).filter(PlayerBasic.name == player_name_or_id).first()
-            if p_basic:
-                player_id = p_basic.player_id
-                player_name = p_basic.name
+        if self.session is None:
+            return self._generate_sample_report(player_name, 99999, year)
 
-        # 2. Determine batter vs pitcher season stats
-        batting_stat = None
-        pitching_stat = None
+        try:
+            # 1. Resolve player
+            if isinstance(player_name_or_id, int) or (
+                isinstance(player_name_or_id, str) and player_name_or_id.isdigit()
+            ):
+                player_id = int(player_name_or_id)
+                p_basic = self.session.query(PlayerBasic).filter_by(player_id=player_id).first()
+                if p_basic:
+                    player_name = p_basic.name
+            else:
+                p_basic = self.session.query(PlayerBasic).filter(PlayerBasic.name == player_name_or_id).first()
+                if p_basic:
+                    player_id = p_basic.player_id
+                    player_name = p_basic.name
 
-        if player_id:
-            batting_stat = (
-                self.session.query(PlayerSeasonBatting)
-                .filter(PlayerSeasonBatting.player_id == player_id, PlayerSeasonBatting.season == year)
-                .first()
-            )
-            pitching_stat = (
-                self.session.query(PlayerSeasonPitching)
-                .filter(PlayerSeasonPitching.player_id == player_id, PlayerSeasonPitching.season == year)
-                .first()
-            )
+            # 2. Determine batter vs pitcher season stats
+            batting_stat = None
+            pitching_stat = None
 
-        # Fallback if no DB stats found: generate synthetic evaluation for demonstration
-        if not batting_stat and not pitching_stat:
+            if player_id:
+                batting_stat = (
+                    self.session.query(PlayerSeasonBatting)
+                    .filter(PlayerSeasonBatting.player_id == player_id, PlayerSeasonBatting.season == year)
+                    .first()
+                )
+                pitching_stat = (
+                    self.session.query(PlayerSeasonPitching)
+                    .filter(PlayerSeasonPitching.player_id == player_id, PlayerSeasonPitching.season == year)
+                    .first()
+                )
+
+            # Fallback if no DB stats found: generate synthetic evaluation for demonstration
+            if not batting_stat and not pitching_stat:
+                return self._generate_sample_report(player_name, player_id or 99999, year)
+
+            # Decide role
+            if pitching_stat and (
+                not batting_stat or self._pitcher_outs(pitching_stat) > (batting_stat.plate_appearances or 0)
+            ):
+                return self._evaluate_pitcher(pitching_stat, player_name, year)
+
+            return self._evaluate_batter(batting_stat, player_name, year)  # type: ignore[arg-type]
+        except SQLAlchemyError as exc:
+            logger.debug("Database error while generating scouting report: %s", exc)
             return self._generate_sample_report(player_name, player_id or 99999, year)
-
-        # Decide role
-        if pitching_stat and (
-            not batting_stat or (pitching_stat.outs_pitched or 0) > (batting_stat.plate_appearances or 0)
-        ):
-            return self._evaluate_pitcher(pitching_stat, player_name, year)
-
-        return self._evaluate_batter(batting_stat, player_name, year)  # type: ignore[arg-type]
 
     def _evaluate_batter(self, target: PlayerSeasonBatting, player_name: str, year: int) -> ScoutingReport:
         """Evaluate batter across Contact, Power, Discipline, Speed, and Overall Production."""
@@ -252,15 +273,25 @@ class ScoutingReportEngine:
         """Evaluate pitcher across Stuff/Strikeouts, Command, Damage Control, Efficiency, and Volume."""
         all_pitchers = (
             self.session.query(PlayerSeasonPitching)
-            .filter(PlayerSeasonPitching.season == year, PlayerSeasonPitching.outs_pitched >= MIN_PITCHER_OUTS)
+            .filter(PlayerSeasonPitching.season == year, PlayerSeasonPitching.innings_outs >= MIN_PITCHER_OUTS)
             .all()
         )
 
-        ip = (target.outs_pitched or 1) / 3.0
+        def _pitcher_bb(p: PlayerSeasonPitching) -> int:
+            return getattr(p, "walks_allowed", None) or getattr(p, "walks", 0) or 0
+
+        def _pitcher_hr(p: PlayerSeasonPitching) -> int:
+            return getattr(p, "home_runs_allowed", None) or getattr(p, "home_runs", 0) or 0
+
+        def _pitcher_hits(p: PlayerSeasonPitching) -> int:
+            return getattr(p, "hits_allowed", None) or getattr(p, "hits", 0) or 0
+
+        outs = self._pitcher_outs(target)
+        ip = outs / 3.0
         so = target.strikeouts or 0
-        bb = target.walks or 0
-        hr = target.home_runs or 0
-        hits = target.hits or 0
+        bb = _pitcher_bb(target)
+        hr = _pitcher_hr(target)
+        hits = _pitcher_hits(target)
         er = target.earned_runs or 0
 
         k9 = (so * 9.0) / ip if ip > 0 else 0.0
@@ -270,11 +301,11 @@ class ScoutingReportEngine:
         era = (er * 9.0) / ip if ip > 0 else 0.0
 
         # Distributions
-        k9_dist = [((p.strikeouts or 0) * 9.0) / ((p.outs_pitched or 1) / 3.0) for p in all_pitchers]
-        bb9_dist = [((p.walks or 0) * 9.0) / ((p.outs_pitched or 1) / 3.0) for p in all_pitchers]
-        hr9_dist = [((p.home_runs or 0) * 9.0) / ((p.outs_pitched or 1) / 3.0) for p in all_pitchers]
-        whip_dist = [((p.hits or 0) + (p.walks or 0)) / ((p.outs_pitched or 1) / 3.0) for p in all_pitchers]
-        ip_dist = [(p.outs_pitched or 0) / 3.0 for p in all_pitchers]
+        k9_dist = [((p.strikeouts or 0) * 9.0) / (self._pitcher_outs(p) / 3.0) for p in all_pitchers]
+        bb9_dist = [(_pitcher_bb(p) * 9.0) / (self._pitcher_outs(p) / 3.0) for p in all_pitchers]
+        hr9_dist = [(_pitcher_hr(p) * 9.0) / (self._pitcher_outs(p) / 3.0) for p in all_pitchers]
+        whip_dist = [(_pitcher_hits(p) + _pitcher_bb(p)) / (self._pitcher_outs(p) / 3.0) for p in all_pitchers]
+        ip_dist = [self._pitcher_outs(p) / 3.0 for p in all_pitchers]
 
         stuff_score = self._calc_percentile(k9, k9_dist)
         command_score = self._calc_percentile(bb9, bb9_dist, higher_is_better=False)
