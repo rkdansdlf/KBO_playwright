@@ -848,6 +848,7 @@ def _prepare_player_rows(game_id: str, dataset: str, mappings: list[dict[str, An
     deduped = _dedupe_exact_player_rows(game_id, dataset, mappings)
     if dataset == "game_pitching_stats":
         deduped = _merge_duplicate_pitching_player_rows(game_id, deduped)
+    _sanitize_player_team_collisions(game_id, dataset, deduped)
     _assert_no_player_team_collisions(game_id, dataset, deduped)
     return deduped
 
