@@ -369,10 +369,13 @@ def _split_game_id_team_part(team_part: str) -> tuple[str | None, str | None]:
 
 # Standard codes for the 10 current franchises
 STANDARD_TEAM_CODES = {"HH", "KIA", "KT", "LG", "LT", "NC", "DB", "SSG", "SS", "KH"}
+# All valid historical and modern team codes
+VALID_TEAM_CODES = STANDARD_TEAM_CODES | set(KBO_GAME_ID_TEAM_CODES) | set(TEAM_NAME_TO_CODE.values())
 
 __all__ = [
     "STANDARD_TEAM_CODES",
     "TEAM_NAME_TO_CODE",
+    "VALID_TEAM_CODES",
     "build_kbo_game_id",
     "kbo_game_id_team_code",
     "normalize_kbo_game_id",

@@ -118,21 +118,21 @@ On 2026-08-29, an automated read-only census and live HTTP endpoint probe evalua
 
 | Season | Terminal Games | Covered Games | Missing Games | Coverage % | Top Missing Series | Root Cause & Probe Status |
 |---|---|---|---|---|---|---|
-| **2010** | 591 | 10 | 581 | 1.7% | Regular (534), Exhibition (47) | 🔴 KBO BoxScore endpoint responds **200 OK** $\rightarrow$ Phase 1 Full Crawl Candidate |
-| **2011** | 735 | 585 | 150 | 79.6% | Regular (138), Exhibition (12) | 🟡 Nexen (`NX`) alias gap; KBO endpoint **200 OK** |
-| **2012** | 735 | 583 | 152 | 79.3% | Regular (141), Exhibition (11) | 🟡 Nexen (`NX`) alias gap; KBO endpoint **200 OK** |
+| **2010** | 591 | 544 | 47 | 92.0% (100% Regular) | Exhibition (47) | 🟢 **100% Official Boxscores Recovered (544 games)** |
+| **2011** | 735 | 585 | 150 | 79.6% | Regular (138), Exhibition (12) | 🟡 Nexen (`NX` $\rightarrow$ `WO`) alias gap; KBO endpoint **200 OK** |
+| **2012** | 735 | 583 | 152 | 79.3% | Regular (141), Exhibition (11) | 🟡 Nexen (`NX` $\rightarrow$ `WO`) alias gap; KBO endpoint **200 OK** |
 | **2013** | 781 | 636 | 145 | 81.4% | Regular (134), Exhibition (11) | 🟡 Nexen/NC alias gap; KBO endpoint **200 OK** |
-| **2014** | 780 | 623 | 157 | 79.9% | Regular (145), Exhibition (12) | 🟡 Nexen (`NX`) alias gap; KBO endpoint **200 OK** |
+| **2014** | 780 | 623 | 157 | 79.9% | Regular (145), Exhibition (12) | 🟡 Nexen (`NX` $\rightarrow$ `WO`) alias gap; KBO endpoint **200 OK** |
 | **2015** | 934 | 682 | 252 | 73.0% | Regular (241), Exhibition (11) | 🟡 KT/Nexen expansion gap; KBO endpoint **200 OK** |
 | **2016** | 959 | 700 | 259 | 73.0% | Regular (243), Exhibition (16) | 🟡 KT/Nexen gap; KBO endpoint **200 OK** |
-| **2017** | 933 | 684 | 249 | 73.3% | Regular (237), Exhibition (12) | 🟡 Nexen (`NX`) gap; KBO endpoint **200 OK** |
+| **2017** | 933 | 684 | 249 | 73.3% | Regular (237), Exhibition (12) | 🟡 Nexen (`NX` $\rightarrow$ `WO`) gap; KBO endpoint **200 OK** |
 | **2018** | 911 | 649 | 262 | 71.2% | Regular (251), Exhibition (10) | 🟡 Nexen/Woori gap; KBO endpoint **200 OK** |
 | **2019** | 770 | 664 | 106 | 86.2% | Regular (102), Exhibition (4) | 🟡 KT/NC gap; KBO endpoint **200 OK** |
 | **2020-2025** | 4,534 | 4,500+ | ~34 | 99.7% | - | 🟢 **Boxscores 100% Complete** |
 
-#### Resolution Path & Remediation Plan:
-1. **Phase 1 (2010 Season)**: 534 regular-season games are available on KBO official GameCenter. Execute `python3 -m src.cli.collect_games --year 2010` in bounded month batches.
-2. **Phase 2 (2011-2019 Nexen/KT Regular Season Gaps)**: 1,638 missing regular-season games have verified KBO endpoints. Execute `python3 -m src.cli.backfill_historical_details --year <Y>` with normalized team aliases.
+#### Resolution Path & Remediation Status:
+1. **Phase 1 (2010 Season)**: ✅ **COMPLETED**. 534 regular/postseason games collected from KBO GameCenter (`WO` alias mapping applied), player IDs linked, season stats recalculated, and statistical quality gate passed with 0 errors.
+2. **Phase 2 (2011-2019 Nexen/KT Regular Season Gaps)**: 1,638 missing regular-season games have verified KBO endpoints. Execute `python3 -m src.cli.backfill_historical_details --year <Y>` with normalized `WO` alias mapping.
 3. **Exhibition Series (138 games)**: Classified as non-official exhibition records (`KNOWN_LIMITATION`); do not gate quality metrics on pre-season exhibition boxscores.
 
 ## Safety Rules
