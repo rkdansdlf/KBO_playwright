@@ -14,6 +14,7 @@ from sqlalchemy import select
 from src.cli.historical_boxscore_import import validate_boxscore_payload
 from src.crawlers.legacy_game_detail_crawler import LegacyGameDetailCrawler
 from src.models.game import Game, GameBattingStat, GamePitchingStat
+from src.models.season import KboSeason
 from src.repositories.game_repository import save_game_detail
 from src.services.player_id_resolver import PlayerIdResolver
 
@@ -99,8 +100,10 @@ class HistoricalDetailBackfillService:
         year_prefix = f"{year}%"
         stmt = (
             select(Game.game_id, Game.game_date, Game.home_team, Game.away_team)
+            .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
             .where((Game.game_id.like(year_prefix)) | (Game.season_id == year))
             .where(Game.game_status.in_(["COMPLETED", "FINAL", "DRAW", "TERMINAL", "종료", "콜드게임"]))
+            .where((KboSeason.league_type_name.is_(None)) | (KboSeason.league_type_name != "시범경기"))
             .where(
                 ~Game.game_id.in_(
                     select(GameBattingStat.game_id).where(GameBattingStat.game_id.like(year_prefix)).distinct()
@@ -137,6 +140,67 @@ class HistoricalDetailBackfillService:
         else:
             route.continue_()
 
+    def _fetch_candidate_game_details(
+        self,
+        page: Page,
+        game_id: str,
+        game_date: str,
+    ) -> tuple[dict[str, Any] | None, Exception | None]:
+        """Fetch game details trying direct and legacy franchise candidate game IDs."""
+        candidate_ids = [game_id]
+        legacy_id = (
+            game_id.replace("NX", "WO")
+            .replace("SSG", "SK")
+            .replace("KH", "WO")
+            .replace("DB", "OB")
+            .replace("KIA", "HT")
+        )
+        if legacy_id not in candidate_ids:
+            candidate_ids.append(legacy_id)
+
+        last_error: Exception | None = None
+        for cand_id in candidate_ids:
+            review_url = (
+                f"https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
+                f"?gameDate={game_date}&gameId={cand_id}&section=REVIEW"
+            )
+            try:
+                logger.info("📡 Navigating to Review Page for %s (using %s): %s", game_id, cand_id, review_url)
+                page.goto(review_url, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(500)
+
+                data = self.crawler.extract_game_details(
+                    page_or_html=page,
+                    game_id=game_id,
+                    game_date=game_date,
+                    db_session=self.session,
+                )
+                if data:
+                    return data, None
+            except CRAWLER_PROCESS_EXCEPTIONS as e:
+                last_error = e
+        return None, last_error
+
+    def _save_processed_game(
+        self,
+        data: dict[str, Any],
+        game_id: str,
+        *,
+        dry_run: bool,
+    ) -> tuple[bool, str]:
+        """Save validated game payload to database or handle dry run."""
+        if not dry_run:
+            saved = save_game_detail(data, session=self.session)
+            if saved:
+                self.session.commit()
+                logger.info("✅ Saved game detail for %s into DB", game_id)
+                return True, "saved"
+            self.session.rollback()
+            return False, "save_failed"
+
+        logger.info("🔍 [DRY-RUN] Game %s validated successfully (not saved)", game_id)
+        return True, "validated_dry_run"
+
     def process_game(
         self,
         page: Page,
@@ -157,41 +221,24 @@ class HistoricalDetailBackfillService:
         """
         game_id = game_info["game_id"]
         game_date = game_info["game_date"]
-        review_url = (
-            f"https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
-            f"?gameDate={game_date}&gameId={game_id}&section=REVIEW"
-        )
+
+        data, fetch_err = self._fetch_candidate_game_details(page, game_id, game_date)
+        if not data:
+            logger.warning("❌ Failed to process game %s: %s", game_id, fetch_err)
+            return False, f"error: {fetch_err}"
 
         try:
-            logger.info("📡 Navigating to Review Page for %s: %s", game_id, review_url)
-            page.goto(review_url, wait_until="domcontentloaded", timeout=20000)
-            page.wait_for_timeout(500)
-
-            data = self.crawler.extract_game_details(
-                page_or_html=page,
-                game_id=game_id,
-                game_date=game_date,
-                db_session=self.session,
-            )
-
             is_valid, error_msg = validate_boxscore_payload(data, strict=True)
             if not is_valid:
                 logger.warning("⚠️ Validation failed for %s: %s", game_id, error_msg)
                 return False, f"validation_failed: {error_msg}"
 
-            if not dry_run:
-                saved = save_game_detail(data, db_session=self.session)
-                if saved:
-                    logger.info("✅ Saved game detail for %s into DB", game_id)
-                    return True, "saved"
-                return False, "save_failed"
+            return self._save_processed_game(data, game_id, dry_run=dry_run)
 
         except CRAWLER_PROCESS_EXCEPTIONS as e:
+            self.session.rollback()
             logger.warning("❌ Failed to process game %s: %s", game_id, e)
             return False, f"error: {e}"
-        else:
-            logger.info("🔍 [DRY-RUN] Game %s validated successfully (not saved)", game_id)
-            return True, "validated_dry_run"
 
     def run_backfill(
         self,

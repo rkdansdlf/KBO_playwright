@@ -1369,7 +1369,19 @@ def _build_batting_stats(
                     "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
                     "position": entry.get("position"),
                     "standard_position": get_primary_position(entry.get("position")).value,
-                    "plate_appearances": _stat_int(stats, "plate_appearances"),
+                    "plate_appearances": (
+                        _stat_int(stats, "plate_appearances")
+                        if _stat_int(stats, "plate_appearances") is not None
+                        else (
+                            (_stat_int(stats, "at_bats") or 0)
+                            + (_stat_int(stats, "walks") or 0)
+                            + (_stat_int(stats, "hbp") or 0)
+                            + (_stat_int(stats, "sacrifice_hits") or 0)
+                            + (_stat_int(stats, "sacrifice_flies") or 0)
+                        )
+                        if _stat_int(stats, "at_bats") is not None
+                        else None
+                    ),
                     "at_bats": _stat_int(stats, "at_bats"),
                     "runs": _stat_int(stats, "runs"),
                     "hits": _stat_int(stats, "hits"),
