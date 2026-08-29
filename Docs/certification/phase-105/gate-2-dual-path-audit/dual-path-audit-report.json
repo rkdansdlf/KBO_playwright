@@ -1,0 +1,221 @@
+{
+  "audit_type": "INDEPENDENT_DUAL_PATH_CENSUS",
+  "scope": "LOCAL_SQLITE_BASELINE",
+  "season": null,
+  "category": null,
+  "total_metrics_evaluated": 33,
+  "total_entities_checked": 16500,
+  "reproducible_count": 16500,
+  "divergent_count": 0,
+  "reproducibility_ratio": 1.0,
+  "parity_breakdown": {
+    "EXACT": 16277,
+    "ROUNDED_CONTRACT": 34,
+    "FLOATING_TOLERANCE": 0,
+    "UNDEFINED": 189,
+    "EXCLUDED": 0,
+    "DIVERGENT": 0
+  },
+  "metric_breakdowns": {
+    "AVG": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "OBP": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "SLG": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "OPS": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "ISO": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "BABIP_BAT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "BB_PCT_BAT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "K_PCT_BAT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "BB_TO_K_BAT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "wOBA": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "wRAA": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "wRC": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "WRC_INDEX_NO_PARK": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "OPS_INDEX_NO_PARK": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "GPA": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "SecA": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "RC": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "ERA": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "WHIP": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "FIP": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "K_9": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "BB_9": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "HR_9": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "K_PCT_PIT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "BB_PCT_PIT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "K_BB_PIT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "BABIP_PIT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "LOB_PCT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "ERA_INDEX_NO_PARK": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "DICE": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "SB_PCT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "FPCT": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    },
+    "RF_9": {
+      "evaluations": 500,
+      "reproducible": 500,
+      "divergent": 0,
+      "reproducibility_ratio": 1.0
+    }
+  },
+  "duration_ms": 286.82,
+  "is_compliant": true
+}

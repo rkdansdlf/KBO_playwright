@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.cli.formula import main
 from src.formulas.models import FormulaAuditReport
@@ -70,3 +70,28 @@ def test_cli_audit_with_artifact(tmp_path: Path, capsys) -> None:
         data = json.loads(art_path.read_text(encoding="utf-8"))
         assert data["total_metrics_evaluated"] == 16
         assert data["sha256_checksum"] == "mock_sha256"
+
+
+def test_cli_audit_dual_path(tmp_path: Path, capsys) -> None:
+    """Test 'kbo formula audit --dual-path' CLI execution."""
+    art_path = tmp_path / "dual_path_report.json"
+    mock_dual_data = {
+        "audit_type": "INDEPENDENT_DUAL_PATH_CENSUS",
+        "total_metrics_evaluated": 33,
+        "total_entities_checked": 100,
+        "reproducible_count": 100,
+        "divergent_count": 0,
+        "reproducibility_ratio": 1.0,
+        "parity_breakdown": {"EXACT": 80, "ROUNDED_CONTRACT": 20},
+        "metric_breakdowns": {},
+        "duration_ms": 50.0,
+        "is_compliant": True,
+    }
+
+    with patch("src.formulas.dual_path.DualPathAuditEngine.run_census_audit", return_value=mock_dual_data):
+        rc = main(["audit", "--dual-path", "--sample", "10", "--save-artifact", str(art_path)])
+        assert rc == 0
+        assert art_path.exists()
+        data = json.loads(art_path.read_text(encoding="utf-8"))
+        assert data["audit_type"] == "INDEPENDENT_DUAL_PATH_CENSUS"
+        assert data["total_entities_checked"] == 100

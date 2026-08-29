@@ -24,14 +24,14 @@
     },
     {
       "claim_id": "formula.sample_reproducibility.v1",
-      "component": "src/formulas/engine.py",
-      "statement": "Sample reproducibility audit on 33 metrics x 500 samples (16,500 evaluations) with 0 divergences.",
+      "component": "src/formulas/dual_path.py",
+      "statement": "Independent dual-path census audit on 33 metrics x 500 records (16,500 evaluations) with 0 divergences across Path A (Registry) and Path B (Independent Oracle).",
       "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
       "environment": "sqlite_local_baseline",
       "dataset_snapshot_id": "local_kbo_dev_20260829",
-      "scope": "16500_SAMPLE_EVALUATIONS",
+      "scope": "16500_DUAL_PATH_EVALUATIONS",
       "promotion_decision": "NO_GO",
-      "remediation_status": "PENDING_GATE_1_REMEDIATION"
+      "remediation_status": "GATE_2_DUAL_PATH_AUDIT_COMPLETE"
     },
     {
       "claim_id": "lineage.entity_provenance.v1",

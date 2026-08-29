@@ -64,6 +64,11 @@ class FormulaEngine:
         self._engine = engine
         self._constants_cache: dict[int, dict[str, float]] = {}
 
+    @property
+    def engine(self) -> SQLAlchemyEngine:
+        """Get resolved database engine."""
+        return self._resolve_engine()
+
     def _resolve_engine(self) -> SQLAlchemyEngine:
         """Resolve database engine instance."""
         if self._engine is not None:
