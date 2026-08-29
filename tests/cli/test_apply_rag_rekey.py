@@ -74,11 +74,12 @@ class _NullContext:
         return None
 
 
-def _make_manifest(entries: list[dict], git_sha: str = "abc123") -> dict:
-    """Build a minimal valid manifest with header."""
+def _make_manifest(entries: list[dict]) -> dict:
+    """Build a minimal valid manifest with header matching current environment."""
     import datetime
     import os
     import re
+    import subprocess
 
     manifest = {
         "manifest_version": "r2-identity-census-v1",
@@ -111,7 +112,7 @@ def _make_manifest(entries: list[dict], git_sha: str = "abc123") -> dict:
                 "collision_keys": 0,
                 "collision_rows": 0,
                 "source_rows_missing_in_index": 0,
-                "by_disposition": {"SAFE_REKEY": 1},
+                "by_disposition": {"SAFE_REKEY": len(entries)},
             }
         ],
         "entries": entries,
@@ -124,20 +125,31 @@ def _make_manifest(entries: list[dict], git_sha: str = "abc123") -> dict:
     ).encode()
     manifest_sha = hashlib.sha256(content).hexdigest()
 
+    # Current database fingerprint
     db_url = os.getenv("DATABASE_URL", "")
     safe_url = re.sub(r"://[^:]+:[^@]+@", "://***:***@", db_url)
-    fp_content = f"{safe_url}|r2".encode()
+    fp_content = f"{safe_url}|{os.getenv('RAG_INDEX_VERSION', 'rag-v1')}".encode()
     db_fingerprint = hashlib.sha256(fp_content).hexdigest()[:16]
+
+    # Current git SHA
+    try:
+        current_git_sha = subprocess.run(
+            ["/usr/bin/git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=Path.cwd()
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        current_git_sha = "unknown"
+
+    disposition_counts = Counter(e.get("disposition") for e in entries)
 
     manifest["manifest_header"] = {
         "manifest_schema_version": "r2-rekey-manifest-v1",
         "identity_schema_version": "r2",
         "generated_at": datetime.datetime.now().isoformat(),
         "database_fingerprint": db_fingerprint,
-        "git_commit_sha": git_sha,
+        "git_commit_sha": current_git_sha,
         "manifest_sha256": manifest_sha,
         "expected_entry_count": len(entries),
-        "expected_disposition_counts": {"SAFE_REKEY": len(entries)},
+        "expected_disposition_counts": dict(disposition_counts),
     }
     return manifest
 
@@ -170,10 +182,10 @@ def mock_lock(monkeypatch: pytest.MonkeyPatch) -> Mock:
 
 
 @pytest.fixture()
-def temp_manifest(tmp_path: Path, git_sha: str = "abc123") -> Path:
+def temp_manifest(tmp_path: Path) -> Path:
     """Create a temporary manifest file with valid header."""
-    entries = [_row(100, "1", "2025_골든글러브_투수_원태인")]
-    manifest = _make_manifest(entries, git_sha)
+    entries = [_row(100, "1", "2025_골든글러브_투수_원태in")]
+    manifest = _make_manifest(entries)
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
@@ -430,7 +442,14 @@ class TestApplyRekey:
     def test_git_sha_mismatch_rejected(self, tmp_path: Path) -> None:
         """Manifest from different git commit should be rejected."""
         entries = [_row(100, "1", "2025_골든글러브_투수_원태in")]
-        manifest = _make_manifest(entries, git_sha="different_sha")
+        manifest = _make_manifest(entries)
+        # Tamper with git SHA
+        manifest["manifest_header"]["git_commit_sha"] = "different_sha"
+        # Recompute manifest SHA to be consistent with tampered header
+        content = json.dumps(
+            {k: v for k, v in manifest.items() if k != "manifest_header"}, sort_keys=True, separators=(",", ":")
+        ).encode()
+        manifest["manifest_header"]["manifest_sha256"] = hashlib.sha256(content).hexdigest()
         path = tmp_path / "manifest.json"
         path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
@@ -449,13 +468,21 @@ class TestApplyRekey:
         os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
         os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"] = "1"
         # Change DB URL to create different fingerprint
+        original_db_url = os.environ.get("DATABASE_URL", "")
         os.environ["DATABASE_URL"] = "sqlite:///different.db"
 
         try:
             entries = [_row(100, "1", "2025_골든글러브_투수_원태in")]
-            manifest = _make_manifest(entries, git_sha="abc123")
+            manifest = _make_manifest(entries)
             # Fix the DB fingerprint to match original
             manifest["manifest_header"]["database_fingerprint"] = "0f35c2eb8f2a4cfb"
+            # Recompute SHA
+            import hashlib
+
+            content = json.dumps(
+                {k: v for k, v in manifest.items() if k != "manifest_header"}, sort_keys=True, separators=(",", ":")
+            ).encode()
+            manifest["manifest_header"]["manifest_sha256"] = hashlib.sha256(content).hexdigest()
             path = tmp_path / "manifest.json"
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
@@ -464,7 +491,8 @@ class TestApplyRekey:
         finally:
             del os.environ["RAG_INDEX_ALLOW_WRITE"]
             del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]
-            os.environ["DATABASE_URL"] = "sqlite:///./data/kbo_dev.db"
+            if original_db_url:
+                os.environ["DATABASE_URL"] = original_db_url
 
     def test_apply_idempotent_rerun(
         self,
