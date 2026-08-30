@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
@@ -33,6 +33,8 @@ DISPOSITION_TOMBSTONE = "TARGET_EXISTS_SAME_CONTENT"
 
 _MANIFEST_SCHEMA_VERSION = "r2-rekey-manifest-v1"
 _IDENTITY_SCHEMA_VERSION = "r2"
+_RECEIPT_SCHEMA_VERSION = "r2-rekey-receipt-v1"
+
 _REQUIRED_HEADER_FIELDS = (
     "manifest_schema_version",
     "identity_schema_version",
@@ -53,18 +55,50 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         action="store_true",
         help="Persist changes (default is dry-run)",
     )
+    parser.add_argument(
+        "--transaction-id",
+        type=str,
+        default=None,
+        help="Explicit transaction ID for replayable immutable receipt",
+    )
     parser.add_argument("--json", action="store_true", dest="as_json", help="Render JSON output")
     return parser.parse_args(argv)
+
+
+def _validate_dsn_security(*, apply: bool) -> str | None:
+    """Enforce strict DSN whitelisting for local safety mode and production guards."""
+    db_url = os.getenv("DATABASE_URL", "")
+    target_env = os.getenv("RAG_TARGET_ENV", "local")
+
+    # In production, require strict write flags
+    if target_env == "production":
+        if apply and os.getenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE") != "1":
+            return "production --apply requires RAG_INDEX_ALLOW_PRODUCTION_WRITE=1"
+        return None
+
+    # In non-production (local/test/safety): reject Oracle connections unconditionally
+    if db_url.startswith(("oracle+", "oracle:")):
+        return "Oracle database connections prohibited in local safety mode (staging/production prohibited)"
+
+    # Reject non-ephemeral repository production/dev sqlite database
+    if "data/kbo_dev.db" in db_url or "kbo_dev.db" in db_url:
+        return "Primary database data/kbo_dev.db write prohibited; only ephemeral/memory databases allowed"
+
+    return None
 
 
 def _validate_args(args: argparse.Namespace) -> str | None:
     if not args.manifest.exists():
         return f"manifest not found: {args.manifest}"
+
     if args.apply:
         if os.getenv("RAG_INDEX_ALLOW_WRITE") != "1":
             return "--apply requires RAG_INDEX_ALLOW_WRITE=1"
-        if os.getenv("RAG_TARGET_ENV") == "production" and os.getenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE") != "1":
-            return "production --apply requires RAG_INDEX_ALLOW_PRODUCTION_WRITE=1"
+
+        dsn_error = _validate_dsn_security(apply=True)
+        if dsn_error:
+            return dsn_error
+
     return None
 
 
@@ -160,6 +194,95 @@ def _validate_manifest_header(manifest: dict, *, apply: bool) -> str | None:
     return None
 
 
+def _get_receipt_dir() -> Path:
+    receipt_dir = Path(os.getenv("R2_REKEY_RECEIPT_DIR", "data/r2_rekey/receipts"))
+    receipt_dir.mkdir(parents=True, exist_ok=True)
+    return receipt_dir
+
+
+def _check_receipt_replay(
+    transaction_id: str,
+    manifest_sha: str,
+) -> tuple[bool, dict[str, Any] | None, str | None]:
+    """Check if an existing receipt matches this transaction.
+
+    Returns:
+        (is_replay, receipt_payload, collision_error_or_none)
+
+    """
+    receipt_dir = _get_receipt_dir()
+    matching_receipts = list(receipt_dir.glob(f"*_{transaction_id}.json"))
+
+    if not matching_receipts:
+        return False, None, None
+
+    # Found existing receipt for this transaction ID
+    receipt_path = matching_receipts[0]
+    try:
+        with receipt_path.open("r", encoding="utf-8") as f:
+            receipt = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        return False, None, f"corrupted existing receipt {receipt_path}: {exc}"
+
+    if receipt.get("manifest_sha256") == manifest_sha:
+        # Same transaction ID, same payload -> Exact idempotent replay
+        return True, receipt, None
+
+    # Same transaction ID, DIFFERENT payload -> Collision error!
+    stored_sha = receipt.get("manifest_sha256")
+    return (
+        False,
+        None,
+        f"transaction ID collision: transaction '{transaction_id}' was already executed "
+        f"with different manifest payload (stored sha={stored_sha}, requested sha={manifest_sha})",
+    )
+
+
+def _publish_immutable_receipt(  # noqa: PLR0913
+    *,
+    transaction_id: str,
+    manifest_id: str,
+    manifest_sha: str,
+    status: str,
+    rekey_count: int,
+    tombstone_count: int,
+    already_applied: int,
+    stale_rejected: int,
+    preimage_path: Path | None,
+    rollback_path: Path | None,
+) -> Path:
+    """Generate and write an immutable cryptographic receipt for the execution."""
+    receipt_dir = _get_receipt_dir()
+    receipt_filename = f"receipt_{manifest_sha[:16]}_{transaction_id}.json"
+    receipt_path = receipt_dir / receipt_filename
+
+    payload: dict[str, Any] = {
+        "receipt_schema_version": _RECEIPT_SCHEMA_VERSION,
+        "transaction_id": transaction_id,
+        "manifest_id": manifest_id,
+        "manifest_sha256": manifest_sha,
+        "status": status,
+        "rekeyed_count": rekey_count,
+        "tombstoned_count": tombstone_count,
+        "already_applied_count": already_applied,
+        "stale_rejected_count": stale_rejected,
+        "database_fingerprint": _get_current_database_fingerprint(),
+        "applied_at_kst": datetime.now(KST).isoformat(),
+        "preimage_path": str(preimage_path) if preimage_path else None,
+        "rollback_path": str(rollback_path) if rollback_path else None,
+    }
+
+    # Compute receipt SHA256 digest
+    content_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    payload["receipt_sha256"] = hashlib.sha256(content_bytes).hexdigest()
+
+    with receipt_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+
+    return receipt_path
+
+
 def _write_preimage_and_rollback(manifest: dict, *, do_write: bool) -> tuple[Path | None, Path | None]:
     """Write preimage and inverse rollback manifest files."""
     timestamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
@@ -228,7 +351,7 @@ def _build_where_clause(entry: dict) -> list:
     where_clause = [RagChunk.id == entry.get("chunk_id")]
     legacy_id = entry.get("legacy_source_row_id")
     if legacy_id is not None:
-        where_clause.append(RagChunk.source_row_id == legacy_id)
+        where_clause.append(RagChunk.source_row_id == str(legacy_id))
     if entry.get("legacy_content_hash") is not None:
         where_clause.append(RagChunk.content_hash == entry["legacy_content_hash"])
     if entry.get("index_status") is not None:
@@ -238,90 +361,175 @@ def _build_where_clause(entry: dict) -> list:
     return where_clause
 
 
-def _apply_rekey(
+def _apply_rekey(  # noqa: C901, PLR0912, PLR0915
     session: Session,
     entries: list[dict],
     *,
     dry_run: bool,
-) -> tuple[int, int, list[dict]]:
-    """Apply rekey and tombstone operations with optimistic concurrency."""
+    strict_atomic: bool = True,
+) -> tuple[int, int, int, list[dict], str]:
+    """Apply rekey and tombstone operations with optimistic concurrency and distinct no-op detection.
+
+    Returns:
+        (rekey_count, tombstone_count, already_applied_count, skipped_entries, execution_status)
+
+    """
     rekey_count = 0
     tombstone_count = 0
+    already_applied_count = 0
     skipped: list[dict] = []
+
+    pending_mutations: list[tuple[Any, dict[str, Any]]] = []
 
     for entry in entries:
         disposition = entry.get("disposition")
         chunk_id = entry.get("chunk_id")
         natural_id = entry.get("natural_source_row_id")
-        legacy_id = entry.get("legacy_source_row_id")
+        legacy_id = str(entry.get("legacy_source_row_id")) if entry.get("legacy_source_row_id") is not None else None
+        expected_hash = entry.get("legacy_content_hash")
+        expected_status = entry.get("index_status")
+        expected_version = entry.get("index_version")
 
+        # Query existing row to distinguish ALREADY_APPLIED from CAS conflict
+        stmt = select(RagChunk).where(RagChunk.id == chunk_id)
+        row = session.execute(stmt).scalar_one_or_none()
+
+        if row is not None:
+            # Check if already applied (natural ID already present)
+            if disposition == DISPOSITION_REKEY and natural_id and row.source_row_id == natural_id:
+                already_applied_count += 1
+                continue
+
+            if disposition == DISPOSITION_TOMBSTONE and row.index_status == "DELETED":
+                already_applied_count += 1
+                continue
+
+            # Verify CAS invariants
+            cas_mismatches = []
+            if legacy_id is not None and row.source_row_id != legacy_id:
+                cas_mismatches.append(f"stale_legacy_id(expected={legacy_id}, actual={row.source_row_id})")
+            if expected_hash is not None and row.content_hash != expected_hash:
+                cas_mismatches.append(f"stale_content_hash(expected={expected_hash}, actual={row.content_hash})")
+            if expected_status is not None and row.index_status != expected_status:
+                cas_mismatches.append(f"stale_index_status(expected={expected_status}, actual={row.index_status})")
+            if expected_version is not None and row.index_version != expected_version:
+                cas_mismatches.append(f"stale_index_version(expected={expected_version}, actual={row.index_version})")
+
+            if cas_mismatches:
+                skipped.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "legacy_source_row_id": legacy_id,
+                        "disposition": disposition,
+                        "reason": f"optimistic concurrency check failed: {'; '.join(cas_mismatches)}",
+                    }
+                )
+                continue
+
+        # Valid mutation target
         where_clause = _build_where_clause(entry)
-
         if disposition == DISPOSITION_REKEY and natural_id:
-            if not dry_run:
-                result = session.execute(
-                    update(RagChunk).where(*where_clause).values(source_row_id=natural_id, updated_at=datetime.now(KST))
+            pending_mutations.append(
+                (
+                    update(RagChunk)
+                    .where(*where_clause)
+                    .values(source_row_id=natural_id, updated_at=datetime.now(KST)),
+                    {"type": "REKEY", "chunk_id": chunk_id},
                 )
-                if result.rowcount != 1:
-                    skipped.append(
-                        {
-                            "chunk_id": chunk_id,
-                            "legacy_source_row_id": legacy_id,
-                            "disposition": disposition,
-                            "reason": f"optimistic concurrency check failed: expected 1 row, matched {result.rowcount}",
-                        }
-                    )
-                    continue
-            rekey_count += 1
+            )
         elif disposition == DISPOSITION_TOMBSTONE:
-            if not dry_run:
-                result = session.execute(
-                    update(RagChunk).where(*where_clause).values(index_status="DELETED", updated_at=datetime.now(KST))
+            pending_mutations.append(
+                (
+                    update(RagChunk).where(*where_clause).values(index_status="DELETED", updated_at=datetime.now(KST)),
+                    {"type": "TOMBSTONE", "chunk_id": chunk_id},
                 )
-                if result.rowcount != 1:
-                    skipped.append(
-                        {
-                            "chunk_id": chunk_id,
-                            "legacy_source_row_id": legacy_id,
-                            "disposition": disposition,
-                            "reason": f"optimistic concurrency check failed: expected 1 row, matched {result.rowcount}",
-                        }
-                    )
-                    continue
-            tombstone_count += 1
+            )
         else:
             skipped.append(
                 {
                     "chunk_id": chunk_id,
                     "legacy_source_row_id": legacy_id,
                     "disposition": disposition,
-                    "reason": "manual review required",
+                    "reason": "unsupported_disposition",
                 }
             )
+
+    # In strict atomic mode, if any entry failed CAS, roll back entire batch
+    if strict_atomic and skipped and pending_mutations:
+        if not dry_run:
+            session.rollback()
+        return 0, 0, already_applied_count, skipped, "FAILED_ATOMIC_ROLLBACK"
+
+    # Execute mutations
+    for update_stmt, meta in pending_mutations:
+        if not dry_run:
+            result = session.execute(update_stmt)
+            if result.rowcount != 1:
+                if strict_atomic:
+                    session.rollback()
+                    skipped.append(
+                        {
+                            "chunk_id": meta["chunk_id"],
+                            "disposition": meta["type"],
+                            "reason": "concurrent modification during batch execution; entire batch rolled back",
+                        }
+                    )
+                    return 0, 0, already_applied_count, skipped, "FAILED_ATOMIC_ROLLBACK"
+                skipped.append(
+                    {
+                        "chunk_id": meta["chunk_id"],
+                        "disposition": meta["type"],
+                        "reason": "rowcount mismatch on execution",
+                    }
+                )
+                continue
+        if meta["type"] == "REKEY":
+            rekey_count += 1
+        elif meta["type"] == "TOMBSTONE":
+            tombstone_count += 1
 
     if not dry_run:
         session.commit()
 
-    return rekey_count, tombstone_count, skipped
+    if rekey_count > 0 or tombstone_count > 0:
+        status = "SUCCESS_APPLIED"
+    elif already_applied_count > 0 and not skipped:
+        status = "SUCCESS_NOOP"
+    elif skipped:
+        status = "FAILED_STALE_MANIFEST"
+    else:
+        status = "SUCCESS_NOOP"
+
+    return rekey_count, tombstone_count, already_applied_count, skipped, status
 
 
 def _render_report(  # noqa: PLR0913
     rekey_count: int,
     tombstone_count: int,
+    already_applied: int,
     skipped: list[dict],
     *,
+    status: str,
     as_json: bool,
     dry_run: bool,
+    receipt_reused: bool = False,
+    receipt_path: Path | None = None,
     preimage_path: Path | None = None,
     rollback_path: Path | None = None,
 ) -> None:
     payload: dict[str, Any] = {
+        "status": status,
         "dry_run": dry_run,
         "rekeyed": rekey_count,
         "tombstoned": tombstone_count,
+        "already_applied": already_applied,
+        "stale_rejected": len(skipped),
         "skipped": len(skipped),
         "skipped_entries": skipped,
+        "receipt_reused": receipt_reused,
     }
+    if receipt_path:
+        payload["receipt_path"] = str(receipt_path)
     if preimage_path:
         payload["preimage_path"] = str(preimage_path)
     if rollback_path:
@@ -330,15 +538,22 @@ def _render_report(  # noqa: PLR0913
     if as_json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     else:
+        if receipt_reused:
+            sys.stdout.write(f"receipt reused: {receipt_path}\n")
+        elif receipt_path:
+            sys.stdout.write(f"receipt written to: {receipt_path}\n")
         if preimage_path:
             sys.stdout.write(f"preimage written to: {preimage_path}\n")
         if rollback_path:
             sys.stdout.write(f"rollback manifest written to: {rollback_path}\n")
         mode_str = "dry-run" if dry_run else "apply"
-        sys.stdout.write(f"mode={mode_str} rekeyed={rekey_count} tombstoned={tombstone_count} skipped={len(skipped)}\n")
+        sys.stdout.write(
+            f"status={status} mode={mode_str} rekeyed={rekey_count} tombstoned={tombstone_count} "
+            f"already_applied={already_applied} stale_rejected={len(skipped)}\n"
+        )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912
     """Apply R2 RAG identity rekey manifest under maintenance lock."""
     args = _parse_args(argv)
     error = _validate_args(args)
@@ -358,6 +573,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write(f"rekey_apply_error: manifest validation failed: {header_error}\n")
         return 2
 
+    actual_manifest_sha = _compute_manifest_sha(manifest)
+    manifest_id = manifest.get("manifest_header", {}).get("manifest_id", "manifest-default")
+    tx_id = args.transaction_id or manifest.get("manifest_header", {}).get("transaction_id") or actual_manifest_sha[:16]
+
+    # Check for idempotent replay or transaction ID collision
+    if args.apply:
+        is_replay, existing_receipt, collision_err = _check_receipt_replay(tx_id, actual_manifest_sha)
+        if collision_err:
+            sys.stderr.write(f"rekey_apply_error: {collision_err}\n")
+            return 2
+
+        if is_replay and existing_receipt:
+            _render_report(
+                rekey_count=0,
+                tombstone_count=0,
+                already_applied=existing_receipt.get("already_applied_count", 0)
+                + existing_receipt.get("rekeyed_count", 0)
+                + existing_receipt.get("tombstoned_count", 0),
+                skipped=[],
+                status="SUCCESS_NOOP",
+                as_json=args.as_json,
+                dry_run=False,
+                receipt_reused=True,
+                receipt_path=Path(existing_receipt.get("receipt_path", "")),
+            )
+            return 0
+
     entries = manifest.get("entries", [])
 
     # Write preimage and rollback manifest (only on apply)
@@ -372,17 +614,41 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 1
 
         with db_engine.get_rag_index_session() as session:
-            rekey_count, tombstone_count, skipped = _apply_rekey(session, entries, dry_run=not args.apply)
+            rekey_count, tombstone_count, already_applied, skipped, status = _apply_rekey(
+                session, entries, dry_run=not args.apply
+            )
+
+        receipt_path: Path | None = None
+        if args.apply and status in ("SUCCESS_APPLIED", "SUCCESS_NOOP"):
+            receipt_path = _publish_immutable_receipt(
+                transaction_id=tx_id,
+                manifest_id=manifest_id,
+                manifest_sha=actual_manifest_sha,
+                status=status,
+                rekey_count=rekey_count,
+                tombstone_count=tombstone_count,
+                already_applied=already_applied,
+                stale_rejected=len(skipped),
+                preimage_path=preimage_path,
+                rollback_path=rollback_path,
+            )
 
         _render_report(
             rekey_count,
             tombstone_count,
+            already_applied,
             skipped,
+            status=status,
             as_json=args.as_json,
             dry_run=not args.apply,
+            receipt_reused=False,
+            receipt_path=receipt_path,
             preimage_path=preimage_path,
             rollback_path=rollback_path,
         )
+
+        if status.startswith("FAILED_"):
+            return 1
     except (SQLAlchemyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         sys.stderr.write(f"rekey_apply_error: {exc}\n")
         return 1
