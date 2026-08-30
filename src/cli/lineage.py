@@ -7,10 +7,14 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src.utils.logger import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from src.lineage.engine import LineageEngine
+
+logger = get_logger(__name__)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -152,7 +156,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _handle_player(engine, args)
         if args.subcommand == "audit":
             return _handle_audit(engine, args)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
+        logger.exception("Error during lineage tracing")
         sys.stderr.write(f"❌ Error during lineage tracing: {exc}\n")
         return 1
 

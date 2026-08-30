@@ -116,7 +116,8 @@ def _run_historical_cli(args: argparse.Namespace, context: CertificationContext,
             matrix_card = HistoricalReporter.render_ascii_matrix(hist_report, verbose=args.verbose)
             print(matrix_card)  # noqa: T201
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
+        logger.exception("Internal error during historical certification audit")
         print(f"❌ Internal error during historical certification audit: {exc}", file=sys.stderr)  # noqa: T201
         return EXIT_INTERNAL_ERROR
     else:
@@ -141,7 +142,8 @@ def main(argv: list[str] | None = None) -> int:
             filter_gate=args.gate,
             artifact_dir=json_out_path.parent,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
+        logger.exception("Configuration error initializing certification context")
         print(f"❌ Configuration error initializing certification context: {exc}", file=sys.stderr)  # noqa: T201
         return EXIT_CONFIG_ERROR
 
@@ -167,7 +169,8 @@ def main(argv: list[str] | None = None) -> int:
             card = CertificationReporter.render_ascii_card(report)
             print(card)  # noqa: T201
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
+        logger.exception("Internal error during certification run")
         print(f"❌ Internal error during certification run: {exc}", file=sys.stderr)  # noqa: T201
         return EXIT_INTERNAL_ERROR
     else:

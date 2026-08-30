@@ -228,7 +228,14 @@ Last updated: 2026-08-30
   - Candidate tests: **10,211 passed (+9 delta), 3 skipped in 59.66s (0 failures, 0 errors)**; Ruff: **0 errors**.
   - Artifacts: `Docs/certification/phase-105/gate-1-formula-contract/`.
 
-### Phase 104: Sabermetrics Formula Registry & Metric Reproducibility Certification (`kbo formula`) — STATUS: COMPLETED
+### Phase 104: Sabermetrics Formula Registry & Metric Reproducibility Certification (`kbo formula`) — STATUS: SUPERSEDED
+> [!WARNING]
+> **STATUS: SUPERSEDED**
+> This section records the pre-Phase-105 implementation state and historical context.
+> It must not be used as the current certification baseline.
+>
+> **Superseded by**: `Docs/certification/phase-105/README.md`
+
 - **Declarative Formula Registry Contract**: Standardized catalog of 33 versioned metrics (`AVG`, `OBP`, `SLG`, `OPS`, `ISO`, `BABIP_BAT`, `BB_PCT_BAT`, `K_PCT_BAT`, `BB_TO_K_BAT`, `wOBA`, `wRAA`, `wRC`, `wRC_PLUS`, `OPS_PLUS`, `GPA`, `SecA`, `RC`, `ERA`, `WHIP`, `FIP`, `K_9`, `BB_9`, `HR_9`, `K_PCT_PIT`, `BB_PCT_PIT`, `K_BB_PIT`, `BABIP_PIT`, `LOB_PCT`, `ERA_PLUS`, `DICE`, `SB_PCT`, `FPCT`, `RF_9`).
 - **45-Season League Context & Linear Weights Engine**: Era-calibrated constants for 1982~2026 (`DEAD_BALL_1980S`, `EXPANSION_1990S`, `OFFENSE_EXPLOSION_2014_2018`, modern baseline) with dynamic aggregation for $\text{lg}wOBA, wOBA\_scale, c_{FIP}, \text{lg}ERA, \text{lg}OBP, \text{lg}SLG, \text{lg}OPS, \text{lg}BA, \text{lg}R/\text{lg}PA$.
 - **100% Mathematical Reproducibility Census**:
