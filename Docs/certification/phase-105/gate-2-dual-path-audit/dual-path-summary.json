@@ -3,7 +3,15 @@
   "status": "PASSED",
   "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
   "environment": "sqlite_local_baseline",
-  "audit_type": "INDEPENDENT_DUAL_PATH_CENSUS",
+  "audit_type": "INDEPENDENT_DUAL_PATH_SAMPLE_AUDIT",
+  "sample_population": {
+    "total_rows_sampled": 1000,
+    "batting_rows": 500,
+    "pitching_rows": 500,
+    "distinct_natural_entity_keys": 967,
+    "cross_category_overlap_keys": 33,
+    "natural_key_structure": "(season, player_id, team_code, league, level)"
+  },
   "total_metrics_evaluated": 33,
   "total_evaluations_checked": 16500,
   "reproducible_count": 16500,
@@ -18,9 +26,10 @@
     "DIVERGENT": 0
   },
   "oracle_architectures": {
-    "path_a": "FormulaRegistry (pure declarative mathematical definitions with Decimal ROUND_HALF_UP precision)",
-    "path_b": "IndependentFormulaOracle (independent pure functional cross-checker with zero shared state)"
+    "path_a": "FormulaRegistry (declarative mathematical definitions with Decimal ROUND_HALF_UP precision)",
+    "path_b": "PythonReferenceCalculator / IndependentFormulaOracle (independent pure reference calculator with zero shared state)",
+    "path_c": "SqlReferenceOracle (src/formulas/reference_sql/ ANSI SQL / SQLite pure reference queries)"
   },
   "is_compliant": true,
-  "generated_at_utc": "2026-08-30T02:13:07Z"
+  "generated_at_utc": "2026-08-30T07:20:00Z"
 }

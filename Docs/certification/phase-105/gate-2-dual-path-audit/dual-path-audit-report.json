@@ -1,5 +1,5 @@
 {
-  "audit_type": "INDEPENDENT_DUAL_PATH_CENSUS",
+  "audit_type": "INDEPENDENT_DUAL_PATH_SAMPLE_AUDIT",
   "scope": "LOCAL_SQLITE_BASELINE",
   "season": null,
   "category": null,

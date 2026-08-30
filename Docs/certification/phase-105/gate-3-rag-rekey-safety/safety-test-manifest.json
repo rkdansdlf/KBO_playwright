@@ -1,0 +1,37 @@
+{
+  "manifest_version": "gate-3-safety-manifest-v1",
+  "generated_at_kst": "2026-08-30T16:21:00+09:00",
+  "target_subsystem": "rag_natural_key_rekey",
+  "safety_scope": "LOCAL_EPHEMERAL_APPLY_ONLY",
+  "test_suites": [
+    "tests/services/test_rag_rekey_safety_gate3.py",
+    "tests/cli/test_apply_rag_rekey.py"
+  ],
+  "invariants_tested": [
+    "NORMAL_APPLY_EXACT_ROWCOUNT",
+    "IDEMPOTENT_REAPPLY_ZERO_MUTATION_EXPLICIT_SUCCESS_NOOP",
+    "CAS_STALE_CONTENT_HASH_FAIL_CLOSED",
+    "CAS_STALE_LEGACY_ID_FAIL_CLOSED",
+    "CAS_STALE_INDEX_STATUS_FAIL_CLOSED",
+    "CAS_STALE_INDEX_VERSION_FAIL_CLOSED",
+    "TRANSACTION_ATOMICITY_ROLLBACK",
+    "TARGET_COLLISION_TOMBSTONE_ISOLATION",
+    "PRECONVERTED_ROWS_UNTOUCHED",
+    "MANIFEST_SHA256_INTEGRITY_CHECK",
+    "DATABASE_FINGERPRINT_BINDING_CHECK",
+    "INVERSE_ROLLBACK_MANIFEST_RESTORES_STATE",
+    "FAULT_INJECTION_MID_LOOP_ABORT_SAFETY",
+    "DSN_PRODUCTION_WRITE_ENV_GUARD",
+    "IMMUTABLE_RECEIPT_CREATION_AND_VERIFICATION",
+    "IMMUTABLE_RECEIPT_IDEMPOTENT_REPLAY_SUCCESS_NOOP",
+    "IMMUTABLE_RECEIPT_TRANSACTION_COLLISION_REJECTED",
+    "ORACLE_AND_STAGING_DSN_PROHIBITED_IN_SAFETY_MODE",
+    "PRIMARY_SQLITE_DEV_DB_WRITE_PROHIBITED"
+  ],
+  "execution_constraints": {
+    "staging_access_blocked": true,
+    "production_access_blocked": true,
+    "primary_sqlite_dev_db_untouched": true,
+    "ephemeral_database_lifecycle": "created_and_destroyed_per_fixture"
+  }
+}
