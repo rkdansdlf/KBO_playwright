@@ -51,6 +51,7 @@ from src.scheduler.jobs.maintenance import (
     crawl_retired_players_job,
     data_integrity_check_job,
     heal_unverified_pbp_job,
+    rag_identity_drift_job,
     recalc_milestones_and_rag_job,
     sparse_terms_catchup_job,
     sync_rag_incremental_job,
@@ -309,6 +310,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         (sync_rag_incremental_job, trigger_cls(hour=5, minute=0), "sync_rag_incremental", 7200),
         (sparse_terms_catchup_job, trigger_cls(hour=5, minute=40), "sparse_terms_catchup", 7200),
         (rag_audit_sentinel_job, trigger_cls(hour=6, minute=5), "rag_audit_sentinel", 7200),
+        (rag_identity_drift_job, trigger_cls(hour=6, minute=20), "rag_identity_drift", 7200),
         (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
         (
             cleanup_stale_data_job,

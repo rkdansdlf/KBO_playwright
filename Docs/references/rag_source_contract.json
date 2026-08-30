@@ -5,119 +5,193 @@
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "player_id",
+      "key_format": "{player_id}"
     },
     "batting": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{player_id}_{season}_{team_code}_{league}",
+      "key_format": "player_season_batting"
     },
     "pitching": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{player_id}_{season}_{team_code}_{league}",
+      "key_format": "player_season_pitching"
     },
     "games": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{game_id}",
+      "key_format": "game"
     },
     "standings": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{standings_date}_{team_code}",
+      "key_format": "team_standings_daily"
     },
     "movements": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{movement_date}_{team_code}_{player_name}_{section}_{fingerprint}",
+      "key_format": "player_movements"
     },
     "lineups": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{game_id}_{team_side}",
+      "key_format": "game_lineups"
     },
     "pbp": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{game_id}_{source_row_index} 또는 {game_id}_content_{digest}",
+      "key_format": "game_play_by_play"
     },
     "rankings": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{season}_{metric}",
+      "key_format": "stat_rankings"
     },
     "teams": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{team_id}",
+      "key_format": "teams"
     },
     "team_history": {
       "classification": "core",
       "production": "required",
       "staging": "required",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{season}_{team_code}",
+      "key_format": "team_history"
     },
     "awards": {
       "classification": "enrichment",
       "production": "optional",
       "staging": "optional",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{year}_{award_type}_{category_or_NONE}_{player_name}",
+      "key_format": "awards"
     },
     "events": {
       "classification": "enrichment",
       "production": "optional",
       "staging": "optional",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{event_id}",
+      "key_format": "team_events"
     },
     "highlights": {
       "classification": "enrichment",
       "production": "optional",
       "staging": "optional",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{game_id}_{highlight_type}_{event_seq} 또는 {game_id}_{highlight_type}_summary_{digest}",
+      "key_format": "game_highlights"
     },
     "markdown_docs": {
       "classification": "enrichment",
       "production": "optional",
       "staging": "optional",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{source_path}_{chunk_index}",
+      "key_format": "markdown_docs"
     },
     "kbo_definitions": {
       "classification": "enrichment",
       "production": "optional",
       "staging": "optional",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{source_path}_{chunk_index}",
+      "key_format": "kbo_definitions"
     },
     "kbo_regulations": {
       "classification": "enrichment",
       "production": "optional",
       "staging": "optional",
       "fixture": "optional",
-      "dev": "optional"
+      "dev": "optional",
+      "natural_key": "{source_path}_{chunk_index}",
+      "key_format": "kbo_regulations"
+    },
+    "milestone": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
+      "fixture": "optional",
+      "dev": "optional",
+      "natural_key": "{season}_{player_id}_{category}",
+      "key_format": "player_milestone"
+    },
+    "futures_schedule": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
+      "fixture": "optional",
+      "dev": "optional",
+      "natural_key": "{game_id}",
+      "key_format": "futures_game_schedule"
+    },
+    "player_splits": {
+      "classification": "enrichment",
+      "production": "optional",
+      "staging": "optional",
+      "fixture": "optional",
+      "dev": "optional",
+      "natural_key": "{season}_{player_id}_{split_type}_{split_key}",
+      "key_format": "player_splits_stat"
     }
+  },
+  "r2_identity_spec": {
+    "version": "r2",
+    "description": "Deterministic natural keys replacing legacy numeric IDs",
+    "dispositions": [
+      "SAFE_REKEY",
+      "TARGET_EXISTS_SAME_CONTENT",
+      "TARGET_EXISTS_CONTENT_MISMATCH",
+      "SOURCE_COLLISION",
+      "ORPHAN_SOURCE_ROW"
+    ],
+    "collision_handling": "keep_first_tombstone_rest",
+    "orphan_policy": "tombstone_if_source_deleted_else_archive"
   }
 }

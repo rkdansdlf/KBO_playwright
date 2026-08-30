@@ -354,3 +354,53 @@ def cleanup_stale_data_job() -> None:
             logger.info("=== Stale Data Cleanup Completed (%d files cleaned) ===", total_cleaned)
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Stale data cleanup job failed")
+
+
+@_with_lock_skip_guard
+def rag_identity_drift_job() -> None:
+    """Daily RAG identity drift detection: census legacy vs natural keys, alert on unsafe drift."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting RAG Identity Drift Detection ===")
+        try:
+            import json
+            import os
+            import subprocess
+            import sys
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "RAG_INDEX_ALLOW_WRITE": "1",
+                    "RAG_INDEX_ALLOW_PRODUCTION_WRITE": "1",
+                }
+            )
+
+            # Run census with fail-on-unsafe
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "src.cli.kbo",
+                    "rag",
+                    "census",
+                    "--dry-run",
+                    "--json",
+                    "--fail-on-unsafe",
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=1800,
+                check=False,
+            )
+
+            if result.returncode != 0:
+                census_data = json.loads(result.stdout) if result.stdout else {}
+                unsafe_count = census_data.get("unsafe_entry_count", "unknown")
+                logger.warning("RAG identity drift detected: %s unsafe entries (legacy rekey needed)", unsafe_count)
+                # Alert but don't fail the job - drift is informational
+            else:
+                logger.info("RAG identity drift check passed: no unsafe entries")
+
+        except Exception:
+            logger.exception("RAG identity drift detection failed")

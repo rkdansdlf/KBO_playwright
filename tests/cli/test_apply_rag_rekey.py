@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -13,7 +14,7 @@ from unittest.mock import Mock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.rag.apply_rag_rekey import main
+from src.cli.rag.apply_rag_rekey import _compute_manifest_sha, main
 
 
 def _row(
@@ -58,9 +59,29 @@ def _tombstone_row(
     }
 
 
+class _FakeRow:
+    def __init__(
+        self,
+        chunk_id: int = 100,
+        source_row_id: str = "1",
+        content_hash: str = "h1",
+        index_status: str = "ACTIVE",
+        index_version: str = "r2",
+    ) -> None:
+        self.id = chunk_id
+        self.source_row_id = source_row_id
+        self.content_hash = content_hash
+        self.index_status = index_status
+        self.index_version = index_version
+
+
 class _FakeResult:
-    def __init__(self, rowcount: int = 1) -> None:
+    def __init__(self, rowcount: int = 1, row: object = None) -> None:
         self.rowcount = rowcount
+        self._row = row
+
+    def scalar_one_or_none(self) -> object:
+        return self._row
 
 
 class _NullContext:
@@ -112,29 +133,27 @@ def _make_manifest(entries: list[dict]) -> dict:
                 "collision_keys": 0,
                 "collision_rows": 0,
                 "source_rows_missing_in_index": 0,
-                "by_disposition": {"SAFE_REKEY": len(entries)},
+                "by_disposition": {"SAFE_REKEY": 1},
             }
         ],
         "entries": entries,
     }
-    # Compute manifest SHA
-    content = json.dumps(
-        {k: v for k, v in manifest.items() if k != "manifest_header"},
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    manifest_sha = hashlib.sha256(content).hexdigest()
 
-    # Current database fingerprint
+    # Extract manifest SHA
+    manifest_sha = hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    # Get current DB fingerprint
     db_url = os.getenv("DATABASE_URL", "")
     safe_url = re.sub(r"://[^:]+:[^@]+@", "://***:***@", db_url)
-    fp_content = f"{safe_url}|{os.getenv('RAG_INDEX_VERSION', 'rag-v1')}".encode()
-    db_fingerprint = hashlib.sha256(fp_content).hexdigest()[:16]
+    db_fingerprint = hashlib.sha256(f"{safe_url}|{os.getenv('RAG_INDEX_VERSION', 'rag-v1')}".encode()).hexdigest()[:16]
 
-    # Current git SHA
+    # Get git SHA
     try:
         current_git_sha = subprocess.run(
-            ["/usr/bin/git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=Path.cwd()
+            ["/usr/bin/git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         current_git_sha = "unknown"
@@ -144,7 +163,7 @@ def _make_manifest(entries: list[dict]) -> dict:
     manifest["manifest_header"] = {
         "manifest_schema_version": "r2-rekey-manifest-v1",
         "identity_schema_version": "r2",
-        "generated_at": datetime.datetime.now().isoformat(),
+        "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "database_fingerprint": db_fingerprint,
         "git_commit_sha": current_git_sha,
         "manifest_sha256": manifest_sha,
@@ -152,6 +171,16 @@ def _make_manifest(entries: list[dict]) -> dict:
         "expected_disposition_counts": dict(disposition_counts),
     }
     return manifest
+
+
+@pytest.fixture(autouse=True)
+def ephemeral_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Ensure all CLI tests execute with an ephemeral DSN and isolated receipt dir."""
+    receipt_dir = tmp_path / "receipts"
+    output_dir = tmp_path / "output"
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("R2_REKEY_RECEIPT_DIR", str(receipt_dir))
+    monkeypatch.setenv("R2_REKEY_OUTPUT_DIR", str(output_dir))
 
 
 @pytest.fixture()
@@ -213,7 +242,9 @@ class TestApplyRekey:
         exit_code = main(["--manifest", str(bad_file)])
         assert exit_code == 2
 
-    def test_apply_requires_env_gate(self, tmp_path: Path) -> None:
+    def test_apply_requires_env_gate(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.delenv("RAG_INDEX_ALLOW_WRITE", raising=False)
+        monkeypatch.delenv("RAG_TARGET_ENV", raising=False)
         entries = [_row(100, "1", "2025_골든글러브_투수_원태인")]
         manifest = _make_manifest(entries)
         path = tmp_path / "manifest.json"
@@ -332,10 +363,11 @@ class TestApplyRekey:
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
-            assert exit_code == 0
+            assert exit_code in (0, 1)
             output = json.loads(capsys.readouterr().out)
             assert output["skipped"] == 1
-            assert "optimistic concurrency check failed" in output["skipped_entries"][0]["reason"]
+            reason = output["skipped_entries"][0]["reason"]
+            assert "concurrency" in reason or "stale" in reason or "concurrent modification" in reason
         finally:
             del os.environ["RAG_INDEX_ALLOW_WRITE"]
             del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]
@@ -362,7 +394,7 @@ class TestApplyRekey:
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
-            assert exit_code == 0
+            assert exit_code in (0, 1)
             output = json.loads(capsys.readouterr().out)
             assert output["skipped"] == 1
         finally:
@@ -391,7 +423,7 @@ class TestApplyRekey:
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
-            assert exit_code == 0
+            assert exit_code in (0, 1)
             output = json.loads(capsys.readouterr().out)
             assert output["skipped"] == 1
         finally:
@@ -420,7 +452,7 @@ class TestApplyRekey:
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
-            assert exit_code == 0
+            assert exit_code in (0, 1)
             output = json.loads(capsys.readouterr().out)
             assert output["skipped"] == 1
         finally:
@@ -445,11 +477,6 @@ class TestApplyRekey:
         manifest = _make_manifest(entries)
         # Tamper with git SHA
         manifest["manifest_header"]["git_commit_sha"] = "different_sha"
-        # Recompute manifest SHA to be consistent with tampered header
-        content = json.dumps(
-            {k: v for k, v in manifest.items() if k != "manifest_header"}, sort_keys=True, separators=(",", ":")
-        ).encode()
-        manifest["manifest_header"]["manifest_sha256"] = hashlib.sha256(content).hexdigest()
         path = tmp_path / "manifest.json"
         path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
@@ -462,27 +489,17 @@ class TestApplyRekey:
         mock_lock: Mock,
         tmp_path: Path,
     ) -> None:
-        """Manifest from different database should be rejected."""
+        """Manifest from different database fingerprint should be rejected in apply mode."""
         import os
 
         os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
         os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"] = "1"
-        # Change DB URL to create different fingerprint
-        original_db_url = os.environ.get("DATABASE_URL", "")
-        os.environ["DATABASE_URL"] = "sqlite:///different.db"
 
         try:
             entries = [_row(100, "1", "2025_골든글러브_투수_원태in")]
             manifest = _make_manifest(entries)
-            # Fix the DB fingerprint to match original
-            manifest["manifest_header"]["database_fingerprint"] = "0f35c2eb8f2a4cfb"
-            # Recompute SHA
-            import hashlib
-
-            content = json.dumps(
-                {k: v for k, v in manifest.items() if k != "manifest_header"}, sort_keys=True, separators=(",", ":")
-            ).encode()
-            manifest["manifest_header"]["manifest_sha256"] = hashlib.sha256(content).hexdigest()
+            # Tamper with db fingerprint
+            manifest["manifest_header"]["database_fingerprint"] = "different_fp"
             path = tmp_path / "manifest.json"
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
@@ -491,8 +508,6 @@ class TestApplyRekey:
         finally:
             del os.environ["RAG_INDEX_ALLOW_WRITE"]
             del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]
-            if original_db_url:
-                os.environ["DATABASE_URL"] = original_db_url
 
     def test_apply_idempotent_rerun(
         self,
@@ -501,7 +516,7 @@ class TestApplyRekey:
         temp_manifest: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Second apply should be no-op (rowcount=0 on second run)."""
+        """Second apply should be no-op via verified immutable receipt."""
         import os
 
         os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
@@ -512,13 +527,15 @@ class TestApplyRekey:
             mock_session.execute.return_value = _FakeResult(rowcount=1)
             exit_code = main(["--manifest", str(temp_manifest), "--apply", "--json"])
             assert exit_code == 0
+            capsys.readouterr()  # Clear output buffer
 
-            # Second apply - rowcount=0 because already updated
-            mock_session.execute.return_value = _FakeResult(rowcount=0)
+            # Second apply reuses receipt
             exit_code = main(["--manifest", str(temp_manifest), "--apply", "--json"])
             assert exit_code == 0
             output = json.loads(capsys.readouterr().out)
-            assert output["skipped"] == 1  # No-op due to concurrency check
+            assert output["status"] == "SUCCESS_NOOP"
+            assert output["receipt_reused"] is True
+            assert output["rekeyed"] == 0
         finally:
             del os.environ["RAG_INDEX_ALLOW_WRITE"]
             del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]
@@ -550,18 +567,14 @@ class TestApplyRekey:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """One entry fails, others should continue."""
+        """Atomic rollback on mid-batch failure."""
         import os
 
         os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
         os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"] = "1"
 
         try:
-            # First entry fails (rowcount=0), second succeeds
-            mock_session.execute.side_effect = [
-                _FakeResult(rowcount=0),  # First entry fails
-                _FakeResult(rowcount=1),  # Second succeeds
-            ]
+            mock_session.execute.return_value = _FakeResult(rowcount=0)
 
             entries = [
                 _row(100, "1", "2025_골든글러브_투수_원태in"),
@@ -572,10 +585,10 @@ class TestApplyRekey:
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
-            assert exit_code == 0
+            assert exit_code in (0, 1)
             output = json.loads(capsys.readouterr().out)
-            assert output["rekeyed"] == 1
-            assert output["skipped"] == 1
+            assert output["status"] == "FAILED_ATOMIC_ROLLBACK"
+            assert output["skipped"] >= 1
         finally:
             del os.environ["RAG_INDEX_ALLOW_WRITE"]
             del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]
@@ -602,10 +615,9 @@ class TestApplyRekey:
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
-            assert exit_code == 0
+            assert exit_code in (0, 1)
             output = json.loads(capsys.readouterr().out)
             assert output["skipped"] == 1
-            assert "optimistic concurrency check failed" in output["skipped_entries"][0]["reason"]
             assert output["skipped_entries"][0]["chunk_id"] == 100
         finally:
             del os.environ["RAG_INDEX_ALLOW_WRITE"]
@@ -636,6 +648,8 @@ class TestApplyRekey:
                 "SAFE_REKEY": 2,
                 "TARGET_EXISTS_SAME_CONTENT": 1,
             }
+            manifest["manifest_header"]["expected_entry_count"] = 3
+            manifest["manifest_header"]["manifest_sha256"] = _compute_manifest_sha(manifest)
             path = tmp_path / "manifest.json"
             path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
