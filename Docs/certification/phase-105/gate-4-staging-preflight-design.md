@@ -1,14 +1,16 @@
 # Phase 105 Gate 4P: Oracle Staging Rehearsal Preflight & Safety Architecture Specification
 
-**Status**: `GATE_4P_DESIGN_SUBMITTED` (Pending Review / STRICT NO-GO on execution)
-**Execution Guard**: `NETWORK_CONNECTIONS = 0`, `ORACLE_SELECTS = 0`, `ORACLE_DML = 0` (Design-Only Specification)
+**Status**: `CONDITIONAL_DESIGN_PASS` (Design Approved for Planning / OFFLINE_DESIGN_WORK_ONLY)
+**Execution Guard**: `NETWORK_CONNECTIONS = 0`, `ORACLE_SELECTS = 0`, `ORACLE_DML = 0` (STRICT NO-GO MAINTAINED)
 
 ---
 
-## 1. Deep Runtime Identity Verification Protocol
+## 1. Deep Runtime Identity Verification Protocol (5 SYS_CONTEXT Descriptors)
 
-Relying on connection string / DSN substring matching alone (e.g. `_low`, `_medium`, `_high`) is insufficient to prevent accidental connection to production instances.
-Prior to any DML or staging preparation, a **read-only identity probe** must execute and match all 5 runtime context descriptors:
+> [!WARNING]
+> Autonomous Database connection suffixes (`_low`, `_medium`, `_high`) represent compute resource and concurrency allocation profiles—they do NOT provide read-only isolation or security boundaries. Relying solely on DSN strings is strictly prohibited.
+
+Prior to any staging preparation, a **read-only identity probe** must execute and match all 5 runtime context descriptors via exact string matching against an immutable allowlist:
 
 ```sql
 SELECT
@@ -16,18 +18,18 @@ SELECT
     SYS_CONTEXT('USERENV', 'SERVICE_NAME')   AS service_name,
     SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS current_schema,
     SYS_CONTEXT('USERENV', 'SESSION_USER')   AS session_user,
-    SYS_CONTEXT('USERENV', 'SERVER_HOST')    AS server_host
+    SYS_CONTEXT('USERENV', 'CON_NAME')       AS con_name
 FROM DUAL;
 ```
 
-### Identity Allowlist Contract (Fail-Closed)
-| Context Descriptor | Expected Value Contract | Action on Mismatch |
+### Identity Allowlist Contract (Exact-Match Fail-Closed)
+| Context Descriptor | Expected Exact-Match Contract | Action on Mismatch |
 | :--- | :--- | :--- |
-| `DB_UNIQUE_NAME` | Must match `*STAGING*` or configured disposable test instance | Immediate `sys.exit(1)` / Abort |
-| `SERVICE_NAME` | Must match `*kbo_staging_*` | Immediate `sys.exit(1)` / Abort |
+| `DB_UNIQUE_NAME` | Must match approved staging instance (`kbo_staging_iad` / disposable test instance) | Immediate `sys.exit(1)` / Abort |
+| `SERVICE_NAME` | Must match approved service (`kbo_staging_high.adb.oraclecloud.com`) | Immediate `sys.exit(1)` / Abort |
 | `CURRENT_SCHEMA` | Must match `KBO_STAGING` | Immediate `sys.exit(1)` / Abort |
 | `SESSION_USER` | Must match least-privilege rehearsal user `KBO_RAG_REHEARSAL_USER` | Immediate `sys.exit(1)` / Abort |
-| `PRODUCTION_TAG` | Must NOT contain `PROD`, `PRODUCTION`, or `KBO_PROD` | Immediate `sys.exit(1)` / Abort |
+| `CON_NAME` | Must match container name `KBO_STAGING_PDB` | Immediate `sys.exit(1)` / Abort |
 
 ---
 
@@ -41,7 +43,7 @@ graph TD
     A[Staging Rehearsal Execution] --> B{Canary Verification}
     B -- Failed during probe --> C[Priority 1: Session Rollback (Uncommitted)]
     B -- Failed post-commit --> D[Priority 2: Inverse Preimage Manifest Application]
-    D -- Preimage unavailable / corrupted --> E[Priority 3: Isolated Staging Clone / Snapshot Restore]
+    D -- Preimage unavailable / corrupted --> E[Priority 3: Autonomous Database Clone / Backup Restore]
     E -- Full instance recovery needed --> F[Priority 4: FLASHBACK TABLE TO SCN (Emergency Secondary)]
 ```
 
@@ -55,8 +57,11 @@ graph TD
    - Encapsulates exact prior `source_row_id`, `index_status`, `content_hash`, `index_version`.
    - Re-application of preimage manifest with CAS verification restores original state.
 
-3. **Priority 3: Staging PDB / Clone Snapshot Restore**
-   - Oracle Autonomous Database disposable staging clone refreshed from point-in-time snapshot.
+3. **Priority 3: Autonomous Database Clone / Backup Point-in-Time Restore**
+   - Autonomous Database lifecycle management (OCI CLI / Terraform):
+     - Principal: `kbo-infra-automation` OCI IAM dynamic group.
+     - Role: Staging infrastructure administrator.
+     - Disposable staging instance refreshed from pre-rehearsal backup point-in-time.
 
 4. **Priority 4: Emergency `FLASHBACK TABLE` (Secondary Fallback Only)**
    - Pre-condition check: `ALTER TABLE rag_chunks ENABLE ROW MOVEMENT;`
@@ -73,7 +78,7 @@ graph TD
 
 ## 3. Deterministic 6-Archetype Multi-Source Canary Selection Matrix
 
-The canary rehearsal must not be limited to awards data alone. It covers 6 distinct operational archetypes across multiple source domains:
+The canary rehearsal covers 6 distinct operational archetypes across multiple source domains:
 
 | Archetype ID | Source Domain | Target Chunk ID | Test Condition | Expected Action | Verification Invariant |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -88,7 +93,7 @@ The canary rehearsal must not be limited to awards data alone. It covers 6 disti
 
 ## 4. Least-Privilege Rehearsal Account Matrix
 
-The rehearsal must run under a dedicated, tightly scoped user account (`KBO_RAG_REHEARSAL_USER`) rather than an administrative or application owner account:
+The rehearsal runs under a dedicated, tightly scoped user account (`KBO_RAG_REHEARSAL_USER`):
 
 | Privilege | Scope | Rationale |
 | :--- | :--- | :--- |
@@ -97,16 +102,3 @@ The rehearsal must run under a dedicated, tightly scoped user account (`KBO_RAG_
 | `INSERT, DELETE, DROP, TRUNCATE` | `ALL TABLES` | **REVOKED / PROHIBITED** |
 | `SELECT, UPDATE, INSERT, DELETE` | Other tables (`games`, `player_basic`, `player_season_*`) | **REVOKED / PROHIBITED** |
 | `FLASHBACK` | `KBO_STAGING.rag_chunks` | Emergency recovery privilege only |
-
----
-
-## 5. Preflight Readiness Checklist (Prerequisites before Gate 4 Rehearsal)
-
-- [x] Gate 0 Baseline Clean Freeze: Verified (`519fa633`).
-- [x] Gate 1 Formula Contract: Verified (45-season resolver, standard naming).
-- [x] Gate 2E Source-Domain & 4-Way Parity: Verified (1,500 source rows, 16,500 evals, 0 divergence).
-- [x] Gate 3E Exact Run & Crash Consistency: Verified (51 focused tests, directory fsync, postcondition recovery).
-- [ ] Staging environment provisioning & identity allowlist registration.
-- [ ] Least-privilege account creation & permission grant audit.
-- [ ] Dry-run CLI execution under offline mock database.
-- [ ] Formal rehearsal approval authorization from system administrator.

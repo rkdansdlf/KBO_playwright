@@ -4,19 +4,21 @@
   "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
   "environment": "sqlite_ephemeral_disposable",
   "test_target": "src/cli/rag/apply_rag_rekey.py",
+  "tested_code_commit": "50a4cbe0346cf53951e27913ff2a19e725f99764",
+  "tested_code_tree": "ed585243faaa120a879732405cee8247a5a5abae",
   "test_suites": [
     "tests/services/test_rag_rekey_safety_gate3.py",
     "tests/cli/test_apply_rag_rekey.py"
   ],
-  "tests_collected": 51,
-  "tests_passed": 51,
+  "tests_collected": 52,
+  "tests_passed": 52,
   "tests_failed": 0,
   "tests_errored": 0,
   "safety_contract_verifications": [
     {
       "test_suite": "tests/services/test_rag_rekey_safety_gate3.py",
-      "test_count": 30,
-      "passed": 30,
+      "test_count": 31,
+      "passed": 31,
       "key_contracts": [
         "Normal apply exact mutation match (100% rowcount parity)",
         "Idempotency re-apply 0 mutations, explicit SUCCESS_NOOP",
@@ -47,7 +49,8 @@
         "Transaction ID path and directory traversal validation",
         "Hard crash post-commit subprocess exit recovery (RECOVERED_RECEIPT_REBUILT)",
         "Post-commit receipt I/O failure recovery (RECOVERED_RECEIPT_REBUILT)",
-        "Receipt parent directory fsync durability"
+        "Receipt parent directory fsync durability",
+        "True subprocess hard-crash exit 137 recovery (RECOVERED_RECEIPT_REBUILT)"
       ]
     },
     {
@@ -58,24 +61,23 @@
         "CLI argument parsing, validation, help",
         "Missing manifest and invalid JSON rejection",
         "Missing header and env gate enforcement",
-        "Dry-run normal rekey and dry-run tombstone",
-        "Apply normal rekey and apply tombstone",
-        "Stale legacy ID and content hash rejection",
-        "Wrong index status and version rejection",
-        "Manifest tampering and git SHA mismatch rejection",
-        "Wrong DB fingerprint rejection",
-        "Idempotent rerun and maintenance lock failure abort",
-        "Partial failure continuation and skip entries preservation",
-        "Mixed dispositions manifest execution"
+        "Dry-run normal rekey and tombstone previews",
+        "Apply execution with rowcount match",
+        "Optimistic CAS concurrency rejection on stale data",
+        "Manifest cryptographic checksum verification",
+        "Git SHA commit binding validation",
+        "Database snapshot fingerprint validation",
+        "Idempotent re-run detection",
+        "Maintenance lock acquisition enforcement",
+        "Skip entries preserved in report"
       ]
     }
   ],
-  "safety_guarantees": {
-    "live_database_mutated": false,
-    "production_access_count": 0,
-    "staging_access_count": 0,
-    "production_write_count": 0,
-    "source_file_kbo_dev_db_modified": false
-  },
-  "generated_at_kst": "2026-08-30T17:40:00+09:00"
+  "invariants_confirmed": {
+    "zero_unintended_mutations": true,
+    "database_corruption_prevented": true,
+    "uncommitted_leak_zero": true,
+    "recovery_receipt_rebuilt_on_crash": true,
+    "staging_production_access_zero": true
+  }
 }

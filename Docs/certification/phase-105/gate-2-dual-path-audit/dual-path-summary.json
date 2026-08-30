@@ -1,62 +1,100 @@
 {
-  "audit_cross_comparison_totals": {
-    "python_vs_python": {
-      "divergent": 0,
-      "exact": 16276,
-      "excluded": 0,
-      "floating_tolerance": 0,
-      "rounded_contract": 34,
-      "undefined": 190
+  "classification_precedence": [
+    "INVALID_SOURCE",
+    "FORMULA_UNDEFINED",
+    "NOT_STORED_BY_SCHEMA",
+    "STORED_NULL",
+    "STORED_ELIGIBLE"
+  ],
+  "cross_state_matrix_16500": {
+    "BOTH_DEFINED": 15639,
+    "BOTH_UNDEFINED_DIFFERENT_REASON": 0,
+    "BOTH_UNDEFINED_SAME_REASON": 861,
+    "REGISTRY_DEFINED_REFERENCE_UNDEFINED": 0,
+    "REGISTRY_UNDEFINED_REFERENCE_DEFINED": 0,
+    "UNSUPPORTED_BY_REFERENCE": 0
+  },
+  "elapsed_seconds": 0.1893,
+  "generated_at_kst": "2026-08-30T23:55:00+09:00",
+  "independent_engine_counts": {
+    "formula_registry": {
+      "defined": 15639,
+      "undefined": 861
     },
-    "python_vs_sql": {
-      "divergent": 0,
-      "exact": 16337,
-      "excluded": 0,
-      "floating_tolerance": 0,
-      "rounded_contract": 0,
-      "undefined": 163
+    "python_reference": {
+      "defined": 15639,
+      "undefined": 861
     },
-    "sql_vs_stored_among_eligible": {
-      "divergent": 0,
-      "exact": 3917,
-      "floating_tolerance": 4,
-      "rounded_contract": 1
+    "sql_reference": {
+      "defined": 15639,
+      "undefined": 861
     },
-    "stored_db_parity_disaggregation": {
-      "formula_undefined": 55,
-      "not_stored_by_schema": 11500,
-      "stored_divergent": 0,
-      "stored_eligible": 3922,
-      "stored_exact": 3917,
-      "stored_null": 1023,
-      "stored_rounded": 1,
-      "stored_tolerance": 4
+    "stored_database": {
+      "formula_undefined": 861,
+      "not_stored_by_schema": 10299,
+      "null": 1131,
+      "present_eligible": 4209
     }
   },
-  "catalog_summary": {
-    "baserunning_metrics": 1,
-    "batting_metrics": 17,
-    "fielding_metrics": 2,
-    "pitching_metrics": 13,
-    "total_canonical_metrics": 33,
-    "total_evaluations_executed": 16500,
-    "total_evaluations_planned": 16500
+  "populations": {
+    "formula_undefined_count": 861,
+    "not_stored_by_schema_count": 10299,
+    "planned_equation_verified": true,
+    "stored_db_eligible_denominator": 4209,
+    "stored_null_count": 1131,
+    "total_planned_population": 16500
   },
-  "elapsed_seconds": 0.1793,
-  "generated_at_kst": "2026-08-30T17:40:00+09:00",
   "query_hashes": {
     "batting_query_sha256": "bab126dd7e7669bff7fd8e7179177b07b950d603c9a05cbd3f8c312db04ef1ff",
-    "evaluation_plan_sha256": "6ea4a54ccfea8c36c3737785220ec69c7ef747ac83d5ae20e16062df5bc8919e",
+    "evaluation_plan_sha256": "c1133846e1409c2b84add13d39b1dfbed4a9afec40363660ca580c7bbdb141ab",
     "fielding_query_sha256": "976d4b5a78c52189931cfe3b10793334e8cb8d17d768891f7dc6fd7a60489a2e",
     "pitching_query_sha256": "f76cd5b18adfbb404a0a624c65aa754959cea82ff0b5898be974beefdffda9a1",
     "selected_entities_sha256": "418f11862a7f66ca80e8e8f3732c38f20d0b07b185ad109a4635fb85cc215bd4"
   },
-  "schema_version": "kbo-formula-gate2e-audit-v1",
+  "schema_version": "kbo-formula-gate2e-audit-v2",
   "source_cohort": {
     "batting_pitching_overlap_keys": 12,
     "player_season_batting_rows": 500,
     "player_season_fielding_rows": 500,
     "player_season_pitching_rows": 500,
     "total_physical_source_rows": 1500
+  },
+  "way_a_planned_population_audit_table": {
+    "registry_vs_python_reference": {
+      "divergent": 0,
+      "exact": 15607,
+      "parity_rate_pct": 100.0,
+      "planned_population": 16500,
+      "rounded_contract": 14,
+      "undefined": 861
+    },
+    "registry_vs_sql_reference": {
+      "divergent": 0,
+      "exact": 15639,
+      "parity_rate_pct": 100.0,
+      "planned_population": 16500,
+      "rounded_contract": 0,
+      "undefined": 861
+    },
+    "registry_vs_stored_db": {
+      "divergent": 0,
+      "eligible": 4209,
+      "exact": 4087,
+      "formula_undefined": 861,
+      "not_stored_by_schema": 10299,
+      "planned_population": 16500,
+      "rounded_contract": 1,
+      "stored_null": 1131
+    }
+  },
+  "way_b_eligible_denominator_audit_table": {
+    "registry_vs_stored_db": {
+      "comparison_denominator": 4209,
+      "divergent": 0,
+      "exact": 4087,
+      "floating_tolerance": 121,
+      "parity_rate_pct": 97.13,
+      "rounded_contract": 1
+    }
   }
 }

@@ -6,6 +6,13 @@
     "total_metrics": 33,
     "unknown_metric_ids": []
   },
+  "classification_precedence": [
+    "INVALID_SOURCE",
+    "FORMULA_UNDEFINED",
+    "NOT_STORED_BY_SCHEMA",
+    "STORED_NULL",
+    "STORED_ELIGIBLE"
+  ],
   "cohort_sizes": {
     "batting_rows": 500,
     "fielding_rows": 500,
@@ -14,11 +21,23 @@
     "total_source_rows": 1500
   },
   "dataset_name": "kbo-sabermetrics-source-cohort-1500",
-  "generation_timestamp": "2026-08-30T17:40:00+09:00",
+  "generation_timestamp": "2026-08-30T23:55:00+09:00",
   "metric_mappings": {
     "AVG": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\ud0c0\uc728",
@@ -41,6 +60,33 @@
     "BABIP_BAT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\uc778\ud50c\ub808\uc774 \ud0c0\uad6c \ud0c0\uc728",
@@ -66,6 +112,33 @@
     "BABIP_PIT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "batters_faced": {
+          "column": "tbf",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits_allowed": {
+          "column": "hits_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs_allowed": {
+          "column": "home_runs_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies_allowed": {
+          "column": "sacrifice_flies_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ud53c\uc778\ud50c\ub808\uc774 \ud0c0\uad6c \ud0c0\uc728",
@@ -91,6 +164,18 @@
     "BB_9": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "innings_outs": {
+          "column": "innings",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks_allowed": {
+          "column": "walks_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "9\uc774\ub2dd\ub2f9 \ubcfc\ub137",
@@ -113,6 +198,33 @@
     "BB_PCT_BAT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "plate_appearances": {
+          "column": "plate_appearances",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ubcfc\ub137 \ube44\uc728",
@@ -138,6 +250,18 @@
     "BB_PCT_PIT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "batters_faced": {
+          "column": "tbf",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks_allowed": {
+          "column": "walks_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ud22c\uc218 \ubcfc\ub137 \ube44\uc728",
@@ -160,6 +284,18 @@
     "BB_TO_K_BAT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ubcfc\uc0bc\ube44",
@@ -182,6 +318,33 @@
     "DICE": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "hit_batters": {
+          "column": "hit_batters",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs_allowed": {
+          "column": "home_runs_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "innings_outs": {
+          "column": "innings",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks_allowed": {
+          "column": "walks_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\uc218\ube44 \ub3c5\ub9bd \uc131\ubd84 \uc790\ucc45\uc810",
@@ -207,6 +370,19 @@
     "ERA": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "earned_runs": {
+          "column": "earned_runs",
+          "type": "INTEGER",
+          "unit": "COUNT"
+        },
+        "innings_outs": {
+          "column": "innings_outs",
+          "normalization": "decimal_innings = innings_outs / 3.0",
+          "type": "INTEGER",
+          "unit": "OUTS_COUNT"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\ud3c9\uade0\uc790\ucc45\uc810",
@@ -229,6 +405,18 @@
     "ERA_INDEX_NO_PARK": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "earned_runs": {
+          "column": "earned_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "innings_outs": {
+          "column": "innings",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\uc870\uc815 \ud3c9\uade0\uc790\ucc45\uc810 \uc9c0\uc218 (\ud30c\ud06c\ud329\ud130 \ubbf8\ubcf4\uc815)",
@@ -251,6 +439,38 @@
     "FIP": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "hit_batters": {
+          "column": "hit_batters",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs_allowed": {
+          "column": "home_runs_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "innings_outs": {
+          "column": "innings",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "intentional_walks_allowed": {
+          "column": "intentional_walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks_allowed": {
+          "column": "walks_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\uc218\ube44 \ubb34\uad00 \uc790\ucc45\uc810",
@@ -277,7 +497,25 @@
     "FPCT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "FIELDING",
-      "is_stored_by_schema": false,
+      "input_mapping": {
+        "assists": {
+          "column": "assists",
+          "type": "INTEGER",
+          "unit": "COUNT"
+        },
+        "errors": {
+          "column": "errors",
+          "type": "INTEGER",
+          "unit": "COUNT"
+        },
+        "formula_chances": "putouts + assists + errors",
+        "putouts": {
+          "column": "putouts",
+          "type": "INTEGER",
+          "unit": "COUNT"
+        }
+      },
+      "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\uc218\ube44\uc728",
       "metric_id": "FPCT",
@@ -294,11 +532,53 @@
         "position_id"
       ],
       "source_table": "player_season_fielding",
-      "stored_column": null
+      "stored_column": "fielding_pct"
     },
     "GPA": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\uc870\uc815 \uc120\uc218 \ud3c9\uc810",
@@ -327,6 +607,18 @@
     "HR_9": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "home_runs_allowed": {
+          "column": "home_runs_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "innings_outs": {
+          "column": "innings",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "9\uc774\ub2dd\ub2f9 \ud53c\ud648\ub7f0",
@@ -349,6 +641,33 @@
     "ISO": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\uc21c\uc7a5\ud0c0\uc728",
@@ -374,6 +693,18 @@
     "K_9": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "innings_outs": {
+          "column": "innings",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "9\uc774\ub2dd\ub2f9 \ud0c8\uc0bc\uc9c4",
@@ -396,6 +727,23 @@
     "K_BB_PIT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "batters_faced": {
+          "column": "tbf",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks_allowed": {
+          "column": "walks_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "K-BB%",
@@ -419,6 +767,38 @@
     "K_PCT_BAT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "plate_appearances": {
+          "column": "plate_appearances",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\uc0bc\uc9c4 \ube44\uc728",
@@ -445,6 +825,18 @@
     "K_PCT_PIT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "batters_faced": {
+          "column": "tbf",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "strikeouts": {
+          "column": "strikeouts",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ud22c\uc218 \ud0c8\uc0bc\uc9c4\uc728",
@@ -467,6 +859,33 @@
     "LOB_PCT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "hit_batters": {
+          "column": "hit_batters",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits_allowed": {
+          "column": "hits_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs_allowed": {
+          "column": "home_runs_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "runs_allowed": {
+          "column": "runs_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks_allowed": {
+          "column": "walks_allowed",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\uc794\ub8e8 \ucc98\ub9ac\uc728",
@@ -492,6 +911,33 @@
     "OBP": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\ucd9c\ub8e8\uc728",
@@ -517,6 +963,48 @@
     "OPS": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\ucd9c\ub8e8\uc728+\uc7a5\ud0c0\uc728",
@@ -545,6 +1033,48 @@
     "OPS_INDEX_NO_PARK": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\uc870\uc815 OPS \uc9c0\uc218 (\ud30c\ud06c\ud329\ud130 \ubbf8\ubcf4\uc815)",
@@ -573,6 +1103,38 @@
     "RC": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ub4dd\uc810 \uae30\uc5ec\ub3c4 (RC)",
@@ -599,6 +1161,24 @@
     "RF_9": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "FIELDING",
+      "input_mapping": {
+        "assists": {
+          "column": "assists",
+          "type": "INTEGER",
+          "unit": "COUNT"
+        },
+        "defensive_innings": {
+          "column": "innings",
+          "normalization": "baseball_outs = int(innings) * 3 + round((innings % 1) * 10); decimal_innings = baseball_outs / 3.0",
+          "type": "FLOAT",
+          "unit": "BASEBALL_INNINGS"
+        },
+        "putouts": {
+          "column": "putouts",
+          "type": "INTEGER",
+          "unit": "COUNT"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "9\uc774\ub2dd\ub2f9 \uc218\ube44 \ubc94\uc704 \uc9c0\uc218",
@@ -621,6 +1201,18 @@
     "SB_PCT": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BASERUNNING",
+      "input_mapping": {
+        "caught_stealing": {
+          "column": "caught_stealing",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "stolen_bases": {
+          "column": "stolen_bases",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ub3c4\ub8e8 \uc131\uacf5\ub960",
@@ -643,6 +1235,33 @@
     "SLG": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\uc7a5\ud0c0\uc728",
@@ -668,6 +1287,48 @@
     "SecA": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "caught_stealing": {
+          "column": "caught_stealing",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "stolen_bases": {
+          "column": "stolen_bases",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ubcf4\uc870 \ud0c0\uc728",
@@ -696,6 +1357,24 @@
     "WHIP": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "PITCHING",
+      "input_mapping": {
+        "hits_allowed": {
+          "column": "hits_allowed",
+          "type": "INTEGER",
+          "unit": "COUNT"
+        },
+        "innings_outs": {
+          "column": "innings_outs",
+          "normalization": "decimal_innings = innings_outs / 3.0",
+          "type": "INTEGER",
+          "unit": "OUTS_COUNT"
+        },
+        "walks_allowed": {
+          "column": "walks_allowed",
+          "type": "INTEGER",
+          "unit": "COUNT"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\uc774\ub2dd\ub2f9 \ucd9c\ub8e8\ud5c8\uc6a9\ub960",
@@ -719,6 +1398,58 @@
     "WRC_INDEX_NO_PARK": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "intentional_walks": {
+          "column": "intentional_walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "plate_appearances": {
+          "column": "plate_appearances",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\uc870\uc815 \ub4dd\uc810 \ucc3d\ucd9c \uc9c0\uc218 (\ud30c\ud06c\ud329\ud130 \ubbf8\ubcf4\uc815)",
@@ -749,6 +1480,53 @@
     "wOBA": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "intentional_walks": {
+          "column": "intentional_walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": true,
       "join_path": "NONE",
       "korean_name": "\uac00\uc911 \ucd9c\ub8e8\uc728",
@@ -778,6 +1556,58 @@
     "wRAA": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "intentional_walks": {
+          "column": "intentional_walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "plate_appearances": {
+          "column": "plate_appearances",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\ud3c9\uade0 \ub300\ube44 \ub4dd\uc810 \ucc3d\ucd9c",
@@ -808,6 +1638,58 @@
     "wRC": {
       "aggregation_level": "PLAYER_SEASON",
       "category": "BATTING",
+      "input_mapping": {
+        "at_bats": {
+          "column": "at_bats",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "doubles": {
+          "column": "doubles",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hbp": {
+          "column": "hbp",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "hits": {
+          "column": "hits",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "home_runs": {
+          "column": "home_runs",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "intentional_walks": {
+          "column": "intentional_walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "plate_appearances": {
+          "column": "plate_appearances",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "sacrifice_flies": {
+          "column": "sacrifice_flies",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "triples": {
+          "column": "triples",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        },
+        "walks": {
+          "column": "walks",
+          "type": "NUMERIC",
+          "unit": "STANDARD"
+        }
+      },
       "is_stored_by_schema": false,
       "join_path": "NONE",
       "korean_name": "\uac00\uc911 \ub4dd\uc810 \ucc3d\ucd9c",
@@ -838,9 +1720,9 @@
   },
   "query_hashes": {
     "batting_query_sha256": "bab126dd7e7669bff7fd8e7179177b07b950d603c9a05cbd3f8c312db04ef1ff",
-    "evaluation_plan_sha256": "6ea4a54ccfea8c36c3737785220ec69c7ef747ac83d5ae20e16062df5bc8919e",
+    "evaluation_plan_sha256": "c1133846e1409c2b84add13d39b1dfbed4a9afec40363660ca580c7bbdb141ab",
     "fielding_query_sha256": "976d4b5a78c52189931cfe3b10793334e8cb8d17d768891f7dc6fd7a60489a2e",
     "pitching_query_sha256": "f76cd5b18adfbb404a0a624c65aa754959cea82ff0b5898be974beefdffda9a1"
   },
-  "schema_version": "kbo-dataset-manifest-v2"
+  "schema_version": "kbo-dataset-manifest-v3"
 }
