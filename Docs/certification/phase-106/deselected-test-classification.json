@@ -1,0 +1,1952 @@
+{
+  "total_deselected": 242,
+  "summary": {
+    "SCHEDULER_INTEGRATION": 107,
+    "REPOSITORY_INTEGRATION": 72,
+    "CRAWLER_OFFLINE_REPLAY": 46,
+    "UNRELATED_SLOW_TEST": 13,
+    "CRAWLER_LIVE_BROWSER": 2,
+    "CRAWLER_LIVE_API": 1,
+    "PARSER_INTEGRATION": 1,
+    "ORACLE_INTEGRATION": 0
+  },
+  "crawler_related_count": 50,
+  "tests": [
+    {
+      "test_id": "tests/api/test_api.py::test_health_check",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_health_check",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/api/test_api.py::test_get_system_status",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_get_system_status",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/api/test_api.py::test_trigger_daily_update_lock_held",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_trigger_daily_update_lock_held",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/api/test_api.py::test_trigger_daily_update_success",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_trigger_daily_update_success",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/api/test_api.py::test_upload_text_relay_validation",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_upload_text_relay_validation",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/api/test_api.py::test_upload_text_relay_success",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_upload_text_relay_success",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/api/test_api.py::test_api_key_unauthorized_when_set",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_api_key_unauthorized_when_set",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/api/test_api.py::test_api_key_authorized_when_set",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_api_key_authorized_when_set",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/api/test_api.py::test_health_always_public",
+      "file": "tests/api/test_api.py",
+      "class_name": null,
+      "func_name": "test_health_always_public",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "FastAPI HTTP server endpoints and auth integration tests"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestAutoHealer::test_dry_run",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestAutoHealer",
+      "func_name": "test_dry_run",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestAutoHealer::test_pbp_dry_run",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestAutoHealer",
+      "func_name": "test_pbp_dry_run",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestAutoHealer::test_pbp_with_game_id",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestAutoHealer",
+      "func_name": "test_pbp_with_game_id",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestAutoHealer::test_pbp_with_lookback_days",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestAutoHealer",
+      "func_name": "test_pbp_with_lookback_days",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestAutoHealer::test_reset_flag",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestAutoHealer",
+      "func_name": "test_reset_flag",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestAutoHealer::test_no_args",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestAutoHealer",
+      "func_name": "test_no_args",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindStuckGames::test_returns_empty_when_none",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindStuckGames",
+      "func_name": "test_returns_empty_when_none",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindStuckGames::test_returns_games_when_found",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindStuckGames",
+      "func_name": "test_returns_games_when_found",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindInconsistentGames::test_returns_empty_when_none",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindInconsistentGames",
+      "func_name": "test_returns_empty_when_none",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindInconsistentGames::test_returns_games_when_mismatch",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindInconsistentGames",
+      "func_name": "test_returns_games_when_mismatch",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestApplyHealOutcome::test_completed_when_detail_saved",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestApplyHealOutcome",
+      "func_name": "test_completed_when_detail_saved",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestApplyHealOutcome::test_cancelled_when_failure_reason",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestApplyHealOutcome",
+      "func_name": "test_cancelled_when_failure_reason",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestApplyHealOutcome::test_unresolved_when_no_item",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestApplyHealOutcome",
+      "func_name": "test_unresolved_when_no_item",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestApplyHealOutcome::test_unresolved_with_other_reason",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestApplyHealOutcome",
+      "func_name": "test_unresolved_with_other_reason",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestApplyHealOutcome::test_unresolved_with_missing_reason",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestApplyHealOutcome",
+      "func_name": "test_unresolved_with_missing_reason",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestLogHealerSummary::test_logs_summary_dry_run",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestLogHealerSummary",
+      "func_name": "test_logs_summary_dry_run",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestLogHealerSummary::test_logs_summary_no_dry_run_success",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestLogHealerSummary",
+      "func_name": "test_logs_summary_no_dry_run_success",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestLogHealerSummary::test_logs_summary_no_dry_run_with_failures",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestLogHealerSummary",
+      "func_name": "test_logs_summary_no_dry_run_with_failures",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestLogAnomalySummary::test_logs_stuck_games_warning",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestLogAnomalySummary",
+      "func_name": "test_logs_stuck_games_warning",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestLogAnomalySummary::test_logs_inconsistent_warning",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestLogAnomalySummary",
+      "func_name": "test_logs_inconsistent_warning",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestLogAnomalySummary::test_no_warning_when_not_pending",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestLogAnomalySummary",
+      "func_name": "test_no_warning_when_not_pending",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestLogAnomalySummary::test_logs_anomaly_dates",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestLogAnomalySummary",
+      "func_name": "test_logs_anomaly_dates",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestLogAnomalySummary::test_no_stuck_games_not_in_pending",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestLogAnomalySummary",
+      "func_name": "test_no_stuck_games_not_in_pending",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestSendHealerStartAlert::test_sends_with_stuck_games",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestSendHealerStartAlert",
+      "func_name": "test_sends_with_stuck_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestSendHealerStartAlert::test_sends_with_inconsistent_games",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestSendHealerStartAlert",
+      "func_name": "test_sends_with_inconsistent_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestSendHealerStartAlert::test_sends_with_both",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestSendHealerStartAlert",
+      "func_name": "test_sends_with_both",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestSendHealerStartAlert::test_date_range_format",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestSendHealerStartAlert",
+      "func_name": "test_date_range_format",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindRecoveryTargets::test_with_target_game_ids",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindRecoveryTargets",
+      "func_name": "test_with_target_game_ids",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindRecoveryTargets::test_without_targets_uses_find_functions",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindRecoveryTargets",
+      "func_name": "test_without_targets_uses_find_functions",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindRecoveryTargets::test_with_stuck_games",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindRecoveryTargets",
+      "func_name": "test_with_stuck_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindRecoveryTargets::test_with_inconsistent_games",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindRecoveryTargets",
+      "func_name": "test_with_inconsistent_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindRecoveryTargets::test_with_pa_formula_games",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindRecoveryTargets",
+      "func_name": "test_with_pa_formula_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindRecoveryTargets::test_deduplicates_games",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindRecoveryTargets",
+      "func_name": "test_deduplicates_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestPendingRecoveryCandidates::test_filters_to_pending",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestPendingRecoveryCandidates",
+      "func_name": "test_filters_to_pending",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestPendingRecoveryCandidates::test_all_already_processed",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestPendingRecoveryCandidates",
+      "func_name": "test_all_already_processed",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindUnverifiedPbpGames::test_returns_empty_when_none",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindUnverifiedPbpGames",
+      "func_name": "test_returns_empty_when_none",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindUnverifiedPbpGames::test_returns_games_with_unverified_pbp",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindUnverifiedPbpGames",
+      "func_name": "test_returns_games_with_unverified_pbp",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindUnverifiedPbpGames::test_handles_string_payload",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindUnverifiedPbpGames",
+      "func_name": "test_handles_string_payload",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindUnverifiedPbpGames::test_handles_null_teams",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindUnverifiedPbpGames",
+      "func_name": "test_handles_null_teams",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindUnverifiedPbpGames::test_handles_invalid_json_payload",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindUnverifiedPbpGames",
+      "func_name": "test_handles_invalid_json_payload",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindPaFormulaInconsistentGames::test_returns_empty_when_none",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindPaFormulaInconsistentGames",
+      "func_name": "test_returns_empty_when_none",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestFindPaFormulaInconsistentGames::test_returns_games_when_pa_mismatch",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestFindPaFormulaInconsistentGames",
+      "func_name": "test_returns_games_when_pa_mismatch",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunHealerAsync::test_returns_zero_when_no_anomalies",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunHealerAsync",
+      "func_name": "test_returns_zero_when_no_anomalies",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunHealerAsync::test_returns_zero_when_all_processed",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunHealerAsync",
+      "func_name": "test_returns_zero_when_all_processed",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunHealerAsync::test_dry_run_counts_candidates",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunHealerAsync",
+      "func_name": "test_dry_run_counts_candidates",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunHealerAsync::test_reset_checkpoint_clears",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunHealerAsync",
+      "func_name": "test_reset_checkpoint_clears",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunHealerAsync::test_with_target_game_ids",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunHealerAsync",
+      "func_name": "test_with_target_game_ids",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunPbpHealerAsync::test_returns_zero_when_no_games",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunPbpHealerAsync",
+      "func_name": "test_returns_zero_when_no_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunPbpHealerAsync::test_dry_run_returns_found",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunPbpHealerAsync",
+      "func_name": "test_dry_run_returns_found",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunPbpHealerAsync::test_targeted_mode",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunPbpHealerAsync",
+      "func_name": "test_targeted_mode",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_auto_healer.py::TestRunPbpHealerAsync::test_partial_recovery",
+      "file": "tests/cli/test_auto_healer.py",
+      "class_name": "TestRunPbpHealerAsync",
+      "func_name": "test_partial_recovery",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "AutoHealer CLI diagnostic and automated recovery orchestration"
+    },
+    {
+      "test_id": "tests/cli/test_run_daily_update.py::TestRunDailyUpdateCLI::test_main_default_date",
+      "file": "tests/cli/test_run_daily_update.py",
+      "class_name": "TestRunDailyUpdateCLI",
+      "func_name": "test_main_default_date",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Daily update master pipeline orchestration and lock handling"
+    },
+    {
+      "test_id": "tests/cli/test_run_daily_update.py::TestRunDailyUpdateCLI::test_main_with_date",
+      "file": "tests/cli/test_run_daily_update.py",
+      "class_name": "TestRunDailyUpdateCLI",
+      "func_name": "test_main_with_date",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Daily update master pipeline orchestration and lock handling"
+    },
+    {
+      "test_id": "tests/cli/test_run_daily_update.py::TestRunDailyUpdateCLI::test_main_acquires_inner_lock_by_default",
+      "file": "tests/cli/test_run_daily_update.py",
+      "class_name": "TestRunDailyUpdateCLI",
+      "func_name": "test_main_acquires_inner_lock_by_default",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Daily update master pipeline orchestration and lock handling"
+    },
+    {
+      "test_id": "tests/cli/test_run_daily_update.py::TestRunDailyUpdateCLI::test_main_skips_inner_lock_when_acquire_lock_false",
+      "file": "tests/cli/test_run_daily_update.py",
+      "class_name": "TestRunDailyUpdateCLI",
+      "func_name": "test_main_skips_inner_lock_when_acquire_lock_false",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Daily update master pipeline orchestration and lock handling"
+    },
+    {
+      "test_id": "tests/cli/test_run_daily_update.py::TestRunDailyUpdateCLI::test_main_no_crash_when_acquire_lock_false_releases_nothing",
+      "file": "tests/cli/test_run_daily_update.py",
+      "class_name": "TestRunDailyUpdateCLI",
+      "func_name": "test_main_no_crash_when_acquire_lock_false_releases_nothing",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Daily update master pipeline orchestration and lock handling"
+    },
+    {
+      "test_id": "tests/cli/test_run_daily_update.py::test_detail_recovery_escalates_repeated_recoverable_failures",
+      "file": "tests/cli/test_run_daily_update.py",
+      "class_name": null,
+      "func_name": "test_detail_recovery_escalates_repeated_recoverable_failures",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Daily update master pipeline orchestration and lock handling"
+    },
+    {
+      "test_id": "tests/cli/test_run_daily_update.py::test_detail_step_exception_preserves_cancelled_and_tracks_queued_targets",
+      "file": "tests/cli/test_run_daily_update.py",
+      "class_name": null,
+      "func_name": "test_detail_step_exception_preserves_cancelled_and_tracks_queued_targets",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Daily update master pipeline orchestration and lock handling"
+    },
+    {
+      "test_id": "tests/cli/test_run_pipeline_demo.py::TestRunPipelineDemoCLI::test_main_no_args",
+      "file": "tests/cli/test_run_pipeline_demo.py",
+      "class_name": "TestRunPipelineDemoCLI",
+      "func_name": "test_main_no_args",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Pipeline demo execution using offline fixture schedule and game HTML"
+    },
+    {
+      "test_id": "tests/cli/test_run_pipeline_demo.py::TestRunPipelineDemoCLI::test_main_schedule_fixtures",
+      "file": "tests/cli/test_run_pipeline_demo.py",
+      "class_name": "TestRunPipelineDemoCLI",
+      "func_name": "test_main_schedule_fixtures",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Pipeline demo execution using offline fixture schedule and game HTML"
+    },
+    {
+      "test_id": "tests/cli/test_run_pipeline_demo.py::TestRunPipelineDemoCLI::test_main_game_fixtures",
+      "file": "tests/cli/test_run_pipeline_demo.py",
+      "class_name": "TestRunPipelineDemoCLI",
+      "func_name": "test_main_game_fixtures",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Pipeline demo execution using offline fixture schedule and game HTML"
+    },
+    {
+      "test_id": "tests/crawlers/test_award_crawler.py::TestLiveAwardCrawler::test_live_crawl_counts",
+      "file": "tests/crawlers/test_award_crawler.py",
+      "class_name": "TestLiveAwardCrawler",
+      "func_name": "test_live_crawl_counts",
+      "category": "CRAWLER_LIVE_API",
+      "reason": "Live external awards collection test against Wikipedia and Yagoonara"
+    },
+    {
+      "test_id": "tests/crawlers/test_baserunning_stats_crawler.py::TestCrawlBaserunningStats::test_safe_int_handles_dash",
+      "file": "tests/crawlers/test_baserunning_stats_crawler.py",
+      "class_name": "TestCrawlBaserunningStats",
+      "func_name": "test_safe_int_handles_dash",
+      "category": "PARSER_INTEGRATION",
+      "reason": "Baserunning row parsing and dash handling unit/integration"
+    },
+    {
+      "test_id": "tests/integration/test_transaction_atomicity_e2e.py::test_collection_service_commits_multiple_tables_atomically",
+      "file": "tests/integration/test_transaction_atomicity_e2e.py",
+      "class_name": null,
+      "func_name": "test_collection_service_commits_multiple_tables_atomically",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Collection service atomic multi-table persistence and rollback"
+    },
+    {
+      "test_id": "tests/integration/test_transaction_atomicity_e2e.py::test_collection_service_rolls_back_all_tables_on_failure",
+      "file": "tests/integration/test_transaction_atomicity_e2e.py",
+      "class_name": null,
+      "func_name": "test_collection_service_rolls_back_all_tables_on_failure",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Collection service atomic multi-table persistence and rollback"
+    },
+    {
+      "test_id": "tests/integration/test_transaction_atomicity_e2e.py::test_collection_service_idempotent_after_commit",
+      "file": "tests/integration/test_transaction_atomicity_e2e.py",
+      "class_name": null,
+      "func_name": "test_collection_service_idempotent_after_commit",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Collection service atomic multi-table persistence and rollback"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateDetailCoreFields::test_all_fields_updated",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateDetailCoreFields",
+      "func_name": "test_all_fields_updated",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateDetailCoreFields::test_empty_values_not_overwritten",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateDetailCoreFields",
+      "func_name": "test_empty_values_not_overwritten",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateDetailStatus::test_completed_status",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateDetailStatus",
+      "func_name": "test_completed_status",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateDetailStatus::test_no_inning_rows",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateDetailStatus",
+      "func_name": "test_no_inning_rows",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateDetailWinner::test_sets_winner",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateDetailWinner",
+      "func_name": "test_sets_winner",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateDetailWinner::test_no_change_when_not_terminal",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateDetailWinner",
+      "func_name": "test_no_change_when_not_terminal",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateDetailWinner::test_no_change_when_scores_none",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateDetailWinner",
+      "func_name": "test_no_change_when_scores_none",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateStartingPitchers::test_sets_pitchers",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateStartingPitchers",
+      "func_name": "test_sets_pitchers",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateStartingPitchers::test_no_starting_pitcher",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateStartingPitchers",
+      "func_name": "test_no_starting_pitcher",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestUpdateDetailChildren::test_with_empty_data",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestUpdateDetailChildren",
+      "func_name": "test_with_empty_data",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestBuildSummaryRows::test_with_no_players",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestBuildSummaryRows",
+      "func_name": "test_with_no_players",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestBuildSummaryRows::test_empty_summary_items",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestBuildSummaryRows",
+      "func_name": "test_empty_summary_items",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSummaryItemRows::test_no_entries",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSummaryItemRows",
+      "func_name": "test_no_entries",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSummaryItemRows::test_with_player_map_match",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSummaryItemRows",
+      "func_name": "test_with_player_map_match",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplySnapshotGameFields::test_updates_fields",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplySnapshotGameFields",
+      "func_name": "test_updates_fields",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplySnapshotScores::test_sets_scores",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplySnapshotScores",
+      "func_name": "test_sets_scores",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplySnapshotScores::test_none_scores_not_overwritten",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplySnapshotScores",
+      "func_name": "test_none_scores_not_overwritten",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplySnapshotStartingPitchers::test_sets_pitchers",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplySnapshotStartingPitchers",
+      "func_name": "test_sets_pitchers",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplySnapshotStartingPitchers::test_no_pitchers",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplySnapshotStartingPitchers",
+      "func_name": "test_no_pitchers",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplySnapshotStatusAndWinner::test_sets_winner",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplySnapshotStatusAndWinner",
+      "func_name": "test_sets_winner",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplySnapshotStatusAndWinner::test_no_winner_when_not_terminal",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplySnapshotStatusAndWinner",
+      "func_name": "test_no_winner_when_not_terminal",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplySnapshotStatusAndWinner::test_no_when_scores_none",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplySnapshotStatusAndWinner",
+      "func_name": "test_no_when_scores_none",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestGetOrCreateSnapshotGame::test_creates_new",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestGetOrCreateSnapshotGame",
+      "func_name": "test_creates_new",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestGetOrCreateSnapshotGame::test_returns_existing",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestGetOrCreateSnapshotGame",
+      "func_name": "test_returns_existing",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplyPregameGameFields::test_sets_scheduled_status",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplyPregameGameFields",
+      "func_name": "test_sets_scheduled_status",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplyPregameGameFields::test_preserves_terminal_status",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplyPregameGameFields",
+      "func_name": "test_preserves_terminal_status",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestApplyPregameGameFields::test_preserves_live_status",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestApplyPregameGameFields",
+      "func_name": "test_preserves_live_status",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestLoadExistingPreviewPayload::test_no_summary",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestLoadExistingPreviewPayload",
+      "func_name": "test_no_summary",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestLoadExistingPreviewPayload::test_with_summary",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestLoadExistingPreviewPayload",
+      "func_name": "test_with_summary",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestReplacePreparedLineupSide::test_with_matching_rows",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestReplacePreparedLineupSide",
+      "func_name": "test_with_matching_rows",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestReplacePreparedLineupSide::test_no_matching_rows",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestReplacePreparedLineupSide",
+      "func_name": "test_no_matching_rows",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveGameDetailExtended::test_save_game_detail_with_inning_scores",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveGameDetailExtended",
+      "func_name": "test_save_game_detail_with_inning_scores",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveGameDetailExtended::test_save_game_detail_with_hitters",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveGameDetailExtended",
+      "func_name": "test_save_game_detail_with_hitters",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveGameDetailExtended::test_save_game_detail_with_pitchers_data",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveGameDetailExtended",
+      "func_name": "test_save_game_detail_with_pitchers_data",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveGameDetailExtended::test_save_game_detail_with_summary_data",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveGameDetailExtended",
+      "func_name": "test_save_game_detail_with_summary_data",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveGameDetailExtended::test_save_game_detail_with_alias",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveGameDetailExtended",
+      "func_name": "test_save_game_detail_with_alias",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveGameSnapshotExtended::test_save_game_snapshot_with_pitchers_data",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveGameSnapshotExtended",
+      "func_name": "test_save_game_snapshot_with_pitchers_data",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSavePregameLineupsExtended::test_save_pregame_lineups_with_start_pitcher_announced",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSavePregameLineupsExtended",
+      "func_name": "test_save_pregame_lineups_with_start_pitcher_announced",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSavePregameLineupsExtended::test_save_pregame_lineups_with_lineups",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSavePregameLineupsExtended",
+      "func_name": "test_save_pregame_lineups_with_lineups",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveScheduleGameExtended::test_save_schedule_game_with_doubleheader",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveScheduleGameExtended",
+      "func_name": "test_save_schedule_game_with_doubleheader",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveScheduleGameExtended::test_save_schedule_game_updates_existing",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveScheduleGameExtended",
+      "func_name": "test_save_schedule_game_updates_existing",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestSaveScheduleGameExtended::test_save_schedule_game_preserves_finalized_status",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestSaveScheduleGameExtended",
+      "func_name": "test_save_schedule_game_preserves_finalized_status",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestGetGamesByDateExtended::test_no_games",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestGetGamesByDateExtended",
+      "func_name": "test_no_games",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestGetGamesByDateExtended::test_multiple_games",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestGetGamesByDateExtended",
+      "func_name": "test_multiple_games",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestParseDetailGameDateExtended::test_with_dashes",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestParseDetailGameDateExtended",
+      "func_name": "test_with_dashes",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestParseDetailGameDateExtended::test_empty_game_date_uses_game_id",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestParseDetailGameDateExtended",
+      "func_name": "test_empty_game_date_uses_game_id",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestGetOrCreateGameExtended::test_returns_existing_game",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestGetOrCreateGameExtended",
+      "func_name": "test_returns_existing_game",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestGetOrCreateGameExtended::test_creates_new_game",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestGetOrCreateGameExtended",
+      "func_name": "test_creates_new_game",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestCleanPregameTextExtended::test_whitespace_only",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestCleanPregameTextExtended",
+      "func_name": "test_whitespace_only",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestCleanPregameTextExtended::test_tabs_and_newlines",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestCleanPregameTextExtended",
+      "func_name": "test_tabs_and_newlines",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestCleanPregameTextExtended::test_integer_input",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestCleanPregameTextExtended",
+      "func_name": "test_integer_input",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestExtractExistingPreviewPayloadExtended::test_empty_detail_text",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestExtractExistingPreviewPayloadExtended",
+      "func_name": "test_empty_detail_text",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestExtractExistingPreviewPayloadExtended::test_non_dict_json",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestExtractExistingPreviewPayloadExtended",
+      "func_name": "test_non_dict_json",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestExtractExistingPreviewPayloadExtended::test_null_detail_text",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestExtractExistingPreviewPayloadExtended",
+      "func_name": "test_null_detail_text",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestResolvePregameStarterExtended::test_no_starter_returns_empty_string",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestResolvePregameStarterExtended",
+      "func_name": "test_no_starter_returns_empty_string",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestResolvePregameStarterExtended::test_existing_payload_starter",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestResolvePregameStarterExtended",
+      "func_name": "test_existing_payload_starter",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/repositories/test_game_save_ext.py::TestResolvePregameStarterExtended::test_preview_overrides_existing",
+      "file": "tests/repositories/test_game_save_ext.py",
+      "class_name": "TestResolvePregameStarterExtended",
+      "func_name": "test_preview_overrides_existing",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "GameSaveRepository extended DB field updates and state transitions"
+    },
+    {
+      "test_id": "tests/scripts/test_historical_analysis.py::TestHistoricalAnalysis::test_analyze_historical_leaders",
+      "file": "tests/scripts/test_historical_analysis.py",
+      "class_name": "TestHistoricalAnalysis",
+      "func_name": "test_analyze_historical_leaders",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "Historical statistical leaders analysis calculation script"
+    },
+    {
+      "test_id": "tests/test_basic2_headers.py::test_basic2_headers",
+      "file": "tests/test_basic2_headers.py",
+      "class_name": null,
+      "func_name": "test_basic2_headers",
+      "category": "CRAWLER_LIVE_BROWSER",
+      "reason": "Live browser crawl test for KBO Basic2 pitching stats headers"
+    },
+    {
+      "test_id": "tests/test_collection_path_allowlist.py::test_db_writing_collection_paths_stay_allowlisted",
+      "file": "tests/test_collection_path_allowlist.py",
+      "class_name": null,
+      "func_name": "test_db_writing_collection_paths_stay_allowlisted",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "Static AST verification of allowlisted DB writing collection paths"
+    },
+    {
+      "test_id": "tests/test_context_aggregator.py::test_get_recent_player_movements_team_mapping",
+      "file": "tests/test_context_aggregator.py",
+      "class_name": null,
+      "func_name": "test_get_recent_player_movements_team_mapping",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator.py::test_target_date_type_flexibility",
+      "file": "tests/test_context_aggregator.py",
+      "class_name": null,
+      "func_name": "test_target_date_type_flexibility",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator.py::test_daily_roster_changes_added_removed",
+      "file": "tests/test_context_aggregator.py",
+      "class_name": null,
+      "func_name": "test_daily_roster_changes_added_removed",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator.py::test_get_crucial_moments_filters_relay_noise_rows",
+      "file": "tests/test_context_aggregator.py",
+      "class_name": null,
+      "func_name": "test_get_crucial_moments_filters_relay_noise_rows",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator_ext.py::test_get_recent_player_movements_team_mapping",
+      "file": "tests/test_context_aggregator_ext.py",
+      "class_name": null,
+      "func_name": "test_get_recent_player_movements_team_mapping",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator_ext.py::test_target_date_type_handling",
+      "file": "tests/test_context_aggregator_ext.py",
+      "class_name": null,
+      "func_name": "test_target_date_type_handling",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator_ext.py::test_daily_roster_changes_logic",
+      "file": "tests/test_context_aggregator_ext.py",
+      "class_name": null,
+      "func_name": "test_daily_roster_changes_logic",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator_ext.py::test_get_team_error_games",
+      "file": "tests/test_context_aggregator_ext.py",
+      "class_name": null,
+      "func_name": "test_get_team_error_games",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator_ext.py::test_get_toughest_opponents",
+      "file": "tests/test_context_aggregator_ext.py",
+      "class_name": null,
+      "func_name": "test_get_toughest_opponents",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_context_aggregator_ext.py::test_get_position_avg_comparison",
+      "file": "tests/test_context_aggregator_ext.py",
+      "class_name": null,
+      "func_name": "test_get_position_avg_comparison",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Context aggregator queries across player movements, rosters, and relay data"
+    },
+    {
+      "test_id": "tests/test_embedding_cache.py::test_embedding_cache_mechanism",
+      "file": "tests/test_embedding_cache.py",
+      "class_name": null,
+      "func_name": "test_embedding_cache_mechanism",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "RAG embedding cache mechanism test"
+    },
+    {
+      "test_id": "tests/test_external_stats_e2e.py::test_external_stats_round_trip_is_idempotent_and_preserves_lineage",
+      "file": "tests/test_external_stats_e2e.py",
+      "class_name": null,
+      "func_name": "test_external_stats_round_trip_is_idempotent_and_preserves_lineage",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "External stats crawler mock replay and repository persistence e2e"
+    },
+    {
+      "test_id": "tests/test_external_stats_e2e.py::test_external_stats_ambiguous_player_is_not_auto_resolved",
+      "file": "tests/test_external_stats_e2e.py",
+      "class_name": null,
+      "func_name": "test_external_stats_ambiguous_player_is_not_auto_resolved",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "External stats crawler mock replay and repository persistence e2e"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_skips_existing_detail_and_relay",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_skips_existing_detail_and_relay",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_force_recrawls_existing",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_force_recrawls_existing",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_processes_every_detail_target_in_batch",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_processes_every_detail_target_in_batch",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_records_mixed_batch_failure_and_success",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_records_mixed_batch_failure_and_success",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_saves_raw_pbp_without_events",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_saves_raw_pbp_without_events",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_does_not_fetch_relay_when_detail_fails",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_does_not_fetch_relay_when_detail_fails",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_can_filter_payloads_before_save",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_can_filter_payloads_before_save",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_marks_save_failed_reason_when_save_returns_false",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_marks_save_failed_reason_when_save_returns_false",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_normalize_detail_failure_reason_maps_internal_codes",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_normalize_detail_failure_reason_maps_internal_codes",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::test_crawl_and_save_game_details_filters_incomplete_payload_by_default",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": null,
+      "func_name": "test_crawl_and_save_game_details_filters_incomplete_payload_by_default",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestBuildGameIdRange::test_with_month_returns_correct_range",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestBuildGameIdRange",
+      "func_name": "test_with_month_returns_correct_range",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestBuildGameIdRange::test_december_wraps_to_next_year",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestBuildGameIdRange",
+      "func_name": "test_december_wraps_to_next_year",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestBuildGameIdRange::test_without_month_returns_full_year",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestBuildGameIdRange",
+      "func_name": "test_without_month_returns_full_year",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestNormalizeGameTargets::test_from_dicts",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestNormalizeGameTargets",
+      "func_name": "test_from_dicts",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestNormalizeGameTargets::test_deduplicates_by_game_id",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestNormalizeGameTargets",
+      "func_name": "test_deduplicates_by_game_id",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestNormalizeGameTargets::test_skips_empty_game_id",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestNormalizeGameTargets",
+      "func_name": "test_skips_empty_game_id",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestNormalizeGameTargets::test_from_objects_with_attributes",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestNormalizeGameTargets",
+      "func_name": "test_from_objects_with_attributes",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestFormatGameDate::test_from_datetime",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestFormatGameDate",
+      "func_name": "test_from_datetime",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestFormatGameDate::test_from_date",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestFormatGameDate",
+      "func_name": "test_from_date",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestFormatGameDate::test_from_dashed_string",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestFormatGameDate",
+      "func_name": "test_from_dashed_string",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestFormatGameDate::test_fallback_to_game_id_prefix",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestFormatGameDate",
+      "func_name": "test_fallback_to_game_id_prefix",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestHasRequiredDetailRows::test_full_box_returns_true",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestHasRequiredDetailRows",
+      "func_name": "test_full_box_returns_true",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestHasRequiredDetailRows::test_partial_with_teams_and_score_returns_true",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestHasRequiredDetailRows",
+      "func_name": "test_partial_with_teams_and_score_returns_true",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestHasRequiredDetailRows::test_no_teams_returns_false",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestHasRequiredDetailRows",
+      "func_name": "test_no_teams_returns_false",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestHasRequiredDetailRows::test_no_score_and_no_metadata_returns_false",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestHasRequiredDetailRows",
+      "func_name": "test_no_score_and_no_metadata_returns_false",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_collection_service.py::TestHasRequiredDetailRows::test_empty_payload_returns_false",
+      "file": "tests/test_game_collection_service.py",
+      "class_name": "TestHasRequiredDetailRows",
+      "func_name": "test_empty_payload_returns_false",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game collection service offline batch processing, payload filtering and save"
+    },
+    {
+      "test_id": "tests/test_game_detail_crawler_stability.py::test_crawl_single_uses_review_fallback_when_direct_sections_are_empty",
+      "file": "tests/test_game_detail_crawler_stability.py",
+      "class_name": null,
+      "func_name": "test_crawl_single_uses_review_fallback_when_direct_sections_are_empty",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game detail crawler fallback review parsing and incomplete payload marking"
+    },
+    {
+      "test_id": "tests/test_game_detail_crawler_stability.py::test_crawl_single_marks_incomplete_detail_when_fallback_is_empty",
+      "file": "tests/test_game_detail_crawler_stability.py",
+      "class_name": null,
+      "func_name": "test_crawl_single_marks_incomplete_detail_when_fallback_is_empty",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Game detail crawler fallback review parsing and incomplete payload marking"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestBaseDynamicInterval::test_active_playing_returns_10s",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestBaseDynamicInterval",
+      "func_name": "test_active_playing_returns_10s",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestBaseDynamicInterval::test_active_suspended_returns_60s",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestBaseDynamicInterval",
+      "func_name": "test_active_suspended_returns_60s",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestBaseDynamicInterval::test_active_other_returns_30s",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestBaseDynamicInterval",
+      "func_name": "test_active_other_returns_30s",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestBaseDynamicInterval::test_cooldown_returns_60s",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestBaseDynamicInterval",
+      "func_name": "test_cooldown_returns_60s",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestBaseDynamicInterval::test_game_hours_returns_120s",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestBaseDynamicInterval",
+      "func_name": "test_game_hours_returns_120s",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestBaseDynamicInterval::test_off_hours_returns_1800s",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestBaseDynamicInterval",
+      "func_name": "test_off_hours_returns_1800s",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_no_game_ids_returns_base",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_no_game_ids_returns_base",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_no_enriched_state_returns_base",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_no_enriched_state_returns_base",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_idle_detection_backs_off",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_idle_detection_backs_off",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_new_events_accelerate",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_new_events_accelerate",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_late_game_accelerates",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_late_game_accelerates",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_clamped_min_5s",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_clamped_min_5s",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_clamped_max_120s",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_clamped_max_120s",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_multiple_games_most_aggressive_wins",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_multiple_games_most_aggressive_wins",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_first_cycle_no_last_counts_uses_base",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_first_cycle_no_last_counts_uses_base",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_first_cycle_with_late_inning",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_first_cycle_with_late_inning",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_mixed_idle_and_new_events_different_games",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_mixed_idle_and_new_events_different_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestComputeEnrichedInterval::test_extra_note_includes_reasons",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestComputeEnrichedInterval",
+      "func_name": "test_extra_note_includes_reasons",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestSelectLiveShard::test_no_limit_returns_all_without_advancing_cursor",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestSelectLiveShard",
+      "func_name": "test_no_limit_returns_all_without_advancing_cursor",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestSelectLiveShard::test_round_robin_shards_active_games_across_cycles",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestSelectLiveShard",
+      "func_name": "test_round_robin_shards_active_games_across_cycles",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestSelectLiveShard::test_new_day_resets_old_cursor",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestSelectLiveShard",
+      "func_name": "test_new_day_resets_old_cursor",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestRunLiveCrawlerCycleSharding::test_background_detail_snapshot_does_not_call_inline_detail_crawler",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestRunLiveCrawlerCycleSharding",
+      "func_name": "test_background_detail_snapshot_does_not_call_inline_detail_crawler",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestRunLiveCrawlerCycleSharding::test_consecutive_bounded_cycles_rotate_active_games",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestRunLiveCrawlerCycleSharding",
+      "func_name": "test_consecutive_bounded_cycles_rotate_active_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestQueryEnrichedGameState::test_empty_list_returns_empty",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestQueryEnrichedGameState",
+      "func_name": "test_empty_list_returns_empty",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_live_crawler_enriched_polling.py::TestQueryEnrichedGameState::test_unknown_game_ids_returns_zero_counts",
+      "file": "tests/test_live_crawler_enriched_polling.py",
+      "class_name": "TestQueryEnrichedGameState",
+      "func_name": "test_unknown_game_ids_returns_zero_counts",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Live crawler dynamic polling intervals, sharding, and state queries"
+    },
+    {
+      "test_id": "tests/test_model_registry_bootstrap.py::test_model_registry_configures_fa_contract_relationships",
+      "file": "tests/test_model_registry_bootstrap.py",
+      "class_name": null,
+      "func_name": "test_model_registry_configures_fa_contract_relationships",
+      "category": "UNRELATED_SLOW_TEST",
+      "reason": "Model registry bootstrap relationships"
+    },
+    {
+      "test_id": "tests/test_page52.py::test_page_52",
+      "file": "tests/test_page52.py",
+      "class_name": null,
+      "func_name": "test_page_52",
+      "category": "CRAWLER_LIVE_BROWSER",
+      "reason": "Live browser test for player search pagination on page 52"
+    },
+    {
+      "test_id": "tests/test_postgame_reconciliation_service.py::test_find_postgame_reconciliation_targets_live_and_completed_missing_scores",
+      "file": "tests/test_postgame_reconciliation_service.py",
+      "class_name": null,
+      "func_name": "test_find_postgame_reconciliation_targets_live_and_completed_missing_scores",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Postgame reconciliation service targets and status/score reporting"
+    },
+    {
+      "test_id": "tests/test_postgame_reconciliation_service.py::test_find_postgame_reconciliation_targets_can_force_include_game_id",
+      "file": "tests/test_postgame_reconciliation_service.py",
+      "class_name": null,
+      "func_name": "test_find_postgame_reconciliation_targets_can_force_include_game_id",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Postgame reconciliation service targets and status/score reporting"
+    },
+    {
+      "test_id": "tests/test_postgame_reconciliation_service.py::test_reconcile_postgame_range_reports_status_and_score_changes",
+      "file": "tests/test_postgame_reconciliation_service.py",
+      "class_name": null,
+      "func_name": "test_reconcile_postgame_range_reports_status_and_score_changes",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Postgame reconciliation service targets and status/score reporting"
+    },
+    {
+      "test_id": "tests/test_postgame_reconciliation_service.py::test_reconcile_postgame_range_marks_cancelled_miss",
+      "file": "tests/test_postgame_reconciliation_service.py",
+      "class_name": null,
+      "func_name": "test_reconcile_postgame_range_marks_cancelled_miss",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Postgame reconciliation service targets and status/score reporting"
+    },
+    {
+      "test_id": "tests/test_postgame_reconciliation_service.py::test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss",
+      "file": "tests/test_postgame_reconciliation_service.py",
+      "class_name": null,
+      "func_name": "test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Postgame reconciliation service targets and status/score reporting"
+    },
+    {
+      "test_id": "tests/test_ranking_aggregator.py::test_ranking_aggregator_batting_pitching_filters",
+      "file": "tests/test_ranking_aggregator.py",
+      "class_name": null,
+      "func_name": "test_ranking_aggregator_batting_pitching_filters",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Ranking aggregator batting and pitching aggregation filters"
+    },
+    {
+      "test_id": "tests/test_ranking_aggregator.py::test_ranking_aggregator_handles_ties_and_sources",
+      "file": "tests/test_ranking_aggregator.py",
+      "class_name": null,
+      "func_name": "test_ranking_aggregator_handles_ties_and_sources",
+      "category": "REPOSITORY_INTEGRATION",
+      "reason": "Ranking aggregator batting and pitching aggregation filters"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_load_relay_recovery_targets_skips_fully_recovered_games",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_load_relay_recovery_targets_skips_fully_recovered_games",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_load_relay_recovery_targets_preserves_requested_order",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_load_relay_recovery_targets_preserves_requested_order",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_load_relay_recovery_targets_includes_existing_events_with_missing_wpa",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_load_relay_recovery_targets_includes_existing_events_with_missing_wpa",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_load_relay_recovery_targets_excludes_non_completed_requested_games",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_load_relay_recovery_targets_excludes_non_completed_requested_games",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_recover_relay_data_saves_orchestrator_result",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_recover_relay_data_saves_orchestrator_result",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_recover_relay_data_filters_malformed_rows_before_save",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_recover_relay_data_filters_malformed_rows_before_save",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_recover_relay_data_backfills_missing_wpa_before_save",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_recover_relay_data_backfills_missing_wpa_before_save",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_recover_relay_data_skips_when_all_rows_filtered",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_recover_relay_data_skips_when_all_rows_filtered",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_recover_relay_data_derives_missing_pbp_from_existing_events",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_recover_relay_data_derives_missing_pbp_from_existing_events",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_recover_relay_data_skips_result_with_too_few_events",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_recover_relay_data_skips_result_with_too_few_events",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_relay_recovery_service.py::test_recover_relay_data_skips_score_mismatch_when_validation_enabled",
+      "file": "tests/test_relay_recovery_service.py",
+      "class_name": null,
+      "func_name": "test_recover_relay_data_skips_score_mismatch_when_validation_enabled",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Relay recovery service PBP derivation and replay event orchestration"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_alert_failure_sends_alert_and_does_not_raise",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_alert_failure_sends_alert_and_does_not_raise",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_alert_failure_handles_alert_error_gracefully",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_alert_failure_handles_alert_error_gracefully",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_alert_success_is_optional_and_non_blocking",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_alert_success_is_optional_and_non_blocking",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_alert_success_includes_optional_details",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_alert_success_includes_optional_details",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_live_refresh_uses_bounded_default_shard",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_live_refresh_uses_bounded_default_shard",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_crawl_p0_non_game_job_invokes_unified_cli",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_crawl_p0_non_game_job_invokes_unified_cli",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_health_and_freshness_checks_use_canonical_table_names",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_health_and_freshness_checks_use_canonical_table_names",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_main_registers_morning_jobs_with_expected_cron",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_main_registers_morning_jobs_with_expected_cron",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_job_lifecycle_listener_throttles_rapid_consecutive_alerts",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_job_lifecycle_listener_throttles_rapid_consecutive_alerts",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_alerting.py::test_job_lifecycle_listener_resets_throttle_after_success",
+      "file": "tests/test_scheduler_alerting.py",
+      "class_name": null,
+      "func_name": "test_job_lifecycle_listener_resets_throttle_after_success",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_dynamic_polling.py::test_get_live_poll_interval_seconds_no_games",
+      "file": "tests/test_scheduler_dynamic_polling.py",
+      "class_name": null,
+      "func_name": "test_get_live_poll_interval_seconds_no_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_dynamic_polling.py::test_get_live_poll_interval_seconds_all_terminal",
+      "file": "tests/test_scheduler_dynamic_polling.py",
+      "class_name": null,
+      "func_name": "test_get_live_poll_interval_seconds_all_terminal",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_dynamic_polling.py::test_get_live_poll_interval_seconds_active_games",
+      "file": "tests/test_scheduler_dynamic_polling.py",
+      "class_name": null,
+      "func_name": "test_get_live_poll_interval_seconds_active_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_dynamic_polling.py::test_get_live_poll_interval_seconds_scheduled_games",
+      "file": "tests/test_scheduler_dynamic_polling.py",
+      "class_name": null,
+      "func_name": "test_get_live_poll_interval_seconds_scheduled_games",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_dynamic_polling.py::test_crawl_live_refresh_fast_exit",
+      "file": "tests/test_scheduler_dynamic_polling.py",
+      "class_name": null,
+      "func_name": "test_crawl_live_refresh_fast_exit",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_dynamic_polling.py::test_crawl_live_refresh_skips_when_live_lock_busy",
+      "file": "tests/test_scheduler_dynamic_polling.py",
+      "class_name": null,
+      "func_name": "test_crawl_live_refresh_skips_when_live_lock_busy",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/test_scheduler_dynamic_polling.py::test_crawl_live_refresh_applies_backoff_on_failure",
+      "file": "tests/test_scheduler_dynamic_polling.py",
+      "class_name": null,
+      "func_name": "test_crawl_live_refresh_applies_backoff_on_failure",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler alerting, dynamic polling intervals, and job lifecycle"
+    },
+    {
+      "test_id": "tests/utils/test_lock.py::test_lock_cross_process",
+      "file": "tests/utils/test_lock.py",
+      "class_name": null,
+      "func_name": "test_lock_cross_process",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "ProcessLock cross-process file locking test"
+    },
+    {
+      "test_id": "tests/utils/test_naver_search_client.py::TestNaverSearchClient::test_search_kbo_notices_without_keys",
+      "file": "tests/utils/test_naver_search_client.py",
+      "class_name": "TestNaverSearchClient",
+      "func_name": "test_search_kbo_notices_without_keys",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Naver search API client error handling without API keys"
+    },
+    {
+      "test_id": "tests/utils/test_playwright_pool_ext.py::TestPrepareAuthState::test_triggers_login_when_not_authenticated",
+      "file": "tests/utils/test_playwright_pool_ext.py",
+      "class_name": "TestPrepareAuthState",
+      "func_name": "test_triggers_login_when_not_authenticated",
+      "category": "CRAWLER_OFFLINE_REPLAY",
+      "reason": "Playwright pool authentication state triggering with mock"
+    },
+    {
+      "test_id": "tests/utils/test_scheduler_shutdown.py::test_scheduler_signal_shutdown",
+      "file": "tests/utils/test_scheduler_shutdown.py",
+      "class_name": null,
+      "func_name": "test_scheduler_signal_shutdown",
+      "category": "SCHEDULER_INTEGRATION",
+      "reason": "Scheduler graceful signal shutdown with ProcessLock"
+    }
+  ]
+}

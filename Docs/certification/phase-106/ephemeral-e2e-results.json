@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106C",
+  "db_engine": "sqlite:///:memory: / ephemeral temp file",
+  "isolation_policy": "STRICT_EPHEMERAL_NO_PROD_DML",
+  "pipeline_stages_verified": [
+    "Raw Snapshot Read",
+    "Parser Extraction",
+    "DTO Normalization",
+    "Repository Upsert Execution",
+    "Idempotency Replay Check",
+    "Atomic Transaction Rollback on Injected Fault"
+  ],
+  "e2e_scenarios": [
+    {
+      "scenario": "Game Detail Extended Persistence",
+      "fixture": "tests/fixtures/game_details/20251001NCLG0.html",
+      "target_tables": [
+        "game",
+        "player_game_batting",
+        "player_game_pitching",
+        "game_inning_scores"
+      ],
+      "first_run_success": true,
+      "second_run_success": true,
+      "row_count_delta": 0,
+      "duplicate_natural_keys": 0,
+      "idempotency_status": "PASS"
+    },
+    {
+      "scenario": "Stadium Ticket Prices Persistence",
+      "fixture": "tests/fixtures/html/lg_ticket_prices.html",
+      "target_tables": [
+        "ticket_prices"
+      ],
+      "first_run_success": true,
+      "second_run_success": true,
+      "row_count_delta": 0,
+      "duplicate_natural_keys": 0,
+      "idempotency_status": "PASS"
+    },
+    {
+      "scenario": "Mid-Batch Injected Failure Rollback",
+      "injected_fault": "Simulated disk/network error during transaction",
+      "rollback_observed": true,
+      "orphan_rows_created": 0,
+      "transaction_atomicity_status": "PASS"
+    }
+  ],
+  "overall_status": "PASSED"
+}

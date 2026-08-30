@@ -1,0 +1,27 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/mac/project/KBO_playwright/venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/mac/project/KBO_playwright
+configfile: pytest.ini
+plugins: cov-7.1.0, xdist-3.8.0, asyncio-0.26.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 16 items
+
+tests/test_crawler_offline_replay.py::TestOfflineSnapshotReplayDeterminism::test_game_detail_replay_determinism PASSED [  6%]
+tests/test_crawler_offline_replay.py::TestOfflineSnapshotReplayDeterminism::test_team_batting_stats_replay_determinism PASSED [ 12%]
+tests/test_crawler_offline_replay.py::TestOfflineSnapshotReplayDeterminism::test_team_pitching_stats_replay_determinism PASSED [ 18%]
+tests/test_crawler_offline_replay.py::TestOfflineSnapshotReplayDeterminism::test_team_events_replay_determinism PASSED [ 25%]
+tests/test_crawler_offline_replay.py::TestOfflineSnapshotReplayDeterminism::test_ticket_pricing_replay_determinism PASSED [ 31%]
+tests/test_crawler_offline_replay.py::TestOfflineSnapshotReplayDeterminism::test_naver_relay_json_replay_determinism PASSED [ 37%]
+tests/test_crawler_offline_replay.py::TestParserFaultInjectionResilience::test_game_detail_empty_html_fails_closed PASSED [ 43%]
+tests/test_crawler_offline_replay.py::TestParserFaultInjectionResilience::test_game_detail_truncated_html_handling PASSED [ 50%]
+tests/test_crawler_offline_replay.py::TestParserFaultInjectionResilience::test_team_batting_empty_html_returns_empty PASSED [ 56%]
+tests/test_crawler_offline_replay.py::TestParserFaultInjectionResilience::test_team_events_unsupported_source_key PASSED [ 62%]
+tests/test_crawler_offline_replay.py::TestParserFaultInjectionResilience::test_ticket_pricing_invalid_html_returns_empty_or_fails_closed PASSED [ 68%]
+tests/test_crawler_ephemeral_e2e.py::TestEphemeralPersistenceE2E::test_protected_db_hash_unaltered_precondition PASSED [ 75%]
+tests/test_crawler_ephemeral_e2e.py::TestEphemeralPersistenceE2E::test_game_detail_ephemeral_persistence_and_idempotency PASSED [ 81%]
+tests/test_crawler_ephemeral_e2e.py::TestEphemeralPersistenceE2E::test_ticket_prices_ephemeral_persistence_and_idempotency PASSED [ 87%]
+tests/test_crawler_ephemeral_e2e.py::TestEphemeralPersistenceE2E::test_transaction_rollback_on_injected_error PASSED [ 93%]
+tests/test_crawler_ephemeral_e2e.py::TestEphemeralPersistenceE2E::test_protected_db_unaltered_postcondition PASSED [100%]
+
+============================== 16 passed in 3.45s ==============================
