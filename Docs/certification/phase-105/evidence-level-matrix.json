@@ -3,10 +3,10 @@
   "title": "KBO Platform Claim-Level Evidence Matrix",
   "generated_at_kst": "2026-08-30T16:26:00+09:00",
   "commit_checkpoint": {
-    "code_commit_sha": "0480c02f8d8064fbf253f6cdc5b9637a6013a1e7",
-    "tree_sha": "cb894d8a56b87be7d42dda22f41d6e770e592a3f",
+    "code_commit_sha": "f1e9bba80fc1e2c462fed80e680ad9e117212822",
+    "tree_sha": "7df923f00738cd371ac31a891f7f993b36900543",
     "kbo_dev_db_sha256": "2bc0328697164d8dd0a91741c7e33746f379275c25bbdc4f5d202df800f44a19",
-    "regression_tests": "10213 passed, 3 skipped, 242 deselected in 75.09s (0 failures, 0 errors)",
+    "regression_tests": "10224 passed, 3 skipped, 242 deselected (0 failures, 0 errors)",
     "ruff_status": "0 errors, 0 diffs",
     "bare_excepts": "0"
   },
