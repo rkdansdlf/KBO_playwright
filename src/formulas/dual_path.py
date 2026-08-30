@@ -38,6 +38,7 @@ _TOLERANCE_MAP: dict[str, float] = {
     "WHIP": 0.02,
     "FIP": 0.05,
     "ERA_INDEX_NO_PARK": 1.0,
+    "FPCT": 0.001,
 }
 
 DB_COL_MAP: dict[str, str] = {
@@ -51,6 +52,7 @@ DB_COL_MAP: dict[str, str] = {
     "WRC_INDEX_NO_PARK": "wrc_plus",
     "ERA": "era",
     "WHIP": "whip",
+    "FPCT": "fielding_pct",
 }
 
 
@@ -217,6 +219,15 @@ class IndependentFormulaOracle:
     ) -> FormulaEvaluation | None:
         """Calculate advanced linear weights batting metrics."""
         if norm_metric == "wOBA":
+            if not c:
+                return FormulaEvaluation(
+                    status=EvaluationStatus.UNDEFINED_CALIBRATION_UNAVAILABLE,
+                    raw_value=None,
+                    rounded_value=None,
+                    reason_code="CALIBRATION_UNAVAILABLE",
+                    eligible_for_numeric_comparison=False,
+                    included_in_audit_population=True,
+                )
             h = _to_dec(inputs.get("hits"))
             d2 = _to_dec(inputs.get("doubles"))
             d3 = _to_dec(inputs.get("triples"))
@@ -313,6 +324,15 @@ class IndependentFormulaOracle:
             )
 
         if norm_metric == "FIP":
+            if not c:
+                return FormulaEvaluation(
+                    status=EvaluationStatus.UNDEFINED_CALIBRATION_UNAVAILABLE,
+                    raw_value=None,
+                    rounded_value=None,
+                    reason_code="CALIBRATION_UNAVAILABLE",
+                    eligible_for_numeric_comparison=False,
+                    included_in_audit_population=True,
+                )
             hr_all = _to_dec(inputs.get("home_runs_allowed"))
             bb_all = _to_dec(inputs.get("walks_allowed"))
             hbp_all = _to_dec(inputs.get("hit_batters"))
@@ -413,11 +433,14 @@ class DualPathEvaluationResult:
         return asdict(self)
 
 
+_ROUNDING_CONTRACT_TOLERANCE: float = 0.001
+
+
 class DualPathAuditEngine:
     """Master engine executing independent dual-path cross-verification audits."""
 
     @classmethod
-    def classify_evaluation(  # noqa: PLR0913
+    def classify_evaluation(  # noqa: PLR0911, PLR0913
         cls,
         metric_id: str,
         path_a_val: float | Decimal | None,
@@ -427,14 +450,31 @@ class DualPathAuditEngine:
         path_b_status: EvaluationStatus,
     ) -> DualPathEvaluationResult:
         """Classify dual-path agreement into disaggregated parity states."""
-        # 1. Check Undefined
-        if path_a_status in (
+        # 1. Check Undefined States & One-Sided Mismatches
+        a_is_undef = path_a_status in (
             EvaluationStatus.UNDEFINED_ZERO_DENOMINATOR,
             EvaluationStatus.UNDEFINED_CALIBRATION_UNAVAILABLE,
-        ) or path_b_status in (
+        )
+        b_is_undef = path_b_status in (
             EvaluationStatus.UNDEFINED_ZERO_DENOMINATOR,
             EvaluationStatus.UNDEFINED_CALIBRATION_UNAVAILABLE,
-        ):
+        )
+
+        if a_is_undef and b_is_undef:
+            if path_a_status == path_b_status:
+                return DualPathEvaluationResult(
+                    metric_id=metric_id,
+                    entity_id="sample",
+                    season=2024,
+                    path_a_value=float(path_a_val) if path_a_val is not None else None,
+                    path_b_value=float(path_b_val) if path_b_val is not None else None,
+                    stored_value=stored_val,
+                    delta_a_b=0.0,
+                    delta_a_stored=0.0,
+                    parity_status=ParityStatus.UNDEFINED,
+                    is_reproducible=True,
+                    reason_code="BOTH_UNDEFINED_SAME_REASON",
+                )
             return DualPathEvaluationResult(
                 metric_id=metric_id,
                 entity_id="sample",
@@ -442,11 +482,41 @@ class DualPathAuditEngine:
                 path_a_value=float(path_a_val) if path_a_val is not None else None,
                 path_b_value=float(path_b_val) if path_b_val is not None else None,
                 stored_value=stored_val,
-                delta_a_b=0.0,
-                delta_a_stored=0.0,
-                parity_status=ParityStatus.UNDEFINED,
-                is_reproducible=True,
-                reason_code=path_a_status.value,
+                delta_a_b=999.0,
+                delta_a_stored=999.0,
+                parity_status=ParityStatus.DIVERGENT,
+                is_reproducible=False,
+                reason_code="BOTH_UNDEFINED_DIFFERENT_REASON",
+            )
+
+        if a_is_undef and not b_is_undef:
+            return DualPathEvaluationResult(
+                metric_id=metric_id,
+                entity_id="sample",
+                season=2024,
+                path_a_value=None,
+                path_b_value=float(path_b_val) if path_b_val is not None else None,
+                stored_value=stored_val,
+                delta_a_b=999.0,
+                delta_a_stored=999.0,
+                parity_status=ParityStatus.DIVERGENT,
+                is_reproducible=False,
+                reason_code="REGISTRY_UNDEFINED_REFERENCE_DEFINED",
+            )
+
+        if not a_is_undef and b_is_undef:
+            return DualPathEvaluationResult(
+                metric_id=metric_id,
+                entity_id="sample",
+                season=2024,
+                path_a_value=float(path_a_val) if path_a_val is not None else None,
+                path_b_value=None,
+                stored_value=stored_val,
+                delta_a_b=999.0,
+                delta_a_stored=999.0,
+                parity_status=ParityStatus.DIVERGENT,
+                is_reproducible=False,
+                reason_code="REGISTRY_DEFINED_REFERENCE_UNDEFINED",
             )
 
         # 2. Check Numeric Divergence between Path A and Path B
@@ -485,24 +555,13 @@ class DualPathAuditEngine:
                 reason_code="PATH_A_PATH_B_DISCREPANCY",
             )
 
-        # 3. Check DB Stored Parity
         delta_stored = round(abs(a_f - stored_val), 6) if stored_val is not None else 0.0
-        if stored_val is not None and delta_stored > tol:
-            return DualPathEvaluationResult(
-                metric_id=metric_id,
-                entity_id="sample",
-                season=2024,
-                path_a_value=a_f,
-                path_b_value=b_f,
-                stored_value=stored_val,
-                delta_a_b=delta_ab,
-                delta_a_stored=delta_stored,
-                parity_status=ParityStatus.DIVERGENT,
-                is_reproducible=False,
-                reason_code="DB_STORED_DISCREPANCY",
-            )
-
-        parity = ParityStatus.EXACT if delta_ab == 0.0 and delta_stored == 0.0 else ParityStatus.ROUNDED_CONTRACT
+        if delta_ab == 0.0:
+            parity = ParityStatus.EXACT
+        elif delta_ab <= _ROUNDING_CONTRACT_TOLERANCE:
+            parity = ParityStatus.ROUNDED_CONTRACT
+        else:
+            parity = ParityStatus.FLOATING_TOLERANCE
 
         return DualPathEvaluationResult(
             metric_id=metric_id,

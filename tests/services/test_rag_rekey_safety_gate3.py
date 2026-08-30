@@ -1177,3 +1177,99 @@ class TestRagRekeySafetyGate3:
             )
             assert receipt_path.exists()
             assert mock_fsync.call_count >= 2  # 1 for file fd, 1 for directory fd
+
+    def test_31_subprocess_hard_crash_exit137_recovery(self, ephemeral_db: dict[str, Any], tmp_path: Path) -> None:
+        """31. True subprocess hard-crash (os._exit(137)) immediately post-commit is safely recovered on next run."""
+        import sys
+
+        receipt_dir = tmp_path / "receipts"
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        db_file = ephemeral_db["db_file"]
+
+        # Seed initial chunk
+        session = ephemeral_db["session_factory"]()
+        try:
+            session.add(
+                RagChunk(
+                    id=1,
+                    source_table="awards",
+                    source_row_id="1",
+                    content="Award 1",
+                    content_hash="h1",
+                    index_status="ACTIVE",
+                    index_version="r2",
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(receipt_dir)
+        os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
+
+        entry = {
+            "chunk_id": 1,
+            "legacy_source_row_id": "1",
+            "natural_source_row_id": "2025_award_1",
+            "disposition": DISPOSITION_REKEY,
+            "index_status": "ACTIVE",
+            "legacy_content_hash": "h1",
+            "index_version": "r2",
+        }
+        manifest = _make_safe_manifest([entry])
+        manifest_path = tmp_path / "manifest_hard_crash.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        # Child script that abruptly terminates via os._exit(137) during receipt publication
+        child_script = f"""
+import os
+import sys
+from unittest.mock import patch
+from src.cli.rag.apply_rag_rekey import main as apply_rekey_main
+
+os.environ['DATABASE_URL'] = 'sqlite:///{db_file}'
+os.environ['R2_REKEY_RECEIPT_DIR'] = '{receipt_dir}'
+os.environ['RAG_INDEX_ALLOW_WRITE'] = '1'
+
+def _crash_exit(**kwargs):
+    os._exit(137)
+
+with patch('src.cli.rag.apply_rag_rekey._publish_immutable_receipt', side_effect=_crash_exit):
+    apply_rekey_main(['--manifest', '{manifest_path}', '--apply', '--transaction-id', 'tx-hard-crash-001'])
+"""
+        env = dict(os.environ)
+        env["PYTHONPATH"] = "."
+        env["RAG_INDEX_ALLOW_WRITE"] = "1"
+        res = subprocess.run([sys.executable, "-c", child_script], env=env, capture_output=True, check=False)
+        assert res.returncode != 0
+
+        # Verify DB is in committed post-state
+        session = ephemeral_db["session_factory"]()
+        try:
+            chunk = session.get(RagChunk, 1)
+            assert chunk.source_row_id == "2025_award_1"
+        finally:
+            session.close()
+
+        # Verify no receipt was written before the crash
+        receipts = list(receipt_dir.glob("*.json"))
+        assert len(receipts) == 0
+
+        # Execute recovery run in current process
+        with patch(
+            "src.cli.rag.apply_rag_rekey.db_engine.get_rag_index_session", side_effect=ephemeral_db["session_factory"]
+        ):
+            rc = apply_rekey_main(
+                ["--manifest", str(manifest_path), "--apply", "--transaction-id", "tx-hard-crash-001"]
+            )
+            assert rc == 0
+
+        # Verify reconstructed receipt
+        receipts = list(receipt_dir.glob("*.json"))
+        assert len(receipts) == 1
+        with receipts[0].open("r", encoding="utf-8") as f:
+            rec_data = json.load(f)
+        assert rec_data["status"] == "RECOVERED_RECEIPT_REBUILT"
+        assert rec_data["rekeyed_count"] == 0
+        assert rec_data["already_applied_count"] == 1

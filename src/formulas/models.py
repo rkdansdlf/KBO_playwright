@@ -191,10 +191,64 @@ class MetricDefinition:
         c = constants or {}
         return self.eval_fn(inputs, c)
 
-    def _check_domain_zero_denominators(self, inputs: dict[str, Any]) -> str | None:
+    def _check_domain_zero_denominators(self, inputs: dict[str, Any]) -> str | None:  # noqa: C901, PLR0911, PLR0912, PLR0915
         """Check if inputs violate domain conditions with a zero denominator."""
         if self.metric_id in ("AVG", "SLG", "ISO", "SecA") and float(inputs.get("at_bats") or 0) <= 0:
             return "ZERO_AT_BATS"
+
+        if self.metric_id == "OBP":
+            ab = float(inputs.get("at_bats") or 0)
+            bb = float(inputs.get("walks") or 0)
+            hbp = float(inputs.get("hbp") or 0)
+            sf = float(inputs.get("sacrifice_flies") or 0)
+            if (ab + bb + hbp + sf) <= 0:
+                return "ZERO_PLATE_APPEARANCES"
+
+        if self.metric_id == "OPS":
+            ab = float(inputs.get("at_bats") or 0)
+            bb = float(inputs.get("walks") or 0)
+            hbp = float(inputs.get("hbp") or 0)
+            sf = float(inputs.get("sacrifice_flies") or 0)
+            if ab <= 0:
+                return "ZERO_AT_BATS"
+            if (ab + bb + hbp + sf) <= 0:
+                return "ZERO_PLATE_APPEARANCES"
+
+        if self.metric_id == "wOBA":
+            ab = float(inputs.get("at_bats") or 0)
+            bb = float(inputs.get("walks") or 0)
+            ibb = float(inputs.get("intentional_walks") or 0)
+            hbp = float(inputs.get("hbp") or 0)
+            sf = float(inputs.get("sacrifice_flies") or 0)
+            u_bb = max(bb - ibb, 0.0)
+            if (ab + u_bb + hbp + sf) <= 0:
+                return "ZERO_PLATE_APPEARANCES"
+
+        if self.metric_id == "BABIP_BAT":
+            ab = float(inputs.get("at_bats") or 0)
+            so = float(inputs.get("strikeouts") or 0)
+            hr = float(inputs.get("home_runs") or 0)
+            sf = float(inputs.get("sacrifice_flies") or 0)
+            if (ab - so - hr + sf) <= 0:
+                return "ZERO_BIP_OPPORTUNITIES"
+
+        if self.metric_id == "SB_PCT":
+            sb = float(inputs.get("stolen_bases") or 0)
+            cs = float(inputs.get("caught_stealing") or 0)
+            if (sb + cs) <= 0:
+                return "ZERO_ATTEMPTS"
+
+        if self.metric_id == "FPCT":
+            po = float(inputs.get("putouts") or 0)
+            a = float(inputs.get("assists") or 0)
+            e = float(inputs.get("errors") or 0)
+            if (po + a + e) <= 0:
+                return "ZERO_CHANCES"
+
+        if self.metric_id == "RF_9":
+            inn = float(inputs.get("innings") or 0)
+            if inn <= 0:
+                return "ZERO_INNINGS"
 
         if self.metric_id in ("ERA", "WHIP", "FIP", "K_9", "BB_9", "HR_9", "DICE", "ERA_INDEX_NO_PARK"):
             outs = float(inputs.get("innings_outs") or 0)
@@ -205,7 +259,7 @@ class MetricDefinition:
         if self.metric_id == "BB_TO_K_BAT" and float(inputs.get("strikeouts") or 0) <= 0:
             return "ZERO_STRIKEOUTS"
 
-        if self.metric_id in ("BB_PCT_BAT", "K_PCT_BAT", "wRAA", "wRC", "WRC_INDEX_NO_PARK"):
+        if self.metric_id in ("BB_PCT_BAT", "K_PCT_BAT", "wRAA", "wRC", "WRC_INDEX_NO_PARK", "OPS_INDEX_NO_PARK"):
             pa = float(inputs.get("plate_appearances") or inputs.get("pa") or 0)
             ab = float(inputs.get("at_bats") or 0)
             bb = float(inputs.get("walks") or 0)
@@ -227,6 +281,28 @@ class MetricDefinition:
                 raw_value=None,
                 rounded_value=None,
                 reason_code=zero_reason,
+                eligible_for_numeric_comparison=False,
+                included_in_audit_population=True,
+            )
+
+        if (
+            self.metric_id
+            in (
+                "wOBA",
+                "wRAA",
+                "wRC",
+                "WRC_INDEX_NO_PARK",
+                "OPS_INDEX_NO_PARK",
+                "ERA_INDEX_NO_PARK",
+                "FIP",
+            )
+            and not constants
+        ):
+            return FormulaEvaluation(
+                status=EvaluationStatus.UNDEFINED_CALIBRATION_UNAVAILABLE,
+                raw_value=None,
+                rounded_value=None,
+                reason_code="CALIBRATION_UNAVAILABLE",
                 eligible_for_numeric_comparison=False,
                 included_in_audit_population=True,
             )
