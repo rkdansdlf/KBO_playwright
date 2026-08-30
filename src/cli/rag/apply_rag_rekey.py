@@ -194,22 +194,40 @@ def _validate_manifest_header(manifest: dict, *, apply: bool) -> str | None:
     return None
 
 
+def _validate_transaction_id(transaction_id: str) -> str | None:
+    """Validate transaction ID format (reject paths, symlinks, directory traversal)."""
+    if not transaction_id or not isinstance(transaction_id, str):
+        return "transaction_id must be a non-empty string"
+    if not re.match(r"^[a-zA-Z0-9_-]+$", transaction_id):
+        return (
+            f"invalid transaction_id '{transaction_id}': only alphanumeric characters, "
+            f"hyphens, and underscores allowed (directory traversal prohibited)"
+        )
+    return None
+
+
 def _get_receipt_dir() -> Path:
     receipt_dir = Path(os.getenv("R2_REKEY_RECEIPT_DIR", "data/r2_rekey/receipts"))
     receipt_dir.mkdir(parents=True, exist_ok=True)
     return receipt_dir
 
 
-def _check_receipt_replay(
+def _check_receipt_replay(  # noqa: C901, PLR0911
     transaction_id: str,
     manifest_sha: str,
+    session: Session | None = None,
+    manifest: dict | None = None,
 ) -> tuple[bool, dict[str, Any] | None, str | None]:
-    """Check if an existing receipt matches this transaction.
+    """Check if an existing receipt matches this transaction and verify postconditions.
 
     Returns:
         (is_replay, receipt_payload, collision_error_or_none)
 
     """
+    id_err = _validate_transaction_id(transaction_id)
+    if id_err:
+        return False, None, id_err
+
     receipt_dir = _get_receipt_dir()
     matching_receipts = list(receipt_dir.glob(f"*_{transaction_id}.json"))
 
@@ -218,6 +236,9 @@ def _check_receipt_replay(
 
     # Found existing receipt for this transaction ID
     receipt_path = matching_receipts[0]
+    if receipt_path.is_symlink():
+        return False, None, f"symlink receipt rejected: {receipt_path}"
+
     try:
         with receipt_path.open("r", encoding="utf-8") as f:
             receipt = json.load(f)
@@ -225,6 +246,30 @@ def _check_receipt_replay(
         return False, None, f"corrupted existing receipt {receipt_path}: {exc}"
 
     if receipt.get("manifest_sha256") == manifest_sha:
+        # Verify DB postcondition if session and manifest entries are provided
+        if session is not None and manifest is not None:
+            entries = manifest.get("entries", [])
+            for entry in entries:
+                chunk_id = entry.get("chunk_id")
+                disposition = entry.get("disposition")
+                natural_id = entry.get("natural_source_row_id")
+                stmt = select(RagChunk).where(RagChunk.id == chunk_id)
+                row = session.execute(stmt).scalar_one_or_none()
+                if row is not None:
+                    if disposition == DISPOSITION_REKEY and natural_id and row.source_row_id != natural_id:
+                        return (
+                            False,
+                            receipt,
+                            f"db_postcondition_missing: chunk {chunk_id} source_row_id={row.source_row_id} "
+                            f"does not match natural_id={natural_id}",
+                        )
+                    if disposition == DISPOSITION_TOMBSTONE and row.index_status != "DELETED":
+                        return (
+                            False,
+                            receipt,
+                            f"db_postcondition_missing: chunk {chunk_id} status={row.index_status} is not DELETED",
+                        )
+
         # Same transaction ID, same payload -> Exact idempotent replay
         return True, receipt, None
 
@@ -250,8 +295,13 @@ def _publish_immutable_receipt(  # noqa: PLR0913
     stale_rejected: int,
     preimage_path: Path | None,
     rollback_path: Path | None,
+    original_apply_receipt_sha: str | None = None,
 ) -> Path:
-    """Generate and write an immutable cryptographic receipt for the execution."""
+    """Generate and write an immutable cryptographic receipt via atomic temp file + fsync + rename."""
+    id_err = _validate_transaction_id(transaction_id)
+    if id_err:
+        raise ValueError(id_err)
+
     receipt_dir = _get_receipt_dir()
     receipt_filename = f"receipt_{manifest_sha[:16]}_{transaction_id}.json"
     receipt_path = receipt_dir / receipt_filename
@@ -271,15 +321,22 @@ def _publish_immutable_receipt(  # noqa: PLR0913
         "preimage_path": str(preimage_path) if preimage_path else None,
         "rollback_path": str(rollback_path) if rollback_path else None,
     }
+    if original_apply_receipt_sha:
+        payload["original_apply_receipt_sha"] = original_apply_receipt_sha
 
     # Compute receipt SHA256 digest
     content_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     payload["receipt_sha256"] = hashlib.sha256(content_bytes).hexdigest()
 
-    with receipt_path.open("w", encoding="utf-8") as f:
+    # Atomic write via temp file + fsync + rename
+    temp_path = receipt_dir / f".tmp_{receipt_filename}_{os.getpid()}"
+    with temp_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
 
+    temp_path.replace(receipt_path)
     return receipt_path
 
 
@@ -579,7 +636,10 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0
 
     # Check for idempotent replay or transaction ID collision
     if args.apply:
-        is_replay, existing_receipt, collision_err = _check_receipt_replay(tx_id, actual_manifest_sha)
+        with db_engine.get_rag_index_session() as pre_session:
+            is_replay, existing_receipt, collision_err = _check_receipt_replay(
+                tx_id, actual_manifest_sha, session=pre_session, manifest=manifest
+            )
         if collision_err:
             sys.stderr.write(f"rekey_apply_error: {collision_err}\n")
             return 2
