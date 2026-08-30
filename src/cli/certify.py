@@ -7,12 +7,10 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from src.certification.context import CertificationContext
-from src.certification.historical.reporter import HistoricalReporter
-from src.certification.historical.runner import HistoricalCertificationRunner
-from src.certification.reporter import CertificationReporter
-from src.certification.runner import CertificationRunner
+if TYPE_CHECKING:
+    from src.certification.context import CertificationContext
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _run_historical_cli(args: argparse.Namespace, context: CertificationContext, json_out_path: Path) -> int:
     """Execute historical certification branch."""
+    from src.certification.historical.reporter import HistoricalReporter
+    from src.certification.historical.runner import HistoricalCertificationRunner
+
     try:
         hist_runner = HistoricalCertificationRunner()
         start_yr = args.season or args.start_season
@@ -131,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
     default_json_out = "data/certification/historical.json" if args.historical else "data/certification/report.json"
     json_out_path = Path(args.json_out or default_json_out)
 
+    from src.certification.context import CertificationContext
+
     try:
         context = CertificationContext(
             target=target_mode,
@@ -146,6 +149,9 @@ def main(argv: list[str] | None = None) -> int:
         return _run_historical_cli(args, context, json_out_path)
 
     # Standard Platform Production / Gate Certification
+    from src.certification.reporter import CertificationReporter
+    from src.certification.runner import CertificationRunner
+
     try:
         runner = CertificationRunner()
         report = runner.run_certification(context)

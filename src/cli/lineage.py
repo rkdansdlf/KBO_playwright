@@ -7,11 +7,10 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from src.lineage.engine import LineageEngine
-from src.lineage.reporter import LineageReporter
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from src.lineage.engine import LineageEngine
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -86,6 +85,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def _handle_game(engine: LineageEngine, args: argparse.Namespace) -> int:
     """Handle game lineage sub-action."""
+    from src.lineage.reporter import LineageReporter
+
     report = engine.trace_game(args.game_id)
     fmt = "json" if getattr(args, "json", False) else args.format
 
@@ -100,6 +101,8 @@ def _handle_game(engine: LineageEngine, args: argparse.Namespace) -> int:
 
 def _handle_player(engine: LineageEngine, args: argparse.Namespace) -> int:
     """Handle player lineage sub-action."""
+    from src.lineage.reporter import LineageReporter
+
     report = engine.trace_player_metric(args.player, season=args.season, metric=args.metric)
     fmt = "json" if getattr(args, "json", False) else args.format
 
@@ -114,6 +117,8 @@ def _handle_player(engine: LineageEngine, args: argparse.Namespace) -> int:
 
 def _handle_audit(engine: LineageEngine, args: argparse.Namespace) -> int:
     """Handle lineage audit sub-action."""
+    from src.lineage.reporter import LineageReporter
+
     sample_val = args.sample if (args.sample is not None or not args.full) else None
     report = engine.audit_lineage(season=args.season, sample=sample_val, full=args.full)
     fmt = "json" if getattr(args, "json", False) else args.format
@@ -135,6 +140,8 @@ def _handle_audit(engine: LineageEngine, args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Execute lineage CLI subcommand."""
+    from src.lineage.engine import LineageEngine
+
     args = parse_args(argv)
     engine = LineageEngine()
 
