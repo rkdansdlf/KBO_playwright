@@ -59,7 +59,7 @@ class DataIntegrityGate:
             try:
                 with get_db_session() as session:
                     bat_count, pitch_count = self._query_violations(session)
-            except Exception:  # noqa: BLE001
+            except (SQLAlchemyError, OSError):
                 if context.target == "local":
                     local_engine = create_engine("sqlite:///./data/kbo_dev.db")
                     with Session(local_engine) as local_session:

@@ -335,8 +335,18 @@ def _publish_immutable_receipt(  # noqa: PLR0913
         f.write("\n")
         f.flush()
         os.fsync(f.fileno())
-
     temp_path.replace(receipt_path)
+
+    # Sync parent directory entry to guarantee filesystem durability across power loss
+    try:
+        dir_fd = os.open(str(receipt_dir), os.O_DIRECTORY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except (OSError, AttributeError):
+        pass
+
     return receipt_path
 
 
@@ -679,19 +689,23 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0
             )
 
         receipt_path: Path | None = None
-        if args.apply and status in ("SUCCESS_APPLIED", "SUCCESS_NOOP"):
-            receipt_path = _publish_immutable_receipt(
-                transaction_id=tx_id,
-                manifest_id=manifest_id,
-                manifest_sha=actual_manifest_sha,
-                status=status,
-                rekey_count=rekey_count,
-                tombstone_count=tombstone_count,
-                already_applied=already_applied,
-                stale_rejected=len(skipped),
-                preimage_path=preimage_path,
-                rollback_path=rollback_path,
-            )
+        if args.apply:
+            if status == "SUCCESS_NOOP" and not existing_receipt and already_applied > 0 and len(skipped) == 0:
+                # DB was already modified in prior transaction that crashed before receipt publish
+                status = "RECOVERED_RECEIPT_REBUILT"
+            if status in ("SUCCESS_APPLIED", "SUCCESS_NOOP", "RECOVERED_RECEIPT_REBUILT"):
+                receipt_path = _publish_immutable_receipt(
+                    transaction_id=tx_id,
+                    manifest_id=manifest_id,
+                    manifest_sha=actual_manifest_sha,
+                    status=status,
+                    rekey_count=rekey_count,
+                    tombstone_count=tombstone_count,
+                    already_applied=already_applied,
+                    stale_rejected=len(skipped),
+                    preimage_path=preimage_path,
+                    rollback_path=rollback_path,
+                )
 
         _render_report(
             rekey_count,
