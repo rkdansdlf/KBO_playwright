@@ -44,13 +44,11 @@ echo ""
 echo "[Phase 1] Census & Manifest Generation"
 echo "-----------------------------------------"
 
-python -m src.cli.kbo rag census \
+if ! python -m src.cli.kbo rag census \
   --dry-run \
   --json \
   --output "${MANIFEST_FILE}" \
-  --sample 50
-
-if [ $? -ne 0 ]; then
+  --sample 50; then
     echo "ERROR: Census failed"
     exit 1
 fi
@@ -77,11 +75,9 @@ echo ""
 echo "[Phase 2] Dry-run Apply (Compare-and-Set Validation)"
 echo "-----------------------------------------"
 
-python -m src.cli.rag.apply_rag_rekey \
+if ! python -m src.cli.rag.apply_rag_rekey \
   --manifest "${MANIFEST_FILE}" \
-  --json
-
-if [ $? -ne 0 ]; then
+  --json; then
     echo "ERROR: Dry-run failed"
     exit 1
 fi
@@ -143,11 +139,9 @@ with open('${SINGLE_MANIFEST}', 'w') as f:
 
     echo "Applying ${SOURCE} (${SINGLE_MANIFEST})..."
 
-    python -m src.cli.rag.apply_rag_rekey \
+    if ! python -m src.cli.rag.apply_rag_rekey \
       --manifest "${SINGLE_MANIFEST}" \
-      --apply --json
-
-    if [ $? -ne 0 ]; then
+      --apply --json; then
         echo "ERROR: Apply failed for ${SOURCE}"
         exit 1
     fi
