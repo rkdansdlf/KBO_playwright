@@ -383,13 +383,23 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")  # noqa: T201
         return 1
 
-    def _lazy_certify(_: list[str]) -> int:
-        print("certify command not available: certification package not installed", file=sys.stderr)  # noqa: T201
-        return 1
+    def _lazy_certify(args: list[str]) -> int:
+        try:
+            from src.cli.certify import main as certify_main
 
-    def _lazy_lineage(_: list[str]) -> int:
-        print("lineage command not available: lineage package not installed", file=sys.stderr)  # noqa: T201
-        return 1
+            return certify_main(args)
+        except ImportError:
+            print("certify command not available: certification package not installed", file=sys.stderr)  # noqa: T201
+            return 1
+
+    def _lazy_lineage(args: list[str]) -> int:
+        try:
+            from src.cli.lineage import main as lineage_main
+
+            return lineage_main(args)
+        except ImportError:
+            print("lineage command not available: lineage package not installed", file=sys.stderr)  # noqa: T201
+            return 1
 
     return {
         "workflow": wf_main,

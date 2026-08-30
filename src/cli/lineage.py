@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from src.lineage.engine import LineageEngine
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
