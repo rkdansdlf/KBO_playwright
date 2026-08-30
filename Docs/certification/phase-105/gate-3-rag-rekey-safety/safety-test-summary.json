@@ -1,0 +1,120 @@
+{
+  "gate": "GATE_3_LOCAL_EPHEMERAL_RAG_REKEY_SAFETY",
+  "status": "PASSED",
+  "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
+  "environment": "sqlite_ephemeral_disposable",
+  "test_target": "src/cli/rag/apply_rag_rekey.py",
+  "test_suites": [
+    "tests/services/test_rag_rekey_safety_gate3.py",
+    "tests/cli/test_apply_rag_rekey.py"
+  ],
+  "tests_collected": 40,
+  "tests_passed": 40,
+  "tests_failed": 0,
+  "tests_errored": 0,
+  "test_matrix_results": [
+    {
+      "test_case": "1. Normal apply (exact mutation match)",
+      "status": "PASSED",
+      "invariant": "expected_mutation == actual_rowcount (5/5 rekeyed)"
+    },
+    {
+      "test_case": "2. Idempotency (re-apply mutation count == 0, explicit SUCCESS_NOOP)",
+      "status": "PASSED",
+      "invariant": "second apply yields 0 rekeys, 1 already_applied, explicit SUCCESS_NOOP"
+    },
+    {
+      "test_case": "3. CAS stale content hash fail-closed",
+      "status": "PASSED",
+      "invariant": "0 mutation when content_hash modified in DB post-manifest"
+    },
+    {
+      "test_case": "4. CAS stale legacy ID fail-closed",
+      "status": "PASSED",
+      "invariant": "0 mutation when legacy_source_row_id does not match DB"
+    },
+    {
+      "test_case": "5. CAS stale index status fail-closed",
+      "status": "PASSED",
+      "invariant": "0 mutation when index_status does not match expected state"
+    },
+    {
+      "test_case": "6. CAS stale index version fail-closed",
+      "status": "PASSED",
+      "invariant": "0 mutation when index_version differs from target schema"
+    },
+    {
+      "test_case": "7. Atomicity / batch rollback on failure",
+      "status": "PASSED",
+      "invariant": "transaction rollback completely reverts partial batch updates"
+    },
+    {
+      "test_case": "8. Target collision disposition tombstone",
+      "status": "PASSED",
+      "invariant": "legacy row marked DELETED; existing natural target unmodified"
+    },
+    {
+      "test_case": "9. Pre-converted rows untouched",
+      "status": "PASSED",
+      "invariant": "natural-keyed rows not targeted by manifest remain untouched"
+    },
+    {
+      "test_case": "10. Manifest integrity / SHA verification",
+      "status": "PASSED",
+      "invariant": "tampered manifest content rejected with exit code 2"
+    },
+    {
+      "test_case": "11. Snapshot binding / database fingerprint verification",
+      "status": "PASSED",
+      "invariant": "manifest bound to different DB fingerprint rejected in apply mode"
+    },
+    {
+      "test_case": "12. Inverse rollback manifest execution & state restoration",
+      "status": "PASSED",
+      "invariant": "generated rollback manifest correctly inverts natural keys to legacy"
+    },
+    {
+      "test_case": "13. Fault injection / mid-process abort safety",
+      "status": "PASSED",
+      "invariant": "exception during execution guarantees 0 committed modifications"
+    },
+    {
+      "test_case": "14. DSN & production write guard fail-closed",
+      "status": "PASSED",
+      "invariant": "refuses execution without explicit env flags and guards production DSN"
+    },
+    {
+      "test_case": "15. Immutable receipt generated upon successful execution",
+      "status": "PASSED",
+      "invariant": "receipt file created in data/r2_rekey/receipts/ with hash signature"
+    },
+    {
+      "test_case": "16. Idempotent replay reuses verified receipt (SUCCESS_NOOP)",
+      "status": "PASSED",
+      "invariant": "same transaction ID + payload reuses receipt without database writes"
+    },
+    {
+      "test_case": "17. Transaction ID collision with different payload rejected",
+      "status": "PASSED",
+      "invariant": "collision detected and aborted with exit code 2"
+    },
+    {
+      "test_case": "18. Oracle and Staging DSNs strictly rejected in local safety mode",
+      "status": "PASSED",
+      "invariant": "oracle+oracledb:// DSN unconditionally blocked in local safety mode"
+    },
+    {
+      "test_case": "19. Non-ephemeral primary database path (data/kbo_dev.db) blocked",
+      "status": "PASSED",
+      "invariant": "local repository file path blocked from direct write execution"
+    }
+  ],
+  "safety_guarantees": {
+    "live_database_mutated": false,
+    "production_access_count": 0,
+    "staging_access_count": 0,
+    "production_write_count": 0,
+    "source_file_kbo_dev_db_modified": false
+  },
+  "generated_at_kst": "2026-08-30T16:21:00+09:00"
+}

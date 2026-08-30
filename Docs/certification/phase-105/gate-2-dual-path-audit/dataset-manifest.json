@@ -1,0 +1,62 @@
+{
+  "manifest_schema_version": "gate-2-dataset-manifest-v1",
+  "sample_population": {
+    "total_rows_sampled": 1000,
+    "batting_rows": 500,
+    "pitching_rows": 500,
+    "distinct_natural_entity_keys": 967,
+    "cross_category_overlap_keys": 33,
+    "source_sampling_rule": "ORDER BY season DESC, player_id ASC LIMIT 500 per table"
+  },
+  "metric_source_mappings": {
+    "batting_metrics": {
+      "source_table": "player_season_batting",
+      "metrics": [
+        "AVG",
+        "OBP",
+        "SLG",
+        "OPS",
+        "ISO",
+        "BABIP_BAT",
+        "BB_PCT_BAT",
+        "K_PCT_BAT",
+        "BB_TO_K_BAT",
+        "wOBA",
+        "wRAA",
+        "wRC",
+        "WRC_INDEX_NO_PARK",
+        "OPS_INDEX_NO_PARK"
+      ]
+    },
+    "pitching_metrics": {
+      "source_table": "player_season_pitching",
+      "metrics": [
+        "ERA",
+        "WHIP",
+        "K_9",
+        "BB_9",
+        "K_BB_PITCH",
+        "H_9",
+        "HR_9",
+        "FIP",
+        "ERA_INDEX_NO_PARK"
+      ]
+    },
+    "baserunning_metrics": {
+      "source_table": "player_season_batting / player_season_baserunning",
+      "metrics": [
+        "SB_PCT"
+      ]
+    },
+    "fielding_team_metrics": {
+      "source_table": "player_season_pitching / player_season_fielding",
+      "metrics": [
+        "DER",
+        "FPCT",
+        "RF_9"
+      ]
+    }
+  },
+  "entities_file": "selected-entities.jsonl",
+  "entities_sha256": "920121846d94572c9e7eff73128eb9d6e4548f165bb5366b8fb8203c2f8b1bac"
+}
