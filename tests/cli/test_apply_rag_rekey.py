@@ -513,6 +513,7 @@ class TestApplyRekey:
             mock_session.execute.return_value = _FakeResult(rowcount=1)
             exit_code = main(["--manifest", str(temp_manifest), "--apply", "--json"])
             assert exit_code == 0
+            capsys.readouterr()  # Clear output buffer
 
             # Second apply - rowcount=0 because already updated
             mock_session.execute.return_value = _FakeResult(rowcount=0)
