@@ -235,7 +235,9 @@ class OracleWriter:
             using_rows.append(f"SELECT {using_cols} FROM DUAL")  # noqa: S608
         using_clause = f"({' UNION ALL '.join(using_rows)})"
 
-        on_clause = " AND ".join(f't."{pk}" = s."{pk}"' for pk in pks_upper)
+        on_clause = " AND ".join(
+            f'(t."{pk}" = s."{pk}" OR (t."{pk}" IS NULL AND s."{pk}" IS NULL))' for pk in pks_upper
+        )
 
         update_cols = [c for c in cols_upper if c not in pks_upper]
         matched_clause = ""
