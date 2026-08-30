@@ -55,7 +55,7 @@ class VectorRagGate:
                 with get_db_session() as session:
                     bind_engine = session.bind
                     chunks = _get_rag_chunks_safe(bind_engine, context) if bind_engine else []
-            except Exception:  # noqa: BLE001
+            except (SQLAlchemyError, OSError):
                 if context.target == "local":
                     local_engine = create_engine("sqlite:///./data/kbo_dev.db")
                     chunks = _get_rag_chunks_safe(local_engine, context)
@@ -83,7 +83,7 @@ class VectorRagGate:
                     metrics["probe_results_count"] = len(query_results)
                     evidence["probe_query"] = probe_query
                     evidence["timings"] = timings
-                except Exception as probe_err:  # noqa: BLE001
+                except (SQLAlchemyError, OSError, RuntimeError, ValueError) as probe_err:
                     if context.target == "local":
                         probe_ok = False
                         metrics["probe_results_count"] = 0

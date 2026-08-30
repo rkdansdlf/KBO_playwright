@@ -38,6 +38,7 @@ from pathlib import Path
 import re
 import subprocess
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine, select, text, update
@@ -1029,3 +1030,150 @@ class TestRagRekeySafetyGate3:
         assert _validate_transaction_id("tx/with/slash") is not None
         assert _validate_transaction_id("../traversal") is not None
         assert _validate_transaction_id("tx;rm -rf") is not None
+
+    def test_28_crash_recovery_subprocess_exit(self, ephemeral_db: dict[str, Any], tmp_path: Path) -> None:
+        """28. Hard crash immediately post DB-commit recovers with RECOVERED_RECEIPT_REBUILT."""
+        receipt_dir = tmp_path / "receipts"
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(receipt_dir)
+        db_file = ephemeral_db["db_file"]
+        os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
+
+        # Seed initial chunk
+        session = ephemeral_db["session_factory"]()
+        try:
+            session.add(
+                RagChunk(
+                    id=1,
+                    source_table="awards",
+                    source_row_id="2025_award_1",  # already applied in DB prior to crash
+                    content="Award 1",
+                    content_hash="h1",
+                    index_status="ACTIVE",
+                    index_version="r2",
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        entry = {
+            "chunk_id": 1,
+            "legacy_source_row_id": "1",
+            "natural_source_row_id": "2025_award_1",
+            "disposition": DISPOSITION_REKEY,
+            "index_status": "ACTIVE",
+            "legacy_content_hash": "h1",
+            "index_version": "r2",
+        }
+        manifest = _make_safe_manifest([entry])
+        manifest_path = tmp_path / "manifest_crash_recovery.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        with patch(
+            "src.cli.rag.apply_rag_rekey.db_engine.get_rag_index_session", side_effect=ephemeral_db["session_factory"]
+        ):
+            rc = apply_rekey_main(["--manifest", str(manifest_path), "--apply", "--transaction-id", "tx-crash-rec-001"])
+            assert rc == 0
+
+        # Receipt should have been reconstructed with RECOVERED_RECEIPT_REBUILT
+        receipts = list(receipt_dir.glob("*.json"))
+        assert len(receipts) == 1
+        with receipts[0].open("r", encoding="utf-8") as f:
+            rec_data = json.load(f)
+        assert rec_data["status"] == "RECOVERED_RECEIPT_REBUILT"
+        assert rec_data["rekeyed_count"] == 0
+        assert rec_data["already_applied_count"] == 1
+
+    def test_29_post_commit_receipt_io_failure_and_recovery(self, ephemeral_db: dict[str, Any], tmp_path: Path) -> None:
+        """29. Post-commit receipt I/O failure (OSError) safely leaves DB committed, and next run recovers."""
+        receipt_dir = tmp_path / "receipts"
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(receipt_dir)
+        db_file = ephemeral_db["db_file"]
+        os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
+
+        session = ephemeral_db["session_factory"]()
+        try:
+            session.add(
+                RagChunk(
+                    id=1,
+                    source_table="awards",
+                    source_row_id="1",
+                    content="Award 1",
+                    content_hash="h1",
+                    index_status="ACTIVE",
+                    index_version="r2",
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        entry = {
+            "chunk_id": 1,
+            "legacy_source_row_id": "1",
+            "natural_source_row_id": "2025_award_1",
+            "disposition": DISPOSITION_REKEY,
+            "index_status": "ACTIVE",
+            "legacy_content_hash": "h1",
+            "index_version": "r2",
+        }
+        manifest = _make_safe_manifest([entry])
+        manifest_path = tmp_path / "manifest_io_fail.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        # First run: DB commit succeeds, but receipt publishing throws OSError (e.g. disk full)
+        with patch(
+            "src.cli.rag.apply_rag_rekey.db_engine.get_rag_index_session", side_effect=ephemeral_db["session_factory"]
+        ):
+            with patch(
+                "src.cli.rag.apply_rag_rekey._publish_immutable_receipt", side_effect=OSError("Disk quota exceeded")
+            ):
+                rc_first = apply_rekey_main(
+                    ["--manifest", str(manifest_path), "--apply", "--transaction-id", "tx-io-fail-001"]
+                )
+                assert rc_first != 0
+
+        # Verify DB is in committed state
+        session = ephemeral_db["session_factory"]()
+        try:
+            chunk = session.get(RagChunk, 1)
+            assert chunk.source_row_id == "2025_award_1"
+        finally:
+            session.close()
+
+        # Second run: recovery without I/O error -> rebuilds receipt
+        with patch(
+            "src.cli.rag.apply_rag_rekey.db_engine.get_rag_index_session", side_effect=ephemeral_db["session_factory"]
+        ):
+            rc = apply_rekey_main(["--manifest", str(manifest_path), "--apply", "--transaction-id", "tx-io-fail-001"])
+            assert rc == 0
+
+        receipts = list(receipt_dir.glob("*.json"))
+        assert len(receipts) == 1
+        with receipts[0].open("r", encoding="utf-8") as f:
+            rec_data = json.load(f)
+        assert rec_data["status"] == "RECOVERED_RECEIPT_REBUILT"
+
+    def test_30_receipt_parent_directory_fsync_after_replace(self, tmp_path: Path) -> None:
+        """30. Receipt publication calls os.fsync on parent directory descriptor."""
+        receipt_dir = tmp_path / "receipts"
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(receipt_dir)
+
+        with patch("os.fsync") as mock_fsync:
+            receipt_path = _publish_immutable_receipt(
+                transaction_id="tx-fsync-001",
+                manifest_id="manifest-001",
+                manifest_sha="sha_fsync_001",
+                status="SUCCESS_APPLIED",
+                rekey_count=1,
+                tombstone_count=0,
+                already_applied=0,
+                stale_rejected=0,
+                preimage_path=None,
+                rollback_path=None,
+            )
+            assert receipt_path.exists()
+            assert mock_fsync.call_count >= 2  # 1 for file fd, 1 for directory fd
