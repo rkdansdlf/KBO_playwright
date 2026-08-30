@@ -1,18 +1,16 @@
-"""Tests for SQL Reference Oracle in Phase 105A Gate 2C."""
+"""Tests for SQL Reference Oracle in Phase 105A Gate 2D."""
 
 from __future__ import annotations
 
-from decimal import Decimal
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
 
 from src.formulas.sql_reference import SqlReferenceOracle
 
 
 @pytest.fixture()
 def in_memory_sql_db():
-    """Create in-memory SQLite database with batting, pitching, fielding, baserunning tables."""
+    """Create in-memory SQLite database with batting, pitching, fielding tables."""
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
         conn.execute(
@@ -20,17 +18,24 @@ def in_memory_sql_db():
             CREATE TABLE player_season_batting (
                 season INTEGER,
                 player_id INTEGER,
-                team_id TEXT,
+                team_code TEXT,
+                league TEXT,
+                level TEXT,
                 at_bats INTEGER,
                 hits INTEGER,
                 doubles INTEGER,
                 triples INTEGER,
                 home_runs INTEGER,
                 walks INTEGER,
-                hit_by_pitch INTEGER,
-                strike_outs INTEGER,
+                intentional_walks INTEGER,
+                hbp INTEGER,
+                strikeouts INTEGER,
                 sacrifice_hits INTEGER,
-                sacrifice_flies INTEGER
+                sacrifice_flies INTEGER,
+                stolen_bases INTEGER,
+                caught_stealing INTEGER,
+                gdp INTEGER,
+                plate_appearances INTEGER
             );
             """)
         )
@@ -39,28 +44,76 @@ def in_memory_sql_db():
             CREATE TABLE player_season_pitching (
                 season INTEGER,
                 player_id INTEGER,
-                team_id TEXT,
-                innings_pitched_outs INTEGER,
+                team_code TEXT,
+                league TEXT,
+                level TEXT,
+                innings_outs INTEGER,
                 earned_runs INTEGER,
-                hits INTEGER,
-                walks INTEGER,
-                strike_outs INTEGER,
-                home_runs INTEGER
+                runs_allowed INTEGER,
+                hits_allowed INTEGER,
+                walks_allowed INTEGER,
+                hit_batters INTEGER,
+                strikeouts INTEGER,
+                home_runs_allowed INTEGER,
+                tbf INTEGER,
+                sacrifice_flies_allowed INTEGER
+            );
+            """)
+        )
+        conn.execute(
+            text("""
+            CREATE TABLE player_season_fielding (
+                year INTEGER,
+                player_id INTEGER,
+                team_id TEXT,
+                position_id INTEGER,
+                putouts INTEGER,
+                assists INTEGER,
+                errors INTEGER,
+                innings REAL,
+                games INTEGER
             );
             """)
         )
         conn.execute(
             text("""
             INSERT INTO player_season_batting (
-                season, player_id, team_id, at_bats, hits, doubles, triples, home_runs, walks, hit_by_pitch, strike_outs, sacrifice_hits, sacrifice_flies
-            ) VALUES (2025, 101, 'LG', 400, 120, 20, 2, 15, 50, 5, 80, 4, 6);
+                season, player_id, team_code, league, level,
+                at_bats, hits, doubles, triples, home_runs,
+                walks, intentional_walks, hbp, strikeouts, sacrifice_hits, sacrifice_flies,
+                stolen_bases, caught_stealing, gdp, plate_appearances
+            ) VALUES (
+                2025, 101, 'LG', 'REGULAR', '1군',
+                400, 120, 20, 2, 15,
+                50, 2, 5, 80, 4, 6,
+                10, 2, 8, 465
+            );
             """)
         )
         conn.execute(
             text("""
             INSERT INTO player_season_pitching (
-                season, player_id, team_id, innings_pitched_outs, earned_runs, hits, walks, strike_outs, home_runs
-            ) VALUES (2025, 201, 'KIA', 300, 30, 80, 25, 90, 8);
+                season, player_id, team_code, league, level,
+                innings_outs, earned_runs, runs_allowed, hits_allowed,
+                walks_allowed, hit_batters, strikeouts, home_runs_allowed,
+                tbf, sacrifice_flies_allowed
+            ) VALUES (
+                2025, 201, 'KIA', 'REGULAR', '1군',
+                300, 30, 35, 80,
+                25, 3, 90, 8,
+                400, 2
+            );
+            """)
+        )
+        conn.execute(
+            text("""
+            INSERT INTO player_season_fielding (
+                year, player_id, team_id, position_id,
+                putouts, assists, errors, innings, games
+            ) VALUES (
+                2025, 101, 'LG', 4,
+                200, 300, 10, 150.0, 120
+            );
             """)
         )
     yield engine
@@ -90,3 +143,12 @@ class TestSqlReferenceOracle:
         assert r["sql_era"] == 2.70
         # WHIP = (25 + 80) * 3 / 300 = 315 / 300 = 1.05
         assert r["sql_whip"] == 1.05
+
+    def test_evaluate_fielding_sql(self, in_memory_sql_db) -> None:
+        """Verify SQL reference fielding calculations."""
+        results = SqlReferenceOracle.evaluate_fielding(in_memory_sql_db, season=2025)
+        assert len(results) == 1
+        r = results[0]
+        assert r["player_id"] == 101
+        # FPCT = (200 + 300) / (200 + 300 + 10) = 500 / 510 = 0.98039... -> 0.980
+        assert r["sql_fpct"] == 0.980

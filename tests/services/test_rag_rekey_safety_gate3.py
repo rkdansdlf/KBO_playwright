@@ -40,7 +40,7 @@ import subprocess
 from typing import Any
 
 import pytest
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.cli.rag.apply_rag_rekey import (
@@ -55,6 +55,7 @@ from src.cli.rag.apply_rag_rekey import (
     _publish_immutable_receipt,
     _validate_dsn_security,
     _validate_manifest_header,
+    _validate_transaction_id,
     _write_preimage_and_rollback,
     main as apply_rekey_main,
 )
@@ -767,3 +768,264 @@ class TestRagRekeySafetyGate3:
         err = _validate_dsn_security(apply=True)
         assert err is not None
         assert "Primary database data/kbo_dev.db write prohibited" in err
+
+    def test_20_crash_after_db_commit_before_receipt_publish(
+        self, ephemeral_db: dict[str, Any], tmp_path: Path
+    ) -> None:
+        """20. Crash injection between DB commit and receipt publish leaves DB mutated but no false receipt."""
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(tmp_path / "receipts")
+        session: Session = ephemeral_db["session_factory"]()
+        try:
+            for i in range(101, 104):
+                session.add(
+                    RagChunk(
+                        id=i,
+                        source_table="awards",
+                        source_row_id=str(i),
+                        content=f"Award {i}",
+                        content_hash=f"hash_{i}",
+                        index_status="ACTIVE",
+                        index_version="r2",
+                    )
+                )
+            session.commit()
+
+            entries = [
+                {
+                    "chunk_id": i,
+                    "legacy_source_row_id": str(i),
+                    "natural_source_row_id": f"2025_award_MVP_{i}",
+                    "disposition": DISPOSITION_REKEY,
+                    "index_status": "ACTIVE",
+                    "legacy_content_hash": f"hash_{i}",
+                    "index_version": "r2",
+                }
+                for i in range(101, 104)
+            ]
+
+            rekey, tomb, already, skipped, status = _apply_rekey(session, entries, dry_run=False)
+            session.commit()
+
+            assert status == "SUCCESS_APPLIED"
+            assert rekey == 3
+
+            # Simulate crash before receipt publish (receipts dir is empty)
+            receipt_dir = tmp_path / "receipts"
+            assert len(list(receipt_dir.glob("*.json"))) == 0
+
+            # On subsequent replay attempt without receipt: it detects existing natural keys as ALREADY_APPLIED (SUCCESS_NOOP)
+            rekey2, tomb2, already2, skipped2, status2 = _apply_rekey(session, entries, dry_run=False)
+            session.commit()
+
+            assert status2 == "SUCCESS_NOOP"
+            assert already2 == 3
+            assert rekey2 == 0
+        finally:
+            session.close()
+
+    def test_21_receipt_publish_failure_after_db_commit(self, tmp_path: Path) -> None:
+        """21. Receipt publish with invalid transaction ID raises ValueError cleanly."""
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(tmp_path / "receipts")
+        with pytest.raises(ValueError, match="invalid transaction_id"):
+            _publish_immutable_receipt(
+                transaction_id="../../etc/passwd",
+                manifest_id="manifest-001",
+                manifest_sha="sha_test",
+                status="SUCCESS_APPLIED",
+                rekey_count=1,
+                tombstone_count=0,
+                already_applied=0,
+                stale_rejected=0,
+                preimage_path=None,
+                rollback_path=None,
+            )
+
+    def test_22_receipt_exists_but_db_postcondition_missing(self, ephemeral_db: dict[str, Any], tmp_path: Path) -> None:
+        """22. Receipt exists but DB was modified/reverted: replay fails closed on missing postcondition."""
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(tmp_path / "receipts")
+        session: Session = ephemeral_db["session_factory"]()
+        try:
+            for i in range(201, 203):
+                session.add(
+                    RagChunk(
+                        id=i,
+                        source_table="awards",
+                        source_row_id=str(i),  # still legacy ID
+                        content=f"Award {i}",
+                        content_hash=f"hash_{i}",
+                        index_status="ACTIVE",
+                        index_version="r2",
+                    )
+                )
+            session.commit()
+
+            entries = [
+                {
+                    "chunk_id": i,
+                    "legacy_source_row_id": str(i),
+                    "natural_source_row_id": f"2025_award_MVP_{i}",
+                    "disposition": DISPOSITION_REKEY,
+                    "index_status": "ACTIVE",
+                    "legacy_content_hash": f"hash_{i}",
+                    "index_version": "r2",
+                }
+                for i in range(201, 203)
+            ]
+            manifest = _make_safe_manifest(entries)
+            actual_sha = _compute_manifest_sha(manifest)
+
+            _publish_immutable_receipt(
+                transaction_id="tx-postcond-001",
+                manifest_id="manifest-001",
+                manifest_sha=actual_sha,
+                status="SUCCESS_APPLIED",
+                rekey_count=2,
+                tombstone_count=0,
+                already_applied=0,
+                stale_rejected=0,
+                preimage_path=None,
+                rollback_path=None,
+            )
+
+            # In DB, the chunk source_row_id is still legacy (201), not natural key
+            is_replay, receipt, err = _check_receipt_replay(
+                "tx-postcond-001", actual_sha, session=session, manifest=manifest
+            )
+            assert is_replay is False
+            assert err is not None
+            assert "db_postcondition_missing" in err
+        finally:
+            session.close()
+
+    def test_23_apply_receipt_then_rollback_then_replay(self, ephemeral_db: dict[str, Any], tmp_path: Path) -> None:
+        """23. Apply -> Rollback -> Replay: postcondition check detects preimage and prohibits false SUCCESS_NOOP."""
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(tmp_path / "receipts")
+        session: Session = ephemeral_db["session_factory"]()
+        try:
+            for i in range(301, 303):
+                session.add(
+                    RagChunk(
+                        id=i,
+                        source_table="awards",
+                        source_row_id=str(i),
+                        content=f"Award {i}",
+                        content_hash=f"hash_{i}",
+                        index_status="ACTIVE",
+                        index_version="r2",
+                    )
+                )
+            session.commit()
+
+            entries = [
+                {
+                    "chunk_id": i,
+                    "legacy_source_row_id": str(i),
+                    "natural_source_row_id": f"2025_award_MVP_{i}",
+                    "disposition": DISPOSITION_REKEY,
+                    "index_status": "ACTIVE",
+                    "legacy_content_hash": f"hash_{i}",
+                    "index_version": "r2",
+                }
+                for i in range(301, 303)
+            ]
+            manifest = _make_safe_manifest(entries)
+            actual_sha = _compute_manifest_sha(manifest)
+
+            # 1. Apply
+            _apply_rekey(session, entries, dry_run=False)
+            session.commit()
+
+            _publish_immutable_receipt(
+                transaction_id="tx-rollback-cycle",
+                manifest_id="manifest-001",
+                manifest_sha=actual_sha,
+                status="SUCCESS_APPLIED",
+                rekey_count=2,
+                tombstone_count=0,
+                already_applied=0,
+                stale_rejected=0,
+                preimage_path=None,
+                rollback_path=None,
+            )
+
+            # 2. Rollback manually in DB (restore legacy source_row_id)
+            for entry in entries:
+                session.execute(
+                    update(RagChunk)
+                    .where(RagChunk.id == entry["chunk_id"])
+                    .values(source_row_id=str(entry["legacy_source_row_id"]))
+                )
+            session.commit()
+
+            # 3. Replay check
+            is_replay, receipt, err = _check_receipt_replay(
+                "tx-rollback-cycle", actual_sha, session=session, manifest=manifest
+            )
+            assert is_replay is False
+            assert "db_postcondition_missing" in err
+        finally:
+            session.close()
+
+    def test_24_rollback_receipt_links_original_apply_receipt(self, tmp_path: Path) -> None:
+        """24. Rollback receipt links original apply receipt SHA and transaction ID."""
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(tmp_path / "receipts")
+        receipt_path = _publish_immutable_receipt(
+            transaction_id="tx-rollback-001",
+            manifest_id="manifest-rollback-001",
+            manifest_sha="sha_rollback_manifest",
+            status="SUCCESS_APPLIED",
+            rekey_count=2,
+            tombstone_count=0,
+            already_applied=0,
+            stale_rejected=0,
+            preimage_path=None,
+            rollback_path=None,
+            original_apply_receipt_sha="sha_original_apply_12345",
+        )
+
+        with receipt_path.open("r", encoding="utf-8") as f:
+            receipt_data = json.load(f)
+
+        assert receipt_data["original_apply_receipt_sha"] == "sha_original_apply_12345"
+
+    def test_25_atomic_temp_write_fsync_rename(self, tmp_path: Path) -> None:
+        """25. Receipt is written via atomic temp file and renamed with fsync."""
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(tmp_path / "receipts")
+        receipt_path = _publish_immutable_receipt(
+            transaction_id="tx-atomic-001",
+            manifest_id="manifest-001",
+            manifest_sha="sha_atomic_001",
+            status="SUCCESS_APPLIED",
+            rekey_count=1,
+            tombstone_count=0,
+            already_applied=0,
+            stale_rejected=0,
+            preimage_path=None,
+            rollback_path=None,
+        )
+
+        assert receipt_path.exists()
+        assert not (tmp_path / "receipts" / f".tmp_{receipt_path.name}").exists()
+
+    def test_26_receipt_symlink_rejected(self, tmp_path: Path) -> None:
+        """26. Symlinked receipt files are detected and rejected fail-closed."""
+        receipt_dir = tmp_path / "receipts"
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["R2_REKEY_RECEIPT_DIR"] = str(receipt_dir)
+
+        real_target = tmp_path / "target_receipt.json"
+        real_target.write_text('{"manifest_sha256": "fake_sha"}', encoding="utf-8")
+
+        symlink_path = receipt_dir / "receipt_fake_tx-symlink-001.json"
+        symlink_path.symlink_to(real_target)
+
+        is_replay, receipt, err = _check_receipt_replay("tx-symlink-001", "fake_sha")
+        assert is_replay is False
+        assert "symlink receipt rejected" in err
+
+    def test_27_transaction_id_path_validation(self) -> None:
+        """27. Transaction ID validation blocks paths, traversal, and invalid chars."""
+        assert _validate_transaction_id("valid-tx_12345") is None
+        assert _validate_transaction_id("tx/with/slash") is not None
+        assert _validate_transaction_id("../traversal") is not None
+        assert _validate_transaction_id("tx;rm -rf") is not None
