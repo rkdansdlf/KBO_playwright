@@ -345,14 +345,12 @@ def build_master_parser() -> argparse.ArgumentParser:
 def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     """Return map of subcommand strings to their respective module main entrypoints."""
     from src.cli.bulk_load import main as bulk_main
-    from src.cli.certify import main as cert_main
     from src.cli.compare_players import main as cmp_main
     from src.cli.detect_anomalies import main as det_main
     from src.cli.detect_schema_drift import main as drift_main
     from src.cli.diagnose_system import main as diag_main
     from src.cli.formula import main as form_main
     from src.cli.generate_reports import main as rep_main
-    from src.cli.lineage import main as lin_main
     from src.cli.predict_matchups import main as pred_main
     from src.cli.run_maintenance import main as maint_main
     from src.cli.run_migrations import main as mig_main
@@ -385,6 +383,14 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")  # noqa: T201
         return 1
 
+    def _lazy_certify(_: list[str]) -> int:
+        print("certify command not available: certification package not installed", file=sys.stderr)  # noqa: T201
+        return 1
+
+    def _lazy_lineage(_: list[str]) -> int:
+        print("lineage command not available: lineage package not installed", file=sys.stderr)  # noqa: T201
+        return 1
+
     return {
         "workflow": wf_main,
         "diagnose": diag_main,
@@ -405,8 +411,8 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "bulk-load": bulk_main,
         "bulk_load": bulk_main,
         "compare": cmp_main,
-        "certify": cert_main,
-        "lineage": lin_main,
+        "certify": _lazy_certify,
+        "lineage": _lazy_lineage,
         "formula": form_main,
     }
 
