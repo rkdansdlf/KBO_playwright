@@ -1,13 +1,17 @@
 {
-  "manifest_version": "gate-3-safety-manifest-v2",
-  "generated_at_kst": "2026-08-30T17:40:00+09:00",
+  "manifest_version": "gate-3-safety-manifest-v3",
+  "generated_at_kst": "2026-08-31T00:00:00+09:00",
   "target_subsystem": "rag_natural_key_rekey",
   "safety_scope": "LOCAL_EPHEMERAL_APPLY_ONLY",
+  "tested_code_commit": "50a4cbe0346cf53951e27913ff2a19e725f99764",
+  "tested_code_tree": "ed585243faaa120a879732405cee8247a5a5abae",
+  "worktree_clean_before": true,
+  "worktree_clean_after": true,
   "test_suites": [
     "tests/services/test_rag_rekey_safety_gate3.py",
     "tests/cli/test_apply_rag_rekey.py"
   ],
-  "total_focused_tests": 51,
+  "total_focused_tests": 52,
   "invariants_tested": [
     "NORMAL_APPLY_EXACT_ROWCOUNT",
     "IDEMPOTENT_REAPPLY_ZERO_MUTATION",
@@ -29,7 +33,8 @@
     "SYMLINK_RECEIPT_REJECTION",
     "HARD_CRASH_POST_COMMIT_RECOVERY_REBUILT",
     "POST_COMMIT_RECEIPT_IO_FAILURE_RECOVERY",
-    "PARENT_DIRECTORY_FSYNC_DURABILITY"
+    "PARENT_DIRECTORY_FSYNC_DURABILITY",
+    "TRUE_SUBPROCESS_HARD_CRASH_EXIT137_RECOVERY"
   ],
   "execution_constraints": {
     "staging_access_blocked": true,
