@@ -1,0 +1,221 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106B",
+  "total_fixtures": 14,
+  "fixtures": [
+    {
+      "fixture_id": "game_detail_20251001NCLG0",
+      "path": "tests/fixtures/game_details/20251001NCLG0.html",
+      "format": "HTML",
+      "size_bytes": 87928,
+      "sha256": "3405d5c5055d1defa2fd6b39676e47ba339ceb197676a379ee9be8ba39f8725f",
+      "description": "Full KBO GameCenter boxscore & review HTML (NC vs LG, 2025-10-01)",
+      "associated_crawlers": [
+        "game_detail_crawler"
+      ],
+      "associated_parsers": [
+        "GameDetailParser"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "team_batting_2023",
+      "path": "tests/fixtures/html/team_batting_2023.html",
+      "format": "HTML",
+      "size_bytes": 1293,
+      "sha256": "b333971f9faa86759294d0f45db9031760a36854d4a2bb074df56095729360b8",
+      "description": "KBO Team Batting Season Summary Table HTML (2023 regular season)",
+      "associated_crawlers": [
+        "team_batting_stats_crawler"
+      ],
+      "associated_parsers": [
+        "parse_team_batting_html"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "team_pitching_2023",
+      "path": "tests/fixtures/html/team_pitching_2023.html",
+      "format": "HTML",
+      "size_bytes": 1220,
+      "sha256": "39dfdbaf252ee432a1ba2f003c58c16f1f4d95af22d62401c0d612fa0dc9bf7b",
+      "description": "KBO Team Pitching Season Summary Table HTML (2023 regular season)",
+      "associated_crawlers": [
+        "team_pitching_stats_crawler"
+      ],
+      "associated_parsers": [
+        "parse_team_pitching_html"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "events_notice_hanwha",
+      "path": "tests/fixtures/html/hh_events_notice.html",
+      "format": "HTML",
+      "size_bytes": 1767,
+      "sha256": "d951537517d039eca309a1ef4afdc317b25f484f136c79ce7e04a7e772cc98e9",
+      "description": "Hanwha Eagles Event Notice Board HTML",
+      "associated_crawlers": [
+        "team_event_crawler"
+      ],
+      "associated_parsers": [
+        "parse_team_events"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "events_notice_lg",
+      "path": "tests/fixtures/html/lg_events_notice.html",
+      "format": "HTML",
+      "size_bytes": 2427,
+      "sha256": "7dc298037d6996c0c41a94d06f2b75c0918edb45db1c89b2714cc8e2d002a8b9",
+      "description": "LG Twins Event Notice Board HTML",
+      "associated_crawlers": [
+        "team_event_crawler"
+      ],
+      "associated_parsers": [
+        "parse_team_events"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "events_notice_doosan",
+      "path": "tests/fixtures/html/ob_events_notice.html",
+      "format": "HTML",
+      "size_bytes": 1435,
+      "sha256": "664ea4e3914ee6f2c9eae05810e556a987918fa31beacdfc087fcd98f8f2b5b9",
+      "description": "Doosan Bears Event Notice Board HTML",
+      "associated_crawlers": [
+        "team_event_crawler"
+      ],
+      "associated_parsers": [
+        "parse_team_events"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "ticket_prices_lg",
+      "path": "tests/fixtures/html/lg_ticket_prices.html",
+      "format": "HTML",
+      "size_bytes": 981,
+      "sha256": "7be278810e51920e7cfcb902ed646c41f180d79fb2e0c86be3c25c584c985c07",
+      "description": "LG Twins Stadium Ticket Grade and Price Table HTML",
+      "associated_crawlers": [
+        "ticket_crawler"
+      ],
+      "associated_parsers": [
+        "parse_ticket_page"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "ticket_prices_ssg",
+      "path": "tests/fixtures/html/ssg_ticket_prices.html",
+      "format": "HTML",
+      "size_bytes": 630,
+      "sha256": "89a1ceee38c4ffefebf24e49c0aeab1fa8129843524549594da146b4b191eeaf",
+      "description": "SSG Landers Stadium Ticket Grade and Price Table HTML",
+      "associated_crawlers": [
+        "ticket_crawler"
+      ],
+      "associated_parsers": [
+        "parse_ticket_page"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "kbo_live_text_sklg",
+      "path": "tests/fixtures/kbo_live_text/20260412_SKLG.html",
+      "format": "HTML",
+      "size_bytes": 1319,
+      "sha256": "b928c6133fe03487649ff709af700944dcecfe703ca2db63771085295d33b598",
+      "description": "KBO Live Text Relay HTML",
+      "associated_crawlers": [
+        "pbp_crawler",
+        "text_relay_crawler"
+      ],
+      "associated_parsers": [
+        "PBPCrawler.extract_game_events"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "naver_live_relay_inning_1",
+      "path": "tests/fixtures/naver_live/relay_inning_1.json",
+      "format": "JSON",
+      "size_bytes": 1733,
+      "sha256": "dd3e3130eaf0de523c28af7d1bd0c74cb2d3ae6401536b973b367dac7c22ff6c",
+      "description": "Naver Sports Live Relay Inning 1 JSON Payload",
+      "associated_crawlers": [
+        "naver_relay_crawler",
+        "relay_crawler"
+      ],
+      "associated_parsers": [
+        "_pbp_rows_to_legacy_innings"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "naver_live_schedule_today",
+      "path": "tests/fixtures/naver_live/schedule_today.json",
+      "format": "JSON",
+      "size_bytes": 352,
+      "sha256": "e9bde98ba1e508d024c7c0a965f5afb20a7cd9f00786980bc072793a01724276",
+      "description": "Naver Sports Daily Schedule JSON Payload",
+      "associated_crawlers": [
+        "schedule_crawler",
+        "broadcast_crawler"
+      ],
+      "associated_parsers": [
+        "ScheduleParser"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "naver_result_relay_inning_9",
+      "path": "tests/fixtures/naver_result/relay_inning_9.json",
+      "format": "JSON",
+      "size_bytes": 2606,
+      "sha256": "835e98793f974cb0ca524cba4b69f73191b5a940e03d150206941588204ac848",
+      "description": "Naver Sports Completed Relay Inning 9 JSON Payload",
+      "associated_crawlers": [
+        "naver_relay_crawler",
+        "relay_crawler"
+      ],
+      "associated_parsers": [
+        "_pbp_rows_to_legacy_innings"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "naver_result_schedule",
+      "path": "tests/fixtures/naver_result/schedule_result.json",
+      "format": "JSON",
+      "size_bytes": 407,
+      "sha256": "b87183730216450759e92cdb88e382afe9a2a4486e83e3fd798e6313564176b5",
+      "description": "Naver Sports Completed Schedule Result JSON Payload",
+      "associated_crawlers": [
+        "schedule_crawler"
+      ],
+      "associated_parsers": [
+        "ScheduleParser"
+      ],
+      "verified_offline": true
+    },
+    {
+      "fixture_id": "legacy_boxscore_20010405HHSS0",
+      "path": "data/schedules/legacy_html/20010405HHSS0.html",
+      "format": "HTML",
+      "size_bytes": 90816,
+      "sha256": "72f7ea887c75dd56358bfe6488ba859a9bf9791d9f22b31bba3039996922c537",
+      "description": "Historical KBO Boxscore HTML Archive (2001-04-05 HH vs SS)",
+      "associated_crawlers": [
+        "legacy_game_detail_crawler"
+      ],
+      "associated_parsers": [
+        "GameDetailParser.parse_legacy_detail_html"
+      ],
+      "verified_offline": true
+    }
+  ]
+}

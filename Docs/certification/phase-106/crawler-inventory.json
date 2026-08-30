@@ -1,0 +1,1376 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106A",
+  "total_crawlers_inventoried": 30,
+  "summary_by_category": {
+    "SCHEDULE": 2,
+    "GAME_DETAIL": 4,
+    "ROSTER": 5,
+    "STATS": 7,
+    "AWARDS": 1,
+    "FACILITIES": 7,
+    "MEDIA": 1,
+    "FUTURES": 2,
+    "GENERAL": 1
+  },
+  "summary_by_status": {
+    "VERIFIED": 28,
+    "PARTIAL": 2,
+    "NOT_TESTED": 0
+  },
+  "crawlers": [
+    {
+      "crawler_id": "schedule_crawler",
+      "name": "KBO Schedule Crawler",
+      "module": "src/crawlers/schedule_crawler.py",
+      "entry_class": "ScheduleCrawler",
+      "category": "SCHEDULE",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_schedule",
+          "src.cli.collection.crawl_schedule",
+          "src.cli.kbo"
+        ],
+        "service": "ScheduleCollectionService",
+        "scheduler_job": "crawl_daily_schedule_job"
+      },
+      "parser": {
+        "module": "src.parsers.schedule_parser",
+        "class": "ScheduleParser",
+        "function": "parse_monthly_schedule"
+      },
+      "repository": {
+        "module": "src.repositories.game_repository",
+        "class": "GameRepository",
+        "save_function": "save_schedule_game"
+      },
+      "target_tables": [
+        "games",
+        "daily_schedules"
+      ],
+      "natural_keys": [
+        "game_id",
+        "game_date, away_team, home_team, doubleheader_no"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [
+        "tests/fixtures/naver_live/schedule_today.json",
+        "tests/fixtures/naver_result/schedule_result.json"
+      ],
+      "unit_tests": [
+        "tests/test_schedule_crawler_stability.py",
+        "tests/test_schedule_parser.py"
+      ],
+      "integration_tests": [
+        "tests/test_schedule_collection_service.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Offline fixtures, DTO parser, repository integration, and scheduler jobs tested"
+    },
+    {
+      "crawler_id": "game_detail_crawler",
+      "name": "KBO Game Detail & Boxscore Crawler",
+      "module": "src/crawlers/game_detail_crawler.py",
+      "entry_class": "GameDetailCrawler",
+      "category": "GAME_DETAIL",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.collect_games",
+          "src.cli.pipelines.run_daily_update",
+          "src.cli.kbo"
+        ],
+        "service": "GameCollectionService",
+        "scheduler_job": "crawl_daily_games"
+      },
+      "parser": {
+        "module": "src.parsers.game_detail_parser",
+        "class": "GameDetailParser",
+        "function": "parse_game_detail_html"
+      },
+      "repository": {
+        "module": "src.repositories.game_save",
+        "class": "GameSaveRepository",
+        "save_function": "save_game_detail"
+      },
+      "target_tables": [
+        "games",
+        "game_details",
+        "player_game_batting",
+        "player_game_pitching",
+        "inning_scores"
+      ],
+      "natural_keys": [
+        "game_id",
+        "game_id + player_id + team_id"
+      ],
+      "season_range": "2001~2026",
+      "fixtures": [
+        "tests/fixtures/game_details/20251001NCLG0.html"
+      ],
+      "unit_tests": [
+        "tests/test_game_detail_crawler_parsing.py",
+        "tests/test_game_detail_crawler_stability.py"
+      ],
+      "integration_tests": [
+        "tests/test_game_collection_service.py",
+        "tests/repositories/test_game_save_ext.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Full boxscore replay fixture, fallback parser, and atomic multi-table persistence validated"
+    },
+    {
+      "crawler_id": "legacy_game_detail_crawler",
+      "name": "Historical Legacy Boxscore Crawler",
+      "module": "src/crawlers/legacy_game_detail_crawler.py",
+      "entry_class": "LegacyGameDetailCrawler",
+      "category": "GAME_DETAIL",
+      "ingestion_method": "Static HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_legacy_reviews",
+          "src.cli.historical_boxscore_import"
+        ],
+        "service": "HistoricalImportService",
+        "scheduler_job": null
+      },
+      "parser": {
+        "module": "src.parsers.game_detail_parser",
+        "class": "GameDetailParser",
+        "function": "parse_legacy_detail_html"
+      },
+      "repository": {
+        "module": "src.repositories.game_repository",
+        "class": "GameRepository",
+        "save_function": "save_legacy_game"
+      },
+      "target_tables": [
+        "games",
+        "player_game_batting",
+        "player_game_pitching"
+      ],
+      "natural_keys": [
+        "game_id"
+      ],
+      "season_range": "1982~2000",
+      "fixtures": [
+        "data/schedules/legacy_html/20010405HHSS0.html"
+      ],
+      "unit_tests": [
+        "tests/test_historical_detail_backfill.py",
+        "tests/test_historical_1982_pilot.py"
+      ],
+      "integration_tests": [
+        "tests/test_historical_analysis.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Legacy HTML fixtures available and backfill integration tested"
+    },
+    {
+      "crawler_id": "pbp_crawler",
+      "name": "KBO Official Play-by-Play Crawler",
+      "module": "src/crawlers/pbp_crawler.py",
+      "entry_class": "PBPCrawler",
+      "category": "GAME_DETAIL",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.fetch_kbo_pbp",
+          "src.cli.collection.fetch_kbo_pbp"
+        ],
+        "service": "PBPCollectionService",
+        "scheduler_job": "crawl_pbp_stream_job"
+      },
+      "parser": {
+        "module": "src.crawlers.pbp_crawler",
+        "class": "PBPCrawler",
+        "function": "extract_game_events"
+      },
+      "repository": {
+        "module": "src.repositories.game_relay",
+        "class": "GameRelayRepository",
+        "save_function": "save_pbp_events"
+      },
+      "target_tables": [
+        "game_pbp",
+        "relay_events",
+        "pbp_events"
+      ],
+      "natural_keys": [
+        "game_id + inning + event_seq"
+      ],
+      "season_range": "2018~2026",
+      "fixtures": [
+        "tests/fixtures/kbo_live_text/20260412_SKLG.html"
+      ],
+      "unit_tests": [
+        "tests/test_pbp_stream.py",
+        "tests/test_pbp_healer.py",
+        "tests/test_pbp_sh_sf_derivation.py"
+      ],
+      "integration_tests": [
+        "tests/test_relay_recovery_service.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "PBP replay HTML fixture, healer, SH/SF derivation, and recovery pipeline tested"
+    },
+    {
+      "crawler_id": "naver_relay_crawler",
+      "name": "Naver Sports Live & Result Relay Crawler",
+      "module": "src/crawlers/naver_relay_crawler.py",
+      "entry_class": "NaverRelayCrawler",
+      "category": "GAME_DETAIL",
+      "ingestion_method": "XHR/API JSON",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_text_relay",
+          "src.cli.live.live_crawler"
+        ],
+        "service": "LiveRelayService",
+        "scheduler_job": "crawl_live_relay_job"
+      },
+      "parser": {
+        "module": "src.crawlers.relay_crawler",
+        "class": "RelayCrawler",
+        "function": "_pbp_rows_to_legacy_innings"
+      },
+      "repository": {
+        "module": "src.repositories.relay_repository",
+        "class": "RelayRepository",
+        "save_function": "save_relay_inning"
+      },
+      "target_tables": [
+        "relay_events",
+        "game_pbp"
+      ],
+      "natural_keys": [
+        "game_id + inning_no + segment_id"
+      ],
+      "season_range": "2015~2026",
+      "fixtures": [
+        "tests/fixtures/naver_live/relay_inning_1.json",
+        "tests/fixtures/naver_result/relay_inning_9.json"
+      ],
+      "unit_tests": [
+        "tests/test_relay_circuit_breaker.py",
+        "tests/test_relay_validation.py"
+      ],
+      "integration_tests": [
+        "tests/test_relay_e2e.py",
+        "tests/test_relay_recovery_service.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Inning JSON fixtures, circuit breaker, deduplication, and recovery verified"
+    },
+    {
+      "crawler_id": "preview_crawler",
+      "name": "KBO Pregame Matchup Preview Crawler",
+      "module": "src/crawlers/preview_crawler.py",
+      "entry_class": "PreviewCrawler",
+      "category": "SCHEDULE",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.daily_preview_batch",
+          "src.cli.live.generate_game_preview"
+        ],
+        "service": "PreviewGenerationService",
+        "scheduler_job": "crawl_daily_previews_job"
+      },
+      "parser": {
+        "module": "src.crawlers.preview_crawler",
+        "class": "PreviewCrawler",
+        "function": "_parse_matchup_payload"
+      },
+      "repository": {
+        "module": "src.repositories.game_repository",
+        "class": "GameRepository",
+        "save_function": "save_pregame_lineup"
+      },
+      "target_tables": [
+        "pregame_matchups",
+        "lineups",
+        "games"
+      ],
+      "natural_keys": [
+        "game_id",
+        "game_id + team_id + batting_order"
+      ],
+      "season_range": "2020~2026",
+      "fixtures": [
+        "tests/fixtures/naver_live/schedule_today.json"
+      ],
+      "unit_tests": [
+        "tests/test_preview_crawler_payloads.py",
+        "tests/test_rag_and_preview_services.py"
+      ],
+      "integration_tests": [
+        "tests/repositories/test_game_save_ext.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Payload normalization, starting pitcher resolution, and save extended verified"
+    },
+    {
+      "crawler_id": "daily_roster_crawler",
+      "name": "KBO 1st Team Daily Roster Crawler",
+      "module": "src/crawlers/daily_roster_crawler.py",
+      "entry_class": "DailyRosterCrawler",
+      "category": "ROSTER",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.collect_rosters",
+          "src.cli.crawl_p0_data",
+          "src.cli.kbo"
+        ],
+        "service": "RosterCollectionService",
+        "scheduler_job": "crawl_p0_non_game"
+      },
+      "parser": {
+        "module": "src.crawlers.daily_roster_crawler",
+        "class": "DailyRosterCrawler",
+        "function": "_parse_roster_table"
+      },
+      "repository": {
+        "module": "src.repositories.player_repository",
+        "class": "PlayerRepository",
+        "save_function": "save_daily_roster"
+      },
+      "target_tables": [
+        "daily_rosters",
+        "roster_entries"
+      ],
+      "natural_keys": [
+        "roster_date + team_code + player_id"
+      ],
+      "season_range": "2015~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_p0_readiness.py"
+      ],
+      "integration_tests": [
+        "tests/test_context_aggregator.py",
+        "tests/test_context_aggregator_ext.py"
+      ],
+      "live_tests": [],
+      "status": "PARTIAL",
+      "status_reason": "Mock tests and context aggregator verified; dedicated offline fixture pending capture"
+    },
+    {
+      "crawler_id": "roster_transaction_crawler",
+      "name": "KBO Daily Roster Transactions Crawler",
+      "module": "src/crawlers/roster_transaction_crawler.py",
+      "entry_class": "RosterTransactionCrawler",
+      "category": "ROSTER",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_roster_transactions",
+          "src.cli.crawl_p0_data"
+        ],
+        "service": "RosterTransactionService",
+        "scheduler_job": "crawl_p0_non_game"
+      },
+      "parser": {
+        "module": "src.crawlers.roster_transaction_crawler",
+        "class": "RosterTransactionCrawler",
+        "function": "_parse_transaction_rows"
+      },
+      "repository": {
+        "module": "src.repositories.roster_transaction_repository",
+        "class": "RosterTransactionRepository",
+        "save_function": "save_transactions"
+      },
+      "target_tables": [
+        "roster_transactions",
+        "player_movements"
+      ],
+      "natural_keys": [
+        "transaction_date + player_id + transaction_type"
+      ],
+      "season_range": "2015~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_roster_transaction_repository.py"
+      ],
+      "integration_tests": [
+        "tests/test_context_aggregator.py"
+      ],
+      "live_tests": [],
+      "status": "PARTIAL",
+      "status_reason": "Repository schema and context aggregator verified; static replay fixture pending capture"
+    },
+    {
+      "crawler_id": "player_search_crawler",
+      "name": "KBO Player Registry & Search Crawler",
+      "module": "src/crawlers/player_search_crawler.py",
+      "entry_class": "PlayerSearchCrawler",
+      "category": "ROSTER",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.discover_historical_players",
+          "src.cli.lookup_official_players"
+        ],
+        "service": "PlayerDiscoveryService",
+        "scheduler_job": "run_weekly_maintenance"
+      },
+      "parser": {
+        "module": "src.crawlers.player_search_crawler",
+        "class": "PlayerSearchCrawler",
+        "function": "player_row_to_dict"
+      },
+      "repository": {
+        "module": "src.repositories.player_basic_repository",
+        "class": "PlayerBasicRepository",
+        "save_function": "save_player_basic"
+      },
+      "target_tables": [
+        "players",
+        "player_basics"
+      ],
+      "natural_keys": [
+        "player_id"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_player_search_crawler_stability.py",
+        "tests/test_player_search_crawler_compat.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [
+        "tests/test_page52.py"
+      ],
+      "status": "VERIFIED",
+      "status_reason": "Stability and pagination tests pass; live pagination edge verified in test_page52.py"
+    },
+    {
+      "crawler_id": "player_profile_crawler",
+      "name": "KBO Player Detailed Profile Crawler",
+      "module": "src/crawlers/player_profile_crawler.py",
+      "entry_class": "PlayerProfileCrawler",
+      "category": "ROSTER",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.collect_profiles",
+          "src.cli.run_weekly_maintenance"
+        ],
+        "service": "PlayerEnrichmentService",
+        "scheduler_job": "run_weekly_maintenance"
+      },
+      "parser": {
+        "module": "src.parsers.player_profile_parser",
+        "class": "PlayerProfileParser",
+        "function": "parse_player_profile"
+      },
+      "repository": {
+        "module": "src.repositories.player_repository",
+        "class": "PlayerRepository",
+        "save_function": "save_player_profile"
+      },
+      "target_tables": [
+        "players",
+        "player_profiles"
+      ],
+      "natural_keys": [
+        "player_id"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_player_profile_parser.py",
+        "tests/test_player_profile_crawler_stability.py"
+      ],
+      "integration_tests": [
+        "tests/test_player_repository_movements.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "PlayerProfileParser unit suite and profile crawler stability mock suite verified"
+    },
+    {
+      "crawler_id": "player_batting_all_series_crawler",
+      "name": "KBO Player Batting Stats Crawler (Basic1/Basic2/Detail)",
+      "module": "src/crawlers/player_batting_all_series_crawler.py",
+      "entry_class": "PlayerBattingCrawler",
+      "category": "STATS",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.recalc_season_stats",
+          "src.cli.run_all_crawlers"
+        ],
+        "service": "SeasonStatsCollectionService",
+        "scheduler_job": "maintenance_recalc_stats"
+      },
+      "parser": {
+        "module": "src.crawlers.player_batting_all_series_crawler",
+        "class": "PlayerBattingCrawler",
+        "function": "_build_batting_data"
+      },
+      "repository": {
+        "module": "src.repositories.player_stats_repository",
+        "class": "PlayerStatsRepository",
+        "save_function": "save_player_season_batting"
+      },
+      "target_tables": [
+        "player_season_batting",
+        "player_series_batting"
+      ],
+      "natural_keys": [
+        "player_id + season + series_id"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_player_batting_crawler_stability.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [
+        "tests/test_basic2_headers.py"
+      ],
+      "status": "VERIFIED",
+      "status_reason": "Header normalization, number coercion, and live basic2 header suite tested"
+    },
+    {
+      "crawler_id": "player_pitching_all_series_crawler",
+      "name": "KBO Player Pitching Stats Crawler (Basic1/Basic2/Detail)",
+      "module": "src/crawlers/player_pitching_all_series_crawler.py",
+      "entry_class": "PlayerPitchingCrawler",
+      "category": "STATS",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.recalc_season_stats",
+          "src.cli.run_all_crawlers"
+        ],
+        "service": "SeasonStatsCollectionService",
+        "scheduler_job": "maintenance_recalc_stats"
+      },
+      "parser": {
+        "module": "src.crawlers.player_pitching_all_series_crawler",
+        "class": "PlayerPitchingCrawler",
+        "function": "normalize_header"
+      },
+      "repository": {
+        "module": "src.repositories.player_season_pitching_repository",
+        "class": "PlayerSeasonPitchingRepository",
+        "save_function": "save_pitcher_stats"
+      },
+      "target_tables": [
+        "player_season_pitching",
+        "player_series_pitching"
+      ],
+      "natural_keys": [
+        "player_id + season + series_id"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_player_pitching_crawler_stability.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Pitching stats column normalization and multi-page pagination stability tested"
+    },
+    {
+      "crawler_id": "team_batting_stats_crawler",
+      "name": "KBO Team Batting Season Stats Crawler",
+      "module": "src/crawlers/team_batting_stats_crawler.py",
+      "entry_class": "TeamBattingStatsCrawler",
+      "category": "STATS",
+      "ingestion_method": "Playwright DOM / HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.recalc_team_stats",
+          "src.cli.monthly_team_audit"
+        ],
+        "service": "TeamStatsService",
+        "scheduler_job": "compute_standings"
+      },
+      "parser": {
+        "module": "src.crawlers.team_batting_stats_crawler",
+        "class": "TeamBattingStatsCrawler",
+        "function": "parse_team_batting_html"
+      },
+      "repository": {
+        "module": "src.repositories.team_stats_repository",
+        "class": "TeamStatsRepository",
+        "save_function": "save_team_batting"
+      },
+      "target_tables": [
+        "team_season_batting",
+        "team_stats"
+      ],
+      "natural_keys": [
+        "team_code + season + series_id"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [
+        "tests/fixtures/html/team_batting_2023.html"
+      ],
+      "unit_tests": [
+        "tests/test_team_stats_validation.py",
+        "tests/test_team_stats_fallback.py"
+      ],
+      "integration_tests": [
+        "tests/test_team_stats_repository_edge.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Offline fixture HTML available; parser and repository edge validation verified"
+    },
+    {
+      "crawler_id": "team_pitching_stats_crawler",
+      "name": "KBO Team Pitching Season Stats Crawler",
+      "module": "src/crawlers/team_pitching_stats_crawler.py",
+      "entry_class": "TeamPitchingStatsCrawler",
+      "category": "STATS",
+      "ingestion_method": "Playwright DOM / HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.recalc_team_stats",
+          "src.cli.monthly_team_audit"
+        ],
+        "service": "TeamStatsService",
+        "scheduler_job": "compute_standings"
+      },
+      "parser": {
+        "module": "src.crawlers.team_pitching_stats_crawler",
+        "class": "TeamPitchingStatsCrawler",
+        "function": "parse_team_pitching_html"
+      },
+      "repository": {
+        "module": "src.repositories.team_stats_repository",
+        "class": "TeamStatsRepository",
+        "save_function": "save_team_pitching"
+      },
+      "target_tables": [
+        "team_season_pitching",
+        "team_stats"
+      ],
+      "natural_keys": [
+        "team_code + season + series_id"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [
+        "tests/fixtures/html/team_pitching_2023.html"
+      ],
+      "unit_tests": [
+        "tests/test_team_stats_validation.py",
+        "tests/test_team_stats_fallback.py"
+      ],
+      "integration_tests": [
+        "tests/test_team_stats_repository_edge.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Offline fixture HTML available; parser and repository edge validation verified"
+    },
+    {
+      "crawler_id": "award_crawler",
+      "name": "KBO Historical Awards Crawler (Wikipedia & Yagoonara)",
+      "module": "src/crawlers/award_crawler.py",
+      "entry_class": "AwardCrawler",
+      "category": "AWARDS",
+      "ingestion_method": "HTTP API & Static HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_awards",
+          "src.cli.reports.audit_awards"
+        ],
+        "service": "AwardCollectionService",
+        "scheduler_job": "crawl_periodic_extras"
+      },
+      "parser": {
+        "module": "src.crawlers.award_crawler",
+        "class": "AwardCrawler",
+        "function": "_parse_wiki_soup / _parse_yagoonara"
+      },
+      "repository": {
+        "module": "src.repositories.award_repository",
+        "class": "AwardRepository",
+        "save_function": "save_award"
+      },
+      "target_tables": [
+        "awards",
+        "award_records"
+      ],
+      "natural_keys": [
+        "year + award_type + player_name + category"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [
+        "MVP_HTML",
+        "ROOKIE_HTML",
+        "GG_HTML",
+        "DEFENSE_HTML",
+        "YAGOO_HTML (in test_award_crawler.py)"
+      ],
+      "unit_tests": [
+        "tests/crawlers/test_award_crawler.py"
+      ],
+      "integration_tests": [
+        "tests/scripts/test_historical_analysis.py"
+      ],
+      "live_tests": [
+        "tests/crawlers/test_award_crawler.py::TestLiveAwardCrawler"
+      ],
+      "status": "VERIFIED",
+      "status_reason": "Comprehensive HTML fixture unit suite, dedup logic, and live crawl test verified"
+    },
+    {
+      "crawler_id": "baserunning_stats_crawler",
+      "name": "KBO Baserunning Advanced Stats Crawler",
+      "module": "src/crawlers/baserunning_stats_crawler.py",
+      "entry_class": "BaserunningStatsCrawler",
+      "category": "STATS",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.recalc_season_stats",
+          "src.cli.kbo"
+        ],
+        "service": "AdvancedStatsService",
+        "scheduler_job": "maintenance_recalc_stats"
+      },
+      "parser": {
+        "module": "src.crawlers.baserunning_stats_crawler",
+        "class": "BaserunningStatsCrawler",
+        "function": "_parse_baserunning_row"
+      },
+      "repository": {
+        "module": "src.repositories.player_stats_repository",
+        "class": "PlayerStatsRepository",
+        "save_function": "save_baserunning_stats"
+      },
+      "target_tables": [
+        "player_season_baserunning"
+      ],
+      "natural_keys": [
+        "player_id + year + team_id"
+      ],
+      "season_range": "2002~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/crawlers/test_baserunning_stats_crawler.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Mock DOM parser and dash coercion unit tests verified"
+    },
+    {
+      "crawler_id": "fielding_stats_crawler",
+      "name": "KBO Fielding Defense Stats Crawler",
+      "module": "src/crawlers/fielding_stats_crawler.py",
+      "entry_class": "FieldingStatsCrawler",
+      "category": "STATS",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.recalc_season_stats",
+          "src.cli.run_daily_update"
+        ],
+        "service": "DefenseStatsService",
+        "scheduler_job": "compute_defense"
+      },
+      "parser": {
+        "module": "src.crawlers.fielding_stats_crawler",
+        "class": "FieldingStatsCrawler",
+        "function": "_parse_fielding_row / _parse_catcher_detail_row"
+      },
+      "repository": {
+        "module": "src.repositories.player_stats_repository",
+        "class": "PlayerStatsRepository",
+        "save_function": "save_fielding_stats"
+      },
+      "target_tables": [
+        "player_season_defense",
+        "team_season_defense"
+      ],
+      "natural_keys": [
+        "player_id + year + team_id + position"
+      ],
+      "season_range": "2002~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_new_crawlers.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Catcher detail and team defense extraction logic verified"
+    },
+    {
+      "crawler_id": "team_event_crawler",
+      "name": "KBO Club Events & Promotions Crawler",
+      "module": "src/crawlers/team_event_crawler.py",
+      "entry_class": "TeamEventCrawler",
+      "category": "FACILITIES",
+      "ingestion_method": "HTTP & DOM HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_team_events",
+          "src.cli.crawl_p0_data"
+        ],
+        "service": "TeamEventCollectionService",
+        "scheduler_job": "crawl_p0_non_game"
+      },
+      "parser": {
+        "module": "src.parsers.team_event_parser",
+        "class": "TeamEventParser",
+        "function": "parse_team_events"
+      },
+      "repository": {
+        "module": "src.repositories.team_event_repository",
+        "class": "TeamEventRepository",
+        "save_function": "save_team_events"
+      },
+      "target_tables": [
+        "team_events",
+        "team_promotions"
+      ],
+      "natural_keys": [
+        "team_code + title + event_date"
+      ],
+      "season_range": "2024~2026",
+      "fixtures": [
+        "tests/fixtures/html/hh_events_notice.html",
+        "tests/fixtures/html/lg_events_notice.html",
+        "tests/fixtures/html/ob_events_notice.html"
+      ],
+      "unit_tests": [
+        "tests/test_integration_team_event_parser.py",
+        "tests/test_team_event_repository.py"
+      ],
+      "integration_tests": [
+        "tests/test_p0_readiness.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Multi-club HTML fixtures available; parsing and repository save verified"
+    },
+    {
+      "crawler_id": "ticket_crawler",
+      "name": "KBO Stadium Ticket Pricing & Open Rules Crawler",
+      "module": "src/crawlers/ticket_crawler.py",
+      "entry_class": "TicketCrawler",
+      "category": "FACILITIES",
+      "ingestion_method": "HTTP HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_ticket_info",
+          "src.cli.crawl_p0_data"
+        ],
+        "service": "TicketCollectionService",
+        "scheduler_job": "crawl_p0_non_game"
+      },
+      "parser": {
+        "module": "src.parsers.ticket_parser",
+        "class": "TicketParser",
+        "function": "parse_ticket_page"
+      },
+      "repository": {
+        "module": "src.repositories.ticket_price_repository",
+        "class": "TicketPriceRepository",
+        "save_function": "save_ticket_prices"
+      },
+      "target_tables": [
+        "ticket_prices",
+        "ticket_open_rules"
+      ],
+      "natural_keys": [
+        "stadium_id + season + seat_grade"
+      ],
+      "season_range": "2024~2026",
+      "fixtures": [
+        "tests/fixtures/html/lg_ticket_prices.html",
+        "tests/fixtures/html/ssg_ticket_prices.html"
+      ],
+      "unit_tests": [
+        "tests/test_integration_ticket_parser.py",
+        "tests/test_ticket_repository.py"
+      ],
+      "integration_tests": [
+        "tests/test_p0_readiness.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Club ticket pricing HTML fixtures available; parser and repository tests pass"
+    },
+    {
+      "crawler_id": "food_crawler",
+      "name": "KBO Stadium Food Vendor & Menu Crawler",
+      "module": "src/crawlers/food_crawler.py",
+      "entry_class": "FoodCrawler",
+      "category": "FACILITIES",
+      "ingestion_method": "HTTP JSON / HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_stadium_food",
+          "src.cli.seed_p1_data"
+        ],
+        "service": "FacilityService",
+        "scheduler_job": "crawl_p1p2_data"
+      },
+      "parser": {
+        "module": "src.crawlers.food_crawler",
+        "class": "FoodCrawler",
+        "function": "parse_food_vendors"
+      },
+      "repository": {
+        "module": "src.repositories.stadium_food_repository",
+        "class": "StadiumFoodRepository",
+        "save_function": "save_food_vendors"
+      },
+      "target_tables": [
+        "stadium_food_vendors",
+        "stadium_food_menus"
+      ],
+      "natural_keys": [
+        "stadium_id + vendor_name + menu_name"
+      ],
+      "season_range": "2024~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_stadium_food.py",
+        "tests/test_p1_repositories.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "P1 facility food repository and vendor models tested"
+    },
+    {
+      "crawler_id": "parking_crawler",
+      "name": "KBO Stadium Parking Lot Info Crawler",
+      "module": "src/crawlers/parking_crawler.py",
+      "entry_class": "ParkingCrawler",
+      "category": "FACILITIES",
+      "ingestion_method": "HTTP JSON / HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_parking",
+          "src.cli.seed_p1_data"
+        ],
+        "service": "FacilityService",
+        "scheduler_job": "crawl_p1p2_data"
+      },
+      "parser": {
+        "module": "src.crawlers.parking_crawler",
+        "class": "ParkingCrawler",
+        "function": "parse_parking_lots"
+      },
+      "repository": {
+        "module": "src.repositories.parking_lot_repository",
+        "class": "ParkingLotRepository",
+        "save_function": "save_parking_lots"
+      },
+      "target_tables": [
+        "parking_lots"
+      ],
+      "natural_keys": [
+        "stadium_id + lot_name"
+      ],
+      "season_range": "2024~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_p1_repositories.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Parking lot repository schema and seed scripts verified"
+    },
+    {
+      "crawler_id": "seat_crawler",
+      "name": "KBO Stadium Seat Sections Crawler",
+      "module": "src/crawlers/seat_crawler.py",
+      "entry_class": "SeatCrawler",
+      "category": "FACILITIES",
+      "ingestion_method": "HTTP JSON / HTML",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_seat_sections",
+          "src.cli.seed_p1_data"
+        ],
+        "service": "FacilityService",
+        "scheduler_job": "crawl_p1p2_data"
+      },
+      "parser": {
+        "module": "src.crawlers.seat_crawler",
+        "class": "SeatCrawler",
+        "function": "parse_seat_sections"
+      },
+      "repository": {
+        "module": "src.repositories.stadium_seat_section_repository",
+        "class": "StadiumSeatSectionRepository",
+        "save_function": "save_sections"
+      },
+      "target_tables": [
+        "stadium_seat_sections"
+      ],
+      "natural_keys": [
+        "stadium_id + section_name + block_code"
+      ],
+      "season_range": "2024~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_p1_repositories.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Seat section repository and stadium geometry models tested"
+    },
+    {
+      "crawler_id": "fan_culture_crawler",
+      "name": "KBO Fan Culture & YouTube Cheer Songs Crawler",
+      "module": "src/crawlers/fan_culture_crawler.py",
+      "entry_class": "FanCultureCrawler",
+      "category": "MEDIA",
+      "ingestion_method": "HTTP API JSON",
+      "entry_points": {
+        "cli": [
+          "src.crawlers.fan_culture_crawler",
+          "src.cli.kbo"
+        ],
+        "service": "MediaAggregationService",
+        "scheduler_job": null
+      },
+      "parser": {
+        "module": "src.crawlers.fan_culture_crawler",
+        "class": "FanCultureCrawler",
+        "function": "_video_to_song"
+      },
+      "repository": {
+        "module": "src.repositories.fan_culture_repository",
+        "class": "FanCultureRepository",
+        "save_function": "save_cheer_song"
+      },
+      "target_tables": [
+        "cheer_songs",
+        "fan_culture_media"
+      ],
+      "natural_keys": [
+        "team_code + song_title + video_id"
+      ],
+      "season_range": "2020~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/utils/test_youtube_api_client.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "YouTube API client mock and cheer song mapping tested"
+    },
+    {
+      "crawler_id": "futures_schedule_crawler",
+      "name": "KBO Futures League Schedule Crawler",
+      "module": "src/crawlers/futures_schedule_crawler.py",
+      "entry_class": "FuturesScheduleCrawler",
+      "category": "FUTURES",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_futures_schedule",
+          "src.cli.collection.crawl_futures_schedule"
+        ],
+        "service": "FuturesCollectionService",
+        "scheduler_job": "run_weekly_maintenance"
+      },
+      "parser": {
+        "module": "src.crawlers.futures_schedule_crawler",
+        "class": "FuturesScheduleCrawler",
+        "function": "_parse_futures_schedule"
+      },
+      "repository": {
+        "module": "src.repositories.futures_schedule_repository",
+        "class": "FuturesScheduleRepository",
+        "save_function": "save_futures_games"
+      },
+      "target_tables": [
+        "futures_games",
+        "futures_schedules"
+      ],
+      "natural_keys": [
+        "game_id",
+        "game_date + away_team + home_team"
+      ],
+      "season_range": "2015~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_futures_total.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Futures total suite and schedule repository tested"
+    },
+    {
+      "crawler_id": "futures_profile_crawler",
+      "name": "KBO Futures League Player Profile Crawler",
+      "module": "src/crawlers/futures/profile.py",
+      "entry_class": "FuturesProfileCrawler",
+      "category": "FUTURES",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_futures",
+          "src.cli.run_weekly_maintenance"
+        ],
+        "service": "FuturesCollectionService",
+        "scheduler_job": "run_weekly_maintenance"
+      },
+      "parser": {
+        "module": "src.crawlers.futures.profile",
+        "class": "FuturesProfileCrawler",
+        "function": "_parse_futures_profile"
+      },
+      "repository": {
+        "module": "src.repositories.player_repository",
+        "class": "PlayerRepository",
+        "save_function": "save_futures_profile"
+      },
+      "target_tables": [
+        "futures_players",
+        "player_profiles"
+      ],
+      "natural_keys": [
+        "player_id"
+      ],
+      "season_range": "2015~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_futures_total.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Futures player profile extraction and weekly maintenance job tested"
+    },
+    {
+      "crawler_id": "retired_player_crawler",
+      "name": "KBO Retired Player Listing & Career Stats Crawler",
+      "module": "src/crawlers/retire/listing.py",
+      "entry_class": "RetiredPlayerListingCrawler",
+      "category": "ROSTER",
+      "ingestion_method": "Playwright DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_retire",
+          "src.cli.collection.crawl_retire"
+        ],
+        "service": "RetiredPlayerService",
+        "scheduler_job": "run_periodic_extras"
+      },
+      "parser": {
+        "module": "src.parsers.retired_player_parser",
+        "class": "RetiredPlayerParser",
+        "function": "parse_retired_player_stats"
+      },
+      "repository": {
+        "module": "src.repositories.player_repository",
+        "class": "PlayerRepository",
+        "save_function": "save_retired_player"
+      },
+      "target_tables": [
+        "players",
+        "player_career_stats"
+      ],
+      "natural_keys": [
+        "player_id"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_retired_crawler_policy.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Retired player policy and retired player parser tested"
+    },
+    {
+      "crawler_id": "operation_notice_crawler",
+      "name": "KBO Operation Notices Crawler (Doosan, LG, Naver)",
+      "module": "src/crawlers/operation_notice_naver_crawler.py",
+      "entry_class": "OperationNoticeNaverCrawler",
+      "category": "GENERAL",
+      "ingestion_method": "HTTP API JSON / DOM",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_operation_notices",
+          "src.cli.collection.crawl_operation_notices"
+        ],
+        "service": "OperationNoticeService",
+        "scheduler_job": "crawl_operation_notices"
+      },
+      "parser": {
+        "module": "src.crawlers.operation_notice_common",
+        "class": "None",
+        "function": "classify_notice / is_urgent"
+      },
+      "repository": {
+        "module": "src.repositories.operation_notice_repository",
+        "class": "OperationNoticeRepository",
+        "save_function": "save_notice"
+      },
+      "target_tables": [
+        "operation_notices",
+        "game_operation_alerts"
+      ],
+      "natural_keys": [
+        "source_key + notice_id"
+      ],
+      "season_range": "2024~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_operation_notice_crawler.py",
+        "tests/test_naver_notice_crawler.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Notice urgency classification, keyword detection, and repository saves tested"
+    },
+    {
+      "crawler_id": "external_stats_crawler",
+      "name": "External Baseball Stats Adapter Crawler (Statiz / KBO Archive)",
+      "module": "src/crawlers/external_stats_crawler.py",
+      "entry_class": "ExternalStatsCrawler",
+      "category": "STATS",
+      "ingestion_method": "HTTP HTML / JSON",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_external_stats",
+          "src.cli.stage_official_season_stats"
+        ],
+        "service": "ExternalStatsStagingService",
+        "scheduler_job": null
+      },
+      "parser": {
+        "module": "src.crawlers.external_stats_crawler",
+        "class": "ExternalStatsCrawler",
+        "function": "parse_external_stats_page"
+      },
+      "repository": {
+        "module": "src.repositories.external_season_stats_repository",
+        "class": "ExternalSeasonStatsRepository",
+        "save_function": "save_staged_stats"
+      },
+      "target_tables": [
+        "staged_season_batting",
+        "staged_season_pitching"
+      ],
+      "natural_keys": [
+        "source_key + season + player_name + team_code"
+      ],
+      "season_range": "1982~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/test_external_stats_e2e.py"
+      ],
+      "integration_tests": [
+        "tests/test_external_stats_e2e.py"
+      ],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Idempotent round trip, lineage preservation, and ambiguous player resolution tested"
+    },
+    {
+      "crawler_id": "congestion_crawler",
+      "name": "KBO Stadium Congestion Crawler (Seoul City IoT API)",
+      "module": "src/crawlers/congestion_crawler.py",
+      "entry_class": "CongestionCrawler",
+      "category": "FACILITIES",
+      "ingestion_method": "HTTP API JSON",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_congestion",
+          "src.cli.run_periodic_extras"
+        ],
+        "service": "CongestionService",
+        "scheduler_job": "crawl_congestion"
+      },
+      "parser": {
+        "module": "src.crawlers.congestion_crawler",
+        "class": "CongestionCrawler",
+        "function": "_snapshot_to_record"
+      },
+      "repository": {
+        "module": "src.repositories.congestion_repository",
+        "class": "CongestionRepository",
+        "save_function": "save_congestion_snapshot"
+      },
+      "target_tables": [
+        "stadium_congestion_snapshots"
+      ],
+      "natural_keys": [
+        "stadium_id + recorded_at"
+      ],
+      "season_range": "2024~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/utils/test_seoul_api_client.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Seoul API client and congestion snapshot persistence tested"
+    },
+    {
+      "crawler_id": "transit_time_crawler",
+      "name": "KBO Stadium Transit Time Crawler (Naver Maps API)",
+      "module": "src/crawlers/transit_time_crawler.py",
+      "entry_class": "TransitTimeCrawler",
+      "category": "FACILITIES",
+      "ingestion_method": "HTTP API JSON",
+      "entry_points": {
+        "cli": [
+          "src.cli.crawl_transit_time",
+          "src.cli.run_periodic_extras"
+        ],
+        "service": "TransitService",
+        "scheduler_job": "crawl_transit_time"
+      },
+      "parser": {
+        "module": "src.crawlers.transit_time_crawler",
+        "class": "TransitTimeCrawler",
+        "function": "_parse_route_response"
+      },
+      "repository": {
+        "module": "src.repositories.transit_time_repository",
+        "class": "TransitTimeRepository",
+        "save_function": "save_transit_time"
+      },
+      "target_tables": [
+        "stadium_transit_routes"
+      ],
+      "natural_keys": [
+        "origin_hub + stadium_id + route_type"
+      ],
+      "season_range": "2024~2026",
+      "fixtures": [],
+      "unit_tests": [
+        "tests/utils/test_map_api_client.py"
+      ],
+      "integration_tests": [],
+      "live_tests": [],
+      "status": "VERIFIED",
+      "status_reason": "Map API client routes and transit time repository tested"
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106B",
+  "replay_repetition_count": 3,
+  "all_fixtures_deterministic": true,
+  "results": [
+    {
+      "fixture_id": "game_detail_20251001NCLG0",
+      "parser": "GameDetailParser",
+      "triplicate_hashes": [
+        "f881930a56ff5c1c931b13692ec560b1565fdcf18508c618e4cc07f3e7102a43",
+        "f881930a56ff5c1c931b13692ec560b1565fdcf18508c618e4cc07f3e7102a43",
+        "f881930a56ff5c1c931b13692ec560b1565fdcf18508c618e4cc07f3e7102a43"
+      ],
+      "deterministic": true,
+      "output_canonical_sha256": "f881930a56ff5c1c931b13692ec560b1565fdcf18508c618e4cc07f3e7102a43",
+      "parsed_items_count": 4,
+      "status": "PARSED"
+    },
+    {
+      "fixture_id": "team_batting_2023",
+      "parser": "parse_team_batting_html",
+      "triplicate_hashes": [
+        "1e787d60867bde12ca6a3bba2100175922f2f18dbf8f803f3bb3e19c5db75294",
+        "1e787d60867bde12ca6a3bba2100175922f2f18dbf8f803f3bb3e19c5db75294",
+        "1e787d60867bde12ca6a3bba2100175922f2f18dbf8f803f3bb3e19c5db75294"
+      ],
+      "deterministic": true,
+      "output_canonical_sha256": "1e787d60867bde12ca6a3bba2100175922f2f18dbf8f803f3bb3e19c5db75294",
+      "parsed_items_count": 2,
+      "status": "PARSED"
+    },
+    {
+      "fixture_id": "team_pitching_2023",
+      "parser": "parse_team_pitching_html",
+      "triplicate_hashes": [
+        "870d13cd4247ddea4f2ebe83d4274b535afe460110b1b439a7b51bd729feb6dd",
+        "870d13cd4247ddea4f2ebe83d4274b535afe460110b1b439a7b51bd729feb6dd",
+        "870d13cd4247ddea4f2ebe83d4274b535afe460110b1b439a7b51bd729feb6dd"
+      ],
+      "deterministic": true,
+      "output_canonical_sha256": "870d13cd4247ddea4f2ebe83d4274b535afe460110b1b439a7b51bd729feb6dd",
+      "parsed_items_count": 2,
+      "status": "PARSED"
+    },
+    {
+      "fixture_id": "ticket_prices_lg",
+      "parser": "parse_ticket_page",
+      "triplicate_hashes": [
+        "a4c1bbdf7f166993d27ef8ebb1d73b99ffaa24dc6787ac73d37fc145b5286b20",
+        "a4c1bbdf7f166993d27ef8ebb1d73b99ffaa24dc6787ac73d37fc145b5286b20",
+        "a4c1bbdf7f166993d27ef8ebb1d73b99ffaa24dc6787ac73d37fc145b5286b20"
+      ],
+      "deterministic": true,
+      "output_canonical_sha256": "a4c1bbdf7f166993d27ef8ebb1d73b99ffaa24dc6787ac73d37fc145b5286b20",
+      "parsed_items_count": 8,
+      "status": "PARSED"
+    },
+    {
+      "fixture_id": "naver_live_relay_inning_1",
+      "parser": "NaverRelayJSONParser",
+      "triplicate_hashes": [
+        "777ea2d9be3bd4c09dc8b567830308476ae5309932928f48ec829024190692a6",
+        "777ea2d9be3bd4c09dc8b567830308476ae5309932928f48ec829024190692a6",
+        "777ea2d9be3bd4c09dc8b567830308476ae5309932928f48ec829024190692a6"
+      ],
+      "deterministic": true,
+      "output_canonical_sha256": "777ea2d9be3bd4c09dc8b567830308476ae5309932928f48ec829024190692a6",
+      "parsed_items_count": 0,
+      "status": "PARSED"
+    }
+  ],
+  "fault_injection_summary": {
+    "empty_html_fails_closed": true,
+    "truncated_html_handled": true,
+    "missing_headers_handled": true,
+    "unsupported_source_key_fails_closed": true,
+    "silent_empty_synthesis_prevented": true
+  }
+}

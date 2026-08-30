@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106",
+  "verification_timestamp": "2026-08-31T02:45:00+09:00",
+  "protected_files": [
+    {
+      "path": "data/kbo_dev.db",
+      "size_bytes": 1316581376,
+      "sha256": "62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f",
+      "status": "UNTOUCHED_READONLY"
+    },
+    {
+      "path": "data/backups/kbo_dev_20260823_020000.db",
+      "size_bytes": 1292075008,
+      "sha256": "bd62c41e5aa01ed43308ddfab782d79db32685ea2c7b6c932a92b4856f63bb9c",
+      "status": "UNTOUCHED_READONLY"
+    },
+    {
+      "path": "data/backups/kbo_dev_20260830_020000.db",
+      "size_bytes": 1309003776,
+      "sha256": "497a766e75865352c2be60725f7b7b5e9ecc34b753e1c0c40db0c1455a03bf7a",
+      "status": "UNTOUCHED_READONLY"
+    },
+    {
+      "path": "data/backups/kbo_dev_before_oracle_cutover_20260816.db",
+      "size_bytes": 1442054144,
+      "sha256": "c7a5fce7021e1fb372bb9066fa959c0127c5c9b102489f6ede30ac796a990f87",
+      "status": "UNTOUCHED_READONLY"
+    }
+  ],
+  "zero_write_guarantee_held": true
+}
