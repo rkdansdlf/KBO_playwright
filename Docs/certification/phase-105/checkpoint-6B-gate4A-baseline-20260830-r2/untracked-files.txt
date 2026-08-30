@@ -1,0 +1,2 @@
+0 untracked files (working tree clean)
+Ignored local database: data/kbo_dev.db
