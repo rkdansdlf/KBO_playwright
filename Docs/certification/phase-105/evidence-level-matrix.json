@@ -5,7 +5,7 @@
   "commit_checkpoint": {
     "code_commit_sha": "50a4cbe0346cf53951e27913ff2a19e725f99764",
     "tree_sha": "ed585243faaa120a879732405cee8247a5a5abae",
-    "kbo_dev_db_sha256": "2bc0328697164d8dd0a91741c7e33746f379275c25bbdc4f5d202df800f44a19",
+    "kbo_dev_db_sha256": "05ea428ebfe5f4ed33e2925bdfa65ed8b936480b0752e06279e5b09ae6c271f7",
     "regression_tests": "10278 passed, 3 skipped, 242 deselected in default fast profile (-m 'not slow and not integration')",
     "focused_gate3_tests": "52 passed in 3.65s (0 failures, 0 errors)",
     "ruff_status": "0 errors, 0 diffs",
