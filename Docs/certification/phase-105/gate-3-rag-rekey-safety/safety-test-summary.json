@@ -4,81 +4,70 @@
   "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
   "environment": "sqlite_ephemeral_disposable",
   "test_target": "src/cli/rag/apply_rag_rekey.py",
-  "test_suite": "tests/services/test_rag_rekey_safety_gate3.py",
-  "tests_collected": 14,
-  "tests_passed": 14,
+  "test_suites": [
+    "tests/services/test_rag_rekey_safety_gate3.py",
+    "tests/cli/test_apply_rag_rekey.py"
+  ],
+  "tests_collected": 51,
+  "tests_passed": 51,
   "tests_failed": 0,
   "tests_errored": 0,
-  "test_matrix_results": [
+  "safety_contract_verifications": [
     {
-      "test_case": "1. Normal apply (exact mutation match)",
-      "status": "PASSED",
-      "invariant": "expected_mutation == actual_rowcount (5/5 rekeyed)"
+      "test_suite": "tests/services/test_rag_rekey_safety_gate3.py",
+      "test_count": 30,
+      "passed": 30,
+      "key_contracts": [
+        "Normal apply exact mutation match (100% rowcount parity)",
+        "Idempotency re-apply 0 mutations, explicit SUCCESS_NOOP",
+        "CAS stale content hash fail-closed",
+        "CAS stale legacy ID fail-closed",
+        "CAS stale index status fail-closed",
+        "CAS stale index version fail-closed",
+        "Atomicity / batch rollback on failure",
+        "Target collision disposition tombstone",
+        "Pre-converted rows untouched",
+        "Manifest integrity / SHA verification",
+        "Snapshot binding / database fingerprint verification",
+        "Inverse rollback manifest execution & state restoration",
+        "Fault injection / mid-process abort safety",
+        "DSN & production write guard fail-closed",
+        "Immutable receipt generation on success",
+        "Idempotent replay reuses verified receipt",
+        "Transaction ID collision reject fail-closed",
+        "Oracle & staging DSN rejected in local safety mode",
+        "Non-ephemeral primary DB path rejected",
+        "Crash after commit before receipt publish recovery (SUCCESS_NOOP / RECOVERED_RECEIPT_REBUILT)",
+        "Receipt publish invalid transaction ID ValueError fail-closed",
+        "Receipt exists but DB postcondition missing fail-closed",
+        "Apply receipt -> rollback -> replay state transition",
+        "Rollback receipt links original apply receipt SHA",
+        "Atomic temp write + fsync + rename",
+        "Symlinked receipt rejection fail-closed",
+        "Transaction ID path and directory traversal validation",
+        "Hard crash post-commit subprocess exit recovery (RECOVERED_RECEIPT_REBUILT)",
+        "Post-commit receipt I/O failure recovery (RECOVERED_RECEIPT_REBUILT)",
+        "Receipt parent directory fsync durability"
+      ]
     },
     {
-      "test_case": "2. Idempotency (re-apply mutation count == 0)",
-      "status": "PASSED",
-      "invariant": "second apply yields 0 rekeys, 1 skipped via CAS"
-    },
-    {
-      "test_case": "3. CAS stale content hash fail-closed",
-      "status": "PASSED",
-      "invariant": "0 mutation when content_hash modified in DB post-manifest"
-    },
-    {
-      "test_case": "4. CAS stale legacy ID fail-closed",
-      "status": "PASSED",
-      "invariant": "0 mutation when legacy_source_row_id does not match DB"
-    },
-    {
-      "test_case": "5. CAS stale index status fail-closed",
-      "status": "PASSED",
-      "invariant": "0 mutation when index_status does not match expected state"
-    },
-    {
-      "test_case": "6. CAS stale index version fail-closed",
-      "status": "PASSED",
-      "invariant": "0 mutation when index_version differs from target schema"
-    },
-    {
-      "test_case": "7. Atomicity / batch rollback on failure",
-      "status": "PASSED",
-      "invariant": "transaction rollback completely reverts partial batch updates"
-    },
-    {
-      "test_case": "8. Target collision disposition tombstone",
-      "status": "PASSED",
-      "invariant": "legacy row marked DELETED; existing natural target unmodified"
-    },
-    {
-      "test_case": "9. Pre-converted rows untouched",
-      "status": "PASSED",
-      "invariant": "natural-keyed rows not targeted by manifest remain untouched"
-    },
-    {
-      "test_case": "10. Manifest integrity / SHA verification",
-      "status": "PASSED",
-      "invariant": "tampered manifest content rejected with exit code 2"
-    },
-    {
-      "test_case": "11. Snapshot binding / database fingerprint verification",
-      "status": "PASSED",
-      "invariant": "manifest bound to different DB fingerprint rejected in apply mode"
-    },
-    {
-      "test_case": "12. Inverse rollback manifest execution & state restoration",
-      "status": "PASSED",
-      "invariant": "generated rollback manifest correctly inverts natural keys to legacy"
-    },
-    {
-      "test_case": "13. Fault injection / mid-process abort safety",
-      "status": "PASSED",
-      "invariant": "exception during execution guarantees 0 committed modifications"
-    },
-    {
-      "test_case": "14. DSN & production write guard fail-closed",
-      "status": "PASSED",
-      "invariant": "refuses execution without explicit env flags and guards production DSN"
+      "test_suite": "tests/cli/test_apply_rag_rekey.py",
+      "test_count": 21,
+      "passed": 21,
+      "key_contracts": [
+        "CLI argument parsing, validation, help",
+        "Missing manifest and invalid JSON rejection",
+        "Missing header and env gate enforcement",
+        "Dry-run normal rekey and dry-run tombstone",
+        "Apply normal rekey and apply tombstone",
+        "Stale legacy ID and content hash rejection",
+        "Wrong index status and version rejection",
+        "Manifest tampering and git SHA mismatch rejection",
+        "Wrong DB fingerprint rejection",
+        "Idempotent rerun and maintenance lock failure abort",
+        "Partial failure continuation and skip entries preservation",
+        "Mixed dispositions manifest execution"
+      ]
     }
   ],
   "safety_guarantees": {
@@ -88,5 +77,5 @@
     "production_write_count": 0,
     "source_file_kbo_dev_db_modified": false
   },
-  "generated_at_kst": "2026-08-30T02:32:00+09:00"
+  "generated_at_kst": "2026-08-30T17:40:00+09:00"
 }

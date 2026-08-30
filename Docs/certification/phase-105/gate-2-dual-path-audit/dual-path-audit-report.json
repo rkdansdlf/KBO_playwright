@@ -1,230 +1,1256 @@
 {
-  "audit_type": "LOCAL_SAMPLE_DUAL_PYTHON_AUDIT",
-  "scope": "LOCAL_SQLITE_BASELINE",
-  "sampling_mode": "LIMITED_NON_STRATIFIED_SAMPLE",
-  "sample_limit": 500,
-  "unique_entities": 1000,
-  "selection_order": [
-    "season DESC",
-    "plate_appearances DESC"
-  ],
-  "season": null,
-  "category": null,
-  "total_metrics_evaluated": 33,
-  "metric_evaluations": 16500,
-  "defined_count": 16311,
-  "undefined_count": 189,
-  "reproducible_count": 16500,
-  "divergent_count": 0,
-  "reproducibility_ratio": 1.0,
-  "parity_breakdown": {
-    "EXACT": 16277,
-    "ROUNDED_CONTRACT": 34,
-    "FLOATING_TOLERANCE": 0,
-    "UNDEFINED": 189,
-    "EXCLUDED": 0,
-    "DIVERGENT": 0
-  },
-  "metric_breakdowns": {
-    "AVG": {
-      "evaluations": 500,
-      "reproducible": 500,
+  "AVG": {
+    "category": "BATTING",
+    "is_stored_by_schema": true,
+    "metric_id": "AVG",
+    "python_vs_python": {
       "divergent": 0,
-      "reproducibility_ratio": 1.0
+      "exact": 484,
+      "floating_tolerance": 0,
+      "rounded_contract": 2,
+      "undefined": 14
     },
-    "OBP": {
-      "evaluations": 500,
-      "reproducible": 500,
+    "python_vs_sql": {
       "divergent": 0,
-      "reproducibility_ratio": 1.0
+      "exact": 486,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 14
     },
-    "SLG": {
-      "evaluations": 500,
-      "reproducible": 500,
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
       "divergent": 0,
-      "reproducibility_ratio": 1.0
+      "exact": 485,
+      "floating_tolerance": 0,
+      "rounded_contract": 1
     },
-    "OPS": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "ISO": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "BABIP_BAT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "BB_PCT_BAT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "K_PCT_BAT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "BB_TO_K_BAT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "wOBA": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "wRAA": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "wRC": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "WRC_INDEX_NO_PARK": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "OPS_INDEX_NO_PARK": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "GPA": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "SecA": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "RC": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "ERA": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "WHIP": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "FIP": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "K_9": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "BB_9": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "HR_9": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "K_PCT_PIT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "BB_PCT_PIT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "K_BB_PIT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "BABIP_PIT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "LOB_PCT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "ERA_INDEX_NO_PARK": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "DICE": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "SB_PCT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "FPCT": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
-    },
-    "RF_9": {
-      "evaluations": 500,
-      "reproducible": 500,
-      "divergent": 0,
-      "reproducibility_ratio": 1.0
+    "stored_column": "avg",
+    "stored_db_parity": {
+      "formula_undefined": 14,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 486,
+      "stored_exact": 485,
+      "stored_null": 0,
+      "stored_rounded": 1,
+      "stored_tolerance": 0
     }
   },
-  "duration_ms": 218.5,
-  "is_compliant": true
+  "BABIP_BAT": {
+    "category": "BATTING",
+    "is_stored_by_schema": true,
+    "metric_id": "BABIP_BAT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 499,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": "babip",
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 499,
+      "stored_exact": 499,
+      "stored_null": 1,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "BABIP_PIT": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "BABIP_PIT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "BB_9": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "BB_9",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "BB_PCT_BAT": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "BB_PCT_BAT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "BB_PCT_PIT": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "BB_PCT_PIT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "BB_TO_K_BAT": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "BB_TO_K_BAT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 458,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 42
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 458,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 42
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "DICE": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "DICE",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "ERA": {
+    "category": "PITCHING",
+    "is_stored_by_schema": true,
+    "metric_id": "ERA",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 495,
+      "floating_tolerance": 0,
+      "rounded_contract": 5,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 498,
+      "floating_tolerance": 2,
+      "rounded_contract": 0
+    },
+    "stored_column": "era",
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 500,
+      "stored_exact": 498,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 2
+    }
+  },
+  "ERA_INDEX_NO_PARK": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "ERA_INDEX_NO_PARK",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "FIP": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "FIP",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 495,
+      "floating_tolerance": 0,
+      "rounded_contract": 5,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "FPCT": {
+    "category": "FIELDING",
+    "is_stored_by_schema": false,
+    "metric_id": "FPCT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_fielding",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "GPA": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "GPA",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "HR_9": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "HR_9",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "ISO": {
+    "category": "BATTING",
+    "is_stored_by_schema": true,
+    "metric_id": "ISO",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 486,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 14
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 486,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 14
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 485,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": "iso",
+    "stored_db_parity": {
+      "formula_undefined": 14,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 485,
+      "stored_exact": 485,
+      "stored_null": 1,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "K_9": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "K_9",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "K_BB_PIT": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "K_BB_PIT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "K_PCT_BAT": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "K_PCT_BAT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "K_PCT_PIT": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "K_PCT_PIT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "LOB_PCT": {
+    "category": "PITCHING",
+    "is_stored_by_schema": false,
+    "metric_id": "LOB_PCT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "OBP": {
+    "category": "BATTING",
+    "is_stored_by_schema": true,
+    "metric_id": "OBP",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 482,
+      "floating_tolerance": 0,
+      "rounded_contract": 5,
+      "undefined": 13
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 499,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": "obp",
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 499,
+      "stored_exact": 499,
+      "stored_null": 1,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "OPS": {
+    "category": "BATTING",
+    "is_stored_by_schema": true,
+    "metric_id": "OPS",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 480,
+      "floating_tolerance": 0,
+      "rounded_contract": 6,
+      "undefined": 14
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 499,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": "ops",
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 499,
+      "stored_exact": 499,
+      "stored_null": 1,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "OPS_INDEX_NO_PARK": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "OPS_INDEX_NO_PARK",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "RC": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "RC",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "RF_9": {
+    "category": "FIELDING",
+    "is_stored_by_schema": false,
+    "metric_id": "RF_9",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_fielding",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "SB_PCT": {
+    "category": "BASERUNNING",
+    "is_stored_by_schema": false,
+    "metric_id": "SB_PCT",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "SLG": {
+    "category": "BATTING",
+    "is_stored_by_schema": true,
+    "metric_id": "SLG",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 484,
+      "floating_tolerance": 0,
+      "rounded_contract": 2,
+      "undefined": 14
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 486,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 14
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 485,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": "slg",
+    "stored_db_parity": {
+      "formula_undefined": 14,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 485,
+      "stored_exact": 485,
+      "stored_null": 1,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "SecA": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "SecA",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 486,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 14
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 486,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 14
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "WHIP": {
+    "category": "PITCHING",
+    "is_stored_by_schema": true,
+    "metric_id": "WHIP",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 491,
+      "floating_tolerance": 0,
+      "rounded_contract": 9,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_pitching",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 467,
+      "floating_tolerance": 2,
+      "rounded_contract": 0
+    },
+    "stored_column": "whip",
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 469,
+      "stored_exact": 467,
+      "stored_null": 31,
+      "stored_rounded": 0,
+      "stored_tolerance": 2
+    }
+  },
+  "WRC_INDEX_NO_PARK": {
+    "category": "BATTING",
+    "is_stored_by_schema": true,
+    "metric_id": "WRC_INDEX_NO_PARK",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": "wrc_plus",
+    "stored_db_parity": {
+      "formula_undefined": 13,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 487,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "wOBA": {
+    "category": "BATTING",
+    "is_stored_by_schema": true,
+    "metric_id": "wOBA",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 500,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 0
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": "woba",
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 0,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 500,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "wRAA": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "wRAA",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  },
+  "wRC": {
+    "category": "BATTING",
+    "is_stored_by_schema": false,
+    "metric_id": "wRC",
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 487,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 13
+    },
+    "source_rows": 500,
+    "source_table": "player_season_batting",
+    "sql_vs_stored": {
+      "divergent": 0,
+      "exact": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0
+    },
+    "stored_column": null,
+    "stored_db_parity": {
+      "formula_undefined": 0,
+      "not_stored_by_schema": 500,
+      "stored_divergent": 0,
+      "stored_eligible": 0,
+      "stored_exact": 0,
+      "stored_null": 0,
+      "stored_rounded": 0,
+      "stored_tolerance": 0
+    }
+  }
 }

@@ -1,0 +1,319 @@
+{
+  "calibration_rules": {
+    "1982_2000": "HISTORICAL_CALIBRATED",
+    "2001_2013": "HISTORICAL_UNWEIGHTED_FAIL_CLOSED_OR_EXTRAPOLATED",
+    "2014_2018": "HISTORICAL_CALIBRATED",
+    "2019_2026": "MODERN_CALIBRATED"
+  },
+  "schema_version": "kbo-league-constants-v1",
+  "seasons": {
+    "1982": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1983": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1984": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1985": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1986": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1987": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1988": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1989": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1990": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 3.65,
+      "lg_ops": 0.71,
+      "lg_wrc": null,
+      "woba_scale": 1.22
+    },
+    "1991": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "1992": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "1993": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "1994": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "1995": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "1996": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "1997": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "1998": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "1999": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2000": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.2,
+      "lg_ops": 0.73,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2001": {
+      "calibrated": false,
+      "reason": "Season 2001 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2002": {
+      "calibrated": false,
+      "reason": "Season 2002 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2003": {
+      "calibrated": false,
+      "reason": "Season 2003 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2004": {
+      "calibrated": false,
+      "reason": "Season 2004 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2005": {
+      "calibrated": false,
+      "reason": "Season 2005 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2006": {
+      "calibrated": false,
+      "reason": "Season 2006 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2007": {
+      "calibrated": false,
+      "reason": "Season 2007 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2008": {
+      "calibrated": false,
+      "reason": "Season 2008 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2009": {
+      "calibrated": false,
+      "reason": "Season 2009 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2010": {
+      "calibrated": false,
+      "reason": "Season 2010 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2011": {
+      "calibrated": false,
+      "reason": "Season 2011 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2012": {
+      "calibrated": false,
+      "reason": "Season 2012 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2013": {
+      "calibrated": false,
+      "reason": "Season 2013 era 'KBO_ERA_2001_2013_UNCALIBRATED' is UNCALIBRATED. Static baseline constants unavailable without empirical dynamic aggregation."
+    },
+    "2014": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.8,
+      "lg_ops": 0.795,
+      "lg_wrc": null,
+      "woba_scale": 1.26
+    },
+    "2015": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.8,
+      "lg_ops": 0.795,
+      "lg_wrc": null,
+      "woba_scale": 1.26
+    },
+    "2016": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.8,
+      "lg_ops": 0.795,
+      "lg_wrc": null,
+      "woba_scale": 1.26
+    },
+    "2017": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.8,
+      "lg_ops": 0.795,
+      "lg_wrc": null,
+      "woba_scale": 1.26
+    },
+    "2018": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.8,
+      "lg_ops": 0.795,
+      "lg_wrc": null,
+      "woba_scale": 1.26
+    },
+    "2019": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.5,
+      "lg_ops": 0.75,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2020": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.5,
+      "lg_ops": 0.75,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2021": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.5,
+      "lg_ops": 0.75,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2022": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.5,
+      "lg_ops": 0.75,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2023": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.5,
+      "lg_ops": 0.75,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2024": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.5,
+      "lg_ops": 0.75,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2025": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.5,
+      "lg_ops": 0.75,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    },
+    "2026": {
+      "calibrated": true,
+      "fip_constant": null,
+      "lg_era": 4.5,
+      "lg_ops": 0.75,
+      "lg_wrc": null,
+      "woba_scale": 1.24
+    }
+  }
+}

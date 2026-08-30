@@ -1,0 +1,62 @@
+{
+  "1982_1990": {
+    "batting_rows": 20,
+    "divergent": 0,
+    "era_range": "1982-1990",
+    "exact": 551,
+    "fielding_rows": 0,
+    "pass_rate_pct": 100.0,
+    "pitching_rows": 18,
+    "rounded_contract": 42,
+    "total_evaluations": 594,
+    "undefined": 1
+  },
+  "1991_2000": {
+    "batting_rows": 20,
+    "divergent": 0,
+    "era_range": "1991-2000",
+    "exact": 579,
+    "fielding_rows": 0,
+    "pass_rate_pct": 100.0,
+    "pitching_rows": 20,
+    "rounded_contract": 40,
+    "total_evaluations": 620,
+    "undefined": 1
+  },
+  "2001_2013": {
+    "batting_rows": 20,
+    "divergent": 0,
+    "era_range": "2001-2013",
+    "exact": 600,
+    "fielding_rows": 0,
+    "pass_rate_pct": 100.0,
+    "pitching_rows": 20,
+    "rounded_contract": 0,
+    "total_evaluations": 620,
+    "undefined": 20
+  },
+  "2014_2018": {
+    "batting_rows": 20,
+    "divergent": 0,
+    "era_range": "2014-2018",
+    "exact": 603,
+    "fielding_rows": 0,
+    "pass_rate_pct": 100.0,
+    "pitching_rows": 20,
+    "rounded_contract": 0,
+    "total_evaluations": 620,
+    "undefined": 17
+  },
+  "2019_2026": {
+    "batting_rows": 20,
+    "divergent": 0,
+    "era_range": "2019-2026",
+    "exact": 659,
+    "fielding_rows": 20,
+    "pass_rate_pct": 100.0,
+    "pitching_rows": 20,
+    "rounded_contract": 1,
+    "total_evaluations": 660,
+    "undefined": 0
+  }
+}
