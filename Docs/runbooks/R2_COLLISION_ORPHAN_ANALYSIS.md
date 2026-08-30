@@ -69,7 +69,7 @@ with get_db_session() as session:
                 RagChunk.source_row_id == chunk.legacy_source_row_id
             )
         ).scalar_one()
-        
+
         diff = list(difflib.unified_diff(
             legacy.content.splitlines(),
             chunk.content.splitlines(),
