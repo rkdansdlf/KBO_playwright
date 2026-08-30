@@ -1,116 +1,846 @@
 {
-  "database_path": "./data/kbo_dev.db",
-  "database_size_bytes": 1316581376,
-  "database_mtime": 1788022315.4816895,
-  "database_sha256": "2bc0328697164d8dd0a91741c7e33746f379275c25bbdc4f5d202df800f44a19",
-  "schema_sha256": "eb5c9b8f113da98c6c89743ac0a319d6b8da62ab548c5dcd598f9a18db546493",
-  "total_rows": {
-    "player_season_batting": 20400,
-    "player_season_pitching": 16061
+  "catalog_invariants": {
+    "missing_metric_ids": [],
+    "registry_ids_equals_manifest": true,
+    "required_inputs_subset_asserted": true,
+    "total_metrics": 33,
+    "unknown_metric_ids": []
   },
-  "eligible_population_clean": {
-    "player_season_batting": 11938,
-    "player_season_pitching": 7019
+  "cohort_sizes": {
+    "batting_rows": 500,
+    "fielding_rows": 500,
+    "pitching_rows": 500,
+    "total_evaluations": 16500,
+    "total_source_rows": 1500
   },
-  "sampling_parameters": {
-    "limit_per_category": 500,
-    "batting_order": "season DESC, plate_appearances DESC",
-    "pitching_order": "season DESC, innings_outs DESC"
-  },
-  "season_population_distribution": {
-    "batting": {
-      "2026": 212,
-      "2025": 428,
-      "2024": 390,
-      "2023": 382,
-      "2022": 357,
-      "2021": 398,
-      "2020": 424,
-      "2019": 387,
-      "2018": 398,
-      "2017": 423,
-      "2016": 448,
-      "2015": 453,
-      "2014": 368,
-      "2013": 375,
-      "2012": 361,
-      "2011": 336,
-      "2010": 348,
-      "2009": 281,
-      "2008": 280,
-      "2007": 277,
-      "2006": 265,
-      "2005": 274,
-      "2004": 305,
-      "2003": 276,
-      "2002": 267,
-      "2001": 265,
-      "2000": 205,
-      "1999": 199,
-      "1998": 204,
-      "1997": 113,
-      "1996": 116,
-      "1995": 158,
-      "1994": 111,
-      "1993": 218,
-      "1992": 139,
-      "1991": 116,
-      "1990": 151,
-      "1989": 192,
-      "1988": 180,
-      "1987": 168,
-      "1986": 174,
-      "1985": 146,
-      "1984": 137,
-      "1983": 119,
-      "1982": 114
+  "dataset_name": "kbo-sabermetrics-source-cohort-1500",
+  "generation_timestamp": "2026-08-30T17:40:00+09:00",
+  "metric_mappings": {
+    "AVG": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\ud0c0\uc728",
+      "metric_id": "AVG",
+      "name": "Batting Average",
+      "source_columns": [
+        "hits",
+        "at_bats"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": "avg"
     },
-    "pitching": {
-      "2026": 324,
-      "2025": 322,
-      "2024": 307,
-      "2023": 325,
-      "2022": 324,
-      "2021": 353,
-      "2020": 346,
-      "2019": 303,
-      "2018": 333,
-      "2017": 310,
-      "2016": 320,
-      "2015": 304,
-      "2014": 258,
-      "2013": 244,
-      "2012": 249,
-      "2011": 250,
-      "2010": 289,
-      "2009": 191,
-      "2008": 194,
-      "2007": 179,
-      "2006": 180,
-      "2005": 182,
-      "2004": 189,
-      "2003": 175,
-      "2002": 178,
-      "2001": 174,
-      "2000": 72,
-      "1999": 10,
-      "1998": 10,
-      "1997": 13,
-      "1996": 15,
-      "1995": 15,
-      "1994": 8,
-      "1993": 6,
-      "1992": 6,
-      "1991": 11,
-      "1990": 6,
-      "1989": 7,
-      "1988": 5,
-      "1987": 7,
-      "1986": 3,
-      "1985": 7,
-      "1984": 6,
-      "1983": 2,
-      "1982": 7
+    "BABIP_BAT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\uc778\ud50c\ub808\uc774 \ud0c0\uad6c \ud0c0\uc728",
+      "metric_id": "BABIP_BAT",
+      "name": "Batting BABIP",
+      "source_columns": [
+        "hits",
+        "home_runs",
+        "at_bats",
+        "strikeouts",
+        "sacrifice_flies"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": "babip"
+    },
+    "BABIP_PIT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ud53c\uc778\ud50c\ub808\uc774 \ud0c0\uad6c \ud0c0\uc728",
+      "metric_id": "BABIP_PIT",
+      "name": "Pitching BABIP",
+      "source_columns": [
+        "hits_allowed",
+        "home_runs_allowed",
+        "strikeouts",
+        "batters_faced",
+        "sacrifice_flies_allowed"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "BB_9": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "9\uc774\ub2dd\ub2f9 \ubcfc\ub137",
+      "metric_id": "BB_9",
+      "name": "Walks per 9 Innings",
+      "source_columns": [
+        "walks_allowed",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "BB_PCT_BAT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ubcfc\ub137 \ube44\uc728",
+      "metric_id": "BB_PCT_BAT",
+      "name": "Walk Rate (Batting)",
+      "source_columns": [
+        "walks",
+        "plate_appearances",
+        "at_bats",
+        "hbp",
+        "sacrifice_flies"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "BB_PCT_PIT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ud22c\uc218 \ubcfc\ub137 \ube44\uc728",
+      "metric_id": "BB_PCT_PIT",
+      "name": "Walk Rate (Pitching)",
+      "source_columns": [
+        "walks_allowed",
+        "batters_faced"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "BB_TO_K_BAT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ubcfc\uc0bc\ube44",
+      "metric_id": "BB_TO_K_BAT",
+      "name": "Walk-to-Strikeout Ratio",
+      "source_columns": [
+        "walks",
+        "strikeouts"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "DICE": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uc218\ube44 \ub3c5\ub9bd \uc131\ubd84 \uc790\ucc45\uc810",
+      "metric_id": "DICE",
+      "name": "Defense-Independent Component ERA",
+      "source_columns": [
+        "home_runs_allowed",
+        "walks_allowed",
+        "hit_batters",
+        "strikeouts",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "ERA": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\ud3c9\uade0\uc790\ucc45\uc810",
+      "metric_id": "ERA",
+      "name": "Earned Run Average",
+      "source_columns": [
+        "earned_runs",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": "era"
+    },
+    "ERA_INDEX_NO_PARK": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uc870\uc815 \ud3c9\uade0\uc790\ucc45\uc810 \uc9c0\uc218 (\ud30c\ud06c\ud329\ud130 \ubbf8\ubcf4\uc815)",
+      "metric_id": "ERA_INDEX_NO_PARK",
+      "name": "ERA Index (No Park Adjustment)",
+      "source_columns": [
+        "earned_runs",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "FIP": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uc218\ube44 \ubb34\uad00 \uc790\ucc45\uc810",
+      "metric_id": "FIP",
+      "name": "Fielding Independent Pitching",
+      "source_columns": [
+        "home_runs_allowed",
+        "walks_allowed",
+        "intentional_walks_allowed",
+        "hit_batters",
+        "strikeouts",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "FPCT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "FIELDING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uc218\ube44\uc728",
+      "metric_id": "FPCT",
+      "name": "Fielding Percentage",
+      "source_columns": [
+        "putouts",
+        "assists",
+        "errors"
+      ],
+      "source_primary_key": [
+        "year",
+        "player_id",
+        "team_id",
+        "position_id"
+      ],
+      "source_table": "player_season_fielding",
+      "stored_column": null
+    },
+    "GPA": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uc870\uc815 \uc120\uc218 \ud3c9\uc810",
+      "metric_id": "GPA",
+      "name": "Grounded Player Average",
+      "source_columns": [
+        "hits",
+        "walks",
+        "hbp",
+        "at_bats",
+        "sacrifice_flies",
+        "doubles",
+        "triples",
+        "home_runs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "HR_9": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "9\uc774\ub2dd\ub2f9 \ud53c\ud648\ub7f0",
+      "metric_id": "HR_9",
+      "name": "Home Runs per 9 Innings",
+      "source_columns": [
+        "home_runs_allowed",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "ISO": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\uc21c\uc7a5\ud0c0\uc728",
+      "metric_id": "ISO",
+      "name": "Isolated Power",
+      "source_columns": [
+        "hits",
+        "doubles",
+        "triples",
+        "home_runs",
+        "at_bats"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": "iso"
+    },
+    "K_9": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "9\uc774\ub2dd\ub2f9 \ud0c8\uc0bc\uc9c4",
+      "metric_id": "K_9",
+      "name": "Strikeouts per 9 Innings",
+      "source_columns": [
+        "strikeouts",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "K_BB_PIT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "K-BB%",
+      "metric_id": "K_BB_PIT",
+      "name": "Strikeout Minus Walk Rate",
+      "source_columns": [
+        "strikeouts",
+        "walks_allowed",
+        "batters_faced"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "K_PCT_BAT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uc0bc\uc9c4 \ube44\uc728",
+      "metric_id": "K_PCT_BAT",
+      "name": "Strikeout Rate (Batting)",
+      "source_columns": [
+        "strikeouts",
+        "plate_appearances",
+        "at_bats",
+        "walks",
+        "hbp",
+        "sacrifice_flies"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "K_PCT_PIT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ud22c\uc218 \ud0c8\uc0bc\uc9c4\uc728",
+      "metric_id": "K_PCT_PIT",
+      "name": "Strikeout Rate (Pitching)",
+      "source_columns": [
+        "strikeouts",
+        "batters_faced"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "LOB_PCT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uc794\ub8e8 \ucc98\ub9ac\uc728",
+      "metric_id": "LOB_PCT",
+      "name": "Left On Base Percentage",
+      "source_columns": [
+        "hits_allowed",
+        "walks_allowed",
+        "hit_batters",
+        "runs_allowed",
+        "home_runs_allowed"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": null
+    },
+    "OBP": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\ucd9c\ub8e8\uc728",
+      "metric_id": "OBP",
+      "name": "On-Base Percentage",
+      "source_columns": [
+        "hits",
+        "walks",
+        "hbp",
+        "at_bats",
+        "sacrifice_flies"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": "obp"
+    },
+    "OPS": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\ucd9c\ub8e8\uc728+\uc7a5\ud0c0\uc728",
+      "metric_id": "OPS",
+      "name": "On-Base Plus Slugging",
+      "source_columns": [
+        "hits",
+        "walks",
+        "hbp",
+        "at_bats",
+        "sacrifice_flies",
+        "doubles",
+        "triples",
+        "home_runs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": "ops"
+    },
+    "OPS_INDEX_NO_PARK": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uc870\uc815 OPS \uc9c0\uc218 (\ud30c\ud06c\ud329\ud130 \ubbf8\ubcf4\uc815)",
+      "metric_id": "OPS_INDEX_NO_PARK",
+      "name": "OPS Index (No Park Adjustment)",
+      "source_columns": [
+        "hits",
+        "walks",
+        "hbp",
+        "at_bats",
+        "sacrifice_flies",
+        "doubles",
+        "triples",
+        "home_runs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "RC": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ub4dd\uc810 \uae30\uc5ec\ub3c4 (RC)",
+      "metric_id": "RC",
+      "name": "Runs Created (Basic Bill James V1)",
+      "source_columns": [
+        "hits",
+        "doubles",
+        "triples",
+        "home_runs",
+        "walks",
+        "at_bats"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "RF_9": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "FIELDING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "9\uc774\ub2dd\ub2f9 \uc218\ube44 \ubc94\uc704 \uc9c0\uc218",
+      "metric_id": "RF_9",
+      "name": "Range Factor per 9 Innings",
+      "source_columns": [
+        "putouts",
+        "assists",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "year",
+        "player_id",
+        "team_id",
+        "position_id"
+      ],
+      "source_table": "player_season_fielding",
+      "stored_column": null
+    },
+    "SB_PCT": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BASERUNNING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ub3c4\ub8e8 \uc131\uacf5\ub960",
+      "metric_id": "SB_PCT",
+      "name": "Stolen Base Percentage",
+      "source_columns": [
+        "stolen_bases",
+        "caught_stealing"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "SLG": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\uc7a5\ud0c0\uc728",
+      "metric_id": "SLG",
+      "name": "Slugging Percentage",
+      "source_columns": [
+        "hits",
+        "doubles",
+        "triples",
+        "home_runs",
+        "at_bats"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": "slg"
+    },
+    "SecA": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ubcf4\uc870 \ud0c0\uc728",
+      "metric_id": "SecA",
+      "name": "Secondary Average",
+      "source_columns": [
+        "hits",
+        "doubles",
+        "triples",
+        "home_runs",
+        "walks",
+        "stolen_bases",
+        "caught_stealing",
+        "at_bats"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "WHIP": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "PITCHING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\uc774\ub2dd\ub2f9 \ucd9c\ub8e8\ud5c8\uc6a9\ub960",
+      "metric_id": "WHIP",
+      "name": "Walks Plus Hits per Inning Pitched",
+      "source_columns": [
+        "hits_allowed",
+        "walks_allowed",
+        "innings_outs"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_pitching",
+      "stored_column": "whip"
+    },
+    "WRC_INDEX_NO_PARK": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\uc870\uc815 \ub4dd\uc810 \ucc3d\ucd9c \uc9c0\uc218 (\ud30c\ud06c\ud329\ud130 \ubbf8\ubcf4\uc815)",
+      "metric_id": "WRC_INDEX_NO_PARK",
+      "name": "Weighted Runs Created Index (No Park Adjustment)",
+      "source_columns": [
+        "hits",
+        "doubles",
+        "triples",
+        "home_runs",
+        "walks",
+        "intentional_walks",
+        "hbp",
+        "sacrifice_flies",
+        "at_bats",
+        "plate_appearances"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": "wrc_plus"
+    },
+    "wOBA": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": true,
+      "join_path": "NONE",
+      "korean_name": "\uac00\uc911 \ucd9c\ub8e8\uc728",
+      "metric_id": "wOBA",
+      "name": "Weighted On-Base Average",
+      "source_columns": [
+        "hits",
+        "doubles",
+        "triples",
+        "home_runs",
+        "walks",
+        "intentional_walks",
+        "hbp",
+        "sacrifice_flies",
+        "at_bats"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": "woba"
+    },
+    "wRAA": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\ud3c9\uade0 \ub300\ube44 \ub4dd\uc810 \ucc3d\ucd9c",
+      "metric_id": "wRAA",
+      "name": "Weighted Runs Above Average",
+      "source_columns": [
+        "hits",
+        "doubles",
+        "triples",
+        "home_runs",
+        "walks",
+        "intentional_walks",
+        "hbp",
+        "sacrifice_flies",
+        "at_bats",
+        "plate_appearances"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
+    },
+    "wRC": {
+      "aggregation_level": "PLAYER_SEASON",
+      "category": "BATTING",
+      "is_stored_by_schema": false,
+      "join_path": "NONE",
+      "korean_name": "\uac00\uc911 \ub4dd\uc810 \ucc3d\ucd9c",
+      "metric_id": "wRC",
+      "name": "Weighted Runs Created",
+      "source_columns": [
+        "hits",
+        "doubles",
+        "triples",
+        "home_runs",
+        "walks",
+        "intentional_walks",
+        "hbp",
+        "sacrifice_flies",
+        "at_bats",
+        "plate_appearances"
+      ],
+      "source_primary_key": [
+        "season",
+        "player_id",
+        "team_code",
+        "league",
+        "level"
+      ],
+      "source_table": "player_season_batting",
+      "stored_column": null
     }
-  }
+  },
+  "query_hashes": {
+    "batting_query_sha256": "bab126dd7e7669bff7fd8e7179177b07b950d603c9a05cbd3f8c312db04ef1ff",
+    "evaluation_plan_sha256": "6ea4a54ccfea8c36c3737785220ec69c7ef747ac83d5ae20e16062df5bc8919e",
+    "fielding_query_sha256": "976d4b5a78c52189931cfe3b10793334e8cb8d17d768891f7dc6fd7a60489a2e",
+    "pitching_query_sha256": "f76cd5b18adfbb404a0a624c65aa754959cea82ff0b5898be974beefdffda9a1"
+  },
+  "schema_version": "kbo-dataset-manifest-v2"
 }

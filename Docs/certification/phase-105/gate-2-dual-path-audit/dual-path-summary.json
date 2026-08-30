@@ -1,42 +1,62 @@
 {
-  "gate": "GATE_2_LOCAL_SAMPLE_DUAL_PYTHON_AUDIT",
-  "status": "PROVISIONAL_PASS_EVIDENCE_REOPENED",
-  "evidence_level": "LEVEL_3_INTEGRATION_VERIFIED",
-  "environment": "sqlite_local_baseline",
-  "audit_type": "LOCAL_SAMPLE_DUAL_PYTHON_AUDIT",
-  "sampling_mode": "LIMITED_NON_STRATIFIED_SAMPLE",
-  "sample_limit_per_category": 500,
-  "unique_entities_selected": 1000,
-  "selection_order": [
-    "season DESC",
-    "plate_appearances DESC (batting) / innings_outs DESC (pitching)"
-  ],
-  "total_metrics_evaluated": 33,
-  "total_evaluations_checked": 16500,
-  "numeric_defined_evaluations": 16311,
-  "exact_count": 16277,
-  "rounded_contract_count": 34,
-  "undefined_count": 189,
-  "divergent_count": 0,
-  "reproducibility_ratio": 1.0,
-  "agreement_summary": {
-    "raw_exact_percentage_of_defined": 99.7916,
-    "rounding_contract_percentage_of_defined": 0.2084,
-    "undefined_contract_agreement": "189/189 (100.0%)",
-    "divergence_rate": 0.0
+  "audit_cross_comparison_totals": {
+    "python_vs_python": {
+      "divergent": 0,
+      "exact": 16276,
+      "excluded": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 34,
+      "undefined": 190
+    },
+    "python_vs_sql": {
+      "divergent": 0,
+      "exact": 16337,
+      "excluded": 0,
+      "floating_tolerance": 0,
+      "rounded_contract": 0,
+      "undefined": 163
+    },
+    "sql_vs_stored_among_eligible": {
+      "divergent": 0,
+      "exact": 3917,
+      "floating_tolerance": 4,
+      "rounded_contract": 1
+    },
+    "stored_db_parity_disaggregation": {
+      "formula_undefined": 55,
+      "not_stored_by_schema": 11500,
+      "stored_divergent": 0,
+      "stored_eligible": 3922,
+      "stored_exact": 3917,
+      "stored_null": 1023,
+      "stored_rounded": 1,
+      "stored_tolerance": 4
+    }
   },
-  "parity_breakdown": {
-    "EXACT": 16277,
-    "ROUNDED_CONTRACT": 34,
-    "FLOATING_TOLERANCE": 0,
-    "UNDEFINED": 189,
-    "EXCLUDED": 0,
-    "DIVERGENT": 0
+  "catalog_summary": {
+    "baserunning_metrics": 1,
+    "batting_metrics": 17,
+    "fielding_metrics": 2,
+    "pitching_metrics": 13,
+    "total_canonical_metrics": 33,
+    "total_evaluations_executed": 16500,
+    "total_evaluations_planned": 16500
   },
-  "evaluators": {
-    "path_a": "FormulaRegistry / FormulaEngine (declarative definitions with Decimal ROUND_HALF_UP)",
-    "path_b": "PythonReferenceCalculator (isolated functional reference implementation)"
+  "elapsed_seconds": 0.1793,
+  "generated_at_kst": "2026-08-30T17:40:00+09:00",
+  "query_hashes": {
+    "batting_query_sha256": "bab126dd7e7669bff7fd8e7179177b07b950d603c9a05cbd3f8c312db04ef1ff",
+    "evaluation_plan_sha256": "6ea4a54ccfea8c36c3737785220ec69c7ef747ac83d5ae20e16062df5bc8919e",
+    "fielding_query_sha256": "976d4b5a78c52189931cfe3b10793334e8cb8d17d768891f7dc6fd7a60489a2e",
+    "pitching_query_sha256": "f76cd5b18adfbb404a0a624c65aa754959cea82ff0b5898be974beefdffda9a1",
+    "selected_entities_sha256": "418f11862a7f66ca80e8e8f3732c38f20d0b07b185ad109a4635fb85cc215bd4"
   },
-  "is_compliant": true,
-  "generated_at_utc": "2026-08-30T02:28:40Z"
+  "schema_version": "kbo-formula-gate2e-audit-v1",
+  "source_cohort": {
+    "batting_pitching_overlap_keys": 12,
+    "player_season_batting_rows": 500,
+    "player_season_fielding_rows": 500,
+    "player_season_pitching_rows": 500,
+    "total_physical_source_rows": 1500
+  }
 }

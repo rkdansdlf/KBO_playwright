@@ -1,12 +1,13 @@
 {
-  "manifest_version": "gate-3-safety-manifest-v1",
-  "generated_at_kst": "2026-08-30T02:32:00+09:00",
+  "manifest_version": "gate-3-safety-manifest-v2",
+  "generated_at_kst": "2026-08-30T17:40:00+09:00",
   "target_subsystem": "rag_natural_key_rekey",
   "safety_scope": "LOCAL_EPHEMERAL_APPLY_ONLY",
   "test_suites": [
     "tests/services/test_rag_rekey_safety_gate3.py",
     "tests/cli/test_apply_rag_rekey.py"
   ],
+  "total_focused_tests": 51,
   "invariants_tested": [
     "NORMAL_APPLY_EXACT_ROWCOUNT",
     "IDEMPOTENT_REAPPLY_ZERO_MUTATION",
@@ -21,7 +22,14 @@
     "DATABASE_FINGERPRINT_BINDING_CHECK",
     "INVERSE_ROLLBACK_MANIFEST_RESTORES_STATE",
     "FAULT_INJECTION_MID_LOOP_ABORT_SAFETY",
-    "DSN_PRODUCTION_WRITE_ENV_GUARD"
+    "DSN_PRODUCTION_WRITE_ENV_GUARD",
+    "IMMUTABLE_RECEIPT_CREATION_AND_REPLAY",
+    "RECEIPT_POSTCONDITION_VERIFICATION",
+    "TRANSACTION_ID_TRAVERSAL_VALIDATION",
+    "SYMLINK_RECEIPT_REJECTION",
+    "HARD_CRASH_POST_COMMIT_RECOVERY_REBUILT",
+    "POST_COMMIT_RECEIPT_IO_FAILURE_RECOVERY",
+    "PARENT_DIRECTORY_FSYNC_DURABILITY"
   ],
   "execution_constraints": {
     "staging_access_blocked": true,
