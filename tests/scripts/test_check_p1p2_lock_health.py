@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -65,7 +65,7 @@ def test_p1p2_marker_missing(tmp_path):
 
 def test_p1p2_marker_stale_date(tmp_path):
     mod = _load_module()
-    yesterday = datetime.now(KST).replace(day=datetime.now(KST).day - 1)
+    yesterday = datetime.now(KST) - timedelta(days=1)
     marker = _write_marker(tmp_path, "ok", yesterday)
     mod.LAST_RUN_MARKER = marker
     ran_ok, detail = mod._p1p2_run_status()
