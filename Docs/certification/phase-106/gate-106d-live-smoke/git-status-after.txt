@@ -1,0 +1,22 @@
+ M .github/workflows/kbo_smart_polling.yml
+ M Docs/certification/phase-106/README.md
+ M Docs/certification/phase-106/SHA256SUMS
+ M Docs/certification/phase-106/crawler-coverage-matrix.json
+ M Docs/certification/phase-106/crawler-inventory.json
+ M Docs/certification/phase-106/deselected-test-classification.json
+ M Docs/certification/phase-106/ephemeral-e2e-results.json
+ M Docs/certification/phase-106/protected-db-hashes.json
+ M Docs/certification/phase-106/replay-fixture-manifest.json
+ M Docs/certification/phase-106/replay-results.json
+ M requirements.txt
+ M src/aggregators/team_stat_aggregator.py
+ M src/cli/calc/calculate_rankings.py
+ M src/cli/collection/crawl_external_stats.py
+ M src/cli/collection/ingest_historical_archive.py
+ M src/validators/quality_gate.py
+ M tests/cli/test_calculate_rankings.py
+ M tests/cli/test_crawl_external_stats.py
+ M tests/cli/test_ingest_historical_archive.py
+ M tests/test_github_workflows.py
+?? Docs/certification/phase-106/gate-106d-live-smoke/
+?? scripts/certification/

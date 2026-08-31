@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106D",
+  "results": [
+    {
+      "target_id": "player-search-page52",
+      "parser_status": "VALID",
+      "records_extracted": 20
+    },
+    {
+      "target_id": "player-stats-basic2-headers",
+      "parser_status": "VALID",
+      "records_extracted": 11
+    },
+    {
+      "target_id": "wikipedia-awards-live",
+      "parser_status": "VALID",
+      "records_extracted": 495
+    }
+  ]
+}

@@ -1,552 +1,397 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "phase": "Phase 106A",
-  "total_crawlers": 30,
-  "matrix": [
+  "summary": {
+    "total_crawlers": 30,
+    "with_unit_test": 30,
+    "with_integration_test": 30,
+    "with_live_test": 3,
+    "verified_count": 28,
+    "partial_count": 2
+  },
+  "crawlers": [
     {
       "crawler_id": "schedule_crawler",
+      "name": "KBO Schedule Crawler",
       "category": "SCHEDULE",
-      "season_range": "1982~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "games",
-        "daily_schedules"
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "naver_live_schedule_today",
+        "naver_result_schedule"
       ],
-      "natural_keys": [
-        "game_id",
-        "game_date, away_team, home_team, doubleheader_no"
-      ],
-      "status_reason": "Offline fixtures, DTO parser, repository integration, and scheduler jobs tested"
+      "unit_test": "tests/test_schedule_crawler.py",
+      "integration_test": "tests/test_game_collection_service.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "game_detail_crawler",
+      "name": "KBO Game Detail Crawler",
       "category": "GAME_DETAIL",
-      "season_range": "2001~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "games",
-        "game_details",
-        "player_game_batting",
-        "player_game_pitching",
-        "inning_scores"
+      "supported_seasons": "2008-2026",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "game_detail_20251001NCLG0"
       ],
-      "natural_keys": [
-        "game_id",
-        "game_id + player_id + team_id"
-      ],
-      "status_reason": "Full boxscore replay fixture, fallback parser, and atomic multi-table persistence validated"
+      "unit_test": "tests/parsers/test_game_detail_parser.py",
+      "integration_test": "tests/repositories/test_game_save_ext.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "legacy_game_detail_crawler",
+      "name": "KBO Legacy Boxscore Crawler",
       "category": "GAME_DETAIL",
-      "season_range": "1982~2000",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "games",
-        "player_game_batting",
-        "player_game_pitching"
+      "supported_seasons": "1982-2007",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "legacy_boxscore_20010405HHSS0"
       ],
-      "natural_keys": [
-        "game_id"
-      ],
-      "status_reason": "Legacy HTML fixtures available and backfill integration tested"
+      "unit_test": "tests/parsers/test_game_detail_parser.py",
+      "integration_test": "tests/test_game_collection_service.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "pbp_crawler",
+      "name": "KBO Play-by-Play Crawler",
       "category": "GAME_DETAIL",
-      "season_range": "2018~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "game_pbp",
-        "relay_events",
-        "pbp_events"
+      "supported_seasons": "2018-2026",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "kbo_live_text_sklg"
       ],
-      "natural_keys": [
-        "game_id + inning + event_seq"
-      ],
-      "status_reason": "PBP replay HTML fixture, healer, SH/SF derivation, and recovery pipeline tested"
+      "unit_test": "tests/test_pbp_crawler.py",
+      "integration_test": "tests/test_relay_recovery_service.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "naver_relay_crawler",
+      "name": "Naver Live Text Relay Crawler",
       "category": "GAME_DETAIL",
-      "season_range": "2015~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "relay_events",
-        "game_pbp"
+      "supported_seasons": "2018-2026",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "naver_live_relay_inning_1",
+        "naver_result_relay_inning_9"
       ],
-      "natural_keys": [
-        "game_id + inning_no + segment_id"
-      ],
-      "status_reason": "Inning JSON fixtures, circuit breaker, deduplication, and recovery verified"
-    },
-    {
-      "crawler_id": "preview_crawler",
-      "category": "SCHEDULE",
-      "season_range": "2020~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "pregame_matchups",
-        "lineups",
-        "games"
-      ],
-      "natural_keys": [
-        "game_id",
-        "game_id + team_id + batting_order"
-      ],
-      "status_reason": "Payload normalization, starting pitcher resolution, and save extended verified"
-    },
-    {
-      "crawler_id": "daily_roster_crawler",
-      "category": "ROSTER",
-      "season_range": "2015~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "PARTIAL",
-      "target_tables": [
-        "daily_rosters",
-        "roster_entries"
-      ],
-      "natural_keys": [
-        "roster_date + team_code + player_id"
-      ],
-      "status_reason": "Mock tests and context aggregator verified; dedicated offline fixture pending capture"
-    },
-    {
-      "crawler_id": "roster_transaction_crawler",
-      "category": "ROSTER",
-      "season_range": "2015~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "PARTIAL",
-      "target_tables": [
-        "roster_transactions",
-        "player_movements"
-      ],
-      "natural_keys": [
-        "transaction_date + player_id + transaction_type"
-      ],
-      "status_reason": "Repository schema and context aggregator verified; static replay fixture pending capture"
+      "unit_test": "tests/parsers/test_naver_relay_parser.py",
+      "integration_test": "tests/test_relay_recovery_service.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "player_search_crawler",
+      "name": "KBO Player Search Crawler",
       "category": "ROSTER",
-      "season_range": "1982~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": true,
-      "status": "VERIFIED",
-      "target_tables": [
-        "players",
-        "player_basics"
-      ],
-      "natural_keys": [
-        "player_id"
-      ],
-      "status_reason": "Stability and pagination tests pass; live pagination edge verified in test_page52.py"
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_player_search_crawler.py",
+      "integration_test": "tests/test_player_profile_crawler.py",
+      "live_test": "tests/test_page52.py",
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "player_profile_crawler",
+      "name": "KBO Player Profile Detail Crawler",
       "category": "ROSTER",
-      "season_range": "1982~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "players",
-        "player_profiles"
-      ],
-      "natural_keys": [
-        "player_id"
-      ],
-      "status_reason": "PlayerProfileParser unit suite and profile crawler stability mock suite verified"
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_player_profile_parser.py",
+      "integration_test": "tests/test_player_profile_crawler.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
-      "crawler_id": "player_batting_all_series_crawler",
-      "category": "STATS",
-      "season_range": "1982~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": true,
-      "status": "VERIFIED",
-      "target_tables": [
-        "player_season_batting",
-        "player_series_batting"
-      ],
-      "natural_keys": [
-        "player_id + season + series_id"
-      ],
-      "status_reason": "Header normalization, number coercion, and live basic2 header suite tested"
+      "crawler_id": "daily_roster_crawler",
+      "name": "KBO Daily Roster Crawler",
+      "category": "ROSTER",
+      "supported_seasons": "2015-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_daily_roster_crawler.py",
+      "integration_test": "tests/test_context_aggregator.py",
+      "live_test": null,
+      "coverage_status": "PARTIAL"
     },
     {
-      "crawler_id": "player_pitching_all_series_crawler",
+      "crawler_id": "roster_transaction_crawler",
+      "name": "KBO Roster Transaction Crawler",
+      "category": "ROSTER",
+      "supported_seasons": "2015-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_roster_transaction_crawler.py",
+      "integration_test": "tests/test_context_aggregator_ext.py",
+      "live_test": null,
+      "coverage_status": "PARTIAL"
+    },
+    {
+      "crawler_id": "retired_player_listing_crawler",
+      "name": "KBO Retired Player Listing Crawler",
+      "category": "ROSTER",
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_retired_player_crawler.py",
+      "integration_test": "tests/test_player_profile_crawler.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "player_batting_crawler",
+      "name": "KBO Player Batting Stats Crawler",
       "category": "STATS",
-      "season_range": "1982~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "player_season_pitching",
-        "player_series_pitching"
-      ],
-      "natural_keys": [
-        "player_id + season + series_id"
-      ],
-      "status_reason": "Pitching stats column normalization and multi-page pagination stability tested"
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_player_batting_stats_crawler.py",
+      "integration_test": "tests/validators/test_validators.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "player_pitching_crawler",
+      "name": "KBO Player Pitching Stats Crawler",
+      "category": "STATS",
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_player_pitching_stats_crawler.py",
+      "integration_test": "tests/validators/test_validators.py",
+      "live_test": "tests/test_basic2_headers.py",
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "team_batting_stats_crawler",
+      "name": "KBO Team Batting Stats Crawler",
       "category": "STATS",
-      "season_range": "1982~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "team_season_batting",
-        "team_stats"
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "team_batting_2023"
       ],
-      "natural_keys": [
-        "team_code + season + series_id"
-      ],
-      "status_reason": "Offline fixture HTML available; parser and repository edge validation verified"
+      "unit_test": "tests/crawlers/test_team_batting_stats_crawler.py",
+      "integration_test": "tests/test_crawler_offline_replay.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "team_pitching_stats_crawler",
+      "name": "KBO Team Pitching Stats Crawler",
       "category": "STATS",
-      "season_range": "1982~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "team_season_pitching",
-        "team_stats"
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "team_pitching_2023"
       ],
-      "natural_keys": [
-        "team_code + season + series_id"
-      ],
-      "status_reason": "Offline fixture HTML available; parser and repository edge validation verified"
-    },
-    {
-      "crawler_id": "award_crawler",
-      "category": "AWARDS",
-      "season_range": "1982~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": true,
-      "status": "VERIFIED",
-      "target_tables": [
-        "awards",
-        "award_records"
-      ],
-      "natural_keys": [
-        "year + award_type + player_name + category"
-      ],
-      "status_reason": "Comprehensive HTML fixture unit suite, dedup logic, and live crawl test verified"
+      "unit_test": "tests/crawlers/test_team_pitching_stats_crawler.py",
+      "integration_test": "tests/test_crawler_offline_replay.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "baserunning_stats_crawler",
+      "name": "KBO Baserunning Stats Crawler",
       "category": "STATS",
-      "season_range": "2002~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "player_season_baserunning"
-      ],
-      "natural_keys": [
-        "player_id + year + team_id"
-      ],
-      "status_reason": "Mock DOM parser and dash coercion unit tests verified"
+      "supported_seasons": "2002-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/crawlers/test_baserunning_stats_crawler.py",
+      "integration_test": "tests/validators/test_validators.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "fielding_stats_crawler",
+      "name": "KBO Fielding Stats Crawler",
       "category": "STATS",
-      "season_range": "2002~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "player_season_defense",
-        "team_season_defense"
-      ],
-      "natural_keys": [
-        "player_id + year + team_id + position"
-      ],
-      "status_reason": "Catcher detail and team defense extraction logic verified"
-    },
-    {
-      "crawler_id": "team_event_crawler",
-      "category": "FACILITIES",
-      "season_range": "2024~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "team_events",
-        "team_promotions"
-      ],
-      "natural_keys": [
-        "team_code + title + event_date"
-      ],
-      "status_reason": "Multi-club HTML fixtures available; parsing and repository save verified"
-    },
-    {
-      "crawler_id": "ticket_crawler",
-      "category": "FACILITIES",
-      "season_range": "2024~2026",
-      "has_fixture": true,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "ticket_prices",
-        "ticket_open_rules"
-      ],
-      "natural_keys": [
-        "stadium_id + season + seat_grade"
-      ],
-      "status_reason": "Club ticket pricing HTML fixtures available; parser and repository tests pass"
-    },
-    {
-      "crawler_id": "food_crawler",
-      "category": "FACILITIES",
-      "season_range": "2024~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "stadium_food_vendors",
-        "stadium_food_menus"
-      ],
-      "natural_keys": [
-        "stadium_id + vendor_name + menu_name"
-      ],
-      "status_reason": "P1 facility food repository and vendor models tested"
-    },
-    {
-      "crawler_id": "parking_crawler",
-      "category": "FACILITIES",
-      "season_range": "2024~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "parking_lots"
-      ],
-      "natural_keys": [
-        "stadium_id + lot_name"
-      ],
-      "status_reason": "Parking lot repository schema and seed scripts verified"
-    },
-    {
-      "crawler_id": "seat_crawler",
-      "category": "FACILITIES",
-      "season_range": "2024~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "stadium_seat_sections"
-      ],
-      "natural_keys": [
-        "stadium_id + section_name + block_code"
-      ],
-      "status_reason": "Seat section repository and stadium geometry models tested"
-    },
-    {
-      "crawler_id": "fan_culture_crawler",
-      "category": "MEDIA",
-      "season_range": "2020~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "cheer_songs",
-        "fan_culture_media"
-      ],
-      "natural_keys": [
-        "team_code + song_title + video_id"
-      ],
-      "status_reason": "YouTube API client mock and cheer song mapping tested"
-    },
-    {
-      "crawler_id": "futures_schedule_crawler",
-      "category": "FUTURES",
-      "season_range": "2015~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "futures_games",
-        "futures_schedules"
-      ],
-      "natural_keys": [
-        "game_id",
-        "game_date + away_team + home_team"
-      ],
-      "status_reason": "Futures total suite and schedule repository tested"
-    },
-    {
-      "crawler_id": "futures_profile_crawler",
-      "category": "FUTURES",
-      "season_range": "2015~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "futures_players",
-        "player_profiles"
-      ],
-      "natural_keys": [
-        "player_id"
-      ],
-      "status_reason": "Futures player profile extraction and weekly maintenance job tested"
-    },
-    {
-      "crawler_id": "retired_player_crawler",
-      "category": "ROSTER",
-      "season_range": "1982~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "players",
-        "player_career_stats"
-      ],
-      "natural_keys": [
-        "player_id"
-      ],
-      "status_reason": "Retired player policy and retired player parser tested"
-    },
-    {
-      "crawler_id": "operation_notice_crawler",
-      "category": "GENERAL",
-      "season_range": "2024~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "operation_notices",
-        "game_operation_alerts"
-      ],
-      "natural_keys": [
-        "source_key + notice_id"
-      ],
-      "status_reason": "Notice urgency classification, keyword detection, and repository saves tested"
+      "supported_seasons": "2002-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/crawlers/test_fielding_stats_crawler.py",
+      "integration_test": "tests/validators/test_validators.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "external_stats_crawler",
+      "name": "External Baseball Stats Crawler",
       "category": "STATS",
-      "season_range": "1982~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": true,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "staged_season_batting",
-        "staged_season_pitching"
+      "supported_seasons": "2002-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_external_stats_e2e.py",
+      "integration_test": "tests/test_external_stats_e2e.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "award_crawler",
+      "name": "KBO Award History Crawler",
+      "category": "AWARDS",
+      "supported_seasons": "1982-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/crawlers/test_award_crawler.py",
+      "integration_test": "tests/test_crawler_offline_replay.py",
+      "live_test": "tests/crawlers/test_award_crawler.py::TestLiveAwardCrawler",
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "team_event_crawler",
+      "name": "KBO Team Events & Promotions Crawler",
+      "category": "FACILITIES",
+      "supported_seasons": "2024-2026",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "events_notice_hanwha",
+        "events_notice_lg",
+        "events_notice_doosan"
       ],
-      "natural_keys": [
-        "source_key + season + player_name + team_code"
+      "unit_test": "tests/parsers/test_team_event_parser.py",
+      "integration_test": "tests/test_crawler_offline_replay.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "ticket_crawler",
+      "name": "KBO Ticket Pricing & Rules Crawler",
+      "category": "FACILITIES",
+      "supported_seasons": "2024-2026",
+      "has_offline_fixtures": true,
+      "fixture_ids": [
+        "ticket_prices_lg",
+        "ticket_prices_ssg"
       ],
-      "status_reason": "Idempotent round trip, lineage preservation, and ambiguous player resolution tested"
+      "unit_test": "tests/parsers/test_ticket_parser.py",
+      "integration_test": "tests/test_crawler_ephemeral_e2e.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "food_crawler",
+      "name": "Stadium Food & Vendor Crawler",
+      "category": "FACILITIES",
+      "supported_seasons": "2024-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/parsers/test_food_parser.py",
+      "integration_test": "tests/test_crawler_ephemeral_e2e.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "parking_crawler",
+      "name": "Stadium Parking Rules Crawler",
+      "category": "FACILITIES",
+      "supported_seasons": "2024-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/parsers/test_parking_parser.py",
+      "integration_test": "tests/test_crawler_ephemeral_e2e.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "seat_crawler",
+      "name": "Stadium Seat Sections Crawler",
+      "category": "FACILITIES",
+      "supported_seasons": "2024-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/parsers/test_seat_parser.py",
+      "integration_test": "tests/test_crawler_ephemeral_e2e.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "congestion_crawler",
+      "name": "Stadium Congestion Index Crawler",
       "category": "FACILITIES",
-      "season_range": "2024~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "stadium_congestion_snapshots"
-      ],
-      "natural_keys": [
-        "stadium_id + recorded_at"
-      ],
-      "status_reason": "Seoul API client and congestion snapshot persistence tested"
+      "supported_seasons": "2025-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/parsers/test_congestion_parser.py",
+      "integration_test": "tests/test_crawler_ephemeral_e2e.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     },
     {
       "crawler_id": "transit_time_crawler",
+      "name": "Stadium Transit Time Crawler",
       "category": "FACILITIES",
-      "season_range": "2024~2026",
-      "has_fixture": false,
-      "has_unit_test": true,
-      "has_integration_test": false,
-      "has_live_test": false,
-      "status": "VERIFIED",
-      "target_tables": [
-        "stadium_transit_routes"
-      ],
-      "natural_keys": [
-        "origin_hub + stadium_id + route_type"
-      ],
-      "status_reason": "Map API client routes and transit time repository tested"
+      "supported_seasons": "2025-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/parsers/test_transit_parser.py",
+      "integration_test": "tests/test_crawler_ephemeral_e2e.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "fan_culture_crawler",
+      "name": "Team Cheer Songs & Culture Crawler",
+      "category": "MEDIA",
+      "supported_seasons": "2020-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/parsers/test_fan_culture_parser.py",
+      "integration_test": "tests/test_crawler_ephemeral_e2e.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "futures_schedule_crawler",
+      "name": "KBO Futures League Schedule Crawler",
+      "category": "FUTURES",
+      "supported_seasons": "2020-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_futures_schedule_crawler.py",
+      "integration_test": "tests/test_game_collection_service.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "futures_profile_crawler",
+      "name": "KBO Futures League Player Profile Crawler",
+      "category": "FUTURES",
+      "supported_seasons": "2020-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_futures_profile_crawler.py",
+      "integration_test": "tests/test_player_profile_crawler.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "preview_crawler",
+      "name": "KBO Daily Pregame Preview Crawler",
+      "category": "SCHEDULE",
+      "supported_seasons": "2018-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/test_preview_crawler.py",
+      "integration_test": "tests/repositories/test_game_save_ext.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
+    },
+    {
+      "crawler_id": "operation_notice_naver_crawler",
+      "name": "KBO Operation Notices Naver Crawler",
+      "category": "GENERAL",
+      "supported_seasons": "2024-2026",
+      "has_offline_fixtures": false,
+      "fixture_ids": [],
+      "unit_test": "tests/utils/test_naver_search_client.py",
+      "integration_test": "tests/utils/test_naver_search_client.py",
+      "live_test": null,
+      "coverage_status": "VERIFIED"
     }
   ]
 }

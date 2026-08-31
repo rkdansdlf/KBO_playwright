@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106D",
+  "executed_at_utc": "2026-08-31T17:43:43.226230+00:00",
+  "total_targets": 3,
+  "all_passed": true,
+  "targets": [
+    {
+      "target_id": "player-search-page52",
+      "url": "https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25",
+      "requested_at_utc": "2026-08-31T17:43:29.279489+00:00",
+      "http_status": 200,
+      "content_type": "text/html",
+      "response_sha256": "284d96e8e6ef202e138b2e39d6d987d8eb23d84fe6297843cf1638e8e531bc41",
+      "response_size_bytes": 52785,
+      "selector_status": "VALID",
+      "parser_status": "VALID",
+      "row_count": 20,
+      "next_btn_found": true,
+      "persistence_attempts": 0,
+      "status": "PASS"
+    },
+    {
+      "target_id": "player-stats-basic2-headers",
+      "url": "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic2.aspx",
+      "requested_at_utc": "2026-08-31T17:43:33.230316+00:00",
+      "http_status": 200,
+      "content_type": "text/html",
+      "response_sha256": "26a217824907083819954a3d8e64827da57a7e65ad53d0213a35c98268c84d06",
+      "response_size_bytes": 78471,
+      "selector_status": "VALID",
+      "parser_status": "VALID",
+      "found_headers": [
+        "순위",
+        "선수명",
+        "팀명",
+        "AVG",
+        "BB",
+        "IBB",
+        "HBP",
+        "SO",
+        "GDP",
+        "SLG",
+        "OBP",
+        "OPS",
+        "MH",
+        "RISP",
+        "PH-BA"
+      ],
+      "matched_expected_headers": [
+        "BB",
+        "IBB",
+        "HBP",
+        "SO",
+        "GDP",
+        "SLG",
+        "OBP",
+        "OPS",
+        "MH",
+        "RISP",
+        "PH-BA"
+      ],
+      "persistence_attempts": 0,
+      "status": "PASS"
+    },
+    {
+      "target_id": "wikipedia-awards-live",
+      "url": "https://ko.wikipedia.org/wiki/KBO_MVP",
+      "requested_at_utc": "2026-08-31T17:43:34.618434+00:00",
+      "http_status": 200,
+      "content_type": "text/html",
+      "records_count": 495,
+      "award_types_found": [
+        "MVP",
+        "골든글러브",
+        "수비상",
+        "신인상",
+        "올스타전MVP",
+        "한국시리즈MVP"
+      ],
+      "parser_status": "VALID",
+      "persistence_attempts": 0,
+      "status": "PASS"
+    }
+  ]
+}

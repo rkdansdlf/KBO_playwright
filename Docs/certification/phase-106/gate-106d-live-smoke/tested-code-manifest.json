@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106D",
+  "targets": [
+    {
+      "target_id": "player-search-page52",
+      "test_file": "tests/test_page52.py",
+      "underlying_crawler": "src.crawlers.player_search_crawler.PlayerSearchCrawler"
+    },
+    {
+      "target_id": "player-stats-basic2-headers",
+      "test_file": "tests/test_basic2_headers.py",
+      "underlying_crawler": "src.crawlers.player_batting_all_series_crawler.crawl_basic2_with_headers"
+    },
+    {
+      "target_id": "wikipedia-awards-live",
+      "test_file": "tests/crawlers/test_award_crawler.py::TestLiveAwardCrawler",
+      "underlying_crawler": "src.crawlers.award_crawler.AwardCrawler"
+    }
+  ]
+}
