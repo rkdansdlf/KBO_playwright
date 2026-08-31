@@ -1,9 +1,9 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "phase": "Phase 106D",
   "targets": [
     {
-      "target_id": "player-search-page52",
+      "target_id": "player-search-pagination-contract",
       "test_file": "tests/test_page52.py",
       "underlying_crawler": "src.crawlers.player_search_crawler.PlayerSearchCrawler"
     },

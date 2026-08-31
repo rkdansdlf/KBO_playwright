@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106E",
+  "season": 2026,
+  "status": "IN_PROGRESS",
+  "details": {
+    "season": 2026,
+    "season_type": "IN_PROGRESS_SEASON",
+    "total_games_scheduled": 139,
+    "finalized_games": 116,
+    "cancelled_games": 0,
+    "scheduled_in_progress_games": 23,
+    "games_with_batting_boxscore": 0,
+    "games_with_pitching_boxscore": 0,
+    "games_with_inning_scores": 69,
+    "games_with_play_by_play": 61,
+    "boxscore_coverage_pct": 0.0,
+    "pbp_applicable": true,
+    "census_status": "SUBSTANTIAL"
+  },
+  "evaluation_rule": "In-progress season is not evaluated against closed season denominator"
+}

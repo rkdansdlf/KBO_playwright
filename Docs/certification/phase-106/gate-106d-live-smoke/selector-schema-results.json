@@ -1,15 +1,17 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "phase": "Phase 106D",
   "results": [
     {
-      "target_id": "player-search-page52",
+      "target_id": "player-search-pagination-contract",
+      "protocol": "Playwright Browser DOM",
       "selector_status": "VALID",
       "row_count": 20,
       "next_btn_found": true
     },
     {
       "target_id": "player-stats-basic2-headers",
+      "protocol": "Playwright Browser DOM",
       "selector_status": "VALID",
       "found_headers": [
         "순위",
@@ -44,8 +46,17 @@
     },
     {
       "target_id": "wikipedia-awards-live",
+      "protocol": "HTTP HTML via httpx",
       "parser_status": "VALID",
       "records_count": 495,
+      "records_by_category": {
+        "MVP": 48,
+        "신인상": 46,
+        "골든글러브": 364,
+        "수비상": 28,
+        "올스타전MVP": 5,
+        "한국시리즈MVP": 4
+      },
       "award_types": [
         "MVP",
         "골든글러브",

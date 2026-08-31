@@ -1,0 +1,10 @@
+README.md: OK
+duplicate-natural-keys.json: OK
+in-progress-season-status.json: OK
+missing-reason-breakdown.json: OK
+orphan-integrity-results.json: OK
+protected-db-hashes.json: OK
+raw-query-output.txt: OK
+season-coverage-census.json: OK
+source-applicability-matrix.json: OK
+table-row-counts.json: OK

@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.1.0",
-  "phase": "Phase 106D",
+  "schema_version": "1.0.0",
+  "phase": "Phase 106E",
   "initial_sha256": "f7a7c122ce9656de47957ebfca662d736418fc4ca7e8f0d2255690a1f64bbe30",
   "post_sha256": "f7a7c122ce9656de47957ebfca662d736418fc4ca7e8f0d2255690a1f64bbe30",
   "zero_write_guarantee_held": true

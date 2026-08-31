@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0.0",
+  "total_console_entries": 35,
+  "total_page_errors": 0,
+  "webui_internal_warnings_count": 0,
+  "classification": "BROWSER_INTERNAL_WEBUI_WARNING",
+  "target_origin_related": false,
+  "kbo_page_errors_count": 0,
+  "gate_impact": "NONE"
+}

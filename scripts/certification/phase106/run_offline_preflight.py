@@ -44,6 +44,9 @@ def main() -> int:
     # 1. Capture initial DB hash
     initial_hash = _compute_db_sha256()
     print(f"Protected DB Initial SHA-256: {initial_hash}")
+    if initial_hash is None:
+        print("[CRITICAL] Protected database is missing; refusing to certify zero-write behavior.")
+        return 2
 
     # 2. Force in-memory DB and install socket blocker
     os.environ["DATABASE_URL"] = "sqlite:///:memory:"
@@ -79,7 +82,7 @@ def main() -> int:
     # 4. Verify post DB hash
     post_hash = _compute_db_sha256()
     print(f"Protected DB Post SHA-256:    {post_hash}")
-    if initial_hash and post_hash != initial_hash:
+    if post_hash != initial_hash:
         print("[CRITICAL] Protected database mutated during offline preflight!")
         return 1
 

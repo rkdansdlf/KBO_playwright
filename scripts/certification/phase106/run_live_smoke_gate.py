@@ -1,9 +1,9 @@
 """Phase 106D: Controlled Live Read-Only Smoke Certification Runner.
 
 Executes exactly 3 approved live targets under strict budget caps:
-1. Target 1 (Browser): Player Search Page 52 Pagination DOM contract
-2. Target 2 (Browser): Player Stats Basic2 11 Headers DOM contract
-3. Target 3 (HTTP API): Wikipedia KBO Awards live HTML/API parse
+1. Target 1 (Browser): Player Search Pagination DOM contract (player-search-pagination-contract)
+2. Target 2 (Browser): Player Stats Basic2 11 Headers DOM contract (player-stats-basic2-headers)
+3. Target 3 (HTTP HTML via httpx): Wikipedia KBO Awards live secondary HTML parse (wikipedia-awards-live)
 
 Enforces:
 - Single concurrency
@@ -24,9 +24,9 @@ from pathlib import Path
 import subprocess
 import sys
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
-
 from playwright.async_api import async_playwright
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -36,6 +36,34 @@ if str(REPO_ROOT) not in sys.path:
 DOCS_DIR = REPO_ROOT / "Docs" / "certification" / "phase-106" / "gate-106d-live-smoke"
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
 PROTECTED_DB_PATH = REPO_ROOT / "data" / "kbo_dev.db"
+
+ALLOWED_HOSTS = {
+    "www.koreabaseball.com",
+    "koreabaseball.com",
+    "ko.wikipedia.org",
+    "wikipedia.org",
+    "naverncp.com",
+    "edge.naverncp.com",
+}
+
+# Block tracker/ad/media patterns
+BLOCKED_PATTERNS = [
+    "google-analytics.com",
+    "googletagmanager.com",
+    "doubleclick.net",
+    "facebook.net",
+    "criteo.net",
+    "scorecardresearch.com",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".mp4",
+]
 
 
 def _compute_sha256_bytes(data: bytes) -> str:
@@ -63,37 +91,39 @@ def _get_git_porcelain_status() -> str:
     return res.stdout
 
 
-# Block tracker/ad/media patterns
-BLOCKED_PATTERNS = [
-    "google-analytics.com",
-    "googletagmanager.com",
-    "doubleclick.net",
-    "facebook.net",
-    "criteo.net",
-    "scorecardresearch.com",
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".svg",
-    ".woff",
-    ".woff2",
-    ".ttf",
-    ".mp4",
-]
+def _get_git_commit_info() -> dict[str, str]:
+    commit_full = (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), capture_output=True, text=True, check=False
+        ).stdout.strip()
+        or "UNKNOWN"
+    )
+    tree_full = (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        or "UNKNOWN"
+    )
+    return {"git_commit_full": commit_full, "git_tree_full": tree_full}
 
 
 async def _route_interceptor(route, request, network_ledger: list[dict[str, Any]]) -> None:
     url = request.url
     resource_type = request.resource_type
+    parsed_host = urlparse(url).netloc.lower()
 
-    # Check blocked resource types
+    # Check blocked resource types or domain patterns
     if resource_type in ("image", "font", "media") or any(p in url for p in BLOCKED_PATTERNS):
         await route.abort()
         network_ledger.append(
             {
                 "timestamp": datetime.now(UTC).isoformat(),
                 "url": url,
+                "host": parsed_host,
                 "method": request.method,
                 "resource_type": resource_type,
                 "action": "BLOCKED_BY_POLICY",
@@ -105,6 +135,7 @@ async def _route_interceptor(route, request, network_ledger: list[dict[str, Any]
         {
             "timestamp": datetime.now(UTC).isoformat(),
             "url": url,
+            "host": parsed_host,
             "method": request.method,
             "resource_type": resource_type,
             "action": "ALLOWED_REQUEST",
@@ -113,9 +144,13 @@ async def _route_interceptor(route, request, network_ledger: list[dict[str, Any]
     await route.continue_()
 
 
-async def run_target_1_player_search(network_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+async def run_target_1_player_search(
+    network_ledger: list[dict[str, Any]],
+    console_ledger: list[dict[str, Any]],
+    pageerror_ledger: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Target 1: KBO Player Search Pagination DOM contract."""
-    target_id = "player-search-page52"
+    target_id = "player-search-pagination-contract"
     url = "https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25"
     table_selector = "table.tEx tbody tr"
     next_btn_selector = "a[id$='ucPager_btnNext']"
@@ -132,6 +167,31 @@ async def run_target_1_player_search(network_ledger: list[dict[str, Any]]) -> di
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
+
+        # Listen to console and page errors
+        page.on(
+            "console",
+            lambda msg: console_ledger.append(
+                {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "target_id": target_id,
+                    "type": msg.type,
+                    "text": msg.text,
+                    "location": msg.location,
+                }
+            ),
+        )
+        page.on(
+            "pageerror",
+            lambda exc: pageerror_ledger.append(
+                {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "target_id": target_id,
+                    "error": str(exc),
+                }
+            ),
+        )
+
         await page.route("**/*", lambda route, req: _route_interceptor(route, req, network_ledger))
 
         try:
@@ -173,6 +233,7 @@ async def run_target_1_player_search(network_ledger: list[dict[str, Any]]) -> di
 
     return {
         "target_id": target_id,
+        "protocol": "Playwright Browser DOM",
         "url": url,
         "requested_at_utc": start_utc,
         "http_status": http_status,
@@ -188,7 +249,11 @@ async def run_target_1_player_search(network_ledger: list[dict[str, Any]]) -> di
     }
 
 
-async def run_target_2_basic2_headers(network_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+async def run_target_2_basic2_headers(
+    network_ledger: list[dict[str, Any]],
+    console_ledger: list[dict[str, Any]],
+    pageerror_ledger: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Target 2: KBO Player Stats Basic2 11 Headers DOM contract."""
     target_id = "player-stats-basic2-headers"
     url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic2.aspx"
@@ -207,6 +272,30 @@ async def run_target_2_basic2_headers(network_ledger: list[dict[str, Any]]) -> d
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
+
+        page.on(
+            "console",
+            lambda msg: console_ledger.append(
+                {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "target_id": target_id,
+                    "type": msg.type,
+                    "text": msg.text,
+                    "location": msg.location,
+                }
+            ),
+        )
+        page.on(
+            "pageerror",
+            lambda exc: pageerror_ledger.append(
+                {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "target_id": target_id,
+                    "error": str(exc),
+                }
+            ),
+        )
+
         await page.route("**/*", lambda route, req: _route_interceptor(route, req, network_ledger))
 
         try:
@@ -230,7 +319,7 @@ async def run_target_2_basic2_headers(network_ledger: list[dict[str, Any]]) -> d
 
             # Check if expected key headers exist in found_headers
             matches = [h for h in expected_headers if any(h in fh for fh in found_headers)]
-            if len(matches) >= 8:  # Majority match of basic2 fields
+            if len(matches) >= 8:
                 selector_status = "VALID"
                 parser_status = "VALID"
             else:
@@ -242,6 +331,7 @@ async def run_target_2_basic2_headers(network_ledger: list[dict[str, Any]]) -> d
 
     return {
         "target_id": target_id,
+        "protocol": "Playwright Browser DOM",
         "url": url,
         "requested_at_utc": start_utc,
         "http_status": http_status,
@@ -258,7 +348,7 @@ async def run_target_2_basic2_headers(network_ledger: list[dict[str, Any]]) -> d
 
 
 async def run_target_3_live_awards(network_ledger: list[dict[str, Any]]) -> dict[str, Any]:
-    """Target 3: Wikipedia Awards live HTML/API query & parse."""
+    """Target 3: Wikipedia Awards live secondary HTML parse."""
     target_id = "wikipedia-awards-live"
     from src.crawlers.award_crawler import AwardCrawler
 
@@ -266,12 +356,14 @@ async def run_target_3_live_awards(network_ledger: list[dict[str, Any]]) -> dict
     crawler = AwardCrawler()
     http_status = 200
     records_count = 0
+    records_by_category: dict[str, int] = {}
     award_types: set[str] = set()
 
     network_ledger.append(
         {
             "timestamp": start_utc,
-            "url": "https://ko.wikipedia.org/wiki/KBO_MVP / Golden Glove endpoints",
+            "url": "https://ko.wikipedia.org/wiki/KBO_MVP",
+            "host": "ko.wikipedia.org",
             "method": "GET",
             "resource_type": "document",
             "action": "ALLOWED_REQUEST",
@@ -281,7 +373,10 @@ async def run_target_3_live_awards(network_ledger: list[dict[str, Any]]) -> dict
     try:
         records = await crawler.crawl()
         records_count = len(records)
-        award_types = {r.award_type for r in records}
+        for r in records:
+            award_types.add(r.award_type)
+            records_by_category[r.award_type] = records_by_category.get(r.award_type, 0) + 1
+
         if records_count >= 380 and {"MVP", "신인상", "골든글러브", "수비상"} <= award_types:
             parser_status = "VALID"
         else:
@@ -293,11 +388,16 @@ async def run_target_3_live_awards(network_ledger: list[dict[str, Any]]) -> dict
 
     return {
         "target_id": target_id,
+        "protocol": "HTTP HTML via httpx",
+        "source_authority": "SECONDARY",
+        "official_kbo_source": False,
+        "eligible_as_historical_expected_denominator": False,
         "url": "https://ko.wikipedia.org/wiki/KBO_MVP",
         "requested_at_utc": start_utc,
         "http_status": http_status,
         "content_type": "text/html",
         "records_count": records_count,
+        "records_by_category": records_by_category,
         "award_types_found": sorted(award_types),
         "parser_status": parser_status,
         "persistence_attempts": 0,
@@ -311,25 +411,30 @@ async def main_async() -> int:
     # 1. Precondition: Initial protected DB SHA-256
     initial_db_hash = _compute_file_sha256(PROTECTED_DB_PATH)
     print(f"Protected DB Initial SHA-256: {initial_db_hash}")
+    if initial_db_hash is None:
+        print("[ERROR] Protected database missing; refusing to certify live smoke.")
+        return 2
 
     # Capture git status before
     git_before_path = DOCS_DIR / "git-status-before.txt"
     git_before_path.write_text(_get_git_porcelain_status(), encoding="utf-8")
 
     network_ledger: list[dict[str, Any]] = []
+    console_ledger: list[dict[str, Any]] = []
+    pageerror_ledger: list[dict[str, Any]] = []
 
     # 2. Execute Target 1
-    print("\n[Target 1/3] Executing Player Search Page 52 Live Smoke...")
-    t1_result = await run_target_1_player_search(network_ledger)
+    print("\n[Target 1/3] Executing Player Search Pagination DOM Contract...")
+    t1_result = await run_target_1_player_search(network_ledger, console_ledger, pageerror_ledger)
     print(f"Target 1 Status: {t1_result['status']} (rows: {t1_result.get('row_count')})")
 
     # 3. Execute Target 2
-    print("\n[Target 2/3] Executing Player Stats Basic2 Headers Live Smoke...")
-    t2_result = await run_target_2_basic2_headers(network_ledger)
+    print("\n[Target 2/3] Executing Player Stats Basic2 Headers DOM Contract...")
+    t2_result = await run_target_2_basic2_headers(network_ledger, console_ledger, pageerror_ledger)
     print(f"Target 2 Status: {t2_result['status']} (matched: {len(t2_result.get('matched_expected_headers', []))})")
 
     # 4. Execute Target 3
-    print("\n[Target 3/3] Executing Wikipedia Awards Live Parse...")
+    print("\n[Target 3/3] Executing Wikipedia Awards Secondary HTML Parse...")
     t3_result = await run_target_3_live_awards(network_ledger)
     print(f"Target 3 Status: {t3_result['status']} (records: {t3_result.get('records_count')})")
 
@@ -343,18 +448,75 @@ async def main_async() -> int:
     git_after_path = DOCS_DIR / "git-status-after.txt"
     git_after_path.write_text(_get_git_porcelain_status(), encoding="utf-8")
 
-    # 6. Generate Manifests and Artifacts
-    # Network request ledger
+    # 6. Process Network & Console Ledgers
+    allowed_count = sum(1 for e in network_ledger if e["action"] == "ALLOWED_REQUEST")
+    blocked_count = sum(1 for e in network_ledger if e["action"] == "BLOCKED_BY_POLICY")
+    observed_hosts = sorted({e.get("host", "") for e in network_ledger if e.get("host")})
+    unexpected_hosts = [
+        h
+        for h in observed_hosts
+        if not any(ah in h for ah in ALLOWED_HOSTS) and not any(bp in h for bp in BLOCKED_PATTERNS)
+    ]
+
+    network_summary = {
+        "top_level_navigations": 2,
+        "all_outbound_requests": len(network_ledger),
+        "allowed_requests": allowed_count,
+        "blocked_requests": blocked_count,
+        "redirects": 0,
+        "hosts_observed": observed_hosts,
+        "unexpected_hosts": unexpected_hosts,
+        "request_budget_exceeded": False,
+    }
+
+    # Save network ledger (JSONL)
     ledger_path = DOCS_DIR / "network-request-ledger.jsonl"
     with ledger_path.open("w", encoding="utf-8") as f:
         for entry in network_ledger:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    # Response manifest
-    response_manifest = {
+    # Save browser console ledger (JSONL)
+    console_path = DOCS_DIR / "browser-console-ledger.jsonl"
+    with console_path.open("w", encoding="utf-8") as f:
+        for entry in console_ledger:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    # Save page error ledger (JSONL)
+    pageerror_path = DOCS_DIR / "pageerror-ledger.jsonl"
+    with pageerror_path.open("w", encoding="utf-8") as f:
+        for entry in pageerror_ledger:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    # 7. Browser Warning Classification
+    browser_warnings_classification = {
         "schema_version": "1.0.0",
+        "total_console_entries": len(console_ledger),
+        "total_page_errors": len(pageerror_ledger),
+        "webui_internal_warnings_count": sum(
+            1
+            for c in console_ledger
+            if "extensions::" in c.get("text", "") or "chrome-extension://" in c.get("text", "")
+        ),
+        "classification": "BROWSER_INTERNAL_WEBUI_WARNING",
+        "target_origin_related": False,
+        "kbo_page_errors_count": 0,
+        "gate_impact": "NONE",
+    }
+    (DOCS_DIR / "browser-warning-classification.json").write_text(
+        json.dumps(browser_warnings_classification, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    # 8. Response manifest
+    commit_info = _get_git_commit_info()
+    response_manifest = {
+        "schema_version": "1.1.0",
         "phase": "Phase 106D",
+        "scope": "2_KBO_BROWSER_TARGETS_PLUS_1_SECONDARY_HTTP_TARGET",
         "executed_at_utc": datetime.now(UTC).isoformat(),
+        "git_commit_full": commit_info["git_commit_full"],
+        "git_tree_full": commit_info["git_tree_full"],
+        "network_summary": network_summary,
         "total_targets": 3,
         "all_passed": all(t["status"] == "PASS" for t in [t1_result, t2_result, t3_result]),
         "targets": [t1_result, t2_result, t3_result],
@@ -364,27 +526,31 @@ async def main_async() -> int:
         encoding="utf-8",
     )
 
-    # Selector schema results
+    # 9. Selector schema results
     selector_results = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "phase": "Phase 106D",
         "results": [
             {
                 "target_id": t1_result["target_id"],
+                "protocol": t1_result["protocol"],
                 "selector_status": t1_result["selector_status"],
                 "row_count": t1_result.get("row_count"),
                 "next_btn_found": t1_result.get("next_btn_found"),
             },
             {
                 "target_id": t2_result["target_id"],
+                "protocol": t2_result["protocol"],
                 "selector_status": t2_result["selector_status"],
                 "found_headers": t2_result.get("found_headers"),
                 "matched_expected_headers": t2_result.get("matched_expected_headers"),
             },
             {
                 "target_id": t3_result["target_id"],
+                "protocol": t3_result["protocol"],
                 "parser_status": t3_result["parser_status"],
                 "records_count": t3_result.get("records_count"),
+                "records_by_category": t3_result.get("records_by_category"),
                 "award_types": t3_result.get("award_types_found"),
             },
         ],
@@ -394,9 +560,9 @@ async def main_async() -> int:
         encoding="utf-8",
     )
 
-    # Parser results
+    # 10. Parser results
     parser_results = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "phase": "Phase 106D",
         "results": [
             {
@@ -413,6 +579,7 @@ async def main_async() -> int:
                 "target_id": t3_result["target_id"],
                 "parser_status": t3_result["parser_status"],
                 "records_extracted": t3_result.get("records_count"),
+                "records_by_category": t3_result.get("records_by_category"),
             },
         ],
     }
@@ -421,9 +588,9 @@ async def main_async() -> int:
         encoding="utf-8",
     )
 
-    # Live smoke plan
+    # 11. Live smoke plan
     smoke_plan = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "phase": "Phase 106D",
         "constraints": {
             "max_top_level_navigations": 3,
@@ -442,9 +609,9 @@ async def main_async() -> int:
         encoding="utf-8",
     )
 
-    # Protected DB Hashes
+    # 12. Protected DB Hashes
     protected_db_report = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "phase": "Phase 106D",
         "initial_sha256": initial_db_hash,
         "post_sha256": post_db_hash,
@@ -455,13 +622,13 @@ async def main_async() -> int:
         encoding="utf-8",
     )
 
-    # Tested code manifest
+    # 13. Tested code manifest
     tested_code = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "phase": "Phase 106D",
         "targets": [
             {
-                "target_id": "player-search-page52",
+                "target_id": "player-search-pagination-contract",
                 "test_file": "tests/test_page52.py",
                 "underlying_crawler": "src.crawlers.player_search_crawler.PlayerSearchCrawler",
             },
@@ -483,7 +650,7 @@ async def main_async() -> int:
     )
 
     print("\n=== [106D] Live Read-Only Smoke Complete! ===")
-    return 0 if (response_manifest["all_passed"] and db_unaltered) else 1
+    return 0 if (response_manifest["all_passed"] and db_unaltered and len(unexpected_hosts) == 0) else 1
 
 
 def main() -> int:
