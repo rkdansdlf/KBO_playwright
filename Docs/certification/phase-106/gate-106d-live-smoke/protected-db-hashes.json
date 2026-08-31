@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106D",
+  "initial_sha256": "62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f",
+  "post_sha256": "62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f",
+  "zero_write_guarantee_held": true
+}

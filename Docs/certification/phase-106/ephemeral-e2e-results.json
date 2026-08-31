@@ -1,6 +1,7 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "phase": "Phase 106C",
+  "scope": "REPRESENTATIVE_FIVE_TABLES",
   "db_engine": "sqlite:///:memory: / ephemeral temp file",
   "isolation_policy": "STRICT_EPHEMERAL_NO_PROD_DML",
   "pipeline_stages_verified": [

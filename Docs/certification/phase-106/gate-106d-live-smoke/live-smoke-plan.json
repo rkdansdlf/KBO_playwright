@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106D",
+  "constraints": {
+    "max_top_level_navigations": 3,
+    "max_api_xhr_calls": 10,
+    "browser_concurrency": 1,
+    "crawler_concurrency": 1,
+    "automatic_retries": 1,
+    "database_persistence": 0,
+    "oracle_connections": 0,
+    "production_connections": 0
+  },
+  "abort_conditions": [
+    "HTTP_403",
+    "HTTP_429",
+    "CAPTCHA",
+    "LOGIN_CHALLENGE",
+    "BOT_DETECTION"
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "phase": "Phase 106B",
   "total_fixtures": 14,
   "fixtures": [
@@ -131,8 +131,7 @@
       "sha256": "b928c6133fe03487649ff709af700944dcecfe703ca2db63771085295d33b598",
       "description": "KBO Live Text Relay HTML",
       "associated_crawlers": [
-        "pbp_crawler",
-        "text_relay_crawler"
+        "pbp_crawler"
       ],
       "associated_parsers": [
         "PBPCrawler.extract_game_events"
@@ -147,8 +146,7 @@
       "sha256": "dd3e3130eaf0de523c28af7d1bd0c74cb2d3ae6401536b973b367dac7c22ff6c",
       "description": "Naver Sports Live Relay Inning 1 JSON Payload",
       "associated_crawlers": [
-        "naver_relay_crawler",
-        "relay_crawler"
+        "naver_relay_crawler"
       ],
       "associated_parsers": [
         "_pbp_rows_to_legacy_innings"
@@ -163,8 +161,7 @@
       "sha256": "e9bde98ba1e508d024c7c0a965f5afb20a7cd9f00786980bc072793a01724276",
       "description": "Naver Sports Daily Schedule JSON Payload",
       "associated_crawlers": [
-        "schedule_crawler",
-        "broadcast_crawler"
+        "schedule_crawler"
       ],
       "associated_parsers": [
         "ScheduleParser"
@@ -179,8 +176,7 @@
       "sha256": "835e98793f974cb0ca524cba4b69f73191b5a940e03d150206941588204ac848",
       "description": "Naver Sports Completed Relay Inning 9 JSON Payload",
       "associated_crawlers": [
-        "naver_relay_crawler",
-        "relay_crawler"
+        "naver_relay_crawler"
       ],
       "associated_parsers": [
         "_pbp_rows_to_legacy_innings"

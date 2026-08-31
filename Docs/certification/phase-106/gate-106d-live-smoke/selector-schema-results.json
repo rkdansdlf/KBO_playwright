@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106D",
+  "results": [
+    {
+      "target_id": "player-search-page52",
+      "selector_status": "VALID",
+      "row_count": 20,
+      "next_btn_found": true
+    },
+    {
+      "target_id": "player-stats-basic2-headers",
+      "selector_status": "VALID",
+      "found_headers": [
+        "순위",
+        "선수명",
+        "팀명",
+        "AVG",
+        "BB",
+        "IBB",
+        "HBP",
+        "SO",
+        "GDP",
+        "SLG",
+        "OBP",
+        "OPS",
+        "MH",
+        "RISP",
+        "PH-BA"
+      ],
+      "matched_expected_headers": [
+        "BB",
+        "IBB",
+        "HBP",
+        "SO",
+        "GDP",
+        "SLG",
+        "OBP",
+        "OPS",
+        "MH",
+        "RISP",
+        "PH-BA"
+      ]
+    },
+    {
+      "target_id": "wikipedia-awards-live",
+      "parser_status": "VALID",
+      "records_count": 495,
+      "award_types": [
+        "MVP",
+        "골든글러브",
+        "수비상",
+        "신인상",
+        "올스타전MVP",
+        "한국시리즈MVP"
+      ]
+    }
+  ]
+}

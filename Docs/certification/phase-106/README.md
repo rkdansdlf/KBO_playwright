@@ -1,136 +1,138 @@
 # Phase 106: KBO Crawler Core Operational Certification
 
-**Status**: COMPLETE (Gates 106A, 106B, 106C Certified)
-**Execution Timestamp**: 2026-08-31T02:46:00+09:00
-**Isolation Policy**: ZERO Live Network Requests | ZERO Production/Staging DML | ZERO Operational DB Mutations
+**Status**: GATES 106A, 106B, 106C, 106D CERTIFIED (Scoped Claim Baseline)
+**Execution Timestamp**: 2026-09-01T02:42:00+09:00
+**Isolation Policy**: STRICT READ-ONLY | ZERO Database Persistence | ZERO Oracle/Production DML
 
 ---
 
-## Executive Summary
+## 1. Executive Summary & Claim Ledger
 
-Phase 106 separates crawler core operational verification from the Formula/RAG certification track (Phase 105). While Phase 105 completed formula and natural key contracts, Phase 106 establishes end-to-end operational verification across the Playwright collection, offline replay, parser determinism, error injection resilience, and ephemeral database persistence pipelines.
+Phase 106 separates crawler core operational verification from the Formula/RAG certification track (Phase 105). It validates Playwright collection, offline replay, parser determinism, error injection resilience, ephemeral SQLite database persistence, and controlled live read-only smoke contracts.
 
+### Official Claim Status Table
+| Claim Identifier | Operational Scope | Evidence Level | Certification Status |
+| :--- | :--- | :---: | :---: |
+| `crawler.inventory.30_canonical.v1` | 30 canonical crawlers across 9 domain categories | Level 3 | **PASS_REPORTED** |
+| `crawler.deselected_test_taxonomy.242.v1` | 242 tests classified into 8 operational buckets | Level 3 | **PASS_REPORTED** |
+| `crawler.offline_replay.fixture_set_14.v1` | 14 representative offline HTML/JSON fixtures | Level 3 | **LEVEL_3_INTEGRATION_VERIFIED** |
+| `crawler.offline_replay.all_30.v1` | 30 crawler offline replay completeness | - | **PARTIAL** |
+| `crawler.ephemeral_e2e.game_detail_five_tables.v1` | 5 core tables (`game`, `player_game_batting`, `player_game_pitching`, `game_inning_scores`, `ticket_prices`) | Level 3 | **LEVEL_3_INTEGRATION_VERIFIED** |
+| `crawler.ephemeral_e2e.all_domains.v1` | End-to-end ephemeral pipeline for all 30 crawlers | - | **PARTIAL** |
+| `crawler.live_read_only_smoke.v1` | 3 approved live targets (`test_page52`, `test_basic2_headers`, `TestLiveAwardCrawler`) | Level 3 | **PASSED (READ-ONLY SMOKE)** |
+| `crawler.historical_census.v1` | Historical 1982~2026 coverage census (Phase 106E) | - | **NO-GO / PENDING APPROVAL** |
+| `crawler.scheduler_recovery.v1` | Multi-tier locks & auto-healing (Phase 106F) | - | **NO-GO / PENDING APPROVAL** |
+| `crawler.oracle_production.v1` | Oracle Staging / Production DML | - | **STRICT NO-GO** |
+
+---
+
+## 2. Gate 106A: Crawler Inventory & Deselected Test Taxonomy
+
+All 30 crawler entry points, parsers, services, repositories, and target tables across the codebase are audited with full in-tree provenance scripts (`scripts/certification/phase106/`).
+
+### 1. Crawler Inventory Summary
+```json
+{
+  "canonical_crawlers": 30,
+  "crawler_with_fixture": 10,
+  "crawler_without_fixture": 20,
+  "crawler_replay_verified": 10,
+  "crawler_fault_injection_verified": 10,
+  "crawler_ephemeral_persistence_verified": 2
+}
 ```
-+---------------------------------------------------------------------------------------------------+
-|                                  PHASE 106 CERTIFICATION TRACK                                   |
-+------------------------------------+------------------------------------+-------------------------+
-| Gate 106A: Inventory & Taxonomy    | Gate 106B: Offline Snapshot Replay | Gate 106C: Ephemeral E2E |
-| - 30 Canonical Crawlers Mapped     | - Triplicate Determinism (H1=H2=H3)| - Ephemeral SQLite DB   |
-| - 100% of 242 Deselected Tests     | - 14 Snapshot Fixtures Cataloged   | - Idempotency Re-run 0  |
-| - Zero Unclassified Entry Points   | - Fail-Closed Fault Injection Pack | - Atomic Rollback PASS  |
-| [PASSED]                           | [PASSED]                           | [PASSED]                |
-+------------------------------------+------------------------------------+-------------------------+
+
+### 2. 242 Deselected Test Classification
+```
+SCHEDULER_INTEGRATION    : 107 tests (AutoHealer CLI, 일일 동기화 DAG, 실시간 폴링, 프로세스 락)
+REPOSITORY_INTEGRATION   :  72 tests (GameSave 확장 필드 업데이트, 컨텍스트 집계, 트랜잭션 원자성)
+CRAWLER_OFFLINE_REPLAY   :  46 tests (경기 수집 서비스, 중계 복구 서비스, 파이프라인 데모)
+UNRELATED_SLOW_TEST      :  13 tests (FastAPI 엔드포인트, 임베딩 캐시, 모델 레지스트리, 허용 목록 검사)
+CRAWLER_LIVE_BROWSER     :   2 tests (선수 검색 페이지네이션 test_page52.py, 투수 Basic2 헤더 test_basic2_headers.py)
+CRAWLER_LIVE_API         :   1 test  (수상 내역 라이브 수집 TestLiveAwardCrawler)
+PARSER_INTEGRATION       :   1 test  (주루 기록 파서 test_baserunning_stats_crawler.py)
+ORACLE_INTEGRATION       :   0 tests (별도 OCI 마커 격리)
+---------------------------------------------------------------------------------------------
+총합                      : 242 tests (크롤러 코어 및 직접 연관 테스트: 50개)
 ```
 
 ---
 
-## Gate 106A: Crawler Inventory & Coverage Matrix
+## 3. Gate 106B & 106C: Offline Replay & Ephemeral Persistence
 
-All crawler entry points, parsers, services, repositories, and target tables across the codebase were audited.
+### 1. Offline Replay Determinism ($H_1 = H_2 = H_3$)
+14 representative fixtures cataloged in `replay-fixture-manifest.json` were parsed across 3 isolated iterations, producing identical canonical SHA-256 output hashes.
 
-### 1. Crawler Category Summary
-| Category | Crawlers Count | Representative Crawlers | Primary Ingestion Method |
-| :--- | :---: | :--- | :--- |
-| **SCHEDULE** | 2 | `ScheduleCrawler`, `PreviewCrawler` | Playwright DOM / JSON |
-| **GAME_DETAIL** | 4 | `GameDetailCrawler`, `LegacyGameDetailCrawler`, `PBPCrawler`, `NaverRelayCrawler` | Playwright DOM / Static HTML / XHR JSON |
-| **ROSTER** | 5 | `DailyRosterCrawler`, `RosterTransactionCrawler`, `PlayerSearchCrawler`, `PlayerProfileCrawler`, `RetiredPlayerListingCrawler` | Playwright DOM |
-| **STATS** | 7 | `PlayerBattingCrawler`, `PlayerPitchingCrawler`, `TeamBattingStatsCrawler`, `TeamPitchingStatsCrawler`, `BaserunningStatsCrawler`, `FieldingStatsCrawler`, `ExternalStatsCrawler` | Playwright DOM / HTML / Static Adapter |
-| **AWARDS** | 1 | `AwardCrawler` | Static HTML / MediaWiki API |
-| **FACILITIES** | 7 | `TeamEventCrawler`, `TicketCrawler`, `FoodCrawler`, `ParkingCrawler`, `SeatCrawler`, `CongestionCrawler`, `TransitTimeCrawler` | Static HTML / REST API JSON |
-| **MEDIA** | 1 | `FanCultureCrawler` | YouTube Data API JSON |
-| **FUTURES** | 2 | `FuturesScheduleCrawler`, `FuturesProfileCrawler` | Playwright DOM |
-| **GENERAL** | 1 | `OperationNoticeNaverCrawler` | REST API JSON / DOM |
-| **Total** | **30** | *Full details in `crawler-inventory.json`* | - |
+### 2. Technical Outbound Network Denial Preflight (106D-0)
+Executed 119 offline tests (47 offline crawler/parser tests + 72 repository integration tests) under socket-level non-loopback network blocking (`socket.socket.connect` raises exception for external hosts):
+- **Result**: **191 passed in 11.27s (0 failures, 0 errors)**
+- **Protected DB SHA-256**: `62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f` (Zero DB writes).
 
-### 2. Deselected Test Taxonomy (242 Tests)
-The 242 tests excluded from default fast regression (`pytest.ini` `-m "not slow and not integration"`) have been 100% classified into 8 standard operational buckets:
-
-| Category | Count | Primary Scope & Rationale |
-| :--- | :---: | :--- |
-| `SCHEDULER_INTEGRATION` | 107 | AutoHealer CLI orchestration (51), Daily update DAG (7), dynamic live polling (32), scheduler shutdown/locks (17) |
-| `REPOSITORY_INTEGRATION` | 72 | GameSave extended field updates (57), context aggregators (10), ranking aggregators (2), atomic multi-table persistence (3) |
-| `CRAWLER_OFFLINE_REPLAY` | 46 | Game collection batch service (26), relay recovery service (11), pipeline demo fixtures (3), detail stability (2), external stats (2), auth pool (2) |
-| `UNRELATED_SLOW_TEST` | 13 | FastAPI endpoints & auth (9), static collection path allowlist (1), embedding cache (1), model registry bootstrap (1), historical analysis (1) |
-| `CRAWLER_LIVE_BROWSER` | 2 | Live player search pagination (`test_page52.py`), live Basic2 pitching headers (`test_basic2_headers.py`) |
-| `CRAWLER_LIVE_API` | 1 | Live external awards crawl (`TestLiveAwardCrawler::test_live_crawl_counts`) |
-| `PARSER_INTEGRATION` | 1 | Baserunning dash handling unit test (`test_baserunning_stats_crawler.py`) |
-| `ORACLE_INTEGRATION` | 0 | Dedicated OCI marker used separately |
-| **Total** | **242** | **100% Accounted For (Crawler-related: 50 tests)** |
+### 3. Ephemeral Persistence (5 Representative Tables)
+Ingested game details and ticket prices into isolated SQLite DB:
+- Re-run duplicate keys: **0**
+- Row count inflation: **0**
+- Injected fault rollback: **100% atomicity confirmed**
 
 ---
 
-## Gate 106B: Offline Snapshot Replay Certification
+## 4. Full Fast Regression Test Suite Baseline
 
-14 representative offline HTML and JSON fixtures were cataloged and replayed through target parsers.
-
-### 1. Triplicate Replay Determinism ($H_1 = H_2 = H_3$)
-Every snapshot fixture was parsed in 3 isolated iterations. Canonical JSON serialization was hashed using SHA-256:
-
-| Fixture ID | Format | Parser Engine | Repetitions | Determinism Status | Canonical SHA-256 |
-| :--- | :---: | :--- | :---: | :---: | :--- |
-| `game_detail_20251001NCLG0` | HTML | `GameDetailParser` | 3 | **IDENTICAL** | `91e1d0336ae56d54cf8bf10fb4e0f10cb9faee6e1a49f69742a0352ef41ebc9d` |
-| `team_batting_2023` | HTML | `parse_team_batting_html` | 3 | **IDENTICAL** | `686256f1f440a3dd9f71c4c810ec548da39bca4ba99fae5e6e3ce45d8aa6d3f2` |
-| `team_pitching_2023` | HTML | `parse_team_pitching_html` | 3 | **IDENTICAL** | `6f710534208a0d014022c4d623ea397395a1c97a5b3ee28e6c710db446bf4848` |
-| `events_notice_hanwha` | HTML | `parse_team_events` | 3 | **IDENTICAL** | `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945` |
-| `ticket_prices_lg` | HTML | `parse_ticket_page` | 3 | **IDENTICAL** | `03b632fa5a7ff8b0ec3531b262846fc454c68832a81878842915867fc9b57b77` |
-| `naver_live_relay_inning_1` | JSON | `NaverRelayJSONParser` | 3 | **IDENTICAL** | `f6ff8655c6ce8e3dc52da91321481b490f23ba5b5505e83ec985b8fae92be76c` |
-
-### 2. Fault Injection Resilience Pack
-Parser behavior was tested against malformed and corrupted payloads:
-- **Empty HTML without tables**: Fails closed (`ValueError: No tables found`) instead of fabricating empty records.
-- **Truncated HTML**: Gracefully captures available structured DOM nodes without crashing.
-- **Corrupted Headers**: Discards invalid columns safely without schema corruption.
-- **Unsupported Source Keys**: Rejects cleanly and returns empty lists without unhandled exceptions.
+Executed fast regression across all available cores:
+```bash
+pytest -n auto -q
+```
+- **Collected**: 10,306 tests (242 deselected)
+- **Executed**: 10,303 tests
+- **Passed**: 10,303 tests
+- **Skipped**: 3 tests
+- **Failed / Errors**: **0**
+- **Duration**: 111.32s
 
 ---
 
-## Gate 106C: Ephemeral End-to-End Pipeline & Persistence
+## 5. Gate 106D: Controlled Live Read-Only Smoke Results
 
-Complete pipeline testing was conducted using isolated, disposable SQLite databases (`sqlite:///:memory:` and temporary disk fixtures).
+Executed exactly 3 approved live targets under budget caps:
 
-### 1. Ingestion & Idempotency Guarantee
-- **First Run**: Raw snapshot parsed and successfully persisted into `game`, `player_game_batting`, `player_game_pitching`, `game_inning_scores`, and `ticket_prices`.
-- **Second Run**: Exact duplicate payload re-executed through the same repository functions.
-- **Idempotency Verification**:
-  - Duplicate Natural Keys: **0**
-  - Row Count Delta: **0**
-  - Unexpected Mutations: **0**
+| Target ID | Type | Live Target URL | Observed Metric | Status |
+| :--- | :---: | :--- | :---: | :---: |
+| `player-search-page52` | Browser | `https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25` | 20 player rows parsed, next button verified | **PASS** |
+| `player-stats-basic2-headers` | Browser | `https://www.koreabaseball.com/Record/Player/HitterBasic/Basic2.aspx` | 11/11 Basic2 headers matched (`BB`, `IBB`, `SO`, `OPS`, etc.) | **PASS** |
+| `wikipedia-awards-live` | HTTP API | `https://ko.wikipedia.org/wiki/KBO_MVP` | 495 award records parsed across 6 award categories | **PASS** |
 
-### 2. Transaction Atomicity & Rollback Verification
-- Injected simulated crash mid-transaction.
-- Verified that all partial writes are rolled back, leaving zero orphaned rows.
-
-### 3. Protected Database Zero-Mutation Guarantee
-Pre-run and post-run SHA-256 hashes of the operational database (`data/kbo_dev.db`) were verified:
-
-| File | Size (Bytes) | SHA-256 Hash | Integrity Status |
-| :--- | :---: | :--- | :---: |
-| `data/kbo_dev.db` | 273,506,304 | `62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f` | **UNTOUCHED (READ-ONLY)** |
-| `data/backups/kbo_dev_20260830_020000.db` | 273,346,560 | `1a7f0580c85c276329486c99c5658b76a086da361250fa9d2b27072e9a2637eb` | **UNTOUCHED (READ-ONLY)** |
+### Execution Invariants Enforced
+- Top-level navigations: **2** (Budget: $\le 3$)
+- Live API/XHR calls: **1** (Budget: $\le 10$)
+- Resource blocking: Images, fonts, media, analytics, and ads blocked
+- Database writes: **0** (In-memory parse $\rightarrow$ SHA-256 $\rightarrow$ discard)
+- Oracle / Staging / Production connections: **0**
+- Protected DB (`data/kbo_dev.db`) pre/post SHA-256: `62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f` (**100% UNCHANGED**).
 
 ---
 
-## Next Steps (Subsequent Phases)
+## 6. Evidence Artifacts Index
 
-The following phases involve external site interactions and will only be executed upon explicit user approval:
-- **Phase 106D: Limited Live Read-Only Smoke** (KBO live DOM selector validation, 1-3 targets max, zero writes).
-- **Phase 106E: Historical Coverage Census** (1982~2026 completeness census across schedules, details, PBP, and rosters).
-- **Phase 106F: Scheduler & Recovery Certification** (Multi-tier locking, failure escalation, and automated healing).
+### Top-Level Evidence (`Docs/certification/phase-106/`)
+- `README.md` — Phase 106 certification summary and claim ledger.
+- `crawler-inventory.json` — 30 canonical crawlers inventory with entry points and tables.
+- `crawler-coverage-matrix.json` — Test coverage matrix per crawler.
+- `deselected-test-classification.json` — 242 deselected tests classified into 8 categories.
+- `replay-fixture-manifest.json` — 14 representative offline fixtures with SHA-256 hashes.
+- `replay-results.json` — Triplicate determinism and fault injection results.
+- `ephemeral-e2e-results.json` — Ephemeral DB persistence and idempotency verification.
+- `protected-db-hashes.json` — Pre/post database hashes verifying zero mutations.
+- `raw-test-output.txt` — Raw Pytest execution logs.
+- `SHA256SUMS` & `checksum-verification.txt` — Checksums for top-level bundle.
 
----
-
-## Evidence Artifacts Index
-
-All evidence files are located in `Docs/certification/phase-106/`:
-
-1. `README.md` — Complete Phase 106 certification summary and test results.
-2. `crawler-inventory.json` — Exhaustive metadata for 30 crawler modules, entrypoints, parsers, and tables.
-3. `crawler-coverage-matrix.json` — Coverage matrix mapping test availability per crawler.
-4. `deselected-test-classification.json` — 100% classification of the 242 deselected regression tests.
-5. `replay-fixture-manifest.json` — Catalog of 14 representative offline HTML/JSON fixtures with SHA-256 hashes.
-6. `replay-results.json` — Triplicate determinism execution results and fault injection summary.
-7. `ephemeral-e2e-results.json` — End-to-end pipeline ingestion, idempotency, and rollback test results.
-8. `protected-db-hashes.json` — Pre/post SHA-256 hashes confirming zero writes to protected databases.
-9. `raw-test-output.txt` — Full Pytest test execution output log.
-10. `SHA256SUMS` — Cryptographic checksums of all evidence bundle artifacts.
-11. `checksum-verification.txt` — Verification output of `shasum -c SHA256SUMS`.
+### Gate 106D Evidence Bundle (`Docs/certification/phase-106/gate-106d-live-smoke/`)
+- `live-smoke-plan.json` — Budget caps and abort condition parameters.
+- `tested-code-manifest.json` — Target modules and underlying crawler classes.
+- `network-request-ledger.jsonl` — Timestamped record of all allowed and blocked network requests.
+- `response-manifest.json` — HTTP status, response SHA-256, and sizes for each target.
+- `selector-schema-results.json` — Live DOM selector verification details.
+- `parser-results.json` — Records extracted in-memory.
+- `protected-db-hashes.json` — DB hash preservation evidence.
+- `raw-test-output.txt` — Raw console output of the live smoke run.
+- `git-status-before.txt` & `git-status-after.txt` — Git porcelain status captures.
+- `SHA256SUMS` & `checksum-verification.txt` — Checksums for Gate 106D bundle.
