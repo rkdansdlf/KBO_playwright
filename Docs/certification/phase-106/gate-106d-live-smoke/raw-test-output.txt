@@ -1,16 +1,16 @@
 === [106D] Starting Phase 106D Controlled Live Read-Only Smoke ===
-Protected DB Initial SHA-256: 62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f
+Protected DB Initial SHA-256: f7a7c122ce9656de47957ebfca662d736418fc4ca7e8f0d2255690a1f64bbe30
 
-[Target 1/3] Executing Player Search Page 52 Live Smoke...
+[Target 1/3] Executing Player Search Pagination DOM Contract...
 Target 1 Status: PASS (rows: 20)
 
-[Target 2/3] Executing Player Stats Basic2 Headers Live Smoke...
+[Target 2/3] Executing Player Stats Basic2 Headers DOM Contract...
 Target 2 Status: PASS (matched: 11)
 
-[Target 3/3] Executing Wikipedia Awards Live Parse...
+[Target 3/3] Executing Wikipedia Awards Secondary HTML Parse...
 Target 3 Status: PASS (records: 495)
 
-Protected DB Post SHA-256:    62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f
+Protected DB Post SHA-256:    f7a7c122ce9656de47957ebfca662d736418fc4ca7e8f0d2255690a1f64bbe30
 Protected DB Zero-Write Guarantee: PASS (100% UNCHANGED)
 
 === [106D] Live Read-Only Smoke Complete! ===

@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106E-0",
+  "eras": {
+    "ERA_1_EARLY": {
+      "range": "1982-1988",
+      "description": "Early KBO era with basic boxscores and annual statistics"
+    },
+    "ERA_2_TRANSITION": {
+      "range": "1989-2000",
+      "description": "Expanded boxscores and defensive metrics, pre-digital PBP"
+    },
+    "ERA_3_ELECTRONIC": {
+      "range": "2001-2014",
+      "description": "Electronic boxscore archive, modern player game pitching/batting"
+    },
+    "ERA_4_GAMECENTER": {
+      "range": "2015-2025",
+      "description": "Modern GameCenter, live text relay, PBP, daily roster movements, and futures"
+    },
+    "ERA_5_ACTIVE_2026": {
+      "range": "2026",
+      "description": "Active in-progress season"
+    }
+  },
+  "domains": [
+    "SCHEDULE",
+    "GAME",
+    "BOXSCORE",
+    "BATTING",
+    "PITCHING",
+    "INNING_SCORE",
+    "PBP",
+    "ROSTER",
+    "PLAYER_PROFILE",
+    "AWARDS",
+    "FUTURES"
+  ],
+  "matrix": {
+    "SCHEDULE": {
+      "ERA_1_EARLY": "PUBLISHED",
+      "ERA_2_TRANSITION": "PUBLISHED",
+      "ERA_3_ELECTRONIC": "PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "GAME": {
+      "ERA_1_EARLY": "PUBLISHED",
+      "ERA_2_TRANSITION": "PUBLISHED",
+      "ERA_3_ELECTRONIC": "PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "BOXSCORE": {
+      "ERA_1_EARLY": "PUBLISHED_BASIC",
+      "ERA_2_TRANSITION": "PUBLISHED_BASIC",
+      "ERA_3_ELECTRONIC": "PUBLISHED_ELECTRONIC",
+      "ERA_4_GAMECENTER": "PUBLISHED_FULL",
+      "ERA_5_ACTIVE_2026": "PUBLISHED_FULL"
+    },
+    "BATTING": {
+      "ERA_1_EARLY": "PUBLISHED",
+      "ERA_2_TRANSITION": "PUBLISHED",
+      "ERA_3_ELECTRONIC": "PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "PITCHING": {
+      "ERA_1_EARLY": "PUBLISHED",
+      "ERA_2_TRANSITION": "PUBLISHED",
+      "ERA_3_ELECTRONIC": "PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "INNING_SCORE": {
+      "ERA_1_EARLY": "PUBLISHED",
+      "ERA_2_TRANSITION": "PUBLISHED",
+      "ERA_3_ELECTRONIC": "PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "PBP": {
+      "ERA_1_EARLY": "SOURCE_NOT_PUBLISHED",
+      "ERA_2_TRANSITION": "SOURCE_NOT_PUBLISHED",
+      "ERA_3_ELECTRONIC": "SOURCE_NOT_PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED_2018_ONWARDS",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "ROSTER": {
+      "ERA_1_EARLY": "SOURCE_NOT_PUBLISHED",
+      "ERA_2_TRANSITION": "SOURCE_NOT_PUBLISHED",
+      "ERA_3_ELECTRONIC": "SOURCE_NOT_PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED_2015_ONWARDS",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "PLAYER_PROFILE": {
+      "ERA_1_EARLY": "PUBLISHED",
+      "ERA_2_TRANSITION": "PUBLISHED",
+      "ERA_3_ELECTRONIC": "PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "AWARDS": {
+      "ERA_1_EARLY": "PUBLISHED",
+      "ERA_2_TRANSITION": "PUBLISHED",
+      "ERA_3_ELECTRONIC": "PUBLISHED",
+      "ERA_4_GAMECENTER": "PUBLISHED",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    },
+    "FUTURES": {
+      "ERA_1_EARLY": "NOT_APPLICABLE_FOR_ERA",
+      "ERA_2_TRANSITION": "NOT_APPLICABLE_FOR_ERA",
+      "ERA_3_ELECTRONIC": "NOT_APPLICABLE_FOR_ERA",
+      "ERA_4_GAMECENTER": "PUBLISHED_2020_ONWARDS",
+      "ERA_5_ACTIVE_2026": "PUBLISHED"
+    }
+  }
+}

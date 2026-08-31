@@ -1,14 +1,33 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "phase": "Phase 106D",
-  "executed_at_utc": "2026-08-31T17:43:43.226230+00:00",
+  "scope": "2_KBO_BROWSER_TARGETS_PLUS_1_SECONDARY_HTTP_TARGET",
+  "executed_at_utc": "2026-08-31T18:35:14.123987+00:00",
+  "git_commit_full": "b018213f5730bb719572b92eb3ee16b836abada2",
+  "git_tree_full": "102f1bc33fe2602d9189a9c3c98e1c04db5ba71f",
+  "network_summary": {
+    "top_level_navigations": 2,
+    "all_outbound_requests": 87,
+    "allowed_requests": 52,
+    "blocked_requests": 35,
+    "redirects": 0,
+    "hosts_observed": [
+      "6ptotvmi5753.edge.naverncp.com",
+      "ko.wikipedia.org",
+      "www.googletagmanager.com",
+      "www.koreabaseball.com"
+    ],
+    "unexpected_hosts": [],
+    "request_budget_exceeded": false
+  },
   "total_targets": 3,
   "all_passed": true,
   "targets": [
     {
-      "target_id": "player-search-page52",
+      "target_id": "player-search-pagination-contract",
+      "protocol": "Playwright Browser DOM",
       "url": "https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25",
-      "requested_at_utc": "2026-08-31T17:43:29.279489+00:00",
+      "requested_at_utc": "2026-08-31T18:34:59.841671+00:00",
       "http_status": 200,
       "content_type": "text/html",
       "response_sha256": "284d96e8e6ef202e138b2e39d6d987d8eb23d84fe6297843cf1638e8e531bc41",
@@ -22,8 +41,9 @@
     },
     {
       "target_id": "player-stats-basic2-headers",
+      "protocol": "Playwright Browser DOM",
       "url": "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic2.aspx",
-      "requested_at_utc": "2026-08-31T17:43:33.230316+00:00",
+      "requested_at_utc": "2026-08-31T18:35:04.242640+00:00",
       "http_status": 200,
       "content_type": "text/html",
       "response_sha256": "26a217824907083819954a3d8e64827da57a7e65ad53d0213a35c98268c84d06",
@@ -65,11 +85,23 @@
     },
     {
       "target_id": "wikipedia-awards-live",
+      "protocol": "HTTP HTML via httpx",
+      "source_authority": "SECONDARY",
+      "official_kbo_source": false,
+      "eligible_as_historical_expected_denominator": false,
       "url": "https://ko.wikipedia.org/wiki/KBO_MVP",
-      "requested_at_utc": "2026-08-31T17:43:34.618434+00:00",
+      "requested_at_utc": "2026-08-31T18:35:05.513681+00:00",
       "http_status": 200,
       "content_type": "text/html",
       "records_count": 495,
+      "records_by_category": {
+        "MVP": 48,
+        "신인상": 46,
+        "골든글러브": 364,
+        "수비상": 28,
+        "올스타전MVP": 5,
+        "한국시리즈MVP": 4
+      },
       "award_types_found": [
         "MVP",
         "골든글러브",

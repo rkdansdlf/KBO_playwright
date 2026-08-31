@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106E-1",
+  "categories": {
+    "PRE_2018_PBP": {
+      "description": "KBO live play-by-play and text relay was not published digitally before 2018",
+      "affected_seasons": "1982-2017 (36 seasons)",
+      "classification": "SOURCE_NOT_PUBLISHED"
+    },
+    "PRE_2015_ROSTER_TRANSACTIONS": {
+      "description": "Daily entry/exit transactions published starting 2015",
+      "affected_seasons": "1982-2014 (33 seasons)",
+      "classification": "SOURCE_NOT_PUBLISHED"
+    },
+    "HISTORICAL_CANCELLED_GAMES": {
+      "description": "Rainout / cancelled games preserved in schedule with zero boxscore",
+      "total_cancelled_games_observed": 6321,
+      "classification": "CANCELLED_GAME"
+    }
+  }
+}

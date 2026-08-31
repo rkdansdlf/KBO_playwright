@@ -2,6 +2,8 @@ README.md: OK
 crawler-inventory.json: OK
 crawler-coverage-matrix.json: OK
 deselected-test-classification.json: OK
+gate-106d-offline-nodes-reconciliation.json: OK
+gate-106d-offline-selected-tests.txt: OK
 replay-fixture-manifest.json: OK
 replay-results.json: OK
 ephemeral-e2e-results.json: OK

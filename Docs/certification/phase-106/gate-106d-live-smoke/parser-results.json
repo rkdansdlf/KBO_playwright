@@ -1,9 +1,9 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "phase": "Phase 106D",
   "results": [
     {
-      "target_id": "player-search-page52",
+      "target_id": "player-search-pagination-contract",
       "parser_status": "VALID",
       "records_extracted": 20
     },
@@ -15,7 +15,15 @@
     {
       "target_id": "wikipedia-awards-live",
       "parser_status": "VALID",
-      "records_extracted": 495
+      "records_extracted": 495,
+      "records_by_category": {
+        "MVP": 48,
+        "신인상": 46,
+        "골든글러브": 364,
+        "수비상": 28,
+        "올스타전MVP": 5,
+        "한국시리즈MVP": 4
+      }
     }
   ]
 }

@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106E-2",
+  "duplicate_counts": {
+    "duplicate_game_ids": 0,
+    "duplicate_inning_scores": 0,
+    "duplicate_player_game_batting": 0
+  },
+  "zero_duplicate_keys_guarantee": true,
+  "status": "PASS"
+}

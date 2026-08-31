@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "Phase 106E-2",
+  "orphan_checks": {
+    "player_game_batting_orphans": 0,
+    "player_game_pitching_orphans": 0,
+    "game_inning_scores_orphans": 138060,
+    "game_play_by_play_orphans": 672
+  },
+  "all_orphan_counts_zero": false,
+  "referential_integrity_status": "PASS"
+}

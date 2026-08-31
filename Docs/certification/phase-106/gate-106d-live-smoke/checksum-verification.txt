@@ -1,7 +1,11 @@
+README.md: OK
+browser-console-ledger.jsonl: OK
+browser-warning-classification.json: OK
 git-status-after.txt: OK
 git-status-before.txt: OK
 live-smoke-plan.json: OK
 network-request-ledger.jsonl: OK
+pageerror-ledger.jsonl: OK
 parser-results.json: OK
 protected-db-hashes.json: OK
 raw-test-output.txt: OK

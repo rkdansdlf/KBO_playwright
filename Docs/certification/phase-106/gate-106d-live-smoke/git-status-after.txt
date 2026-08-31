@@ -1,14 +1,21 @@
  M .github/workflows/kbo_smart_polling.yml
- M Docs/certification/phase-106/README.md
  M Docs/certification/phase-106/SHA256SUMS
- M Docs/certification/phase-106/crawler-coverage-matrix.json
- M Docs/certification/phase-106/crawler-inventory.json
- M Docs/certification/phase-106/deselected-test-classification.json
- M Docs/certification/phase-106/ephemeral-e2e-results.json
- M Docs/certification/phase-106/protected-db-hashes.json
- M Docs/certification/phase-106/replay-fixture-manifest.json
- M Docs/certification/phase-106/replay-results.json
+ M Docs/certification/phase-106/checksum-verification.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/SHA256SUMS
+ M Docs/certification/phase-106/gate-106d-live-smoke/checksum-verification.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/git-status-after.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/git-status-before.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/live-smoke-plan.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/network-request-ledger.jsonl
+ M Docs/certification/phase-106/gate-106d-live-smoke/parser-results.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/protected-db-hashes.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/raw-test-output.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/response-manifest.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/selector-schema-results.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/tested-code-manifest.json
  M requirements.txt
+ M scripts/certification/phase106/run_live_smoke_gate.py
+ M scripts/certification/phase106/run_offline_preflight.py
  M src/aggregators/team_stat_aggregator.py
  M src/cli/calc/calculate_rankings.py
  M src/cli/collection/crawl_external_stats.py
@@ -18,5 +25,13 @@
  M tests/cli/test_crawl_external_stats.py
  M tests/cli/test_ingest_historical_archive.py
  M tests/test_github_workflows.py
-?? Docs/certification/phase-106/gate-106d-live-smoke/
-?? scripts/certification/
+ M uv.lock
+?? Docs/certification/phase-106/gate-106d-live-smoke/browser-console-ledger.jsonl
+?? Docs/certification/phase-106/gate-106d-live-smoke/browser-warning-classification.json
+?? Docs/certification/phase-106/gate-106d-live-smoke/pageerror-ledger.jsonl
+?? Docs/certification/phase-106/gate-106d-offline-nodes-reconciliation.json
+?? Docs/certification/phase-106/gate-106d-offline-selected-tests.txt
+?? Docs/certification/phase-106/gate-106e-historical-census/
+?? scripts/certification/phase106/reconcile_offline_nodes.py
+?? scripts/certification/phase106/run_historical_census.py
+?? tests/certification/test_phase106_runner_safety.py
