@@ -79,7 +79,7 @@ class BaseHistoricalInvariant:
             for req_table in self.metadata.required_tables:
                 if req_table not in existing_tables:
                     return req_table
-        except Exception:  # noqa: BLE001
+        except SQLAlchemyError:
             return None
         return None
 
@@ -217,7 +217,7 @@ class BaseHistoricalInvariant:
                             s_cursor = conn.execute(text(sample_sql), {"season": s})
                             s_rows = s_cursor.mappings().fetchmany(20)
                             samples = [dict(sr) for sr in s_rows]
-                        except Exception:  # noqa: BLE001
+                        except SQLAlchemyError:
                             samples = []
 
                     eval_ctx = InvariantEvalContext(

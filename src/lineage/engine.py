@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import Engine, get_db_session
 from src.lineage.models import (
@@ -39,7 +40,7 @@ def _get_git_sha() -> str:
         )
         if res.returncode == 0:
             return res.stdout.strip()
-    except Exception:  # noqa: BLE001, S110
+    except (OSError, subprocess.SubprocessError):
         pass
     return "unknown_sha"
 
@@ -61,7 +62,7 @@ class LineageEngine:
                 bind = session.get_bind()
                 if bind is not None:
                     return bind  # type: ignore[return-value]
-        except Exception:  # noqa: BLE001
+        except (SQLAlchemyError, OSError, RuntimeError, ValueError):
             return create_engine("sqlite:///./data/kbo_dev.db")
         return Engine
 
@@ -86,7 +87,7 @@ class LineageEngine:
         """Audit single database table lineage census and relational provenance."""
         try:
             conn.execute(text(f"SELECT 1 FROM {table_name} LIMIT 1"))  # noqa: S608
-        except Exception:  # noqa: BLE001
+        except SQLAlchemyError:
             return TableLineageCensus(
                 table_name=table_name,
                 total_rows=0,
