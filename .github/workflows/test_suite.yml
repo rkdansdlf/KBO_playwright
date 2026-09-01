@@ -37,6 +37,7 @@ jobs:
       - name: Master CLI Smoke & Config Gate Check
         env:
           DATABASE_URL: "sqlite:///:memory:"
+          TELEGRAM_BOT_TOKEN: "ci-placeholder"
         run: |
           python3 -m src.cli.kbo --help
           python3 -m src.cli.kbo config --env ci --strict
