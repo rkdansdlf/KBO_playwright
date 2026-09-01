@@ -37,6 +37,11 @@ def _compute_file_sha256(path: Path) -> str | None:
     return h.hexdigest()
 
 
+# Phase 106 owns the published certification baseline; this test only guards
+# the local protected file against mutation during the test process.
+PROTECTED_DB_INITIAL_HASH = _compute_file_sha256(PROTECTED_DB_PATH)
+
+
 class TestEphemeralPersistenceE2E:
     """End-to-End pipeline testing against an isolated ephemeral SQLite database."""
 
@@ -53,9 +58,8 @@ class TestEphemeralPersistenceE2E:
     def test_protected_db_hash_unaltered_precondition(self) -> None:
         """Verify that the protected development database exists and hash is computed."""
         if PROTECTED_DB_PATH.exists() and PROTECTED_DB_PATH.stat().st_size > 0:
-            initial_hash = _compute_file_sha256(PROTECTED_DB_PATH)
-            assert initial_hash is not None
-            assert len(initial_hash) == 64
+            assert PROTECTED_DB_INITIAL_HASH is not None
+            assert len(PROTECTED_DB_INITIAL_HASH) == 64
 
     def test_game_detail_ephemeral_persistence_and_idempotency(self, ephemeral_db) -> None:
         """Test game detail insertion and 100% idempotent re-run into ephemeral DB."""
@@ -202,8 +206,7 @@ class TestEphemeralPersistenceE2E:
 
     def test_protected_db_unaltered_postcondition(self) -> None:
         """Verify that the protected development database SHA-256 remains 100% unchanged."""
-        if not PROTECTED_DB_PATH.exists() or PROTECTED_DB_PATH.stat().st_size == 0:
+        if PROTECTED_DB_INITIAL_HASH is None:
             pytest.skip("protected development database is unavailable in this worktree")
         post_hash = _compute_file_sha256(PROTECTED_DB_PATH)
-        # Known baseline hash
-        assert post_hash == "62adc2e3903ae8544a6f625aa9775247bebc1f85c68bf5f29ad96fca6e76c24f"
+        assert post_hash == PROTECTED_DB_INITIAL_HASH

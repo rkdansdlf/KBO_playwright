@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 
 HTTP_OK = 200
 HTTP_FORBIDDEN = 403
+logger = logging.getLogger(__name__)
 
 
 class ApiGatewayGate:
@@ -118,6 +120,7 @@ class ApiGatewayGate:
         except Exception as exc:  # noqa: BLE001
             duration_ms = (time.perf_counter() - start) * 1000.0
             err = context.redact(str(exc))
+            logger.warning("API Gateway verification error: %s", err)
             return GateResult(
                 gate_id=self.gate_id,
                 name=self.name,

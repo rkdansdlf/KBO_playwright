@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -10,6 +11,9 @@ from src.config.manager import ConfigManager
 
 if TYPE_CHECKING:
     from src.certification.context import CertificationContext
+
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityDriftGate:
@@ -82,6 +86,7 @@ class SecurityDriftGate:
         except Exception as exc:  # noqa: BLE001
             duration_ms = (time.perf_counter() - start) * 1000.0
             err = context.redact(str(exc))
+            logger.warning("Security/config rule scanner error: %s", err)
             return GateResult(
                 gate_id=self.gate_id,
                 name=self.name,

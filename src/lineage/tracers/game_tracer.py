@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.lineage.models import (
     CorrectionRecord,
@@ -54,7 +55,7 @@ class GameLineageTracer:
                 ).scalar()
                 or 0
             )
-        except Exception:  # noqa: BLE001
+        except SQLAlchemyError:
             pbp_count = 0
 
         lineup_count = 0
@@ -66,7 +67,7 @@ class GameLineageTracer:
                 ).scalar()
                 or 0
             )
-        except Exception:  # noqa: BLE001
+        except SQLAlchemyError:
             lineup_count = 0
 
         return {
@@ -99,7 +100,7 @@ class GameLineageTracer:
                     for r in src_cursor.fetchall()
                 ]
             )
-        except Exception:  # noqa: BLE001
+        except SQLAlchemyError:
             sources.append(
                 {
                     "source_name": "kbo_official_boxscore",

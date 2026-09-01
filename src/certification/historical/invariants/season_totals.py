@@ -6,6 +6,7 @@ import time
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.certification.historical.invariants.base import (
     BaseHistoricalInvariant,
@@ -240,7 +241,7 @@ class SeasonTotalsReconciliationInvariant(BaseHistoricalInvariant):
                         )
                         results.append(self._create_result(eval_ctx))
 
-        except Exception as exc:  # noqa: BLE001
+        except (SQLAlchemyError, RuntimeError, OSError, ValueError) as exc:
             duration_ms = (time.perf_counter() - start) * 1000.0
             return [
                 InvariantResult(
