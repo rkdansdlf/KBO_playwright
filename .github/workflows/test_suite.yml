@@ -35,6 +35,8 @@ jobs:
       - name: Verify repository transaction ownership
         run: python scripts/audit_transaction_ownership.py 2>&1
       - name: Master CLI Smoke & Config Gate Check
+        env:
+          DATABASE_URL: "sqlite:///:memory:"
         run: |
           python3 -m src.cli.kbo --help
           python3 -m src.cli.kbo config --env ci --strict
