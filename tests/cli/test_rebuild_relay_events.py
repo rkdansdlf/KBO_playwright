@@ -63,3 +63,17 @@ class TestRebuildReportRow:
         assert row.new_rows == 45
         assert row.notes == ""
         assert row.backup_path == ""
+
+
+class TestMain:
+    def test_main_dry_run_empty(self):
+        from unittest.mock import patch
+        from src.cli.rebuild_relay_events import main
+
+        with patch("src.cli.rebuild_relay_events.rebuild_relay_events") as mock_rebuild:
+            exit_code = main(["--dry-run", "--season", "2026"])
+            assert exit_code == 0
+            assert mock_rebuild.call_count == 1
+            options = mock_rebuild.call_args[0][0]
+            assert options.apply is False
+            assert options.seasons == [2026]

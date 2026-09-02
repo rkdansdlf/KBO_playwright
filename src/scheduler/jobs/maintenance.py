@@ -10,7 +10,7 @@ from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.crawl_retire import main as crawl_retire_main
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal, get_db_session
 from src.scheduler.alerting import alert_failure, alert_success
 from src.scheduler.config import (
     KST,
@@ -121,10 +121,11 @@ def compute_standings_job() -> None:
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Standings Computation ===")
         try:
-            from src.cli.calculate_standings import compute_all_standings
+            from src.cli.calc.calculate_standings import StandingsCalculator
 
             current_year = datetime.now(KST).year
-            compute_all_standings(current_year)
+            with get_db_session() as session:
+                StandingsCalculator(session).calculate_year(current_year)
             logger.info("=== Standings Computation Completed ===")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Standings computation failed")

@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import scripts.scheduler
+from src.scheduler.jobs import maintenance
 from src.scheduler.jobs.daily import _compact_date, _from_compact_date, _to_compact_date
 from src.scheduler.jobs.live import _pregame_preview_detail_has_starters
 from src.scheduler.jobs.stadium import crawl_congestion_job, crawl_transit_time_job
@@ -35,6 +36,22 @@ def test_pregame_preview_detail_has_starters():
     assert _pregame_preview_detail_has_starters("invalid json") is False
     assert _pregame_preview_detail_has_starters('{"away_starter": "", "home_starter": ""}') is False
     assert _pregame_preview_detail_has_starters('{"away_starter": "Kim", "home_starter": "Lee"}') is True
+
+
+def test_standings_job_uses_current_calculator_api(monkeypatch):
+    session = MagicMock()
+    session_context = MagicMock()
+    session_context.__enter__.return_value = session
+    lock_context = MagicMock()
+
+    monkeypatch.setattr(maintenance, "_scheduler_job_lock", MagicMock(return_value=lock_context))
+    monkeypatch.setattr(maintenance, "get_db_session", MagicMock(return_value=session_context))
+
+    with patch("src.cli.calc.calculate_standings.StandingsCalculator") as calculator_cls:
+        maintenance.compute_standings_job()
+
+    calculator_cls.assert_called_once_with(session)
+    calculator_cls.return_value.calculate_year.assert_called_once()
 
 
 def test_stadium_jobs_execution():

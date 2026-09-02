@@ -214,9 +214,26 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-08-30
+Last updated: 2026-09-02
 
-### Phase 105: Certification Evidence Closure & Independent Staging Attestation — STATUS: GATE 0 & GATE 1 COMPLETE (NO-GO ON PROMOTION / WRITE 0 MAINTAINED)
+### Phase 106: Crawler Core Operational Certification — STATUS: GATES 106A~106E LEVEL_3_VERIFIED (106F NO-GO / PENDING APPROVAL)
+- **Gate 106A: Crawler Inventory & Taxonomy (PASS_REPORTED)**: 30 canonical crawlers classified across 9 categories; 242 deselected tests categorized into 8 operational buckets.
+- **Gate 106B: Offline Snapshot Replay (LEVEL_3_INTEGRATION_VERIFIED)**: 14 HTML/JSON fixtures replayed through parsers with triplicate consistency; 47 offline tests passing under network-blocked execution.
+- **Gate 106C: Ephemeral End-to-End Pipeline (LEVEL_3_INTEGRATION_VERIFIED)**: 5 core DB tables (game, batting, pitching, inning scores, PBP) tested through ephemeral SQLite pipeline; 72 repository integration tests passing.
+- **Gate 106D: Limited Live Read-Only Smoke (PASSED)**:
+  - 191 offline preflight nodes reconciled ($46 + 1 + 72 + 16 + 56 = 191$, unclassified: 0).
+  - 3 approved live targets: `player-search-pagination-contract` (20 rows, Playwright), `player-stats-basic2-headers` (11/11 headers, Playwright), `wikipedia-awards-live` (495 records, httpx HTTP Secondary).
+  - Network budget: 87 requests (52 allowed, 35 blocked, 0 unexpected hosts); 0 KBO-origin page errors; WebUI warnings classified `BROWSER_INTERNAL_WEBUI_WARNING` (gate impact: NONE).
+  - Protected DB SHA-256 unchanged (0 mutations); Artifacts: `Docs/certification/phase-106/gate-106d-live-smoke/`.
+- **Gate 106E: Read-Only Historical Coverage Census (LEVEL_3_INTEGRATION_VERIFIED)**:
+  - 1982~2026, 45 seasons, 90 tables, 27,004 games (20,364 COMPLETED + 296 DRAW + 6,321 CANCELLED + 23 SCHEDULED).
+  - 44 closed seasons ($\ge 95\%$ boxscore coverage) + 1 in-progress (2026, 139 games).
+  - Cross-table referential integrity: 0 orphan batting/pitching/inning/PBP rows, 0 duplicate natural keys.
+  - Artifacts: `Docs/certification/phase-106/gate-106e-historical-census/`.
+- **Gate 106F: Scheduler Recovery & Multi-Tier Locks**: **NO-GO / PENDING APPROVAL**.
+- **Oracle / Production**: **STRICT NO-GO** (0 Oracle DML throughout Phase 106).
+
+### Phase 105: Certification Evidence Closure & Independent Staging Attestation — STATUS: GATES 0~3 CERTIFIED (L3); GATE 4 DESIGN PASS; GATE 5 PENDING (NO-GO ON PROMOTION / WRITE 0 MAINTAINED)
 - **Claim-Level Evidence Ledger**: Full granular status tracked in `Docs/certification/phase-105/evidence-level-matrix.json`.
 - **Gate 0: Clean Baseline Freeze (PASSED)**:
   - Commit `519fa6331a3e799da9af8ea5936febad5c57a898`, Tree `b094378963ed44fee82d3c3d79139a6745617804`.
@@ -227,6 +244,16 @@ Last updated: 2026-08-30
   - Undefined / Zero-denominator contract + Decimal `ROUND_HALF_UP` + 4-tier validation severity (`DOMAIN`, `ALGEBRAIC`, `SOURCE_SCHEMA_INTEGRITY`, `PLAUSIBILITY`).
   - Candidate tests: **10,211 passed (+9 delta), 3 skipped in 59.66s (0 failures, 0 errors)**; Ruff: **0 errors**.
   - Artifacts: `Docs/certification/phase-105/gate-1-formula-contract/`.
+- **Gate 2: Independent Dual-Path Audit (PASSED)**:
+  - 1,500 physical source rows × 4 evaluation paths (Registry, Python Oracle, SQL Oracle, Stored DB) = 16,500 evaluations; 0 divergences.
+  - Artifacts: `Docs/certification/phase-105/gate-2-dual-path-audit/`.
+- **Gate 3: RAG Rekey Apply-Only Safety & Crash Consistency (PASSED)**:
+  - 52 safety tests passing; hard crash `exit(137)` subprocess recovery verified in ephemeral SQLite.
+  - Artifacts: `Docs/certification/phase-105/gate-3-rag-rekey-safety/`.
+- **Gate 4: Oracle Staging Rehearsal (`CONDITIONAL_DESIGN_PASS` / STRICT NO-GO ON EXECUTION)**:
+  - 5-SYS_CONTEXT identity probe architecture, 4-tier rollback priority, 6-archetype canary matrix designed.
+  - Artifacts: `Docs/certification/phase-105/gate-4-staging-preflight-design.md`.
+- **Gate 5: Source-by-Source Canary Decision**: **PENDING** (blocked on Gate 4 staging execution).
 
 ### Phase 104: Sabermetrics Formula Registry & Metric Reproducibility Certification (`kbo formula`) — STATUS: SUPERSEDED
 > [!WARNING]
