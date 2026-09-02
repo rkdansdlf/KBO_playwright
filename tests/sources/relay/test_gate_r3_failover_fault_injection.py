@@ -52,22 +52,22 @@ class MockAdapter(RelaySourceAdapter):
             game_id=game_id,
             source_name=self.source_name,
             events=[
-                    {
-                        "inning": 1,
-                        "inning_half": "top",
-                        "event_seq": 1,
-                        "outs": 0,
-                        "description": f"{self.source_name} event 1",
-                        "home_score": 0,
-                        "away_score": 0,
-                        "base_state": 0,
-                        "wpa": 0.01,
-                        "win_expectancy_before": 0.50,
-                        "win_expectancy_after": 0.51,
-                    }
-                ],
-                raw_pbp_rows=[{"inning": 1, "inning_half": "top", "play_description": f"{self.source_name} pbp 1"}],
-            )
+                {
+                    "inning": 1,
+                    "inning_half": "top",
+                    "event_seq": 1,
+                    "outs": 0,
+                    "description": f"{self.source_name} event 1",
+                    "home_score": 0,
+                    "away_score": 0,
+                    "base_state": 0,
+                    "wpa": 0.01,
+                    "win_expectancy_before": 0.50,
+                    "win_expectancy_after": 0.51,
+                }
+            ],
+            raw_pbp_rows=[{"inning": 1, "inning_half": "top", "play_description": f"{self.source_name} pbp 1"}],
+        )
 
 
 @pytest.fixture

@@ -96,7 +96,9 @@ def analyze_game_semantic_diff(game_id: str, calculator: WPACalculator) -> dict[
         added = max(0, len(rebuilt_pass1) - len(old_payloads))
         removed = max(0, len(old_payloads) - len(rebuilt_pass1))
         content_exact = sum(
-            1 for o, r in zip(old_payloads, rebuilt_pass1, strict=True) if canonical_event_repr(o) == canonical_event_repr(r)
+            1
+            for o, r in zip(old_payloads, rebuilt_pass1, strict=True)
+            if canonical_event_repr(o) == canonical_event_repr(r)
         )
 
         return {
