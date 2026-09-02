@@ -40,9 +40,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      should_proceed: ${{ steps.gate.outputs.should_proceed }}
-      has_games: ${{ steps.gate.outputs.has_games }}
-      reason: ${{ steps.gate.outputs.reason }}
+      should_proceed: ${{ steps.force_gate.outputs.should_proceed || steps.gate.outputs.should_proceed }}
+      has_games: ${{ steps.force_gate.outputs.has_games || steps.gate.outputs.has_games }}
+      reason: ${{ steps.force_gate.outputs.reason || steps.gate.outputs.reason }}
       target_date: ${{ steps.date.outputs.KST_DATE }}
     steps:
       - uses: actions/checkout@v5
@@ -58,6 +58,7 @@ jobs:
 
       - name: "[Layer 1] Check if today's games are finished"
         id: gate
+        if: ${{ github.event.inputs.skip_gate != 'true' }}
         run: |
           set +e
           set -o pipefail
@@ -89,6 +90,7 @@ jobs:
           exit 0
 
       - name: "[Layer 1] Skip gate (forced run)"
+        id: force_gate
         if: ${{ github.event.inputs.skip_gate == 'true' }}
         run: |
           {
@@ -103,9 +105,9 @@ jobs:
         run: |
           echo "🎯 Gate Decision:"
           echo "  Target Date: ${{ steps.date.outputs.KST_DATE }}"
-          echo "  Should Proceed: ${{ steps.gate.outputs.should_proceed }}"
-          echo "  Has Games: ${{ steps.gate.outputs.has_games }}"
-          echo "  Reason: ${{ steps.gate.outputs.reason }}"
+          echo "  Should Proceed: ${{ steps.force_gate.outputs.should_proceed || steps.gate.outputs.should_proceed }}"
+          echo "  Has Games: ${{ steps.force_gate.outputs.has_games || steps.gate.outputs.has_games }}"
+          echo "  Reason: ${{ steps.force_gate.outputs.reason || steps.gate.outputs.reason }}"
 
   # ──────────────────────────────────────────────────────────────────────────
   # JOB 2 — Daily Update (Layer 2: heavy Playwright crawl)
