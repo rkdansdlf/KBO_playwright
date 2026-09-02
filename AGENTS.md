@@ -737,14 +737,13 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage**: 76.84% (fail_under=70).
 - **pytest**: 8,006 passed.
 
-### Current Verification Baseline (2026-07-10)
+### Current Verification Baseline (2026-09-03)
 
 - `ruff check src/ tests/ scripts/` = 0 errors (expanded rules, 0 warnings).
 - `ruff format --check .` = clean.
-- `python -m pytest --tb=line -q --no-header` = **8,880 passed**, 0 failed, 26 skipped, 263 deselected, 1 xfailed; 103.52s.
-- Targeted coverage/branch expansion tests: `tests/test_data_quality_regression_pack_core.py`, `tests/sync/test_sync_misc_coverage.py`, `tests/services/test_relay_recovery_ext.py`, `tests/test_crawler_selector_gate_core.py`, `tests/test_failure_diagnosis.py` pass.
+- `python -m pytest --tb=line -q --no-header` = **10,414 passed**, 3 skipped, 242 deselected, 0 failed; 77.81s.
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
-- `--cov=src --cov-report=term` = **76-77%** in recent full runs (fail_under=70, exceeded target 75%).
+- `--cov=src --cov-report=term` = 90% in recent full runs (fail_under=75, exceeded target).
 - `# noqa: BLE001` in `src/` = 0.
 - `pre-commit` hooks installed locally, all hooks pass.
 - COM812 removed from select (conflicts with formatter), added to global ignore.
@@ -1235,3 +1234,10 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Synthetic Fault-Injection Tests & Regression (`tests/certification/`)**:
   - Added 20 comprehensive unit, integration, and synthetic fault-injection tests (`test_certification_engine.py`, `test_certification_gates.py`, `test_synthetic_faults.py`) proving that intentional drift, rollback leaks, idempotency deltas, negative stats, and lock collisions trigger genuine `FAIL` and non-zero exit codes.
   - `ruff check src/ tests/ scripts/` = **0 errors**.
+
+### 4-Commit Milestone (main → origin/main)
+
+- `d3a7ba4a`: 안전(phase-106): 라이브 스모크 네트워크 예산·챌린지 차단·응답 정책 강화
+- `731fead8`: 기능(archive): 역사 시즌 선수·팀 통계 정규화 ingestion 및 검증
+- `118989b2`: 기능(stats): 외부 통계 크롤링·오버레이·우선순위 정리
+- `cd46406b`: 설정(workflow): 스마트 폴링 force_gate 우선순위 및 RAG safety 환경 격리 개선
