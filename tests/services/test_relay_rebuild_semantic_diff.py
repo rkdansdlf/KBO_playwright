@@ -1,16 +1,18 @@
 """Gate R1-C: Full Semantic Rebuild Differential & Persistence Roundtrip Idempotency Tests.
 
 Verifies:
-1. 22-field canonical event representation.
+1. 23-field canonical event representation serialized as JSON array.
 2. Natural key differential: (game_id, event_seq) -> added, removed, modified, reordered.
 3. Half-inning chronological progression: (inn, half) monotonically increasing.
-4. Persistence roundtrip idempotency: Rebuild -> Save to Ephemeral DB -> Query -> Rebuild 2 == Rebuild 1.
+4. Win Expectancy continuity and batter-perspective WPA delta consistency.
+5. Persistence roundtrip idempotency: Rebuild -> Save to Ephemeral DB -> Query -> Rebuild 2 == Rebuild 1.
 """
 
 from __future__ import annotations
 
-import hashlib
 from datetime import date
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +29,8 @@ from src.models.base import Base
 from src.models.game import Game, GameEvent
 from src.services.wpa_calculator import WPACalculator
 
-CANONICAL_FIELDS = (
+# Exactly 23 canonical fields
+CANONICAL_FIELDS: tuple[str, ...] = (
     "game_id",
     "event_seq",
     "inning",
@@ -54,15 +57,24 @@ CANONICAL_FIELDS = (
 )
 
 
+def normalize_canonical_value(val: Any) -> Any:
+    """Normalize values for strict JSON serialization without delimiter collision."""
+    if val is None:
+        return None
+    if isinstance(val, float):
+        return round(val, 4)
+    if isinstance(val, (int, bool)):
+        return val
+    return str(val)
+
+
 def canonical_event_repr(ev: dict[str, Any] | GameEvent) -> str:
-    parts = []
-    for k in CANONICAL_FIELDS:
-        v = getattr(ev, k, None) if isinstance(ev, GameEvent) else ev.get(k)
-        if isinstance(v, float):
-            parts.append(f"{v:.4f}")
-        else:
-            parts.append(str(v if v is not None else ""))
-    return "|".join(parts)
+    """Format an event into its complete 23-field canonical JSON array representation."""
+    payload = [
+        normalize_canonical_value(getattr(ev, k, None) if isinstance(ev, GameEvent) else ev.get(k))
+        for k in CANONICAL_FIELDS
+    ]
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def stream_hash(events: list[Any]) -> str:
@@ -155,10 +167,24 @@ def test_full_semantic_rebuild_and_persistence_roundtrip(tmp_path: Path):
 
     # Invariants on Pass 1
     assert len(rebuilt_1) == 3
+    prev_we = None
     for ev in rebuilt_1:
         assert 0.0 <= ev["win_expectancy_before"] <= 1.0
         assert 0.0 <= ev["win_expectancy_after"] <= 1.0
         assert ev["outs"] in (0, 1, 2, 3)
+        # Batter-perspective WPA delta consistency
+        is_bottom = ev["inning_half"] == "bottom"
+        exp_wpa = round(
+            ev["win_expectancy_after"] - ev["win_expectancy_before"]
+            if is_bottom
+            else ev["win_expectancy_before"] - ev["win_expectancy_after"],
+            4,
+        )
+        assert abs(ev["wpa"] - exp_wpa) < 0.0001
+        # WE continuity within half inning
+        if prev_we is not None:
+            assert abs(ev["win_expectancy_before"] - prev_we) < 0.0001
+        prev_we = ev["win_expectancy_after"]
 
     # Persist Pass 1 to ephemeral DB
     with Session() as s:
