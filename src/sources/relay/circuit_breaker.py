@@ -52,6 +52,7 @@ class SourceCircuitBreaker:
         self._cooldown = cooldown_seconds
         self._failures: dict[tuple[str, str], int] = {}
         self._cooldowns: dict[tuple[str, str], float] = {}
+        self._probe_in_progress: set[tuple[str, str]] = set()
         self._persist_path = Path(persist_path) if persist_path else None
         if self._persist_path:
             self._load_state()
@@ -142,6 +143,7 @@ class SourceCircuitBreaker:
         cleared = key in self._failures or key in self._cooldowns
         self._failures.pop(key, None)
         self._cooldowns.pop(key, None)
+        self._probe_in_progress.discard(key)
         if cleared:
             logger.info(
                 "Circuit breaker reset for %s / %s (success)",
@@ -163,6 +165,7 @@ class SourceCircuitBreaker:
 
         """
         key = (source_name, bucket_id)
+        self._probe_in_progress.discard(key)
 
         count = self._failures.get(key, 0) + 1
         self._failures[key] = count
@@ -178,31 +181,32 @@ class SourceCircuitBreaker:
         self._save_state()
 
     def is_available(self, source_name: str, bucket_id: str) -> bool:
-        """Return whether the available.
+        """Return whether the source is available or permitted for a half-open probe.
 
         Args:
             source_name: Source Name.
             bucket_id: Bucket ID.
-            source_name: Source Name.
-            bucket_id: Bucket ID.
-            source_name: Source Name.
-            bucket_id: Bucket ID.
 
         Returns:
-            True if successful, False otherwise.
+            True if available or probe granted, False otherwise.
 
         """
         key = (source_name, bucket_id)
+
+        if key in self._probe_in_progress:
+            logger.debug("Half-open probe already in progress for %s / %s", source_name, bucket_id)
+            return False
 
         expiry = self._cooldowns.get(key)
         if expiry is None:
             return True
         if time.monotonic() >= expiry:
+            self._probe_in_progress.add(key)
             self._cooldowns.pop(key, None)
             self._failures.pop(key, None)
             self._save_state()
             logger.info(
-                "Circuit breaker auto-reset for %s / %s (cooldown expired)",
+                "Circuit breaker half-open probe permitted for %s / %s (cooldown expired)",
                 source_name,
                 bucket_id,
             )
@@ -214,6 +218,10 @@ class SourceCircuitBreaker:
             expiry - time.monotonic(),
         )
         return False
+
+    def is_half_open_probe_in_progress(self, source_name: str, bucket_id: str) -> bool:
+        """Return whether a half-open probe is currently in flight for this source."""
+        return (source_name, bucket_id) in self._probe_in_progress
 
     def consecutive_failures(self, source_name: str, bucket_id: str) -> int:
         """Handle the consecutive failures operation.

@@ -266,14 +266,20 @@ class RelayRecoveryOrchestrator:
                     source_name,
                     bucket_id,
                 )
+                is_probe_wait = getattr(cb, "is_half_open_probe_in_progress", lambda *_: False)(source_name, bucket_id)
+                status = "half_open_probe_in_progress" if is_probe_wait else "cb_open"
                 consecutive_failures = cb.consecutive_failures(source_name, bucket_id)
                 attempts.append(
                     {
                         "game_id": game_id,
                         "bucket_id": bucket_id,
                         "source_name": source_name,
-                        "status": "cb_open",
-                        "notes": f"circuit breaker open, consecutive_failures={consecutive_failures}",
+                        "status": status,
+                        "notes": (
+                            "half-open probe already in progress"
+                            if is_probe_wait
+                            else f"circuit breaker open, consecutive_failures={consecutive_failures}"
+                        ),
                     },
                 )
                 continue
