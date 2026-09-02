@@ -1,0 +1,42 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.14, pytest-8.4.2, pluggy-1.6.0 -- /Users/mac/project/KBO_playwright/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/mac/project/KBO_playwright
+configfile: pytest.ini
+plugins: cov-7.1.0, xdist-3.8.0, asyncio-0.26.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 31 items
+
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FTierIsolation::test_tier_locks_are_force_process_lock_instances PASSED [  3%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FTierIsolation::test_tier_lock_names_match_architecture_specification PASSED [  6%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FTierIsolation::test_tier_locks_can_be_acquired_simultaneously_across_tiers PASSED [  9%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FTierIsolation::test_tier_lock_files_are_distinct PASSED [ 12%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FTierIsolation::test_sqlite_writer_lock_coexists_with_tier_lock PASSED [ 16%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FThreadSafety::test_lock_state_initializes_with_per_thread_defaults PASSED [ 19%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FThreadSafety::test_lock_state_is_isolated_between_threads PASSED [ 22%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FThreadSafety::test_shared_singleton_serialization_across_worker_threads PASSED [ 25%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FThreadSafety::test_concurrent_acquire_release_cycles_no_state_leak PASSED [ 29%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FThreadSafety::test_thread_local_acquire_count_tracks_properly PASSED [ 32%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FSingleInstanceGuard::test_ensure_single_instance_creates_pid_file PASSED [ 35%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FSingleInstanceGuard::test_ensure_single_instance_clears_stale_pid_file PASSED [ 38%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FSingleInstanceGuard::test_ensure_single_instance_exits_on_live_duplicate PASSED [ 41%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FSingleInstanceGuard::test_release_scheduler_pid_file_only_removes_own_pid PASSED [ 45%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FStaleLockRecovery::test_force_process_lock_clears_dead_pid_lock_file PASSED [ 48%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FStaleLockRecovery::test_force_process_lock_clears_malformed_lock_file PASSED [ 51%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FStaleLockRecovery::test_force_process_lock_does_not_clear_live_pid_lock_file PASSED [ 54%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FBoundedTimeoutAndSkip::test_scheduler_job_lock_raises_lock_skipped_on_tier_timeout PASSED [ 58%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FBoundedTimeoutAndSkip::test_scheduler_job_lock_raises_lock_skipped_on_sqlite_writer_timeout PASSED [ 61%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FBoundedTimeoutAndSkip::test_with_lock_skip_guard_suppresses_lock_skipped_and_returns_none PASSED [ 64%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FBoundedTimeoutAndSkip::test_with_lock_skip_guard_passes_through_normal_return PASSED [ 67%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FLockSkipMonitoring::test_lock_skip_monitor_detects_threshold_exceeded_and_sends_alert PASSED [ 70%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FLockSkipMonitoring::test_lock_skip_monitor_no_alert_when_below_threshold PASSED [ 74%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FLockSkipMonitoring::test_lock_skip_monitor_handles_unregistered_metrics_gracefully PASSED [ 77%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FFaultInjection::test_exception_in_lock_held_block_releases_lock PASSED [ 80%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FFaultInjection::test_sqlite_writer_lock_yields_false_and_increments_metric_on_contention PASSED [ 83%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FFaultInjection::test_context_manager_suppresses_no_exceptions PASSED [ 87%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FNestedLockPrevention::test_process_lock_same_thread_reacquire_returns_false PASSED [ 90%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FNestedLockPrevention::test_force_process_lock_same_thread_reacquire_does_not_force_clear PASSED [ 93%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FDiagnosticTool::test_diagnose_returns_clean_when_no_stale_locks PASSED [ 96%]
+tests/certification/test_phase106f_scheduler_locks.py::TestPhase106FDiagnosticTool::test_diagnose_detects_stale_lock_file PASSED [100%]
+
+============================== 31 passed in 1.49s ==============================

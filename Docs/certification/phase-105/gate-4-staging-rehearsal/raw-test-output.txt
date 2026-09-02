@@ -1,0 +1,47 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.14, pytest-8.4.2, pluggy-1.6.0 -- /Users/mac/project/KBO_playwright/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/mac/project/KBO_playwright
+configfile: pytest.ini
+plugins: cov-7.1.0, xdist-3.8.0, asyncio-0.26.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 36 items
+
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_valid_allowlist_instantiation PASSED [  2%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_immutability PASSED [  5%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_empty_descriptor[db_unique_name] PASSED [  8%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_empty_descriptor[service_name] PASSED [ 11%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_empty_descriptor[current_schema] PASSED [ 13%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_empty_descriptor[session_user] PASSED [ 16%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_empty_descriptor[con_name] PASSED [ 19%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_malicious_characters[staging; DROP TABLE users;] PASSED [ 22%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_malicious_characters[staging' OR '1'='1] PASSED [ 25%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_malicious_characters[staging--comment] PASSED [ 27%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_malicious_characters[staging/*comment*/] PASSED [ 30%]
+tests/services/test_staging_identity_gate4.py::TestStagingIdentityAllowlist::test_allowlist_rejects_malicious_characters[staging space] PASSED [ 33%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_all_descriptors_match_passes_cleanly PASSED [ 36%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_case_insensitive_canonical_match PASSED [ 38%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_individual_descriptor_mismatch_fails_closed[db_unique_name] PASSED [ 41%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_individual_descriptor_mismatch_fails_closed[service_name] PASSED [ 44%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_individual_descriptor_mismatch_fails_closed[current_schema] PASSED [ 47%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_individual_descriptor_mismatch_fails_closed[session_user] PASSED [ 50%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_individual_descriptor_mismatch_fails_closed[con_name] PASSED [ 52%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_missing_or_empty_context_descriptor_fails PASSED [ 55%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_probe_exception_fails_closed PASSED [ 58%]
+tests/services/test_staging_identity_gate4.py::TestVerifyStagingIdentity::test_oracle_probe_query_execution_syntax PASSED [ 61%]
+tests/services/test_staging_rollback_gate4.py::TestStagingRollbackEngine::test_capture_empty_chunk_ids_returns_empty_manifest PASSED [ 63%]
+tests/services/test_staging_rollback_gate4.py::TestStagingRollbackEngine::test_capture_pre_rehearsal_state_populates_all_cas_fields PASSED [ 66%]
+tests/services/test_staging_rollback_gate4.py::TestStagingRollbackEngine::test_manifest_json_roundtrip PASSED [ 69%]
+tests/services/test_staging_rollback_gate4.py::TestStagingRollbackEngine::test_verify_rollback_clean_state_returns_true PASSED [ 72%]
+tests/services/test_staging_rollback_gate4.py::TestStagingRollbackEngine::test_verify_rollback_detects_mutated_source_row_id PASSED [ 75%]
+tests/services/test_staging_rollback_gate4.py::TestStagingRollbackEngine::test_verify_rollback_detects_mutated_status PASSED [ 77%]
+tests/services/test_staging_rollback_gate4.py::TestStagingRollbackEngine::test_apply_preimage_rollback_restores_state_fully PASSED [ 80%]
+tests/services/test_staging_canary_gate4.py::TestCanaryArchetypesIndividual::test_archetype_1_safe_rekey PASSED [ 83%]
+tests/services/test_staging_canary_gate4.py::TestCanaryArchetypesIndividual::test_archetype_2_safe_rekey_stats PASSED [ 86%]
+tests/services/test_staging_canary_gate4.py::TestCanaryArchetypesIndividual::test_archetype_3_target_collision_tombstone PASSED [ 88%]
+tests/services/test_staging_canary_gate4.py::TestCanaryArchetypesIndividual::test_archetype_4_already_applied_noop PASSED [ 91%]
+tests/services/test_staging_canary_gate4.py::TestCanaryArchetypesIndividual::test_archetype_5_stale_cas_reject PASSED [ 94%]
+tests/services/test_staging_canary_gate4.py::TestCanaryArchetypesIndividual::test_archetype_6_inverse_rollback_replay PASSED [ 97%]
+tests/services/test_staging_canary_gate4.py::TestCanaryMatrixRehearsal::test_full_canary_rehearsal_matrix_passes_and_rolls_back_cleanly PASSED [100%]
+
+============================== 36 passed in 0.76s ==============================
