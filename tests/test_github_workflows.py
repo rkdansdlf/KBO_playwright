@@ -88,6 +88,16 @@ def test_daily_kbo_sync_includes_core_steps():
     assert "--source-url-env" not in workflow
 
 
+def test_smart_polling_forced_gate_overrides_polling_outputs():
+    workflow = _read(WORKFLOW_DIR / "kbo_smart_polling.yml")
+
+    assert "id: force_gate" in workflow
+    assert "if: ${{ github.event.inputs.skip_gate != 'true' }}" in workflow
+    assert "steps.force_gate.outputs.should_proceed || steps.gate.outputs.should_proceed" in workflow
+    assert "steps.force_gate.outputs.has_games || steps.gate.outputs.has_games" in workflow
+    assert "steps.force_gate.outputs.reason || steps.gate.outputs.reason" in workflow
+
+
 def test_daily_kbo_sync_runs_scoped_regression_pack_with_artifacts():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
