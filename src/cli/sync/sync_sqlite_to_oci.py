@@ -33,6 +33,9 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 from dotenv import load_dotenv
 from sqlalchemy.engine import make_url
 
@@ -730,10 +733,10 @@ def _sqlite_path_from_url(source_url: str) -> str:
     return parsed.database
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Run the SQLite to Oracle initial-load CLI."""
     parser = _build_arg_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     load_dotenv()
 
     sqlite_url = _resolve_source_url(args.source_url)

@@ -118,6 +118,15 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     p_sync.add_argument("--apply", action="store_true", help="Apply synchronization.")
     p_sync.add_argument("--verify", action="store_true", help="Verify row counts between source and target.")
     p_sync.add_argument("--mode", type=str, default="full", choices=["full", "incremental"])
+    p_sync.add_argument("--json", action="store_true", help="Output summary in JSON format.")
+    p_sync.add_argument("--tables", type=str, default=None, help="Comma-separated list of tables to sync.")
+    p_sync.add_argument("--exclude-tables", type=str, default=None, help="Comma-separated list of tables to exclude.")
+    p_sync.add_argument("--season", type=int, default=None, help="Filter sync to specific season.")
+    p_sync.add_argument("--since", type=str, default=None, help="Sync changes since timestamp.")
+    p_sync.add_argument("--batch-size", type=int, default=5000, help="Batch size for bulk upsert.")
+    p_sync.add_argument("--commit-every", type=int, default=20000, help="Commit interval.")
+    p_sync.add_argument("--concurrency", type=int, default=3, help="Max concurrent worker threads.")
+    p_sync.add_argument("--reset-checkpoint", type=str, default=None, help="Reset checkpoint for table or 'ALL'.")
 
 
 def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:

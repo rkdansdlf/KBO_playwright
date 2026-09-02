@@ -658,7 +658,7 @@ class TestRagRekeySafetyGate3:
         finally:
             session.close()
 
-    def test_14_dsn_and_production_guard_fail_closed(self, tmp_path: Path) -> None:
+    def test_14_dsn_and_production_guard_fail_closed(self, tmp_path: Path, monkeypatch) -> None:
         """14. DSN & production write guard: fails closed if write env flags are missing."""
         entry = {
             "chunk_id": 110,
@@ -674,15 +674,15 @@ class TestRagRekeySafetyGate3:
         path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
 
         # 1. RAG_INDEX_ALLOW_WRITE not set -> fails
-        os.environ.pop("RAG_INDEX_ALLOW_WRITE", None)
-        os.environ.pop("RAG_TARGET_ENV", None)
+        monkeypatch.delenv("RAG_INDEX_ALLOW_WRITE", raising=False)
+        monkeypatch.delenv("RAG_TARGET_ENV", raising=False)
         code = apply_rekey_main(["--manifest", str(path), "--apply"])
         assert code == 2
 
         # 2. Production env without production flag -> fails
-        os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
-        os.environ["RAG_TARGET_ENV"] = "production"
-        os.environ.pop("RAG_INDEX_ALLOW_PRODUCTION_WRITE", None)
+        monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
+        monkeypatch.setenv("RAG_TARGET_ENV", "production")
+        monkeypatch.delenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE", raising=False)
         code = apply_rekey_main(["--manifest", str(path), "--apply"])
         assert code == 2
 
@@ -752,20 +752,20 @@ class TestRagRekeySafetyGate3:
         assert err is not None
         assert "transaction ID collision" in err
 
-    def test_18_oracle_and_staging_dsn_rejected_in_safety_mode(self) -> None:
+    def test_18_oracle_and_staging_dsn_rejected_in_safety_mode(self, monkeypatch) -> None:
         """18. Oracle and Staging DSNs strictly rejected in local safety mode."""
-        os.environ["RAG_TARGET_ENV"] = "local"
+        monkeypatch.setenv("RAG_TARGET_ENV", "local")
 
-        os.environ["DATABASE_URL"] = "oracle+oracledb://kbo_staging:***@kbo_staging_high"
+        monkeypatch.setenv("DATABASE_URL", "oracle+oracledb://kbo_staging:***@kbo_staging_high")
         err = _validate_dsn_security(apply=True)
         assert err is not None
         assert "Oracle database connections prohibited" in err
 
-    def test_19_non_ephemeral_kbo_dev_db_path_blocked(self) -> None:
+    def test_19_non_ephemeral_kbo_dev_db_path_blocked(self, monkeypatch) -> None:
         """19. Non-ephemeral primary repository sqlite database rejected."""
-        os.environ["RAG_TARGET_ENV"] = "local"
+        monkeypatch.setenv("RAG_TARGET_ENV", "local")
 
-        os.environ["DATABASE_URL"] = "sqlite:///./data/kbo_dev.db"
+        monkeypatch.setenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
         err = _validate_dsn_security(apply=True)
         assert err is not None
         assert "Primary database data/kbo_dev.db write prohibited" in err
@@ -1031,13 +1031,15 @@ class TestRagRekeySafetyGate3:
         assert _validate_transaction_id("../traversal") is not None
         assert _validate_transaction_id("tx;rm -rf") is not None
 
-    def test_28_crash_recovery_subprocess_exit(self, ephemeral_db: dict[str, Any], tmp_path: Path) -> None:
+    def test_28_crash_recovery_subprocess_exit(self, ephemeral_db: dict[str, Any], tmp_path: Path, monkeypatch) -> None:
         """28. Hard crash immediately post DB-commit recovers with RECOVERED_RECEIPT_REBUILT."""
+        monkeypatch.setenv("RAG_TARGET_ENV", "local")
+        monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
         receipt_dir = tmp_path / "receipts"
         receipt_dir.mkdir(parents=True, exist_ok=True)
-        os.environ["R2_REKEY_RECEIPT_DIR"] = str(receipt_dir)
+        monkeypatch.setenv("R2_REKEY_RECEIPT_DIR", str(receipt_dir))
         db_file = ephemeral_db["db_file"]
-        os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file}")
 
         # Seed initial chunk
         session = ephemeral_db["session_factory"]()
@@ -1085,13 +1087,17 @@ class TestRagRekeySafetyGate3:
         assert rec_data["rekeyed_count"] == 0
         assert rec_data["already_applied_count"] == 1
 
-    def test_29_post_commit_receipt_io_failure_and_recovery(self, ephemeral_db: dict[str, Any], tmp_path: Path) -> None:
+    def test_29_post_commit_receipt_io_failure_and_recovery(
+        self, ephemeral_db: dict[str, Any], tmp_path: Path, monkeypatch
+    ) -> None:
         """29. Post-commit receipt I/O failure (OSError) safely leaves DB committed, and next run recovers."""
+        monkeypatch.setenv("RAG_TARGET_ENV", "local")
+        monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
         receipt_dir = tmp_path / "receipts"
         receipt_dir.mkdir(parents=True, exist_ok=True)
-        os.environ["R2_REKEY_RECEIPT_DIR"] = str(receipt_dir)
+        monkeypatch.setenv("R2_REKEY_RECEIPT_DIR", str(receipt_dir))
         db_file = ephemeral_db["db_file"]
-        os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file}")
 
         session = ephemeral_db["session_factory"]()
         try:
@@ -1178,10 +1184,14 @@ class TestRagRekeySafetyGate3:
             assert receipt_path.exists()
             assert mock_fsync.call_count >= 2  # 1 for file fd, 1 for directory fd
 
-    def test_31_subprocess_hard_crash_exit137_recovery(self, ephemeral_db: dict[str, Any], tmp_path: Path) -> None:
+    def test_31_subprocess_hard_crash_exit137_recovery(
+        self, ephemeral_db: dict[str, Any], tmp_path: Path, monkeypatch
+    ) -> None:
         """31. True subprocess hard-crash (os._exit(137)) immediately post-commit is safely recovered on next run."""
         import sys
 
+        monkeypatch.setenv("RAG_TARGET_ENV", "local")
+        monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
         receipt_dir = tmp_path / "receipts"
         receipt_dir.mkdir(parents=True, exist_ok=True)
         db_file = ephemeral_db["db_file"]
@@ -1204,9 +1214,8 @@ class TestRagRekeySafetyGate3:
         finally:
             session.close()
 
-        os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
-        os.environ["R2_REKEY_RECEIPT_DIR"] = str(receipt_dir)
-        os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file}")
+        monkeypatch.setenv("R2_REKEY_RECEIPT_DIR", str(receipt_dir))
 
         entry = {
             "chunk_id": 1,
@@ -1231,6 +1240,7 @@ from src.cli.rag.apply_rag_rekey import main as apply_rekey_main
 os.environ['DATABASE_URL'] = 'sqlite:///{db_file}'
 os.environ['R2_REKEY_RECEIPT_DIR'] = '{receipt_dir}'
 os.environ['RAG_INDEX_ALLOW_WRITE'] = '1'
+os.environ['RAG_TARGET_ENV'] = 'local'
 
 def _crash_exit(**kwargs):
     os._exit(137)

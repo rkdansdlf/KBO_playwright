@@ -115,7 +115,7 @@ class _NetworkBudget:
                     f"Top-level navigation budget exceeded: {self.top_level_navigations} > "
                     f"{self.max_top_level_navigations}",
                 )
-        elif resource_type in {"xhr", "fetch"}:
+        elif resource_type in {"xhr", "fetch", "http"}:
             self.api_xhr_calls += 1
             if self.api_xhr_calls > self.max_api_xhr_calls:
                 self._set_violation(
@@ -195,6 +195,12 @@ async def _route_interceptor(
     resource_type = request.resource_type
     parsed_host = urlparse(url).netloc.lower()
     policy = budget or _NetworkBudget()
+
+    # Enforce host allowlist: reject any host not in ALLOWED_HOSTS
+    if parsed_host not in ALLOWED_HOSTS:
+        policy._set_violation(
+            f"Host not in allowlist: {parsed_host} (allowed: {', '.join(sorted(ALLOWED_HOSTS))})",
+        )
 
     if policy.violation is not None:
         network_ledger.append(
@@ -612,10 +618,9 @@ async def main_async() -> int:
     allowed_count = sum(1 for e in network_ledger if e["action"] == "ALLOWED_REQUEST")
     blocked_count = sum(1 for e in network_ledger if e["action"] == "BLOCKED_BY_POLICY")
     observed_hosts = sorted({e.get("host", "") for e in network_ledger if e.get("host")})
+    # Use exact host matching to prevent substring bypasses (e.g., evilwikipedia.org)
     unexpected_hosts = [
-        h
-        for h in observed_hosts
-        if not any(ah in h for ah in ALLOWED_HOSTS) and not any(bp in h for bp in BLOCKED_PATTERNS)
+        h for h in observed_hosts if h not in ALLOWED_HOSTS and not any(bp in h for bp in BLOCKED_PATTERNS)
     ]
 
     network_summary = {

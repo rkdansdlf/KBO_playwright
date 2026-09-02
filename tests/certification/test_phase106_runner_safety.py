@@ -40,6 +40,24 @@ async def test_live_smoke_aborts_when_api_xhr_budget_is_exceeded() -> None:
     route.continue_.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_live_smoke_route_interceptor_blocks_unauthorized_host() -> None:
+    policy = run_live_smoke_gate._NetworkBudget()
+    ledger: list[dict[str, object]] = []
+    route = AsyncMock()
+
+    request = SimpleNamespace(
+        url="https://evilwikipedia.org/fake",
+        resource_type="document",
+        method="GET",
+    )
+    await run_live_smoke_gate._route_interceptor(route, request, ledger, policy)
+
+    assert policy.violation is not None
+    assert "Host not in allowlist" in policy.violation
+    route.abort.assert_awaited_once()
+
+
 @pytest.mark.parametrize("status", [403, 429])
 def test_live_smoke_response_policy_rejects_rate_or_access_denial(status: int) -> None:
     policy = run_live_smoke_gate._NetworkBudget()

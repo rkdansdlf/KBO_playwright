@@ -12,4 +12,4 @@ sys.modules[__name__] = _target_module
 
 if __name__ == "__main__":
     if hasattr(_target_module, "main"):
-        sys.exit(_target_module.main())
+        sys.exit(_target_module.main(sys.argv[1:]))

@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 from src.cli.kbo import build_master_parser, main
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
 
@@ -95,3 +97,30 @@ def test_master_cli_route_config_json(capsys: pytest.CaptureFixture[str]) -> Non
     assert exit_code == 0
     data = json.loads(captured.out)
     assert "is_valid" in data
+
+
+def test_master_cli_route_sync_dry_run_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import io
+    import sqlite3
+    import sys
+
+    db_file = tmp_path / "sync_test.db"
+    conn = sqlite3.connect(db_file)
+    conn.execute("CREATE TABLE game (game_id TEXT PRIMARY KEY, updated_at TEXT)")
+    conn.commit()
+    conn.close()
+
+    buf = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", buf)
+
+    exit_code = main(["sync", "--source-url", f"sqlite:///{db_file}", "--dry-run", "--json"])
+
+    assert exit_code == 0
+    raw_output = buf.getvalue()
+    json_start = raw_output.find("{")
+    assert json_start != -1
+    data = json.loads(raw_output[json_start:])
+    assert "started_at" in data
+    assert "completed_at" in data
+    assert "tables_synced" in data
+    assert "rows_synced" in data

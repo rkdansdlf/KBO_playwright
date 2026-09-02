@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -146,11 +147,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> int:
     """Run the main entry point for this CLI command.
 
     Args:
         argv: Argv.
+
+    Returns:
+        Exit code (0).
 
     """
     parser = build_arg_parser()
@@ -165,6 +169,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     else:
         logger.info("No data loaded")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main(sys.argv[1:]))
