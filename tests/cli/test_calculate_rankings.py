@@ -223,6 +223,25 @@ class TestRebuildRankings:
             player_basic_calls = [c for c in calls if "PlayerBasic" in str(c)]
             assert len(player_basic_calls) == 0
 
+    def test_external_provider_overlays_batting_and_pitching_rows(self):
+        with (
+            patch("src.cli.calculate_rankings.SessionLocal") as mock_session_factory,
+            patch("src.cli.calculate_rankings.RankingAggregator") as mock_agg_cls,
+            patch(
+                "src.cli.calculate_rankings.overlay_external_metrics", side_effect=lambda *args, **kwargs: args[1]
+            ) as overlay,
+        ):
+            mock_session = MagicMock()
+            mock_session_factory.return_value.__enter__ = lambda s: mock_session
+            mock_session_factory.return_value.__exit__ = lambda s, *a: False
+            mock_session.query.return_value.filter.return_value.all.return_value = []
+            mock_agg_cls.return_value.generate_rankings.return_value = []
+
+            assert rebuild_rankings(2025, external_provider="fangraphs") == 0
+
+        assert overlay.call_count == 2
+        assert {call.kwargs["stat_type"] for call in overlay.call_args_list} == {"batting", "pitching"}
+
 
 class TestCalculateRankingsCLI:
     def test_required_year(self):
