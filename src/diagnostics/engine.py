@@ -66,7 +66,8 @@ class SystemDiagnosticsEngine:
                     metrics={"latency_ms": latency_ms, "dialect": target_engine.dialect.name},
                 )
             )
-        except SQLAlchemyError as exc:
+        except (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError) as exc:
+            logger.debug("DB connectivity check failed: %s", exc)
             checks.append(
                 SubsystemCheckItem(
                     name="db_connectivity",
@@ -108,7 +109,8 @@ class SystemDiagnosticsEngine:
                             remediation_hint="Run database migrations using 'python3 -m src.cli.run_migrations'.",
                         )
                     )
-        except SQLAlchemyError as exc:
+        except (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError) as exc:
+            logger.debug("DB table inspection failed: %s", exc)
             checks.append(
                 SubsystemCheckItem(
                     name="db_core_tables",
@@ -281,7 +283,8 @@ class SystemDiagnosticsEngine:
                             metrics={"game_count": 0},
                         )
                     )
-            except SQLAlchemyError as exc:
+            except (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError) as exc:
+                logger.debug("Pipeline query failed: %s", exc)
                 checks.append(
                     SubsystemCheckItem(
                         name="pipeline_game_records",
@@ -298,7 +301,8 @@ class SystemDiagnosticsEngine:
             try:
                 with SessionLocal() as s:
                     _run_pipeline_check(s)
-            except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError) as exc:
+            except (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError) as exc:
+                logger.debug("Could not open session for pipeline audit: %s", exc)
                 checks.append(
                     SubsystemCheckItem(
                         name="pipeline_session",
@@ -330,7 +334,8 @@ class SystemDiagnosticsEngine:
                         metrics={"chunk_count": chunk_count},
                     )
                 )
-            except SQLAlchemyError as exc:
+            except (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError) as exc:
+                logger.debug("RAG chunks check skipped: %s", exc)
                 checks.append(
                     SubsystemCheckItem(
                         name="rag_corpus_chunks",
@@ -347,19 +352,30 @@ class SystemDiagnosticsEngine:
             try:
                 with SessionLocal() as s:
                     _run_rag_check(s)
-            except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError) as exc:
+            except (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError) as exc:
                 logger.debug("RAG check session failed: %s", exc)
 
         return checks
 
-    def diagnose_all(self, session: Session | None = None) -> UnifiedDiagnosticsReport:
-        """Run complete end-to-end diagnostic audit across all platform subsystems."""
+    def diagnose_all(
+        self,
+        session: Session | None = None,
+        subsystem: SubsystemType | str | None = None,
+    ) -> UnifiedDiagnosticsReport:
+        """Run diagnostic audit across all or specified platform subsystems."""
         checks: list[SubsystemCheckItem] = []
-        checks.extend(self.diagnose_database())
-        checks.extend(self.diagnose_scheduler())
-        checks.extend(self.diagnose_crawlers())
-        checks.extend(self.diagnose_pipeline(session=session))
-        checks.extend(self.diagnose_rag_vector(session=session))
+        sub_val = subsystem.value if isinstance(subsystem, SubsystemType) else (subsystem or "all").lower()
+
+        if sub_val in ("all", SubsystemType.DATABASE.value):
+            checks.extend(self.diagnose_database())
+        if sub_val in ("all", SubsystemType.SCHEDULER.value):
+            checks.extend(self.diagnose_scheduler())
+        if sub_val in ("all", SubsystemType.CRAWLER.value):
+            checks.extend(self.diagnose_crawlers())
+        if sub_val in ("all", SubsystemType.PIPELINE.value):
+            checks.extend(self.diagnose_pipeline(session=session))
+        if sub_val in ("all", SubsystemType.RAG_VECTOR.value):
+            checks.extend(self.diagnose_rag_vector(session=session))
 
         healthy_count = sum(1 for c in checks if c.severity == DiagnosticSeverity.HEALTHY)
         warning_count = sum(1 for c in checks if c.severity == DiagnosticSeverity.WARNING)
@@ -385,10 +401,10 @@ class SystemDiagnosticsEngine:
     def auto_heal(self, subsystem: SubsystemType | str | None = None) -> list[str]:
         """Perform automated self-healing actions on detected anomalies."""
         healed: list[str] = []
-        sub_val = subsystem.value if isinstance(subsystem, SubsystemType) else subsystem
+        sub_val = subsystem.value if isinstance(subsystem, SubsystemType) else (subsystem or "all").lower()
 
         # Heal scheduler stale locks
-        if sub_val in (None, "all", SubsystemType.SCHEDULER.value):
+        if sub_val in ("all", SubsystemType.SCHEDULER.value):
             report = self.lock_manager.diagnose_locks()
             if report.daemon_pid is not None and not report.pid_alive:
                 pid_file = self.lock_manager.lock_dir / "scheduler.pid"
@@ -399,7 +415,7 @@ class SystemDiagnosticsEngine:
                     healed.append(msg)
 
         # Heal tripped crawler circuit breakers
-        if sub_val in (None, "all", SubsystemType.CRAWLER.value):
+        if sub_val in ("all", SubsystemType.CRAWLER.value):
             stats = circuit_registry.get_all_stats()
             tripped_or_probing = [s for s in stats if s.state != CircuitState.CLOSED]
             if tripped_or_probing:
@@ -407,5 +423,20 @@ class SystemDiagnosticsEngine:
                 msg = f"Reset {reset_count} crawler circuit breaker(s) to CLOSED state."
                 logger.info(msg)
                 healed.append(msg)
+
+            # Heal live relay stream circuit breaker
+            try:
+                import asyncio
+
+                from src.api.live_stream_dto import CircuitState as LiveCircuitState
+                from src.api.routers.live_stream import live_relay_breaker
+
+                if live_relay_breaker.state != LiveCircuitState.CLOSED:
+                    asyncio.run(live_relay_breaker.reset())
+                    msg = "Reset live relay stream circuit breaker to CLOSED state."
+                    logger.info(msg)
+                    healed.append(msg)
+            except (RuntimeError, OSError, ValueError, TypeError) as exc:
+                logger.debug("Live relay breaker auto_heal skipped: %s", exc)
 
         return healed
