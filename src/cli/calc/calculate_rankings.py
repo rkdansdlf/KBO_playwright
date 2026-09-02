@@ -19,6 +19,7 @@ from src.models.player import (
     PlayerSeasonPitching,
 )
 from src.models.rankings import StatRanking
+from src.repositories.external_season_stats_repository import overlay_external_metrics
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -125,7 +126,6 @@ def rebuild_rankings(season: int, *, external_provider: str | None = None) -> in
         Integer result.
 
     """
-    del external_provider  # Reserved for external provider overrides
     with SessionLocal() as session:
         batting_rows = (
             session.query(PlayerSeasonBatting)
@@ -178,6 +178,22 @@ def rebuild_rankings(season: int, *, external_provider: str | None = None) -> in
         fielding_dicts = _dictify_rows(fielding_rows, label_lookup)
         baserunning_dicts = _dictify_rows(baserunning_rows, label_lookup)
 
+        if external_provider:
+            batting_dicts = overlay_external_metrics(
+                session,
+                batting_dicts,
+                provider=external_provider,
+                season=season,
+                stat_type="batting",
+            )
+            pitching_dicts = overlay_external_metrics(
+                session,
+                pitching_dicts,
+                provider=external_provider,
+                season=season,
+                stat_type="pitching",
+            )
+
         # 시즌 진행 경기 수 기반으로 자격 기준을 동적으로 계산
         # (완료 시즌: 고정 기준 / 진행 중 시즌: 완화된 기준)
         min_pa = _compute_min_pa(session, season)
@@ -188,19 +204,20 @@ def rebuild_rankings(season: int, *, external_provider: str | None = None) -> in
         session.query(StatRanking).filter(StatRanking.season == season).delete(synchronize_session=False)
         session.commit()
 
-    aggregator = RankingAggregator()
-    rankings = aggregator.generate_rankings(
-        RankingGenerationRequest(
-            season=season,
-            fielding_stats=fielding_dicts,
-            baserunning_stats=baserunning_dicts,
-            batting_stats=batting_dicts,
-            pitching_stats=pitching_dicts,
-            min_pa=min_pa,
-            min_ip_outs=min_ip_outs,
-            persist=True,
-        ),
-    )
+        aggregator = RankingAggregator(session=session)
+        rankings = aggregator.generate_rankings(
+            RankingGenerationRequest(
+                season=season,
+                fielding_stats=fielding_dicts,
+                baserunning_stats=baserunning_dicts,
+                batting_stats=batting_dicts,
+                pitching_stats=pitching_dicts,
+                min_pa=min_pa,
+                min_ip_outs=min_ip_outs,
+                persist=True,
+            ),
+        )
+        session.commit()
 
     if not rankings:
         logger.info("[Rankings] [info] No season stats available for %s.", season)
