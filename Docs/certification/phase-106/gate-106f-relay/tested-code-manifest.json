@@ -1,0 +1,32 @@
+{
+  "gate": "GATE_106F_RELAY",
+  "generated_at": "2026-09-03T00:56:00+09:00",
+  "description": "Production source code, repositories, CLIs, and test suites audited for Gate 106F-R.",
+  "production_modules": [
+    "src/sources/relay/orchestrator.py",
+    "src/sources/relay/circuit_breaker.py",
+    "src/sources/relay/relay_deduplicator.py",
+    "src/sources/relay/base.py",
+    "src/cli/collection/seed_relay_validation_metrics.py",
+    "src/cli/backfill/rebuild_relay_events.py",
+    "src/cli/crawl_text_relay.py",
+    "src/cli/load_text_relay.py",
+    "src/repositories/game_relay.py",
+    "src/repositories/relay_repository.py"
+  ],
+  "test_suites": [
+    "tests/cli/test_relay_cli_contracts.py",
+    "tests/cli/test_seed_relay_validation_metrics.py",
+    "tests/services/test_relay_rebuild_semantic_diff.py",
+    "tests/sources/relay/test_gate_r3_failover_fault_injection.py",
+    "tests/sources/relay/test_relay_deduplicator.py",
+    "tests/test_relay_circuit_breaker.py",
+    "tests/test_relay_recovery.py",
+    "tests/test_relay_recovery_service.py",
+    "tests/test_relay_validation.py",
+    "tests/repositories/test_game_relay.py"
+  ],
+  "audit_scripts": [
+    "scripts/verification/audit_relay_rebuild_semantic_diff.py"
+  ]
+}

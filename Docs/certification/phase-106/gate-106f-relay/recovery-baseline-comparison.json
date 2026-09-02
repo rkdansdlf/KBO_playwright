@@ -1,0 +1,33 @@
+{
+  "baseline_designation": "RESTORED_TO_APPROVED_2026-08-30_BACKUP_BASELINE",
+  "verified_at": "2026-09-03T00:56:00+09:00",
+  "backup_source": "data/backups/kbo_dev_20260830_020000.db",
+  "target_database": "data/kbo_dev.db",
+  "metrics_table": "game_validation_metrics",
+  "backup_row_count": 10288,
+  "dev_db_row_count": 10288,
+  "row_count_match": true,
+  "backup_canonical_sha256": "956cfd32026d13567f3013d876fa401cbf3111ed69fdebaf825c6b73ca44ca10",
+  "dev_db_canonical_sha256": "956cfd32026d13567f3013d876fa401cbf3111ed69fdebaf825c6b73ca44ca10",
+  "canonical_content_match": true,
+  "backup_foreign_key_violations": [
+    [
+      "game_validation_metrics",
+      6206,
+      "game",
+      0
+    ]
+  ],
+  "dev_db_foreign_key_violations": [
+    [
+      "game_validation_metrics",
+      6206,
+      "game",
+      0
+    ]
+  ],
+  "foreign_key_parity": true,
+  "introduced_foreign_key_violations": 0,
+  "notes": "Rowid 6206 (20181102WOSK0) is a pre-existing 2018 orphan present in the 2026-08-30 backup baseline. Zero new FK violations were introduced. Season 2026 has 0 FK violations.",
+  "baseline_certification": "VERIFIED_IDENTICAL"
+}
