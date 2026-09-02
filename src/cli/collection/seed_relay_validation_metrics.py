@@ -39,12 +39,14 @@ def seed_relay_validation_metrics(
     *,
     season: int | None = None,
     mark_legacy_unavailable: bool = True,
+    dry_run: bool = False,
 ) -> dict[str, int]:
     """Seed relay validation metrics.
 
     Args:
         season: Season year.
         mark_legacy_unavailable: Mark Legacy Unavailable.
+        dry_run: If True, calculates metrics without committing to DB.
 
     Returns:
         Dictionary result.
@@ -122,7 +124,11 @@ def seed_relay_validation_metrics(
             }
             counts[status] = counts.get(status, 0) + 1
 
-        session.commit()
+        if dry_run:
+            session.rollback()
+            logger.info("[DRY RUN] Rolled back all changes (0 mutations committed)")
+        else:
+            session.commit()
     return counts
 
 
@@ -141,10 +147,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Leave legacy no-source games as unverified instead of source_unavailable",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Calculate metrics without committing changes to DB",
+    )
     args = parser.parse_args(argv)
     counts = seed_relay_validation_metrics(
         season=args.season,
         mark_legacy_unavailable=not args.no_mark_legacy_unavailable,
+        dry_run=bool(args.dry_run),
     )
     logger.info("[INFO] Seeded relay validation metrics: %s", counts)
     return 0
