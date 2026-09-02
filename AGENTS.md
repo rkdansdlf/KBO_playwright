@@ -216,7 +216,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 Last updated: 2026-09-02
 
-### Phase 106: Crawler Core Operational Certification — STATUS: GATES 106A~106E LEVEL_3_VERIFIED (106F NO-GO / PENDING APPROVAL)
+### Phase 106: Crawler Core Operational Certification — STATUS: GATES 106A~106F LEVEL_3_VERIFIED (FULLY CERTIFIED)
 - **Gate 106A: Crawler Inventory & Taxonomy (PASS_REPORTED)**: 30 canonical crawlers classified across 9 categories; 242 deselected tests categorized into 8 operational buckets.
 - **Gate 106B: Offline Snapshot Replay (LEVEL_3_INTEGRATION_VERIFIED)**: 14 HTML/JSON fixtures replayed through parsers with triplicate consistency; 47 offline tests passing under network-blocked execution.
 - **Gate 106C: Ephemeral End-to-End Pipeline (LEVEL_3_INTEGRATION_VERIFIED)**: 5 core DB tables (game, batting, pitching, inning scores, PBP) tested through ephemeral SQLite pipeline; 72 repository integration tests passing.
@@ -230,10 +230,13 @@ Last updated: 2026-09-02
   - 44 closed seasons ($\ge 95\%$ boxscore coverage) + 1 in-progress (2026, 139 games).
   - Cross-table referential integrity: 0 orphan batting/pitching/inning/PBP rows, 0 duplicate natural keys.
   - Artifacts: `Docs/certification/phase-106/gate-106e-historical-census/`.
-- **Gate 106F: Scheduler Recovery & Multi-Tier Locks**: **NO-GO / PENDING APPROVAL**.
+- **Gate 106F: Scheduler Recovery & Multi-Tier Locks (LEVEL_3_INTEGRATION_VERIFIED)**:
+  - 31 certification tests passing across 9 categories (Tier isolation, Thread-local `_LockState`, Single-instance PID guard, Stale lock recovery, Bounded timeout & `_LockSkipped`, Skip monitoring, Fault injection, Nested lock prevention, Diagnostic tool).
+  - Standalone runner: `scripts/certification/phase106/run_scheduler_lock_certification.py`.
+  - Artifacts: `Docs/certification/phase-106/gate-106f-scheduler-locks/`.
 - **Oracle / Production**: **STRICT NO-GO** (0 Oracle DML throughout Phase 106).
 
-### Phase 105: Certification Evidence Closure & Independent Staging Attestation — STATUS: GATES 0~3 CERTIFIED (L3); GATE 4 DESIGN PASS; GATE 5 PENDING (NO-GO ON PROMOTION / WRITE 0 MAINTAINED)
+### Phase 105: Certification Evidence Closure & Independent Staging Attestation — STATUS: GATES 0~4 CERTIFIED (L3); GATE 5 PENDING (NO-GO ON PROMOTION / WRITE 0 MAINTAINED)
 - **Claim-Level Evidence Ledger**: Full granular status tracked in `Docs/certification/phase-105/evidence-level-matrix.json`.
 - **Gate 0: Clean Baseline Freeze (PASSED)**:
   - Commit `519fa6331a3e799da9af8ea5936febad5c57a898`, Tree `b094378963ed44fee82d3c3d79139a6745617804`.
@@ -250,9 +253,13 @@ Last updated: 2026-09-02
 - **Gate 3: RAG Rekey Apply-Only Safety & Crash Consistency (PASSED)**:
   - 52 safety tests passing; hard crash `exit(137)` subprocess recovery verified in ephemeral SQLite.
   - Artifacts: `Docs/certification/phase-105/gate-3-rag-rekey-safety/`.
-- **Gate 4: Oracle Staging Rehearsal (`CONDITIONAL_DESIGN_PASS` / STRICT NO-GO ON EXECUTION)**:
-  - 5-SYS_CONTEXT identity probe architecture, 4-tier rollback priority, 6-archetype canary matrix designed.
-  - Artifacts: `Docs/certification/phase-105/gate-4-staging-preflight-design.md`.
+- **Gate 4: Oracle Staging Rehearsal Code Verification (LEVEL_3_INTEGRATION_VERIFIED)**:
+  - 5-SYS_CONTEXT exact-match allowlist contract with injection defense (`staging_identity.py`).
+  - Multi-tier rollback engine with preimage manifest capture and verification (`staging_rollback.py`).
+  - 6-archetype canary test matrix with Priority 1 session.rollback() guarantee (`staging_canary.py`).
+  - 36 verification tests passing; 0 DB mutations; 0 external network requests; 0 Oracle production DML.
+  - Standalone runner: `scripts/certification/phase105/run_staging_rehearsal_gate4.py`.
+  - Artifacts: `Docs/certification/phase-105/gate-4-staging-rehearsal/`.
 - **Gate 5: Source-by-Source Canary Decision**: **PENDING** (blocked on Gate 4 staging execution).
 
 ### Phase 104: Sabermetrics Formula Registry & Metric Reproducibility Certification (`kbo formula`) — STATUS: SUPERSEDED

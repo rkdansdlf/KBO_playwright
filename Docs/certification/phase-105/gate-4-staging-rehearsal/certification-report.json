@@ -1,0 +1,51 @@
+{
+  "gate_id": "GATE-105-4-STAGING-REHEARSAL",
+  "title": "Oracle Staging Rehearsal Code Verification",
+  "status": "PASSED",
+  "execution_mode": "EPHEMERAL_LOCAL_HARNESS",
+  "started_at": "2026-09-02T14:09:05.726584+00:00",
+  "completed_at": "2026-09-02T14:09:08.376501+00:00",
+  "summary": {
+    "total_tests": 36,
+    "passed": 36,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "verified_components": [
+    {
+      "module": "src.services.staging_identity",
+      "tests": "tests/services/test_staging_identity_gate4.py",
+      "capabilities": [
+        "5-SYS_CONTEXT exact-match allowlist contract",
+        "Immutable StagingIdentityAllowlist with injection defense",
+        "Fail-closed on descriptor mismatch, missing value, or probe error"
+      ],
+      "status": "PASS"
+    },
+    {
+      "module": "src.services.staging_rollback",
+      "tests": "tests/services/test_staging_rollback_gate4.py",
+      "capabilities": [
+        "Pre-rehearsal preimage state snapshot generation",
+        "Priority 2 inverse preimage manifest restoration",
+        "State parity verification detecting any mutated CAS fields"
+      ],
+      "status": "PASS"
+    },
+    {
+      "module": "src.services.staging_canary",
+      "tests": "tests/services/test_staging_canary_gate4.py",
+      "capabilities": [
+        "6 canonical operational archetypes (SAFE_REKEY, SAFE_REKEY_STATS, TARGET_COLLISION_TOMBSTONE, ALREADY_APPLIED_NOOP, STALE_CAS_REJECT, INVERSE_ROLLBACK_REPLAY)",
+        "Priority 1 transaction rollback guarantee (0 persistent mutations)",
+        "Preimage manifest verification of post-rehearsal clean DB state"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "database_protection": {
+    "pre_sha256": "8f36568f3d07774b4d5b0ae0de4b680685c8646caa041048208abdf33fd8c366",
+    "post_sha256": "8f36568f3d07774b4d5b0ae0de4b680685c8646caa041048208abdf33fd8c366",
+    "mutated": false
+  }
+}

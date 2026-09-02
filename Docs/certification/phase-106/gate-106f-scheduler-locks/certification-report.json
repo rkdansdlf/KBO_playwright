@@ -1,0 +1,65 @@
+{
+  "gate_id": "GATE-106F-SCHEDULER-LOCKS",
+  "title": "Scheduler Recovery & Multi-Tier Locks Certification",
+  "status": "PASSED",
+  "started_at": "2026-09-02T14:09:01.854775+00:00",
+  "completed_at": "2026-09-02T14:09:05.683687+00:00",
+  "summary": {
+    "total_tests": 31,
+    "passed": 31,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "verified_capabilities": [
+    {
+      "category": "TIER_ISOLATION",
+      "claim": "LIVE_LOCK, DAILY_LOCK, MAINTENANCE_LOCK, SQLITE_WRITE_LOCK operate independently",
+      "verified": true
+    },
+    {
+      "category": "THREAD_LOCAL_SAFETY",
+      "claim": "_LockState provides isolated per-thread state across APScheduler worker threads",
+      "verified": true
+    },
+    {
+      "category": "SINGLE_INSTANCE_GUARD",
+      "claim": "scheduler.pid blocks duplicate processes and clears dead PIDs",
+      "verified": true
+    },
+    {
+      "category": "STALE_LOCK_RECOVERY",
+      "claim": "ForceProcessLock auto-clears extinct PID and corrupted lock files",
+      "verified": true
+    },
+    {
+      "category": "BOUNDED_TIMEOUT_AND_SKIP",
+      "claim": "_scheduler_job_lock enforces timeout and raises _LockSkipped caught by guard",
+      "verified": true
+    },
+    {
+      "category": "LOCK_SKIP_MONITORING",
+      "claim": "Prometheus delta tracking and Slack alerting at threshold",
+      "verified": true
+    },
+    {
+      "category": "FAULT_INJECTION_SAFETY",
+      "claim": "Exceptions during lock held release lock in finally block",
+      "verified": true
+    },
+    {
+      "category": "NESTED_LOCK_PREVENTION",
+      "claim": "Same-thread re-acquisition returns False without deadlock or force-clearing",
+      "verified": true
+    },
+    {
+      "category": "DIAGNOSTIC_UTILITY",
+      "claim": "diagnose_scheduler_locks correctly detects stale locks and clean states",
+      "verified": true
+    }
+  ],
+  "database_protection": {
+    "pre_sha256": "8f36568f3d07774b4d5b0ae0de4b680685c8646caa041048208abdf33fd8c366",
+    "post_sha256": "8f36568f3d07774b4d5b0ae0de4b680685c8646caa041048208abdf33fd8c366",
+    "mutated": false
+  }
+}
