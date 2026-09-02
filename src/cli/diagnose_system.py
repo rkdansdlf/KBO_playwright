@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print("[AUTO-HEAL] No issues requiring healing were found.")  # noqa: T201
 
-    report = engine.diagnose_all()
+    report = engine.diagnose_all(subsystem=args.subsystem)
 
     if args.json:
         print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201

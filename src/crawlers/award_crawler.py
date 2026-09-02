@@ -33,6 +33,10 @@ AWARD_FETCH_EXCEPTIONS = (httpx.HTTPError, TimeoutError, ValueError, TypeError, 
 WIKI_API_URL = "https://ko.wikipedia.org/w/api.php"
 WIKI_USER_AGENT = "KBOPlaywrightBot/1.0 (RAG research; contact: kbo@example.com)"
 YAGOONARA_URL = "https://www.yagoonara.com/awards"
+YAGOONARA_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
 YAGOO_VIDEO_SUFFIX = " 영상"
 
 WIKI_PAGES: dict[str, str] = {
@@ -177,7 +181,10 @@ class AwardCrawler:
 
         """
         client = await self._get_client()
-        resp = await client.get(url, params=params)
+        headers = {"User-Agent": WIKI_USER_AGENT}
+        if YAGOONARA_URL in url:
+            headers["User-Agent"] = YAGOONARA_USER_AGENT
+        resp = await client.get(url, params=params, headers=headers)
         resp.raise_for_status()
         return resp.text, resp.status_code
 
