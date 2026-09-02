@@ -1,0 +1,42 @@
+ M Docs/certification/phase-105/gate-4-staging-rehearsal/README.md
+ M Docs/certification/phase-105/gate-4-staging-rehearsal/SHA256SUMS
+ M Docs/certification/phase-105/gate-4-staging-rehearsal/certification-report.json
+ M Docs/certification/phase-105/gate-4-staging-rehearsal/raw-test-output.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/browser-console-ledger.jsonl
+ M Docs/certification/phase-106/gate-106d-live-smoke/git-status-after.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/git-status-before.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/network-request-ledger.jsonl
+ M Docs/certification/phase-106/gate-106d-live-smoke/parser-results.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/protected-db-hashes.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/response-manifest.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/selector-schema-results.json
+ M Docs/certification/phase-106/gate-106e-historical-census/protected-db-hashes.json
+ M Docs/certification/phase-106/gate-106e-historical-census/raw-query-output.txt
+ M Docs/certification/phase-106/gate-106e-historical-census/table-row-counts.json
+ M Docs/certification/phase-106/gate-106f-relay/2026-validation-coverage.json
+ M Docs/certification/phase-106/gate-106f-relay/SHA256SUMS
+ M Docs/certification/phase-106/gate-106f-relay/cli-contract-results.json
+ M Docs/certification/phase-106/gate-106f-relay/failover-fault-results.json
+ D Docs/certification/phase-106/gate-106f-relay/protected-db-hashes.json
+ M Docs/certification/phase-106/gate-106f-relay/recovery-baseline-comparison.json
+ M Docs/certification/phase-106/gate-106f-relay/relay-test-node-inventory.txt
+ M Docs/certification/phase-106/gate-106f-relay/semantic-diff-results.json
+ M Docs/certification/phase-106/gate-106f-relay/tested-code-manifest.json
+ M Docs/runbooks/R2_REKEY_STAGING_REHEARSAL.md
+ M scripts/certification/phase106/run_live_smoke_gate.py
+ M scripts/verification/audit_relay_rebuild_semantic_diff.py
+ M scripts/verification/generate_relay_evidence_bundle.py
+ M tests/services/test_relay_rebuild_semantic_diff.py
+?? Docs/certification/phase-106/gate-106f-relay/checksum-verification.txt
+?? Docs/certification/phase-106/gate-106f-relay/git-status-after.txt
+?? Docs/certification/phase-106/gate-106f-relay/git-status-before.txt
+?? Docs/certification/phase-106/gate-106f-relay/protected-db-before-after.json
+?? Docs/certification/phase-106/gate-106f-relay/raw-cli-contract-tests.txt
+?? Docs/certification/phase-106/gate-106f-relay/raw-precommit-output.txt
+?? Docs/certification/phase-106/gate-106f-relay/raw-r3-fault-tests.txt
+?? Docs/certification/phase-106/gate-106f-relay/raw-relay-fast-tests.txt
+?? Docs/certification/phase-106/gate-106f-relay/raw-relay-integration-tests.txt
+?? Docs/certification/phase-106/gate-106f-relay/raw-six-game-semantic-audit.txt
+
+--- STDERR ---
+error: fsmonitor_ipc__send_query: unspecified error on '.git/fsmonitor--daemon.ipc'

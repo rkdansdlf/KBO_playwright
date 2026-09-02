@@ -620,4 +620,4 @@ tests/sources/test_relay_base_ext.py::TestEventsHaveMinimumState::test_all_have_
 tests/sources/test_relay_base_ext.py::TestEventsHaveMinimumState::test_some_missing_state
 tests/sources/test_relay_base_ext.py::TestEventHasMinimumState::test_delegates_to_wpa
 
-621/632 tests collected (11 deselected) in 1.57s
+621/632 tests collected (11 deselected) in 1.40s

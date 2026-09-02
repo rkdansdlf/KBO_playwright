@@ -1,0 +1,29 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/mac/project/KBO_playwright/venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/mac/project/KBO_playwright
+configfile: pytest.ini
+plugins: cov-7.1.0, xdist-3.8.0, asyncio-0.26.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 18 items
+
+tests/cli/test_relay_cli_contracts.py::test_cli_help_contract[src.cli.collection.crawl_text_relay] PASSED [  5%]
+tests/cli/test_relay_cli_contracts.py::test_cli_help_contract[src.cli.sync.load_text_relay] PASSED [ 11%]
+tests/cli/test_relay_cli_contracts.py::test_cli_help_contract[src.cli.backfill.rebuild_relay_events] PASSED [ 16%]
+tests/cli/test_relay_cli_contracts.py::test_cli_help_contract[src.cli.collection.seed_relay_validation_metrics] PASSED [ 22%]
+tests/cli/test_relay_cli_contracts.py::test_cli_help_contract[src.cli.crawl_text_relay] PASSED [ 27%]
+tests/cli/test_relay_cli_contracts.py::test_cli_help_contract[src.cli.load_text_relay] PASSED [ 33%]
+tests/cli/test_relay_cli_contracts.py::test_cli_help_contract[src.cli.rebuild_relay_events] PASSED [ 38%]
+tests/cli/test_relay_cli_contracts.py::test_cli_help_contract[src.cli.seed_relay_validation_metrics] PASSED [ 44%]
+tests/cli/test_relay_cli_contracts.py::test_cli_invalid_option_contract[src.cli.collection.crawl_text_relay] PASSED [ 50%]
+tests/cli/test_relay_cli_contracts.py::test_cli_invalid_option_contract[src.cli.sync.load_text_relay] PASSED [ 55%]
+tests/cli/test_relay_cli_contracts.py::test_cli_invalid_option_contract[src.cli.backfill.rebuild_relay_events] PASSED [ 61%]
+tests/cli/test_relay_cli_contracts.py::test_cli_invalid_option_contract[src.cli.collection.seed_relay_validation_metrics] PASSED [ 66%]
+tests/cli/test_relay_cli_contracts.py::test_cli_invalid_option_contract[src.cli.crawl_text_relay] PASSED [ 72%]
+tests/cli/test_relay_cli_contracts.py::test_cli_invalid_option_contract[src.cli.load_text_relay] PASSED [ 77%]
+tests/cli/test_relay_cli_contracts.py::test_cli_invalid_option_contract[src.cli.rebuild_relay_events] PASSED [ 83%]
+tests/cli/test_relay_cli_contracts.py::test_cli_invalid_option_contract[src.cli.seed_relay_validation_metrics] PASSED [ 88%]
+tests/cli/test_relay_cli_contracts.py::test_wrapper_argument_forwarding_seed_dry_run PASSED [ 94%]
+tests/cli/test_relay_cli_contracts.py::test_wrapper_argument_forwarding_rebuild PASSED [100%]
+
+============================== 18 passed in 9.24s ==============================

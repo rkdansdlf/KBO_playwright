@@ -1,33 +1,67 @@
 {
   "baseline_designation": "RESTORED_TO_APPROVED_2026-08-30_BACKUP_BASELINE",
-  "verified_at": "2026-09-03T00:56:00+09:00",
+  "verified_at": "2026-09-02T17:19:38.275412+00:00",
   "backup_source": "data/backups/kbo_dev_20260830_020000.db",
   "target_database": "data/kbo_dev.db",
-  "metrics_table": "game_validation_metrics",
+  "table_name": "game_validation_metrics",
   "backup_row_count": 10288,
   "dev_db_row_count": 10288,
   "row_count_match": true,
-  "backup_canonical_sha256": "956cfd32026d13567f3013d876fa401cbf3111ed69fdebaf825c6b73ca44ca10",
-  "dev_db_canonical_sha256": "956cfd32026d13567f3013d876fa401cbf3111ed69fdebaf825c6b73ca44ca10",
-  "canonical_content_match": true,
-  "backup_foreign_key_violations": [
-    [
-      "game_validation_metrics",
-      6206,
-      "game",
-      0
+  "all_19_columns_canonical_sha256": {
+    "backup": "251223d008b4bdb039635b767fbac74735ca81f394d07b929642833d016deedb",
+    "dev_db": "251223d008b4bdb039635b767fbac74735ca81f394d07b929642833d016deedb",
+    "match": true
+  },
+  "designated_core_columns_canonical_sha256": {
+    "backup": "956cfd32026d13567f3013d876fa401cbf3111ed69fdebaf825c6b73ca44ca10",
+    "dev_db": "956cfd32026d13567f3013d876fa401cbf3111ed69fdebaf825c6b73ca44ca10",
+    "match": true,
+    "columns": [
+      "game_id",
+      "validation_status",
+      "previous_status",
+      "source_used",
+      "fallback_trigger_count",
+      "fallback_trigger_reason",
+      "duplicate_event_count",
+      "unclassified_event_count",
+      "finish_mismatch_count",
+      "parser_version",
+      "source_schema_version",
+      "payload_hash",
+      "payload_hash_full",
+      "created_at",
+      "updated_at"
     ]
-  ],
-  "dev_db_foreign_key_violations": [
-    [
-      "game_validation_metrics",
-      6206,
-      "game",
-      0
-    ]
-  ],
-  "foreign_key_parity": true,
-  "introduced_foreign_key_violations": 0,
-  "notes": "Rowid 6206 (20181102WOSK0) is a pre-existing 2018 orphan present in the 2026-08-30 backup baseline. Zero new FK violations were introduced. Season 2026 has 0 FK violations.",
-  "baseline_certification": "VERIFIED_IDENTICAL"
+  },
+  "scope_specification": "game_validation_metrics 10,288\ud589\uc758 \uc804\uccb4 19\uac1c \uceec\ub7fc \ubc0f \uc9c0\uc815\ub41c 15\uac1c \uc778\uc99d \uceec\ub7fc\uc5d0 \ub300\ud55c \uc815\ub82c canonical projection SHA-256\uc774 \uc2b9\uc778\ub41c 2026-08-30 \ubc31\uc5c5 \uae30\uc900\uc120\uacfc 100% \uc77c\uce58\ud588\ub2e4.",
+  "foreign_key_audit": {
+    "fk_regression_status": "PASS_NEW_VIOLATIONS_ZERO",
+    "current_fk_integrity_status": "FAIL_WITH_KNOWN_BASELINE_DEFECT",
+    "backup_fk_violations": [
+      [
+        "game_validation_metrics",
+        6206,
+        "game",
+        0
+      ]
+    ],
+    "dev_db_fk_violations": [
+      [
+        "game_validation_metrics",
+        6206,
+        "game",
+        0
+      ]
+    ],
+    "foreign_key_parity": true,
+    "introduced_violations_count": 0,
+    "known_baseline_defect": {
+      "rowid": 6206,
+      "table": "game_validation_metrics",
+      "target": "game",
+      "orphan_reference": "20181102WOSK0 (historical 2018 postseason game present in approved backup)",
+      "season_2026_violations": 0
+    }
+  }
 }

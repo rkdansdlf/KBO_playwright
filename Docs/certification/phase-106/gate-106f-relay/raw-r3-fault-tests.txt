@@ -1,0 +1,19 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/mac/project/KBO_playwright/venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/mac/project/KBO_playwright
+configfile: pytest.ini
+plugins: cov-7.1.0, xdist-3.8.0, asyncio-0.26.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 8 items
+
+tests/sources/relay/test_gate_r3_failover_fault_injection.py::test_primary_success_short_circuits_secondary PASSED [ 12%]
+tests/sources/relay/test_gate_r3_failover_fault_injection.py::test_kbo_timeout_failover_to_naver PASSED [ 25%]
+tests/sources/relay/test_gate_r3_failover_fault_injection.py::test_naver_5xx_fails_over_to_kbo PASSED [ 37%]
+tests/sources/relay/test_gate_r3_failover_fault_injection.py::test_cross_provider_different_ids_same_event_deduplicated PASSED [ 50%]
+tests/sources/relay/test_gate_r3_failover_fault_injection.py::test_same_identity_changed_content_becomes_correction PASSED [ 62%]
+tests/sources/relay/test_gate_r3_failover_fault_injection.py::test_out_of_order_events_are_canonically_ordered PASSED [ 75%]
+tests/sources/relay/test_gate_r3_failover_fault_injection.py::test_half_open_allows_exactly_one_concurrent_probe PASSED [ 87%]
+tests/sources/relay/test_gate_r3_failover_fault_injection.py::test_two_concurrent_db_writers_produce_zero_duplicates PASSED [100%]
+
+============================== 8 passed in 0.93s ===============================
