@@ -17,6 +17,9 @@ Enforces:
 from __future__ import annotations
 
 import asyncio
+import argparse
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -42,6 +45,7 @@ ALLOWED_HOSTS = {
     "koreabaseball.com",
     "ko.wikipedia.org",
     "wikipedia.org",
+    "www.yagoonara.com",
     "naverncp.com",
     "edge.naverncp.com",
 }
@@ -64,6 +68,76 @@ BLOCKED_PATTERNS = [
     ".ttf",
     ".mp4",
 ]
+
+MAX_TOP_LEVEL_NAVIGATIONS = 3
+MAX_API_XHR_CALLS = 10
+CHALLENGE_MARKERS = (
+    "captcha",
+    "recaptcha",
+    "verify-you-are-human",
+    "verify_you_are_human",
+    "bot-detection",
+    "bot_detection",
+    "cloudflare",
+)
+
+
+def _contains_challenge(value: str) -> bool:
+    lowered = value.lower()
+    return any(marker in lowered for marker in CHALLENGE_MARKERS)
+
+
+@dataclass
+class _NetworkBudget:
+    """Track live-smoke request limits and fail-closed policy violations."""
+
+    max_top_level_navigations: int = MAX_TOP_LEVEL_NAVIGATIONS
+    max_api_xhr_calls: int = MAX_API_XHR_CALLS
+    top_level_navigations: int = 0
+    api_xhr_calls: int = 0
+    violation: str | None = None
+
+    def _set_violation(self, message: str) -> None:
+        if self.violation is None:
+            self.violation = message
+
+    def inspect_request(self, url: str, resource_type: str) -> None:
+        """Count a request and record a policy violation when over budget."""
+        if self.violation is not None:
+            return
+        if _contains_challenge(url):
+            self._set_violation(f"Challenge URL detected: {url}")
+            return
+        if resource_type == "document":
+            self.top_level_navigations += 1
+            if self.top_level_navigations > self.max_top_level_navigations:
+                self._set_violation(
+                    f"Top-level navigation budget exceeded: {self.top_level_navigations} > "
+                    f"{self.max_top_level_navigations}",
+                )
+        elif resource_type in {"xhr", "fetch"}:
+            self.api_xhr_calls += 1
+            if self.api_xhr_calls > self.max_api_xhr_calls:
+                self._set_violation(
+                    f"API/XHR budget exceeded: {self.api_xhr_calls} > {self.max_api_xhr_calls}",
+                )
+
+    def inspect_response(self, url: str, status: int | None) -> None:
+        """Record response-level abort conditions without reading response bodies."""
+        if status in {403, 429}:
+            self._set_violation(f"HTTP {status} encountered: {url}")
+        elif _contains_challenge(url):
+            self._set_violation(f"Challenge response detected: {url}")
+
+    def inspect_text(self, text: str, url: str) -> None:
+        """Detect challenge pages returned with an otherwise successful status."""
+        if _contains_challenge(text):
+            self._set_violation(f"Challenge content detected: {url}")
+
+    def raise_if_violated(self) -> None:
+        """Raise the first policy violation so the smoke run cannot certify it."""
+        if self.violation is not None:
+            raise RuntimeError(self.violation)
 
 
 def _compute_sha256_bytes(data: bytes) -> str:
@@ -111,10 +185,31 @@ def _get_git_commit_info() -> dict[str, str]:
     return {"git_commit_full": commit_full, "git_tree_full": tree_full}
 
 
-async def _route_interceptor(route, request, network_ledger: list[dict[str, Any]]) -> None:
+async def _route_interceptor(
+    route,
+    request,
+    network_ledger: list[dict[str, Any]],
+    budget: _NetworkBudget | None = None,
+) -> None:
     url = request.url
     resource_type = request.resource_type
     parsed_host = urlparse(url).netloc.lower()
+    policy = budget or _NetworkBudget()
+
+    if policy.violation is not None:
+        network_ledger.append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "url": url,
+                "host": parsed_host,
+                "method": request.method,
+                "resource_type": resource_type,
+                "action": "ABORTED_BY_POLICY",
+                "reason": policy.violation,
+            },
+        )
+        await route.abort()
+        return
 
     # Check blocked resource types or domain patterns
     if resource_type in ("image", "font", "media") or any(p in url for p in BLOCKED_PATTERNS):
@@ -131,6 +226,22 @@ async def _route_interceptor(route, request, network_ledger: list[dict[str, Any]
         )
         return
 
+    policy.inspect_request(url, resource_type)
+    if policy.violation is not None:
+        network_ledger.append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "url": url,
+                "host": parsed_host,
+                "method": request.method,
+                "resource_type": resource_type,
+                "action": "ABORTED_BY_POLICY",
+                "reason": policy.violation,
+            },
+        )
+        await route.abort()
+        return
+
     network_ledger.append(
         {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -144,12 +255,21 @@ async def _route_interceptor(route, request, network_ledger: list[dict[str, Any]
     await route.continue_()
 
 
+def _inspect_response(response: Any, budget: _NetworkBudget) -> None:
+    """Apply status and URL challenge checks to a Playwright response."""
+    url = str(getattr(response, "url", ""))
+    status = getattr(response, "status", None)
+    budget.inspect_response(url, status if isinstance(status, int) else None)
+
+
 async def run_target_1_player_search(
     network_ledger: list[dict[str, Any]],
     console_ledger: list[dict[str, Any]],
     pageerror_ledger: list[dict[str, Any]],
+    budget: _NetworkBudget | None = None,
 ) -> dict[str, Any]:
     """Target 1: KBO Player Search Pagination DOM contract."""
+    policy = budget or _NetworkBudget()
     target_id = "player-search-pagination-contract"
     url = "https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25"
     table_selector = "table.tEx tbody tr"
@@ -191,16 +311,16 @@ async def run_target_1_player_search(
                 }
             ),
         )
+        page.on("response", lambda response: _inspect_response(response, policy))
 
-        await page.route("**/*", lambda route, req: _route_interceptor(route, req, network_ledger))
+        await page.route("**/*", lambda route, req: _route_interceptor(route, req, network_ledger, policy))
 
         try:
             resp = await page.goto(url, wait_until="domcontentloaded", timeout=15000)
             if resp:
                 http_status = resp.status
-                if http_status in (403, 429):
-                    msg = f"HTTP {http_status} encountered during player search navigation"
-                    raise RuntimeError(msg)
+                policy.inspect_response(url, http_status)
+            policy.raise_if_violated()
 
             # Check table rows selector
             await page.wait_for_selector(table_selector, timeout=10000)
@@ -216,9 +336,12 @@ async def run_target_1_player_search(
             if next_btn_found:
                 await next_btn.first.click(timeout=5000)
                 await asyncio.sleep(2)
+                policy.raise_if_violated()
                 await page.wait_for_selector(table_selector, timeout=10000)
 
             content = await page.content()
+            policy.inspect_text(content, url)
+            policy.raise_if_violated()
             raw_html_bytes = content.encode("utf-8")
 
             if row_count > 0 and next_btn_found:
@@ -253,8 +376,10 @@ async def run_target_2_basic2_headers(
     network_ledger: list[dict[str, Any]],
     console_ledger: list[dict[str, Any]],
     pageerror_ledger: list[dict[str, Any]],
+    budget: _NetworkBudget | None = None,
 ) -> dict[str, Any]:
     """Target 2: KBO Player Stats Basic2 11 Headers DOM contract."""
+    policy = budget or _NetworkBudget()
     target_id = "player-stats-basic2-headers"
     url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic2.aspx"
     stats_table_selector = "table"
@@ -295,16 +420,16 @@ async def run_target_2_basic2_headers(
                 }
             ),
         )
+        page.on("response", lambda response: _inspect_response(response, policy))
 
-        await page.route("**/*", lambda route, req: _route_interceptor(route, req, network_ledger))
+        await page.route("**/*", lambda route, req: _route_interceptor(route, req, network_ledger, policy))
 
         try:
             resp = await page.goto(url, wait_until="domcontentloaded", timeout=15000)
             if resp:
                 http_status = resp.status
-                if http_status in (403, 429):
-                    msg = f"HTTP {http_status} encountered during stats navigation"
-                    raise RuntimeError(msg)
+                policy.inspect_response(url, http_status)
+            policy.raise_if_violated()
 
             await page.wait_for_selector(stats_table_selector, timeout=10000)
             ths = page.locator("table thead th")
@@ -315,6 +440,8 @@ async def run_target_2_basic2_headers(
                     found_headers.append(txt)
 
             content = await page.content()
+            policy.inspect_text(content, url)
+            policy.raise_if_violated()
             raw_html_bytes = content.encode("utf-8")
 
             # Check if expected key headers exist in found_headers
@@ -347,28 +474,50 @@ async def run_target_2_basic2_headers(
     }
 
 
-async def run_target_3_live_awards(network_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+async def run_target_3_live_awards(
+    network_ledger: list[dict[str, Any]],
+    budget: _NetworkBudget | None = None,
+) -> dict[str, Any]:
     """Target 3: Wikipedia Awards live secondary HTML parse."""
+    policy = budget or _NetworkBudget()
     target_id = "wikipedia-awards-live"
     from src.crawlers.award_crawler import AwardCrawler
 
+    class _ObservedAwardCrawler(AwardCrawler):
+        async def _fetch(
+            self,
+            fetch_url: str,
+            params: dict[str, str] | None = None,
+        ) -> tuple[str, int]:
+            request_url = str(httpx.URL(fetch_url, params=params))
+            policy.inspect_request(request_url, "http")
+            policy.raise_if_violated()
+            network_ledger.append(
+                {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "url": request_url,
+                    "host": urlparse(request_url).netloc.lower(),
+                    "method": "GET",
+                    "resource_type": "document",
+                    "action": "ALLOWED_REQUEST",
+                },
+            )
+            try:
+                raw, status = await super()._fetch(fetch_url, params)
+            except httpx.HTTPStatusError as error:
+                policy.inspect_response(request_url, error.response.status_code)
+                raise
+            policy.inspect_response(request_url, status)
+            policy.inspect_text(raw, request_url)
+            policy.raise_if_violated()
+            return raw, status
+
     start_utc = datetime.now(UTC).isoformat()
-    crawler = AwardCrawler()
+    crawler = _ObservedAwardCrawler()
     http_status = 200
     records_count = 0
     records_by_category: dict[str, int] = {}
     award_types: set[str] = set()
-
-    network_ledger.append(
-        {
-            "timestamp": start_utc,
-            "url": "https://ko.wikipedia.org/wiki/KBO_MVP",
-            "host": "ko.wikipedia.org",
-            "method": "GET",
-            "resource_type": "document",
-            "action": "ALLOWED_REQUEST",
-        }
-    )
 
     try:
         records = await crawler.crawl()
@@ -376,6 +525,16 @@ async def run_target_3_live_awards(network_ledger: list[dict[str, Any]]) -> dict
         for r in records:
             award_types.add(r.award_type)
             records_by_category[r.award_type] = records_by_category.get(r.award_type, 0) + 1
+
+        for snapshot in crawler.raw_snapshots:
+            snapshot_url = str(snapshot.get("url", ""))
+            status_code = snapshot.get("status_code")
+            policy.inspect_response(
+                snapshot_url,
+                status_code if isinstance(status_code, int) else None,
+            )
+            policy.inspect_text(str(snapshot.get("html", "")), snapshot_url)
+        policy.raise_if_violated()
 
         if records_count >= 380 and {"MVP", "신인상", "골든글러브", "수비상"} <= award_types:
             parser_status = "VALID"
@@ -422,20 +581,21 @@ async def main_async() -> int:
     network_ledger: list[dict[str, Any]] = []
     console_ledger: list[dict[str, Any]] = []
     pageerror_ledger: list[dict[str, Any]] = []
+    budget = _NetworkBudget()
 
     # 2. Execute Target 1
     print("\n[Target 1/3] Executing Player Search Pagination DOM Contract...")
-    t1_result = await run_target_1_player_search(network_ledger, console_ledger, pageerror_ledger)
+    t1_result = await run_target_1_player_search(network_ledger, console_ledger, pageerror_ledger, budget)
     print(f"Target 1 Status: {t1_result['status']} (rows: {t1_result.get('row_count')})")
 
     # 3. Execute Target 2
     print("\n[Target 2/3] Executing Player Stats Basic2 Headers DOM Contract...")
-    t2_result = await run_target_2_basic2_headers(network_ledger, console_ledger, pageerror_ledger)
+    t2_result = await run_target_2_basic2_headers(network_ledger, console_ledger, pageerror_ledger, budget)
     print(f"Target 2 Status: {t2_result['status']} (matched: {len(t2_result.get('matched_expected_headers', []))})")
 
     # 4. Execute Target 3
     print("\n[Target 3/3] Executing Wikipedia Awards Secondary HTML Parse...")
-    t3_result = await run_target_3_live_awards(network_ledger)
+    t3_result = await run_target_3_live_awards(network_ledger, budget)
     print(f"Target 3 Status: {t3_result['status']} (records: {t3_result.get('records_count')})")
 
     # 5. Postcondition: Protected DB SHA-256 verification
@@ -459,14 +619,16 @@ async def main_async() -> int:
     ]
 
     network_summary = {
-        "top_level_navigations": 2,
+        "top_level_navigations": budget.top_level_navigations,
+        "api_xhr_calls": budget.api_xhr_calls,
         "all_outbound_requests": len(network_ledger),
         "allowed_requests": allowed_count,
         "blocked_requests": blocked_count,
         "redirects": 0,
         "hosts_observed": observed_hosts,
         "unexpected_hosts": unexpected_hosts,
-        "request_budget_exceeded": False,
+        "request_budget_exceeded": budget.violation is not None,
+        "policy_violation": budget.violation,
     }
 
     # Save network ledger (JSONL)
@@ -593,8 +755,8 @@ async def main_async() -> int:
         "schema_version": "1.1.0",
         "phase": "Phase 106D",
         "constraints": {
-            "max_top_level_navigations": 3,
-            "max_api_xhr_calls": 10,
+            "max_top_level_navigations": MAX_TOP_LEVEL_NAVIGATIONS,
+            "max_api_xhr_calls": MAX_API_XHR_CALLS,
             "browser_concurrency": 1,
             "crawler_concurrency": 1,
             "automatic_retries": 1,
@@ -650,10 +812,25 @@ async def main_async() -> int:
     )
 
     print("\n=== [106D] Live Read-Only Smoke Complete! ===")
-    return 0 if (response_manifest["all_passed"] and db_unaltered and len(unexpected_hosts) == 0) else 1
+    return (
+        0
+        if (
+            response_manifest["all_passed"] and db_unaltered and len(unexpected_hosts) == 0 and budget.violation is None
+        )
+        else 1
+    )
 
 
-def main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build the live smoke CLI parser without starting any network activity."""
+    return argparse.ArgumentParser(
+        description="Run the Phase 106D controlled live read-only smoke gate.",
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Parse CLI arguments and run the controlled live smoke gate."""
+    build_arg_parser().parse_args(argv)
     return asyncio.run(main_async())
 
 
