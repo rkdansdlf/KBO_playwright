@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/mac/project/KBO_playwright/venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/mac/project/KBO_playwright
+configfile: pytest.ini
+plugins: cov-7.1.0, xdist-3.8.0, asyncio-0.26.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/test_relay_recovery_service.py::test_load_relay_recovery_targets_skips_fully_recovered_games PASSED [  9%]
+tests/test_relay_recovery_service.py::test_load_relay_recovery_targets_preserves_requested_order PASSED [ 18%]
+tests/test_relay_recovery_service.py::test_load_relay_recovery_targets_includes_existing_events_with_missing_wpa PASSED [ 27%]
+tests/test_relay_recovery_service.py::test_load_relay_recovery_targets_excludes_non_completed_requested_games PASSED [ 36%]
+tests/test_relay_recovery_service.py::test_recover_relay_data_saves_orchestrator_result PASSED [ 45%]
+tests/test_relay_recovery_service.py::test_recover_relay_data_filters_malformed_rows_before_save PASSED [ 54%]
+tests/test_relay_recovery_service.py::test_recover_relay_data_backfills_missing_wpa_before_save PASSED [ 63%]
+tests/test_relay_recovery_service.py::test_recover_relay_data_skips_when_all_rows_filtered PASSED [ 72%]
+tests/test_relay_recovery_service.py::test_recover_relay_data_derives_missing_pbp_from_existing_events PASSED [ 81%]
+tests/test_relay_recovery_service.py::test_recover_relay_data_skips_result_with_too_few_events PASSED [ 90%]
+tests/test_relay_recovery_service.py::test_recover_relay_data_skips_score_mismatch_when_validation_enabled PASSED [100%]
+
+============================== 11 passed in 1.21s ==============================

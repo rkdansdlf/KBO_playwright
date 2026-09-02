@@ -156,3 +156,7 @@
     "wpa_sum": 0.038
   }
 ]
+
+[INFO] Semantic diff results saved to Docs/certification/phase-106/gate-106f-relay/semantic-diff-results.json
+
+[SUCCESS] All 6 games passed strict semantic contract invariants and roundtrip idempotency.
