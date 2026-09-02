@@ -113,3 +113,21 @@ class TestSeedRelayValidationMetrics:
             counts = seed_relay_validation_metrics(mark_legacy_unavailable=False)
 
         assert counts == {VALIDATION_UNVERIFIED: 1}
+
+    def test_dry_run_rolls_back_and_skips_commit(self):
+        session = MagicMock()
+        session.query.side_effect = [
+            _query(rows=[SimpleNamespace(game_id="20250001")]),
+            _query(),
+            _query(),
+            _query(),
+            _query(one=None),
+        ]
+
+        with patch("src.cli.seed_relay_validation_metrics.SessionLocal") as session_local:
+            session_local.return_value.__enter__.return_value = session
+            counts = seed_relay_validation_metrics(dry_run=True)
+
+        assert counts == {VALIDATION_UNVERIFIED: 1}
+        session.rollback.assert_called_once()
+        session.commit.assert_not_called()
