@@ -14,6 +14,7 @@ from src.cli.ingest_historical_archive import HistoricalArchiveIngestor, main
 from src.models.base import Base
 from src.models.game import Game, GameBattingStat, GameInningScore, GameMetadata, GamePitchingStat
 from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from scripts.converters.convert_kbo_archive_records import generate_season_dataset
 
 
@@ -120,6 +121,16 @@ def test_ingest_season_archive_provenance(session) -> None:
                 "hr": 57,
             }
         ],
+        "team_season_pitching": [
+            {
+                "team_code": "OB",
+                "games": 80,
+                "ip": 720.0,
+                "r": 300,
+                "er": 250,
+                "so": 500,
+            }
+        ],
     }
 
     ingestor = HistoricalArchiveIngestor(session)
@@ -132,6 +143,8 @@ def test_ingest_season_archive_provenance(session) -> None:
     assert summary.game_pitching_records_ingested == 1
     assert summary.batting_records_ingested == 1
     assert summary.pitching_records_ingested == 1
+    assert summary.team_batting_records_ingested == 1
+    assert summary.team_pitching_records_ingested == 1
     assert summary.source_name == "kbo_official_archive"
     assert summary.provenance_verified is True
 
@@ -144,6 +157,7 @@ def test_ingest_season_archive_provenance(session) -> None:
     meta = session.query(GameMetadata).filter(GameMetadata.game_id == "19800327SSMB0").first()
     assert meta is not None
     assert meta.source_payload["source_name"] == "kbo_official_archive"
+    assert meta.source_payload["provenance"] == {}
 
     # Verify Inning Score
     innings = session.query(GameInningScore).filter(GameInningScore.game_id == "19800327SSMB0").all()
@@ -158,6 +172,61 @@ def test_ingest_season_archive_provenance(session) -> None:
     gp = session.query(GamePitchingStat).filter(GamePitchingStat.game_id == "19800327SSMB0").first()
     assert gp is not None
     assert gp.strikeouts == 8
+
+    season_bat = session.query(PlayerSeasonBatting).filter(PlayerSeasonBatting.player_id == 198001).first()
+    assert season_bat is not None
+    assert season_bat.season == 1980
+    assert season_bat.plate_appearances == 298
+    assert season_bat.source == "OFFICIAL_ARCHIVE"
+
+    season_pit = session.query(PlayerSeasonPitching).filter(PlayerSeasonPitching.player_id == 198011).first()
+    assert season_pit is not None
+    assert season_pit.innings_pitched == pytest.approx(191.2)
+    assert season_pit.strikeouts == 107
+    assert season_pit.source == "OFFICIAL_ARCHIVE"
+
+    team_bat = session.query(TeamSeasonBatting).filter(TeamSeasonBatting.team_id == "OB").first()
+    assert team_bat is not None
+    assert team_bat.season == 1980
+    assert team_bat.games == 80
+    assert team_bat.team_name == "OB"
+
+    team_pit = session.query(TeamSeasonPitching).filter(TeamSeasonPitching.team_id == "OB").first()
+    assert team_pit is not None
+    assert team_pit.innings_pitched == pytest.approx(720.0)
+    assert team_pit.strikeouts == 500
+
+    ingestor.ingest_season_archive(1980, payload, source_name="kbo_official_archive")
+    assert session.query(PlayerSeasonBatting).filter(PlayerSeasonBatting.player_id == 198001).count() == 1
+    assert session.query(PlayerSeasonPitching).filter(PlayerSeasonPitching.player_id == 198011).count() == 1
+    assert session.query(TeamSeasonBatting).filter(TeamSeasonBatting.team_id == "OB").count() == 1
+    assert session.query(TeamSeasonPitching).filter(TeamSeasonPitching.team_id == "OB").count() == 1
+
+
+def test_ingestor_stores_verified_manifest_provenance(session) -> None:
+    payload = {
+        "games": [
+            {
+                "game_id": "19820326OBLT0",
+                "game_date": "1982-03-26",
+                "away_team": "LT",
+                "home_team": "OB",
+            }
+        ]
+    }
+    manifest = {
+        "source_name": "approved_archive",
+        "source_url": "https://example.invalid/1982",
+        "authorization_ref": "approval-1982",
+        "sha256": "a" * 64,
+        "season": 1982,
+    }
+
+    HistoricalArchiveIngestor(session).ingest_season_archive(1982, payload, provenance=manifest)
+
+    metadata = session.query(GameMetadata).filter(GameMetadata.game_id == "19820326OBLT0").one()
+    assert metadata.source_payload["source_name"] == "approved_archive"
+    assert metadata.source_payload["provenance"] == manifest
 
 
 def test_ingest_historical_archive_cli_execution(tmp_path, capsys) -> None:
@@ -199,11 +268,12 @@ def test_ingestor_rejects_historical_write_without_provenance(session) -> None:
 def test_ingestor_rejects_synthetic_archive_payload(session) -> None:
     """Generated fixture payloads must never be stored as historical facts."""
     ingestor = HistoricalArchiveIngestor(session)
+    fixture_payload = generate_season_dataset(1982)
     with pytest.raises(ValueError, match="Synthetic archive payload"):
         ingestor.ingest_season_archive(
             1982,
-            generate_season_dataset(1982),
-            provenance={"source_name": "fixture"},
+            fixture_payload,
+            provenance=fixture_payload["provenance"],
         )
 
 
@@ -246,6 +316,7 @@ def test_historical_archive_manifest_checksum_and_dry_run(tmp_path, capsys) -> N
     assert result["status"] == "DRY_RUN"
     assert result["provenance_verified"] is True
     assert result["games_ingested"] == 1
+    assert result["source_name"] == "kbo_official_archive"
 
 
 def test_historical_archive_rejects_checksum_mismatch(tmp_path) -> None:
@@ -264,5 +335,31 @@ def test_historical_archive_rejects_checksum_mismatch(tmp_path) -> None:
         ),
         encoding="utf-8",
     )
+
+    assert main(["--file", str(archive_path), "--season", "1982", "--manifest", str(manifest_path)]) == 2
+
+
+@pytest.mark.parametrize(
+    ("manifest_update", "payload"),
+    [
+        ({"source_url": ""}, {"games": []}),
+        ({"season": 1983}, {"games": []}),
+        ({}, {"games": [{"game_id": "19820326OBLT0"}, {"game_id": "19820326OBLT0"}]}),
+        ({}, {"games": [{"game_id": "19830326OBLT0"}]}),
+    ],
+)
+def test_historical_archive_rejects_invalid_manifest_or_game_ids(tmp_path, manifest_update, payload) -> None:
+    archive_path = tmp_path / "archive_1982.json"
+    archive_path.write_text(json.dumps(payload), encoding="utf-8")
+    manifest = {
+        "source_name": "kbo_official_archive",
+        "source_url": "https://example.invalid/kbo-archive",
+        "authorization_ref": "approval-1982-fixture",
+        "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+        "season": 1982,
+    }
+    manifest.update(manifest_update)
+    manifest_path = tmp_path / "archive_1982.manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     assert main(["--file", str(archive_path), "--season", "1982", "--manifest", str(manifest_path)]) == 2
