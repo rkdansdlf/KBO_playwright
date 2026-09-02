@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import logging
 import sys
 from dataclasses import dataclass
@@ -417,11 +418,14 @@ def run(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--report-out", type=str, help="CSV report output path")
     parser.add_argument("--backup-out", type=str, help="CSV backup output path used with --apply")
+    parser.add_argument("--json", action="store_true", help="Output structured JSON report")
     args = parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     seasons = args.season or list(DEFAULT_SEASONS)
     game_ids = _dedupe_game_ids([*args.game_id, *_load_game_ids_from_file(args.game_ids_file)])
-    rebuild_relay_events(
+    report_rows = rebuild_relay_events(
         RelayRebuildOptions(
             seasons=seasons,
             game_ids=game_ids,
@@ -432,6 +436,18 @@ def run(argv: Sequence[str] | None = None) -> int:
             log=logger.info,
         ),
     )
+    if args.json:
+        payload = {
+            "requested_seasons": seasons,
+            "apply": bool(args.apply),
+            "dry_run": not args.apply,
+            "total_games": len(report_rows),
+            "report_rows": [
+                {"game_id": r.game_id, "status": r.status, "old_rows": r.old_rows, "new_rows": r.new_rows}
+                for r in report_rows
+            ],
+        }
+        sys.stdout.write(f"{json.dumps(payload, ensure_ascii=False)}\n")
     return 0
 
 

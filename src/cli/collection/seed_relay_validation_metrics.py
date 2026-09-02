@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 PUBLIC_RELAY_LEGACY_END_YEAR = 2009
 
 
-def seed_relay_validation_metrics(
+def seed_relay_validation_metrics(  # noqa: C901
     *,
     season: int | None = None,
     mark_legacy_unavailable: bool = True,
@@ -102,31 +102,32 @@ def seed_relay_validation_metrics(
                 status = VALIDATION_UNVERIFIED
                 reason = "missing_relay_rows"
 
-            metrics = (
-                session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
-            )
-            if metrics is None:
-                metrics = GameValidationMetrics(game_id=game_id)
-                session.add(metrics)
-            elif metrics.validation_status != status:
-                metrics.previous_status = metrics.validation_status
-            metrics.validation_status = status  # type: ignore[assignment]
-            metrics.source_used = metrics.source_used or "seed"  # type: ignore[assignment]
-            metrics.last_successful_event_at = (
-                now if status == VALIDATION_VERIFIED else metrics.last_successful_event_at  # type: ignore[assignment]
-            )
-            metrics.evidence_json = {  # type: ignore[assignment]
-                "reason": reason,
-                "has_pbp": has_pbp,
-                "has_events": has_events,
-                "has_event_state": has_event_state,
-                "event_rows": row_counts.get(game_id, 0),
-            }
             counts[status] = counts.get(status, 0) + 1
 
+            if not dry_run:
+                metrics = (
+                    session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
+                )
+                if metrics is None:
+                    metrics = GameValidationMetrics(game_id=game_id)
+                    session.add(metrics)
+                elif metrics.validation_status != status:
+                    metrics.previous_status = metrics.validation_status
+                metrics.validation_status = status  # type: ignore[assignment]
+                metrics.source_used = metrics.source_used or "seed"  # type: ignore[assignment]
+                metrics.last_successful_event_at = (
+                    now if status == VALIDATION_VERIFIED else metrics.last_successful_event_at  # type: ignore[assignment]
+                )
+                metrics.evidence_json = {  # type: ignore[assignment]
+                    "reason": reason,
+                    "has_pbp": has_pbp,
+                    "has_events": has_events,
+                    "has_event_state": has_event_state,
+                    "event_rows": row_counts.get(game_id, 0),
+                }
+
         if dry_run:
-            session.rollback()
-            logger.info("[DRY RUN] Rolled back all changes (0 mutations committed)")
+            logger.info("[DRY RUN (PLAN-ONLY)] 0 DML statements executed, 0 mutations committed")
         else:
             session.commit()
     return counts
@@ -139,6 +140,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         argv: Argv.
 
     """
+    import json
+
     parser = argparse.ArgumentParser(description="Seed relay validation metrics for completed games")
 
     parser.add_argument("--season", type=int, help="Optional season year")
@@ -150,7 +153,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Calculate metrics without committing changes to DB",
+        help="Calculate metrics in plan-only mode without any DB mutations",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output structured JSON report",
     )
     args = parser.parse_args(argv)
     counts = seed_relay_validation_metrics(
@@ -158,7 +166,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         mark_legacy_unavailable=not args.no_mark_legacy_unavailable,
         dry_run=bool(args.dry_run),
     )
-    logger.info("[INFO] Seeded relay validation metrics: %s", counts)
+    if args.json:
+        payload = {
+            "requested_season": args.season,
+            "dry_run": bool(args.dry_run),
+            "planned_counts": counts,
+            "total_games": sum(counts.values()),
+            "committed_inserts": 0 if args.dry_run else sum(counts.values()),
+        }
+        sys.stdout.write(f"{json.dumps(payload, ensure_ascii=False)}\n")
+    else:
+        logger.info("[INFO] Seeded relay validation metrics: %s", counts)
     return 0
 
 
