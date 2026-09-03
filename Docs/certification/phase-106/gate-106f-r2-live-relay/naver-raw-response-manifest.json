@@ -1,0 +1,11 @@
+{
+  "source": "naver",
+  "target_url": "https://api-gw.sports.naver.com/schedule/games/20240930NCHT02024/relay",
+  "status": "SUCCESS",
+  "status_code": 200,
+  "latency_ms": 130.55,
+  "payload_sha256": "e1295c5385b61932a6fe3f2a932dca5e7fbcfc5e123fd19336054d6059cb7af7",
+  "text_relay_groups_count": 8,
+  "extracted_events_count": 5,
+  "redacted": true
+}
