@@ -1,0 +1,63 @@
+{
+  "verified_at": "2026-09-03T05:10:23.149491+00:00",
+  "target_game": {
+    "kbo_game_id": "20240930NCHT0",
+    "naver_game_id": "20240930NCHT02024",
+    "game_date": "2024-09-30",
+    "away_team": "NC",
+    "home_team": "KIA",
+    "away_score": 5,
+    "home_score": 10,
+    "game_status": "COMPLETED"
+  },
+  "kbo": {
+    "status": "R2_BLOCKED_SOURCE_UNAVAILABLE",
+    "status_code": 200,
+    "event_count": 0,
+    "manifest": {
+      "source": "kbo",
+      "target_url": "https://www.koreabaseball.com/Game/LiveText.aspx?gameId=20240930NCHT0&gyear=2024",
+      "final_url": "https://www.koreabaseball.com/Error/Error.html?aspxerrorpath=/Game/LiveText.aspx",
+      "status": "R2_BLOCKED_SOURCE_UNAVAILABLE",
+      "status_code": 200,
+      "reason": "kbo_relay_redirected_to_error_page",
+      "content_length_bytes": 3093,
+      "content_sha256": "e698675bf8e1e511a08f1f1d2217b22a313616078b6043b1cd0b3714c30334f2",
+      "redacted": true,
+      "extracted_event_count": 0
+    }
+  },
+  "naver": {
+    "status": "SUCCESS",
+    "status_code": 200,
+    "event_count": 5,
+    "manifest": {
+      "source": "naver",
+      "target_url": "https://api-gw.sports.naver.com/schedule/games/20240930NCHT02024/relay",
+      "status": "SUCCESS",
+      "status_code": 200,
+      "latency_ms": 130.55,
+      "payload_sha256": "e1295c5385b61932a6fe3f2a932dca5e7fbcfc5e123fd19336054d6059cb7af7",
+      "text_relay_groups_count": 8,
+      "extracted_events_count": 5,
+      "redacted": true
+    }
+  },
+  "network_summary": {
+    "top_level_polls": {
+      "kbo": 2,
+      "naver": 1
+    },
+    "all_outbound_requests": 63,
+    "allowed_requests": 31,
+    "blocked_requests": 32,
+    "redirects": 0,
+    "observed_hosts": [
+      "6ptotvmi5753.edge.naverncp.com",
+      "api-gw.sports.naver.com",
+      "www.googletagmanager.com",
+      "www.koreabaseball.com"
+    ],
+    "unexpected_hosts": []
+  }
+}

@@ -1,0 +1,49 @@
+ M .github/workflows/test_suite.yml
+ M Docs/certification/phase-105/gate-4-staging-rehearsal/README.md
+ M Docs/certification/phase-105/gate-4-staging-rehearsal/SHA256SUMS
+ M Docs/certification/phase-105/gate-4-staging-rehearsal/certification-report.json
+ M Docs/certification/phase-105/gate-4-staging-rehearsal/raw-test-output.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/browser-console-ledger.jsonl
+ M Docs/certification/phase-106/gate-106d-live-smoke/git-status-after.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/git-status-before.txt
+ M Docs/certification/phase-106/gate-106d-live-smoke/network-request-ledger.jsonl
+ M Docs/certification/phase-106/gate-106d-live-smoke/protected-db-hashes.json
+ M Docs/certification/phase-106/gate-106d-live-smoke/response-manifest.json
+ M Docs/certification/phase-106/gate-106e-historical-census/protected-db-hashes.json
+ M Docs/certification/phase-106/gate-106e-historical-census/raw-query-output.txt
+ M Docs/certification/phase-106/gate-106e-historical-census/table-row-counts.json
+ M Docs/runbooks/R2_REKEY_STAGING_REHEARSAL.md
+ M scripts/certification/phase106/run_live_smoke_gate.py
+ M src/api/live_stream_dto.py
+ M src/api/routers/live_stream.py
+ M src/api/routers/rag.py
+ M src/certification/gates/websocket.py
+ M src/cli/kbo.py
+ M src/cli/live/live_crawler.py
+ M src/cli/rag/evaluate.py
+ M src/cli/rag/query.py
+ M src/rag/dto.py
+ M src/rag/evaluation.py
+ M src/rag/evaluation_gateway.py
+ M src/rag/retrievers/hybrid.py
+ M src/rag/retrievers/oracle_dense.py
+ M src/rag/retrievers/sparse_bm25.py
+ M src/services/kbo_entity_resolver.py
+ M src/simulation/live_stream_processor.py
+ M src/streaming/__init__.py
+ M src/streaming/pbp_stream.py
+ M tests/api/test_websocket_stream.py
+ M tests/certification/test_phase106_runner_safety.py
+ M tests/test_api_rag_hybrid.py
+?? Docs/certification/phase-106/gate-106f-r2-live-relay/
+?? Docs/references/rag_golden_benchmark_dataset.json
+?? migrations/sqlite/059_rag_embedding_vector_column.py
+?? scripts/certification/phase106/run_gate_r2_live_relay.py
+?? src/cli/rag/benchmark.py
+?? src/rag/benchmark_runner.py
+?? src/streaming/live_dispatcher.py
+?? tests/cli/test_rag_evaluate_cli.py
+?? tests/e2e/
+?? tests/rag/test_benchmark_runner.py
+?? tests/rag/test_hybrid_benchmark.py
+?? tests/streaming/

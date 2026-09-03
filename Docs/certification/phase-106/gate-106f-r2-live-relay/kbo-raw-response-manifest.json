@@ -1,0 +1,12 @@
+{
+  "source": "kbo",
+  "target_url": "https://www.koreabaseball.com/Game/LiveText.aspx?gameId=20240930NCHT0&gyear=2024",
+  "final_url": "https://www.koreabaseball.com/Error/Error.html?aspxerrorpath=/Game/LiveText.aspx",
+  "status": "R2_BLOCKED_SOURCE_UNAVAILABLE",
+  "status_code": 200,
+  "reason": "kbo_relay_redirected_to_error_page",
+  "content_length_bytes": 3093,
+  "content_sha256": "e698675bf8e1e511a08f1f1d2217b22a313616078b6043b1cd0b3714c30334f2",
+  "redacted": true,
+  "extracted_event_count": 0
+}
