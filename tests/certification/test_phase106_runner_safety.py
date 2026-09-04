@@ -145,7 +145,7 @@ def test_contains_challenge_detects_all_markers(path: str) -> None:
 
 
 def test_contains_challenge_cloudflare_path_is_safe() -> None:
-    url = "https://www.koreabaseball.com" + run_live_smoke_gate.CLOUDFLARE_STATIC_PATH + "something"
+    url = "https://www.koreabaseball.com/cdn-cgi/something"
     assert run_live_smoke_gate._contains_challenge(url) is False
 
 
