@@ -111,15 +111,10 @@ async def test_live_smoke_fails_closed_before_network_when_protected_db_is_missi
 
 
 def test_network_budget_detects_top_level_navigation_budget_exceeded() -> None:
-    policy = run_live_smoke_gate._NetworkBudget(max_top_level_navigations=1)
     budget = run_live_smoke_gate._NetworkBudget(max_top_level_navigations=1)
-    budget.inspect_request(
-        "https://www.koreabaseball.com/page1", "document"
-    )
+    budget.inspect_request("https://www.koreabaseball.com/page1", "document")
     assert budget.violation is None
-    budget.inspect_request(
-        "https://www.koreabaseball.com/page2", "document"
-    )
+    budget.inspect_request("https://www.koreabaseball.com/page2", "document")
     assert budget.violation is not None
     assert "Top-level navigation budget" in budget.violation
 
@@ -146,9 +141,7 @@ def test_network_budget_detects_challenge_url_in_request() -> None:
     ],
 )
 def test_contains_challenge_detects_all_markers(path: str) -> None:
-    assert run_live_smoke_gate._contains_challenge(
-        f"https://www.koreabaseball.com{path}"
-    ) is True
+    assert run_live_smoke_gate._contains_challenge(f"https://www.koreabaseball.com{path}") is True
 
 
 def test_contains_challenge_cloudflare_path_is_safe() -> None:
@@ -304,6 +297,7 @@ def test_route_interceptor_wildcard_host_allowed() -> None:
         method="GET",
     )
     import asyncio
+
     asyncio.run(run_live_smoke_gate._route_interceptor(route, request, ledger, budget))
 
     assert budget.violation is None
