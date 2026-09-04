@@ -1,0 +1,4496 @@
+[
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "52605_2026_KIA_REGULAR",
+    "title": "2026 김도영 타격 성적 상세",
+    "content": "KBO 2026시즌 KIA 소속 김도영 선수의 공식 타격 기록입니다. 선수등록번호 52605. 주요 성적 및 지표: 김도영, 타율, 홈런, KIA, 유격수. 김도영의 2026시즌 타율과 홈런 기록을 알려줘에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "KIA",
+    "player_id": "52605",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_batting:52605_2026_KIA_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "김도영",
+      "team_id": "KIA",
+      "season_year": 2026,
+      "keywords": [
+        "김도영",
+        "타율",
+        "홈런",
+        "KIA",
+        "유격수"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "62404_2026_SS_REGULAR",
+    "title": "2026 구자욱 타격 성적 상세",
+    "content": "KBO 2026시즌 SS 소속 구자욱 선수의 공식 타격 기록입니다. 선수등록번호 62404. 주요 성적 및 지표: 구자욱, 타율, OPS, 삼성. 2026년 구자욱 타격 성적과 OPS는 얼마야?에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "SS",
+    "player_id": "62404",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_batting:62404_2026_SS_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "구자욱",
+      "team_id": "SS",
+      "season_year": 2026,
+      "keywords": [
+        "구자욱",
+        "타율",
+        "OPS",
+        "삼성"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "50150_2026_LT_REGULAR",
+    "title": "2026 손호영 타격 성적 상세",
+    "content": "KBO 2026시즌 LT 소속 손호영 선수의 공식 타격 기록입니다. 선수등록번호 50150. 주요 성적 및 지표: 손호영, 타율, 타점, 롯데. 2026시즌 롯데 손호영의 타율과 타점 성적에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "LT",
+    "player_id": "50150",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_batting:50150_2026_LT_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "손호영",
+      "team_id": "LT",
+      "season_year": 2026,
+      "keywords": [
+        "손호영",
+        "타율",
+        "타점",
+        "롯데"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "51344_2026_NC_REGULAR",
+    "title": "2026 김휘집 타격 성적 상세",
+    "content": "KBO 2026시즌 NC 소속 김휘집 선수의 공식 타격 기록입니다. 선수등록번호 51344. 주요 성적 및 지표: 김휘집, 안타, 장타율, NC. 2026년 NC 김휘집의 안타와 장타율 기록에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "NC",
+    "player_id": "51344",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_batting:51344_2026_NC_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "김휘집",
+      "team_id": "NC",
+      "season_year": 2026,
+      "keywords": [
+        "김휘집",
+        "안타",
+        "장타율",
+        "NC"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "50707_2026_HH_REGULAR",
+    "title": "2026 최인호 타격 성적 상세",
+    "content": "KBO 2026시즌 HH 소속 최인호 선수의 공식 타격 기록입니다. 선수등록번호 50707. 주요 성적 및 지표: 최인호, 타격, 한화. 2026시즌 한화 최인호의 타격 기록 찾아줘에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "HH",
+    "player_id": "50707",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_batting:50707_2026_HH_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "최인호",
+      "team_id": "HH",
+      "season_year": 2026,
+      "keywords": [
+        "최인호",
+        "타격",
+        "한화"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "3632_2026_KIA_REGULAR",
+    "title": "2026 양현종 투구 성적 상세",
+    "content": "KBO 2026시즌 KIA 소속 양현종 투수의 공식 기록입니다. 선수등록번호 3632. 주요 성적 및 투구 지표: 양현종, 평균자책점, ERA, KIA, 대투수. 2026년 양현종 투구 성적과 평균자책점은?에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "KIA",
+    "player_id": "3632",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_pitching:3632_2026_KIA_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_pitching",
+      "player_name": "양현종",
+      "team_id": "KIA",
+      "season_year": 2026,
+      "keywords": [
+        "양현종",
+        "평균자책점",
+        "ERA",
+        "KIA",
+        "대투수"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "1784_2026_LT_REGULAR",
+    "title": "2026 박세웅 투구 성적 상세",
+    "content": "KBO 2026시즌 LT 소속 박세웅 투수의 공식 기록입니다. 선수등록번호 1784. 주요 성적 및 투구 지표: 박세웅, 탈삼진, 롯데, 안경 에이스, 최동원. 2026시즌 박세웅의 투구 기록과 탈삼진 수에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "LT",
+    "player_id": "1784",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_pitching:1784_2026_LT_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_pitching",
+      "player_name": "박세웅",
+      "team_id": "LT",
+      "season_year": 2026,
+      "keywords": [
+        "박세웅",
+        "탈삼진",
+        "롯데",
+        "안경 에이스",
+        "최동원"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "50106_2026_LG_REGULAR",
+    "title": "2026 유영찬 투구 성적 상세",
+    "content": "KBO 2026시즌 LG 소속 유영찬 투수의 공식 기록입니다. 선수등록번호 50106. 주요 성적 및 투구 지표: 유영찬, 세이브, LG. 2026년 LG 마무리 유영찬의 세이브와 블론세이브 성적에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "LG",
+    "player_id": "50106",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_pitching:50106_2026_LG_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_pitching",
+      "player_name": "유영찬",
+      "team_id": "LG",
+      "season_year": 2026,
+      "keywords": [
+        "유영찬",
+        "세이브",
+        "LG"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "50662_2026_KIA_REGULAR",
+    "title": "2026 정해영 투구 성적 상세",
+    "content": "KBO 2026시즌 KIA 소속 정해영 투수의 공식 기록입니다. 선수등록번호 50662. 주요 성적 및 투구 지표: 정해영, 세이브, KIA. 2026시즌 KIA 타이거즈 정해영의 세이브 수와 방어율에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "KIA",
+    "player_id": "50662",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_pitching:50662_2026_KIA_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_pitching",
+      "player_name": "정해영",
+      "team_id": "KIA",
+      "season_year": 2026,
+      "keywords": [
+        "정해영",
+        "세이브",
+        "KIA"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "50030_2026_KT_REGULAR",
+    "title": "2026 소형준 투구 성적 상세",
+    "content": "KBO 2026시즌 KT 소속 소형준 투수의 공식 기록입니다. 선수등록번호 50030. 주요 성적 및 투구 지표: 소형준, 승, 패, KT. 2026년 KT 소형준 투구 성적과 승패 기록에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "KT",
+    "player_id": "50030",
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "player_season_pitching:50030_2026_KT_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_pitching",
+      "player_name": "소형준",
+      "team_id": "KT",
+      "season_year": 2026,
+      "keywords": [
+        "소형준",
+        "승",
+        "패",
+        "KT"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2026-07-17_KIA",
+    "title": "KBO 지식 베이스 (team_standings_daily:2026-07-17_KIA)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2026년 7월 17일 KIA 타이거즈 팀 순위와 승률. 관련 엔티티: KIA . 핵심 정보: KIA, 순위, 승률, 2026-07-17.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KIA",
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "team_standings_daily:2026-07-17_KIA",
+      "category": "factoid_stat",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "KIA",
+      "season_year": 2026,
+      "keywords": [
+        "KIA",
+        "순위",
+        "승률",
+        "2026-07-17"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2026-07-17_LG",
+    "title": "KBO 지식 베이스 (team_standings_daily:2026-07-17_LG)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2026년 7월 17일 LG 트윈스의 순위와 경기차. 관련 엔티티: LG . 핵심 정보: LG, 순위, 게임차.",
+    "document_type": "kbo_knowledge",
+    "team_id": "LG",
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "team_standings_daily:2026-07-17_LG",
+      "category": "factoid_stat",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "LG",
+      "season_year": 2026,
+      "keywords": [
+        "LG",
+        "순위",
+        "게임차"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2026-07-17_HH",
+    "title": "KBO 지식 베이스 (team_standings_daily:2026-07-17_HH)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2026년 7월 17일 한화 이글스 승무패 순위. 관련 엔티티: HH . 핵심 정보: 한화, 승, 패, 순위.",
+    "document_type": "kbo_knowledge",
+    "team_id": "HH",
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "team_standings_daily:2026-07-17_HH",
+      "category": "factoid_stat",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "HH",
+      "season_year": 2026,
+      "keywords": [
+        "한화",
+        "승",
+        "패",
+        "순위"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2026-07-17_SSG",
+    "title": "KBO 지식 베이스 (team_standings_daily:2026-07-17_SSG)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2026년 7월 17일 SSG 랜더스 순위와 최근 연승연패. 관련 엔티티: SSG . 핵심 정보: SSG, 순위, 승률.",
+    "document_type": "kbo_knowledge",
+    "team_id": "SSG",
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "team_standings_daily:2026-07-17_SSG",
+      "category": "factoid_stat",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "SSG",
+      "season_year": 2026,
+      "keywords": [
+        "SSG",
+        "순위",
+        "승률"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2026-07-17_KT",
+    "title": "KBO 지식 베이스 (team_standings_daily:2026-07-17_KT)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2026년 7월 17일 KT 위즈의 팀 순위. 관련 엔티티: KT . 핵심 정보: KT, 순위, 위즈.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KT",
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "team_standings_daily:2026-07-17_KT",
+      "category": "factoid_stat",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "KT",
+      "season_year": 2026,
+      "keywords": [
+        "KT",
+        "순위",
+        "위즈"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "52605_2024_KIA_REGULAR",
+    "title": "2024 김도영 타격 성적 상세",
+    "content": "KBO 2024시즌 KIA 소속 김도영 선수의 공식 타격 기록입니다. 선수등록번호 52605. 주요 성적 및 지표: 김도영, 득점, 도루, 2024, 로하스, 홈런, OPS. 2024년 정규시즌 김도영의 득점과 도루 수에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "KIA",
+    "player_id": "52605",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:52605_2024_KIA_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "김도영",
+      "team_id": "KIA",
+      "season_year": 2024,
+      "keywords": [
+        "김도영",
+        "득점",
+        "도루",
+        "2024",
+        "로하스",
+        "홈런",
+        "OPS"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "69446_2024_SS_REGULAR",
+    "title": "2024 원태인 투구 성적 상세",
+    "content": "KBO 2024시즌 SS 소속 원태인 투수의 공식 기록입니다. 선수등록번호 69446. 주요 성적 및 투구 지표: 원태인, 다승, 이닝, 삼성, 곽빈, 평균자책점. 2024시즌 원태인의 다승과 이닝 투구수에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "SS",
+    "player_id": "69446",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:69446_2024_SS_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_pitching",
+      "player_name": "원태인",
+      "team_id": "SS",
+      "season_year": 2024,
+      "keywords": [
+        "원태인",
+        "다승",
+        "이닝",
+        "삼성",
+        "곽빈",
+        "평균자책점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "75847_2024_SSG_REGULAR",
+    "title": "2024 최정 타격 성적 상세",
+    "content": "KBO 2024시즌 SSG 소속 최정 선수의 공식 타격 기록입니다. 선수등록번호 75847. 주요 성적 및 지표: 최정, 홈런, 타점, SSG. 2024년 SSG 최정의 홈런 개수와 타점에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "SSG",
+    "player_id": "75847",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:75847_2024_SSG_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "최정",
+      "team_id": "SSG",
+      "season_year": 2024,
+      "keywords": [
+        "최정",
+        "홈런",
+        "타점",
+        "SSG"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "69737_2024_HH_REGULAR",
+    "title": "2024 노시환 타격 성적 상세",
+    "content": "KBO 2024시즌 HH 소속 노시환 선수의 공식 타격 기록입니다. 선수등록번호 69737. 주요 성적 및 지표: 노시환, 타율, 출루율, 한화. 2024시즌 한화 노시환의 타율과 출루율에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "HH",
+    "player_id": "69737",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:69737_2024_HH_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "노시환",
+      "team_id": "HH",
+      "season_year": 2024,
+      "keywords": [
+        "노시환",
+        "타율",
+        "출루율",
+        "한화"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "64102_2024_OB_REGULAR",
+    "title": "2024 양석환 타격 성적 상세",
+    "content": "KBO 2024시즌 OB 소속 양석환 선수의 공식 타격 기록입니다. 선수등록번호 64102. 주요 성적 및 지표: 양석환, 홈런, 타점, 두산. 2024년 두산 양석환 홈런과 타점 기록에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "OB",
+    "player_id": "64102",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:64102_2024_OB_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "양석환",
+      "team_id": "OB",
+      "season_year": 2024,
+      "keywords": [
+        "양석환",
+        "홈런",
+        "타점",
+        "두산"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "68244_2024_OB_REGULAR",
+    "title": "2024 곽빈 투구 성적 상세",
+    "content": "KBO 2024시즌 OB 소속 곽빈 투수의 공식 기록입니다. 선수등록번호 68244. 주요 성적 및 투구 지표: 곽빈, 탈삼진, 두산, 원태인, 다승, 평균자책점. 2024년 곽빈의 탈삼진과 평균자책점에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "OB",
+    "player_id": "68244",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:68244_2024_OB_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_pitching",
+      "player_name": "곽빈",
+      "team_id": "OB",
+      "season_year": 2024,
+      "keywords": [
+        "곽빈",
+        "탈삼진",
+        "두산",
+        "원태인",
+        "다승",
+        "평균자책점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "52055_2024_KT_REGULAR",
+    "title": "2024 박영현 투구 성적 상세",
+    "content": "KBO 2024시즌 KT 소속 박영현 투수의 공식 기록입니다. 선수등록번호 52055. 주요 성적 및 투구 지표: 박영현, 세이브, KT. 2024시즌 박영현의 홀드와 세이브 기록에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "KT",
+    "player_id": "52055",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:52055_2024_KT_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_pitching",
+      "player_name": "박영현",
+      "team_id": "KT",
+      "season_year": 2024,
+      "keywords": [
+        "박영현",
+        "세이브",
+        "KT"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "67304_2024_WO_REGULAR",
+    "title": "2024 김혜성 타격 성적 상세",
+    "content": "KBO 2024시즌 WO 소속 김혜성 선수의 공식 타격 기록입니다. 선수등록번호 67304. 주요 성적 및 지표: 김혜성, 타율, 안타, 키움. 2024년 키움 김혜성의 타율과 안타 수에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "WO",
+    "player_id": "67304",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:67304_2024_WO_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "김혜성",
+      "team_id": "WO",
+      "season_year": 2024,
+      "keywords": [
+        "김혜성",
+        "타율",
+        "안타",
+        "키움"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "62931_2024_NC_REGULAR",
+    "title": "2024 박민우 타격 성적 상세",
+    "content": "KBO 2024시즌 NC 소속 박민우 선수의 공식 타격 기록입니다. 선수등록번호 62931. 주요 성적 및 지표: 박민우, 타율, NC. 2024년 NC 박민우 타격율과 출루율에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "NC",
+    "player_id": "62931",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:62931_2024_NC_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "박민우",
+      "team_id": "NC",
+      "season_year": 2024,
+      "keywords": [
+        "박민우",
+        "타율",
+        "NC"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "54546_2024_LT_REGULAR",
+    "title": "2024 레이예스 타격 성적 상세",
+    "content": "KBO 2024시즌 LT 소속 레이예스 선수의 공식 타격 기록입니다. 선수등록번호 54546. 주요 성적 및 지표: 레이예스, 안타, 롯데, 202, 로하스, 오스틴, 타점. 2024년 롯데 레이예스의 최다 안타 기록 수에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "LT",
+    "player_id": "54546",
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:54546_2024_LT_REGULAR",
+      "category": "factoid_stat",
+      "document_type": "player_season_batting",
+      "player_name": "레이예스",
+      "team_id": "LT",
+      "season_year": 2024,
+      "keywords": [
+        "레이예스",
+        "안타",
+        "롯데",
+        "202",
+        "로하스",
+        "오스틴",
+        "타점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_matchups",
+    "source_row_id": "2024_KIA_SS",
+    "title": "KBO 지식 베이스 (team_matchups:2024_KIA_SS)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 KIA 타이거즈와 삼성 라이온즈의 정규시즌 상대전적 비교. 관련 엔티티: KIA . 핵심 정보: 상대전적, KIA, 삼성, 승, 패.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KIA",
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_matchups:2024_KIA_SS",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "KIA",
+      "season_year": 2024,
+      "keywords": [
+        "상대전적",
+        "KIA",
+        "삼성",
+        "승",
+        "패"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "KIA",
+    "title": "KBO 지식 베이스 (teams:KIA)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 KIA 타이거즈와 삼성 라이온즈의 정규시즌 상대전적 비교. 관련 엔티티: KIA . 핵심 정보: 상대전적, KIA, 삼성, 승, 패, 팀 타율, 팀 평균자책점, 1위, 해태, 타이거즈, 한국시리즈, 우승, 남행열차, 응원가, LG, 롯데, 순위.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KIA",
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "teams:KIA",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "KIA",
+      "season_year": 2024,
+      "keywords": [
+        "상대전적",
+        "KIA",
+        "삼성",
+        "승",
+        "패",
+        "팀 타율",
+        "팀 평균자책점",
+        "1위",
+        "해태",
+        "타이거즈",
+        "한국시리즈",
+        "우승",
+        "남행열차",
+        "응원가",
+        "LG",
+        "롯데",
+        "순위"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "SS",
+    "title": "KBO 지식 베이스 (teams:SS)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 KIA 타이거즈와 삼성 라이온즈의 정규시즌 상대전적 비교. 관련 엔티티: KIA . 핵심 정보: 상대전적, KIA, 삼성, 승, 패, 엘도라도, 라이온즈, 응원가.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KIA",
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "teams:SS",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "KIA",
+      "season_year": 2024,
+      "keywords": [
+        "상대전적",
+        "KIA",
+        "삼성",
+        "승",
+        "패",
+        "엘도라도",
+        "라이온즈",
+        "응원가"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "67025_2024_KT_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 김도영, 로하스, 홈런, OPS, 오스틴, 레이예스, 타점. 2024시즌 김도영과 로하스의 홈런 및 OPS 타격 지표 비교에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:67025_2024_KT_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "김도영",
+        "로하스",
+        "홈런",
+        "OPS",
+        "오스틴",
+        "레이예스",
+        "타점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_matchups",
+    "source_row_id": "2024_LG_OB",
+    "title": "KBO 지식 베이스 (team_matchups:2024_LG_OB)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 잠실 라이벌 LG 트윈스와 두산 베어스의 맞대결 승패 성적. 관련 엔티티:  . 핵심 정보: LG, 두산, 잠실, 상대전적.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_matchups:2024_LG_OB",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "LG",
+        "두산",
+        "잠실",
+        "상대전적"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "LG",
+    "title": "KBO 지식 베이스 (teams:LG)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 잠실 라이벌 LG 트윈스와 두산 베어스의 맞대결 승패 성적. 관련 엔티티:  . 핵심 정보: LG, 두산, 잠실, 상대전적, 팀 타율, 팀 평균자책점, 1위, 서울의 찬가, 트윈스, 육성응원, 롯데, KIA, 순위.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "teams:LG",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "LG",
+        "두산",
+        "잠실",
+        "상대전적",
+        "팀 타율",
+        "팀 평균자책점",
+        "1위",
+        "서울의 찬가",
+        "트윈스",
+        "육성응원",
+        "롯데",
+        "KIA",
+        "순위"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "OB",
+    "title": "KBO 지식 베이스 (teams:OB)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 잠실 라이벌 LG 트윈스와 두산 베어스의 맞대결 승패 성적. 관련 엔티티:  . 핵심 정보: LG, 두산, 잠실, 상대전적, 1982, OB, 베어스, 원년 우승, 삼성, 승리의 두산, 철웅이, 감독, 이승엽.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "teams:OB",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "LG",
+        "두산",
+        "잠실",
+        "상대전적",
+        "1982",
+        "OB",
+        "베어스",
+        "원년 우승",
+        "삼성",
+        "승리의 두산",
+        "철웅이",
+        "감독",
+        "이승엽"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "HH",
+    "title": "KBO 지식 베이스 (teams:HH)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 한화 이글스의 대전 홈구장 승률과 원정 승률 차이. 관련 엔티티: HH . 핵심 정보: 한화, 홈, 원정, 승률, 나는 행복합니다, 이글스, 보살.",
+    "document_type": "kbo_knowledge",
+    "team_id": "HH",
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "teams:HH",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "HH",
+      "season_year": 2024,
+      "keywords": [
+        "한화",
+        "홈",
+        "원정",
+        "승률",
+        "나는 행복합니다",
+        "이글스",
+        "보살"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_history",
+    "source_row_id": "58",
+    "title": "KBO 지식 베이스 (team_history:58)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 한화 이글스의 대전 홈구장 승률과 원정 승률 차이. 관련 엔티티: HH . 핵심 정보: 한화, 홈, 원정, 승률.",
+    "document_type": "kbo_knowledge",
+    "team_id": "HH",
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_history:58",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "HH",
+      "season_year": 2024,
+      "keywords": [
+        "한화",
+        "홈",
+        "원정",
+        "승률"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_matchups",
+    "source_row_id": "2024_LT_NC",
+    "title": "KBO 지식 베이스 (team_matchups:2024_LT_NC)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 롯데와 NC의 낙동강 더비 맞대결 결과. 관련 엔티티:  . 핵심 정보: 롯데, NC, 상대전적.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_matchups:2024_LT_NC",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "롯데",
+        "NC",
+        "상대전적"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "LT",
+    "title": "KBO 지식 베이스 (teams:LT)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 롯데와 NC의 낙동강 더비 맞대결 결과. 관련 엔티티:  . 핵심 정보: 롯데, NC, 상대전적, 부산갈매기, 봉다리, 자이언츠, 순위, 승률, LG, KIA.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "teams:LT",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "롯데",
+        "NC",
+        "상대전적",
+        "부산갈매기",
+        "봉다리",
+        "자이언츠",
+        "순위",
+        "승률",
+        "LG",
+        "KIA"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "NC",
+    "title": "KBO 지식 베이스 (teams:NC)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 롯데와 NC의 낙동강 더비 맞대결 결과. 관련 엔티티:  . 핵심 정보: 롯데, NC, 상대전적, 다이노스, OPS.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "teams:NC",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "롯데",
+        "NC",
+        "상대전적",
+        "다이노스",
+        "OPS"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "62404_2024_SS_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 구자욱, 손아섭, 타율, 최형우, OPS, 득점권. 2024시즌 구자욱과 손아섭의 타율 및 출루율 비교에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:62404_2024_SS_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "구자욱",
+        "손아섭",
+        "타율",
+        "최형우",
+        "OPS",
+        "득점권"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "77532_2024_NC_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 구자욱, 손아섭, 타율. 2024시즌 구자욱과 손아섭의 타율 및 출루율 비교에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:77532_2024_NC_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "구자욱",
+        "손아섭",
+        "타율"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2024-10-01_KIA",
+    "title": "KBO 지식 베이스 (team_standings_daily:2024-10-01_KIA)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 정규시즌 1위 KIA와 2위 삼성의 최종 게임차. 관련 엔티티:  . 핵심 정보: KIA, 삼성, 게임차, 순위.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_standings_daily:2024-10-01_KIA",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "KIA",
+        "삼성",
+        "게임차",
+        "순위"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2024-10-01_SS",
+    "title": "KBO 지식 베이스 (team_standings_daily:2024-10-01_SS)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 정규시즌 1위 KIA와 2위 삼성의 최종 게임차. 관련 엔티티:  . 핵심 정보: KIA, 삼성, 게임차, 순위.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_standings_daily:2024-10-01_SS",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "KIA",
+        "삼성",
+        "게임차",
+        "순위"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "3632_2024_KIA_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 양현종, 김광현, 이닝, 자책점, 류현진, 평균자책점, 삼진. 양현종과 김광현의 2024시즌 이닝 및 자책점 성적 대결에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:3632_2024_KIA_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "양현종",
+        "김광현",
+        "이닝",
+        "자책점",
+        "류현진",
+        "평균자책점",
+        "삼진"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "77829_2024_SSG_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 양현종, 김광현, 이닝, 자책점. 양현종과 김광현의 2024시즌 이닝 및 자책점 성적 대결에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:77829_2024_SSG_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "양현종",
+        "김광현",
+        "이닝",
+        "자책점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "50106_2024_LG_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 유영찬, 정해영, 세이브. 2024년 유영찬과 정해영의 세이브 성공률 비교에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:50106_2024_LG_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "유영찬",
+        "정해영",
+        "세이브"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "50662_2024_KIA_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 유영찬, 정해영, 세이브. 2024년 유영찬과 정해영의 세이브 성공률 비교에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:50662_2024_KIA_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "유영찬",
+        "정해영",
+        "세이브"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2024-10-01_SSG",
+    "title": "KBO 지식 베이스 (team_standings_daily:2024-10-01_SSG)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 SSG 랜더스와 KT 위즈의 5위 타이브레이커 순위 경쟁. 관련 엔티티:  . 핵심 정보: 5위, 타이브레이커, SSG, KT.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_standings_daily:2024-10-01_SSG",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "5위",
+        "타이브레이커",
+        "SSG",
+        "KT"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2024-10-01_KT",
+    "title": "KBO 지식 베이스 (team_standings_daily:2024-10-01_KT)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 SSG 랜더스와 KT 위즈의 5위 타이브레이커 순위 경쟁. 관련 엔티티:  . 핵심 정보: 5위, 타이브레이커, SSG, KT.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_standings_daily:2024-10-01_KT",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "5위",
+        "타이브레이커",
+        "SSG",
+        "KT"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "53164_2024_LG_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 로하스, 오스틴, 레이예스, 타점. 2024년 외국인 타자 로하스, 오스틴, 레이예스의 타점 비교에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:53164_2024_LG_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "로하스",
+        "오스틴",
+        "레이예스",
+        "타점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_matchups",
+    "source_row_id": "2024_OB_WO",
+    "title": "KBO 지식 베이스 (team_matchups:2024_OB_WO)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 두산 베어스와 키움 히어로즈의 상대 전적. 관련 엔티티:  . 핵심 정보: 두산, 키움, 상대전적.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_matchups:2024_OB_WO",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "두산",
+        "키움",
+        "상대전적"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "72443_2024_KIA_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 구자욱, 최형우, OPS, 득점권, 타점, KIA. 2024년 구자욱과 최형우의 OPS 및 득점권 타율 비교에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:72443_2024_KIA_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "구자욱",
+        "최형우",
+        "OPS",
+        "득점권",
+        "타점",
+        "KIA"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "76849_2024_HH_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 류현진, 양현종, 평균자책점, 삼진, 괴물, 한화, 2024. 2024년 류현진과 양현종의 KBO 복귀 후 평균자책점과 삼진 비교에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:76849_2024_HH_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "류현진",
+        "양현종",
+        "평균자책점",
+        "삼진",
+        "괴물",
+        "한화",
+        "2024"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_matchups",
+    "source_row_id": "2024_KT_LG_POST",
+    "title": "KBO 지식 베이스 (team_matchups:2024_KT_LG_POST)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 KT 위즈와 LG 트윈스의 준플레이오프 맞대결 기록. 관련 엔티티:  . 핵심 정보: KT, LG, 포스트시즌, 준플레이오프.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_matchups:2024_KT_LG_POST",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "KT",
+        "LG",
+        "포스트시즌",
+        "준플레이오프"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "79365_2024_LG_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 박동원, 양의지, 포수, 타격. 2024시즌 박동원과 양의지의 포수 타격 성적 및 도루저지율 비교에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:79365_2024_LG_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "박동원",
+        "양의지",
+        "포수",
+        "타격"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "76232_2024_OB_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 박동원, 양의지, 포수, 타격. 2024시즌 박동원과 양의지의 포수 타격 성적 및 도루저지율 비교에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:76232_2024_OB_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "박동원",
+        "양의지",
+        "포수",
+        "타격"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_matchups",
+    "source_row_id": "2024_NC_SSG",
+    "title": "KBO 지식 베이스 (team_matchups:2024_NC_SSG)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 NC 다이노스와 SSG 랜더스의 상대 전적과 득실마진. 관련 엔티티:  . 핵심 정보: NC, SSG, 상대전적.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_matchups:2024_NC_SSG",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "NC",
+        "SSG",
+        "상대전적"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "65132_2024_LG_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 신민재, 조수행, 도루. 2024시즌 신민재와 조수행의 도루 성공 개수 및 성공률에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:65132_2024_LG_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "신민재",
+        "조수행",
+        "도루"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "66249_2024_OB_REGULAR",
+    "title": "2024  타격 성적 상세",
+    "content": "KBO 2024시즌  소속  선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 신민재, 조수행, 도루. 2024시즌 신민재와 조수행의 도루 성공 개수 및 성공률에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_batting:66249_2024_OB_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_batting",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "신민재",
+        "조수행",
+        "도루"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_matchups",
+    "source_row_id": "2024_KS_KIA_SS",
+    "title": "KBO 지식 베이스 (team_matchups:2024_KS_KIA_SS)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 삼성 라이온즈와 KIA 타이거즈의 한국시리즈 맞대결 결과. 관련 엔티티:  . 핵심 정보: 한국시리즈, KIA, 삼성, 우승.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_matchups:2024_KS_KIA_SS",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "한국시리즈",
+        "KIA",
+        "삼성",
+        "우승"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "64345_2024_WO_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 하영민, 김서현, 투구. 2024년 하영민과 김서현의 불펜/선발 투구 기록 차이에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:64345_2024_WO_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "하영민",
+        "김서현",
+        "투구"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "53755_2024_HH_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 하영민, 김서현, 투구, 160, 구속, 한화. 2024년 하영민과 김서현의 불펜/선발 투구 기록 차이에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:53755_2024_HH_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "하영민",
+        "김서현",
+        "투구",
+        "160",
+        "구속",
+        "한화"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_matchups",
+    "source_row_id": "2024_LT_HH",
+    "title": "KBO 지식 베이스 (team_matchups:2024_LT_HH)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 롯데 자이언츠와 한화 이글스의 탈꼴찌 경쟁 상대전적. 관련 엔티티:  . 핵심 정보: 롯데, 한화, 상대전적.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "team_matchups:2024_LT_HH",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "롯데",
+        "한화",
+        "상대전적"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "77532",
+    "title": "KBO 지식 베이스 (player_basic:77532)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 손아섭과 최정의 통산 최다 안타 및 홈런 누적 레이스. 관련 엔티티:  . 핵심 정보: 손아섭, 최정, 통산, 안타, 홈런, 최다 안타, 박용택.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_basic:77532",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "손아섭",
+        "최정",
+        "통산",
+        "안타",
+        "홈런",
+        "최다 안타",
+        "박용택"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "75847",
+    "title": "KBO 지식 베이스 (player_basic:75847)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2024년 손아섭과 최정의 통산 최다 안타 및 홈런 누적 레이스. 관련 엔티티:  . 핵심 정보: 손아섭, 최정, 통산, 안타, 홈런, 소년장사, SSG.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_basic:75847",
+      "category": "multi_hop_comparison",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "손아섭",
+        "최정",
+        "통산",
+        "안타",
+        "홈런",
+        "소년장사",
+        "SSG"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "54685_2024_KIA_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 네일, 하트, 평균자책점, 선발. 2024시즌 네일과 하트 외국인 에이스 선발진 평균자책점 비교에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:54685_2024_KIA_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "네일",
+        "하트",
+        "평균자책점",
+        "선발"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "54988_2024_NC_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌  소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 네일, 하트, 평균자책점, 선발. 2024시즌 네일과 하트 외국인 에이스 선발진 평균자책점 비교에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "player_season_pitching:54988_2024_NC_REGULAR",
+      "category": "multi_hop_comparison",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "네일",
+        "하트",
+        "평균자책점",
+        "선발"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "470",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (470)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: 2024년 KBO 정규시즌 MVP 수상자는 누구인가요?. 수상자:   (시즌: 2024). 공식 기록: MVP, 김도영, 2024. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "awards:470",
+      "category": "rules_history_awards",
+      "document_type": "awards_history",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "MVP",
+        "김도영",
+        "2024"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "471",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (471)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: 2024년 KBO 정규시즌 MVP 수상자는 누구인가요?. 수상자:   (시즌: 2024). 공식 기록: MVP, 김도영, 2024. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "awards:471",
+      "category": "rules_history_awards",
+      "document_type": "awards_history",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "MVP",
+        "김도영",
+        "2024"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "472",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (472)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: 2024년 KBO 신인왕(신인상) 수상 선수와 소속팀은?. 수상자:   (시즌: 2024). 공식 기록: 신인상, 신인왕, 두산, 김택연. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "awards:472",
+      "category": "rules_history_awards",
+      "document_type": "awards_history",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "신인상",
+        "신인왕",
+        "두산",
+        "김택연"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "450",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (450)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: 2024년 골든글러브 외야수와 3루수 수상자 명단. 수상자:   (시즌: 2024). 공식 기록: 골든글러브, 외야수, 3루수. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "awards:450",
+      "category": "rules_history_awards",
+      "document_type": "awards_history",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "골든글러브",
+        "외야수",
+        "3루수"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "451",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (451)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: 2024년 골든글러브 외야수와 3루수 수상자 명단. 수상자:   (시즌: 2024). 공식 기록: 골든글러브, 외야수, 3루수. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "awards:451",
+      "category": "rules_history_awards",
+      "document_type": "awards_history",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "골든글러브",
+        "외야수",
+        "3루수"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "452",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (452)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: 2024년 골든글러브 외야수와 3루수 수상자 명단. 수상자:   (시즌: 2024). 공식 기록: 골든글러브, 외야수, 3루수. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "awards:452",
+      "category": "rules_history_awards",
+      "document_type": "awards_history",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "골든글러브",
+        "외야수",
+        "3루수"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/baseball_rules/README.md_5",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/baseball_rules/README.md_5)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO ABS(자동 투구 판정 시스템) 판정 기준과 스트라이크존 상하한선. 핵심 규정 용어: ABS, 스트라이크존, 상하한선, 판정. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/baseball_rules/README.md_5",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "ABS",
+        "스트라이크존",
+        "상하한선",
+        "판정"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/01_regular_season.md_2",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/01_regular_season.md_2)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO 피치클락 규정과 시간 제한 위반 시 페널티 내용. 핵심 규정 용어: 피치클락, 주자, 시간, 볼, 스트라이크. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_2",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "피치클락",
+        "주자",
+        "시간",
+        "볼",
+        "스트라이크"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/01_regular_season.md_1",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/01_regular_season.md_1)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO 비디오 판독 신청 기한과 판독 대상 플레이 규정. 핵심 규정 용어: 비디오 판독, 30초, 아웃, 세이프. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_1",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "비디오 판독",
+        "30초",
+        "아웃",
+        "세이프"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/01_regular_season.md_3",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/01_regular_season.md_3)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO 우천 취소 및 콜드게임 성립 조건. 핵심 규정 용어: 우천 취소, 콜드게임, 5회. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_3",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "우천 취소",
+        "콜드게임",
+        "5회"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/01_regular_season.md_4",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/01_regular_season.md_4)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO 정규시즌 연장전 이닝 제한과 서스펜디드 경기 규칙. 핵심 규정 용어: 연장전, 12회, 서스펜디드. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_4",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "연장전",
+        "12회",
+        "서스펜디드"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_history",
+    "source_row_id": "250",
+    "title": "KBO 지식 베이스 (team_history:250)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 역대 KBO 단일 시즌 최다 홈런 기록(이승엽 56홈런)의 달성 연도. 관련 엔티티:  . 핵심 정보: 이승엽, 56홈런, 2003, 삼성.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "team_history:250",
+      "category": "rules_history_awards",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "이승엽",
+        "56홈런",
+        "2003",
+        "삼성"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_definitions",
+    "source_row_id": "records_home_run",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (records_home_run)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 역대 KBO 단일 시즌 최다 홈런 기록(이승엽 56홈런)의 달성 연도. 핵심 규정 용어: 이승엽, 56홈런, 2003, 삼성. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_definitions:records_home_run",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "이승엽",
+        "56홈런",
+        "2003",
+        "삼성"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_definitions",
+    "source_row_id": "records_hits",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (records_hits)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 역대 KBO 통산 최다 안타 1위 선수는 누구인가요?. 핵심 규정 용어: 손아섭, 최다 안타, 박용택. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_definitions:records_hits",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "손아섭",
+        "최다 안타",
+        "박용택"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_history",
+    "source_row_id": "1",
+    "title": "KBO 지식 베이스 (team_history:1)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 1982년 프로야구 원년 우승팀과 한국시리즈 결과. 관련 엔티티:  . 핵심 정보: 1982, OB, 베어스, 원년 우승, 삼성.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 1982,
+    "meta": {
+      "chunk_id": "team_history:1",
+      "category": "rules_history_awards",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 1982,
+      "keywords": [
+        "1982",
+        "OB",
+        "베어스",
+        "원년 우승",
+        "삼성"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_history",
+    "source_row_id": "54",
+    "title": "KBO 지식 베이스 (team_history:54)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 해태 타이거즈의 한국시리즈 연속 우승 역사와 통산 우승 횟수. 관련 엔티티:  . 핵심 정보: 해태, 타이거즈, 한국시리즈, 우승, KIA.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "team_history:54",
+      "category": "rules_history_awards",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "해태",
+        "타이거즈",
+        "한국시리즈",
+        "우승",
+        "KIA"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_history",
+    "source_row_id": "253",
+    "title": "KBO 지식 베이스 (team_history:253)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2003년 현대 유니콘스의 팀 순위와 우승 기록. 관련 엔티티:  . 핵심 정보: 2003, 현대 유니콘스, 우승.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2003,
+    "meta": {
+      "chunk_id": "team_history:253",
+      "category": "rules_history_awards",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2003,
+      "keywords": [
+        "2003",
+        "현대 유니콘스",
+        "우승"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_definitions",
+    "source_row_id": "kbo_knowledge/rules_terms.md_1",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_knowledge/rules_terms.md_1)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 야구 세이버메트릭스 지표인 OPS와 wRC+의 정의. 핵심 규정 용어: OPS, 출루율, 장타율, wRC+. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_definitions:kbo_knowledge/rules_terms.md_1",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "OPS",
+        "출루율",
+        "장타율",
+        "wRC+"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_definitions",
+    "source_row_id": "kbo_knowledge/rules_terms.md_2",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_knowledge/rules_terms.md_2)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 야구 투수 FIP와 WHIP 공식 및 계산법. 핵심 규정 용어: FIP, WHIP, 이닝, 피안타, 볼넷. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_definitions:kbo_knowledge/rules_terms.md_2",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "FIP",
+        "WHIP",
+        "이닝",
+        "피안타",
+        "볼넷"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "480",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (480)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: KBO 수비상 제정 연도와 포지션별 평가 기준. 수상자:   (시즌: ). 공식 기록: 수비상, 포지션, 투표. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "awards:480",
+      "category": "rules_history_awards",
+      "document_type": "awards_history",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "수비상",
+        "포지션",
+        "투표"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/01_regular_season.md_5",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/01_regular_season.md_5)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO 1군 엔트리 등록 선수 정원과 외국인 선수 보유 규정. 핵심 규정 용어: 1군 엔트리, 외국인, 3명. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_5",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "1군 엔트리",
+        "외국인",
+        "3명"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_definitions",
+    "source_row_id": "records_streaks",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (records_streaks)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 역대 최다 연승 기록과 최다 연패 기록. 핵심 규정 용어: 최다 연승, 최다 연패, 삼미, 18연패. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_definitions:records_streaks",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "최다 연승",
+        "최다 연패",
+        "삼미",
+        "18연패"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/02_futures_season.md_1",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/02_futures_season.md_1)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO 퓨처스리그 경기 규정과 승부치기 제도. 핵심 규정 용어: 퓨처스리그, 승부치기, 규정. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/02_futures_season.md_1",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "퓨처스리그",
+        "승부치기",
+        "규정"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "465",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (465)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: 2024년 올스타전 MVP 수상자는 누구인가요?. 수상자:   (시즌: 2024). 공식 기록: 올스타전, MVP, 최형우. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "awards:465",
+      "category": "rules_history_awards",
+      "document_type": "awards_history",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "올스타전",
+        "MVP",
+        "최형우"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/01_regular_season.md_6",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/01_regular_season.md_6)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO 트레이드 마감 시한과 웨이버 공시 마감일. 핵심 규정 용어: 트레이드, 마감, 7월 31일, 웨이버. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_6",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "트레이드",
+        "마감",
+        "7월 31일",
+        "웨이버"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_movements",
+    "source_row_id": "996",
+    "title": "KBO 지식 베이스 (player_movements:996)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 2018년 12월 넥센-삼성-SK 삼각 트레이드 전말. 관련 엔티티:  . 핵심 정보: 김동엽, 고종욱, 이지영, 삼각 트레이드.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_movements:996",
+      "category": "rules_history_awards",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "김동엽",
+        "고종욱",
+        "이지영",
+        "삼각 트레이드"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/baseball_rules/README.md_6",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/baseball_rules/README.md_6)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO 투수 보크 성립 요건과 심판 판정 기준. 핵심 규정 용어: 보크, 투구 동작, 주자 진루. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/baseball_rules/README.md_6",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "보크",
+        "투구 동작",
+        "주자 진루"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/03_fa_regulations.md_1",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/03_fa_regulations.md_1)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: KBO FA 자격 취득 요건과 등록일수 기준. 핵심 규정 용어: FA, 자격, 등록일수, 145일. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/03_fa_regulations.md_1",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "FA",
+        "자격",
+        "등록일수",
+        "145일"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "75431",
+    "title": "KBO 지식 베이스 (player_basic:75431)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 역대 KBO 통산 최다 세이브 1위 오승환의 기록. 관련 엔티티:  . 핵심 정보: 오승환, 세이브, 돌부처, 삼성, 끝판대장.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:75431",
+      "category": "rules_history_awards",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "오승환",
+        "세이브",
+        "돌부처",
+        "삼성",
+        "끝판대장"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_definitions",
+    "source_row_id": "records_saves",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (records_saves)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 역대 KBO 통산 최다 세이브 1위 오승환의 기록. 핵심 규정 용어: 오승환, 세이브, 돌부처, 삼성. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_definitions:records_saves",
+      "category": "rules_history_awards",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "오승환",
+        "세이브",
+        "돌부처",
+        "삼성"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "20241028_KS5_9B",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (20241028_KS5_9B)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2024년 한국시리즈 5차전 KIA 타이거즈 우승 결정 순간의 마지막 아웃카운트. 관련 선수 및 팀: KIA . 결정적 순간: 한국시리즈 우승 정해영 삼진. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": "KIA",
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "game_play_by_play:20241028_KS5_9B",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": "KIA",
+      "season_year": 2024,
+      "keywords": [
+        "한국시리즈",
+        "우승",
+        "정해영",
+        "삼진"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game",
+    "source_row_id": "20241028SSHT0",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (20241028SSHT0)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2024년 한국시리즈 5차전 KIA 타이거즈 우승 결정 순간의 마지막 아웃카운트. 관련 선수 및 팀: KIA . 결정적 순간: 한국시리즈 우승 정해영 삼진. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": "KIA",
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "game:20241028SSHT0",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": "KIA",
+      "season_year": 2024,
+      "keywords": [
+        "한국시리즈",
+        "우승",
+        "정해영",
+        "삼진"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game",
+    "source_row_id": "20240625LTHT0",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (20240625LTHT0)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2024년 6월 25일 롯데 vs KIA 경기 14-1에서 뒤집힌 대역전 경기 PBP 요약. 관련 선수 및 팀:  . 결정적 순간: 역전 롯데 KIA 무승부 14-1. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "game:20240625LTHT0",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "역전",
+        "롯데",
+        "KIA",
+        "무승부",
+        "14-1"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_highlights",
+    "source_row_id": "20240625LTHT0_1",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (20240625LTHT0_1)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2024년 6월 25일 롯데 vs KIA 경기 14-1에서 뒤집힌 대역전 경기 PBP 요약. 관련 선수 및 팀:  . 결정적 순간: 역전 롯데 KIA 무승부 14-1. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2024,
+    "meta": {
+      "chunk_id": "game_highlights:20240625LTHT0_1",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2024,
+      "keywords": [
+        "역전",
+        "롯데",
+        "KIA",
+        "무승부",
+        "14-1"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "999993",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (999993)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2015년 10월 19일 경기 김현수의 타석 결과와 타점 상황. 관련 선수 및 팀:  . 결정적 순간: 김현수 타석 안타 타점. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:999993",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "김현수",
+        "타석",
+        "안타",
+        "타점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_highlights",
+    "source_row_id": "1",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (1)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2026년 6월 26일 한화와 SSG 경기 빅플레이 하이라이트. 관련 선수 및 팀:  . 결정적 순간: 한화 SSG 빅플레이 하이라이트. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "game_highlights:1",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2026,
+      "keywords": [
+        "한화",
+        "SSG",
+        "빅플레이",
+        "하이라이트"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_highlights",
+    "source_row_id": "2",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (2)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2026년 6월 26일 한화와 SSG 경기 빅플레이 하이라이트. 관련 선수 및 팀:  . 결정적 순간: 한화 SSG 빅플레이 하이라이트. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "game_highlights:2",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2026,
+      "keywords": [
+        "한화",
+        "SSG",
+        "빅플레이",
+        "하이라이트"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_highlights",
+    "source_row_id": "4",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (4)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2026년 6월 26일 한화와 SSG 경기 빅플레이 하이라이트. 관련 선수 및 팀:  . 결정적 순간: 한화 SSG 빅플레이 하이라이트. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "game_highlights:4",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2026,
+      "keywords": [
+        "한화",
+        "SSG",
+        "빅플레이",
+        "하이라이트"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game",
+    "source_row_id": "20260721HHHT0",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (20260721HHHT0)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2026년 7월 21일 한화와 KIA 경기 박스스코어와 결승타. 관련 선수 및 팀:  . 결정적 순간: 한화 KIA 경기 결과 스코어. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "game:20260721HHHT0",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2026,
+      "keywords": [
+        "한화",
+        "KIA",
+        "경기 결과",
+        "스코어"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game",
+    "source_row_id": "20260719KTLG0",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (20260719KTLG0)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 2026년 7월 19일 KT와 LG 경기 최종 스코어 및 승리투수. 관련 선수 및 팀:  . 결정적 순간: KT LG 승리투수 스코어. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": 2026,
+    "meta": {
+      "chunk_id": "game:20260719KTLG0",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": 2026,
+      "keywords": [
+        "KT",
+        "LG",
+        "승리투수",
+        "스코어"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "walkoff_walk_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (walkoff_walk_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 9회말 2사 만루 끝내기 밀어내기 볼넷 상황 텍스트 중계. 관련 선수 및 팀:  . 결정적 순간: 9회말 끝내기 만루 밀어내기 볼넷. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:walkoff_walk_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "9회말",
+        "끝내기",
+        "만루",
+        "밀어내기",
+        "볼넷"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "walkoff_hr_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (walkoff_hr_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 9회말 끝내기 홈런 비거리와 타구 속도 기록. 관련 선수 및 팀:  . 결정적 순간: 끝내기 홈런 비거리 9회. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:walkoff_hr_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "끝내기 홈런",
+        "비거리",
+        "9회"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "triple_play_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (triple_play_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 삼중살(트리플 플레이) 수비 성공 이닝 플레이 바이 플레이. 관련 선수 및 팀:  . 결정적 순간: 삼중살 트리플플레이 병살. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:triple_play_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "삼중살",
+        "트리플플레이",
+        "병살"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "review_overturn_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (review_overturn_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 비디오 판독 신청으로 세이프에서 아웃으로 판정 번복된 순간. 관련 선수 및 팀:  . 결정적 순간: 비디오 판독 원심 번복 아웃. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:review_overturn_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "비디오 판독",
+        "원심 번복",
+        "아웃"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "leadoff_hr_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (leadoff_hr_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 1회초 선두타자 초구 홈런 타석 중계 로그. 관련 선수 및 팀:  . 결정적 순간: 1회초 선두타자 초구 홈런. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:leadoff_hr_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "1회초",
+        "선두타자",
+        "초구 홈런"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "back_to_back_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (back_to_back_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 연속타자 백투백투백 3연타석 홈런 타석 이벤트. 관련 선수 및 팀:  . 결정적 순간: 연속타자 홈런 백투백. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:back_to_back_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "연속타자",
+        "홈런",
+        "백투백"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "home_collision_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (home_collision_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 홈 쇄도 주자와 포수의 충돌 홈 충돌 방지법 비디오 판독 결과. 관련 선수 및 팀:  . 결정적 순간: 홈 충돌 방지 포수 세이프. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:home_collision_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "홈 충돌 방지",
+        "포수",
+        "세이프"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "qs_plus_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (qs_plus_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 투수 100구 돌파 후 퀄리티스타트 플러스 달성 투구 로그. 관련 선수 및 팀:  . 결정적 순간: 퀄리티스타트 투구수 7이닝. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:qs_plus_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "퀄리티스타트",
+        "투구수",
+        "7이닝"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "bases_loaded_k_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (bases_loaded_k_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 무사 만루 위기에서 삼진-삼진-삼진 무실점 탈출 장면. 관련 선수 및 팀:  . 결정적 순간: 만루 삼진 무실점. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:bases_loaded_k_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "만루",
+        "삼진",
+        "무실점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "wild_pitch_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (wild_pitch_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 폭투(와일드피치)로 3루 주자 득점 역전 결승점 상황. 관련 선수 및 팀:  . 결정적 순간: 폭투 득점 3루 주자. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:wild_pitch_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "폭투",
+        "득점",
+        "3루 주자"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "caught_stealing_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (caught_stealing_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 포수 도루 저지 성공 2루 송구 아웃 장면. 관련 선수 및 팀:  . 결정적 순간: 도루 저지 포수 아웃. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:caught_stealing_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "도루 저지",
+        "포수",
+        "아웃"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "pinch_hit_grandslam_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (pinch_hit_grandslam_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 대타 출전 초구 결승 만루홈런 타석 로그. 관련 선수 및 팀:  . 결정적 순간: 대타 만루홈런 결승타. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:pinch_hit_grandslam_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "대타",
+        "만루홈런",
+        "결승타"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "web_gem_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (web_gem_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 외야수 다이빙 캐치 호수비 이닝 종료 장면. 관련 선수 및 팀:  . 결정적 순간: 다이빙 캐치 호수비 아웃. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:web_gem_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "다이빙 캐치",
+        "호수비",
+        "아웃"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "balk_run_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (balk_run_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 보크 선언으로 3루 주자 자동 홈인 득점. 관련 선수 및 팀:  . 결정적 순간: 보크 득점 홈인. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:balk_run_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "보크",
+        "득점",
+        "홈인"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "bench_clearing_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (bench_clearing_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 벤치클리어링 발생 및 퇴장 조치 플레이 바이 플레이. 관련 선수 및 팀:  . 결정적 순간: 벤치클리어링 퇴장 헤드샷. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:bench_clearing_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "벤치클리어링",
+        "퇴장",
+        "헤드샷"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "headshot_ejection_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (headshot_ejection_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 헤드샷 자동 퇴장 및 교체 투수 등판 상황. 관련 선수 및 팀:  . 결정적 순간: 헤드샷 자동 퇴장 직구. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:headshot_ejection_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "헤드샷",
+        "자동 퇴장",
+        "직구"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "infield_fly_double_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (infield_fly_double_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 인필드플라이 선언 후 주자 태그아웃 병살 플레이. 관련 선수 및 팀:  . 결정적 순간: 인필드플라이 병살 아웃. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:infield_fly_double_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "인필드플라이",
+        "병살",
+        "아웃"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "squeeze_bunt_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (squeeze_bunt_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 연장 11회 대타 작전 성공 스퀴즈 번트 결승점. 관련 선수 및 팀:  . 결정적 순간: 스퀴즈 번트 결승점 연장. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:squeeze_bunt_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "스퀴즈",
+        "번트",
+        "결승점",
+        "연장"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "game_play_by_play",
+    "source_row_id": "no_hit_broken_01",
+    "title": "KBO 경기 문자중계 및 하이라이트 이벤트 (no_hit_broken_01)",
+    "content": "KBO 공식 경기 문자중계 상세 로그입니다. 승부처 주요 상황: 노히트노런 진행 중 9회 깨진 피안타 상황 중계. 관련 선수 및 팀:  . 결정적 순간: 노히트 피안타 9회. 경기 득점 및 결정적 플레이 기록이 정확히 기록되어 있습니다.",
+    "document_type": "game_event",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "game_play_by_play:no_hit_broken_01",
+      "category": "live_pbp_events",
+      "document_type": "game_event",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "노히트",
+        "피안타",
+        "9회"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_seat_sections",
+    "source_row_id": "jamsil_3b_cheer",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (jamsil_3b_cheer)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 잠실야구장 3루 원정 응원석 명당 좌석 번호와 시야 팁. 관련 구단/구장: . 상세 안내: 잠실, 3루, 네이비, 오렌지, 응원석. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_seat_sections:jamsil_3b_cheer",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "잠실",
+        "3루",
+        "네이비",
+        "오렌지",
+        "응원석"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "jamsil",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (jamsil)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 잠실야구장 3루 원정 응원석 명당 좌석 번호와 시야 팁. 관련 구단/구장: . 상세 안내: 잠실, 3루, 네이비, 오렌지, 응원석, 주차, 종합운동장역, 요금, 예매, 입장 게이트, 인터파크. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:jamsil",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "잠실",
+        "3루",
+        "네이비",
+        "오렌지",
+        "응원석",
+        "주차",
+        "종합운동장역",
+        "요금",
+        "예매",
+        "입장 게이트",
+        "인터파크"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "parking_lots",
+    "source_row_id": "jamsil_p1",
+    "title": "KBO 지식 베이스 (parking_lots:jamsil_p1)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 잠실야구장 경기 당일 주차 요금 할인과 대중교통 접근 방법. 관련 엔티티:  . 핵심 정보: 잠실, 주차, 종합운동장역, 요금.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "parking_lots:jamsil_p1",
+      "category": "stadium_fan_infra",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "잠실",
+        "주차",
+        "종합운동장역",
+        "요금"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_food_vendors",
+    "source_row_id": "landers_cream_shrimp",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (landers_cream_shrimp)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 인천 SSG 랜더스필드 스타벅스 슬래머 및 크림새우 맛집 위치. 관련 구단/구장: . 상세 안내: 랜더스필드, 크림새우, 스타벅스. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_food_vendors:landers_cream_shrimp",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "랜더스필드",
+        "크림새우",
+        "스타벅스"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "munhak",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (munhak)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 인천 SSG 랜더스필드 스타벅스 슬래머 및 크림새우 맛집 위치. 관련 구단/구장: . 상세 안내: 랜더스필드, 크림새우, 스타벅스. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:munhak",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "랜더스필드",
+        "크림새우",
+        "스타벅스"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_food_vendors",
+    "source_row_id": "sajik_specialty",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (sajik_specialty)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 사직야구장 명물 먹거리와 자이언츠 동백유니폼데이 안내. 관련 구단/구장: . 상세 안내: 사직, 먹거리, 동백, 롯데. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_food_vendors:sajik_specialty",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "사직",
+        "먹거리",
+        "동백",
+        "롯데"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "sajik",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (sajik)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 사직야구장 명물 먹거리와 자이언츠 동백유니폼데이 안내. 관련 구단/구장: . 상세 안내: 사직, 먹거리, 동백, 롯데, 우천 취소, 환불, 수수료, 티켓. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:sajik",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "사직",
+        "먹거리",
+        "동백",
+        "롯데",
+        "우천 취소",
+        "환불",
+        "수수료",
+        "티켓"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_food_vendors",
+    "source_row_id": "wizpark_boyoung",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (wizpark_boyoung)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 수원 KT 위즈파크 보영만두와 진미통닭 모바일 주문 팁. 관련 구단/구장: . 상세 안내: 위즈파크, 보영만두, 진미통닭. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_food_vendors:wizpark_boyoung",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "위즈파크",
+        "보영만두",
+        "진미통닭"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "suwon",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (suwon)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 수원 KT 위즈파크 보영만두와 진미통닭 모바일 주문 팁. 관련 구단/구장: . 상세 안내: 위즈파크, 보영만두, 진미통닭, 스카이박스, 예약. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:suwon",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "위즈파크",
+        "보영만두",
+        "진미통닭",
+        "스카이박스",
+        "예약"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_seat_sections",
+    "source_row_id": "champions_surprise",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (champions_surprise)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 광주-기아 챔피언스필드 서프라이즈존 좌석 시야와 티켓 가격. 관련 구단/구장: . 상세 안내: 챔피언스필드, 서프라이즈존, 광주, 시야. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_seat_sections:champions_surprise",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "챔피언스필드",
+        "서프라이즈존",
+        "광주",
+        "시야"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "gwangju",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (gwangju)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 광주-기아 챔피언스필드 서프라이즈존 좌석 시야와 티켓 가격. 관련 구단/구장: . 상세 안내: 챔피언스필드, 서프라이즈존, 광주, 시야, 에코파크, 키즈존. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:gwangju",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "챔피언스필드",
+        "서프라이즈존",
+        "광주",
+        "시야",
+        "에코파크",
+        "키즈존"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_seat_sections",
+    "source_row_id": "rapark_grass",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (rapark_grass)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 대구 삼성 라이온즈 파크 외야 잔디석과 땅땅치킨 위치. 관련 구단/구장: . 상세 안내: 라이온즈 파크, 잔디석, 대구. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_seat_sections:rapark_grass",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "라이온즈 파크",
+        "잔디석",
+        "대구"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "daegu",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (daegu)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 대구 삼성 라이온즈 파크 외야 잔디석과 땅땅치킨 위치. 관련 구단/구장: . 상세 안내: 라이온즈 파크, 잔디석, 대구, VIP석, 포수 후면석. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:daegu",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "라이온즈 파크",
+        "잔디석",
+        "대구",
+        "VIP석",
+        "포수 후면석"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_food_vendors",
+    "source_row_id": "eaglespark_food",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (eaglespark_food)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 대전 한화생명 이글스파크 떡볶이와 수리 굿즈샵 매장. 관련 구단/구장: . 상세 안내: 이글스파크, 농심가락, 수리, 대전. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_food_vendors:eaglespark_food",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "이글스파크",
+        "농심가락",
+        "수리",
+        "대전"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "daejeon",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (daejeon)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 대전 한화생명 이글스파크 떡볶이와 수리 굿즈샵 매장. 관련 구단/구장: . 상세 안내: 이글스파크, 농심가락, 수리, 대전. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:daejeon",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "이글스파크",
+        "농심가락",
+        "수리",
+        "대전"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_seat_sections",
+    "source_row_id": "gocheok_rdc",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (gocheok_rdc)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 고척 스카이돔 로얄다이아몬드클럽 좌석 혜택과 지하 푸드코트. 관련 구단/구장: . 상세 안내: 고척돔, 다이아몬드클럽, 냉난방. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_seat_sections:gocheok_rdc",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "고척돔",
+        "다이아몬드클럽",
+        "냉난방"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "gocheok",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (gocheok)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 고척 스카이돔 로얄다이아몬드클럽 좌석 혜택과 지하 푸드코트. 관련 구단/구장: . 상세 안내: 고척돔, 다이아몬드클럽, 냉난방, 외야, 시야방해석. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:gocheok",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "고척돔",
+        "다이아몬드클럽",
+        "냉난방",
+        "외야",
+        "시야방해석"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_seat_sections",
+    "source_row_id": "ncpark_table",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (ncpark_table)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 창원 NC 파크 프리미엄 테이블석과 공룡상회 기념품. 관련 구단/구장: . 상세 안내: NC 파크, 테이블석, 창원. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_seat_sections:ncpark_table",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "NC 파크",
+        "테이블석",
+        "창원"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadiums",
+    "source_row_id": "changwon",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (changwon)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 창원 NC 파크 프리미엄 테이블석과 공룡상회 기념품. 관련 구단/구장: . 상세 안내: NC 파크, 테이블석, 창원. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadiums:changwon",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "NC 파크",
+        "테이블석",
+        "창원"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "fan_culture",
+    "source_row_id": "kia_songs",
+    "title": "KBO 응원 문화 및 구단 응원가 (kia_songs)",
+    "content": "KBO 구단 공식 응원 문화 정보입니다. 대상: KIA 타이거즈 대표 육성 응원가 '남행열차'와 팀 응원 문화. 소속 구단: . 주요 가사 및 응원 구호: 남행열차 KIA 응원가 타이거즈. 선수별 등장곡 및 대표 팀 응원가 정보가 수록되어 있습니다.",
+    "document_type": "fan_culture",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "fan_culture:kia_songs",
+      "category": "stadium_fan_infra",
+      "document_type": "fan_culture",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "남행열차",
+        "KIA",
+        "응원가",
+        "타이거즈"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "fan_culture",
+    "source_row_id": "lotte_songs",
+    "title": "KBO 응원 문화 및 구단 응원가 (lotte_songs)",
+    "content": "KBO 구단 공식 응원 문화 정보입니다. 대상: 롯데 자이언츠 대표 응원가 '부산갈매기'와 주황색 비닐봉지 응원. 소속 구단: . 주요 가사 및 응원 구호: 부산갈매기 봉다리 롯데 자이언츠. 선수별 등장곡 및 대표 팀 응원가 정보가 수록되어 있습니다.",
+    "document_type": "fan_culture",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "fan_culture:lotte_songs",
+      "category": "stadium_fan_infra",
+      "document_type": "fan_culture",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "부산갈매기",
+        "봉다리",
+        "롯데",
+        "자이언츠"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "fan_culture",
+    "source_row_id": "lg_songs",
+    "title": "KBO 응원 문화 및 구단 응원가 (lg_songs)",
+    "content": "KBO 구단 공식 응원 문화 정보입니다. 대상: LG 트윈스 '서울의 찬가' 육성 응원 타이밍과 노란 손수건. 소속 구단: . 주요 가사 및 응원 구호: 서울의 찬가 LG 트윈스 육성응원. 선수별 등장곡 및 대표 팀 응원가 정보가 수록되어 있습니다.",
+    "document_type": "fan_culture",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "fan_culture:lg_songs",
+      "category": "stadium_fan_infra",
+      "document_type": "fan_culture",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "서울의 찬가",
+        "LG",
+        "트윈스",
+        "육성응원"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "fan_culture",
+    "source_row_id": "hanwha_songs",
+    "title": "KBO 응원 문화 및 구단 응원가 (hanwha_songs)",
+    "content": "KBO 구단 공식 응원 문화 정보입니다. 대상: 한화 이글스 '나는 행복합니다' 육성 응원과 보살 팬 문화. 소속 구단: . 주요 가사 및 응원 구호: 나는 행복합니다 한화 이글스 보살. 선수별 등장곡 및 대표 팀 응원가 정보가 수록되어 있습니다.",
+    "document_type": "fan_culture",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "fan_culture:hanwha_songs",
+      "category": "stadium_fan_infra",
+      "document_type": "fan_culture",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "나는 행복합니다",
+        "한화",
+        "이글스",
+        "보살"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "fan_culture",
+    "source_row_id": "doosan_songs",
+    "title": "KBO 응원 문화 및 구단 응원가 (doosan_songs)",
+    "content": "KBO 구단 공식 응원 문화 정보입니다. 대상: 두산 베어스 '승리의 두산' 응원가와 철웅이 마스코트. 소속 구단: . 주요 가사 및 응원 구호: 승리의 두산 철웅이 두산. 선수별 등장곡 및 대표 팀 응원가 정보가 수록되어 있습니다.",
+    "document_type": "fan_culture",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "fan_culture:doosan_songs",
+      "category": "stadium_fan_infra",
+      "document_type": "fan_culture",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "승리의 두산",
+        "철웅이",
+        "두산"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "fan_culture",
+    "source_row_id": "samsung_songs",
+    "title": "KBO 응원 문화 및 구단 응원가 (samsung_songs)",
+    "content": "KBO 구단 공식 응원 문화 정보입니다. 대상: 삼성 라이온즈 '엘도라도' 응원가 부활 역사. 소속 구단: . 주요 가사 및 응원 구호: 엘도라도 삼성 라이온즈 응원가. 선수별 등장곡 및 대표 팀 응원가 정보가 수록되어 있습니다.",
+    "document_type": "fan_culture",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "fan_culture:samsung_songs",
+      "category": "stadium_fan_infra",
+      "document_type": "fan_culture",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "엘도라도",
+        "삼성",
+        "라이온즈",
+        "응원가"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "fan_culture",
+    "source_row_id": "ssg_songs",
+    "title": "KBO 응원 문화 및 구단 응원가 (ssg_songs)",
+    "content": "KBO 구단 공식 응원 문화 정보입니다. 대상: SSG 랜더스 불꽃놀이 이벤트 일정과 연안부두 떼창. 소속 구단: . 주요 가사 및 응원 구호: 연안부두 불꽃놀이 SSG. 선수별 등장곡 및 대표 팀 응원가 정보가 수록되어 있습니다.",
+    "document_type": "fan_culture",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "fan_culture:ssg_songs",
+      "category": "stadium_fan_infra",
+      "document_type": "fan_culture",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "연안부두",
+        "불꽃놀이",
+        "SSG"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "SSG",
+    "title": "KBO 지식 베이스 (teams:SSG)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: SSG 랜더스 불꽃놀이 이벤트 일정과 연안부두 떼창. 관련 엔티티:  . 핵심 정보: 연안부두, 불꽃놀이, SSG, 랜더스, 홈런, 문학.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "teams:SSG",
+      "category": "stadium_fan_infra",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "연안부두",
+        "불꽃놀이",
+        "SSG",
+        "랜더스",
+        "홈런",
+        "문학"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "ticket_info",
+    "source_row_id": "jamsil_open",
+    "title": "KBO 지식 베이스 (ticket_info:jamsil_open)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 잠실야구장 원정 팬 입장 게이트 및 예매 오픈 시간. 관련 엔티티:  . 핵심 정보: 예매, 입장 게이트, 잠실, 인터파크.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "ticket_info:jamsil_open",
+      "category": "stadium_fan_infra",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "예매",
+        "입장 게이트",
+        "잠실",
+        "인터파크"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "ticket_info",
+    "source_row_id": "refund_policy",
+    "title": "KBO 지식 베이스 (ticket_info:refund_policy)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 사직야구장 비 예보 시 우천 환불 규정과 취소 티켓 수수료. 관련 엔티티:  . 핵심 정보: 우천 취소, 환불, 수수료, 티켓.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "ticket_info:refund_policy",
+      "category": "stadium_fan_infra",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "우천 취소",
+        "환불",
+        "수수료",
+        "티켓"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_seat_sections",
+    "source_row_id": "wizpark_skybox",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (wizpark_skybox)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: KT 위즈파크 스카이박스 대여 요금과 사전 예약 방법. 관련 구단/구장: . 상세 안내: 스카이박스, 위즈파크, 예약. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_seat_sections:wizpark_skybox",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "스카이박스",
+        "위즈파크",
+        "예약"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/01_regular_season.md_7",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/01_regular_season.md_7)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 프로야구 주말 경기 시작 시간(토요일, 일요일) 규정. 핵심 규정 용어: 주말 경기, 토요일, 일요일, 14시, 17시. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_7",
+      "category": "stadium_fan_infra",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "주말 경기",
+        "토요일",
+        "일요일",
+        "14시",
+        "17시"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_regulations",
+    "source_row_id": "kbo_rulebook/league_regulations/01_regular_season.md_8",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (kbo_rulebook/league_regulations/01_regular_season.md_8)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 혹서기(7-8월) KBO 경기 시작 시간 및 더블헤더 편성 제한. 핵심 규정 용어: 혹서기, 더블헤더, 18시, 일요일. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_8",
+      "category": "stadium_fan_infra",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "혹서기",
+        "더블헤더",
+        "18시",
+        "일요일"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_seat_sections",
+    "source_row_id": "rapark_vip",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (rapark_vip)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 대구 라팍 포수 후면석 VIP석 예매 방법과 시야. 관련 구단/구장: . 상세 안내: VIP석, 포수 후면석, 라이온즈 파크. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_seat_sections:rapark_vip",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "VIP석",
+        "포수 후면석",
+        "라이온즈 파크"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_facilities",
+    "source_row_id": "champions_kids",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (champions_kids)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 광주 챔필 에코파크 및 키즈존 시설 이용 안내. 관련 구단/구장: . 상세 안내: 에코파크, 키즈존, 챔피언스필드. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_facilities:champions_kids",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "에코파크",
+        "키즈존",
+        "챔피언스필드"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "stadium_seat_sections",
+    "source_row_id": "gocheok_outfield",
+    "title": "KBO 야구장 편의시설 및 먹거리 가이드 (gocheok_outfield)",
+    "content": "야구장 방문 가이드 정보입니다. 대상: 고척돔 외야 시야 방해석 및 난간 주의 블록. 관련 구단/구장: . 상세 안내: 고척돔, 외야, 시야방해석. 좌석 배치, 매장 위치 및 운영 시간, 관람 팁이 상세히 포함되어 있습니다.",
+    "document_type": "stadium_facility",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "stadium_seat_sections:gocheok_outfield",
+      "category": "stadium_fan_infra",
+      "document_type": "stadium_facility",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "고척돔",
+        "외야",
+        "시야방해석"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "3632",
+    "title": "KBO 지식 베이스 (player_basic:3632)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 대투수 올해 방어율과 탈삼진 몇 개야?. 관련 엔티티: KIA 양현종. 핵심 정보: 양현종, 대투수, KIA, 평균자책점.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KIA",
+    "player_id": "3632",
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:3632",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "양현종",
+      "team_id": "KIA",
+      "season_year": null,
+      "keywords": [
+        "양현종",
+        "대투수",
+        "KIA",
+        "평균자책점"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "team_standings_daily",
+    "source_row_id": "2026-07-17_LT",
+    "title": "KBO 지식 베이스 (team_standings_daily:2026-07-17_LT)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 탑데 요즘 순위 몇 등이고 승률 어때?. 관련 엔티티: LT . 핵심 정보: 롯데, 순위, 승률.",
+    "document_type": "kbo_knowledge",
+    "team_id": "LT",
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "team_standings_daily:2026-07-17_LT",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "LT",
+      "season_year": null,
+      "keywords": [
+        "롯데",
+        "순위",
+        "승률"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "71564",
+    "title": "KBO 지식 베이스 (player_basic:71564)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 조선의 4번타자 KBO 통산 홈런과 타점 기록. 관련 엔티티: LT 이대호. 핵심 정보: 이대호, 조선의 4번타자, 홈런, 롯데.",
+    "document_type": "kbo_knowledge",
+    "team_id": "LT",
+    "player_id": "71564",
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:71564",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "이대호",
+      "team_id": "LT",
+      "season_year": null,
+      "keywords": [
+        "이대호",
+        "조선의 4번타자",
+        "홈런",
+        "롯데"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "69446",
+    "title": "KBO 지식 베이스 (player_basic:69446)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 푸른 피의 에이스 통산 선발 다승. 관련 엔티티: SS . 핵심 정보: 원태인, 배영수, 삼성, 다승.",
+    "document_type": "kbo_knowledge",
+    "team_id": "SS",
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:69446",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "SS",
+      "season_year": null,
+      "keywords": [
+        "원태인",
+        "배영수",
+        "삼성",
+        "다승"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "71424",
+    "title": "KBO 지식 베이스 (player_basic:71424)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 푸른 피의 에이스 통산 선발 다승. 관련 엔티티: SS . 핵심 정보: 원태인, 배영수, 삼성, 다승.",
+    "document_type": "kbo_knowledge",
+    "team_id": "SS",
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:71424",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "SS",
+      "season_year": null,
+      "keywords": [
+        "원태인",
+        "배영수",
+        "삼성",
+        "다승"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "93652",
+    "title": "KBO 지식 베이스 (player_basic:93652)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 바람의 아들 현역 통산 도루 개수. 관련 엔티티:  이종범. 핵심 정보: 이종범, 바람의 아들, 도루, 해태.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:93652",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "이종범",
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "이종범",
+        "바람의 아들",
+        "도루",
+        "해태"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "67341",
+    "title": "KBO 지식 베이스 (player_basic:67341)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 바람의 손자 KBO 시절 MVP 수상 연도. 관련 엔티티: WO 이정후. 핵심 정보: 이정후, 바람의 손자, MVP, 2022.",
+    "document_type": "kbo_knowledge",
+    "team_id": "WO",
+    "player_id": "67341",
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:67341",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "이정후",
+      "team_id": "WO",
+      "season_year": null,
+      "keywords": [
+        "이정후",
+        "바람의 손자",
+        "MVP",
+        "2022"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "awards",
+    "source_row_id": "401",
+    "title": "KBO 공식 수상 내역 및 시상 기록 (401)",
+    "content": "KBO 역대 공식 수상자 명단 및 시상 내역입니다. 수상 내역: 바람의 손자 KBO 시절 MVP 수상 연도. 수상자: WO 이정후 (시즌: ). 공식 기록: 이정후, 바람의 손자, MVP, 2022. 골든글러브, MVP, 신인상 등 KBO 공인 투표 결과입니다.",
+    "document_type": "awards_history",
+    "team_id": "WO",
+    "player_id": "67341",
+    "season_year": null,
+    "meta": {
+      "chunk_id": "awards:401",
+      "category": "slang_fuzzy_alias",
+      "document_type": "awards_history",
+      "player_name": "이정후",
+      "team_id": "WO",
+      "season_year": null,
+      "keywords": [
+        "이정후",
+        "바람의 손자",
+        "MVP",
+        "2022"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "78603",
+    "title": "KBO 지식 베이스 (player_basic:78603)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 작디작은 거인 타율과 안타 수. 관련 엔티티: KIA 김선빈. 핵심 정보: 김선빈, 작은 거인, 타율, KIA.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KIA",
+    "player_id": "78603",
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:78603",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "김선빈",
+      "team_id": "KIA",
+      "season_year": null,
+      "keywords": [
+        "김선빈",
+        "작은 거인",
+        "타율",
+        "KIA"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "KT",
+    "title": "KBO 지식 베이스 (teams:KT)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 마법사 군단 팀 순위와 경기차. 관련 엔티티: KT . 핵심 정보: KT, 위즈, 순위.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KT",
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "teams:KT",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "KT",
+      "season_year": null,
+      "keywords": [
+        "KT",
+        "위즈",
+        "순위"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "teams",
+    "source_row_id": "WO",
+    "title": "KBO 지식 베이스 (teams:WO)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 영웅 군단 마무리 투수 성적. 관련 엔티티: WO . 핵심 정보: 키움, 히어로즈, 마무리, 세이브.",
+    "document_type": "kbo_knowledge",
+    "team_id": "WO",
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "teams:WO",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": "WO",
+      "season_year": null,
+      "keywords": [
+        "키움",
+        "히어로즈",
+        "마무리",
+        "세이브"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "76849",
+    "title": "KBO 지식 베이스 (player_basic:76849)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 괴물 투수 한화 복귀 첫해 성적. 관련 엔티티: HH 류현진. 핵심 정보: 류현진, 괴물, 한화, 2024.",
+    "document_type": "kbo_knowledge",
+    "team_id": "HH",
+    "player_id": "76849",
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:76849",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "류현진",
+      "team_id": "HH",
+      "season_year": null,
+      "keywords": [
+        "류현진",
+        "괴물",
+        "한화",
+        "2024"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "52605",
+    "title": "KBO 지식 베이스 (player_basic:52605)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 천재 유격수 올 시즌 타격 지표. 관련 엔티티: KIA 김도영. 핵심 정보: 김도영, 유격수, 타율, KIA.",
+    "document_type": "kbo_knowledge",
+    "team_id": "KIA",
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:52605",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "김도영",
+      "team_id": "KIA",
+      "season_year": null,
+      "keywords": [
+        "김도영",
+        "유격수",
+        "타율",
+        "KIA"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "65962",
+    "title": "KBO 지식 베이스 (player_basic:65962)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 구창모 부상 복귀 일자와 퓨처스 등판. 관련 엔티티: NC 구창모. 핵심 정보: 구창모, NC, 부상, 복귀.",
+    "document_type": "kbo_knowledge",
+    "team_id": "NC",
+    "player_id": "65962",
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:65962",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "구창모",
+      "team_id": "NC",
+      "season_year": null,
+      "keywords": [
+        "구창모",
+        "NC",
+        "부상",
+        "복귀"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_basic",
+    "source_row_id": "69102",
+    "title": "KBO 지식 베이스 (player_basic:69102)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 잠실 예수 외국인 투수 켈리 통산 성적. 관련 엔티티: LG 켈리. 핵심 정보: 켈리, 잠실 예수, LG, 우승.",
+    "document_type": "kbo_knowledge",
+    "team_id": "LG",
+    "player_id": "69102",
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_basic:69102",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": "켈리",
+      "team_id": "LG",
+      "season_year": null,
+      "keywords": [
+        "켈리",
+        "잠실 예수",
+        "LG",
+        "우승"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "kbo_definitions",
+    "source_row_id": "records_30_30",
+    "title": "KBO 공식 야구 규칙 및 제도 가이드 (records_30_30)",
+    "content": "KBO 공식 야구 규칙 및 리그 규정집 조항입니다. 조항: 호타준족 30-30 달성자 누구누구 있어?. 핵심 규정 용어: 30-30, 김도영, 박재홍, 테임즈. ABS 스트라이크존, 피치클락, 비디오판독, FA 등 리그 시행 세칙 및 벌칙 규정입니다.",
+    "document_type": "kbo_regulation",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "kbo_definitions:records_30_30",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_regulation",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "30-30",
+        "김도영",
+        "박재홍",
+        "테임즈"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_batting",
+    "source_row_id": "50500_2024_LT_REGULAR",
+    "title": "2024 황성빈 타격 성적 상세",
+    "content": "KBO 2024시즌 LT 소속 황성빈 선수의 공식 타격 기록입니다. 선수등록번호 . 주요 성적 및 지표: 황성빈, 마황, 도루, 롯데. 사직 아이돌 황성빈 마황 출루율과 도루에 대한 상세 통계 및 분석 결과가 수록되어 있습니다.",
+    "document_type": "player_season_batting",
+    "team_id": "LT",
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_season_batting:50500_2024_LT_REGULAR",
+      "category": "slang_fuzzy_alias",
+      "document_type": "player_season_batting",
+      "player_name": "황성빈",
+      "team_id": "LT",
+      "season_year": null,
+      "keywords": [
+        "황성빈",
+        "마황",
+        "도루",
+        "롯데"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_movements",
+    "source_row_id": "1001",
+    "title": "KBO 지식 베이스 (player_movements:1001)",
+    "content": "KBO 공식 야구 지식 문서입니다. 대상 주제: 유강남 오지환 잠실 더비 프랜차이즈 출신 이동. 관련 엔티티:  . 핵심 정보: 유강남, 오지환, LG, 롯데, FA.",
+    "document_type": "kbo_knowledge",
+    "team_id": null,
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_movements:1001",
+      "category": "slang_fuzzy_alias",
+      "document_type": "kbo_knowledge",
+      "player_name": null,
+      "team_id": null,
+      "season_year": null,
+      "keywords": [
+        "유강남",
+        "오지환",
+        "LG",
+        "롯데",
+        "FA"
+      ]
+    },
+    "language": "ko"
+  },
+  {
+    "source_table": "player_season_pitching",
+    "source_row_id": "54441_2024_SS_REGULAR",
+    "title": "2024  투구 성적 상세",
+    "content": "KBO 2024시즌 SS 소속  투수의 공식 기록입니다. 선수등록번호 . 주요 성적 및 투구 지표: 삼성, 신인, 라이온즈. 대구 아기사자 신인 투수 활약상에 대한 평균자책점, 승리, 탈삼진 등 세부 지표입니다.",
+    "document_type": "player_season_pitching",
+    "team_id": "SS",
+    "player_id": null,
+    "season_year": null,
+    "meta": {
+      "chunk_id": "player_season_pitching:54441_2024_SS_REGULAR",
+      "category": "slang_fuzzy_alias",
+      "document_type": "player_season_pitching",
+      "player_name": null,
+      "team_id": "SS",
+      "season_year": null,
+      "keywords": [
+        "삼성",
+        "신인",
+        "라이온즈"
+      ]
+    },
+    "language": "ko"
+  }
+]

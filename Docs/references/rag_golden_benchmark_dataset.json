@@ -1,0 +1,3395 @@
+[
+  {
+    "id": "kbobench_factoid_001",
+    "query": "김도영의 2026시즌 타율과 홈런 기록을 알려줘",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_batting:52605_2026_KIA_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "김도영",
+      "player_id": "52605",
+      "team_id": "KIA",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "김도영",
+      "타율",
+      "홈런",
+      "KIA"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2026
+    },
+    "tags": [
+      "batting",
+      "kia",
+      "kim_do_young"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_002",
+    "query": "2026년 구자욱 타격 성적과 OPS는 얼마야?",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_batting:62404_2026_SS_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "구자욱",
+      "player_id": "62404",
+      "team_id": "SS",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "구자욱",
+      "타율",
+      "OPS",
+      "삼성"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2026
+    },
+    "tags": [
+      "batting",
+      "samsung",
+      "koo_ja_wook"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_003",
+    "query": "2026시즌 롯데 손호영의 타율과 타점 성적",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_batting:50150_2026_LT_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "손호영",
+      "player_id": "50150",
+      "team_id": "LT",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "손호영",
+      "타율",
+      "타점",
+      "롯데"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2026
+    },
+    "tags": [
+      "batting",
+      "lotte",
+      "son_ho_young"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_004",
+    "query": "2026년 NC 김휘집의 안타와 장타율 기록",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_batting:51344_2026_NC_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "김휘집",
+      "player_id": "51344",
+      "team_id": "NC",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "김휘집",
+      "안타",
+      "장타율",
+      "NC"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2026
+    },
+    "tags": [
+      "batting",
+      "nc",
+      "kim_hwi_jip"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_005",
+    "query": "2026시즌 한화 최인호의 타격 기록 찾아줘",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_batting:50707_2026_HH_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "최인호",
+      "player_id": "50707",
+      "team_id": "HH",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "최인호",
+      "타격",
+      "한화"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2026
+    },
+    "tags": [
+      "batting",
+      "hanwha"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_006",
+    "query": "2026년 양현종 투구 성적과 평균자책점은?",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_pitching:3632_2026_KIA_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "양현종",
+      "player_id": "3632",
+      "team_id": "KIA",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "양현종",
+      "평균자책점",
+      "ERA",
+      "KIA"
+    ],
+    "filters": {
+      "source_table": "player_season_pitching",
+      "season_year": 2026
+    },
+    "tags": [
+      "pitching",
+      "kia",
+      "yang_hyeon_jong"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_007",
+    "query": "2026시즌 박세웅의 투구 기록과 탈삼진 수",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_pitching:1784_2026_LT_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "박세웅",
+      "player_id": "1784",
+      "team_id": "LT",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "박세웅",
+      "탈삼진",
+      "롯데"
+    ],
+    "filters": {
+      "source_table": "player_season_pitching",
+      "season_year": 2026
+    },
+    "tags": [
+      "pitching",
+      "lotte"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_008",
+    "query": "2026년 LG 마무리 유영찬의 세이브와 블론세이브 성적",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_pitching:50106_2026_LG_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "유영찬",
+      "player_id": "50106",
+      "team_id": "LG",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "유영찬",
+      "세이브",
+      "LG"
+    ],
+    "filters": {
+      "source_table": "player_season_pitching",
+      "season_year": 2026
+    },
+    "tags": [
+      "pitching",
+      "lg"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_009",
+    "query": "2026시즌 KIA 타이거즈 정해영의 세이브 수와 방어율",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_pitching:50662_2026_KIA_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "정해영",
+      "player_id": "50662",
+      "team_id": "KIA",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "정해영",
+      "세이브",
+      "KIA"
+    ],
+    "filters": {
+      "source_table": "player_season_pitching",
+      "season_year": 2026
+    },
+    "tags": [
+      "pitching",
+      "kia"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_010",
+    "query": "2026년 KT 소형준 투구 성적과 승패 기록",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_season_pitching:50030_2026_KT_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "소형준",
+      "player_id": "50030",
+      "team_id": "KT",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "소형준",
+      "승",
+      "패",
+      "KT"
+    ],
+    "filters": {
+      "source_table": "player_season_pitching",
+      "season_year": 2026
+    },
+    "tags": [
+      "pitching",
+      "kt"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_011",
+    "query": "2026년 7월 17일 KIA 타이거즈 팀 순위와 승률",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2026-07-17_KIA"
+    ],
+    "target_entities": {
+      "team_id": "KIA",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "KIA",
+      "순위",
+      "승률",
+      "2026-07-17"
+    ],
+    "filters": {
+      "source_table": "team_standings_daily"
+    },
+    "tags": [
+      "standings",
+      "kia"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_012",
+    "query": "2026년 7월 17일 LG 트윈스의 순위와 경기차",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2026-07-17_LG"
+    ],
+    "target_entities": {
+      "team_id": "LG",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "LG",
+      "순위",
+      "게임차"
+    ],
+    "filters": {
+      "source_table": "team_standings_daily"
+    },
+    "tags": [
+      "standings",
+      "lg"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_013",
+    "query": "2026년 7월 17일 한화 이글스 승무패 순위",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2026-07-17_HH"
+    ],
+    "target_entities": {
+      "team_id": "HH",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "한화",
+      "승",
+      "패",
+      "순위"
+    ],
+    "filters": {
+      "source_table": "team_standings_daily"
+    },
+    "tags": [
+      "standings",
+      "hanwha"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_014",
+    "query": "2026년 7월 17일 SSG 랜더스 순위와 최근 연승연패",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2026-07-17_SSG"
+    ],
+    "target_entities": {
+      "team_id": "SSG",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "SSG",
+      "순위",
+      "승률"
+    ],
+    "filters": {
+      "source_table": "team_standings_daily"
+    },
+    "tags": [
+      "standings",
+      "ssg"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_015",
+    "query": "2026년 7월 17일 KT 위즈의 팀 순위",
+    "category": "factoid_stat",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2026-07-17_KT"
+    ],
+    "target_entities": {
+      "team_id": "KT",
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "KT",
+      "순위",
+      "위즈"
+    ],
+    "filters": {
+      "source_table": "team_standings_daily"
+    },
+    "tags": [
+      "standings",
+      "kt"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_016",
+    "query": "2024년 정규시즌 김도영의 득점과 도루 수",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_batting:52605_2024_KIA_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "김도영",
+      "player_id": "52605",
+      "team_id": "KIA",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "김도영",
+      "득점",
+      "도루",
+      "2024"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2024
+    },
+    "tags": [
+      "batting",
+      "kia",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_017",
+    "query": "2024시즌 원태인의 다승과 이닝 투구수",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_pitching:69446_2024_SS_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "원태인",
+      "player_id": "69446",
+      "team_id": "SS",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "원태인",
+      "다승",
+      "이닝",
+      "삼성"
+    ],
+    "filters": {
+      "source_table": "player_season_pitching",
+      "season_year": 2024
+    },
+    "tags": [
+      "pitching",
+      "samsung",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_018",
+    "query": "2024년 SSG 최정의 홈런 개수와 타점",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_batting:75847_2024_SSG_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "최정",
+      "player_id": "75847",
+      "team_id": "SSG",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "최정",
+      "홈런",
+      "타점",
+      "SSG"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2024
+    },
+    "tags": [
+      "batting",
+      "ssg",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_019",
+    "query": "2024시즌 한화 노시환의 타율과 출루율",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_batting:69737_2024_HH_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "노시환",
+      "player_id": "69737",
+      "team_id": "HH",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "노시환",
+      "타율",
+      "출루율",
+      "한화"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2024
+    },
+    "tags": [
+      "batting",
+      "hanwha",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_020",
+    "query": "2024년 두산 양석환 홈런과 타점 기록",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_batting:64102_2024_OB_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "양석환",
+      "player_id": "64102",
+      "team_id": "OB",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "양석환",
+      "홈런",
+      "타점",
+      "두산"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2024
+    },
+    "tags": [
+      "batting",
+      "doosan",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_021",
+    "query": "2024년 곽빈의 탈삼진과 평균자책점",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_pitching:68244_2024_OB_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "곽빈",
+      "player_id": "68244",
+      "team_id": "OB",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "곽빈",
+      "탈삼진",
+      "두산"
+    ],
+    "filters": {
+      "source_table": "player_season_pitching",
+      "season_year": 2024
+    },
+    "tags": [
+      "pitching",
+      "doosan",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_022",
+    "query": "2024시즌 박영현의 홀드와 세이브 기록",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_pitching:52055_2024_KT_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "박영현",
+      "player_id": "52055",
+      "team_id": "KT",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "박영현",
+      "세이브",
+      "KT"
+    ],
+    "filters": {
+      "source_table": "player_season_pitching",
+      "season_year": 2024
+    },
+    "tags": [
+      "pitching",
+      "kt",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_023",
+    "query": "2024년 키움 김혜성의 타율과 안타 수",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_batting:67304_2024_WO_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "김혜성",
+      "player_id": "67304",
+      "team_id": "WO",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "김혜성",
+      "타율",
+      "안타",
+      "키움"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2024
+    },
+    "tags": [
+      "batting",
+      "kiwoom",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_024",
+    "query": "2024년 NC 박민우 타격율과 출루율",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_batting:62931_2024_NC_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "박민우",
+      "player_id": "62931",
+      "team_id": "NC",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "박민우",
+      "타율",
+      "NC"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2024
+    },
+    "tags": [
+      "batting",
+      "nc",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_factoid_025",
+    "query": "2024년 롯데 레이예스의 최다 안타 기록 수",
+    "category": "factoid_stat",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_batting:54546_2024_LT_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "레이예스",
+      "player_id": "54546",
+      "team_id": "LT",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "레이예스",
+      "안타",
+      "롯데",
+      "202"
+    ],
+    "filters": {
+      "source_table": "player_season_batting",
+      "season_year": 2024
+    },
+    "tags": [
+      "batting",
+      "lotte",
+      "2024"
+    ]
+  },
+  {
+    "id": "kbobench_comp_026",
+    "query": "2024년 KIA 타이거즈와 삼성 라이온즈의 정규시즌 상대전적 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "team_matchups:2024_KIA_SS",
+      "teams:KIA",
+      "teams:SS"
+    ],
+    "target_entities": {
+      "team_id": "KIA",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "상대전적",
+      "KIA",
+      "삼성",
+      "승",
+      "패"
+    ],
+    "tags": [
+      "comparison",
+      "matchup",
+      "kia",
+      "samsung"
+    ]
+  },
+  {
+    "id": "kbobench_comp_027",
+    "query": "2024시즌 김도영과 로하스의 홈런 및 OPS 타격 지표 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_batting:52605_2024_KIA_REGULAR",
+      "player_season_batting:67025_2024_KT_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "김도영",
+      "로하스",
+      "홈런",
+      "OPS"
+    ],
+    "tags": [
+      "comparison",
+      "batting",
+      "mvp"
+    ]
+  },
+  {
+    "id": "kbobench_comp_028",
+    "query": "2024년 잠실 라이벌 LG 트윈스와 두산 베어스의 맞대결 승패 성적",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "team_matchups:2024_LG_OB",
+      "teams:LG",
+      "teams:OB"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "LG",
+      "두산",
+      "잠실",
+      "상대전적"
+    ],
+    "tags": [
+      "comparison",
+      "matchup",
+      "seoul_derby"
+    ]
+  },
+  {
+    "id": "kbobench_comp_029",
+    "query": "2024년 원태인과 곽빈의 다승 및 평균자책점 선발 투수 성적 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:69446_2024_SS_REGULAR",
+      "player_season_pitching:68244_2024_OB_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "원태인",
+      "곽빈",
+      "다승",
+      "평균자책점"
+    ],
+    "tags": [
+      "comparison",
+      "pitching"
+    ]
+  },
+  {
+    "id": "kbobench_comp_030",
+    "query": "2024년 한화 이글스의 대전 홈구장 승률과 원정 승률 차이",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "teams:HH",
+      "team_history:58"
+    ],
+    "target_entities": {
+      "team_id": "HH",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "한화",
+      "홈",
+      "원정",
+      "승률"
+    ],
+    "tags": [
+      "comparison",
+      "hanwha",
+      "home_away"
+    ]
+  },
+  {
+    "id": "kbobench_comp_031",
+    "query": "2024년 롯데와 NC의 낙동강 더비 맞대결 결과",
+    "category": "multi_hop_comparison",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "team_matchups:2024_LT_NC",
+      "teams:LT",
+      "teams:NC"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "롯데",
+      "NC",
+      "상대전적"
+    ],
+    "tags": [
+      "comparison",
+      "derby"
+    ]
+  },
+  {
+    "id": "kbobench_comp_032",
+    "query": "2024시즌 구자욱과 손아섭의 타율 및 출루율 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_batting:62404_2024_SS_REGULAR",
+      "player_season_batting:77532_2024_NC_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "구자욱",
+      "손아섭",
+      "타율"
+    ],
+    "tags": [
+      "comparison",
+      "batting"
+    ]
+  },
+  {
+    "id": "kbobench_comp_033",
+    "query": "2024년 정규시즌 1위 KIA와 2위 삼성의 최종 게임차",
+    "category": "multi_hop_comparison",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2024-10-01_KIA",
+      "team_standings_daily:2024-10-01_SS"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "KIA",
+      "삼성",
+      "게임차",
+      "순위"
+    ],
+    "tags": [
+      "comparison",
+      "standings"
+    ]
+  },
+  {
+    "id": "kbobench_comp_034",
+    "query": "양현종과 김광현의 2024시즌 이닝 및 자책점 성적 대결",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:3632_2024_KIA_REGULAR",
+      "player_season_pitching:77829_2024_SSG_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "양현종",
+      "김광현",
+      "이닝",
+      "자책점"
+    ],
+    "tags": [
+      "comparison",
+      "ace_pitchers"
+    ]
+  },
+  {
+    "id": "kbobench_comp_035",
+    "query": "2024년 유영찬과 정해영의 세이브 성공률 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:50106_2024_LG_REGULAR",
+      "player_season_pitching:50662_2024_KIA_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "유영찬",
+      "정해영",
+      "세이브"
+    ],
+    "tags": [
+      "comparison",
+      "closer"
+    ]
+  },
+  {
+    "id": "kbobench_comp_036",
+    "query": "2024년 SSG 랜더스와 KT 위즈의 5위 타이브레이커 순위 경쟁",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2024-10-01_SSG",
+      "team_standings_daily:2024-10-01_KT"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "5위",
+      "타이브레이커",
+      "SSG",
+      "KT"
+    ],
+    "tags": [
+      "comparison",
+      "tiebreaker"
+    ]
+  },
+  {
+    "id": "kbobench_comp_037",
+    "query": "2024년 외국인 타자 로하스, 오스틴, 레이예스의 타점 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_batting:67025_2024_KT_REGULAR",
+      "player_season_batting:53164_2024_LG_REGULAR",
+      "player_season_batting:54546_2024_LT_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "로하스",
+      "오스틴",
+      "레이예스",
+      "타점"
+    ],
+    "tags": [
+      "comparison",
+      "foreign_hitters"
+    ]
+  },
+  {
+    "id": "kbobench_comp_038",
+    "query": "2024년 두산 베어스와 키움 히어로즈의 상대 전적",
+    "category": "multi_hop_comparison",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "team_matchups:2024_OB_WO"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "두산",
+      "키움",
+      "상대전적"
+    ],
+    "tags": [
+      "comparison",
+      "matchup"
+    ]
+  },
+  {
+    "id": "kbobench_comp_039",
+    "query": "2024년 구자욱과 최형우의 OPS 및 득점권 타율 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_batting:62404_2024_SS_REGULAR",
+      "player_season_batting:72443_2024_KIA_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "구자욱",
+      "최형우",
+      "OPS",
+      "득점권"
+    ],
+    "tags": [
+      "comparison",
+      "veterans"
+    ]
+  },
+  {
+    "id": "kbobench_comp_040",
+    "query": "2024년 류현진과 양현종의 KBO 복귀 후 평균자책점과 삼진 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:76849_2024_HH_REGULAR",
+      "player_season_pitching:3632_2024_KIA_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "류현진",
+      "양현종",
+      "평균자책점",
+      "삼진"
+    ],
+    "tags": [
+      "comparison",
+      "legend_pitchers"
+    ]
+  },
+  {
+    "id": "kbobench_comp_041",
+    "query": "2024년 KT 위즈와 LG 트윈스의 준플레이오프 맞대결 기록",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "team_matchups:2024_KT_LG_POST"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "KT",
+      "LG",
+      "포스트시즌",
+      "준플레이오프"
+    ],
+    "tags": [
+      "comparison",
+      "postseason"
+    ]
+  },
+  {
+    "id": "kbobench_comp_042",
+    "query": "2024시즌 박동원과 양의지의 포수 타격 성적 및 도루저지율 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_batting:79365_2024_LG_REGULAR",
+      "player_season_batting:76232_2024_OB_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "박동원",
+      "양의지",
+      "포수",
+      "타격"
+    ],
+    "tags": [
+      "comparison",
+      "catcher"
+    ]
+  },
+  {
+    "id": "kbobench_comp_043",
+    "query": "2024년 팀 타율 1위 구단과 팀 평균자책점 1위 구단 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "teams:KIA",
+      "teams:LG"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "팀 타율",
+      "팀 평균자책점",
+      "1위"
+    ],
+    "tags": [
+      "comparison",
+      "team_stats"
+    ]
+  },
+  {
+    "id": "kbobench_comp_044",
+    "query": "2024년 NC 다이노스와 SSG 랜더스의 상대 전적과 득실마진",
+    "category": "multi_hop_comparison",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "team_matchups:2024_NC_SSG"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "NC",
+      "SSG",
+      "상대전적"
+    ],
+    "tags": [
+      "comparison",
+      "matchup"
+    ]
+  },
+  {
+    "id": "kbobench_comp_045",
+    "query": "2024시즌 신민재와 조수행의 도루 성공 개수 및 성공률",
+    "category": "multi_hop_comparison",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_season_batting:65132_2024_LG_REGULAR",
+      "player_season_batting:66249_2024_OB_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "신민재",
+      "조수행",
+      "도루"
+    ],
+    "tags": [
+      "comparison",
+      "steals"
+    ]
+  },
+  {
+    "id": "kbobench_comp_046",
+    "query": "2024년 삼성 라이온즈와 KIA 타이거즈의 한국시리즈 맞대결 결과",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "team_matchups:2024_KS_KIA_SS"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "한국시리즈",
+      "KIA",
+      "삼성",
+      "우승"
+    ],
+    "tags": [
+      "comparison",
+      "korean_series"
+    ]
+  },
+  {
+    "id": "kbobench_comp_047",
+    "query": "2024년 하영민과 김서현의 불펜/선발 투구 기록 차이",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:64345_2024_WO_REGULAR",
+      "player_season_pitching:53755_2024_HH_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "하영민",
+      "김서현",
+      "투구"
+    ],
+    "tags": [
+      "comparison",
+      "pitching"
+    ]
+  },
+  {
+    "id": "kbobench_comp_048",
+    "query": "2024년 롯데 자이언츠와 한화 이글스의 탈꼴찌 경쟁 상대전적",
+    "category": "multi_hop_comparison",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "team_matchups:2024_LT_HH"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "롯데",
+      "한화",
+      "상대전적"
+    ],
+    "tags": [
+      "comparison",
+      "matchup"
+    ]
+  },
+  {
+    "id": "kbobench_comp_049",
+    "query": "2024년 손아섭과 최정의 통산 최다 안타 및 홈런 누적 레이스",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:77532",
+      "player_basic:75847"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "손아섭",
+      "최정",
+      "통산",
+      "안타",
+      "홈런"
+    ],
+    "tags": [
+      "comparison",
+      "milestone"
+    ]
+  },
+  {
+    "id": "kbobench_comp_050",
+    "query": "2024시즌 네일과 하트 외국인 에이스 선발진 평균자책점 비교",
+    "category": "multi_hop_comparison",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:54685_2024_KIA_REGULAR",
+      "player_season_pitching:54988_2024_NC_REGULAR"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "네일",
+      "하트",
+      "평균자책점",
+      "선발"
+    ],
+    "tags": [
+      "comparison",
+      "foreign_pitchers"
+    ]
+  },
+  {
+    "id": "kbobench_rule_051",
+    "query": "2024년 KBO 정규시즌 MVP 수상자는 누구인가요?",
+    "category": "rules_history_awards",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "awards:470",
+      "awards:471"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "MVP",
+      "김도영",
+      "2024"
+    ],
+    "tags": [
+      "award",
+      "mvp"
+    ]
+  },
+  {
+    "id": "kbobench_rule_052",
+    "query": "2024년 KBO 신인왕(신인상) 수상 선수와 소속팀은?",
+    "category": "rules_history_awards",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "awards:472"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "신인상",
+      "신인왕",
+      "두산",
+      "김택연"
+    ],
+    "tags": [
+      "award",
+      "rookie"
+    ]
+  },
+  {
+    "id": "kbobench_rule_053",
+    "query": "2024년 골든글러브 외야수와 3루수 수상자 명단",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "awards:450",
+      "awards:451",
+      "awards:452"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "골든글러브",
+      "외야수",
+      "3루수"
+    ],
+    "tags": [
+      "award",
+      "golden_glove"
+    ]
+  },
+  {
+    "id": "kbobench_rule_054",
+    "query": "KBO ABS(자동 투구 판정 시스템) 판정 기준과 스트라이크존 상하한선",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/baseball_rules/README.md_5"
+    ],
+    "expected_keywords": [
+      "ABS",
+      "스트라이크존",
+      "상하한선",
+      "판정"
+    ],
+    "tags": [
+      "rules",
+      "abs"
+    ]
+  },
+  {
+    "id": "kbobench_rule_055",
+    "query": "KBO 피치클락 규정과 시간 제한 위반 시 페널티 내용",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_2"
+    ],
+    "expected_keywords": [
+      "피치클락",
+      "주자",
+      "시간",
+      "볼",
+      "스트라이크"
+    ],
+    "tags": [
+      "rules",
+      "pitch_clock"
+    ]
+  },
+  {
+    "id": "kbobench_rule_056",
+    "query": "KBO 비디오 판독 신청 기한과 판독 대상 플레이 규정",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_1"
+    ],
+    "expected_keywords": [
+      "비디오 판독",
+      "30초",
+      "아웃",
+      "세이프"
+    ],
+    "tags": [
+      "rules",
+      "video_review"
+    ]
+  },
+  {
+    "id": "kbobench_rule_057",
+    "query": "KBO 우천 취소 및 콜드게임 성립 조건",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_3"
+    ],
+    "expected_keywords": [
+      "우천 취소",
+      "콜드게임",
+      "5회"
+    ],
+    "tags": [
+      "rules",
+      "weather"
+    ]
+  },
+  {
+    "id": "kbobench_rule_058",
+    "query": "KBO 정규시즌 연장전 이닝 제한과 서스펜디드 경기 규칙",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_4"
+    ],
+    "expected_keywords": [
+      "연장전",
+      "12회",
+      "서스펜디드"
+    ],
+    "tags": [
+      "rules",
+      "extra_innings"
+    ]
+  },
+  {
+    "id": "kbobench_rule_059",
+    "query": "역대 KBO 단일 시즌 최다 홈런 기록(이승엽 56홈런)의 달성 연도",
+    "category": "rules_history_awards",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "team_history:250",
+      "kbo_definitions:records_home_run"
+    ],
+    "expected_keywords": [
+      "이승엽",
+      "56홈런",
+      "2003",
+      "삼성"
+    ],
+    "tags": [
+      "history",
+      "record",
+      "lee_seung_yuop"
+    ]
+  },
+  {
+    "id": "kbobench_rule_060",
+    "query": "역대 KBO 통산 최다 안타 1위 선수는 누구인가요?",
+    "category": "rules_history_awards",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_basic:77532",
+      "kbo_definitions:records_hits"
+    ],
+    "expected_keywords": [
+      "손아섭",
+      "최다 안타",
+      "박용택"
+    ],
+    "tags": [
+      "history",
+      "record",
+      "hits"
+    ]
+  },
+  {
+    "id": "kbobench_rule_061",
+    "query": "1982년 프로야구 원년 우승팀과 한국시리즈 결과",
+    "category": "rules_history_awards",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "team_history:1",
+      "teams:OB"
+    ],
+    "target_entities": {
+      "season_year": 1982
+    },
+    "expected_keywords": [
+      "1982",
+      "OB",
+      "베어스",
+      "원년 우승",
+      "삼성"
+    ],
+    "tags": [
+      "history",
+      "1982"
+    ]
+  },
+  {
+    "id": "kbobench_rule_062",
+    "query": "해태 타이거즈의 한국시리즈 연속 우승 역사와 통산 우승 횟수",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "team_history:54",
+      "teams:KIA"
+    ],
+    "expected_keywords": [
+      "해태",
+      "타이거즈",
+      "한국시리즈",
+      "우승",
+      "KIA"
+    ],
+    "tags": [
+      "history",
+      "haitai"
+    ]
+  },
+  {
+    "id": "kbobench_rule_063",
+    "query": "2003년 현대 유니콘스의 팀 순위와 우승 기록",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "team_history:253"
+    ],
+    "target_entities": {
+      "season_year": 2003
+    },
+    "expected_keywords": [
+      "2003",
+      "현대 유니콘스",
+      "우승"
+    ],
+    "tags": [
+      "history",
+      "hyundai"
+    ]
+  },
+  {
+    "id": "kbobench_rule_064",
+    "query": "야구 세이버메트릭스 지표인 OPS와 wRC+의 정의",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_definitions:kbo_knowledge/rules_terms.md_1"
+    ],
+    "expected_keywords": [
+      "OPS",
+      "출루율",
+      "장타율",
+      "wRC+"
+    ],
+    "tags": [
+      "rules",
+      "sabermetrics"
+    ]
+  },
+  {
+    "id": "kbobench_rule_065",
+    "query": "야구 투수 FIP와 WHIP 공식 및 계산법",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_definitions:kbo_knowledge/rules_terms.md_2"
+    ],
+    "expected_keywords": [
+      "FIP",
+      "WHIP",
+      "이닝",
+      "피안타",
+      "볼넷"
+    ],
+    "tags": [
+      "rules",
+      "sabermetrics"
+    ]
+  },
+  {
+    "id": "kbobench_rule_066",
+    "query": "KBO 수비상 제정 연도와 포지션별 평가 기준",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "awards:480"
+    ],
+    "expected_keywords": [
+      "수비상",
+      "포지션",
+      "투표"
+    ],
+    "tags": [
+      "award",
+      "defense"
+    ]
+  },
+  {
+    "id": "kbobench_rule_067",
+    "query": "KBO 1군 엔트리 등록 선수 정원과 외국인 선수 보유 규정",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_5"
+    ],
+    "expected_keywords": [
+      "1군 엔트리",
+      "외국인",
+      "3명"
+    ],
+    "tags": [
+      "rules",
+      "roster"
+    ]
+  },
+  {
+    "id": "kbobench_rule_068",
+    "query": "역대 최다 연승 기록과 최다 연패 기록",
+    "category": "rules_history_awards",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "kbo_definitions:records_streaks"
+    ],
+    "expected_keywords": [
+      "최다 연승",
+      "최다 연패",
+      "삼미",
+      "18연패"
+    ],
+    "tags": [
+      "history",
+      "streaks"
+    ]
+  },
+  {
+    "id": "kbobench_rule_069",
+    "query": "KBO 퓨처스리그 경기 규정과 승부치기 제도",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/02_futures_season.md_1"
+    ],
+    "expected_keywords": [
+      "퓨처스리그",
+      "승부치기",
+      "규정"
+    ],
+    "tags": [
+      "rules",
+      "futures"
+    ]
+  },
+  {
+    "id": "kbobench_rule_070",
+    "query": "2024년 올스타전 MVP 수상자는 누구인가요?",
+    "category": "rules_history_awards",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "awards:465"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "올스타전",
+      "MVP",
+      "최형우"
+    ],
+    "tags": [
+      "award",
+      "allstar"
+    ]
+  },
+  {
+    "id": "kbobench_rule_071",
+    "query": "KBO 트레이드 마감 시한과 웨이버 공시 마감일",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_6"
+    ],
+    "expected_keywords": [
+      "트레이드",
+      "마감",
+      "7월 31일",
+      "웨이버"
+    ],
+    "tags": [
+      "rules",
+      "trade"
+    ]
+  },
+  {
+    "id": "kbobench_rule_072",
+    "query": "2018년 12월 넥센-삼성-SK 삼각 트레이드 전말",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_movements:996"
+    ],
+    "expected_keywords": [
+      "김동엽",
+      "고종욱",
+      "이지영",
+      "삼각 트레이드"
+    ],
+    "tags": [
+      "history",
+      "trade"
+    ]
+  },
+  {
+    "id": "kbobench_rule_073",
+    "query": "KBO 투수 보크 성립 요건과 심판 판정 기준",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/baseball_rules/README.md_6"
+    ],
+    "expected_keywords": [
+      "보크",
+      "투구 동작",
+      "주자 진루"
+    ],
+    "tags": [
+      "rules",
+      "balk"
+    ]
+  },
+  {
+    "id": "kbobench_rule_074",
+    "query": "KBO FA 자격 취득 요건과 등록일수 기준",
+    "category": "rules_history_awards",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/03_fa_regulations.md_1"
+    ],
+    "expected_keywords": [
+      "FA",
+      "자격",
+      "등록일수",
+      "145일"
+    ],
+    "tags": [
+      "rules",
+      "fa"
+    ]
+  },
+  {
+    "id": "kbobench_rule_075",
+    "query": "역대 KBO 통산 최다 세이브 1위 오승환의 기록",
+    "category": "rules_history_awards",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "player_basic:75431",
+      "kbo_definitions:records_saves"
+    ],
+    "expected_keywords": [
+      "오승환",
+      "세이브",
+      "돌부처",
+      "삼성"
+    ],
+    "tags": [
+      "history",
+      "record",
+      "saves"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_076",
+    "query": "2024년 한국시리즈 5차전 KIA 타이거즈 우승 결정 순간의 마지막 아웃카운트",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:20241028_KS5_9B",
+      "game:20241028SSHT0"
+    ],
+    "target_entities": {
+      "team_id": "KIA",
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "한국시리즈",
+      "우승",
+      "정해영",
+      "삼진"
+    ],
+    "tags": [
+      "pbp",
+      "korean_series",
+      "championship"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_077",
+    "query": "2024년 6월 25일 롯데 vs KIA 경기 14-1에서 뒤집힌 대역전 경기 PBP 요약",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game:20240625LTHT0",
+      "game_highlights:20240625LTHT0_1"
+    ],
+    "target_entities": {
+      "season_year": 2024
+    },
+    "expected_keywords": [
+      "역전",
+      "롯데",
+      "KIA",
+      "무승부",
+      "14-1"
+    ],
+    "tags": [
+      "pbp",
+      "epic_game"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_078",
+    "query": "2015년 10월 19일 경기 김현수의 타석 결과와 타점 상황",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game_play_by_play:999993"
+    ],
+    "expected_keywords": [
+      "김현수",
+      "타석",
+      "안타",
+      "타점"
+    ],
+    "tags": [
+      "pbp",
+      "historical_game"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_079",
+    "query": "2026년 6월 26일 한화와 SSG 경기 빅플레이 하이라이트",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game_highlights:1",
+      "game_highlights:2",
+      "game_highlights:4"
+    ],
+    "target_entities": {
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "한화",
+      "SSG",
+      "빅플레이",
+      "하이라이트"
+    ],
+    "tags": [
+      "highlights",
+      "game"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_080",
+    "query": "2026년 7월 21일 한화와 KIA 경기 박스스코어와 결승타",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game:20260721HHHT0"
+    ],
+    "target_entities": {
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "한화",
+      "KIA",
+      "경기 결과",
+      "스코어"
+    ],
+    "tags": [
+      "game",
+      "boxscore"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_081",
+    "query": "2026년 7월 19일 KT와 LG 경기 최종 스코어 및 승리투수",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game:20260719KTLG0"
+    ],
+    "target_entities": {
+      "season_year": 2026
+    },
+    "expected_keywords": [
+      "KT",
+      "LG",
+      "승리투수",
+      "스코어"
+    ],
+    "tags": [
+      "game",
+      "boxscore"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_082",
+    "query": "9회말 2사 만루 끝내기 밀어내기 볼넷 상황 텍스트 중계",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:walkoff_walk_01"
+    ],
+    "expected_keywords": [
+      "9회말",
+      "끝내기",
+      "만루",
+      "밀어내기",
+      "볼넷"
+    ],
+    "tags": [
+      "pbp",
+      "walkoff"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_083",
+    "query": "9회말 끝내기 홈런 비거리와 타구 속도 기록",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:walkoff_hr_01"
+    ],
+    "expected_keywords": [
+      "끝내기 홈런",
+      "비거리",
+      "9회"
+    ],
+    "tags": [
+      "pbp",
+      "homerun"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_084",
+    "query": "삼중살(트리플 플레이) 수비 성공 이닝 플레이 바이 플레이",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:triple_play_01"
+    ],
+    "expected_keywords": [
+      "삼중살",
+      "트리플플레이",
+      "병살"
+    ],
+    "tags": [
+      "pbp",
+      "defense"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_085",
+    "query": "비디오 판독 신청으로 세이프에서 아웃으로 판정 번복된 순간",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:review_overturn_01"
+    ],
+    "expected_keywords": [
+      "비디오 판독",
+      "원심 번복",
+      "아웃"
+    ],
+    "tags": [
+      "pbp",
+      "video_review"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_086",
+    "query": "1회초 선두타자 초구 홈런 타석 중계 로그",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game_play_by_play:leadoff_hr_01"
+    ],
+    "expected_keywords": [
+      "1회초",
+      "선두타자",
+      "초구 홈런"
+    ],
+    "tags": [
+      "pbp",
+      "homerun"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_087",
+    "query": "연속타자 백투백투백 3연타석 홈런 타석 이벤트",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:back_to_back_01"
+    ],
+    "expected_keywords": [
+      "연속타자",
+      "홈런",
+      "백투백"
+    ],
+    "tags": [
+      "pbp",
+      "homerun"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_088",
+    "query": "홈 쇄도 주자와 포수의 충돌 홈 충돌 방지법 비디오 판독 결과",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:home_collision_01"
+    ],
+    "expected_keywords": [
+      "홈 충돌 방지",
+      "포수",
+      "세이프"
+    ],
+    "tags": [
+      "pbp",
+      "rules"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_089",
+    "query": "투수 100구 돌파 후 퀄리티스타트 플러스 달성 투구 로그",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game_play_by_play:qs_plus_01"
+    ],
+    "expected_keywords": [
+      "퀄리티스타트",
+      "투구수",
+      "7이닝"
+    ],
+    "tags": [
+      "pbp",
+      "pitching"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_090",
+    "query": "무사 만루 위기에서 삼진-삼진-삼진 무실점 탈출 장면",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:bases_loaded_k_01"
+    ],
+    "expected_keywords": [
+      "만루",
+      "삼진",
+      "무실점"
+    ],
+    "tags": [
+      "pbp",
+      "pitching"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_091",
+    "query": "폭투(와일드피치)로 3루 주자 득점 역전 결승점 상황",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game_play_by_play:wild_pitch_01"
+    ],
+    "expected_keywords": [
+      "폭투",
+      "득점",
+      "3루 주자"
+    ],
+    "tags": [
+      "pbp",
+      "scoring"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_092",
+    "query": "포수 도루 저지 성공 2루 송구 아웃 장면",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game_play_by_play:caught_stealing_01"
+    ],
+    "expected_keywords": [
+      "도루 저지",
+      "포수",
+      "아웃"
+    ],
+    "tags": [
+      "pbp",
+      "defense"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_093",
+    "query": "대타 출전 초구 결승 만루홈런 타석 로그",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:pinch_hit_grandslam_01"
+    ],
+    "expected_keywords": [
+      "대타",
+      "만루홈런",
+      "결승타"
+    ],
+    "tags": [
+      "pbp",
+      "grandslam"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_094",
+    "query": "외야수 다이빙 캐치 호수비 이닝 종료 장면",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game_play_by_play:web_gem_01"
+    ],
+    "expected_keywords": [
+      "다이빙 캐치",
+      "호수비",
+      "아웃"
+    ],
+    "tags": [
+      "pbp",
+      "defense"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_095",
+    "query": "보크 선언으로 3루 주자 자동 홈인 득점",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:balk_run_01"
+    ],
+    "expected_keywords": [
+      "보크",
+      "득점",
+      "홈인"
+    ],
+    "tags": [
+      "pbp",
+      "balk"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_096",
+    "query": "벤치클리어링 발생 및 퇴장 조치 플레이 바이 플레이",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:bench_clearing_01"
+    ],
+    "expected_keywords": [
+      "벤치클리어링",
+      "퇴장",
+      "헤드샷"
+    ],
+    "tags": [
+      "pbp",
+      "incident"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_097",
+    "query": "헤드샷 자동 퇴장 및 교체 투수 등판 상황",
+    "category": "live_pbp_events",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "game_play_by_play:headshot_ejection_01"
+    ],
+    "expected_keywords": [
+      "헤드샷",
+      "자동 퇴장",
+      "직구"
+    ],
+    "tags": [
+      "pbp",
+      "incident"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_098",
+    "query": "인필드플라이 선언 후 주자 태그아웃 병살 플레이",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:infield_fly_double_01"
+    ],
+    "expected_keywords": [
+      "인필드플라이",
+      "병살",
+      "아웃"
+    ],
+    "tags": [
+      "pbp",
+      "rules"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_099",
+    "query": "연장 11회 대타 작전 성공 스퀴즈 번트 결승점",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:squeeze_bunt_01"
+    ],
+    "expected_keywords": [
+      "스퀴즈",
+      "번트",
+      "결승점",
+      "연장"
+    ],
+    "tags": [
+      "pbp",
+      "tactics"
+    ]
+  },
+  {
+    "id": "kbobench_pbp_100",
+    "query": "노히트노런 진행 중 9회 깨진 피안타 상황 중계",
+    "category": "live_pbp_events",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "game_play_by_play:no_hit_broken_01"
+    ],
+    "expected_keywords": [
+      "노히트",
+      "피안타",
+      "9회"
+    ],
+    "tags": [
+      "pbp",
+      "milestone"
+    ]
+  },
+  {
+    "id": "kbobench_stad_101",
+    "query": "잠실야구장 3루 원정 응원석 명당 좌석 번호와 시야 팁",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "stadium_seat_sections:jamsil_3b_cheer",
+      "stadiums:jamsil"
+    ],
+    "expected_keywords": [
+      "잠실",
+      "3루",
+      "네이비",
+      "오렌지",
+      "응원석"
+    ],
+    "tags": [
+      "stadium",
+      "seat",
+      "jamsil"
+    ]
+  },
+  {
+    "id": "kbobench_stad_102",
+    "query": "잠실야구장 경기 당일 주차 요금 할인과 대중교통 접근 방법",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "parking_lots:jamsil_p1",
+      "stadiums:jamsil"
+    ],
+    "expected_keywords": [
+      "잠실",
+      "주차",
+      "종합운동장역",
+      "요금"
+    ],
+    "tags": [
+      "stadium",
+      "parking",
+      "jamsil"
+    ]
+  },
+  {
+    "id": "kbobench_stad_103",
+    "query": "인천 SSG 랜더스필드 스타벅스 슬래머 및 크림새우 맛집 위치",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "stadium_food_vendors:landers_cream_shrimp",
+      "stadiums:munhak"
+    ],
+    "expected_keywords": [
+      "랜더스필드",
+      "크림새우",
+      "스타벅스"
+    ],
+    "tags": [
+      "stadium",
+      "food",
+      "incheon"
+    ]
+  },
+  {
+    "id": "kbobench_stad_104",
+    "query": "사직야구장 명물 먹거리와 자이언츠 동백유니폼데이 안내",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "stadium_food_vendors:sajik_specialty",
+      "stadiums:sajik"
+    ],
+    "expected_keywords": [
+      "사직",
+      "먹거리",
+      "동백",
+      "롯데"
+    ],
+    "tags": [
+      "stadium",
+      "food",
+      "lotte"
+    ]
+  },
+  {
+    "id": "kbobench_stad_105",
+    "query": "수원 KT 위즈파크 보영만두와 진미통닭 모바일 주문 팁",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "stadium_food_vendors:wizpark_boyoung",
+      "stadiums:suwon"
+    ],
+    "expected_keywords": [
+      "위즈파크",
+      "보영만두",
+      "진미통닭"
+    ],
+    "tags": [
+      "stadium",
+      "food",
+      "kt"
+    ]
+  },
+  {
+    "id": "kbobench_stad_106",
+    "query": "광주-기아 챔피언스필드 서프라이즈존 좌석 시야와 티켓 가격",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "stadium_seat_sections:champions_surprise",
+      "stadiums:gwangju"
+    ],
+    "expected_keywords": [
+      "챔피언스필드",
+      "서프라이즈존",
+      "광주",
+      "시야"
+    ],
+    "tags": [
+      "stadium",
+      "seat",
+      "kia"
+    ]
+  },
+  {
+    "id": "kbobench_stad_107",
+    "query": "대구 삼성 라이온즈 파크 외야 잔디석과 땅땅치킨 위치",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "stadium_seat_sections:rapark_grass",
+      "stadiums:daegu"
+    ],
+    "expected_keywords": [
+      "라이온즈 파크",
+      "잔디석",
+      "대구"
+    ],
+    "tags": [
+      "stadium",
+      "seat",
+      "samsung"
+    ]
+  },
+  {
+    "id": "kbobench_stad_108",
+    "query": "대전 한화생명 이글스파크 떡볶이와 수리 굿즈샵 매장",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "stadium_food_vendors:eaglespark_food",
+      "stadiums:daejeon"
+    ],
+    "expected_keywords": [
+      "이글스파크",
+      "농심가락",
+      "수리",
+      "대전"
+    ],
+    "tags": [
+      "stadium",
+      "food",
+      "hanwha"
+    ]
+  },
+  {
+    "id": "kbobench_stad_109",
+    "query": "고척 스카이돔 로얄다이아몬드클럽 좌석 혜택과 지하 푸드코트",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "stadium_seat_sections:gocheok_rdc",
+      "stadiums:gocheok"
+    ],
+    "expected_keywords": [
+      "고척돔",
+      "다이아몬드클럽",
+      "냉난방"
+    ],
+    "tags": [
+      "stadium",
+      "seat",
+      "kiwoom"
+    ]
+  },
+  {
+    "id": "kbobench_stad_110",
+    "query": "창원 NC 파크 프리미엄 테이블석과 공룡상회 기념품",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "stadium_seat_sections:ncpark_table",
+      "stadiums:changwon"
+    ],
+    "expected_keywords": [
+      "NC 파크",
+      "테이블석",
+      "창원"
+    ],
+    "tags": [
+      "stadium",
+      "seat",
+      "nc"
+    ]
+  },
+  {
+    "id": "kbobench_stad_111",
+    "query": "KIA 타이거즈 대표 육성 응원가 '남행열차'와 팀 응원 문화",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "fan_culture:kia_songs",
+      "teams:KIA"
+    ],
+    "expected_keywords": [
+      "남행열차",
+      "KIA",
+      "응원가",
+      "타이거즈"
+    ],
+    "tags": [
+      "fan_culture",
+      "cheer",
+      "kia"
+    ]
+  },
+  {
+    "id": "kbobench_stad_112",
+    "query": "롯데 자이언츠 대표 응원가 '부산갈매기'와 주황색 비닐봉지 응원",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "fan_culture:lotte_songs",
+      "teams:LT"
+    ],
+    "expected_keywords": [
+      "부산갈매기",
+      "봉다리",
+      "롯데",
+      "자이언츠"
+    ],
+    "tags": [
+      "fan_culture",
+      "cheer",
+      "lotte"
+    ]
+  },
+  {
+    "id": "kbobench_stad_113",
+    "query": "LG 트윈스 '서울의 찬가' 육성 응원 타이밍과 노란 손수건",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "fan_culture:lg_songs",
+      "teams:LG"
+    ],
+    "expected_keywords": [
+      "서울의 찬가",
+      "LG",
+      "트윈스",
+      "육성응원"
+    ],
+    "tags": [
+      "fan_culture",
+      "cheer",
+      "lg"
+    ]
+  },
+  {
+    "id": "kbobench_stad_114",
+    "query": "한화 이글스 '나는 행복합니다' 육성 응원과 보살 팬 문화",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "fan_culture:hanwha_songs",
+      "teams:HH"
+    ],
+    "expected_keywords": [
+      "나는 행복합니다",
+      "한화",
+      "이글스",
+      "보살"
+    ],
+    "tags": [
+      "fan_culture",
+      "cheer",
+      "hanwha"
+    ]
+  },
+  {
+    "id": "kbobench_stad_115",
+    "query": "두산 베어스 '승리의 두산' 응원가와 철웅이 마스코트",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "fan_culture:doosan_songs",
+      "teams:OB"
+    ],
+    "expected_keywords": [
+      "승리의 두산",
+      "철웅이",
+      "두산"
+    ],
+    "tags": [
+      "fan_culture",
+      "cheer",
+      "doosan"
+    ]
+  },
+  {
+    "id": "kbobench_stad_116",
+    "query": "삼성 라이온즈 '엘도라도' 응원가 부활 역사",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "fan_culture:samsung_songs",
+      "teams:SS"
+    ],
+    "expected_keywords": [
+      "엘도라도",
+      "삼성",
+      "라이온즈",
+      "응원가"
+    ],
+    "tags": [
+      "fan_culture",
+      "cheer",
+      "samsung"
+    ]
+  },
+  {
+    "id": "kbobench_stad_117",
+    "query": "SSG 랜더스 불꽃놀이 이벤트 일정과 연안부두 떼창",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "fan_culture:ssg_songs",
+      "teams:SSG"
+    ],
+    "expected_keywords": [
+      "연안부두",
+      "불꽃놀이",
+      "SSG"
+    ],
+    "tags": [
+      "fan_culture",
+      "cheer",
+      "ssg"
+    ]
+  },
+  {
+    "id": "kbobench_stad_118",
+    "query": "잠실야구장 원정 팬 입장 게이트 및 예매 오픈 시간",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "ticket_info:jamsil_open",
+      "stadiums:jamsil"
+    ],
+    "expected_keywords": [
+      "예매",
+      "입장 게이트",
+      "잠실",
+      "인터파크"
+    ],
+    "tags": [
+      "ticket",
+      "stadium",
+      "jamsil"
+    ]
+  },
+  {
+    "id": "kbobench_stad_119",
+    "query": "사직야구장 비 예보 시 우천 환불 규정과 취소 티켓 수수료",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "ticket_info:refund_policy",
+      "stadiums:sajik"
+    ],
+    "expected_keywords": [
+      "우천 취소",
+      "환불",
+      "수수료",
+      "티켓"
+    ],
+    "tags": [
+      "ticket",
+      "rules"
+    ]
+  },
+  {
+    "id": "kbobench_stad_120",
+    "query": "KT 위즈파크 스카이박스 대여 요금과 사전 예약 방법",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "stadium_seat_sections:wizpark_skybox",
+      "stadiums:suwon"
+    ],
+    "expected_keywords": [
+      "스카이박스",
+      "위즈파크",
+      "예약"
+    ],
+    "tags": [
+      "stadium",
+      "seat",
+      "kt"
+    ]
+  },
+  {
+    "id": "kbobench_stad_121",
+    "query": "프로야구 주말 경기 시작 시간(토요일, 일요일) 규정",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_7"
+    ],
+    "expected_keywords": [
+      "주말 경기",
+      "토요일",
+      "일요일",
+      "14시",
+      "17시"
+    ],
+    "tags": [
+      "schedule",
+      "rules"
+    ]
+  },
+  {
+    "id": "kbobench_stad_122",
+    "query": "혹서기(7-8월) KBO 경기 시작 시간 및 더블헤더 편성 제한",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "kbo_regulations:kbo_rulebook/league_regulations/01_regular_season.md_8"
+    ],
+    "expected_keywords": [
+      "혹서기",
+      "더블헤더",
+      "18시",
+      "일요일"
+    ],
+    "tags": [
+      "schedule",
+      "rules"
+    ]
+  },
+  {
+    "id": "kbobench_stad_123",
+    "query": "대구 라팍 포수 후면석 VIP석 예매 방법과 시야",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "stadium_seat_sections:rapark_vip",
+      "stadiums:daegu"
+    ],
+    "expected_keywords": [
+      "VIP석",
+      "포수 후면석",
+      "라이온즈 파크"
+    ],
+    "tags": [
+      "stadium",
+      "seat",
+      "samsung"
+    ]
+  },
+  {
+    "id": "kbobench_stad_124",
+    "query": "광주 챔필 에코파크 및 키즈존 시설 이용 안내",
+    "category": "stadium_fan_infra",
+    "difficulty": "easy",
+    "relevant_chunk_ids": [
+      "stadium_facilities:champions_kids",
+      "stadiums:gwangju"
+    ],
+    "expected_keywords": [
+      "에코파크",
+      "키즈존",
+      "챔피언스필드"
+    ],
+    "tags": [
+      "stadium",
+      "facility",
+      "kia"
+    ]
+  },
+  {
+    "id": "kbobench_stad_125",
+    "query": "고척돔 외야 시야 방해석 및 난간 주의 블록",
+    "category": "stadium_fan_infra",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "stadium_seat_sections:gocheok_outfield",
+      "stadiums:gocheok"
+    ],
+    "expected_keywords": [
+      "고척돔",
+      "외야",
+      "시야방해석"
+    ],
+    "tags": [
+      "stadium",
+      "seat",
+      "kiwoom"
+    ]
+  },
+  {
+    "id": "kbobench_slang_126",
+    "query": "대투수 올해 방어율과 탈삼진 몇 개야?",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:3632_2026_KIA_REGULAR",
+      "player_basic:3632"
+    ],
+    "target_entities": {
+      "player_name": "양현종",
+      "player_id": "3632",
+      "team_id": "KIA"
+    },
+    "expected_keywords": [
+      "양현종",
+      "대투수",
+      "KIA",
+      "평균자책점"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "yang_hyeon_jong"
+    ]
+  },
+  {
+    "id": "kbobench_slang_127",
+    "query": "탑데 요즘 순위 몇 등이고 승률 어때?",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2026-07-17_LT",
+      "teams:LT"
+    ],
+    "target_entities": {
+      "team_id": "LT"
+    },
+    "expected_keywords": [
+      "롯데",
+      "순위",
+      "승률"
+    ],
+    "tags": [
+      "slang",
+      "team_alias",
+      "lotte"
+    ]
+  },
+  {
+    "id": "kbobench_slang_128",
+    "query": "엘롯기 최근 경기 흐름과 승률 현황",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "teams:LG",
+      "teams:LT",
+      "teams:KIA"
+    ],
+    "expected_keywords": [
+      "LG",
+      "롯데",
+      "KIA",
+      "순위"
+    ],
+    "tags": [
+      "slang",
+      "group_alias"
+    ]
+  },
+  {
+    "id": "kbobench_slang_129",
+    "query": "조선의 4번타자 KBO 통산 홈런과 타점 기록",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:71564"
+    ],
+    "target_entities": {
+      "player_name": "이대호",
+      "player_id": "71564",
+      "team_id": "LT"
+    },
+    "expected_keywords": [
+      "이대호",
+      "조선의 4번타자",
+      "홈런",
+      "롯데"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "lee_dae_ho"
+    ]
+  },
+  {
+    "id": "kbobench_slang_130",
+    "query": "푸른 피의 에이스 통산 선발 다승",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:69446",
+      "player_basic:71424"
+    ],
+    "target_entities": {
+      "team_id": "SS"
+    },
+    "expected_keywords": [
+      "원태인",
+      "배영수",
+      "삼성",
+      "다승"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "samsung"
+    ]
+  },
+  {
+    "id": "kbobench_slang_131",
+    "query": "바람의 아들 현역 통산 도루 개수",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:93652"
+    ],
+    "target_entities": {
+      "player_name": "이종범"
+    },
+    "expected_keywords": [
+      "이종범",
+      "바람의 아들",
+      "도루",
+      "해태"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "lee_jong_beom"
+    ]
+  },
+  {
+    "id": "kbobench_slang_132",
+    "query": "바람의 손자 KBO 시절 MVP 수상 연도",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:67341",
+      "awards:401"
+    ],
+    "target_entities": {
+      "player_name": "이정후",
+      "player_id": "67341",
+      "team_id": "WO"
+    },
+    "expected_keywords": [
+      "이정후",
+      "바람의 손자",
+      "MVP",
+      "2022"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "lee_jung_hoo"
+    ]
+  },
+  {
+    "id": "kbobench_slang_133",
+    "query": "작디작은 거인 타율과 안타 수",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:78603"
+    ],
+    "target_entities": {
+      "player_name": "김선빈",
+      "player_id": "78603",
+      "team_id": "KIA"
+    },
+    "expected_keywords": [
+      "김선빈",
+      "작은 거인",
+      "타율",
+      "KIA"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "kim_sun_bin"
+    ]
+  },
+  {
+    "id": "kbobench_slang_134",
+    "query": "문학 소년장사 통산 홈런 기록",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:75847"
+    ],
+    "target_entities": {
+      "player_name": "최정",
+      "player_id": "75847",
+      "team_id": "SSG"
+    },
+    "expected_keywords": [
+      "최정",
+      "소년장사",
+      "홈런",
+      "SSG"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "choi_jeong"
+    ]
+  },
+  {
+    "id": "kbobench_slang_135",
+    "query": "곰군단 사령탑 누구야?",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "teams:OB"
+    ],
+    "target_entities": {
+      "team_id": "OB"
+    },
+    "expected_keywords": [
+      "두산",
+      "감독",
+      "이승엽"
+    ],
+    "tags": [
+      "slang",
+      "team_alias",
+      "doosan"
+    ]
+  },
+  {
+    "id": "kbobench_slang_136",
+    "query": "마법사 군단 팀 순위와 경기차",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "team_standings_daily:2026-07-17_KT",
+      "teams:KT"
+    ],
+    "target_entities": {
+      "team_id": "KT"
+    },
+    "expected_keywords": [
+      "KT",
+      "위즈",
+      "순위"
+    ],
+    "tags": [
+      "slang",
+      "team_alias",
+      "kt"
+    ]
+  },
+  {
+    "id": "kbobench_slang_137",
+    "query": "공룡 군단 팀 타선 OPS",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "teams:NC"
+    ],
+    "target_entities": {
+      "team_id": "NC"
+    },
+    "expected_keywords": [
+      "NC",
+      "다이노스",
+      "OPS"
+    ],
+    "tags": [
+      "slang",
+      "team_alias",
+      "nc"
+    ]
+  },
+  {
+    "id": "kbobench_slang_138",
+    "query": "영웅 군단 마무리 투수 성적",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "teams:WO"
+    ],
+    "target_entities": {
+      "team_id": "WO"
+    },
+    "expected_keywords": [
+      "키움",
+      "히어로즈",
+      "마무리",
+      "세이브"
+    ],
+    "tags": [
+      "slang",
+      "team_alias",
+      "kiwoom"
+    ]
+  },
+  {
+    "id": "kbobench_slang_139",
+    "query": "괴물 투수 한화 복귀 첫해 성적",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:76849_2024_HH_REGULAR",
+      "player_basic:76849"
+    ],
+    "target_entities": {
+      "player_name": "류현진",
+      "player_id": "76849",
+      "team_id": "HH"
+    },
+    "expected_keywords": [
+      "류현진",
+      "괴물",
+      "한화",
+      "2024"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "ryu_hyun_jin"
+    ]
+  },
+  {
+    "id": "kbobench_slang_138b",
+    "query": "끝판대장 돌부처 통산 세이브 개수",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:75431"
+    ],
+    "target_entities": {
+      "player_name": "오승환",
+      "player_id": "75431",
+      "team_id": "SS"
+    },
+    "expected_keywords": [
+      "오승환",
+      "끝판대장",
+      "돌부처",
+      "세이브",
+      "삼성"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "oh_seung_hwan"
+    ]
+  },
+  {
+    "id": "kbobench_slang_140",
+    "query": "천재 유격수 올 시즌 타격 지표",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_batting:52605_2026_KIA_REGULAR",
+      "player_basic:52605"
+    ],
+    "target_entities": {
+      "player_name": "김도영",
+      "team_id": "KIA"
+    },
+    "expected_keywords": [
+      "김도영",
+      "유격수",
+      "타율",
+      "KIA"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "kim_do_young"
+    ]
+  },
+  {
+    "id": "kbobench_slang_141",
+    "query": "국밥 타자 타점 순위와 영양가",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_batting:72443_2024_KIA_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "최형우"
+    },
+    "expected_keywords": [
+      "최형우",
+      "타점",
+      "KIA"
+    ],
+    "tags": [
+      "slang",
+      "nickname"
+    ]
+  },
+  {
+    "id": "kbobench_slang_142",
+    "query": "안경 에이스 롯데 선발 승수",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:1784_2026_LT_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "박세웅",
+      "player_id": "1784",
+      "team_id": "LT"
+    },
+    "expected_keywords": [
+      "박세웅",
+      "안경 에이스",
+      "롯데",
+      "최동원"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "park_se_woong"
+    ]
+  },
+  {
+    "id": "kbobench_slang_143",
+    "query": "구창모 부상 복귀 일자와 퓨처스 등판",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_basic:65962"
+    ],
+    "target_entities": {
+      "player_name": "구창모",
+      "player_id": "65962",
+      "team_id": "NC"
+    },
+    "expected_keywords": [
+      "구창모",
+      "NC",
+      "부상",
+      "복귀"
+    ],
+    "tags": [
+      "slang",
+      "rehab",
+      "koo_chang_mo"
+    ]
+  },
+  {
+    "id": "kbobench_slang_144",
+    "query": "잠실 예수 외국인 투수 켈리 통산 성적",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_basic:69102"
+    ],
+    "target_entities": {
+      "player_name": "켈리",
+      "player_id": "69102",
+      "team_id": "LG"
+    },
+    "expected_keywords": [
+      "켈리",
+      "잠실 예수",
+      "LG",
+      "우승"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "casey_kelly"
+    ]
+  },
+  {
+    "id": "kbobench_slang_145",
+    "query": "문학 거포 군단 팀 홈런 1위 여부",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "teams:SSG"
+    ],
+    "target_entities": {
+      "team_id": "SSG"
+    },
+    "expected_keywords": [
+      "SSG",
+      "랜더스",
+      "홈런",
+      "문학"
+    ],
+    "tags": [
+      "slang",
+      "team_alias",
+      "ssg"
+    ]
+  },
+  {
+    "id": "kbobench_slang_146",
+    "query": "호타준족 30-30 달성자 누구누구 있어?",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "kbo_definitions:records_30_30"
+    ],
+    "expected_keywords": [
+      "30-30",
+      "김도영",
+      "박재홍",
+      "테임즈"
+    ],
+    "tags": [
+      "slang",
+      "record",
+      "30_30"
+    ]
+  },
+  {
+    "id": "kbobench_slang_147",
+    "query": "사직 아이돌 황성빈 마황 출루율과 도루",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_batting:50500_2024_LT_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "황성빈",
+      "team_id": "LT"
+    },
+    "expected_keywords": [
+      "황성빈",
+      "마황",
+      "도루",
+      "롯데"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "hwang_sung_bin"
+    ]
+  },
+  {
+    "id": "kbobench_slang_148",
+    "query": "유강남 오지환 잠실 더비 프랜차이즈 출신 이동",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "medium",
+    "relevant_chunk_ids": [
+      "player_movements:1001"
+    ],
+    "expected_keywords": [
+      "유강남",
+      "오지환",
+      "LG",
+      "롯데",
+      "FA"
+    ],
+    "tags": [
+      "slang",
+      "fa_transfer"
+    ]
+  },
+  {
+    "id": "kbobench_slang_149",
+    "query": "불꽃남자 한화 김서현 구속 160km 달성 기록",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:53755_2024_HH_REGULAR"
+    ],
+    "target_entities": {
+      "player_name": "김서현",
+      "player_id": "53755",
+      "team_id": "HH"
+    },
+    "expected_keywords": [
+      "김서현",
+      "160",
+      "구속",
+      "한화"
+    ],
+    "tags": [
+      "slang",
+      "fireballer",
+      "kim_seo_hyeon"
+    ]
+  },
+  {
+    "id": "kbobench_slang_150",
+    "query": "대구 아기사자 신인 투수 활약상",
+    "category": "slang_fuzzy_alias",
+    "difficulty": "hard",
+    "relevant_chunk_ids": [
+      "player_season_pitching:54441_2024_SS_REGULAR"
+    ],
+    "target_entities": {
+      "team_id": "SS"
+    },
+    "expected_keywords": [
+      "삼성",
+      "신인",
+      "라이온즈"
+    ],
+    "tags": [
+      "slang",
+      "nickname",
+      "rookie"
+    ]
+  }
+]
