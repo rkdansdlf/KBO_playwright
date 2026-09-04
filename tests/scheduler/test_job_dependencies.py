@@ -32,6 +32,7 @@ def reset_registry():
 
 # === JobStatus / JobResult dataclass tests ===
 
+
 def test_job_status_enum_values() -> None:
     """Test JobStatus enum has all expected values."""
     assert JobStatus.SUCCESS.value == "success"
@@ -77,6 +78,7 @@ def test_job_result_with_details() -> None:
 
 # === _register_job tests ===
 
+
 def test_register_job_default_status() -> None:
     """Test that newly registered job has RUNNING status."""
     _register_job("test_job")
@@ -97,6 +99,7 @@ def test_register_job_no_dependencies() -> None:
 
 
 # === _update_job_status tests ===
+
 
 def test_update_job_status_success() -> None:
     """Test updating job status to SUCCESS."""
@@ -128,6 +131,7 @@ def test_update_job_status_with_details() -> None:
 
 
 # === _can_run_job tests ===
+
 
 def test_can_run_job_no_dependencies() -> None:
     """Test that a job without dependencies can always run."""
@@ -222,6 +226,7 @@ def test_can_run_job_not_registered() -> None:
 
 # === get_job_status_summary tests ===
 
+
 def test_get_job_status_summary_empty() -> None:
     """Test summary is empty dict when registry is empty."""
     assert get_job_status_summary() == {}
@@ -262,6 +267,7 @@ def test_get_job_status_summary_includes_details() -> None:
 
 # === clear_job_registry tests ===
 
+
 def test_clear_job_registry() -> None:
     """Test that clear_job_registry empties the registry."""
     _register_job("job1")
@@ -281,6 +287,7 @@ def test_clear_job_registry_idempotent() -> None:
 
 
 # === Integration scenario tests ===
+
 
 def test_dependency_chain_success() -> None:
     """Test a complete dependency chain that succeeds."""
