@@ -26,6 +26,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.utils.compliance import compliance
+from src.utils.kbo_relay_target import resolve_kbo_relay_target
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -573,7 +574,8 @@ class TextRelayCrawler:
         self.last_failure_reason = None
 
         game_date = game_id[:8]
-        url = f"{self.base_url}?leagueId=1&seriesId=0&gameId={game_id}&gyear={game_date[:4]}"
+        target = resolve_kbo_relay_target(game_id, season_type="regular")
+        url = target.to_url()
 
         result = RelayCrawlResult(game_id=game_id, game_date=game_date)
 
