@@ -319,7 +319,10 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
 
     """
     try:
-        kbo_url = f"https://www.koreabaseball.com/Game/LiveText.aspx?gameId={game_id}&gyear={game_id[:4]}"
+        from src.utils.kbo_relay_target import resolve_kbo_relay_target
+
+        target = resolve_kbo_relay_target(game_id, season_type="regular")
+        kbo_url = target.to_url()
         if not await compliance.is_allowed(kbo_url):
             logger.info("[COMPLIANCE] KBO PBP fallback skipped for %s", game_id)
             return

@@ -18,6 +18,7 @@ from playwright.async_api import Page
 
 from src.services.wpa_calculator import WPACalculator
 from src.utils.compliance import compliance
+from src.utils.kbo_relay_target import resolve_kbo_relay_target
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -229,8 +230,8 @@ class PBPCrawler(BasePlaywrightCrawler):
         self.last_failure_reason = None
 
         game_date = game_id[:8]
-        # Common ids: leagueId=1 (KBO), seriesId=0 (Regular)
-        url = f"{self.base_url}?leagueId=1&seriesId=0&gameId={game_id}&gyear={game_date[:4]}"
+        target = resolve_kbo_relay_target(game_id, season_type="regular")
+        url = target.to_url()
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1, context_kwargs=self._context_kwargs, requires_auth=True)
         owns_pool = self.pool is None
