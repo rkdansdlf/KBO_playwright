@@ -1,0 +1,440 @@
+{
+  "counts": {
+    "raw_span_nodes": 41,
+    "leaf_text_nodes": 41,
+    "non_empty_nodes": 41,
+    "events": 5,
+    "commentary": 29,
+    "headers": 7,
+    "structural_nodes": 0,
+    "duplicates": 0,
+    "corrections": 0,
+    "unsupported": 0,
+    "invalid": 0,
+    "unclassified": 0
+  },
+  "reconciliation_equation": "Raw Leaf DOM Nodes = Events + Commentary + Headers + Structural Nodes + Duplicates + Corrections + Unsupported + Invalid + Unclassified",
+  "reconciliation_complete": true,
+  "ledger": [
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0001",
+      "selector_path": "#numCont9 > span:nth-child(1)",
+      "raw_text": "경기종료",
+      "raw_text_sha256": "a5c025074cb7a5a490e822b451f9b5dfc40510dd884446dd5ef73e5261875772",
+      "primary_class": "HEADER",
+      "reason_code": "INNING_OR_GAME_HEADER",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0002",
+      "selector_path": "#numCont9 > span:nth-child(2)",
+      "raw_text": "패전투수: 손주환",
+      "raw_text_sha256": "80ab688b9abd2ce0b4ba35f6245ed1ea27f87b7721e9fc5e33b01af0c7cf3081",
+      "primary_class": "HEADER",
+      "reason_code": "INNING_OR_GAME_HEADER",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0003",
+      "selector_path": "#numCont9 > span:nth-child(3)",
+      "raw_text": "승리팀 홀드투수: 최지민",
+      "raw_text_sha256": "f2ce1f58ba6d36aacf0ce3c9ee7256137780e06ff9a31dbd3d3ad220aeb153f7",
+      "primary_class": "HEADER",
+      "reason_code": "INNING_OR_GAME_HEADER",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0004",
+      "selector_path": "#numCont9 > span:nth-child(4)",
+      "raw_text": "승리팀 홀드투수: 전상현",
+      "raw_text_sha256": "02a6fd82fa5bb6d2643e651da2f3799677378681ac98194a07d639e57a629aa9",
+      "primary_class": "HEADER",
+      "reason_code": "INNING_OR_GAME_HEADER",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0005",
+      "selector_path": "#numCont9 > span:nth-child(5)",
+      "raw_text": "승리투수: 이준영",
+      "raw_text_sha256": "b89e05c0ce1334a7e2e3f3367def95d5325f057b148b5606f0b695c211545602",
+      "primary_class": "HEADER",
+      "reason_code": "INNING_OR_GAME_HEADER",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0006",
+      "selector_path": "#numCont9 > span:nth-child(6)",
+      "raw_text": "=====================================",
+      "raw_text_sha256": "b605795742bb9c319c60e11db7a960105a53783e8d47acdf2859743bc3f2ee8d",
+      "primary_class": "HEADER",
+      "reason_code": "INNING_OR_GAME_HEADER",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0007",
+      "selector_path": "#numCont9 > span:nth-child(7)",
+      "raw_text": "안중열 : 삼진 아웃",
+      "raw_text_sha256": "7d74144f2a9f4dec07a1946865e027ac741e52f3e00cc47f1cbb388bafc40bad",
+      "primary_class": "EVENT",
+      "reason_code": "PLAY_DESCRIPTION",
+      "normalized_event_ids": [
+        "KBO-EV-05"
+      ]
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0008",
+      "selector_path": "#numCont9 > span:nth-child(8)",
+      "raw_text": "- 4구 스트라이크",
+      "raw_text_sha256": "a763b06f8863dee81c5bf73d7159a05bff3e4b108ccc13ee3167c4cc52b70ef4",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0009",
+      "selector_path": "#numCont9 > span:nth-child(9)",
+      "raw_text": "- 3구 파울",
+      "raw_text_sha256": "6ccd1024661734de27997bd6eb68c3bbac7badb9280d1c742ec05c92211ba78a",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0010",
+      "selector_path": "#numCont9 > span:nth-child(10)",
+      "raw_text": "- 2구 헛스윙",
+      "raw_text_sha256": "87b5e22d616b65353a8ebada5c8e72ebf1782ae9e953068856614e1c899ff756",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0011",
+      "selector_path": "#numCont9 > span:nth-child(11)",
+      "raw_text": "- 1구 볼",
+      "raw_text_sha256": "9896544b1a908ed8c2fbacbc3139eb604d53ca3644392bd0580002324c71f6c0",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0012",
+      "selector_path": "#numCont9 > span:nth-child(12)",
+      "raw_text": "7번타자 안중열",
+      "raw_text_sha256": "fbc382eb2d96c2c665203c8cce9ac6ff419db3dcd221a29e201fb2fd67e48dbc",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0013",
+      "selector_path": "#numCont9 > span:nth-child(13)",
+      "raw_text": "1루주자 김휘집 : 2루까지 진루",
+      "raw_text_sha256": "577118cb9c7bfd91ce722ec653160ddf732461cfadbc2f0889ff0ca3838285ca",
+      "primary_class": "EVENT",
+      "reason_code": "PLAY_DESCRIPTION",
+      "normalized_event_ids": [
+        "KBO-EV-04"
+      ]
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0014",
+      "selector_path": "#numCont9 > span:nth-child(14)",
+      "raw_text": "김형준 : 투수 땅볼 아웃 (투수->1루수 송구아웃)",
+      "raw_text_sha256": "cdeacf6a06cfef8744e5f68d83cb3e885070d017ee61ed08bff12f55fb43072e",
+      "primary_class": "EVENT",
+      "reason_code": "PLAY_DESCRIPTION",
+      "normalized_event_ids": [
+        "KBO-EV-03"
+      ]
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0015",
+      "selector_path": "#numCont9 > span:nth-child(15)",
+      "raw_text": "- 5구 타격",
+      "raw_text_sha256": "ace2b6e2a482fe7d56ab6727a38653fbd6902cbb0ca17bb4e6752c2c20e54a31",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0016",
+      "selector_path": "#numCont9 > span:nth-child(16)",
+      "raw_text": "- 4구 파울",
+      "raw_text_sha256": "e12b43b57cc0efcd856ce2467cb1883cda2716a1cdcbb0881a39974b9eba6df1",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0017",
+      "selector_path": "#numCont9 > span:nth-child(17)",
+      "raw_text": "- 3구 헛스윙",
+      "raw_text_sha256": "b89cbf23c289ad1ab05617ab39f99c85fdd09a37eafeb0dcbceac84825aaf516",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0018",
+      "selector_path": "#numCont9 > span:nth-child(18)",
+      "raw_text": "- 2구 볼",
+      "raw_text_sha256": "69fc06d1f0dd08ee37e9b255921b1e29454056b1f726b782444ff97d126c1ebd",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0019",
+      "selector_path": "#numCont9 > span:nth-child(19)",
+      "raw_text": "- 1구 헛스윙",
+      "raw_text_sha256": "027db50ab5952a37d401b931041246b8a5341aa701a4d01bfebd25b243a18282",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0020",
+      "selector_path": "#numCont9 > span:nth-child(20)",
+      "raw_text": "6번타자 도태훈 : 대타 김형준 (으)로 교체",
+      "raw_text_sha256": "10af1669cd1a907ac2c0c1d27632afc08f69236b648058f7f359d27706c7e7fc",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0021",
+      "selector_path": "#numCont9 > span:nth-child(21)",
+      "raw_text": "6번타자 도태훈",
+      "raw_text_sha256": "40694e820e2f43267d3acc360b83960f490f158b957a47c8741f2c05f1126966",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0022",
+      "selector_path": "#numCont9 > span:nth-child(22)",
+      "raw_text": "박민우 : 좌익수 플라이 아웃",
+      "raw_text_sha256": "338f3d4587088416ecf81233538a015b1338d0c5e6f3aab362f6f30aaf185f5b",
+      "primary_class": "EVENT",
+      "reason_code": "PLAY_DESCRIPTION",
+      "normalized_event_ids": [
+        "KBO-EV-02"
+      ]
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0023",
+      "selector_path": "#numCont9 > span:nth-child(23)",
+      "raw_text": "- 8구 타격",
+      "raw_text_sha256": "31e780d290bb07e0e4be1819f66019cd7319c278c8a092f099b65ba61d9d4628",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0024",
+      "selector_path": "#numCont9 > span:nth-child(24)",
+      "raw_text": "- 7구 파울",
+      "raw_text_sha256": "ce341194bfa89be99bfd957e22c3bff62f3603796fd968097724a296b419a2ed",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0025",
+      "selector_path": "#numCont9 > span:nth-child(25)",
+      "raw_text": "- 6구 파울",
+      "raw_text_sha256": "251b8a20700f75dade36711d9ddab1fa7d75c0b2f30af05ad469443e30f75298",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0026",
+      "selector_path": "#numCont9 > span:nth-child(26)",
+      "raw_text": "- 5구 파울",
+      "raw_text_sha256": "c9fbd6e614d56cd7544d97ef7dfc0101f171433a2209d359beb333462c4e5073",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0027",
+      "selector_path": "#numCont9 > span:nth-child(27)",
+      "raw_text": "- 4구 헛스윙",
+      "raw_text_sha256": "fe3bdac6d158346121481a6b6f78e4f38821c7921782a75ca7a0ecd2c9218150",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0028",
+      "selector_path": "#numCont9 > span:nth-child(28)",
+      "raw_text": "- 3구 볼",
+      "raw_text_sha256": "19edec6dd7eb820cca2f3575b2cd16e5a65a46bb859a16c79076c93ae62b6031",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0029",
+      "selector_path": "#numCont9 > span:nth-child(29)",
+      "raw_text": "- 2구 스트라이크",
+      "raw_text_sha256": "16e8362bdafd7f2bb7bbfeead920dd32e98078f512211789b85753a823d99c47",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0030",
+      "selector_path": "#numCont9 > span:nth-child(30)",
+      "raw_text": "- 1구 볼",
+      "raw_text_sha256": "9896544b1a908ed8c2fbacbc3139eb604d53ca3644392bd0580002324c71f6c0",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0031",
+      "selector_path": "#numCont9 > span:nth-child(31)",
+      "raw_text": "5번타자 서호철 : 대타 박민우 (으)로 교체",
+      "raw_text_sha256": "6f0712ce3b0253ba9e7197f0495a71f73605857389daa966ae597e786f5a16b3",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0032",
+      "selector_path": "#numCont9 > span:nth-child(32)",
+      "raw_text": "5번타자 서호철",
+      "raw_text_sha256": "8df90371a8f6fc1a4a343a9d81e0fc59e3e739720af6a08b0ccea7b2a8812988",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0033",
+      "selector_path": "#numCont9 > span:nth-child(33)",
+      "raw_text": "김휘집 : 볼넷",
+      "raw_text_sha256": "46d7b91716b0f438040141da79d70dc34b192f1b12cb4ee2b8e8bc0e1501becd",
+      "primary_class": "EVENT",
+      "reason_code": "PLAY_DESCRIPTION",
+      "normalized_event_ids": [
+        "KBO-EV-01"
+      ]
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0034",
+      "selector_path": "#numCont9 > span:nth-child(34)",
+      "raw_text": "- 5구 볼",
+      "raw_text_sha256": "50bffbbb779cdb36d92062ec279a3ae4722871bf5ced6abec61e2287850589e2",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0035",
+      "selector_path": "#numCont9 > span:nth-child(35)",
+      "raw_text": "- 4구 볼",
+      "raw_text_sha256": "9763e8d49f0229dd5e3eb3888ed0708d80e3b61b808adceb68f20699c53555cf",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0036",
+      "selector_path": "#numCont9 > span:nth-child(36)",
+      "raw_text": "- 3구 볼",
+      "raw_text_sha256": "19edec6dd7eb820cca2f3575b2cd16e5a65a46bb859a16c79076c93ae62b6031",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0037",
+      "selector_path": "#numCont9 > span:nth-child(37)",
+      "raw_text": "- 2구 헛스윙",
+      "raw_text_sha256": "87b5e22d616b65353a8ebada5c8e72ebf1782ae9e953068856614e1c899ff756",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0038",
+      "selector_path": "#numCont9 > span:nth-child(38)",
+      "raw_text": "- 1구 볼",
+      "raw_text_sha256": "9896544b1a908ed8c2fbacbc3139eb604d53ca3644392bd0580002324c71f6c0",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0039",
+      "selector_path": "#numCont9 > span:nth-child(39)",
+      "raw_text": "투수 최지민 : 투수 정해영 (으)로 교체",
+      "raw_text_sha256": "e11393b0ae8cb9413ff54988802d54c03c8ddf483af524dd5f7fe0c0b3a73ce3",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0040",
+      "selector_path": "#numCont9 > span:nth-child(40)",
+      "raw_text": "4번타자 김휘집",
+      "raw_text_sha256": "3f24ccf0956f0e27652e95821a88ad7d8430222213252c83feb1b237df08a45f",
+      "primary_class": "COMMENTARY",
+      "reason_code": "BATTER_OR_PITCH_COMMENTARY",
+      "normalized_event_ids": []
+    },
+    {
+      "source": "KBO",
+      "raw_row_id": "kbo-dom-0041",
+      "selector_path": "#numCont9 > span:nth-child(41)",
+      "raw_text": "9회초 NC 공격\n---------------------------------------",
+      "raw_text_sha256": "e28696cc1ecd8eabc9265c157ff09938f5d0b4abb1bef6932d62faa4c35c6f60",
+      "primary_class": "HEADER",
+      "reason_code": "INNING_OR_GAME_HEADER",
+      "normalized_event_ids": []
+    }
+  ]
+}

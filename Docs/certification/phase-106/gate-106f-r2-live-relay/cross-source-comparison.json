@@ -1,19 +1,34 @@
 {
-  "kbo_normalized_events": 0,
-  "naver_normalized_events": 5,
-  "exact_matches": 0,
-  "semantic_matches": 0,
-  "kbo_only": 0,
-  "naver_only": 5,
-  "correction_candidates": 0,
-  "order_differences": 0,
-  "ambiguous": 0,
-  "false_merge_candidates": 0,
-  "overall_verdict": "R2_KBO_SOURCE_UNAVAILABLE_NAVER_VERIFIED",
-  "verdict_notes": "KBO official relay endpoint redirected to Error.html (legacy LiveText deprecated/unavailable), while Naver API responded with complete 200 OK relay data. Cross-source comparison reflects asymmetric source availability as per Section 6/7 guidelines.",
-  "rate_limit_signal_observation": {
-    "kbo_rate_limited": false,
-    "naver_rate_limited": false,
-    "observed_403_or_429": false
-  }
+  "comparison_status": "EVALUATED_DUAL_SOURCE_MATCH",
+  "comparison_scope": {
+    "inning": 9,
+    "inning_half": "top",
+    "scope_type": "TERMINAL_HALF_INNING"
+  },
+  "kbo_events_total": 5,
+  "naver_events_total": 5,
+  "match_groups_count": 5,
+  "cardinality_breakdown": {
+    "1:1": 5,
+    "1:N": 0,
+    "N:1": 0
+  },
+  "primary_class_counts": {
+    "MATCHED_EXACT": 5,
+    "MATCHED_SEMANTIC": 0,
+    "KBO_ONLY": 0,
+    "NAVER_ONLY": 0,
+    "AMBIGUOUS": 0
+  },
+  "attribute_counts": {
+    "CORRECTION_CANDIDATE": 0,
+    "ORDER_DIFFERENCE": 0,
+    "GRANULARITY_DIFFERENCE": 0,
+    "FALSE_MERGE_REVIEW_REQUIRED": 0
+  },
+  "all_kbo_events_assigned": true,
+  "all_naver_events_assigned": true,
+  "unexplained_event_loss": 0,
+  "duplicate_matches": 0,
+  "overall_verdict": "PASS_DUAL_SOURCE_CANONICAL_MATCH"
 }
