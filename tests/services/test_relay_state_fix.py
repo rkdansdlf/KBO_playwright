@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from scripts.maintenance.fix_relay_state import (
     RelayStateSummary,
     RelayStateIssue,
-    _analyze_game_sources,
+    _analyze_game_sources_from_rows,
     _get_games_by_criterion,
     print_summary,
     audit_relay_source_states,
@@ -52,15 +52,12 @@ def test_relay_state_issue_dataclass() -> None:
     assert issue.count == 1
 
 
-# === _analyze_game_sources tests ===
+# === _analyze_game_sources_from_rows tests ===
 
 
-def test_analyze_game_sources_empty() -> None:
-    """Test _analyze_game_sources returns empty results."""
-    mock_session = MagicMock()
-    mock_session.execute.return_value.all.return_value = []
-
-    sources, has_unclassified, has_mismatch, has_redundant = _analyze_game_sources(mock_session, "FAKE_GAME")
+def test_analyze_game_sources_from_rows_empty() -> None:
+    """Test _analyze_game_sources_from_rows returns empty results."""
+    sources, has_unclassified, has_mismatch, has_redundant = _analyze_game_sources_from_rows([])
 
     assert sources == set()
     assert has_unclassified is False
@@ -68,15 +65,14 @@ def test_analyze_game_sources_empty() -> None:
     assert has_redundant is False
 
 
-def test_analyze_game_sources_with_data() -> None:
-    """Test _analyze_game_sources with mock data."""
-    mock_session = MagicMock()
-    mock_session.execute.return_value.all.return_value = [
+def test_analyze_game_sources_from_rows_with_data() -> None:
+    """Test _analyze_game_sources_from_rows with mock data."""
+    rows = [
         type("Row", (), {"source_name": "naver", "event_type": "batting", "provider_log_id": "naver_001"})(),
         type("Row", (), {"source_name": "jumper", "event_type": "unknown", "provider_log_id": "naver_002"})(),
     ]
 
-    sources, has_unclassified, has_mismatch, has_redundant = _analyze_game_sources(mock_session, "FAKE_GAME")
+    sources, has_unclassified, has_mismatch, has_redundant = _analyze_game_sources_from_rows(rows)
 
     assert "naver" in sources
     assert "jumper" in sources

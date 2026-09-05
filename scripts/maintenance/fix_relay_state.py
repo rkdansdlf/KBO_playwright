@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import random
 import sys
 from pathlib import Path
 from collections import Counter
@@ -79,25 +80,25 @@ class RelayStateSummary:
     game_level_issues: dict[str, list[str]] = field(default_factory=dict)
 
 
-def _collect_game_ids_with_pbp(session: Session) -> list[str]:
+def _collect_game_ids_with_pbp(session: Session, sample_size: int | None = None) -> list[str]:
     rows = (
         session.query(GamePlayByPlay.game_id)
         .group_by(GamePlayByPlay.game_id)
         .with_entities(GamePlayByPlay.game_id)
         .all()
     )
-    return [r[0] for r in rows]
+    game_ids = [r[0] for r in rows]
+
+    if sample_size and sample_size < len(game_ids):
+        return random.sample(game_ids, sample_size)
+    return game_ids
 
 
-def _analyze_game_sources(session: Session, game_id: str) -> tuple[set[str], bool, bool, bool]:
-    rows = session.execute(
-        select(
-            GamePlayByPlay.source_name,
-            GamePlayByPlay.event_type,
-            GamePlayByPlay.provider_log_id,
-        ).where(GamePlayByPlay.game_id == game_id)
-    ).all()
+def _analyze_game_sources_from_rows(rows: list) -> tuple[set[str], bool, bool, bool]:
+    """Pre-fetched rows를 처리하여 소스 분석 결과를 반환.
 
+    N+1 쿼리 문제를 해결하기 위해 이미 DB에서 조회한 rows를 처리합니다.
+    """
     source_names: set[str] = set()
     has_unclassified = False
     has_source_mismatch = False
@@ -126,14 +127,14 @@ def _analyze_game_sources(session: Session, game_id: str) -> tuple[set[str], boo
     return source_names, has_unclassified, has_source_mismatch, has_redundant_prefix
 
 
-def audit_relay_source_states() -> RelayStateSummary:
+def audit_relay_source_states(sample_size: int | None = None) -> RelayStateSummary:
     summary = RelayStateSummary()
 
     with SessionLocal() as session:
         summary.total_pbp_rows = session.query(func.count(GamePlayByPlay.id)).scalar() or 0
         summary.total_events = session.query(func.count(GameEvent.id)).scalar() or 0
 
-        game_ids = _collect_game_ids_with_pbp(session)
+        game_ids = _collect_game_ids_with_pbp(sample_size=sample_size)
         summary.total_games = len(game_ids)
 
         source_counts: Counter[str] = Counter()
@@ -143,38 +144,57 @@ def audit_relay_source_states() -> RelayStateSummary:
         redundant_game_ids: set[str] = set()
         game_issues: dict[str, list[str]] = {}
 
-        for game_id in game_ids:
-            sources, has_unclsf, has_mismatch, has_redundant = _analyze_game_sources(session, game_id)
+        if game_ids:
+            # N+1 쿼리 방지를 위해 한 번에 모든 rows 조회
+            from collections import defaultdict
 
-            for name in sources:
-                source_counts[name] += 1
+            rows = session.execute(
+                select(
+                    GamePlayByPlay.game_id,
+                    GamePlayByPlay.source_name,
+                    GamePlayByPlay.event_type,
+                    GamePlayByPlay.provider_log_id,
+                ).where(GamePlayByPlay.game_id.in_(game_ids))
+            ).all()
 
-            unknown_names = {n for n in sources if n not in ALLOWED_SOURCE_TYPES_LOWER and n != "none"}
-            if unknown_names:
-                unknown_source_game_ids.add(game_id)
-                summary.issues.append(
-                    RelayStateIssue(
-                        issue_type="unknown_source",
-                        source_name=", ".join(sorted(unknown_names)),
-                        count=len(unknown_names),
-                        games=[game_id],
+            # game_id별로 rows 그룹화
+            game_data: dict[str, list] = defaultdict(list)
+            for row in rows:
+                game_data[row.game_id].append(row)
+
+            for game_id in game_ids:
+                game_rows = game_data.get(game_id, [])
+                sources, has_unclsf, has_mismatch, has_redundant = _analyze_game_sources_from_rows(game_rows)
+
+                for name in sources:
+                    source_counts[name] += 1
+
+                unknown_names = {n for n in sources if n not in ALLOWED_SOURCE_TYPES_LOWER and n != "none"}
+                if unknown_names:
+                    unknown_source_game_ids.add(game_id)
+                    summary.issues.append(
+                        RelayStateIssue(
+                            issue_type="unknown_source",
+                            source_name=", ".join(sorted(unknown_names)),
+                            count=len(unknown_names),
+                            games=[game_id],
+                        )
                     )
-                )
-                game_issues[game_id] = game_issues.get(game_id, [])
-                game_issues[game_id].append(f"unknown_source:{','.join(sorted(unknown_names))}")
+                    game_issues[game_id] = game_issues.get(game_id, [])
+                    game_issues[game_id].append(f"unknown_source:{','.join(sorted(unknown_names))}")
 
-            if has_unclsf:
-                unclassified_game_ids.add(game_id)
+                if has_unclsf:
+                    unclassified_game_ids.add(game_id)
 
-            if has_mismatch:
-                mismatch_game_ids.add(game_id)
-                game_issues[game_id] = game_issues.get(game_id, [])
-                game_issues[game_id].append("source_mismatch")
+                if has_mismatch:
+                    mismatch_game_ids.add(game_id)
+                    game_issues[game_id] = game_issues.get(game_id, [])
+                    game_issues[game_id].append("source_mismatch")
 
-            if has_redundant:
-                redundant_game_ids.add(game_id)
-                game_issues[game_id] = game_issues.get(game_id, [])
-                game_issues[game_id].append("redundant")
+                if has_redundant:
+                    redundant_game_ids.add(game_id)
+                    game_issues[game_id] = game_issues.get(game_id, [])
+                    game_issues[game_id].append("redundant")
 
         summary.source_breakdown = dict(source_counts)
         summary.unknown_source_games = len(unknown_source_game_ids)
