@@ -149,9 +149,15 @@ class RagEvaluationMetrics:
 
     precision_at_k: float = 0.0
     recall_at_k: float = 0.0
+    recall_at_1: float = 0.0
+    recall_at_3: float = 0.0
     mrr: float = 0.0
     ndcg: float = 0.0
+    ndcg_at_10: float = 0.0
     hit_rate: float = 0.0
+    entity_match_rate: float = 0.0
+    temporal_fidelity_rate: float = 0.0
+    containment_rate: float = 0.0
     sample_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -159,9 +165,15 @@ class RagEvaluationMetrics:
         return {
             "precision_at_k": round(self.precision_at_k, 4),
             "recall_at_k": round(self.recall_at_k, 4),
+            "recall_at_1": round(self.recall_at_1, 4),
+            "recall_at_3": round(self.recall_at_3, 4),
             "mrr": round(self.mrr, 4),
             "ndcg": round(self.ndcg, 4),
+            "ndcg_at_10": round(self.ndcg_at_10, 4),
             "hit_rate": round(self.hit_rate, 4),
+            "entity_match_rate": round(self.entity_match_rate, 4),
+            "temporal_fidelity_rate": round(self.temporal_fidelity_rate, 4),
+            "containment_rate": round(self.containment_rate, 4),
             "sample_count": self.sample_count,
         }
 
