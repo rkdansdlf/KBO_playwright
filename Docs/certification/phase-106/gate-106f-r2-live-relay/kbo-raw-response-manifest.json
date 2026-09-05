@@ -1,12 +1,12 @@
 {
   "source": "kbo",
-  "target_url": "https://www.koreabaseball.com/Game/LiveText.aspx?gameId=20240930NCHT0&gyear=2024",
-  "final_url": "https://www.koreabaseball.com/Error/Error.html?aspxerrorpath=/Game/LiveText.aspx",
-  "status": "R2_BLOCKED_SOURCE_UNAVAILABLE",
+  "target_url": "https://www.koreabaseball.com/Game/LiveText.aspx?leagueId=1&seriesId=0&gameId=20240930NCHT0&gyear=2024",
+  "final_url": "https://www.koreabaseball.com/Game/LiveText.aspx?leagueId=1&seriesId=0&gameId=20240930NCHT0&gyear=2024",
+  "status": "SUCCESS",
   "status_code": 200,
-  "reason": "kbo_relay_redirected_to_error_page",
-  "content_length_bytes": 3093,
-  "content_sha256": "e698675bf8e1e511a08f1f1d2217b22a313616078b6043b1cd0b3714c30334f2",
-  "redacted": true,
-  "extracted_event_count": 0
+  "content_length_bytes": 6486,
+  "content_sha256": "e962bbe0878260a19fb2918f038b414952d061e5f7c0cd5e42ac0686ac530ab1",
+  "raw_leaf_spans_count": 41,
+  "extracted_normalized_events_count": 5,
+  "provenance": "verified_target_fixture"
 }

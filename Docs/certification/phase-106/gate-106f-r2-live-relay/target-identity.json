@@ -1,10 +1,29 @@
 {
-  "kbo_game_id": "20240930NCHT0",
-  "naver_game_id": "20240930NCHT02024",
-  "game_date": "2024-09-30",
-  "away_team": "NC",
-  "home_team": "KIA",
-  "away_score": 5,
-  "home_score": 10,
-  "game_status": "COMPLETED"
+  "target_game": {
+    "kbo_game_id": "20240930NCHT0",
+    "naver_game_id": "20240930NCHT02024",
+    "game_date": "2024-09-30",
+    "away_team": "NC",
+    "home_team": "KIA",
+    "away_score": 5,
+    "home_score": 10,
+    "game_status": "COMPLETED",
+    "league_id": 1,
+    "series_id": 0
+  },
+  "resolved_kbo_target": {
+    "game_id": "20240930NCHT0",
+    "gyear": 2024,
+    "league_id": 1,
+    "series_id": 0,
+    "endpoint_path": "/Game/LiveText.aspx",
+    "resolved_from": "verified_target_fixture",
+    "canonical_url": "https://www.koreabaseball.com/Game/LiveText.aspx?leagueId=1&seriesId=0&gameId=20240930NCHT0&gyear=2024"
+  },
+  "comparison_scope": {
+    "inning": 9,
+    "inning_half": "top",
+    "scope_type": "TERMINAL_HALF_INNING"
+  },
+  "operational_label": "종료된 역사 경기의 라이브 엔드포인트 read-only smoke"
 }

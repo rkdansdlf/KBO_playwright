@@ -1,10 +1,18 @@
 {
-  "gate": "GATE_R2_LIMITED_LIVE_RELAY_SMOKE",
-  "generated_at": "2026-09-03T05:10:23.833600+00:00",
-  "tested_code_commit_full": "03524c357239b67190fa5dbf83984aa5e013936c",
-  "tested_code_tree_full": "1c251f71870ac6fcbc26e8565f37733b0fcff1d1",
-  "python_executable": "/Users/mac/project/KBO_playwright/venv/bin/python",
+  "gate": "GATE_R2_LIMITED_LIVE_RELAY_SMOKE_REMEDIATED",
+  "operational_label": "종료된 역사 경기의 라이브 엔드포인트 read-only smoke",
+  "generated_at": "2026-09-05T00:06:46.520359+00:00",
+  "tested_code_commit_full": "e3371ca70abfc0186bee1df4bb30eae87553c157",
+  "tested_code_tree_full": "0b02b7d22fa43abeef9916229b6304890a5517a0",
+  "runner_script_sha256": "13a0842528efa6b7053b6722d48f10a1df1df5ea5921dd03e6274dc7965d83f2",
+  "python_executable": "/Users/mac/project/KBO_playwright/venv/bin/python3",
   "python_version": "3.12.14 (main, Aug 12 2026, 13:57:54) [Clang 21.0.0 (clang-2100.1.1.101)]",
-  "overall_verdict": "R2_KBO_SOURCE_UNAVAILABLE_NAVER_VERIFIED",
-  "db_sha256": "4be13e65d30621a8cc5d0134ba92b3fea9d56d3f6379d6b881c52a953cff229a"
+  "overall_verdict": "PASS_DUAL_SOURCE_CANONICAL_MATCH",
+  "db_sha256": "4be13e65d30621a8cc5d0134ba92b3fea9d56d3f6379d6b881c52a953cff229a",
+  "payload_file_count": 24,
+  "integrity_file_count": 2,
+  "total_file_count": 26,
+  "all_payload_files_in_sha256sums": true,
+  "git_status_before": " M Docs/certification/phase-106/gate-106f-r2-live-relay/README.md\n M Docs/certification/phase-106/gate-106f-r2-live-relay/SHA256SUMS\n M Docs/certification/phase-106/gate-106f-r2-live-relay/browser-console-ledger.jsonl\n M Docs/certification/phase-106/gate-106f-r2-live-relay/checksum-verification.txt\n M Docs/certification/phase-106/gate-106f-r2-live-relay/cross-source-comparison.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/kbo-normalized-events.jsonl\n M Docs/certification/phase-106/gate-106f-r2-live-relay/kbo-raw-response-manifest.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/live-relay-plan.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/naver-raw-response-manifest.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/network-request-ledger.jsonl\n M Docs/certification/phase-106/gate-106f-r2-live-relay/protected-db-before-after.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/response-manifest.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/semantic-match-review.jsonl\n M Docs/certification/phase-106/gate-106f-r2-live-relay/target-identity.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/tested-code-manifest.json\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/cross-source-match-groups.jsonl\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/discovery-probe-ledger.jsonl\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/domain-invariant-results.json\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/field-provenance-matrix.json\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/kbo-dom-node-classification-ledger.json\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/naver-option-classification-ledger.json\n",
+  "git_status_after": " M Docs/certification/phase-106/gate-106f-r2-live-relay/README.md\n D Docs/certification/phase-106/gate-106f-r2-live-relay/SHA256SUMS\n M Docs/certification/phase-106/gate-106f-r2-live-relay/browser-console-ledger.jsonl\n D Docs/certification/phase-106/gate-106f-r2-live-relay/checksum-verification.txt\n M Docs/certification/phase-106/gate-106f-r2-live-relay/cross-source-comparison.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/kbo-normalized-events.jsonl\n M Docs/certification/phase-106/gate-106f-r2-live-relay/kbo-raw-response-manifest.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/live-relay-plan.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/naver-raw-response-manifest.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/network-request-ledger.jsonl\n M Docs/certification/phase-106/gate-106f-r2-live-relay/protected-db-before-after.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/response-manifest.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/semantic-match-review.jsonl\n M Docs/certification/phase-106/gate-106f-r2-live-relay/target-identity.json\n M Docs/certification/phase-106/gate-106f-r2-live-relay/tested-code-manifest.json\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/cross-source-match-groups.jsonl\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/discovery-probe-ledger.jsonl\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/domain-invariant-results.json\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/field-provenance-matrix.json\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/kbo-dom-node-classification-ledger.json\n?? Docs/certification/phase-106/gate-106f-r2-live-relay/naver-option-classification-ledger.json\n"
 }

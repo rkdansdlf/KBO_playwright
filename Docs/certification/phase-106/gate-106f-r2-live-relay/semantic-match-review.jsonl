@@ -1,5 +1,5 @@
-{"classification": "NAVER_ONLY", "naver_event_seq": 1, "inning": "9top", "description": "김휘집 : 볼넷"}
-{"classification": "NAVER_ONLY", "naver_event_seq": 2, "inning": "9top", "description": "박민우 : 좌익수 플라이 아웃"}
-{"classification": "NAVER_ONLY", "naver_event_seq": 3, "inning": "9top", "description": "김형준 : 투수 땅볼 아웃 (투수->1루수 송구아웃)"}
-{"classification": "NAVER_ONLY", "naver_event_seq": 4, "inning": "9top", "description": "1루주자 김휘집 : 2루까지 진루"}
-{"classification": "NAVER_ONLY", "naver_event_seq": 5, "inning": "9top", "description": "안중열 : 삼진 아웃"}
+{"match_group_id": "MG-0001", "kbo_event_seq": 1, "naver_event_seq": 1, "inning": "9top", "outs": 0, "kbo_desc": "김휘집 : 볼넷", "naver_desc": "김휘집 : 볼넷", "primary_class": "MATCHED_EXACT", "attributes": [], "review_verdict": "CONFIRMED_PARITY"}
+{"match_group_id": "MG-0002", "kbo_event_seq": 2, "naver_event_seq": 2, "inning": "9top", "outs": 1, "kbo_desc": "박민우 : 좌익수 플라이 아웃", "naver_desc": "박민우 : 좌익수 플라이 아웃", "primary_class": "MATCHED_EXACT", "attributes": [], "review_verdict": "CONFIRMED_PARITY"}
+{"match_group_id": "MG-0003", "kbo_event_seq": 3, "naver_event_seq": 3, "inning": "9top", "outs": 2, "kbo_desc": "김형준 : 투수 땅볼 아웃 (투수->1루수 송구아웃)", "naver_desc": "김형준 : 투수 땅볼 아웃 (투수->1루수 송구아웃)", "primary_class": "MATCHED_EXACT", "attributes": [], "review_verdict": "CONFIRMED_PARITY"}
+{"match_group_id": "MG-0004", "kbo_event_seq": 4, "naver_event_seq": 4, "inning": "9top", "outs": 2, "kbo_desc": "1루주자 김휘집 : 2루까지 진루", "naver_desc": "1루주자 김휘집 : 2루까지 진루", "primary_class": "MATCHED_EXACT", "attributes": [], "review_verdict": "CONFIRMED_PARITY"}
+{"match_group_id": "MG-0005", "kbo_event_seq": 5, "naver_event_seq": 5, "inning": "9top", "outs": 3, "kbo_desc": "안중열 : 삼진 아웃", "naver_desc": "안중열 : 삼진 아웃", "primary_class": "MATCHED_EXACT", "attributes": [], "review_verdict": "CONFIRMED_PARITY"}

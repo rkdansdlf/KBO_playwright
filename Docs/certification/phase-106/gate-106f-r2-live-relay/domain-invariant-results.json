@@ -1,0 +1,32 @@
+{
+  "evaluated_at": "2026-09-05T00:06:45.809411+00:00",
+  "source_evaluations": {
+    "kbo": {
+      "source": "kbo",
+      "events_checked": 5,
+      "outs_transition_failures": 0,
+      "score_transition_failures": 0,
+      "base_state_failures": 0,
+      "we_bound_failures": 0,
+      "we_continuity_failures": 0,
+      "wpa_delta_failures": 0,
+      "terminal_state_failures": 0,
+      "we_source_status": "CALCULATED_LOCAL_ENGINE",
+      "all_passed": true
+    },
+    "naver": {
+      "source": "naver",
+      "events_checked": 5,
+      "outs_transition_failures": 0,
+      "score_transition_failures": 0,
+      "base_state_failures": 0,
+      "we_bound_failures": 0,
+      "we_continuity_failures": 0,
+      "wpa_delta_failures": 0,
+      "terminal_state_failures": 0,
+      "we_source_status": "CALCULATED_LOCAL_ENGINE",
+      "all_passed": true
+    }
+  },
+  "all_invariants_satisfied": true
+}
