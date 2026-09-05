@@ -315,7 +315,6 @@ def fix_unclassified_events(
         query = session.query(GamePlayByPlay).filter(GamePlayByPlay.event_type.in_(UNCLASSIFIED_EVENT_TYPES))
         if game_ids:
             query = query.filter(GamePlayByPlay.game_id.in_(game_ids))
-
         rows = query.all()
         affected_count = len(rows)
 
@@ -396,7 +395,7 @@ def main() -> None:
 
     logger.info("릴레이 소스 상태 감사를 시작합니다...")
 
-    summary = audit_relay_source_states()
+    summary = audit_relay_source_states(sample_size=args.sample_size)
     print_summary(summary)
 
     if args.audit_only:
@@ -406,13 +405,13 @@ def main() -> None:
     results: list[dict[str, Any]] = []
 
     if args.fix_unknown:
-        results.append(fix_unknown_sources(dry_run=args.dry_run))
+        results.append(fix_unknown_sources(dry_run=args.dry_run, sample_size=args.sample_size))
 
     if args.fix_mismatch:
-        results.append(fix_source_mismatch(dry_run=args.dry_run))
+        results.append(fix_source_mismatch(dry_run=args.dry_run, sample_size=args.sample_size))
 
     if args.fix_redundant:
-        results.append(remove_redundant_sources(dry_run=args.dry_run))
+        results.append(remove_redundant_sources(dry_run=args.dry_run, sample_size=args.sample_size))
 
     if args.fix_unclassified:
         game_ids = args.game_ids.split(",") if args.game_ids else None
