@@ -4,6 +4,7 @@ crash-injection-ledger.jsonl: OK
 domain-invariants-r4a.json: OK
 fixtures/kbo_sealed_dom_nodes_20240930NCHT0.json: OK
 fixtures/naver_sealed_payload_20240930NCHT0.json: OK
+negative-control-ledger.json: OK
 protected-db-before-after.json: OK
 recovery-convergence-diff.json: OK
 tested-code-manifest.json: OK
