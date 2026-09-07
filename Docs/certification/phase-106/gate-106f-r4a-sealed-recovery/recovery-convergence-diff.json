@@ -1,0 +1,51 @@
+{
+  "CP1_FETCH_COMPLETE": {
+    "status": "CONVERGED_EXACT",
+    "diff_count": 0,
+    "differences": [],
+    "canonical_events_count": 5,
+    "correction_applied": false
+  },
+  "CP2_DURING_NORMALIZATION": {
+    "status": "CONVERGED_EXACT",
+    "diff_count": 0,
+    "differences": [],
+    "canonical_events_count": 5,
+    "correction_applied": false
+  },
+  "CP3_AFTER_KBO_BEFORE_NAVER": {
+    "status": "CONVERGED_EXACT",
+    "diff_count": 0,
+    "differences": [],
+    "canonical_events_count": 5,
+    "correction_applied": false
+  },
+  "CP4_AFTER_EVENTS_BEFORE_PBP": {
+    "status": "CONVERGED_EXACT",
+    "diff_count": 0,
+    "differences": [],
+    "canonical_events_count": 5,
+    "correction_applied": false
+  },
+  "CP5_AFTER_COMMIT_BEFORE_CHECKPOINT": {
+    "status": "CONVERGED_EXACT",
+    "diff_count": 0,
+    "differences": [],
+    "canonical_events_count": 5,
+    "correction_applied": false
+  },
+  "CP6_DURING_CHECKPOINT_RECORD": {
+    "status": "CONVERGED_EXACT",
+    "diff_count": 0,
+    "differences": [],
+    "canonical_events_count": 5,
+    "correction_applied": false
+  },
+  "CP7_DURING_CORRECTION_UPDATE": {
+    "status": "CONVERGED_EXACT",
+    "diff_count": 0,
+    "differences": [],
+    "canonical_events_count": 5,
+    "correction_applied": true
+  }
+}
