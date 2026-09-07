@@ -1,13 +1,14 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
   "title": "Sealed-Snapshot Scheduler & Restart Recovery Manifest",
-  "started_at": "2026-09-07T07:50:03.199528+00:00",
-  "completed_at": "2026-09-07T07:50:13.845868+00:00",
-  "git_commit": "db8920483ce9269941450e6c7f9c45491770f5d7",
+  "started_at": "2026-09-07T08:59:16.329194+00:00",
+  "completed_at": "2026-09-07T08:59:33.483477+00:00",
+  "git_commit": "b346e983ac1e3e8e6d3850149ad5e80cddf223ee",
   "git_branch": "main",
   "scope_boundary": {
-    "certified_scope": "Sealed-snapshot scheduler replay & restart recovery under process crash injection (CP1~CP7) for target game 20240930NCHT0.",
-    "untested_scope": "Does NOT certify live network polling, long-polling over multiple days, or production DB persistence."
+    "certified_scope": "Sealed-snapshot scheduler replay & restart recovery under process crash injection (CP1~CP7) for target game 20240930NCHT0, using production parsers and save_relay_data.",
+    "untested_scope": "Does NOT certify live network polling, long-polling over multiple days, or production DB persistence.",
+    "deviation_disclosure": "The Naver raw JSON snapshot was obtained via a 1-time HTTP request during R4A fixture preparation on 2026-09-07. All certification tests, crash cycles, and negative controls operate 100% offline with socket connections blocked at OS/process level."
   },
   "target_game": {
     "game_id": "20240930NCHT0",
@@ -15,22 +16,23 @@
     "date": "2024-09-30",
     "matchup": "NC @ KIA",
     "half_inning": "9회초",
-    "canonical_events_count": 5
+    "canonical_events_count": 5,
+    "raw_pbp_rows_count": 47
   },
   "code_components": [
     {
       "file": "src/services/relay_recovery_engine.py",
-      "sha256": "c785dd2384d18569e8d8b768d7c9d93d567b700a5a478eb4a2cd685d0c6e40da",
-      "role": "Recovery engine, pipeline, checkpoint manager, crash hooks, and CLI"
+      "sha256": "44354be77d3310c5ce2251f16b6a0d4ee5e2f41d32f692f08f1d2f0d76dd2fe7",
+      "role": "Recovery engine, production parser integration, transaction hooks, and idempotent revisions"
     },
     {
       "file": "tests/test_relay_recovery_r4a.py",
-      "sha256": "bba04428909a7bef8a0bcccc5d81775a32f71f180b5ac1c7c6a3dc7a3fb77466",
-      "role": "Pytest verification test suite for crash-restart cycles"
+      "sha256": "a57c724114ae529eec7337ff74c4423a79b1c59277326b6b1cc3bea075a02928",
+      "role": "Pytest verification test suite for crash-restart cycles and negative controls"
     },
     {
       "file": "scripts/certification/phase106/run_gate_r4a_sealed_recovery.py",
-      "sha256": "08e8187b589ae2a08d2f59da9a91d694a3e4d40afe06554d3dab1bb6a0a3a689",
+      "sha256": "c664df129c9cfba968995c9eeea706582b184420e13e66f9703e5b8453a5fe4e",
       "role": "Master certification runner and evidence orchestrator"
     }
   ],
@@ -38,12 +40,12 @@
     {
       "file": "Docs/certification/phase-106/gate-106f-r4a-sealed-recovery/fixtures/kbo_sealed_dom_nodes_20240930NCHT0.json",
       "sha256": "5d04010809ff8cc85b0f95d51ebc0a6b6b98337387848446287934a199eb7c95",
-      "role": "Sealed KBO DOM leaf nodes (41 raw nodes, 5 canonical events)"
+      "role": "Sealed KBO DOM leaf nodes (41 raw nodes, dynamically parsed into 5 canonical events)"
     },
     {
       "file": "Docs/certification/phase-106/gate-106f-r4a-sealed-recovery/fixtures/naver_sealed_payload_20240930NCHT0.json",
       "sha256": "aa3a45fdf6fe380b5ec6df483064e45914667da9074fedd91d45cd11d88233ad",
-      "role": "Sealed Naver JSON payload (8 relay groups, 39 options, 5 canonical events)"
+      "role": "Sealed Naver JSON payload (8 relay groups, dynamically parsed into 5 events and 47 PBP rows)"
     }
   ]
 }

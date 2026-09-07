@@ -1,63 +1,59 @@
 # Gate R4A Certification Report: Sealed-Snapshot Scheduler & Restart Recovery
 
 **Gate ID**: `GATE-106F-R4A-SEALED-RECOVERY`
-**Started At**: `2026-09-07T07:50:03.199528+00:00`
-**Completed At**: `2026-09-07T07:50:13.845868+00:00`
+**Started At**: `2026-09-07T08:59:16.329194+00:00`
+**Completed At**: `2026-09-07T08:59:33.483477+00:00`
 **Target Game**: `20240930NCHT0` (NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top)
 **Certification Status**: **`PASS`** (Level-3 Offline Integration Certified)
+**Recovery Architecture Model**: `REPLAY_FROM_START_WITH_IDEMPOTENT_PERSISTENCE`
 
 ---
 
 ## 1. Executive Summary
 
-Gate R4A establishes the operational reliability and restart recovery certification for the KBO text relay pipeline. Operating strictly offline on sealed snapshots obtained during Gate R2-R, this certification validates that unexpected process crashes at any stage of ingestion, normalization, database persistence, or checkpoint recording recover cleanly without human intervention.
+Gate R4A certifies the crash recovery and restart resilience of the KBO text relay pipeline against process termination (`os._exit(137)`). Unlike synthetic test pipelines, this remediation strictly re-uses existing production parsing (`RelayCrawler._parse_naver_payload`, `KBOTextParser`), deduplication (`RelayDeduplicator`), and persistence (`save_relay_data`) paths without hardcoded answer tables.
 
 ### Core Certified Guarantees
-1. **Zero External Network Requests**: 100% sealed snapshot replay with verified zero socket traffic.
-2. **Zero Protected Storage Mutations**: Bit-level SHA-256 validation of `data/kbo_dev.db` (`4be13e65d30621a8cc5d0134ba92b3fea9d56d3f6379d6b881c52a953cff229a`) unchanged.
-3. **Deterministic Crash Recovery**: All 7 pre-declared crash points (`CP1` ~ `CP7`) simulated via hard exit (`os._exit(137)`) successfully recover on subsequent invocation (`exit_code=0`).
-4. **Zero Logical Event Loss & Duplication**: Exactly 5 canonical 9th-inning events preserved without duplication or partial-batch divergence.
-5. **Strict Monotonicity**: Checkpoint ledger sequence numbers strictly increase monotonically across restarts.
-6. **Automatic Lock Healing**: `ForceProcessLock` clears extinct dead PIDs without operator intervention or deadlock.
+1. **Production Pipeline Re-use**: All event normalizations and DB writes execute through the canonical production codebase.
+2. **Zero External Network Requests**: Replay is 100% offline with socket connections blocked (`KBO_SEALED_REPLAY_OFFLINE=1`).
+3. **Zero Protected Storage Mutations**: Bit-level SHA-256 of `data/kbo_dev.db` (`4be13e65d30621a8cc5d0134ba92b3fea9d56d3f6379d6b881c52a953cff229a`) is strictly unmutated.
+4. **Transaction Boundary Crash Resilience**: Simulated hard termination (`os._exit(137)`) during active transactions (CP4, CP6, CP7) rolls back uncommitted writes cleanly.
+5. **Idempotent Revisions**: Repetitive execution of event corrections modifies 0 rows and avoids duplicate `[CORRECTED]` tags.
+6. **Dual-Source Participation & Negative Controls**: Dual-source inputs establish `source_used="dual_canonical"`; empty Naver input gracefully yields `source_used="kbo_single"`.
 
 ---
 
-## 2. Certified Scope & Boundaries
+## 2. Certified Scope & Disclosures
 
 > [!IMPORTANT]
-> **Scope Qualification**
-> This certification certifies **sealed-snapshot scheduler replay & restart recovery under process crash injection** for target game `20240930NCHT0`.
-> It does **NOT** certify:
-> - Live network long-polling over active ongoing games.
-> - Direct write access to Oracle or production databases.
-> - Multi-day continuous scheduling daemon operation.
+> **Scope & Provenance Disclosure**
+> - **Certified**: Offline sealed snapshot replay, production parser execution, transaction-boundary crash recovery, process lock auto-healing, and idempotent revision application for game `20240930NCHT0`.
+> - **Untested**: Long-polling of live active games, multi-day daemon execution, and direct writes to production Oracle databases.
+> - **Fixture Provenance**: Naver raw JSON snapshot was obtained via a 1-time HTTP request on 2026-09-07 during fixture preparation; all certification runs execute with zero network connectivity.
 
 ---
 
-## 3. Crash-Injection Recovery Matrix
+## 3. Crash-Injection Recovery Matrix (CP1 ~ CP7)
 
-| Crash Point ID | Description | Crash Exit Code | Restart Exit Code | Pre-Crash Events | Post-Restart Events | Checkpoint Monotonic | Convergence Diff | Status |
+| Crash Point ID | Transaction Boundary | Crash Code | Restart Code | Pre-Crash Events | Post-Restart Events | Rollback Verified | Monotonic | Status |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `CP1_FETCH_COMPLETE` | Crash after reading sealed snapshots | 137 | 0 | 0 | 5 | Yes | 0 | **PASS** |
-| `CP2_DURING_NORMALIZATION` | Crash during event normalization | 137 | 0 | 0 | 5 | Yes | 0 | **PASS** |
-| `CP3_AFTER_KBO_BEFORE_NAVER` | Crash after KBO parse before Naver merge | 137 | 0 | 0 | 5 | Yes | 0 | **PASS** |
-| `CP4_AFTER_EVENTS_BEFORE_PBP` | Crash after inserting GameEvents before PBP | 137 | 0 | 0 (rolled back) | 5 | Yes | 0 | **PASS** |
-| `CP5_AFTER_COMMIT_BEFORE_CHECKPOINT` | Crash after DB commit before COMMITTED checkpoint | 137 | 0 | 5 | 5 | Yes | 0 | **PASS** |
-| `CP6_DURING_CHECKPOINT_RECORD` | Crash during checkpoint ledger update | 137 | 0 | 5 | 5 | Yes | 0 | **PASS** |
-| `CP7_DURING_CORRECTION_UPDATE` | Crash during in-place revision update | 137 | 0 | 5 | 5 | Yes | 0 (revised) | **PASS** |
+| `CP1_FETCH_COMPLETE` | Pre-transaction | 137 | 0 | 0 | 5 | N/A | Yes | **PASS** |
+| `CP2_DURING_NORMALIZATION` | Pre-transaction | 137 | 0 | 0 | 5 | N/A | Yes | **PASS** |
+| `CP3_BEFORE_DEDUPLICATION_MERGE` | Pre-transaction | 137 | 0 | 0 | 5 | N/A | Yes | **PASS** |
+| `CP4_IN_TRANSACTION_DURING_SAVE` | Inside `save_relay_data` transaction | 137 | 0 | 0 | 5 | Yes | Yes | **PASS** |
+| `CP5_AFTER_COMMIT_BEFORE_CHECKPOINT` | Post-commit | 137 | 0 | 5 | 5 | N/A | Yes | **PASS** |
+| `CP6_DURING_CHECKPOINT_RECORD` | Inside checkpoint transaction | 137 | 0 | 5 | 5 | Yes | Yes | **PASS** |
+| `CP7_DURING_CORRECTION_UPDATE` | Inside revision transaction | 137 | 0 | 5 | 5 | Yes | Yes | **PASS** |
 
 ---
 
-## 4. Domain Invariants Evaluation
+## 4. Negative Controls & Idempotency Evaluation
 
-- **`INV_ZERO_EXTERNAL_NETWORK`**: **PASS** (Zero network sockets opened during entire evaluation).
-- **`INV_ZERO_DB_MUTATION`**: **PASS** (`data/kbo_dev.db` pre-sha == post-sha == `4be13e65d30621a8cc5d0134ba92b3fea9d56d3f6379d6b881c52a953cff229a`).
-- **`INV_ZERO_LOGICAL_EVENT_LOSS`**: **PASS** (5/5 canonical events intact across all restart runs).
-- **`INV_ZERO_DUPLICATE_CANONICAL_EVENTS`**: **PASS** (Zero duplicate primary keys or event sequences).
-- **`INV_ZERO_PARTIAL_BATCH`**: **PASS** (GameEvent count matches GamePlayByPlay count in all states).
-- **`INV_CHECKPOINT_STRICT_MONOTONICITY`**: **PASS** (Checkpoint sequence strictly increasing).
-- **`INV_CORRECTION_LINEAGE_PRESERVED`**: **PASS** (In-place revision preserves event identity).
-- **`INV_ZERO_LOCK_COLLISION`**: **PASS** (ForceProcessLock dead-PID cleanup verified).
+| Control Test | Configuration | Expected Outcome | Observed Outcome | Status |
+|---|---|---|---|:---:|
+| **Single-Source Fallback** | `empty_naver=True` | `source_used="kbo_single"`, 5 events, 5 pbps | Matched exactly | **PASS** |
+| **Fixture Tamper Detection** | Corrupted KBO fixture bytes | Execution rejected with checksum mismatch | Rejected closed (code 1) | **PASS** |
+| **Correction Idempotency** | Repeat `apply_event_correction` | `mutations=0`, `already_applied=True`, 1 tag | 0 mutations, single tag | **PASS** |
 
 ---
 
@@ -68,6 +64,7 @@ Gate R4A establishes the operational reliability and restart recovery certificat
 - `crash-injection-ledger.jsonl`: Machine-readable ledger of all 7 crash and restart executions.
 - `checkpoint-state-ledger.jsonl`: Complete audit trail of checkpoint transitions.
 - `recovery-convergence-diff.json`: Field-by-field diff validating exact convergence to golden baseline.
+- `negative-control-ledger.json`: Structured verification of negative controls and idempotency.
 - `domain-invariants-r4a.json`: Formal pass/fail evaluation of all 8 invariants.
 - `protected-db-before-after.json`: Cryptographic proof of zero protected database mutation.
 - `fixtures/kbo_sealed_dom_nodes_20240930NCHT0.json`: 41 sealed KBO DOM leaf nodes.

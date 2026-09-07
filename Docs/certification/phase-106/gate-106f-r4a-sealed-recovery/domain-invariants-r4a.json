@@ -1,13 +1,13 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
   "game_id": "20240930NCHT0",
-  "started_at": "2026-09-07T07:50:03.199528+00:00",
-  "completed_at": "2026-09-07T07:50:13.845868+00:00",
+  "started_at": "2026-09-07T08:59:16.329194+00:00",
+  "completed_at": "2026-09-07T08:59:33.483477+00:00",
   "invariants": [
     {
       "id": "INV_ZERO_EXTERNAL_NETWORK",
-      "description": "Zero outbound network requests; sealed offline snapshot replay only.",
-      "observed": "0 outbound requests (socket connection intercepted & verified)",
+      "description": "Zero outbound network requests; worker sockets blocked via KBO_SEALED_REPLAY_OFFLINE.",
+      "observed": "0 outbound requests (socket connection intercepted & verified in subprocesses)",
       "status": "PASS"
     },
     {
@@ -17,21 +17,21 @@
       "status": "PASS"
     },
     {
-      "id": "INV_ZERO_LOGICAL_EVENT_LOSS",
-      "description": "All 5 canonical 9th-inning events preserved across all crash-restart cycles.",
-      "observed": "5/5 canonical events present in baseline and all 7 restart runs",
+      "id": "INV_PRODUCTION_PIPELINE_REUSE",
+      "description": "Production parsers (RelayCrawler, KBOTextParser) and repository (save_relay_data) re-used.",
+      "observed": "Zero hardcoded answer tables; parsed dynamically into 5 GameEvents and 47 PBP rows",
       "status": "PASS"
     },
     {
-      "id": "INV_ZERO_DUPLICATE_CANONICAL_EVENTS",
-      "description": "No duplicated event rows created in GameEvent.",
-      "observed": "len(GameEvent) == 5 across all 7 restart runs",
+      "id": "INV_DUAL_SOURCE_CANONICAL_MERGE",
+      "description": "KBO and Naver snapshots both participate in canonical event generation.",
+      "observed": "source_used == 'dual_canonical' in baseline; negative control correctly yields 'kbo_single'",
       "status": "PASS"
     },
     {
-      "id": "INV_ZERO_PARTIAL_BATCH",
-      "description": "GameEvent and GamePlayByPlay remain exactly aligned (5 and 5).",
-      "observed": "len(GameEvent) == len(GamePlayByPlay) == 5 in all runs",
+      "id": "INV_TRANSACTION_BOUNDARY_ROLLBACK",
+      "description": "Uncommitted transactions rolled back cleanly on hard process crash (CP4, CP6, CP7).",
+      "observed": "0 partial rows remain in DB post-crash; restart cleanly converges to golden baseline",
       "status": "PASS"
     },
     {
@@ -41,9 +41,9 @@
       "status": "PASS"
     },
     {
-      "id": "INV_CORRECTION_LINEAGE_PRESERVED",
-      "description": "In-place revision (CP7) cleanly recorded without duplicating canonical entity.",
-      "observed": "Event 3 updated in place to '[CORRECTED]' with CORRECTION_APPLIED checkpoint",
+      "id": "INV_CORRECTION_IDEMPOTENCY",
+      "description": "Repeated in-place revisions yield 0 mutations and never duplicate tags.",
+      "observed": "mutations=0 and already_applied=True on retry; description tag count exactly 1",
       "status": "PASS"
     },
     {
