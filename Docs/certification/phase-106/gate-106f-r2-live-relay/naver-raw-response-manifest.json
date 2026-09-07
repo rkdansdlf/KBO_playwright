@@ -7,5 +7,8 @@
   "payload_sha256": "e1295c5385b61932a6fe3f2a932dca5e7fbcfc5e123fd19336054d6059cb7af7",
   "relay_groups_count": 8,
   "raw_options_count": 39,
-  "extracted_terminal_events_count": 5
+  "extracted_terminal_events_count": 5,
+  "previous_observed_count": 37,
+  "count_delta": 2,
+  "count_delta_reason": "PARSER_SCOPE_CORRECTION"
 }

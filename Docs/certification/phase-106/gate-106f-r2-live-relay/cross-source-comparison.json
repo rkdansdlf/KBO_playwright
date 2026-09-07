@@ -14,7 +14,7 @@
     "N:1": 0
   },
   "primary_class_counts": {
-    "MATCHED_EXACT": 5,
+    "MATCHED_CANONICAL_EXACT": 5,
     "MATCHED_SEMANTIC": 0,
     "KBO_ONLY": 0,
     "NAVER_ONLY": 0,
