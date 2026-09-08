@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import sys
 from typing import TYPE_CHECKING
@@ -373,7 +374,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
 
     def _rag_dispatcher(sub_args: list[str]) -> int:
         if not sub_args:
-            print("Usage: kbo rag <query|evaluate|census> [options]")  # noqa: T201
+            print("Usage: kbo rag <query|evaluate|census> [options]")
             return 1
         subcmd = sub_args[0]
         rest = sub_args[1:]
@@ -389,7 +390,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
             from src.cli.rag.census_rag_identity import main as census_main
 
             return census_main(rest)
-        print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")  # noqa: T201
+        print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")
         return 1
 
     def _lazy_certify(args: list[str]) -> int:
@@ -398,7 +399,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
 
             return certify_main(args)
         except ImportError:
-            print("certify command not available: certification package not installed", file=sys.stderr)  # noqa: T201
+            print("certify command not available: certification package not installed", file=sys.stderr)
             return 1
 
     def _lazy_lineage(args: list[str]) -> int:
@@ -407,7 +408,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
 
             return lineage_main(args)
         except ImportError:
-            print("lineage command not available: lineage package not installed", file=sys.stderr)  # noqa: T201
+            print("lineage command not available: lineage package not installed", file=sys.stderr)
             return 1
 
     return {

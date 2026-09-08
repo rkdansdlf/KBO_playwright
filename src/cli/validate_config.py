@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -42,25 +43,25 @@ def main(argv: list[str] | None = None) -> int:
     report = ConfigManager.validate_environment(target_env=target_env)
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
         status_tag = "[VALID]" if report.is_valid else "[INVALID]"
-        print(f"=== Environment Configuration Audit {status_tag} ({target_env.value}) ===")  # noqa: T201
-        print(f"Checked at: {report.checked_at}")  # noqa: T201
-        print("-" * 60)  # noqa: T201
+        print(f"=== Environment Configuration Audit {status_tag} ({target_env.value}) ===")
+        print(f"Checked at: {report.checked_at}")
+        print("-" * 60)
 
         if report.missing_required_keys:
-            print("[CRITICAL] Missing Required Keys:")  # noqa: T201
+            print("[CRITICAL] Missing Required Keys:")
             for k in report.missing_required_keys:
-                print(f"  - {k}")  # noqa: T201
+                print(f"  - {k}")
 
         if report.warnings:
-            print("[WARNING] Warnings:")  # noqa: T201
+            print("[WARNING] Warnings:")
             for w in report.warnings:
-                print(f"  - {w}")  # noqa: T201
+                print(f"  - {w}")
 
         if report.is_valid and not report.warnings:
-            print("All required environment keys and settings are valid.")  # noqa: T201
+            print("All required environment keys and settings are valid.")
 
     if not report.is_valid:
         return 1

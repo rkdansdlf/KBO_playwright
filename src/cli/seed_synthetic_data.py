@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -73,10 +74,10 @@ def main(argv: list[str] | None = None) -> int:
             result = generator.seed_to_database(session, dataset)
 
     if args.json:
-        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
     else:
-        print(f"=== Synthetic KBO Dataset Seeded (Season {args.season}) ===")  # noqa: T201
-        print(  # noqa: T201
+        print(f"=== Synthetic KBO Dataset Seeded (Season {args.season}) ===")
+        print(
             f"Games: {result.total_games} | Players: {result.total_players} | "
             f"Lineups: {result.total_lineups} | PBP Events: {result.total_pbp_events} | "
             f"Elapsed: {result.elapsed_seconds}s"

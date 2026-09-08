@@ -1,14 +1,31 @@
-FROM python:3.12-slim
+###############################################################################
+# Stage 1: Builder — compile native extensions, install all pip packages
+###############################################################################
+FROM python:3.12-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+COPY requirements.txt ./
+RUN uv pip install --system --no-cache -r requirements.txt
+
+###############################################################################
+# Stage 2: Runtime — lean image without build-essential (~250 MB smaller)
+###############################################################################
+FROM python:3.12-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
-# System dependencies (Playwright + PostgreSQL clients)
+# Runtime-only system dependencies (Playwright libs + PostgreSQL client)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
-    build-essential \
     curl \
     wget \
     gnupg \
@@ -30,26 +47,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gosu \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
+# Copy installed Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Install uv (needed at runtime for potential pip operations)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY requirements.txt ./
-RUN uv pip install --system --no-cache -r requirements.txt && \
-    groupadd -r appuser && useradd -r -g appuser appuser
+# Create appuser
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
+# Install Playwright Chromium as appuser
 RUN mkdir -p /ms-playwright && chmod 777 /ms-playwright && \
     su appuser -c "python -m playwright install chromium"
 
-# Copy source code and metadata individually for better caching
-COPY src/ ./src/
-COPY scripts/ ./scripts/
-COPY migrations/ ./migrations/
-COPY docker/ ./docker/
-COPY Docs/ ./Docs/
-COPY pyproject.toml ./
-
-RUN chown -R appuser:appuser /app && \
-    chmod -R u+rwX,go+rX /app
+# Copy source code with correct ownership (avoids extra chown layer)
+COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser scripts/ ./scripts/
+COPY --chown=appuser:appuser migrations/ ./migrations/
+COPY --chown=appuser:appuser docker/ ./docker/
+COPY --chown=appuser:appuser pyproject.toml ./
 
 VOLUME /app/data
 

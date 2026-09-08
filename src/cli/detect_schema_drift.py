@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -56,12 +57,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.apply and report.generated_ddl:
         applied = detector.apply_remediation(report)
         if not args.json:
-            print(f"✅ Successfully applied {applied} DDL remediation statements.")  # noqa: T201
+            print(f"✅ Successfully applied {applied} DDL remediation statements.")
 
     if args.json:
-        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     else:
-        print(report.to_markdown())  # noqa: T201
+        print(report.to_markdown())
 
     if args.strict and report.drift_count > 0:
         return 1

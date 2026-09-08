@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -111,14 +112,14 @@ def _run_historical_cli(args: argparse.Namespace, context: CertificationContext,
 
         # Output to stdout
         if args.json:
-            print(json.dumps(hist_report.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+            print(json.dumps(hist_report.to_dict(), ensure_ascii=False, indent=2))
         else:
             matrix_card = HistoricalReporter.render_ascii_matrix(hist_report, verbose=args.verbose)
-            print(matrix_card)  # noqa: T201
+            print(matrix_card)
 
     except Exception as exc:
         logger.exception("Internal error during historical certification audit")
-        print(f"❌ Internal error during historical certification audit: {exc}", file=sys.stderr)  # noqa: T201
+        print(f"❌ Internal error during historical certification audit: {exc}", file=sys.stderr)
         return EXIT_INTERNAL_ERROR
     else:
         return EXIT_GATE_FAILURE if hist_report.failed_seasons > 0 else EXIT_CERTIFIED
@@ -144,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except Exception as exc:
         logger.exception("Configuration error initializing certification context")
-        print(f"❌ Configuration error initializing certification context: {exc}", file=sys.stderr)  # noqa: T201
+        print(f"❌ Configuration error initializing certification context: {exc}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
     if args.historical:
@@ -164,14 +165,14 @@ def main(argv: list[str] | None = None) -> int:
 
         # Output to stdout
         if args.json:
-            print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+            print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
         else:
             card = CertificationReporter.render_ascii_card(report)
-            print(card)  # noqa: T201
+            print(card)
 
     except Exception as exc:
         logger.exception("Internal error during certification run")
-        print(f"❌ Internal error during certification run: {exc}", file=sys.stderr)  # noqa: T201
+        print(f"❌ Internal error during certification run: {exc}", file=sys.stderr)
         return EXIT_INTERNAL_ERROR
     else:
         if report.status == "CERTIFIED":

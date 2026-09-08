@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -90,20 +91,20 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
         mode_str = "APPLY" if args.apply else "DRY-RUN"
-        print(f"=== Unified Maintenance Execution [{mode_str}] ===")  # noqa: T201
-        print(  # noqa: T201
+        print(f"=== Unified Maintenance Execution [{mode_str}] ===")
+        print(
             f"Total Tasks: {report.total_tasks} | Succeeded: {report.successful_tasks} | "
             f"Failed: {report.failed_tasks} | Total Rows Affected: {report.total_rows_affected} | "
             f"Elapsed: {report.duration_seconds}s"
         )
-        print("-" * 60)  # noqa: T201
+        print("-" * 60)
         for res in report.results:
             tag = f"[{res.status}]"
             err = f" (Error: {res.error_message})" if res.error_message else ""
-            print(f"{tag:<12} {res.task_name:<25}: {res.rows_affected} rows ({res.duration_seconds}s){err}")  # noqa: T201
+            print(f"{tag:<12} {res.task_name:<25}: {res.rows_affected} rows ({res.duration_seconds}s){err}")
 
     return 1 if report.failed_tasks > 0 else 0
 

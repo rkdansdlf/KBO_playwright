@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -43,28 +44,28 @@ def main(argv: list[str] | None = None) -> int:
         healed_actions = engine.auto_heal(args.subsystem)
         if not args.json:
             if healed_actions:
-                print(f"[AUTO-HEAL] Executed {len(healed_actions)} recovery actions:")  # noqa: T201
+                print(f"[AUTO-HEAL] Executed {len(healed_actions)} recovery actions:")
                 for act in healed_actions:
-                    print(f"  - {act}")  # noqa: T201
+                    print(f"  - {act}")
             else:
-                print("[AUTO-HEAL] No issues requiring healing were found.")  # noqa: T201
+                print("[AUTO-HEAL] No issues requiring healing were found.")
 
     report = engine.diagnose_all(subsystem=args.subsystem)
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
-        print(f"=== Unified System Diagnostics Report [{report.overall_status}] ===")  # noqa: T201
-        print(  # noqa: T201
+        print(f"=== Unified System Diagnostics Report [{report.overall_status}] ===")
+        print(
             f"Total Checks: {report.total_checks} | Healthy: {report.healthy_count} | "
             f"Warnings: {report.warning_count} | Critical: {report.critical_count}"
         )
-        print("-" * 60)  # noqa: T201
+        print("-" * 60)
         for check in report.checks:
             status_tag = f"[{check.severity}]"
-            print(f"{status_tag:<12} {check.subsystem:<12} {check.name:<25}: {check.message}")  # noqa: T201
+            print(f"{status_tag:<12} {check.subsystem:<12} {check.name:<25}: {check.message}")
             if check.remediation_hint:
-                print(f"             -> Hint: {check.remediation_hint}")  # noqa: T201
+                print(f"             -> Hint: {check.remediation_hint}")
 
     return 1 if report.critical_count > 0 else 0
 

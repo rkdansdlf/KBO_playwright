@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -49,18 +50,18 @@ def main(argv: list[str] | None = None) -> int:
     report = inspector.audit_engine(engine)
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
-        print(f"=== Schema Parity Audit ({report.total_tables} tables, {report.total_columns} columns) ===")  # noqa: T201
-        print(  # noqa: T201
+        print(f"=== Schema Parity Audit ({report.total_tables} tables, {report.total_columns} columns) ===")
+        print(
             f"Matched: {report.matched_tables} | Drifted: {report.drifted_tables} | Total Issues: {len(report.issues)}"
         )
         if report.issues:
-            print("\nIssues:")  # noqa: T201
+            print("\nIssues:")
             for issue in report.issues:
                 prefix = f"[{issue.severity}]"
                 col_part = f".{issue.column_name}" if issue.column_name else ""
-                print(f"  {prefix} {issue.table_name}{col_part}: {issue.issue_type} - {issue.message}")  # noqa: T201
+                print(f"  {prefix} {issue.table_name}{col_part}: {issue.issue_type} - {issue.message}")
 
     has_errors = any(i.severity == "ERROR" for i in report.issues)
     has_warnings = any(i.severity == "WARN" for i in report.issues)

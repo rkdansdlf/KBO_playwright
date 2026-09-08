@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -30,17 +31,17 @@ def main() -> None:
         result = engine.answer_question(query=args.query, top_k=args.top_k)
 
         if args.json:
-            print(json.dumps(result, ensure_ascii=False, indent=2))  # noqa: T201
+            print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
-            print("=" * 60)  # noqa: T201
-            print(f"[RAG 질문]: {result['query']}")  # noqa: T201
-            print("=" * 60)  # noqa: T201
-            print(result["answer"])  # noqa: T201
-            print("-" * 60)  # noqa: T201
-            print(f"[출처 URL ({len(result['sources'])}개)]:")  # noqa: T201
+            print("=" * 60)
+            print(f"[RAG 질문]: {result['query']}")
+            print("=" * 60)
+            print(result["answer"])
+            print("-" * 60)
+            print(f"[출처 URL ({len(result['sources'])}개)]:")
             for src in result["sources"]:
-                print(f"  - {src}")  # noqa: T201
-            print("=" * 60)  # noqa: T201
+                print(f"  - {src}")
+            print("=" * 60)
 
 
 if __name__ == "__main__":

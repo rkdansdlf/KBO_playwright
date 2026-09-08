@@ -35,12 +35,12 @@ _RAG_INCREMENTAL_WRITE_ENV = {
 }
 
 
+@_with_lock_skip_guard
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
-@_with_lock_skip_guard
 def crawl_retired_players_job(limit: int | None = None) -> None:
     """Monthly job: Crawl retired/inactive player statistics. Runs on 1st of month at 02:00 KST."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -76,12 +76,12 @@ def crawl_retired_players_job(limit: int | None = None) -> None:
             raise
 
 
+@_with_lock_skip_guard
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=60, max=300),
     retry_error_callback=alert_failure,
 )
-@_with_lock_skip_guard
 def _crawl_team_info_history() -> None:
     """Weekly job: Refresh team info and team history data."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -355,6 +355,24 @@ def cleanup_stale_data_job() -> None:
             logger.info("=== Stale Data Cleanup Completed (%d files cleaned) ===", total_cleaned)
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Stale data cleanup job failed")
+
+
+def trim_scheduler_logs_job() -> None:
+    """Trim scheduler log files to prevent unbounded growth (weekly)."""
+    logger.info("=== Starting Scheduler Log Trim ===")
+    try:
+        from pathlib import Path
+
+        from scripts.maintenance.trim_scheduler_log import trim_log
+
+        log_path = Path("logs/scheduler.launchd.err.log")
+        if log_path.exists():
+            result = trim_log(log_path, keep_bytes=16 * 1024 * 1024)
+            logger.info("=== Scheduler Log Trim Completed: %s ===", result)
+        else:
+            logger.info("=== No scheduler log file to trim ===")
+    except SCHEDULER_JOB_EXCEPTIONS:
+        logger.exception("Scheduler log trim job failed")
 
 
 @_with_lock_skip_guard

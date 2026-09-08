@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -44,15 +45,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     events = generator.generate_game_stream(game_id=args.game_id, max_innings=args.innings)
 
     if not args.json:
-        print("=" * 75)  # noqa: T201
-        print(f"⚾ [KBO 라이브 경기 시뮬레이션 시작]: {args.away_team} vs {args.home_team} ({args.game_id})")  # noqa: T201
-        print("=" * 75)  # noqa: T201
+        print("=" * 75)
+        print(f"⚾ [KBO 라이브 경기 시뮬레이션 시작]: {args.away_team} vs {args.home_team} ({args.game_id})")
+        print("=" * 75)
 
     def _on_event(ev: SimulationEvent) -> None:
         if not args.json:
             half_str = "말" if ev.is_bottom else "초"
             hot_badge = " 🔥[HOT]" if ev.is_hot_moment else ""
-            print(  # noqa: T201
+            print(
                 f"[{ev.inning}회{half_str}] {ev.outs_before}아웃 | 주자:{ev.runners_before} -> "
                 f"{ev.batter_name} (vs {ev.pitcher_name}): {ev.description} "
                 f"(WPA: {ev.wpa:+.3f}, LI: {ev.leverage_index:.2f}){hot_badge} | "
@@ -71,18 +72,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     if args.json:
-        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
-    print("\n" + "=" * 75)  # noqa: T201
-    print(f"🏁 [시뮬레이션 경기 종료]: 최종 스코어 {summary.final_score} (승리팀: {summary.winner})")  # noqa: T201
-    print("=" * 75)  # noqa: T201
-    print(f"• 총 진행 타석:    {summary.total_events}타석 ({summary.total_innings}이닝)")  # noqa: T201
-    print(f"• 핫 모먼트 발생:  {summary.hot_moments_count}회")  # noqa: T201
-    print(f"• 오늘의 영웅(MVP): {summary.hero_player} (WPA: {summary.hero_wpa:+.4f})")  # noqa: T201
-    print(f"• 오늘의 역적:     {summary.goat_player} (WPA: {summary.goat_wpa:+.4f})")  # noqa: T201
-    print(f"• 시뮬레이션 소요: {summary.duration_seconds:.2f}초")  # noqa: T201
-    print("=" * 75)  # noqa: T201
+    print("\n" + "=" * 75)
+    print(f"🏁 [시뮬레이션 경기 종료]: 최종 스코어 {summary.final_score} (승리팀: {summary.winner})")
+    print("=" * 75)
+    print(f"• 총 진행 타석:    {summary.total_events}타석 ({summary.total_innings}이닝)")
+    print(f"• 핫 모먼트 발생:  {summary.hot_moments_count}회")
+    print(f"• 오늘의 영웅(MVP): {summary.hero_player} (WPA: {summary.hero_wpa:+.4f})")
+    print(f"• 오늘의 역적:     {summary.goat_player} (WPA: {summary.goat_wpa:+.4f})")
+    print(f"• 시뮬레이션 소요: {summary.duration_seconds:.2f}초")
+    print("=" * 75)
 
     return 0
 

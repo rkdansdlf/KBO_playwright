@@ -9,3 +9,11 @@ data/
 .ruff_cache/
 .pytest_cache/
 *.egg-info/
+.venv/
+pw-browsers/
+local_metadata/
+reports/
+Docs/
+.claude/
+.antigravitycli/
+.gemini/

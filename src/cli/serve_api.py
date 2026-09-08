@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import logging
 import sys
@@ -28,13 +29,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    print("=" * 75)  # noqa: T201
-    print(f"🚀 [KBO FastAPI Server Starting]: http://{args.host}:{args.port}")  # noqa: T201
-    print(f"• Swagger API Docs:  http://{args.host}:{args.port}/docs")  # noqa: T201
-    print(f"• Redoc Reference:   http://{args.host}:{args.port}/redoc")  # noqa: T201
-    print(f"• Live WebSocket:    ws://{args.host}:{args.port}/ws/live/{{game_id}}")  # noqa: T201
-    print(f"• Auto-reload:       {'Enabled' if args.reload else 'Disabled'}")  # noqa: T201
-    print("=" * 75)  # noqa: T201
+    print("=" * 75)
+    print(f"🚀 [KBO FastAPI Server Starting]: http://{args.host}:{args.port}")
+    print(f"• Swagger API Docs:  http://{args.host}:{args.port}/docs")
+    print(f"• Redoc Reference:   http://{args.host}:{args.port}/redoc")
+    print(f"• Live WebSocket:    ws://{args.host}:{args.port}/ws/live/{{game_id}}")
+    print(f"• Auto-reload:       {'Enabled' if args.reload else 'Disabled'}")
+    print("=" * 75)
 
     uvicorn.run(
         "src.api.app:app",

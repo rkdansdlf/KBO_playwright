@@ -164,7 +164,10 @@ class GameLineup(Base, TimestampMixin):
     """Lineup order and defensive position snapshot."""
 
     __tablename__ = "game_lineups"
-    __table_args__ = (UniqueConstraint("game_id", "team_side", "appearance_seq", name="uq_game_lineup_entry"),)
+    __table_args__ = (
+        UniqueConstraint("game_id", "team_side", "appearance_seq", name="uq_game_lineup_entry"),
+        Index("idx_gl_player_id", "player_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -189,7 +192,10 @@ class GameBattingStat(Base, TimestampMixin):
     """Per-player batting metrics for a single game."""
 
     __tablename__ = "game_batting_stats"
-    __table_args__ = (UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_batting_player"),)
+    __table_args__ = (
+        UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_batting_player"),
+        Index("idx_gbs_player_id", "player_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -237,7 +243,10 @@ class GamePitchingStat(Base, TimestampMixin):
     """Per-player pitching stats per game."""
 
     __tablename__ = "game_pitching_stats"
-    __table_args__ = (UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_pitching_player"),)
+    __table_args__ = (
+        UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_pitching_player"),
+        Index("idx_gps_player_id", "player_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)

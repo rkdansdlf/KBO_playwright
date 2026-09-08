@@ -250,8 +250,8 @@ def _create_oracle_engine(
     eng = create_engine(
         target_url,
         pool_pre_ping=True,
-        pool_size=2,
-        max_overflow=2,
+        pool_size=int(os.getenv("ORACLE_POOL_SIZE", "5")),
+        max_overflow=int(os.getenv("ORACLE_MAX_OVERFLOW", "5")),
         echo=False,
         **extra_kwargs,
     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -58,20 +59,20 @@ def main(argv: list[str] | None = None) -> int:
     report = detector.audit_snapshot(metrics_snapshot)
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
-        print(f"=== Anomaly Detection Audit Report [{report.overall_status}] ===")  # noqa: T201
-        print(  # noqa: T201
+        print(f"=== Anomaly Detection Audit Report [{report.overall_status}] ===")
+        print(
             f"Evaluated Metrics: {report.total_metrics_evaluated} | "
             f"Anomalies Detected: {report.anomalies_detected} | "
             f"Checked at: {report.evaluated_at}"
         )
-        print("-" * 60)  # noqa: T201
+        print("-" * 60)
         if not report.events:
-            print("No anomalies detected. All platform metrics are within normal ranges.")  # noqa: T201
+            print("No anomalies detected. All platform metrics are within normal ranges.")
         else:
             for ev in report.events:
-                print(f"[{ev.severity.value}] {ev.anomaly_type.value}: {ev.details}")  # noqa: T201
+                print(f"[{ev.severity.value}] {ev.anomaly_type.value}: {ev.details}")
 
     return 1 if report.overall_status == "CRITICAL" else 0
 
