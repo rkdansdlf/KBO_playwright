@@ -125,7 +125,7 @@ class TestAcquireFileLock:
         real_open = Path.open
 
         def mock_open(self, *args, **kwargs):
-            if str(self).endswith(".lock") and "w" in (args or ("",)):
+            if str(self).endswith(".lock"):
                 raise OSError("Permission denied")
             return real_open(self, *args, **kwargs)
 
