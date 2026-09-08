@@ -214,7 +214,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-09-02
+Last updated: 2026-09-08
 
 ### Phase 106: Crawler Core Operational Certification — STATUS: GATES 106A~106F LEVEL_3_VERIFIED (FULLY CERTIFIED)
 - **Gate 106A: Crawler Inventory & Taxonomy (PASS_REPORTED)**: 30 canonical crawlers classified across 9 categories; 242 deselected tests categorized into 8 operational buckets.
@@ -234,6 +234,14 @@ Last updated: 2026-09-02
   - 31 certification tests passing across 9 categories (Tier isolation, Thread-local `_LockState`, Single-instance PID guard, Stale lock recovery, Bounded timeout & `_LockSkipped`, Skip monitoring, Fault injection, Nested lock prevention, Diagnostic tool).
   - Standalone runner: `scripts/certification/phase106/run_scheduler_lock_certification.py`.
   - Artifacts: `Docs/certification/phase-106/gate-106f-scheduler-locks/`.
+- **Gate R2: Limited Dual-Source Relay Smoke (PASS, SCOPED single game)**:
+  - Historical game `20240930NCHT0` (NC @ KIA, 2024-09-30) 9회초 terminal half-inning, KBO+Naver read-only cross-validation (`PASS_DUAL_SOURCE_CANONICAL_MATCH`, 5 events 1:1 canonical match, 7 domain invariants 0 violations).
+  - Explicitly NOT certified: live polling of active games, all-30-crawler live behavior.
+  - Artifacts: `Docs/certification/phase-106/gate-106f-r2-live-relay/`.
+- **Gate R4A: Sealed-Snapshot Relay Recovery (PASS, SCOPED single game)**:
+  - Offline replay + `os._exit(137)` crash-restart at CP1~CP7 for `20240930NCHT0` (code commit `801c543b`); 4-entity convergence (5 events, 47 PBP, `dual_canonical` validation, revision lineage); protected DB SHA-256 unchanged.
+  - Explicitly UNTESTED: live network polling, multi-day APScheduler daemon, Oracle production writes.
+  - Artifacts: `Docs/certification/phase-106/gate-106f-r4a-sealed-recovery/`.
 - **Oracle / Production**: **STRICT NO-GO** (0 Oracle DML throughout Phase 106).
 
 ### Phase 105: Certification Evidence Closure & Independent Staging Attestation — STATUS: GATES 0~4 CERTIFIED (L3); GATE 5 PENDING (NO-GO ON PROMOTION / WRITE 0 MAINTAINED)

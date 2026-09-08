@@ -423,3 +423,51 @@ def rag_identity_drift_job() -> None:
 
         except Exception:
             logger.exception("RAG identity drift detection failed")
+
+
+@_with_lock_skip_guard
+def relay_state_cleanup_job() -> None:
+    """Weekly relay source state cleanup job.
+
+    Runs Sunday 02:15 KST to audit and clean relay source states.
+    Uses --sample-size 10000 for performance on large databases.
+    """
+    from scripts.maintenance.fix_relay_state import (
+        audit_relay_source_states,
+        fix_source_mismatch,
+        fix_unclassified_events,
+        fix_unknown_sources,
+        print_summary,
+        remove_redundant_sources,
+    )
+
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Relay State Cleanup ===")
+        try:
+            summary = audit_relay_source_states(sample_size=10000)
+            print_summary(summary)
+
+            logger.info("Audited %d games, found %d issues", summary.total_games, len(summary.issues))
+
+            if summary.unknown_source_games > 0:
+                result = fix_unknown_sources(dry_run=False, sample_size=10000)
+                logger.info("fix_unknown_sources: %s", result)
+
+            if summary.source_mismatch_games > 0:
+                result = fix_source_mismatch(dry_run=True, sample_size=10000)
+                logger.info("fix_source_mismatch: %s", result)
+
+            if summary.redundant_source_games > 0:
+                result = remove_redundant_sources(dry_run=True, sample_size=10000)
+                logger.info("remove_redundant_sources: %s", result)
+
+            if summary.unclassified_event_games > 0:
+                result = fix_unclassified_events(dry_run=False)
+                logger.info("fix_unclassified_events: %s", result)
+
+            alert_success("relay_state_cleanup", "Relay state cleanup completed")
+            logger.info("=== Relay State Cleanup Completed ===")
+
+        except Exception:
+            logger.exception("Relay state cleanup failed")
+            alert_failure("relay_state_cleanup", "Relay state cleanup failed")
