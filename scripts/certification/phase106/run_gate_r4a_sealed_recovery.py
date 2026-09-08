@@ -44,10 +44,63 @@ from src.services.relay_recovery_engine import (
 TARGET_DIR = REPO_ROOT / "Docs" / "certification" / "phase-106" / "gate-106f-r4a-sealed-recovery"
 TARGET_DIR.mkdir(parents=True, exist_ok=True)
 PROTECTED_DB_PATH = REPO_ROOT / "data" / "kbo_dev.db"
-KBO_FIXTURE = TARGET_DIR / "fixtures" / "kbo_sealed_dom_nodes_20240930NCHT0.json"
-NAVER_FIXTURE = TARGET_DIR / "fixtures" / "naver_sealed_payload_20240930NCHT0.json"
-TARGET_GAME_ID = "20240930NCHT0"
-TARGET_CORRECTION_PROVIDER_LOG_ID = "naver:c3fe20fbf07f:9t:2:6:cdeacf6a06"
+DEFAULT_KBO_FIXTURE = TARGET_DIR / "fixtures" / "kbo_sealed_dom_nodes_20240930NCHT0.json"
+DEFAULT_NAVER_FIXTURE = TARGET_DIR / "fixtures" / "naver_sealed_payload_20240930NCHT0.json"
+DEFAULT_GAME_ID = "20240930NCHT0"
+DEFAULT_CORRECTION_PROVIDER_LOG_ID = "naver:c3fe20fbf07f:9t:2:6:cdeacf6a06"
+
+
+class GameFixtureEntry:
+    """Metadata for a sealed-fixture certified game in the R4A registry."""
+
+    def __init__(
+        self,
+        game_id: str,
+        kbo_fixture: Path,
+        naver_fixture: Path,
+        correction_target_event_seq: int,
+        correction_provider_log_id: str,
+        description: str = "",
+    ) -> None:
+        self.game_id = game_id
+        self.kbo_fixture = kbo_fixture
+        self.naver_fixture = naver_fixture
+        self.correction_target_event_seq = correction_target_event_seq
+        self.correction_provider_log_id = correction_provider_log_id
+        self.description = description
+
+    def to_dict(self) -> dict[str, str | int]:
+        """Serialize to a JSON-friendly dictionary for evidence output."""
+        return {
+            "game_id": self.game_id,
+            "kbo_fixture": str(self.kbo_fixture.name),
+            "naver_fixture": str(self.naver_fixture.name),
+            "correction_target_event_seq": self.correction_target_event_seq,
+            "correction_provider_log_id": self.correction_provider_log_id,
+            "description": self.description,
+        }
+
+
+FIXTURE_REGISTRY: dict[str, GameFixtureEntry] = {
+    "20240930NCHT0": GameFixtureEntry(
+        game_id="20240930NCHT0",
+        kbo_fixture=DEFAULT_KBO_FIXTURE,
+        naver_fixture=DEFAULT_NAVER_FIXTURE,
+        correction_target_event_seq=CORRECTION_TARGET_EVENT_SEQ,
+        correction_provider_log_id=DEFAULT_CORRECTION_PROVIDER_LOG_ID,
+        description="NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top (Gwangju-Kia Champions Field)",
+    ),
+}
+
+
+def get_fixture_entry(game_id: str) -> GameFixtureEntry:
+    """Look up a game in the R4A fixture registry."""
+    entry = FIXTURE_REGISTRY.get(game_id)
+    if entry is None:
+        available = ", ".join(FIXTURE_REGISTRY.keys())
+        msg = f"Game '{game_id}' is not in the R4A fixture registry. Available: {available}"
+        raise ValueError(msg)
+    return entry
 
 
 def compute_file_sha256(path: Path) -> str:
@@ -62,22 +115,26 @@ def compute_file_sha256(path: Path) -> str:
 def run_worker_subprocess(
     db_path: Path,
     *,
+    game_id: str = DEFAULT_GAME_ID,
     crash_point: str | None = None,
     apply_correction: bool = False,
     empty_naver: bool = False,
     no_verify_checksums: bool = False,
-    kbo_fixture: Path = KBO_FIXTURE,
-    naver_fixture: Path = NAVER_FIXTURE,
+    kbo_fixture: Path | None = None,
+    naver_fixture: Path | None = None,
     lock_dir: Path | None = None,
     allowed_root: Path | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], float]:
     """Execute the recovery engine as an isolated child process."""
+    entry = get_fixture_entry(game_id)
+    kbo_fixture = kbo_fixture or entry.kbo_fixture
+    naver_fixture = naver_fixture or entry.naver_fixture
     cmd = [
         str(REPO_ROOT / "venv" / "bin" / "python3"),
         "-m",
         "src.services.relay_recovery_engine",
         "--game-id",
-        TARGET_GAME_ID,
+        game_id,
         "--db-path",
         str(db_path),
         "--kbo-fixture",
@@ -107,20 +164,20 @@ def run_worker_subprocess(
     return proc, elapsed
 
 
-def inspect_db_state(db_path: Path) -> dict[str, Any]:
+def inspect_db_state(db_path: Path, game_id: str = DEFAULT_GAME_ID) -> dict[str, Any]:
     """Inspect the database state and return summary and serialized rows across all 4 domain entities."""
     engine = create_engine(f"sqlite:///{db_path}")
     session_factory = sessionmaker(bind=engine)
     with session_factory() as session:
-        entities = extract_domain_entities(session, TARGET_GAME_ID)
+        entities = extract_domain_entities(session, game_id)
         checkpoints = (
             session.query(RelayCheckpointRecord)
-            .filter(RelayCheckpointRecord.game_id == TARGET_GAME_ID)
+            .filter(RelayCheckpointRecord.game_id == game_id)
             .order_by(RelayCheckpointRecord.seq_no)
             .all()
         )
-        game = session.query(Game).filter(Game.game_id == TARGET_GAME_ID).first()
-        deep_hash = compute_domain_state_hash(session, TARGET_GAME_ID)
+        game = session.query(Game).filter(Game.game_id == game_id).first()
+        deep_hash = compute_domain_state_hash(session, game_id)
 
         checkpoints_data = [
             {
@@ -150,19 +207,26 @@ def inspect_db_state(db_path: Path) -> dict[str, Any]:
         }
 
 
-def _run_baseline_phase(temp_dir: Path, lock_dir: Path) -> dict[str, Any]:
+def _run_baseline_phase(
+    temp_dir: Path,
+    lock_dir: Path,
+    *,
+    game_id: str = DEFAULT_GAME_ID,
+) -> dict[str, Any]:
     """Execute clean golden baseline run."""
     print("\n[PHASE 1] Executing Golden Baseline Single-Pass Run...")
     golden_db_path = temp_dir / "kbo_golden.sqlite"
     init_ephemeral_database(str(golden_db_path), allowed_root=temp_dir)
 
-    proc_base, elapsed_base = run_worker_subprocess(golden_db_path, lock_dir=lock_dir, allowed_root=temp_dir)
+    proc_base, elapsed_base = run_worker_subprocess(
+        golden_db_path, game_id=game_id, lock_dir=lock_dir, allowed_root=temp_dir
+    )
     if proc_base.returncode != 0:
         msg = f"Golden baseline run failed with code {proc_base.returncode}: {proc_base.stderr}"
         raise RuntimeError(msg)
 
     print(f"[PHASE 1] Golden baseline passed in {elapsed_base:.3f}s (exit_code=0)")
-    golden_state = inspect_db_state(golden_db_path)
+    golden_state = inspect_db_state(golden_db_path, game_id=game_id)
     print(f"  - Events recorded: {golden_state['events_count']}")
     print(f"  - PBPs recorded: {golden_state['pbps_count']}")
     print(f"  - Checkpoints: {golden_state['checkpoints_count']}")
@@ -176,6 +240,8 @@ def _evaluate_convergence(  # noqa: C901
     golden_state: dict[str, Any],
     *,
     apply_corr: bool,
+    target_event_seq: int,
+    correction_provider_log_id: str,
 ) -> dict[str, Any]:
     """Compare restart state against golden baseline state across all 4 substantive domain entities."""
     events_diff: list[dict[str, Any]] = []
@@ -183,37 +249,36 @@ def _evaluate_convergence(  # noqa: C901
     validation_diff: list[dict[str, Any]] = []
     revisions_diff: list[dict[str, Any]] = []
 
-    # 1. Events convergence
     if not apply_corr:
         if state_after_restart["events"] != golden_state["events"]:
             events_diff.append({"issue": "Event attributes do not match golden baseline"})
     else:
         for idx, ev in enumerate(state_after_restart["events"]):
             base_ev = golden_state["events"][idx]
-            if ev["event_seq"] == CORRECTION_TARGET_EVENT_SEQ:
+            if ev["event_seq"] == target_event_seq:
                 if "[CORRECTED]" not in ev["description"] or "정정" not in (ev["result_code"] or ""):
-                    events_diff.append({"issue": "Correction not applied properly to event 3 in GameEvent"})
+                    events_diff.append(
+                        {"issue": f"Correction not applied properly to event {target_event_seq} in GameEvent"}
+                    )
             elif ev != base_ev:
                 events_diff.append({"issue": f"Uncorrected event {ev['event_seq']} altered unexpectedly"})
 
-    # 2. PBPs convergence
     if not apply_corr:
         if state_after_restart["pbps"] != golden_state["pbps"]:
             pbps_diff.append({"issue": "PBP attributes do not match golden baseline"})
     else:
         for idx, pbp in enumerate(state_after_restart["pbps"]):
             base_pbp = golden_state["pbps"][idx]
-            if pbp.get("provider_log_id") == TARGET_CORRECTION_PROVIDER_LOG_ID:
+            if pbp.get("provider_log_id") == correction_provider_log_id:
                 if "[CORRECTED]" not in pbp["play_description"] or "정정" not in (pbp["result"] or ""):
                     pbps_diff.append(
                         {
-                            "issue": f"Correction not synchronized with target PBP row (provider_log_id={TARGET_CORRECTION_PROVIDER_LOG_ID})"
+                            "issue": f"Correction not synchronized with target PBP row (provider_log_id={correction_provider_log_id})"
                         }
                     )
             elif pbp != base_pbp:
                 pbps_diff.append({"issue": f"Uncorrected PBP {pbp['source_row_index']} altered unexpectedly"})
 
-    # 3. Validation metrics convergence
     if not apply_corr:
         if state_after_restart["validation"] != golden_state["validation"]:
             validation_diff.append({"issue": "Validation metrics do not match golden baseline"})
@@ -237,17 +302,16 @@ def _evaluate_convergence(  # noqa: C901
                 }
             )
 
-    # 4. Revisions convergence
     if apply_corr:
         revs = state_after_restart["revisions"]
         if len(revs) != 1 or revs[0]["status"] != "APPLIED":
             revisions_diff.append({"issue": "Revision ledger record missing or status != APPLIED"})
         else:
             rev = revs[0]
-            if rev.get("target_provider_log_id") != TARGET_CORRECTION_PROVIDER_LOG_ID:
+            if rev.get("target_provider_log_id") != correction_provider_log_id:
                 revisions_diff.append(
                     {
-                        "issue": f"Revision target_provider_log_id mismatch: {rev.get('target_provider_log_id')} != {TARGET_CORRECTION_PROVIDER_LOG_ID}"
+                        "issue": f"Revision target_provider_log_id mismatch: {rev.get('target_provider_log_id')} != {correction_provider_log_id}"
                     }
                 )
             if not rev.get("original_description"):
@@ -275,6 +339,10 @@ def _run_crash_recovery_matrix(
     temp_dir: Path,
     lock_dir: Path,
     golden_state: dict[str, Any],
+    *,
+    game_id: str = DEFAULT_GAME_ID,
+    target_event_seq: int = CORRECTION_TARGET_EVENT_SEQ,
+    correction_provider_log_id: str = DEFAULT_CORRECTION_PROVIDER_LOG_ID,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any], bool]:
     """Execute all 7 crash and restart test cycles across real transaction boundaries."""
     print("\n[PHASE 2] Executing 7 Crash-Injection Recovery Cycles (CP1 ~ CP7)...")
@@ -294,6 +362,7 @@ def _run_crash_recovery_matrix(
 
         proc_crash, elapsed_crash = run_worker_subprocess(
             cp_db_path,
+            game_id=game_id,
             crash_point=cp_name,
             apply_correction=apply_corr,
             lock_dir=lock_dir,
@@ -301,9 +370,8 @@ def _run_crash_recovery_matrix(
         )
         crash_exit_code = proc_crash.returncode
         print(f"  - Crash execution completed with code: {crash_exit_code} (expected: 137)")
-        state_after_crash = inspect_db_state(cp_db_path)
+        state_after_crash = inspect_db_state(cp_db_path, game_id=game_id)
 
-        # Transaction boundary rollback verification
         rollback_verified = True
         if cp_name == "CP4_IN_TRANSACTION_DURING_SAVE":
             if state_after_crash["events_count"] != 0 or state_after_crash["pbps_count"] != 0:
@@ -312,7 +380,7 @@ def _run_crash_recovery_matrix(
             else:
                 print("  [PASS] CP4 transaction rollback verified (0 rows in DB before commit).")
         elif cp_name == "CP7_DURING_CORRECTION_UPDATE":
-            ev3_uncommitted = next((e for e in state_after_crash["events"] if e["event_seq"] == 3), None)
+            ev3_uncommitted = next((e for e in state_after_crash["events"] if e["event_seq"] == target_event_seq), None)
             if ev3_uncommitted and "[CORRECTED]" in ev3_uncommitted["description"]:
                 rollback_verified = False
                 print("  [FAIL] CP7 uncommitted correction was NOT rolled back!")
@@ -324,6 +392,7 @@ def _run_crash_recovery_matrix(
 
         proc_restart, elapsed_restart = run_worker_subprocess(
             cp_db_path,
+            game_id=game_id,
             crash_point=None,
             apply_correction=apply_corr,
             lock_dir=lock_dir,
@@ -331,17 +400,24 @@ def _run_crash_recovery_matrix(
         )
         restart_exit_code = proc_restart.returncode
         print(f"  - Restart execution completed with code: {restart_exit_code} (expected: 0)")
-        state_after_restart = inspect_db_state(cp_db_path)
+        state_after_restart = inspect_db_state(cp_db_path, game_id=game_id)
 
-        event_loss = 5 - state_after_restart["events_count"]
-        duplicate_events = max(0, state_after_restart["events_count"] - 5)
-        pbp_count_expected = 47
+        event_loss = golden_state["events_count"] - state_after_restart["events_count"]
+        duplicate_events = max(0, state_after_restart["events_count"] - golden_state["events_count"])
+        pbp_count_expected = golden_state["pbps_count"]
         pbp_diff = abs(state_after_restart["pbps_count"] - pbp_count_expected)
 
         ckpt_seqs = [c["seq_no"] for c in state_after_restart["checkpoints"]]
         is_monotonic = len(ckpt_seqs) > 0 and all(ckpt_seqs[i] < ckpt_seqs[i + 1] for i in range(len(ckpt_seqs) - 1))
 
-        convergence_res = _evaluate_convergence(state_after_restart, golden_state, apply_corr=apply_corr)
+        convergence_res = _evaluate_convergence(
+            state_after_restart,
+            golden_state,
+            apply_corr=apply_corr,
+            target_event_seq=target_event_seq,
+            correction_provider_log_id=correction_provider_log_id,
+        )
+        diff_count = convergence_res["total_diff_count"]
         diff_count = convergence_res["total_diff_count"]
 
         cycle_passed = (
@@ -407,17 +483,31 @@ def _run_crash_recovery_matrix(
     return crash_ledger_entries, checkpoint_ledger_entries, convergence_map, all_invariants_pass
 
 
-def _run_negative_controls(temp_dir: Path, lock_dir: Path) -> tuple[dict[str, Any], bool]:  # noqa: C901
+def _run_negative_controls(  # noqa: C901
+    temp_dir: Path,
+    lock_dir: Path,
+    *,
+    entry: GameFixtureEntry | None = None,
+) -> tuple[dict[str, Any], bool]:
     """Execute negative controls and idempotency suite across revisions and path boundaries."""
     print("\n[PHASE 3] Executing Negative Controls & Idempotency Suite...")
     neg_results: dict[str, Any] = {}
     all_neg_pass = True
 
+    entry = entry or get_fixture_entry(DEFAULT_GAME_ID)
+    game_id = entry.game_id
+    kbo_fix = entry.kbo_fixture
+    naver_fix = entry.naver_fixture
+    target_seq = entry.correction_target_event_seq
+    corr_pid = entry.correction_provider_log_id
+
     # 1. Empty Naver payload -> fallback to single source
     empty_naver_db = temp_dir / "kbo_empty_naver.sqlite"
     init_ephemeral_database(str(empty_naver_db), allowed_root=temp_dir)
-    proc_en, _ = run_worker_subprocess(empty_naver_db, empty_naver=True, lock_dir=lock_dir, allowed_root=temp_dir)
-    en_state = inspect_db_state(empty_naver_db)
+    proc_en, _ = run_worker_subprocess(
+        empty_naver_db, game_id=game_id, empty_naver=True, lock_dir=lock_dir, allowed_root=temp_dir
+    )
+    en_state = inspect_db_state(empty_naver_db, game_id=game_id)
     en_pass = (
         proc_en.returncode == 0
         and en_state["source_used"] == "kbo_single"
@@ -455,18 +545,20 @@ def _run_negative_controls(temp_dir: Path, lock_dir: Path) -> tuple[dict[str, An
     # 3. Repeat correction idempotency (zero mutations on 2nd invocation)
     corr_db = temp_dir / "kbo_corr_idempotent.sqlite"
     init_ephemeral_database(str(corr_db), allowed_root=temp_dir)
-    proc_c1, _ = run_worker_subprocess(corr_db, apply_correction=True, lock_dir=lock_dir, allowed_root=temp_dir)
+    proc_c1, _ = run_worker_subprocess(
+        corr_db, game_id=game_id, apply_correction=True, lock_dir=lock_dir, allowed_root=temp_dir
+    )
     pipeline = SealedSnapshotRelayPipeline(
-        game_id=TARGET_GAME_ID,
+        game_id=game_id,
         db_path_or_url=str(corr_db),
-        kbo_fixture_path=KBO_FIXTURE,
-        naver_fixture_path=NAVER_FIXTURE,
+        kbo_fixture_path=kbo_fix,
+        naver_fixture_path=naver_fix,
         allowed_root=temp_dir,
         lock_dir=lock_dir,
     )
     repeat_res = pipeline.apply_event_correction()
-    state_after_repeat = inspect_db_state(corr_db)
-    ev3 = next(e for e in state_after_repeat["events"] if e["event_seq"] == 3)
+    state_after_repeat = inspect_db_state(corr_db, game_id=game_id)
+    ev3 = next(e for e in state_after_repeat["events"] if e["event_seq"] == target_seq)
     idemp_pass = (
         proc_c1.returncode == 0
         and repeat_res["already_applied"] is True
@@ -489,7 +581,7 @@ def _run_negative_controls(temp_dir: Path, lock_dir: Path) -> tuple[dict[str, An
     try:
         pipeline.apply_event_correction(
             revision_id=DEFAULT_REVISION_ID,
-            target_event_seq=CORRECTION_TARGET_EVENT_SEQ,
+            target_event_seq=target_seq,
             revised_description="Conflicting description payload",
             revised_result_code="삼진 (정정)",
         )
@@ -506,12 +598,12 @@ def _run_negative_controls(temp_dir: Path, lock_dir: Path) -> tuple[dict[str, An
         all_neg_pass = False
 
     # 5. Regular replay revision preservation (apply_correction=False maintains committed revision)
-    proc_replay, _ = run_worker_subprocess(corr_db, apply_correction=False, lock_dir=lock_dir, allowed_root=temp_dir)
-    state_after_reg_replay = inspect_db_state(corr_db)
-    ev3_preserved = next(e for e in state_after_reg_replay["events"] if e["event_seq"] == 3)
-    pbp_target_preserved = next(
-        p for p in state_after_reg_replay["pbps"] if p.get("provider_log_id") == TARGET_CORRECTION_PROVIDER_LOG_ID
+    proc_replay, _ = run_worker_subprocess(
+        corr_db, game_id=game_id, apply_correction=False, lock_dir=lock_dir, allowed_root=temp_dir
     )
+    state_after_reg_replay = inspect_db_state(corr_db, game_id=game_id)
+    ev3_preserved = next(e for e in state_after_reg_replay["events"] if e["event_seq"] == target_seq)
+    pbp_target_preserved = next(p for p in state_after_reg_replay["pbps"] if p.get("provider_log_id") == corr_pid)
     pbp_row3_untouched = next(p for p in state_after_reg_replay["pbps"] if p["source_row_index"] == 3)
     pres_pass = (
         proc_replay.returncode == 0
@@ -551,17 +643,19 @@ def _run_negative_controls(temp_dir: Path, lock_dir: Path) -> tuple[dict[str, An
     # 7. Correction PBP match failure safely aborts with 0 mutations
     no_match_db = temp_dir / "kbo_no_match.sqlite"
     init_ephemeral_database(str(no_match_db), allowed_root=temp_dir)
-    run_worker_subprocess(no_match_db, apply_correction=False, lock_dir=lock_dir, allowed_root=temp_dir)
+    run_worker_subprocess(
+        no_match_db, game_id=game_id, apply_correction=False, lock_dir=lock_dir, allowed_root=temp_dir
+    )
     pipe_no_match = SealedSnapshotRelayPipeline(
-        game_id=TARGET_GAME_ID,
+        game_id=game_id,
         db_path_or_url=str(no_match_db),
-        kbo_fixture_path=KBO_FIXTURE,
-        naver_fixture_path=NAVER_FIXTURE,
+        kbo_fixture_path=kbo_fix,
+        naver_fixture_path=naver_fix,
         allowed_root=temp_dir,
         lock_dir=lock_dir,
     )
     with pipe_no_match.session_factory() as session:
-        ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        ev3 = session.query(GameEvent).filter(GameEvent.game_id == game_id, GameEvent.event_seq == target_seq).first()
         assert ev3 is not None
         ev3.provider_log_id = "nonexistent:provider:id"
         ev3.batter_name = "미등록선수"
@@ -586,18 +680,18 @@ def _run_negative_controls(temp_dir: Path, lock_dir: Path) -> tuple[dict[str, An
     # 8. Ambiguous PBP candidate rejection
     ambig_db = temp_dir / "kbo_ambig.sqlite"
     init_ephemeral_database(str(ambig_db), allowed_root=temp_dir)
-    run_worker_subprocess(ambig_db, apply_correction=False, lock_dir=lock_dir, allowed_root=temp_dir)
+    run_worker_subprocess(ambig_db, game_id=game_id, apply_correction=False, lock_dir=lock_dir, allowed_root=temp_dir)
     pipe_ambig = SealedSnapshotRelayPipeline(
-        game_id=TARGET_GAME_ID,
+        game_id=game_id,
         db_path_or_url=str(ambig_db),
-        kbo_fixture_path=KBO_FIXTURE,
-        naver_fixture_path=NAVER_FIXTURE,
+        kbo_fixture_path=kbo_fix,
+        naver_fixture_path=naver_fix,
         allowed_root=temp_dir,
         lock_dir=lock_dir,
     )
     with pipe_ambig.session_factory() as session:
         dup = GamePlayByPlay(
-            game_id=TARGET_GAME_ID,
+            game_id=game_id,
             source_row_index=999,
             inning=9,
             inning_half="초",
@@ -606,7 +700,7 @@ def _run_negative_controls(temp_dir: Path, lock_dir: Path) -> tuple[dict[str, An
             result="아웃",
             batter_name="김형준",
             pitcher_name="최지민",
-            provider_log_id=TARGET_CORRECTION_PROVIDER_LOG_ID,
+            provider_log_id=corr_pid,
         )
         session.add(dup)
         session.commit()
@@ -639,9 +733,13 @@ def _write_evidence_artifacts(
     convergence_diffs: dict[str, Any],
     negative_control_results: dict[str, Any],
     overall_status: str,
+    game_id: str = DEFAULT_GAME_ID,
+    fixture_entry: GameFixtureEntry | None = None,
 ) -> None:
     """Write all structured artifacts to TARGET_DIR."""
     print("\n[ARTIFACTS] Writing certification evidence artifacts...")
+
+    entry = fixture_entry or get_fixture_entry(game_id)
 
     # protected-db-before-after.json
     db_artifact = {
@@ -659,13 +757,13 @@ def _write_evidence_artifacts(
 
     # crash-injection-ledger.jsonl
     with (TARGET_DIR / "crash-injection-ledger.jsonl").open("w", encoding="utf-8") as f:
-        for entry in crash_ledger_entries:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        for ledger_entry in crash_ledger_entries:
+            f.write(json.dumps(ledger_entry, ensure_ascii=False) + "\n")
 
     # checkpoint-state-ledger.jsonl
     with (TARGET_DIR / "checkpoint-state-ledger.jsonl").open("w", encoding="utf-8") as f:
-        for entry in checkpoint_ledger_entries:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        for ledger_entry in checkpoint_ledger_entries:
+            f.write(json.dumps(ledger_entry, ensure_ascii=False) + "\n")
 
     # recovery-convergence-diff.json
     (TARGET_DIR / "recovery-convergence-diff.json").write_text(
@@ -680,7 +778,7 @@ def _write_evidence_artifacts(
     # domain-invariants-r4a.json
     domain_invariants = {
         "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
-        "game_id": TARGET_GAME_ID,
+        "game_id": entry.game_id,
         "started_at": started_at,
         "completed_at": completed_at,
         "invariants": [
@@ -769,7 +867,7 @@ def _write_evidence_artifacts(
             ),
         },
         "target_game": {
-            "game_id": TARGET_GAME_ID,
+            "game_id": entry.game_id,
             "season": 2024,
             "date": "2024-09-30",
             "matchup": "NC @ KIA",
@@ -801,13 +899,13 @@ def _write_evidence_artifacts(
         ],
         "fixture_components": [
             {
-                "file": str(KBO_FIXTURE.relative_to(REPO_ROOT)),
-                "sha256": compute_file_sha256(KBO_FIXTURE),
+                "file": str(entry.kbo_fixture.relative_to(REPO_ROOT)),
+                "sha256": compute_file_sha256(entry.kbo_fixture),
                 "role": "Sealed KBO DOM leaf nodes (41 raw nodes, dynamically parsed into 5 canonical events)",
             },
             {
-                "file": str(NAVER_FIXTURE.relative_to(REPO_ROOT)),
-                "sha256": compute_file_sha256(NAVER_FIXTURE),
+                "file": str(entry.naver_fixture.relative_to(REPO_ROOT)),
+                "sha256": compute_file_sha256(entry.naver_fixture),
                 "role": "Sealed Naver JSON payload (8 relay groups, dynamically parsed into 5 events and 47 PBP rows)",
             },
         ],
@@ -822,7 +920,7 @@ def _write_evidence_artifacts(
 **Gate ID**: `GATE-106F-R4A-SEALED-RECOVERY`
 **Started At**: `{started_at}`
 **Completed At**: `{completed_at}`
-**Target Game**: `{TARGET_GAME_ID}` (NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top)
+**Target Game**: `{entry.game_id}` ({entry.description or "Certified historical game"})
 **Certification Status**: **`{overall_status}`** (Level-3 Offline Integration Certified)
 **Recovery Architecture Model**: `REPLAY_FROM_START_WITH_IDEMPOTENT_PERSISTENCE`
 
@@ -847,7 +945,7 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 
 > [!IMPORTANT]
 > **Scope & Provenance Disclosure**
-> - **Certified**: Offline sealed snapshot replay worker (`SealedSnapshotRelayPipeline`), production parser execution, transaction-boundary crash recovery, process lock auto-healing, permanent revision lineage, and 4-entity convergence for game `{TARGET_GAME_ID}`.
+> - **Certified**: Offline sealed snapshot replay worker (`SealedSnapshotRelayPipeline`), production parser execution, transaction-boundary crash recovery, process lock auto-healing, permanent revision lineage, and 4-entity convergence for game `{entry.game_id}`.
 > - **Validation Hash Scope**: `observed_event_pbp_state_sha256` cryptographically verifies the state equivalence of normalized in-memory/replayed events & PBPs against the golden baseline; it does NOT assert coupling to historical database validation records.
 > - **Test Suite Reconciliation**: All 51 selected unit/integration tests pass across `test_relay_recovery_r4a.py` (25), `test_relay_recovery.py` (13), and `test_lock.py` (13). 1 test (`tests/utils/test_lock.py::test_lock_cross_process`) is deselected by default due to `@pytest.mark.slow` filtering in `pytest.ini` (total collected: 52 items, 1 deselected, 51 passed).
 > - **Untested**: Long-polling of live active games, multi-day daemon execution of APScheduler (`scripts/scheduler.py`), and direct writes to production Oracle databases.
@@ -902,12 +1000,40 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
     (TARGET_DIR / "README.md").write_text(readme_content, encoding="utf-8")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """Run master certification for Gate R4A."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Phase 106: Gate R4A Sealed-Snapshot Relay Recovery Certification")
+    parser.add_argument(
+        "--game",
+        default=DEFAULT_GAME_ID,
+        help=f"Target game_id from the fixture registry (default: {DEFAULT_GAME_ID}).",
+    )
+    parser.add_argument(
+        "--list-games",
+        action="store_true",
+        help="List all games in the R4A fixture registry and exit.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.list_games:
+        print("Registered R4A certified games:")
+        for gid, entry in sorted(FIXTURE_REGISTRY.items()):
+            print(f"  {gid}: {entry.description}")
+        return 0
+
     print("================================================================================")
     print("Phase 106: Gate R4A Sealed-Snapshot Scheduler & Restart Recovery Certification")
+    print(f"  Target Game: {args.game}")
     print("================================================================================")
     started_at = datetime.now(UTC).isoformat()
+
+    try:
+        entry = get_fixture_entry(args.game)
+    except ValueError as e:
+        print(f"ERROR: {e}")
+        return 1
 
     if not PROTECTED_DB_PATH.exists():
         print(f"ERROR: Protected database not found at {PROTECTED_DB_PATH}")
@@ -915,8 +1041,10 @@ def main() -> int:
     pre_db_sha256 = compute_file_sha256(PROTECTED_DB_PATH)
     print(f"[SECURITY] Pre-execution protected DB SHA-256: {pre_db_sha256}")
 
-    if not KBO_FIXTURE.exists() or not NAVER_FIXTURE.exists():
-        print("ERROR: Sealed snapshot fixtures missing!")
+    if not entry.kbo_fixture.exists() or not entry.naver_fixture.exists():
+        print(f"ERROR: Sealed snapshot fixtures missing for game '{args.game}'!")
+        print(f"  KBO fixture: {entry.kbo_fixture}")
+        print(f"  Naver fixture: {entry.naver_fixture}")
         return 1
 
     temp_dir = Path(tempfile.mkdtemp(prefix="gate_r4a_cert_")).resolve()
@@ -924,16 +1052,23 @@ def main() -> int:
     lock_dir.mkdir(parents=True, exist_ok=True)
     print(f"[WORKSPACE] Ephemeral workspace initialized: {temp_dir}")
 
-    golden_state = _run_baseline_phase(temp_dir, lock_dir)
+    golden_state = _run_baseline_phase(temp_dir, lock_dir, game_id=args.game)
 
     (
         crash_ledger_entries,
         checkpoint_ledger_entries,
         convergence_diffs,
         all_invariants_pass,
-    ) = _run_crash_recovery_matrix(temp_dir, lock_dir, golden_state)
+    ) = _run_crash_recovery_matrix(
+        temp_dir,
+        lock_dir,
+        golden_state,
+        game_id=args.game,
+        target_event_seq=entry.correction_target_event_seq,
+        correction_provider_log_id=entry.correction_provider_log_id,
+    )
 
-    negative_control_results, all_neg_pass = _run_negative_controls(temp_dir, lock_dir)
+    negative_control_results, all_neg_pass = _run_negative_controls(temp_dir, lock_dir, entry=entry)
 
     post_db_sha256 = compute_file_sha256(PROTECTED_DB_PATH)
     print(f"\n[SECURITY] Post-execution protected DB SHA-256: {post_db_sha256}")
@@ -955,6 +1090,8 @@ def main() -> int:
         convergence_diffs=convergence_diffs,
         negative_control_results=negative_control_results,
         overall_status=overall_status,
+        game_id=args.game,
+        fixture_entry=entry,
     )
 
     print("\n[CHECKSUMS] Computing SHA256SUMS for all evidence files...")
