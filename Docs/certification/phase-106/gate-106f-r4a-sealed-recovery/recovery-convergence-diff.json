@@ -1,65 +1,177 @@
 {
   "CP1_FETCH_COMPLETE": {
     "status": "CONVERGED_EXACT",
-    "diff_count": 0,
-    "differences": [],
+    "total_diff_count": 0,
+    "events_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "pbps_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "validation_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "revisions_convergence": {
+      "match": true,
+      "differences": []
+    },
     "canonical_events_count": 5,
     "pbps_count": 47,
-    "deep_domain_hash": "91764cc740d31be5f1f653f48dab9034527f7ddc0ea2fee0c3d7ff65fd3ab522",
+    "revisions_count": 0,
+    "deep_domain_hash": "aac0776511df5358f5ebad26e452046801b96e765c4248d4dbe69f544f8b15fe",
     "correction_applied": false
   },
   "CP2_DURING_NORMALIZATION": {
     "status": "CONVERGED_EXACT",
-    "diff_count": 0,
-    "differences": [],
+    "total_diff_count": 0,
+    "events_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "pbps_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "validation_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "revisions_convergence": {
+      "match": true,
+      "differences": []
+    },
     "canonical_events_count": 5,
     "pbps_count": 47,
-    "deep_domain_hash": "91764cc740d31be5f1f653f48dab9034527f7ddc0ea2fee0c3d7ff65fd3ab522",
+    "revisions_count": 0,
+    "deep_domain_hash": "aac0776511df5358f5ebad26e452046801b96e765c4248d4dbe69f544f8b15fe",
     "correction_applied": false
   },
   "CP3_BEFORE_DEDUPLICATION_MERGE": {
     "status": "CONVERGED_EXACT",
-    "diff_count": 0,
-    "differences": [],
+    "total_diff_count": 0,
+    "events_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "pbps_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "validation_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "revisions_convergence": {
+      "match": true,
+      "differences": []
+    },
     "canonical_events_count": 5,
     "pbps_count": 47,
-    "deep_domain_hash": "91764cc740d31be5f1f653f48dab9034527f7ddc0ea2fee0c3d7ff65fd3ab522",
+    "revisions_count": 0,
+    "deep_domain_hash": "aac0776511df5358f5ebad26e452046801b96e765c4248d4dbe69f544f8b15fe",
     "correction_applied": false
   },
   "CP4_IN_TRANSACTION_DURING_SAVE": {
     "status": "CONVERGED_EXACT",
-    "diff_count": 0,
-    "differences": [],
+    "total_diff_count": 0,
+    "events_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "pbps_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "validation_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "revisions_convergence": {
+      "match": true,
+      "differences": []
+    },
     "canonical_events_count": 5,
     "pbps_count": 47,
-    "deep_domain_hash": "91764cc740d31be5f1f653f48dab9034527f7ddc0ea2fee0c3d7ff65fd3ab522",
+    "revisions_count": 0,
+    "deep_domain_hash": "aac0776511df5358f5ebad26e452046801b96e765c4248d4dbe69f544f8b15fe",
     "correction_applied": false
   },
   "CP5_AFTER_COMMIT_BEFORE_CHECKPOINT": {
     "status": "CONVERGED_EXACT",
-    "diff_count": 0,
-    "differences": [],
+    "total_diff_count": 0,
+    "events_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "pbps_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "validation_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "revisions_convergence": {
+      "match": true,
+      "differences": []
+    },
     "canonical_events_count": 5,
     "pbps_count": 47,
-    "deep_domain_hash": "91764cc740d31be5f1f653f48dab9034527f7ddc0ea2fee0c3d7ff65fd3ab522",
+    "revisions_count": 0,
+    "deep_domain_hash": "aac0776511df5358f5ebad26e452046801b96e765c4248d4dbe69f544f8b15fe",
     "correction_applied": false
   },
   "CP6_DURING_CHECKPOINT_RECORD": {
     "status": "CONVERGED_EXACT",
-    "diff_count": 0,
-    "differences": [],
+    "total_diff_count": 0,
+    "events_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "pbps_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "validation_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "revisions_convergence": {
+      "match": true,
+      "differences": []
+    },
     "canonical_events_count": 5,
     "pbps_count": 47,
-    "deep_domain_hash": "91764cc740d31be5f1f653f48dab9034527f7ddc0ea2fee0c3d7ff65fd3ab522",
+    "revisions_count": 0,
+    "deep_domain_hash": "aac0776511df5358f5ebad26e452046801b96e765c4248d4dbe69f544f8b15fe",
     "correction_applied": false
   },
   "CP7_DURING_CORRECTION_UPDATE": {
     "status": "CONVERGED_EXACT",
-    "diff_count": 0,
-    "differences": [],
+    "total_diff_count": 0,
+    "events_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "pbps_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "validation_convergence": {
+      "match": true,
+      "differences": []
+    },
+    "revisions_convergence": {
+      "match": true,
+      "differences": []
+    },
     "canonical_events_count": 5,
     "pbps_count": 47,
-    "deep_domain_hash": "13666d49d608cba8d2bcb008ecc85afb885a3b2a153f3e73366078e13373c544",
+    "revisions_count": 1,
+    "deep_domain_hash": "ef3efb6d0c7ad56090232e7bab41408bee47758407582d9102f7a8d6ef20d13e",
     "correction_applied": true
   }
 }

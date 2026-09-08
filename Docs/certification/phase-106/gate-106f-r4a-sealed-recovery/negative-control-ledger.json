@@ -16,5 +16,20 @@
     "second_run_already_applied": true,
     "second_run_mutations": 0,
     "tag_count_in_description": 1
+  },
+  "revision_conflict_rejection": {
+    "status": "PASS",
+    "error_captured": true
+  },
+  "revision_replay_preservation": {
+    "status": "PASS",
+    "regular_replay_exit_code": 0,
+    "event3_preserved": true,
+    "pbp3_preserved": true,
+    "revisions_retained": 1
+  },
+  "path_confinement_rejection": {
+    "status": "PASS",
+    "rejection_verified": true
   }
 }

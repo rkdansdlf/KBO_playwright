@@ -1,8 +1,8 @@
-# Gate R4A Certification Report: Sealed-Snapshot Scheduler & Restart Recovery
+# Gate R4A Certification Report: Sealed-Snapshot Relay Replay Worker & Restart Recovery
 
 **Gate ID**: `GATE-106F-R4A-SEALED-RECOVERY`
-**Started At**: `2026-09-07T08:59:16.329194+00:00`
-**Completed At**: `2026-09-07T08:59:33.483477+00:00`
+**Started At**: `2026-09-08T01:35:09.793655+00:00`
+**Completed At**: `2026-09-08T01:35:26.790341+00:00`
 **Target Game**: `20240930NCHT0` (NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top)
 **Certification Status**: **`PASS`** (Level-3 Offline Integration Certified)
 **Recovery Architecture Model**: `REPLAY_FROM_START_WITH_IDEMPOTENT_PERSISTENCE`
@@ -11,15 +11,16 @@
 
 ## 1. Executive Summary
 
-Gate R4A certifies the crash recovery and restart resilience of the KBO text relay pipeline against process termination (`os._exit(137)`). Unlike synthetic test pipelines, this remediation strictly re-uses existing production parsing (`RelayCrawler._parse_naver_payload`, `KBOTextParser`), deduplication (`RelayDeduplicator`), and persistence (`save_relay_data`) paths without hardcoded answer tables.
+Gate R4A certifies the crash recovery and restart resilience of the KBO text relay pipeline replay worker against hard process termination (`os._exit(137)`). Unlike synthetic test pipelines, this remediation strictly re-uses existing production parsing (`RelayCrawler._parse_naver_payload`, `PBPCrawler._update_out_base_state`), deduplication (`RelayDeduplicator`), and persistence (`save_relay_data`) paths without hardcoded answer tables.
 
 ### Core Certified Guarantees
-1. **Production Pipeline Re-use**: All event normalizations and DB writes execute through the canonical production codebase.
-2. **Zero External Network Requests**: Replay is 100% offline with socket connections blocked (`KBO_SEALED_REPLAY_OFFLINE=1`).
+1. **Production Pipeline Re-use & Context Provenance**: All event normalizations and DB writes execute through the canonical production codebase. Half-inning state is typed via `HalfInningContext` with explicit boxscore provenance.
+2. **Zero External Network Requests**: Replay is 100% offline with worker subprocess socket connections blocked (`KBO_SEALED_REPLAY_OFFLINE=1`).
 3. **Zero Protected Storage Mutations**: Bit-level SHA-256 of `data/kbo_dev.db` (`4be13e65d30621a8cc5d0134ba92b3fea9d56d3f6379d6b881c52a953cff229a`) is strictly unmutated.
 4. **Transaction Boundary Crash Resilience**: Simulated hard termination (`os._exit(137)`) during active transactions (CP4, CP6, CP7) rolls back uncommitted writes cleanly.
-5. **Idempotent Revisions**: Repetitive execution of event corrections modifies 0 rows and avoids duplicate `[CORRECTED]` tags.
-6. **Dual-Source Participation & Negative Controls**: Dual-source inputs establish `source_used="dual_canonical"`; empty Naver input gracefully yields `source_used="kbo_single"`.
+5. **Permanent Revision Lineage**: Applied revisions are recorded in `_relay_revisions`. Re-applying identical payloads is a no-op (`mutations=0`), conflicting payloads raise `ValueError`, and regular replays preserve committed revisions without regression.
+6. **4-Entity Domain Convergence**: Full state hash and diffs explicitly verify all 4 substantive entities: `GameEvent` (5 rows), `GamePlayByPlay` (47 rows), `GameValidationMetrics` (`dual_canonical`), and `RelayRevisionRecord`.
+7. **Strict Confinement & Lock Protection**: Ephemeral DBs and locks are strictly confined to the allocated temporary workspace root; `ForceProcessLock` protects active live PIDs while safely reclaiming stale dead PID locks.
 
 ---
 
@@ -27,8 +28,8 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 
 > [!IMPORTANT]
 > **Scope & Provenance Disclosure**
-> - **Certified**: Offline sealed snapshot replay, production parser execution, transaction-boundary crash recovery, process lock auto-healing, and idempotent revision application for game `20240930NCHT0`.
-> - **Untested**: Long-polling of live active games, multi-day daemon execution, and direct writes to production Oracle databases.
+> - **Certified**: Offline sealed snapshot replay worker (`SealedSnapshotRelayPipeline`), production parser execution, transaction-boundary crash recovery, process lock auto-healing, permanent revision lineage, and 4-entity convergence for game `20240930NCHT0`.
+> - **Untested**: Long-polling of live active games, multi-day daemon execution of APScheduler (`scripts/scheduler.py`), and direct writes to production Oracle databases.
 > - **Fixture Provenance**: Naver raw JSON snapshot was obtained via a 1-time HTTP request on 2026-09-07 during fixture preparation; all certification runs execute with zero network connectivity.
 
 ---
@@ -54,6 +55,9 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 | **Single-Source Fallback** | `empty_naver=True` | `source_used="kbo_single"`, 5 events, 5 pbps | Matched exactly | **PASS** |
 | **Fixture Tamper Detection** | Corrupted KBO fixture bytes | Execution rejected with checksum mismatch | Rejected closed (code 1) | **PASS** |
 | **Correction Idempotency** | Repeat `apply_event_correction` | `mutations=0`, `already_applied=True`, 1 tag | 0 mutations, single tag | **PASS** |
+| **Revision Conflict Rejection** | Conflicting payload on same ID | Explicit `ValueError` raised | Rejected with conflict error | **PASS** |
+| **Regular Replay Preservation** | Replay with `apply_correction=False` | Committed revision retained on event 3 & PBP 3 | Retained with zero regression | **PASS** |
+| **Path Confinement Violation** | DB path outside temporary root | Explicit `ValueError` raised | Rejected with confinement error | **PASS** |
 
 ---
 
@@ -63,8 +67,8 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 - `tested-code-manifest.json`: Full manifest of tested code, test suites, and sealed fixtures.
 - `crash-injection-ledger.jsonl`: Machine-readable ledger of all 7 crash and restart executions.
 - `checkpoint-state-ledger.jsonl`: Complete audit trail of checkpoint transitions.
-- `recovery-convergence-diff.json`: Field-by-field diff validating exact convergence to golden baseline.
-- `negative-control-ledger.json`: Structured verification of negative controls and idempotency.
+- `recovery-convergence-diff.json`: 4-entity field-by-field diff validating exact convergence to golden baseline.
+- `negative-control-ledger.json`: Structured verification of 6 negative controls and idempotency.
 - `domain-invariants-r4a.json`: Formal pass/fail evaluation of all 8 invariants.
 - `protected-db-before-after.json`: Cryptographic proof of zero protected database mutation.
 - `fixtures/kbo_sealed_dom_nodes_20240930NCHT0.json`: 41 sealed KBO DOM leaf nodes.

@@ -1,14 +1,14 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
-  "title": "Sealed-Snapshot Scheduler & Restart Recovery Manifest",
-  "started_at": "2026-09-07T08:59:16.329194+00:00",
-  "completed_at": "2026-09-07T08:59:33.483477+00:00",
-  "git_commit": "b346e983ac1e3e8e6d3850149ad5e80cddf223ee",
+  "title": "Sealed-Snapshot Relay Pipeline Worker & Restart Recovery Manifest",
+  "started_at": "2026-09-08T01:35:09.793655+00:00",
+  "completed_at": "2026-09-08T01:35:26.790341+00:00",
+  "git_commit": "f5a9ed201260d652f8e7ec8124475487fe407345",
   "git_branch": "main",
   "scope_boundary": {
-    "certified_scope": "Sealed-snapshot scheduler replay & restart recovery under process crash injection (CP1~CP7) for target game 20240930NCHT0, using production parsers and save_relay_data.",
-    "untested_scope": "Does NOT certify live network polling, long-polling over multiple days, or production DB persistence.",
-    "deviation_disclosure": "The Naver raw JSON snapshot was obtained via a 1-time HTTP request during R4A fixture preparation on 2026-09-07. All certification tests, crash cycles, and negative controls operate 100% offline with socket connections blocked at OS/process level."
+    "certified_scope": "Sealed-snapshot relay recovery pipeline worker (SealedSnapshotRelayPipeline) replay & restart recovery under process crash injection (os._exit(137) at transaction boundaries CP1~CP7) for target game 20240930NCHT0, top of the 9th inning. Re-uses production parsers (RelayCrawler._parse_naver_payload, PBPCrawler._update_out_base_state) and production repository (save_relay_data). Verifies all 4 substantive domain entities (Events, PBPs, Validation, Revisions), path confinement inside temporary workspace root, live PID protection, and permanent revision lineage.",
+    "untested_scope": "Does NOT certify live network polling, multi-day daemon execution of APScheduler cron runner (scripts/scheduler.py), or direct production Oracle database persistence.",
+    "provenance_and_isolation_disclosure": "Initial game state context is typed via HalfInningContext with documented boxscore provenance (20240930NCHT0, Inning 9 top, score 10:5, relief pitcher 최지민). Socket blocking is enforced via worker subprocess socket monkeypatch (KBO_SEALED_REPLAY_OFFLINE=1). Naver raw JSON snapshot was obtained via a 1-time HTTP request on 2026-09-07 during fixture preparation; all certification runs execute 100% offline."
   },
   "target_game": {
     "game_id": "20240930NCHT0",
@@ -22,17 +22,22 @@
   "code_components": [
     {
       "file": "src/services/relay_recovery_engine.py",
-      "sha256": "44354be77d3310c5ce2251f16b6a0d4ee5e2f41d32f692f08f1d2f0d76dd2fe7",
-      "role": "Recovery engine, production parser integration, transaction hooks, and idempotent revisions"
+      "sha256": "2237f3f791c1f20077fea276594018a5d686cbd1eb7629db7d2417bf2ad5c140",
+      "role": "Recovery engine, production parser integration, transaction hooks, permanent revision ledger, and path confinement"
+    },
+    {
+      "file": "src/utils/lock.py",
+      "sha256": "65d94e44c9a23993d40292dc96754a66a543924ef6e524858ca4c87e87af3838",
+      "role": "ProcessLock and ForceProcessLock with safe non-truncating flock acquisition and live PID protection"
     },
     {
       "file": "tests/test_relay_recovery_r4a.py",
-      "sha256": "a57c724114ae529eec7337ff74c4423a79b1c59277326b6b1cc3bea075a02928",
-      "role": "Pytest verification test suite for crash-restart cycles and negative controls"
+      "sha256": "75d74e481fb91e2e440b911b36e2a8d29d52e5b071cb48e760e59214e57e80cb",
+      "role": "Pytest verification test suite for crash-restart cycles, negative controls, revision conflicts, and lock protection"
     },
     {
       "file": "scripts/certification/phase106/run_gate_r4a_sealed_recovery.py",
-      "sha256": "c664df129c9cfba968995c9eeea706582b184420e13e66f9703e5b8453a5fe4e",
+      "sha256": "17949f19b56396986be9d282973de89946f946758710225018b866a4f926835d",
       "role": "Master certification runner and evidence orchestrator"
     }
   ],
