@@ -131,7 +131,16 @@ def test_crawl_p0_non_game_job_invokes_unified_cli(monkeypatch):
     monkeypatch.setattr(crawl_p0_data, "main", lambda argv: calls.append(list(argv)) or {"events": 1})
     monkeypatch.setattr(scheduler, "alert_success", lambda *_args, **_kwargs: None)
 
-    scheduler.crawl_p0_non_game_job()
+    # The dependency gate requires crawl_daily_games to be registered SUCCESS.
+    from src.scheduler.jobs.daily import JobStatus, _register_job, _update_job_status, clear_job_registry
+
+    clear_job_registry()
+    _register_job("crawl_daily_games", dependencies=[])
+    _update_job_status("crawl_daily_games", JobStatus.SUCCESS, "test setup")
+    try:
+        scheduler.crawl_p0_non_game_job()
+    finally:
+        clear_job_registry()
 
     assert calls == [["--type", "all", "--save", "--days", "3", "--season", "2026"]]
 
