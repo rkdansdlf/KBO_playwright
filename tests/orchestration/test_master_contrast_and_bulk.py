@@ -267,10 +267,11 @@ def test_bulk_cli_non_dry_run_exits_nonzero(monkeypatch, capsys) -> None:
     assert exit_code != 0
     # Extract JSON from output (there may be log lines before it)
     out = captured.out
-    start = out.find('{')
-    end = out.rfind('}') + 1
+    start = out.find("{")
+    end = out.rfind("}") + 1
     if start == -1 or end == 0:
-        raise ValueError(f"No JSON found in output: {out}")
+        msg = f"No JSON found in output: {out}"
+        raise ValueError(msg)
     json_str = out[start:end]
     data = json.loads(json_str)
     assert data["overall_status"] in ("FAILED", "PARTIAL_FAILURE")

@@ -1,4 +1,5 @@
 """Unit and integration tests for KBO Bulk Chunk Loader & Checkpoint Batch Pipeline."""
+
 from __future__ import annotations
 
 import json
@@ -296,4 +297,3 @@ def test_master_workflow_bulk_load_dag() -> None:
     sync_result = next(r for r in report.stage_results if r.stage_id == "bulk_sync")
     assert audit_result.status == StageExecutionStatus.SKIPPED
     assert sync_result.status == StageExecutionStatus.SKIPPED
-
