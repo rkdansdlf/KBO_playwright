@@ -18,12 +18,16 @@ from src.models.game import (
     GameValidationMetrics,
 )
 from src.services.relay_recovery_engine import (
+    HalfInningContext,
     RelayCheckpointRecord,
+    RelayRevisionRecord,
     SealedSnapshotRelayPipeline,
     compute_domain_state_hash,
+    extract_domain_entities,
     init_ephemeral_database,
     load_sealed_snapshots,
 )
+from src.utils.lock import ForceProcessLock
 
 FIXTURES_DIR = Path("tests/fixtures/relay_snapshots")
 KBO_FIXTURE = FIXTURES_DIR / "kbo_sealed_dom_nodes_20240930NCHT0.json"
@@ -427,3 +431,212 @@ def test_convergence_against_golden_baseline(tmp_path: Path) -> None:
             assert be.away_score == ce.away_score
             assert be.bases_before == ce.bases_before
             assert be.bases_after == ce.bases_after
+
+
+def test_half_inning_context_provenance() -> None:
+    """Verify that initial game context is explicitly typed and carries formal boxscore provenance."""
+    ctx = HalfInningContext()
+    assert ctx.inning == 9
+    assert ctx.inning_half == "top"
+    assert ctx.home_score == 10
+    assert ctx.away_score == 5
+    assert ctx.active_pitcher == "최지민"
+    assert "20240930NCHT0" in ctx.provenance
+
+
+def test_revision_conflict_rejection(ephemeral_db: Path, lock_dir: Path) -> None:
+    """Verify that re-applying the same revision ID with conflicting payload is explicitly rejected."""
+    pipeline = SealedSnapshotRelayPipeline(
+        game_id=TARGET_GAME_ID,
+        db_path_or_url=str(ephemeral_db),
+        kbo_fixture_path=KBO_FIXTURE,
+        naver_fixture_path=NAVER_FIXTURE,
+        lock_dir=lock_dir,
+    )
+    pipeline.run()
+
+    # Apply valid revision
+    res1 = pipeline.apply_event_correction(
+        revision_id="REV-CONFLICT-TEST",
+        target_event_seq=3,
+        revised_description="Valid revision description",
+        revised_result_code="투수 땅볼 (정정)",
+    )
+    assert res1["already_applied"] is False
+    assert res1["mutations"] == 1
+
+    # Attempt re-application with identical payload -> idempotent no-op
+    res2 = pipeline.apply_event_correction(
+        revision_id="REV-CONFLICT-TEST",
+        target_event_seq=3,
+        revised_description="Valid revision description",
+        revised_result_code="투수 땅볼 (정정)",
+    )
+    assert res2["already_applied"] is True
+    assert res2["mutations"] == 0
+
+    # Attempt re-application with conflicting payload -> raises ValueError
+    with pytest.raises(ValueError, match="Revision conflict"):
+        pipeline.apply_event_correction(
+            revision_id="REV-CONFLICT-TEST",
+            target_event_seq=3,
+            revised_description="Conflicting description with different text",
+            revised_result_code="삼진 (정정)",
+        )
+
+
+def test_revision_persistence_across_regular_replay(ephemeral_db: Path, lock_dir: Path) -> None:
+    """Verify that committed revisions in _relay_revisions persist even when regular replay runs without --apply-correction."""
+    pipeline = SealedSnapshotRelayPipeline(
+        game_id=TARGET_GAME_ID,
+        db_path_or_url=str(ephemeral_db),
+        kbo_fixture_path=KBO_FIXTURE,
+        naver_fixture_path=NAVER_FIXTURE,
+        lock_dir=lock_dir,
+    )
+    # 1. Run pipeline and apply correction
+    pipeline.run(apply_correction=True)
+
+    engine = create_engine(f"sqlite:///{ephemeral_db}")
+    with sessionmaker(bind=engine)() as session:
+        ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        assert ev3 is not None
+        assert "[CORRECTED]" in ev3.description
+        assert "투수 땅볼 (정정)" in ev3.result_code
+
+        rev_record = session.query(RelayRevisionRecord).filter(RelayRevisionRecord.game_id == TARGET_GAME_ID).first()
+        assert rev_record is not None
+        assert rev_record.status == "APPLIED"
+
+    # 2. Re-run regular replay without correction flag
+    pipeline.run(apply_correction=False)
+
+    # 3. Verify event 3 did NOT regress to uncorrected raw text
+    with sessionmaker(bind=engine)() as session:
+        ev3_after = (
+            session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        )
+        assert ev3_after is not None
+        assert "[CORRECTED]" in ev3_after.description
+        assert "투수 땅볼 (정정)" in ev3_after.result_code
+
+        # Verify PBP row is also preserved
+        pbp3 = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.source_row_index == 3)
+            .first()
+        )
+        assert pbp3 is not None
+        assert "[CORRECTED]" in pbp3.play_description
+
+
+def test_pbp_and_event_synchronized_correction(ephemeral_db: Path, lock_dir: Path) -> None:
+    """Verify that apply_event_correction updates both GameEvent and GamePlayByPlay synchronously."""
+    pipeline = SealedSnapshotRelayPipeline(
+        game_id=TARGET_GAME_ID,
+        db_path_or_url=str(ephemeral_db),
+        kbo_fixture_path=KBO_FIXTURE,
+        naver_fixture_path=NAVER_FIXTURE,
+        lock_dir=lock_dir,
+    )
+    pipeline.run(apply_correction=True)
+
+    engine = create_engine(f"sqlite:///{ephemeral_db}")
+    with sessionmaker(bind=engine)() as session:
+        ev = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        pbp = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.source_row_index == 3)
+            .first()
+        )
+        assert ev is not None
+        assert pbp is not None
+        assert "[CORRECTED]" in ev.description
+        assert "[CORRECTED]" in pbp.play_description
+        assert ev.result_code == pbp.result == "투수 땅볼 (정정)"
+
+
+def test_path_confinement_violation(tmp_path: Path) -> None:
+    """Verify that paths outside the designated temporary root are strictly rejected."""
+    allowed_dir = tmp_path / "allowed_realm"
+    allowed_dir.mkdir()
+    outside_dir = tmp_path / "forbidden_outside"
+    outside_dir.mkdir()
+
+    # Valid path inside allowed root succeeds
+    valid_db = allowed_dir / "valid.sqlite"
+    init_ephemeral_database(str(valid_db), allowed_root=allowed_dir)
+    assert valid_db.exists()
+
+    # Path outside allowed root fails closed
+    outside_db = outside_dir / "outside.sqlite"
+    with pytest.raises(ValueError, match="Path confinement violation"):
+        init_ephemeral_database(str(outside_db), allowed_root=allowed_dir)
+
+
+def test_live_pid_lock_protection(tmp_path: Path) -> None:
+    """Verify that ForceProcessLock never steals locks from an active live PID, but clears dead PIDs."""
+    import fcntl
+    import os
+
+    lock_dir = tmp_path / "locks"
+    lock_dir.mkdir()
+
+    live_pid = os.getpid()
+    lock_file = lock_dir / "relay_test_lock.lock"
+
+    # 1. Lock held by living process with real fcntl flock
+    with lock_file.open("w") as fd:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fd.write(f"{live_pid}\n")
+        fd.flush()
+
+        # Another process lock cannot steal it because PID is alive
+        lock = ForceProcessLock("relay_test_lock", lock_dir=lock_dir)
+        acquired = lock.acquire(timeout=0.2)
+        assert acquired is False
+        assert lock_file.exists()
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+    # 2. Lock file left behind by dead PID (e.g. crashed worker)
+    dead_pid = 9999999
+    lock_file.write_text(f"{dead_pid}\n", encoding="utf-8")
+
+    # Stale lock must be auto-cleared and acquired
+    lock2 = ForceProcessLock("relay_test_lock", lock_dir=lock_dir)
+    acquired_stale = lock2.acquire(timeout=1.0)
+    assert acquired_stale is True
+    assert lock_file.exists()
+    assert lock_file.read_text(encoding="utf-8").strip() == str(live_pid)
+    lock2.release()
+
+
+def test_4_entity_domain_hash_tamper_detection(ephemeral_db: Path, lock_dir: Path) -> None:
+    """Verify that tampering any of the 4 domain entities (Events, PBPs, Validation, Revisions) shifts the hash."""
+    pipeline = SealedSnapshotRelayPipeline(
+        game_id=TARGET_GAME_ID,
+        db_path_or_url=str(ephemeral_db),
+        kbo_fixture_path=KBO_FIXTURE,
+        naver_fixture_path=NAVER_FIXTURE,
+        lock_dir=lock_dir,
+    )
+    pipeline.run(apply_correction=True)
+
+    engine = create_engine(f"sqlite:///{ephemeral_db}")
+    with sessionmaker(bind=engine)() as session:
+        entities = extract_domain_entities(session, TARGET_GAME_ID)
+        assert len(entities["events"]) == 5
+        assert len(entities["pbps"]) == 47
+        assert entities["validation"]["source_used"] == "dual_canonical"
+        assert len(entities["revisions"]) == 1
+
+        baseline_hash = compute_domain_state_hash(session, TARGET_GAME_ID)
+
+        # Mutate a PBP row
+        pbp = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == TARGET_GAME_ID).first()
+        assert pbp is not None
+        pbp.play_description = "Tampered play description"
+        session.commit()
+        pbp_tampered_hash = compute_domain_state_hash(session, TARGET_GAME_ID)
+        assert baseline_hash != pbp_tampered_hash
