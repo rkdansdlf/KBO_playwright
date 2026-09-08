@@ -749,7 +749,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 
 - `ruff check src/ tests/ scripts/` = 0 errors (expanded rules, 0 warnings).
 - `ruff format --check .` = clean.
-- `python -m pytest --tb=line -q --no-header` = **10,530 passed**, 7 skipped, 242 deselected, 0 failed; 186.06s (CI 42021d5f, all 7 jobs green).
+- `python -m pytest --tb=line -q --no-header` = **10,530 passed**, 7 skipped, 242 deselected, 0 failed; 186.06s (CI `4e1587b9`, all 7 jobs green).
 - RAG evaluate endpoint fix stable (commit `109373b5`), DTO contract verified via CI green at `aacbfdaa` (Phase 105 Gate 4P attestation committed).
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = 90% in recent full runs (fail_under=75, exceeded target).
