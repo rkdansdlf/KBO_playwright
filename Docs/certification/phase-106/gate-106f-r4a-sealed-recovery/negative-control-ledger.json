@@ -25,7 +25,8 @@
     "status": "PASS",
     "regular_replay_exit_code": 0,
     "event3_preserved": true,
-    "pbp3_preserved": true,
+    "pbp_target_preserved": true,
+    "pbp_row3_untouched": true,
     "revisions_retained": 1
   },
   "path_confinement_rejection": {
