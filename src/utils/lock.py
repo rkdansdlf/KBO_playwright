@@ -299,7 +299,7 @@ class ProcessLock:
         success = False
         try:
             self.lock_dir.mkdir(parents=True, exist_ok=True)
-            self._state.file_fd = self.lock_file_path.open("w")
+            self._state.file_fd = self.lock_file_path.open("a+")
 
             flags = fcntl.LOCK_EX
             if not blocking:
@@ -307,6 +307,8 @@ class ProcessLock:
 
             fcntl.flock(self._state.file_fd, flags)
             success = True
+            self._state.file_fd.seek(0)
+            self._state.file_fd.truncate()
             self._state.file_fd.write(f"{os.getpid()}\n")
             self._state.file_fd.flush()
             logger.debug("Successfully acquired ProcessLock: %s", self.name)

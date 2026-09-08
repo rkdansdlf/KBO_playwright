@@ -56,15 +56,39 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Dedicated base for recovery checkpoints table
+# Dedicated base for recovery checkpoints and revision ledger tables
 CheckpointBase = declarative_base()
 
 CORRECTION_TARGET_EVENT_SEQ = 3
 DEFAULT_REVISION_ID = "REV-20240930-EV03-01"
+DEFAULT_REVISED_DESCRIPTION_SUFFIX = " [CORRECTED]"
+DEFAULT_REVISED_RESULT_CODE = "투수 땅볼 (정정)"
 
 # Fixture SHA256 checksums
 EXPECTED_KBO_FIXTURE_SHA256 = "5d04010809ff8cc85b0f95d51ebc0a6b6b98337387848446287934a199eb7c95"
 EXPECTED_NAVER_FIXTURE_SHA256 = "aa3a45fdf6fe380b5ec6df483064e45914667da9074fedd91d45cd11d88233ad"
+
+
+@dataclass(frozen=True)
+class HalfInningContext:
+    """Initial game/half-inning context for half-inning relay parsing.
+
+    Explicit Provenance:
+    Derived from the official boxscore and fixture records for game 20240930NCHT0,
+    top of the 9th inning (NC Dinos at KIA Tigers, Gwangju-Kia Champions Field).
+    - Inning: 9, Half: top
+    - Score at start of half-inning: Home (KIA) 10, Away (NC) 5
+    - Active relief pitcher entering 9th top: 최지민 (KIA Tigers)
+    """
+
+    inning: int = 9
+    inning_half: str = "top"
+    home_score: int = 10
+    away_score: int = 5
+    initial_outs: int = 0
+    initial_runners: int = 0
+    active_pitcher: str = "최지민"
+    provenance: str = "boxscore_20240930NCHT0_inn9_top_kia_nc"
 
 
 class RelayCheckpointRecord(CheckpointBase):
@@ -79,6 +103,23 @@ class RelayCheckpointRecord(CheckpointBase):
     state_hash = Column(String(64), nullable=False)
     details_json = Column(JSON, nullable=True)
     updated_at = Column(DateTime, nullable=False)
+
+
+class RelayRevisionRecord(CheckpointBase):
+    """Permanent audit ledger of applied relay event corrections/revisions."""
+
+    __tablename__ = "_relay_revisions"
+
+    revision_id = Column(String(64), primary_key=True)
+    game_id = Column(String(20), nullable=False, index=True)
+    target_event_seq = Column(Integer, nullable=False)
+    original_description = Column(String(255), nullable=False)
+    revised_description = Column(String(255), nullable=False)
+    original_result_code = Column(String(64), nullable=True)
+    revised_result_code = Column(String(64), nullable=True)
+    payload_hash = Column(String(64), nullable=False)
+    status = Column(String(32), nullable=False, default="APPLIED")
+    created_at = Column(DateTime, nullable=False)
 
 
 # Pre-declared crash injection hooks
@@ -140,11 +181,22 @@ def compute_state_hash(data: object) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def compute_domain_state_hash(session: Session, game_id: str) -> str:
-    """Compute a deep domain state hash over substantive database entities."""
+def extract_domain_entities(session: Session, game_id: str) -> dict[str, Any]:
+    """Extract all substantive domain entities (Events, PBPs, Validation, Revisions) for verification."""
     events = session.query(GameEvent).filter(GameEvent.game_id == game_id).order_by(GameEvent.event_seq.asc()).all()
-    pbp_count = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).count()
+    pbps = (
+        session.query(GamePlayByPlay)
+        .filter(GamePlayByPlay.game_id == game_id)
+        .order_by(GamePlayByPlay.source_row_index.asc())
+        .all()
+    )
     val = session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).first()
+    revisions = (
+        session.query(RelayRevisionRecord)
+        .filter(RelayRevisionRecord.game_id == game_id)
+        .order_by(RelayRevisionRecord.revision_id.asc())
+        .all()
+    )
 
     event_payloads = [
         {
@@ -153,6 +205,7 @@ def compute_domain_state_hash(session: Session, game_id: str) -> str:
             "inning_half": e.inning_half,
             "outs": e.outs,
             "batter_name": e.batter_name,
+            "pitcher_name": e.pitcher_name,
             "description": e.description,
             "event_type": e.event_type,
             "result_code": e.result_code,
@@ -160,33 +213,89 @@ def compute_domain_state_hash(session: Session, game_id: str) -> str:
             "away_score": e.away_score,
             "bases_before": e.bases_before,
             "bases_after": e.bases_after,
+            "provider_log_id": e.provider_log_id,
         }
         for e in events
     ]
 
-    full_state = {
+    pbp_payloads = [
+        {
+            "source_row_index": p.source_row_index,
+            "inning": p.inning,
+            "inning_half": p.inning_half,
+            "play_description": p.play_description,
+            "event_type": p.event_type,
+            "result": p.result,
+            "batter_name": p.batter_name,
+            "pitcher_name": p.pitcher_name,
+            "provider_log_id": p.provider_log_id,
+        }
+        for p in pbps
+    ]
+
+    revision_payloads = [
+        {
+            "revision_id": r.revision_id,
+            "target_event_seq": r.target_event_seq,
+            "original_description": r.original_description,
+            "revised_description": r.revised_description,
+            "original_result_code": r.original_result_code,
+            "revised_result_code": r.revised_result_code,
+            "status": r.status,
+            "payload_hash": r.payload_hash,
+        }
+        for r in revisions
+    ]
+
+    return {
         "game_id": game_id,
-        "events_count": len(events),
-        "pbp_count": pbp_count,
-        "validation_status": val.validation_status if val else None,
-        "source_used": val.source_used if val else None,
         "events": event_payloads,
+        "pbps": pbp_payloads,
+        "validation": {
+            "validation_status": val.validation_status if val else None,
+            "source_used": val.source_used if val else None,
+        },
+        "revisions": revision_payloads,
     }
-    raw = json.dumps(full_state, sort_keys=True, ensure_ascii=False).encode("utf-8")
+
+
+def compute_domain_state_hash(session: Session, game_id: str) -> str:
+    """Compute a deep domain state hash over all 4 substantive entities."""
+    full_entities = extract_domain_entities(session, game_id)
+    raw = json.dumps(full_entities, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
-def init_ephemeral_database(db_path_or_url: str) -> tuple[Engine, sessionmaker[Session]]:
-    """Initialize an ephemeral SQLite database for relay recovery testing.
+def init_ephemeral_database(
+    db_path_or_url: str,
+    *,
+    allowed_root: Path | None = None,
+) -> tuple[Engine, sessionmaker[Session]]:
+    """Initialize an ephemeral SQLite database with strict path containment and isolation.
 
-    Guarantees strict isolation: raises an error if pointed at production kbo_dev.db.
+    Guarantees strict isolation:
+    - Rejects production kbo_dev.db.
+    - Rejects any database inside the repository data/ directory.
+    - If allowed_root is provided, enforces that the resolved target path is strictly within allowed_root.
     """
-    clean_target = db_path_or_url.replace("sqlite:///", "")
-    if "kbo_dev.db" in clean_target:
+    clean_target = Path(db_path_or_url.replace("sqlite:///", "")).resolve()
+
+    if "kbo_dev.db" in clean_target.name:
         msg = f"Forbidden operation: Cannot run recovery engine on protected DB {db_path_or_url}"
         raise ValueError(msg)
 
-    db_url = f"sqlite:///{db_path_or_url}" if not db_path_or_url.startswith("sqlite:") else db_path_or_url
+    repo_data_dir = (Path(__file__).resolve().parents[2] / "data").resolve()
+    if clean_target.is_relative_to(repo_data_dir):
+        msg = f"Forbidden operation: Cannot run recovery engine inside repository data directory: {clean_target}"
+        raise ValueError(msg)
+
+    if allowed_root:
+        resolved_allowed = allowed_root.resolve()
+        if not clean_target.is_relative_to(resolved_allowed):
+            msg = f"Path confinement violation: DB path {clean_target} is outside allowed root {resolved_allowed}"
+            raise ValueError(msg)
+
+    db_url = f"sqlite:///{clean_target}"
     engine = create_engine(db_url, echo=False)
 
     # Create all ORM tables in the ephemeral database
@@ -285,19 +394,26 @@ def load_sealed_snapshots(
     return kbo_nodes, naver_groups
 
 
-def parse_kbo_nodes_to_events(raw_nodes: list[dict[str, Any]], game_id: str) -> list[dict[str, Any]]:
+def parse_kbo_nodes_to_events(
+    raw_nodes: list[dict[str, Any]],
+    game_id: str,
+    *,
+    context: HalfInningContext | None = None,
+) -> list[dict[str, Any]]:
     """Parse sealed KBO DOM leaf nodes into normalized baseball events dynamically."""
+    ctx = context or HalfInningContext()
+
     result_nodes = [
         node for node in reversed(raw_nodes) if is_relay_result_event_text((node.get("text") or "").strip())
     ]
 
     state = {
-        "current_inning": 9,
-        "current_half": "top",
-        "home_score": 10,
-        "away_score": 5,
-        "current_outs": 0,
-        "current_runners": 0,
+        "current_inning": ctx.inning,
+        "current_half": ctx.inning_half,
+        "home_score": ctx.home_score,
+        "away_score": ctx.away_score,
+        "current_outs": ctx.initial_outs,
+        "current_runners": ctx.initial_runners,
     }
 
     events: list[dict[str, Any]] = []
@@ -311,19 +427,19 @@ def parse_kbo_nodes_to_events(raw_nodes: list[dict[str, Any]], game_id: str) -> 
             {
                 "game_id": game_id,
                 "event_seq": idx,
-                "inning": 9,
-                "inning_half": "top",
+                "inning": ctx.inning,
+                "inning_half": ctx.inning_half,
                 "outs": outs_before,
                 "batter_name": batter,
-                "pitcher_name": "최지민",
+                "pitcher_name": ctx.active_pitcher,
                 "description": text,
                 "event_type": ev_type,
                 "result_code": res_code,
                 "rbi": 0,
                 "bases_before": PBPCrawler._format_base_string(runners_before),  # noqa: SLF001
                 "bases_after": PBPCrawler._format_base_string(state["current_runners"]),  # noqa: SLF001
-                "home_score": 10,
-                "away_score": 5,
+                "home_score": ctx.home_score,
+                "away_score": ctx.away_score,
                 "source": "kbo",
                 "provider_log_id": f"kbo-ev-{idx:02d}",
             }
@@ -342,7 +458,9 @@ class SealedSnapshotRelayPipeline:
         *,
         kbo_fixture_path: Path,
         naver_fixture_path: Path,
+        allowed_root: Path | None = None,
         lock_dir: Path | None = None,
+        context: HalfInningContext | None = None,
         verify_checksums: bool = True,
     ) -> None:
         """Initialize sealed relay recovery pipeline."""
@@ -350,11 +468,30 @@ class SealedSnapshotRelayPipeline:
         self.db_path_or_url = db_path_or_url
         self.kbo_fixture_path = kbo_fixture_path
         self.naver_fixture_path = naver_fixture_path
+        self.allowed_root = allowed_root
+        self.context = context or HalfInningContext()
         self.verify_checksums = verify_checksums
-        self.lock_dir = lock_dir or Path(__file__).resolve().parents[2] / "data" / "locks"
+
+        if lock_dir:
+            self.lock_dir = lock_dir
+        elif allowed_root:
+            self.lock_dir = allowed_root / "locks"
+        else:
+            self.lock_dir = Path(__file__).resolve().parents[2] / "data" / "locks"
+
+        if allowed_root and self.lock_dir:
+            resolved_lock = self.lock_dir.resolve()
+            resolved_allowed = allowed_root.resolve()
+            if not resolved_lock.is_relative_to(resolved_allowed):
+                msg = f"Path confinement violation: Lock dir {resolved_lock} is outside allowed root {resolved_allowed}"
+                raise ValueError(msg)
+
         self.lock_dir.mkdir(parents=True, exist_ok=True)
 
-        self.engine, self.session_factory = init_ephemeral_database(db_path_or_url)
+        self.engine, self.session_factory = init_ephemeral_database(
+            db_path_or_url,
+            allowed_root=allowed_root,
+        )
         self.checkpoint_mgr = RelayCheckpointManager(self.session_factory, game_id)
         self.deduplicator = RelayDeduplicator(window_size=100)
 
@@ -374,8 +511,8 @@ class SealedSnapshotRelayPipeline:
                     game_date=date(2024, 9, 30),
                     home_team="HT",
                     away_team="NC",
-                    home_score=10,
-                    away_score=5,
+                    home_score=self.context.home_score,
+                    away_score=self.context.away_score,
                     game_status="COMPLETED",
                 )
                 session.add(game_row)
@@ -405,10 +542,19 @@ class SealedSnapshotRelayPipeline:
         *,
         revision_id: str = DEFAULT_REVISION_ID,
         target_event_seq: int = CORRECTION_TARGET_EVENT_SEQ,
+        revised_description: str | None = None,
+        revised_result_code: str | None = None,
         hook: CrashHook | None = None,
     ) -> dict[str, Any]:
-        """Apply an idempotent in-place revision to the target event."""
+        """Apply an idempotent in-place revision with permanent lineage in _relay_revisions."""
         with self.session_factory() as session:
+            # 1. Inspect existing revision record
+            existing_rev = (
+                session.query(RelayRevisionRecord).filter(RelayRevisionRecord.revision_id == revision_id).first()
+            )
+
+            target_revised_code = revised_result_code or DEFAULT_REVISED_RESULT_CODE
+
             ev3 = (
                 session.query(GameEvent)
                 .filter(GameEvent.game_id == self.game_id, GameEvent.event_seq == target_event_seq)
@@ -416,20 +562,79 @@ class SealedSnapshotRelayPipeline:
             )
             if not ev3:
                 logger.warning("[CORRECTION] Target event seq=%d not found", target_event_seq)
-                return {"revision_id": revision_id, "already_applied": False, "mutations": 0}
+                return {
+                    "revision_id": revision_id,
+                    "already_applied": False,
+                    "mutations": 0,
+                    "status": "EVENT_NOT_FOUND",
+                }
 
-            # Idempotency guard: do not re-apply or duplicate tags if already corrected
-            if "[CORRECTED]" in (ev3.description or ""):
-                logger.info(
-                    "[CORRECTION] Event %d already corrected (revision %s); skipping mutation",
-                    target_event_seq,
-                    revision_id,
+            base_desc = ev3.description or ""
+            if revised_description:
+                target_revised_desc = revised_description
+            elif DEFAULT_REVISED_DESCRIPTION_SUFFIX in base_desc:
+                target_revised_desc = base_desc
+            else:
+                target_revised_desc = f"{base_desc}{DEFAULT_REVISED_DESCRIPTION_SUFFIX}"
+
+            incoming_payload = {
+                "target_event_seq": target_event_seq,
+                "revised_description": target_revised_desc,
+                "revised_result_code": target_revised_code,
+            }
+            incoming_hash = compute_state_hash(incoming_payload)
+
+            if existing_rev:
+                if existing_rev.payload_hash == incoming_hash:
+                    logger.info(
+                        "[CORRECTION] Revision %s already applied with identical payload; skipping mutation",
+                        revision_id,
+                    )
+                    return {
+                        "revision_id": revision_id,
+                        "already_applied": True,
+                        "mutations": 0,
+                        "status": "ALREADY_APPLIED",
+                    }
+                msg = (
+                    f"Revision conflict: revision {revision_id} already applied with different payload "
+                    f"(existing hash={existing_rev.payload_hash[:8]}, incoming hash={incoming_hash[:8]})"
                 )
-                return {"revision_id": revision_id, "already_applied": True, "mutations": 0}
+                raise ValueError(msg)
 
-            # Apply revision
-            ev3.description = f"{ev3.description} [CORRECTED]"
-            ev3.result_code = "투수 땅볼 (정정)"
+            # 2. Update GameEvent
+            orig_desc = ev3.description
+            orig_code = ev3.result_code
+            ev3.description = target_revised_desc
+            ev3.result_code = target_revised_code
+
+            # 3. Synchronize GamePlayByPlay
+            pbp_row = (
+                session.query(GamePlayByPlay)
+                .filter(
+                    GamePlayByPlay.game_id == self.game_id,
+                    GamePlayByPlay.source_row_index == target_event_seq,
+                )
+                .first()
+            )
+            if pbp_row:
+                pbp_row.play_description = target_revised_desc
+                pbp_row.result = target_revised_code
+
+            # 4. Insert permanent RelayRevisionRecord
+            rev_record = RelayRevisionRecord(
+                revision_id=revision_id,
+                game_id=self.game_id,
+                target_event_seq=target_event_seq,
+                original_description=orig_desc or "",
+                revised_description=target_revised_desc,
+                original_result_code=orig_code,
+                revised_result_code=target_revised_code,
+                payload_hash=incoming_hash,
+                status="APPLIED",
+                created_at=datetime.now(UTC),
+            )
+            session.add(rev_record)
             session.flush()
 
             # CP7: Crash hook inside transaction after flush, before commit
@@ -438,11 +643,16 @@ class SealedSnapshotRelayPipeline:
 
             session.commit()
             logger.info(
-                "[CORRECTION] Committed revision %s to event %d",
+                "[CORRECTION] Committed revision %s to event %d with permanent ledger entry",
                 revision_id,
                 target_event_seq,
             )
-            return {"revision_id": revision_id, "already_applied": False, "mutations": 1}
+            return {
+                "revision_id": revision_id,
+                "already_applied": False,
+                "mutations": 1,
+                "status": "APPLIED",
+            }
 
     def _normalize_sources(
         self,
@@ -452,7 +662,7 @@ class SealedSnapshotRelayPipeline:
         hook: CrashHook,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], str]:
         """Parse raw KBO and Naver snapshots into normalized events and PBP rows."""
-        kbo_events = parse_kbo_nodes_to_events(state.kbo_raw_nodes, self.game_id)
+        kbo_events = parse_kbo_nodes_to_events(state.kbo_raw_nodes, self.game_id, context=self.context)
         hook.trigger_if_matched("CP2_DURING_NORMALIZATION")
 
         if empty_naver or not state.naver_raw_groups:
@@ -467,6 +677,40 @@ class SealedSnapshotRelayPipeline:
             source_used = "dual_canonical"
 
         return kbo_events, naver_events, raw_pbp_rows, source_used
+
+    def _apply_revisions_to_staged(
+        self,
+        canonical_events: list[dict[str, Any]],
+        raw_pbp_rows: list[dict[str, Any]],
+    ) -> None:
+        """Apply committed permanent revisions to staged in-memory events and PBP rows."""
+        with self.session_factory() as session:
+            applied_revisions = (
+                session.query(RelayRevisionRecord)
+                .filter(
+                    RelayRevisionRecord.game_id == self.game_id,
+                    RelayRevisionRecord.status == "APPLIED",
+                )
+                .all()
+            )
+            rev_map = {r.target_event_seq: r for r in applied_revisions}
+
+        if not rev_map:
+            return
+
+        for ev in canonical_events:
+            seq = ev.get("event_seq")
+            if seq in rev_map:
+                r = rev_map[seq]
+                ev["description"] = r.revised_description
+                ev["result_code"] = r.revised_result_code
+
+        for pbp in raw_pbp_rows:
+            seq = pbp.get("source_row_index")
+            if seq in rev_map:
+                r = rev_map[seq]
+                pbp["play_description"] = r.revised_description
+                pbp["result"] = r.revised_result_code
 
     def run(
         self,
@@ -530,6 +774,10 @@ class SealedSnapshotRelayPipeline:
                 use_semantic_key=True,
                 allow_corrections=True,
             )
+
+            # Replay preservation: apply committed revisions if present in DB
+            self._apply_revisions_to_staged(canonical_events, raw_pbp_rows)
+
             state.canonical_events = canonical_events
             state.state_hash = compute_state_hash([e.get("description") for e in canonical_events])
 
@@ -592,6 +840,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db-path", required=True, help="Path to ephemeral SQLite DB")
     parser.add_argument("--kbo-fixture", required=True, help="Path to sealed KBO JSON fixture")
     parser.add_argument("--naver-fixture", required=True, help="Path to sealed Naver JSON fixture")
+    parser.add_argument("--allowed-root", help="Directory for path confinement verification")
     parser.add_argument("--crash-point", choices=list(CRASH_POINTS), help="Crash hook point to simulate")
     parser.add_argument("--apply-correction", action="store_true", help="Apply in-place correction")
     parser.add_argument("--empty-naver", action="store_true", help="Simulate empty Naver payload")
@@ -601,11 +850,14 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+    allowed_root = Path(args.allowed_root).resolve() if args.allowed_root else None
+
     pipeline = SealedSnapshotRelayPipeline(
         game_id=args.game_id,
         db_path_or_url=args.db_path,
         kbo_fixture_path=Path(args.kbo_fixture),
         naver_fixture_path=Path(args.naver_fixture),
+        allowed_root=allowed_root,
         lock_dir=Path(args.lock_dir) if args.lock_dir else None,
         verify_checksums=not args.no_verify_checksums,
     )
