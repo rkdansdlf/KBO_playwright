@@ -53,6 +53,7 @@ from src.scheduler.jobs.maintenance import (
     heal_unverified_pbp_job,
     rag_identity_drift_job,
     recalc_milestones_and_rag_job,
+    relay_state_cleanup_job,
     sparse_terms_catchup_job,
     sync_rag_incremental_job,
     trim_scheduler_logs_job,
@@ -323,6 +324,12 @@ def _start_scheduler(args: argparse.Namespace) -> None:
             trim_scheduler_logs_job,
             trigger_cls(day_of_week="sun", hour=2, minute=45),
             "trim_scheduler_logs_weekly",
+            7200,
+        ),
+        (
+            relay_state_cleanup_job,
+            trigger_cls(day_of_week="sun", hour=2, minute=15),
+            "relay_state_cleanup_weekly",
             7200,
         ),
     ]

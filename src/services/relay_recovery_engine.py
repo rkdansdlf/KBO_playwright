@@ -239,7 +239,10 @@ def extract_domain_entities(session: Session, game_id: str) -> dict[str, Any]:
         sort_keys=True,
         ensure_ascii=False,
     ).encode("utf-8")
-    payload_binding_hash = hashlib.sha256(payload_binding_raw).hexdigest()
+    # observed_event_pbp_state_sha256 verifies cryptographic state equivalence of normalized
+    # in-memory/replayed events & PBPs against the golden baseline; does NOT assert coupling
+    # to historical database validation records.
+    observed_event_pbp_state_sha256 = hashlib.sha256(payload_binding_raw).hexdigest()
 
     revision_payloads = [
         {
@@ -263,7 +266,7 @@ def extract_domain_entities(session: Session, game_id: str) -> dict[str, Any]:
         "validation": {
             "validation_status": val.validation_status if val else None,
             "source_used": val.source_used if val else None,
-            "payload_binding_hash": payload_binding_hash,
+            "observed_event_pbp_state_sha256": observed_event_pbp_state_sha256,
         },
         "revisions": revision_payloads,
     }
@@ -552,30 +555,38 @@ class SealedSnapshotRelayPipeline:
         session: Session,
         ev: GameEvent,
         orig_desc: str | None,
-        target_event_seq: int,
     ) -> GamePlayByPlay | None:
-        """Locate corresponding GamePlayByPlay row via provider_log_id or batter fallback."""
+        """Locate corresponding GamePlayByPlay row via provider_log_id or batter fallback.
+
+        Strictly prohibits falling back to synthetic/numeric indices.
+        If matching fails to find any candidate, returns None.
+        If multiple candidates are found, raises ValueError to prevent ambiguous mutation.
+        """
         target_pid = ev.provider_log_id
         pbp_query = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == self.game_id)
         if target_pid:
-            pbp_row = pbp_query.filter(GamePlayByPlay.provider_log_id == target_pid).first()
-            if pbp_row:
-                return pbp_row
+            pbp_rows = pbp_query.filter(GamePlayByPlay.provider_log_id == target_pid).all()
+            if len(pbp_rows) > 1:
+                msg = f"Ambiguous PBP match: {len(pbp_rows)} candidates found for provider_log_id '{target_pid}'"
+                raise ValueError(msg)
+            if len(pbp_rows) == 1:
+                return pbp_rows[0]
 
         if orig_desc:
-            pbp_row = (
-                pbp_query.filter(
-                    GamePlayByPlay.batter_name == ev.batter_name,
-                    GamePlayByPlay.play_description == orig_desc,
+            pbp_rows = pbp_query.filter(
+                GamePlayByPlay.batter_name == ev.batter_name,
+                GamePlayByPlay.play_description == orig_desc,
+            ).all()
+            if len(pbp_rows) > 1:
+                msg = (
+                    f"Ambiguous PBP match: {len(pbp_rows)} candidates found for "
+                    f"batter '{ev.batter_name}' and description '{orig_desc}'"
                 )
-                .order_by(GamePlayByPlay.source_row_index.desc())
-                .first()
-            )
-            if pbp_row:
-                return pbp_row
+                raise ValueError(msg)
+            if len(pbp_rows) == 1:
+                return pbp_rows[0]
 
-        # Fallback for synthetic/mock environments
-        return pbp_query.filter(GamePlayByPlay.source_row_index == target_event_seq).first()
+        return None
 
     def apply_event_correction(
         self,
@@ -642,20 +653,34 @@ class SealedSnapshotRelayPipeline:
                 )
                 raise ValueError(msg)
 
-            # 2. Update GameEvent
             orig_desc = ev3.description
             orig_code = ev3.result_code
+
+            # Strict ambiguity guard & fallback elimination:
+            # Locate corresponding PBP before mutating any entity. If multiple candidates exist,
+            # _find_matching_pbp_row raises ValueError (triggering rollback). If no candidates match,
+            # abort immediately with 0 mutations without altering GameEvent or recording revision.
+            pbp_row = self._find_matching_pbp_row(session, ev3, orig_desc)
+            if not pbp_row:
+                logger.warning(
+                    "[CORRECTION] Matching GamePlayByPlay row not found for event seq=%d; aborting with 0 mutations",
+                    target_event_seq,
+                )
+                return {
+                    "revision_id": revision_id,
+                    "already_applied": False,
+                    "mutations": 0,
+                    "status": "PBP_MATCH_FAILED",
+                }
+
+            # 2. Update GameEvent
             ev3.description = target_revised_desc
             ev3.result_code = target_revised_code
 
             # 3. Synchronize GamePlayByPlay via semantic provider_log_id link
-            pbp_row = self._find_matching_pbp_row(session, ev3, orig_desc, target_event_seq)
-            matched_provider_log_id = (
-                pbp_row.provider_log_id if pbp_row and pbp_row.provider_log_id else ev3.provider_log_id
-            )
-            if pbp_row:
-                pbp_row.play_description = target_revised_desc
-                pbp_row.result = target_revised_code
+            pbp_row.play_description = target_revised_desc
+            pbp_row.result = target_revised_code
+            matched_provider_log_id = pbp_row.provider_log_id or ev3.provider_log_id
 
             # 4. Insert permanent RelayRevisionRecord with preimage & provider_log_id binding
             rev_record = RelayRevisionRecord(

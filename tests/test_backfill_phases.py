@@ -120,7 +120,16 @@ def test_backfill_runs_phase2_when_detail_backfilled_but_pbp_still_missing(monke
     monkeypatch.setattr("scripts.scheduler._find_player_profile_gaps", lambda _session: [])
     monkeypatch.setattr("scripts.scheduler.run_daily_update_main", update_calls.append)
 
-    result = backfill_missed_daily_crawls(lookback_days=14)
+    # The dependency gate requires crawl_daily_games to be registered SUCCESS.
+    from src.scheduler.jobs.daily import JobStatus, _register_job, _update_job_status, clear_job_registry
+
+    clear_job_registry()
+    _register_job("crawl_daily_games", dependencies=[])
+    _update_job_status("crawl_daily_games", JobStatus.SUCCESS, "test setup")
+    try:
+        result = backfill_missed_daily_crawls(lookback_days=14)
+    finally:
+        clear_job_registry()
 
     assert update_calls == [["--date", "20260603"], ["--date", "20260603"]]
     assert result == ["detail:20260603", "pbp:20260603"]

@@ -1,7 +1,7 @@
 # Phase 106: KBO Crawler Core Operational Certification
 
-**Status**: GATES 106A, 106B, 106C, 106D, 106E CERTIFIED (Scoped Claim Baseline)
-**Execution Timestamp**: 2026-09-01T03:35:00+09:00
+**Status**: GATES 106A, 106B, 106C, 106D, 106E, 106F CERTIFIED + RELAY SUB-GATES R2/R4A CERTIFIED (Scoped Claim Baseline)
+**Execution Timestamp**: 2026-09-01T03:35:00+09:00 (106A~106E baseline); 106F scheduler-locks certified 2026-09-02; relay sub-gates R2 (2026-09-03) and R4A (2026-09-08, code commit `801c543b`) certified thereafter
 **Isolation Policy**: STRICT READ-ONLY | ZERO Database Persistence | ZERO Oracle/Production DML
 **Protected DB SHA-256**: `f7a7c122ce9656de47957ebfca662d736418fc4ca7e8f0d2255690a1f64bbe30` (100% Unchanged)
 
@@ -24,7 +24,9 @@ Phase 106 decouples crawler core operational verification from the Formula/RAG c
 | `crawler.live_read_only_smoke.secondary_http_one_target.v1` | 1 secondary source (`wikipedia-awards-live`, 495 records, HTTP HTML via httpx) | Level 3 | **PASSED (READ-ONLY SMOKE)** |
 | `crawler.live_read_only_smoke.all_30_crawlers.v1` | Full 30 crawlers live certification | - | **NOT_TESTED** |
 | `crawler.historical_census.1982_2026.v1` | Read-only coverage census across all 45 seasons (Gate 106E) | Level 3 | **LEVEL_3_INTEGRATION_VERIFIED** |
-| `crawler.scheduler_recovery.v1` | Multi-tier locks & auto-healing (Phase 106F) | - | **NO-GO / PENDING APPROVAL** |
+| `crawler.scheduler_recovery.v1` | Multi-tier locks & auto-healing (Phase 106F) | Level 3 | **LEVEL_3_INTEGRATION_VERIFIED** (31 passed; see `gate-106f-scheduler-locks/`) |
+| `crawler.relay_dual_source_smoke.r2_single_game.v1` | Dual-source (KBO+Naver) read-only smoke, single historical game `20240930NCHT0` 9회초 terminal half-inning | Level 3 | **PASS (SCOPED: one game only; live polling of active games NOT_TESTED)** |
+| `crawler.relay_sealed_recovery.r4a_single_game.v1` | Sealed-snapshot offline replay + `os._exit(137)` crash-restart at CP1~CP7, single game `20240930NCHT0`, 4-entity convergence | Level 3 | **PASS (SCOPED: one game only; live polling, multi-day daemon, Oracle writes UNTESTED)** |
 | `crawler.oracle_production.v1` | Oracle Staging / Production DML | - | **STRICT NO-GO** |
 
 ---
@@ -136,4 +138,20 @@ Docs/certification/phase-106/
     ├── in-progress-season-status.json
     ├── protected-db-hashes.json
     └── raw-query-output.txt
+├── gate-106f-scheduler-locks/
+│   └── README.md (+ 31-test evidence bundle)
+├── gate-106f-r2-live-relay/
+│   └── README.md (+ dual-source canonical-match evidence)
+├── gate-106f-relay/
+│   └── (supporting relay test artifacts, no standalone verdict)
+└── gate-106f-r4a-sealed-recovery/
+    ├── README.md
+    ├── SHA256SUMS
+    ├── tested-code-manifest.json
+    ├── crash-injection-ledger.jsonl
+    ├── checkpoint-state-ledger.jsonl
+    ├── recovery-convergence-diff.json
+    ├── negative-control-ledger.json
+    ├── domain-invariants-r4a.json
+    └── fixtures/
 ```

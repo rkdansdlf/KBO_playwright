@@ -664,6 +664,8 @@ def test_4_entity_domain_hash_tamper_detection(ephemeral_db: Path, lock_dir: Pat
         assert len(entities["events"]) == 5
         assert len(entities["pbps"]) == 47
         assert entities["validation"]["source_used"] == "dual_canonical"
+        assert "observed_event_pbp_state_sha256" in entities["validation"]
+        assert entities["validation"]["observed_event_pbp_state_sha256"] is not None
         assert len(entities["revisions"]) == 1
 
         baseline_hash = compute_domain_state_hash(session, TARGET_GAME_ID)
@@ -675,3 +677,118 @@ def test_4_entity_domain_hash_tamper_detection(ephemeral_db: Path, lock_dir: Pat
         session.commit()
         pbp_tampered_hash = compute_domain_state_hash(session, TARGET_GAME_ID)
         assert baseline_hash != pbp_tampered_hash
+
+
+def test_correction_fails_safely_when_pbp_not_matched(ephemeral_db: Path, lock_dir: Path) -> None:
+    """Verify that when no matching PBP row exists, correction safely aborts with 0 mutations without guessing."""
+    pipeline = SealedSnapshotRelayPipeline(
+        game_id=TARGET_GAME_ID,
+        db_path_or_url=str(ephemeral_db),
+        kbo_fixture_path=KBO_FIXTURE,
+        naver_fixture_path=NAVER_FIXTURE,
+        lock_dir=lock_dir,
+    )
+    pipeline.run(apply_correction=False)
+
+    engine = create_engine(f"sqlite:///{ephemeral_db}")
+    with sessionmaker(bind=engine)() as session:
+        # Deliberately desynchronize event 3 to have a non-existent provider_log_id & non-matching batter/desc
+        ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        assert ev3 is not None
+        ev3.provider_log_id = "nonexistent:provider:id"
+        ev3.batter_name = "미등록선수"
+        ev3.description = "존재하지 않는 타격 기록"
+        session.commit()
+
+        orig_ev3_desc = ev3.description
+        row35 = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.source_row_index == 35)
+            .first()
+        )
+        assert row35 is not None
+        orig_row35_desc = row35.play_description
+
+    # Attempt correction on event 3 with no matching PBP
+    res = pipeline.apply_event_correction(
+        revision_id="REV-NO-MATCH-TEST",
+        target_event_seq=3,
+        revised_description="Should never be applied",
+    )
+    assert res["already_applied"] is False
+    assert res["mutations"] == 0
+    assert res["status"] == "PBP_MATCH_FAILED"
+
+    # Verify zero database mutations occurred across GameEvent, GamePlayByPlay, and RelayRevisionRecord
+    with sessionmaker(bind=engine)() as session:
+        ev3_after = (
+            session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        )
+        assert ev3_after is not None
+        assert ev3_after.description == orig_ev3_desc
+        assert "Should never be applied" not in ev3_after.description
+
+        pbp35_after = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.source_row_index == 35)
+            .first()
+        )
+        assert pbp35_after is not None
+        assert pbp35_after.play_description == orig_row35_desc
+
+        rev = session.query(RelayRevisionRecord).filter(RelayRevisionRecord.revision_id == "REV-NO-MATCH-TEST").first()
+        assert rev is None
+
+
+def test_correction_rejects_ambiguous_pbp_candidates(ephemeral_db: Path, lock_dir: Path) -> None:
+    """Verify that multiple matching PBP candidates trigger an explicit ValueError and 0 mutations."""
+    pipeline = SealedSnapshotRelayPipeline(
+        game_id=TARGET_GAME_ID,
+        db_path_or_url=str(ephemeral_db),
+        kbo_fixture_path=KBO_FIXTURE,
+        naver_fixture_path=NAVER_FIXTURE,
+        lock_dir=lock_dir,
+    )
+    pipeline.run(apply_correction=False)
+
+    engine = create_engine(f"sqlite:///{ephemeral_db}")
+    with sessionmaker(bind=engine)() as session:
+        # Insert a duplicate PBP row with identical provider_log_id to create ambiguity
+        dup_pbp = GamePlayByPlay(
+            game_id=TARGET_GAME_ID,
+            source_row_index=999,
+            inning=9,
+            inning_half="초",
+            play_description="김형준 : 중복 행 생성",
+            event_type="타격",
+            result="아웃",
+            batter_name="김형준",
+            pitcher_name="최지민",
+            provider_log_id="naver:c3fe20fbf07f:9t:2:6:cdeacf6a06",
+        )
+        session.add(dup_pbp)
+        session.commit()
+
+        ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        assert ev3 is not None
+        orig_ev3_desc = ev3.description
+
+    # Attempt correction on event 3 -> must raise ValueError with Ambiguous PBP match message
+    with pytest.raises(ValueError, match="Ambiguous PBP match: 2 candidates found"):
+        pipeline.apply_event_correction(
+            revision_id="REV-AMBIGUOUS-TEST",
+            target_event_seq=3,
+            revised_description="Ambiguous correction payload",
+        )
+
+    # Verify zero mutations occurred (transaction was rolled back)
+    with sessionmaker(bind=engine)() as session:
+        ev3_after = (
+            session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        )
+        assert ev3_after is not None
+        assert ev3_after.description == orig_ev3_desc
+        assert "Ambiguous correction payload" not in ev3_after.description
+
+        rev = session.query(RelayRevisionRecord).filter(RelayRevisionRecord.revision_id == "REV-AMBIGUOUS-TEST").first()
+        assert rev is None
