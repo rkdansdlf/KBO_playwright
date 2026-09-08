@@ -47,6 +47,7 @@ PROTECTED_DB_PATH = REPO_ROOT / "data" / "kbo_dev.db"
 KBO_FIXTURE = TARGET_DIR / "fixtures" / "kbo_sealed_dom_nodes_20240930NCHT0.json"
 NAVER_FIXTURE = TARGET_DIR / "fixtures" / "naver_sealed_payload_20240930NCHT0.json"
 TARGET_GAME_ID = "20240930NCHT0"
+TARGET_CORRECTION_PROVIDER_LOG_ID = "naver:c3fe20fbf07f:9t:2:6:cdeacf6a06"
 
 
 def compute_file_sha256(path: Path) -> str:
@@ -202,20 +203,53 @@ def _evaluate_convergence(  # noqa: C901
     else:
         for idx, pbp in enumerate(state_after_restart["pbps"]):
             base_pbp = golden_state["pbps"][idx]
-            if pbp["source_row_index"] == CORRECTION_TARGET_EVENT_SEQ:
+            if pbp.get("provider_log_id") == TARGET_CORRECTION_PROVIDER_LOG_ID:
                 if "[CORRECTED]" not in pbp["play_description"] or "정정" not in (pbp["result"] or ""):
-                    pbps_diff.append({"issue": "Correction not synchronized with PBP row 3"})
+                    pbps_diff.append(
+                        {
+                            "issue": f"Correction not synchronized with target PBP row (provider_log_id={TARGET_CORRECTION_PROVIDER_LOG_ID})"
+                        }
+                    )
             elif pbp != base_pbp:
                 pbps_diff.append({"issue": f"Uncorrected PBP {pbp['source_row_index']} altered unexpectedly"})
 
     # 3. Validation metrics convergence
-    if state_after_restart["validation"] != golden_state["validation"]:
-        validation_diff.append({"issue": "Validation metrics do not match golden baseline"})
+    if not apply_corr:
+        if state_after_restart["validation"] != golden_state["validation"]:
+            validation_diff.append({"issue": "Validation metrics do not match golden baseline"})
+    else:
+        if state_after_restart["validation"].get("validation_status") != golden_state["validation"].get(
+            "validation_status"
+        ) or state_after_restart["validation"].get("source_used") != golden_state["validation"].get("source_used"):
+            validation_diff.append({"issue": "Validation status or source_used does not match golden baseline"})
+
+        expected_binding_raw = json.dumps(
+            {"events": state_after_restart["events"], "pbps": state_after_restart["pbps"]},
+            sort_keys=True,
+            ensure_ascii=False,
+        ).encode("utf-8")
+        expected_binding_hash = hashlib.sha256(expected_binding_raw).hexdigest()
+        observed_binding_hash = state_after_restart["validation"].get("payload_binding_hash")
+        if observed_binding_hash != expected_binding_hash:
+            validation_diff.append(
+                {"issue": "Validation payload_binding_hash does not match cryptographic hash of actual entities"}
+            )
 
     # 4. Revisions convergence
     if apply_corr:
-        if len(state_after_restart["revisions"]) != 1 or state_after_restart["revisions"][0]["status"] != "APPLIED":
+        revs = state_after_restart["revisions"]
+        if len(revs) != 1 or revs[0]["status"] != "APPLIED":
             revisions_diff.append({"issue": "Revision ledger record missing or status != APPLIED"})
+        else:
+            rev = revs[0]
+            if rev.get("target_provider_log_id") != TARGET_CORRECTION_PROVIDER_LOG_ID:
+                revisions_diff.append(
+                    {
+                        "issue": f"Revision target_provider_log_id mismatch: {rev.get('target_provider_log_id')} != {TARGET_CORRECTION_PROVIDER_LOG_ID}"
+                    }
+                )
+            if not rev.get("original_description"):
+                revisions_diff.append({"issue": "Revision original_description preimage missing"})
     elif len(state_after_restart["revisions"]) != 0:
         revisions_diff.append({"issue": "Unexpected revisions recorded in uncorrected run"})
 
@@ -473,18 +507,23 @@ def _run_negative_controls(temp_dir: Path, lock_dir: Path) -> tuple[dict[str, An
     proc_replay, _ = run_worker_subprocess(corr_db, apply_correction=False, lock_dir=lock_dir, allowed_root=temp_dir)
     state_after_reg_replay = inspect_db_state(corr_db)
     ev3_preserved = next(e for e in state_after_reg_replay["events"] if e["event_seq"] == 3)
-    pbp3_preserved = next(p for p in state_after_reg_replay["pbps"] if p["source_row_index"] == 3)
+    pbp_target_preserved = next(
+        p for p in state_after_reg_replay["pbps"] if p.get("provider_log_id") == TARGET_CORRECTION_PROVIDER_LOG_ID
+    )
+    pbp_row3_untouched = next(p for p in state_after_reg_replay["pbps"] if p["source_row_index"] == 3)
     pres_pass = (
         proc_replay.returncode == 0
         and "[CORRECTED]" in ev3_preserved["description"]
-        and "[CORRECTED]" in pbp3_preserved["play_description"]
+        and "[CORRECTED]" in pbp_target_preserved["play_description"]
+        and "[CORRECTED]" not in pbp_row3_untouched["play_description"]
         and len(state_after_reg_replay["revisions"]) == 1
     )
     neg_results["revision_replay_preservation"] = {
         "status": "PASS" if pres_pass else "FAIL",
         "regular_replay_exit_code": proc_replay.returncode,
         "event3_preserved": "[CORRECTED]" in ev3_preserved["description"],
-        "pbp3_preserved": "[CORRECTED]" in pbp3_preserved["play_description"],
+        "pbp_target_preserved": "[CORRECTED]" in pbp_target_preserved["play_description"],
+        "pbp_row3_untouched": "[CORRECTED]" not in pbp_row3_untouched["play_description"],
         "revisions_retained": len(state_after_reg_replay["revisions"]),
     }
     print(f"  - Negative Control 5 (Regular Replay Revision Preservation): {'PASS' if pres_pass else 'FAIL'}")
@@ -721,7 +760,7 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 3. **Zero Protected Storage Mutations**: Bit-level SHA-256 of `data/kbo_dev.db` (`{pre_db_sha256}`) is strictly unmutated.
 4. **Transaction Boundary Crash Resilience**: Simulated hard termination (`os._exit(137)`) during active transactions (CP4, CP6, CP7) rolls back uncommitted writes cleanly.
 5. **Permanent Revision Lineage**: Applied revisions are recorded in `_relay_revisions`. Re-applying identical payloads is a no-op (`mutations=0`), conflicting payloads raise `ValueError`, and regular replays preserve committed revisions without regression.
-6. **4-Entity Domain Convergence**: Full state hash and diffs explicitly verify all 4 substantive entities: `GameEvent` (5 rows), `GamePlayByPlay` (47 rows), `GameValidationMetrics` (`dual_canonical`), and `RelayRevisionRecord`.
+6. **4-Entity Domain Convergence**: Full state hash and diffs explicitly verify all 4 substantive entities: `GameEvent` (5 rows), `GamePlayByPlay` (47 rows), `GameValidationMetrics` (`dual_canonical` with cryptographic `payload_binding_hash`), and `RelayRevisionRecord` (with `target_provider_log_id` and `original_description` preimage).
 7. **Strict Confinement & Lock Protection**: Ephemeral DBs and locks are strictly confined to the allocated temporary workspace root; `ForceProcessLock` protects active live PIDs while safely reclaiming stale dead PID locks.
 
 ---
@@ -758,7 +797,7 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 | **Fixture Tamper Detection** | Corrupted KBO fixture bytes | Execution rejected with checksum mismatch | Rejected closed (code 1) | **PASS** |
 | **Correction Idempotency** | Repeat `apply_event_correction` | `mutations=0`, `already_applied=True`, 1 tag | 0 mutations, single tag | **PASS** |
 | **Revision Conflict Rejection** | Conflicting payload on same ID | Explicit `ValueError` raised | Rejected with conflict error | **PASS** |
-| **Regular Replay Preservation** | Replay with `apply_correction=False` | Committed revision retained on event 3 & PBP 3 | Retained with zero regression | **PASS** |
+| **Regular Replay Preservation** | Replay with `apply_correction=False` | Committed revision retained on event 3 & target PBP row 35 (Kim Hyeong-jun), row 3 (Kim Hwi-jip) untouched | Retained with zero regression | **PASS** |
 | **Path Confinement Violation** | DB path outside temporary root | Explicit `ValueError` raised | Rejected with confinement error | **PASS** |
 
 ---

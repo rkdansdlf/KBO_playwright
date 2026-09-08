@@ -113,6 +113,7 @@ class RelayRevisionRecord(CheckpointBase):
     revision_id = Column(String(64), primary_key=True)
     game_id = Column(String(20), nullable=False, index=True)
     target_event_seq = Column(Integer, nullable=False)
+    target_provider_log_id = Column(String(64), nullable=True)
     original_description = Column(String(255), nullable=False)
     revised_description = Column(String(255), nullable=False)
     original_result_code = Column(String(64), nullable=True)
@@ -233,10 +234,18 @@ def extract_domain_entities(session: Session, game_id: str) -> dict[str, Any]:
         for p in pbps
     ]
 
+    payload_binding_raw = json.dumps(
+        {"events": event_payloads, "pbps": pbp_payloads},
+        sort_keys=True,
+        ensure_ascii=False,
+    ).encode("utf-8")
+    payload_binding_hash = hashlib.sha256(payload_binding_raw).hexdigest()
+
     revision_payloads = [
         {
             "revision_id": r.revision_id,
             "target_event_seq": r.target_event_seq,
+            "target_provider_log_id": r.target_provider_log_id,
             "original_description": r.original_description,
             "revised_description": r.revised_description,
             "original_result_code": r.original_result_code,
@@ -254,6 +263,7 @@ def extract_domain_entities(session: Session, game_id: str) -> dict[str, Any]:
         "validation": {
             "validation_status": val.validation_status if val else None,
             "source_used": val.source_used if val else None,
+            "payload_binding_hash": payload_binding_hash,
         },
         "revisions": revision_payloads,
     }
@@ -537,6 +547,36 @@ class SealedSnapshotRelayPipeline:
                 len(raw_pbp_rows),
             )
 
+    def _find_matching_pbp_row(
+        self,
+        session: Session,
+        ev: GameEvent,
+        orig_desc: str | None,
+        target_event_seq: int,
+    ) -> GamePlayByPlay | None:
+        """Locate corresponding GamePlayByPlay row via provider_log_id or batter fallback."""
+        target_pid = ev.provider_log_id
+        pbp_query = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == self.game_id)
+        if target_pid:
+            pbp_row = pbp_query.filter(GamePlayByPlay.provider_log_id == target_pid).first()
+            if pbp_row:
+                return pbp_row
+
+        if orig_desc:
+            pbp_row = (
+                pbp_query.filter(
+                    GamePlayByPlay.batter_name == ev.batter_name,
+                    GamePlayByPlay.play_description == orig_desc,
+                )
+                .order_by(GamePlayByPlay.source_row_index.desc())
+                .first()
+            )
+            if pbp_row:
+                return pbp_row
+
+        # Fallback for synthetic/mock environments
+        return pbp_query.filter(GamePlayByPlay.source_row_index == target_event_seq).first()
+
     def apply_event_correction(
         self,
         *,
@@ -608,24 +648,21 @@ class SealedSnapshotRelayPipeline:
             ev3.description = target_revised_desc
             ev3.result_code = target_revised_code
 
-            # 3. Synchronize GamePlayByPlay
-            pbp_row = (
-                session.query(GamePlayByPlay)
-                .filter(
-                    GamePlayByPlay.game_id == self.game_id,
-                    GamePlayByPlay.source_row_index == target_event_seq,
-                )
-                .first()
+            # 3. Synchronize GamePlayByPlay via semantic provider_log_id link
+            pbp_row = self._find_matching_pbp_row(session, ev3, orig_desc, target_event_seq)
+            matched_provider_log_id = (
+                pbp_row.provider_log_id if pbp_row and pbp_row.provider_log_id else ev3.provider_log_id
             )
             if pbp_row:
                 pbp_row.play_description = target_revised_desc
                 pbp_row.result = target_revised_code
 
-            # 4. Insert permanent RelayRevisionRecord
+            # 4. Insert permanent RelayRevisionRecord with preimage & provider_log_id binding
             rev_record = RelayRevisionRecord(
                 revision_id=revision_id,
                 game_id=self.game_id,
                 target_event_seq=target_event_seq,
+                target_provider_log_id=matched_provider_log_id,
                 original_description=orig_desc or "",
                 revised_description=target_revised_desc,
                 original_result_code=orig_code,
@@ -693,24 +730,31 @@ class SealedSnapshotRelayPipeline:
                 )
                 .all()
             )
-            rev_map = {r.target_event_seq: r for r in applied_revisions}
 
-        if not rev_map:
+        if not applied_revisions:
             return
 
         for ev in canonical_events:
             seq = ev.get("event_seq")
-            if seq in rev_map:
-                r = rev_map[seq]
-                ev["description"] = r.revised_description
-                ev["result_code"] = r.revised_result_code
+            pid = ev.get("provider_log_id")
+            for r in applied_revisions:
+                if (seq is not None and seq == r.target_event_seq) or (
+                    pid and r.target_provider_log_id and pid == r.target_provider_log_id
+                ):
+                    ev["description"] = r.revised_description
+                    ev["result_code"] = r.revised_result_code
+                    break
 
         for pbp in raw_pbp_rows:
-            seq = pbp.get("source_row_index")
-            if seq in rev_map:
-                r = rev_map[seq]
-                pbp["play_description"] = r.revised_description
-                pbp["result"] = r.revised_result_code
+            pid = pbp.get("provider_log_id")
+            desc = pbp.get("play_description")
+            for r in applied_revisions:
+                if (pid and r.target_provider_log_id and pid == r.target_provider_log_id) or (
+                    desc and r.original_description and desc == r.original_description
+                ):
+                    pbp["play_description"] = r.revised_description
+                    pbp["result"] = r.revised_result_code
+                    break
 
     def run(
         self,
