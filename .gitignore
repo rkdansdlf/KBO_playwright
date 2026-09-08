@@ -105,6 +105,8 @@ coverage_report.txt
 # Integrity verification reports (generated artifacts)
 /reports/
 /.opencode
+# Runtime R2/Docker deployment manifests
+/r2_manifest*.json
 /data/*
 !/data/game_status_overrides.csv
 !/data/player_id_overrides.csv
