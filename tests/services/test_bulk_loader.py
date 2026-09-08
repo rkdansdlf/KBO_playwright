@@ -1,5 +1,4 @@
 """Unit and integration tests for KBO Bulk Chunk Loader & Checkpoint Batch Pipeline."""
-
 from __future__ import annotations
 
 import json
@@ -8,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from src.cli.bulk_load import main as bulk_load_cli_main
 from src.cli.kbo import main as kbo_master_main
+from src.orchestration.dto import StageExecutionStatus
 from src.orchestration.master import MasterWorkflowOrchestrator
 from src.services.bulk_loader import BulkChunkLoader, CheckpointManager
 from src.services.bulk_loader_dto import (
@@ -259,8 +259,10 @@ def test_kbo_master_cli_bulk_load(
             "2024",
         ]
     )
+    # The CLI bulk-load command should succeed because it calls the real BulkChunkLoader.
     assert code == 0
     cap = capsys.readouterr()
+    # The success message should be present.
     assert "KBO BULK LOADER MANIFEST" in cap.out
 
 
@@ -275,8 +277,23 @@ def test_master_workflow_bulk_load_dag() -> None:
     }
 
     report = orch.execute_workflow("bulk_load_test_dag", context=context, dry_run=False)
-    assert report.overall_status == "SUCCESS"
+    # The manifest stage is unimplemented -> FAILED, which causes its dependents to be SKIPPED.
+    assert report.overall_status in ("FAILED", "PARTIAL_FAILURE")
     assert report.total_stages == 4
-    assert report.completed_stages == 4
-    assert report.failed_stages == 0
-    assert report.skipped_stages == 0
+    assert report.failed_stages >= 1
+    assert report.skipped_stages >= 2  # at least ingest skipped due to parent, plus audit and sync
+    # Verify that the manifest stage is FAILED
+    manifest_result = next(r for r in report.stage_results if r.stage_id == "bulk_manifest")
+    assert manifest_result.status == StageExecutionStatus.FAILED
+    assert manifest_result.records_processed == 0
+    assert "not implemented" in (manifest_result.error_message or "")
+    # The ingest stage should be SKIPPED because its parent (manifest) failed
+    ingest_result = next(r for r in report.stage_results if r.stage_id == "bulk_ingest")
+    assert ingest_result.status == StageExecutionStatus.SKIPPED
+    assert ingest_result.records_processed == 0
+    # The audit and sync stages should also be SKIPPED due to their parents being SKIPPED/FAILED
+    audit_result = next(r for r in report.stage_results if r.stage_id == "bulk_audit")
+    sync_result = next(r for r in report.stage_results if r.stage_id == "bulk_sync")
+    assert audit_result.status == StageExecutionStatus.SKIPPED
+    assert sync_result.status == StageExecutionStatus.SKIPPED
+

@@ -85,13 +85,13 @@ def _run_processing(ctx: dict[str, Any]) -> StageExecutionResult:
             status=StageExecutionStatus.COMPLETED,
             records_processed=10,
         )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Standings processing handled with warning: %s", exc)
+    except Exception as exc:
+        logger.exception("Standings processing failed")
         return StageExecutionResult(
             stage_id="processing",
-            status=StageExecutionStatus.COMPLETED,
-            records_processed=1,
-            artifacts={"warning": str(exc)},
+            status=StageExecutionStatus.FAILED,
+            records_processed=0,
+            error_message=str(exc),
         )
 
 
@@ -112,12 +112,13 @@ def _run_analytics(ctx: dict[str, Any]) -> StageExecutionResult:
             status=StageExecutionStatus.COMPLETED,
             records_processed=10,
         )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Analytics calculations handled with warning: %s", exc)
+    except Exception as exc:
+        logger.exception("Analytics calculations failed")
         return StageExecutionResult(
             stage_id="analytics",
-            status=StageExecutionStatus.COMPLETED,
-            records_processed=1,
+            status=StageExecutionStatus.FAILED,
+            records_processed=0,
+            error_message=str(exc),
         )
 
 
@@ -137,12 +138,13 @@ def _run_quality_gate(ctx: dict[str, Any]) -> StageExecutionResult:
                 records_processed=1,
                 artifacts={"quality_report": report},
             )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Quality gate audit completed: %s", exc)
+    except Exception as exc:
+        logger.exception("Quality gate audit failed")
         return StageExecutionResult(
             stage_id="quality_gate",
-            status=StageExecutionStatus.COMPLETED,
-            records_processed=1,
+            status=StageExecutionStatus.FAILED,
+            records_processed=0,
+            error_message=str(exc),
         )
 
 
@@ -150,8 +152,9 @@ def _run_cloud_sync(ctx: dict[str, Any]) -> StageExecutionResult:
     if not ctx.get("enable_cloud_sync", True):
         return StageExecutionResult(
             stage_id="cloud_sync",
-            status=StageExecutionStatus.COMPLETED,
+            status=StageExecutionStatus.SKIPPED,
             records_processed=0,
+            error_message="Cloud sync disabled by context (enable_cloud_sync=False)",
         )
     try:
         from src.config.manager import ConfigManager
@@ -159,8 +162,9 @@ def _run_cloud_sync(ctx: dict[str, Any]) -> StageExecutionResult:
         if not ConfigManager.get_feature_flag("enable_oci_sync", default=False):
             return StageExecutionResult(
                 stage_id="cloud_sync",
-                status=StageExecutionStatus.COMPLETED,
+                status=StageExecutionStatus.SKIPPED,
                 records_processed=0,
+                error_message="Cloud sync disabled by feature flag (enable_oci_sync=False)",
             )
         from src.sync.sync_engine import OciSyncEngine
 
@@ -173,12 +177,13 @@ def _run_cloud_sync(ctx: dict[str, Any]) -> StageExecutionResult:
             records_processed=synced_count,
             artifacts={"synced_rows": synced_count},
         )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Cloud sync step completed: %s", exc)
+    except Exception as exc:
+        logger.exception("Cloud sync step failed")
         return StageExecutionResult(
             stage_id="cloud_sync",
-            status=StageExecutionStatus.COMPLETED,
+            status=StageExecutionStatus.FAILED,
             records_processed=0,
+            error_message=str(exc),
         )
 
 
@@ -301,8 +306,9 @@ class MasterWorkflowOrchestrator:
         def _dummy_handler(stage_id: str) -> Callable[[dict[str, Any]], StageExecutionResult]:
             return lambda _ctx: StageExecutionResult(
                 stage_id=stage_id,
-                status=StageExecutionStatus.COMPLETED,
-                records_processed=1,
+                status=StageExecutionStatus.FAILED,
+                records_processed=0,
+                error_message=f"Historical recovery stage '{stage_id}' is not implemented",
             )
 
         orch.register_stage(
@@ -333,6 +339,14 @@ class MasterWorkflowOrchestrator:
     def build_bulk_load_workflow(cls) -> MasterWorkflowOrchestrator:
         """Build standard 4-stage parallel bulk loading DAG."""
         orch = cls()
+
+        def _unimplemented_handler(stage_id: str) -> Callable[[dict[str, Any]], StageExecutionResult]:
+            return lambda _ctx: StageExecutionResult(
+                stage_id=stage_id,
+                status=StageExecutionStatus.FAILED,
+                records_processed=0,
+                error_message=f"Bulk load stage '{stage_id}' is not implemented",
+            )
 
         def _bulk_ingest_handler(ctx: dict[str, Any]) -> StageExecutionResult:
             category = ctx.get("category", "PBP")
@@ -370,7 +384,7 @@ class MasterWorkflowOrchestrator:
 
         orch.register_stage(
             WorkflowStageMeta("bulk_manifest", "Initialize Bulk Partitions", WorkflowStageType.INGESTION),
-            lambda _ctx: StageExecutionResult("bulk_manifest", StageExecutionStatus.COMPLETED, records_processed=1),
+            _unimplemented_handler("bulk_manifest"),
         )
         orch.register_stage(
             WorkflowStageMeta(
@@ -388,7 +402,7 @@ class MasterWorkflowOrchestrator:
                 WorkflowStageType.QUALITY_GATE,
                 ["bulk_ingest"],
             ),
-            lambda _ctx: StageExecutionResult("bulk_audit", StageExecutionStatus.COMPLETED, records_processed=1),
+            _unimplemented_handler("bulk_audit"),
         )
         orch.register_stage(
             WorkflowStageMeta(
@@ -397,7 +411,7 @@ class MasterWorkflowOrchestrator:
                 WorkflowStageType.SYNC,
                 ["bulk_audit"],
             ),
-            lambda _ctx: StageExecutionResult("bulk_sync", StageExecutionStatus.COMPLETED, records_processed=1),
+            _unimplemented_handler("bulk_sync"),
         )
 
         return orch

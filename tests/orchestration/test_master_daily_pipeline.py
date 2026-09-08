@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+from src.orchestration.dto import StageExecutionStatus
 from src.orchestration.master import MasterWorkflowOrchestrator
 
 if TYPE_CHECKING:
@@ -56,5 +57,9 @@ def test_execute_daily_sync_workflow_mocked(
     report = orch.execute_workflow("daily_sync_full", context={"date": "20260401", "enable_cloud_sync": False})
 
     assert report.overall_status == "SUCCESS"
-    assert report.completed_stages == 6
+    assert report.completed_stages == 5
     assert report.failed_stages == 0
+    assert report.skipped_stages == 1
+    # Ensure the cloud_sync stage is the one skipped
+    cloud_sync_result = next(r for r in report.stage_results if r.stage_id == "cloud_sync")
+    assert cloud_sync_result.status == StageExecutionStatus.SKIPPED
