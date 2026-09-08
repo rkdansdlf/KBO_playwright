@@ -520,18 +520,31 @@ def test_revision_persistence_across_regular_replay(ephemeral_db: Path, lock_dir
         assert "[CORRECTED]" in ev3_after.description
         assert "투수 땅볼 (정정)" in ev3_after.result_code
 
-        # Verify PBP row is also preserved
-        pbp3 = (
+        # Verify PBP row is also preserved via provider_log_id
+        target_pid = ev3_after.provider_log_id
+        pbp_target = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.provider_log_id == target_pid)
+            .first()
+        )
+        assert pbp_target is not None
+        assert "[CORRECTED]" in pbp_target.play_description
+        assert pbp_target.batter_name == "김형준"
+        assert pbp_target.source_row_index == 35
+
+        # Verify uncorrected PBP row (e.g. row 3 Kim Hwi-jip) was NOT modified
+        pbp_row3 = (
             session.query(GamePlayByPlay)
             .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.source_row_index == 3)
             .first()
         )
-        assert pbp3 is not None
-        assert "[CORRECTED]" in pbp3.play_description
+        assert pbp_row3 is not None
+        assert "[CORRECTED]" not in pbp_row3.play_description
+        assert pbp_row3.batter_name == "김휘집"
 
 
 def test_pbp_and_event_synchronized_correction(ephemeral_db: Path, lock_dir: Path) -> None:
-    """Verify that apply_event_correction updates both GameEvent and GamePlayByPlay synchronously."""
+    """Verify that apply_event_correction updates both GameEvent and GamePlayByPlay synchronously via provider_log_id."""
     pipeline = SealedSnapshotRelayPipeline(
         game_id=TARGET_GAME_ID,
         db_path_or_url=str(ephemeral_db),
@@ -544,16 +557,38 @@ def test_pbp_and_event_synchronized_correction(ephemeral_db: Path, lock_dir: Pat
     engine = create_engine(f"sqlite:///{ephemeral_db}")
     with sessionmaker(bind=engine)() as session:
         ev = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        assert ev is not None
+        assert ev.batter_name == "김형준"
+        assert ev.provider_log_id == "naver:c3fe20fbf07f:9t:2:6:cdeacf6a06"
+
+        # Semantic link: target PBP row is row 35 (Kim Hyeong-jun), NOT row 3 (Kim Hwi-jip)
         pbp = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.provider_log_id == ev.provider_log_id)
+            .first()
+        )
+        assert pbp is not None
+        assert pbp.source_row_index == 35
+        assert pbp.batter_name == "김형준"
+        assert "[CORRECTED]" in ev.description
+        assert "[CORRECTED]" in pbp.play_description
+        assert ev.result_code == pbp.result == "투수 땅볼 (정정)"
+
+        # Verify row 3 (Kim Hwi-jip) was completely untouched
+        pbp_row3 = (
             session.query(GamePlayByPlay)
             .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.source_row_index == 3)
             .first()
         )
-        assert ev is not None
-        assert pbp is not None
-        assert "[CORRECTED]" in ev.description
-        assert "[CORRECTED]" in pbp.play_description
-        assert ev.result_code == pbp.result == "투수 땅볼 (정정)"
+        assert pbp_row3 is not None
+        assert pbp_row3.batter_name == "김휘집"
+        assert "[CORRECTED]" not in pbp_row3.play_description
+
+        # Verify revision record lineage and provider_log_id binding
+        rev = session.query(RelayRevisionRecord).filter(RelayRevisionRecord.game_id == TARGET_GAME_ID).first()
+        assert rev is not None
+        assert rev.target_provider_log_id == "naver:c3fe20fbf07f:9t:2:6:cdeacf6a06"
+        assert rev.original_description == "김형준 : 투수 땅볼 아웃 (투수->1루수 송구아웃)"
 
 
 def test_path_confinement_violation(tmp_path: Path) -> None:
