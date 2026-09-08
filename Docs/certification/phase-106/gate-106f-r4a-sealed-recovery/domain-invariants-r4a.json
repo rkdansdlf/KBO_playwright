@@ -1,8 +1,8 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
   "game_id": "20240930NCHT0",
-  "started_at": "2026-09-08T14:17:14.968354+00:00",
-  "completed_at": "2026-09-08T14:17:38.840708+00:00",
+  "started_at": "2026-09-08T23:27:03.650014+00:00",
+  "completed_at": "2026-09-08T23:27:22.881313+00:00",
   "invariants": [
     {
       "id": "INV_ZERO_EXTERNAL_NETWORK",
