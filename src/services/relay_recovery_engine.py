@@ -564,13 +564,15 @@ class SealedSnapshotRelayPipeline:
         """
         target_pid = ev.provider_log_id
         pbp_query = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == self.game_id)
-        if target_pid:
+        if target_pid is not None:
             pbp_rows = pbp_query.filter(GamePlayByPlay.provider_log_id == target_pid).all()
             if len(pbp_rows) > 1:
                 msg = f"Ambiguous PBP match: {len(pbp_rows)} candidates found for provider_log_id '{target_pid}'"
                 raise ValueError(msg)
             if len(pbp_rows) == 1:
                 return pbp_rows[0]
+            # If we get here, target_pid was provided but no match -> return None, do not fall back
+            return None
 
         if orig_desc:
             pbp_rows = pbp_query.filter(
