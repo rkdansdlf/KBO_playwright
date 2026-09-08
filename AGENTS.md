@@ -745,11 +745,11 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage**: 76.84% (fail_under=70).
 - **pytest**: 8,006 passed.
 
-### Current Verification Baseline (2026-09-03)
+### Current Verification Baseline (2026-09-08)
 
 - `ruff check src/ tests/ scripts/` = 0 errors (expanded rules, 0 warnings).
 - `ruff format --check .` = clean.
-- `python -m pytest --tb=line -q --no-header` = **10,414 passed**, 3 skipped, 242 deselected, 0 failed; 77.81s.
+- `python -m pytest --tb=line -q --no-header` = **10,530 passed**, 7 skipped, 242 deselected, 0 failed; 186.06s (CI 42021d5f, all 7 jobs green).
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = 90% in recent full runs (fail_under=75, exceeded target).
 - `# noqa: BLE001` in `src/` = 0.
