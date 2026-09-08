@@ -28,7 +28,7 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: uv pip install --system -r requirements.txt
+      run: uv pip install --system -r requirements.txt -r requirements-dev.txt
 
     - name: Get Playwright version
       if: ${{ inputs.playwright == 'true' }}
