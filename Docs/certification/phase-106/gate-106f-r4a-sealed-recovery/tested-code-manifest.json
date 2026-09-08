@@ -1,9 +1,9 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
   "title": "Sealed-Snapshot Relay Pipeline Worker & Restart Recovery Manifest",
-  "started_at": "2026-09-08T13:56:41.204030+00:00",
-  "completed_at": "2026-09-08T13:57:08.106820+00:00",
-  "git_commit": "aa01b5999e4b2b87bccc224bfb6cc60932b09a30",
+  "started_at": "2026-09-08T14:17:14.968354+00:00",
+  "completed_at": "2026-09-08T14:17:38.840708+00:00",
+  "git_commit": "603ffeec59e11f5eb8afd4d87ef52e88443ac70f",
   "git_branch": "main",
   "scope_boundary": {
     "certified_scope": "Sealed-snapshot relay recovery pipeline worker (SealedSnapshotRelayPipeline) replay & restart recovery under process crash injection (os._exit(137) at transaction boundaries CP1~CP7) for target game 20240930NCHT0, top of the 9th inning. Re-uses production parsers (RelayCrawler._parse_naver_payload, PBPCrawler._update_out_base_state) and production repository (save_relay_data). Verifies all 4 substantive domain entities (Events, PBPs, Validation, Revisions), path confinement inside temporary workspace root, live PID protection, and permanent revision lineage.",
