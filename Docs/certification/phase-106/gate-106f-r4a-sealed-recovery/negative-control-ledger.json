@@ -32,5 +32,15 @@
   "path_confinement_rejection": {
     "status": "PASS",
     "rejection_verified": true
+  },
+  "correction_pbp_match_failure_safely_aborts": {
+    "status": "PASS",
+    "already_applied": false,
+    "mutations": 0,
+    "status_code": "PBP_MATCH_FAILED"
+  },
+  "correction_pbp_ambiguity_rejection": {
+    "status": "PASS",
+    "error_captured": true
   }
 }
