@@ -427,9 +427,10 @@ def rag_identity_drift_job() -> None:
 
 @_with_lock_skip_guard
 def relay_state_cleanup_job() -> None:
-    """Weekly relay source state cleanup job.
+    """Weekly relay source state audit job.
 
-    Runs Sunday 02:15 KST to audit and clean relay source states.
+    Runs Sunday 02:15 KST to audit relay source states.
+    All remediation actions run in dry-run mode (observation only, no writes).
     Uses --sample-size 10000 for performance on large databases.
     """
     from scripts.maintenance.fix_relay_state import (
@@ -450,7 +451,7 @@ def relay_state_cleanup_job() -> None:
             logger.info("Audited %d games, found %d issues", summary.total_games, len(summary.issues))
 
             if summary.unknown_source_games > 0:
-                result = fix_unknown_sources(dry_run=False, sample_size=10000)
+                result = fix_unknown_sources(dry_run=True, sample_size=10000)
                 logger.info("fix_unknown_sources: %s", result)
 
             if summary.source_mismatch_games > 0:
@@ -462,7 +463,7 @@ def relay_state_cleanup_job() -> None:
                 logger.info("remove_redundant_sources: %s", result)
 
             if summary.unclassified_event_games > 0:
-                result = fix_unclassified_events(dry_run=False)
+                result = fix_unclassified_events(dry_run=True)
                 logger.info("fix_unclassified_events: %s", result)
 
             alert_success("relay_state_cleanup", "Relay state cleanup completed")
