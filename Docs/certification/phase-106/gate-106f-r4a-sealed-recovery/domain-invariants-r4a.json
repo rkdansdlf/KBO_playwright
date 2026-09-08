@@ -1,13 +1,13 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
   "game_id": "20240930NCHT0",
-  "started_at": "2026-09-07T08:59:16.329194+00:00",
-  "completed_at": "2026-09-07T08:59:33.483477+00:00",
+  "started_at": "2026-09-08T01:35:09.793655+00:00",
+  "completed_at": "2026-09-08T01:35:26.790341+00:00",
   "invariants": [
     {
       "id": "INV_ZERO_EXTERNAL_NETWORK",
-      "description": "Zero outbound network requests; worker sockets blocked via KBO_SEALED_REPLAY_OFFLINE.",
-      "observed": "0 outbound requests (socket connection intercepted & verified in subprocesses)",
+      "description": "Zero outbound network requests; worker subprocess sockets blocked via KBO_SEALED_REPLAY_OFFLINE.",
+      "observed": "0 outbound requests (socket connect intercepted & verified in subprocesses)",
       "status": "PASS"
     },
     {
@@ -18,7 +18,7 @@
     },
     {
       "id": "INV_PRODUCTION_PIPELINE_REUSE",
-      "description": "Production parsers (RelayCrawler, KBOTextParser) and repository (save_relay_data) re-used.",
+      "description": "Production parsers (RelayCrawler, KBOTextParser) and repository (save_relay_data) re-used with HalfInningContext provenance.",
       "observed": "Zero hardcoded answer tables; parsed dynamically into 5 GameEvents and 47 PBP rows",
       "status": "PASS"
     },
@@ -41,15 +41,15 @@
       "status": "PASS"
     },
     {
-      "id": "INV_CORRECTION_IDEMPOTENCY",
-      "description": "Repeated in-place revisions yield 0 mutations and never duplicate tags.",
-      "observed": "mutations=0 and already_applied=True on retry; description tag count exactly 1",
+      "id": "INV_PERMANENT_REVISION_LINEAGE",
+      "description": "Idempotent revisions logged in _relay_revisions; conflicts rejected and regular replay preserves revisions.",
+      "observed": "mutations=0 on retry, ValueError on conflict, preserved across regular replay without degradation",
       "status": "PASS"
     },
     {
-      "id": "INV_ZERO_LOCK_COLLISION",
-      "description": "ForceProcessLock auto-recovers from hard process termination without deadlock.",
-      "observed": "Stale PID locks safely cleared; 7/7 restart runs reacquired locks successfully",
+      "id": "INV_PATH_AND_LOCK_CONFINEMENT",
+      "description": "ForceProcessLock auto-recovers from dead PIDs, live PIDs protected, DB strictly confined to temporary root.",
+      "observed": "Outside DB paths rejected; live PID locks never stolen; dead PID locks auto-cleared cleanly",
       "status": "PASS"
     }
   ],
