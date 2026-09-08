@@ -19,7 +19,10 @@ from scripts.maintenance.fix_relay_state import (
     print_summary,
     audit_relay_source_states,
     fix_unknown_sources,
+    fix_source_mismatch,
+    remove_redundant_sources,
     fix_unclassified_events,
+    update_validation_metrics,
 )
 from src.scheduler.jobs.daily import (
     JobStatus,
@@ -315,6 +318,228 @@ def test_update_job_status_with_details() -> None:
 
     result = get_job_status_summary()
     assert result["test_job"]["details"] == {"key": "value"}
+
+
+# === Additional fix_*_sources tests for dry-run behavior ===
+
+
+def test_fix_unknown_sources_dry_run_blocks_writes() -> None:
+    """Test that dry-run mode does not perform any DB writes."""
+    with patch("scripts.maintenance.fix_relay_state.audit_relay_source_states") as mock_audit:
+        summary = RelayStateSummary()
+        summary.game_level_issues = {"test_game": ["unknown_source:test"]}
+        summary.source_breakdown = {"test": 1}
+        summary.total_games = 1
+        mock_audit.return_value = summary
+
+        with patch("scripts.maintenance.fix_relay_state.SessionLocal") as mock_session_local:
+            mock_session = MagicMock()
+            mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_session)
+            mock_session_local.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = fix_unknown_sources(dry_run=True)
+
+            # Should return the games to fix but not perform writes
+            assert result["action"] == "fix_unknown_sources"
+            assert result["dry_run"] is True
+            # Session should not have had update() or commit() called
+            mock_session.commit.assert_not_called()
+
+
+def test_fix_source_mismatch_dry_run() -> None:
+    """Test fix_source_mismatch in dry-run mode returns games list."""
+    with patch("scripts.maintenance.fix_relay_state.audit_relay_source_states") as mock_audit:
+        summary = RelayStateSummary()
+        summary.game_level_issues = {"test_game_1": ["source_mismatch"], "test_game_2": ["source_mismatch"]}
+        summary.total_games = 2
+        mock_audit.return_value = summary
+
+        result = fix_source_mismatch(dry_run=True)
+
+        assert result["action"] == "fix_source_mismatch"
+        assert result["dry_run"] is True
+        assert len(result["games"]) == 2
+        assert "test_game_1" in result["games"]
+        assert "test_game_2" in result["games"]
+        assert result["note"] is not None
+
+
+def test_remove_redundant_sources_dry_run() -> None:
+    """Test remove_redundant_sources in dry-run mode."""
+    with patch("scripts.maintenance.fix_relay_state.audit_relay_source_states") as mock_audit:
+        summary = RelayStateSummary()
+        summary.game_level_issues = {"test_game": ["redundant"]}
+        summary.total_games = 1
+        mock_audit.return_value = summary
+
+        result = remove_redundant_sources(dry_run=True)
+
+        assert result["action"] == "remove_redundant"
+        assert result["dry_run"] is True
+        assert len(result["games"]) == 1
+
+
+def test_fix_unclassified_events_dry_run_blocks_writes() -> None:
+    """Test that dry-run mode blocks writes for unclassified events."""
+    rows = [MagicMock(game_id="test_game", event_type="unknown")]
+    with patch("scripts.maintenance.fix_relay_state.SessionLocal") as mock_session_local:
+        mock_session = MagicMock()
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=False)
+        # The chain is: session.query(Model).filter(condition).all()
+        mock_session.query.return_value.filter.return_value.all.return_value = rows
+
+        result = fix_unclassified_events(dry_run=True)
+
+        assert result["action"] == "fix_unclassified"
+        assert result["dry_run"] is True
+        assert result["affected_rows"] == 1
+        # Should not have committed
+        mock_session.commit.assert_not_called()
+
+
+def test_update_validation_metrics_no_issues() -> None:
+    """Test update_validation_metrics returns no action when no issues."""
+    with patch("scripts.maintenance.fix_relay_state.SessionLocal") as mock_session_local:
+        mock_session = MagicMock()
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=False)
+        # Chain: session.query(Model).filter(condition).all()
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+
+        with patch("scripts.maintenance.fix_relay_state.audit_relay_source_states") as mock_audit:
+            summary = RelayStateSummary()
+            summary.game_level_issues = {}
+            summary.source_breakdown = {}
+            mock_audit.return_value = summary
+
+            result = update_validation_metrics(dry_run=True)
+
+            assert result["action"] == "none"
+            assert result["dry_run"] is True
+
+
+def test_audit_relay_source_states_with_sample_size() -> None:
+    """Test _collect_game_ids_with_pbp with sample_size parameter."""
+    from scripts.maintenance.fix_relay_state import _collect_game_ids_with_pbp
+
+    mock_session = MagicMock()
+    all_game_ids = [(f"game_{i}",) for i in range(1000)]
+    mock_session.query.return_value.group_by.return_value.with_entities.return_value.all.return_value = all_game_ids
+
+    # With sample_size, should return exactly that many
+    result = _collect_game_ids_with_pbp(mock_session, sample_size=100)
+    assert len(result) == 100
+
+    # Without sample_size, should return all
+    result_all = _collect_game_ids_with_pbp(mock_session, sample_size=None)
+    assert len(result_all) == 1000
+
+
+def test_collect_game_ids_no_sampling() -> None:
+    """Test _collect_game_ids_with_pbp without sample_size."""
+    from scripts.maintenance.fix_relay_state import _collect_game_ids_with_pbp
+
+    mock_session = MagicMock()
+    game_ids_db = [(f"game_{i}",) for i in range(500)]
+    mock_session.query.return_value.group_by.return_value.with_entities.return_value.all.return_value = game_ids_db
+
+    result = _collect_game_ids_with_pbp(mock_session, sample_size=None)
+    assert len(result) == 500
+
+
+def test_fix_unknown_sources_idempotency() -> None:
+    """Test that running fix_unknown_sources twice yields same result."""
+    with patch("scripts.maintenance.fix_relay_state.audit_relay_source_states") as mock_audit:
+        summary = RelayStateSummary()
+        summary.game_level_issues = {"test_game": ["unknown_source:test"]}
+        summary.source_breakdown = {"test": 1}
+        summary.total_games = 1
+        mock_audit.return_value = summary
+
+        with patch("scripts.maintenance.fix_relay_state.SessionLocal") as mock_session_local:
+            mock_session = MagicMock()
+            mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_session)
+            mock_session_local.return_value.__exit__ = MagicMock(return_value=False)
+
+            result1 = fix_unknown_sources(dry_run=True)
+            result2 = fix_unknown_sources(dry_run=True)
+
+            assert result1["action"] == result2["action"]
+            assert result1["dry_run"] == result2["dry_run"]
+            assert result1["games"] == result2["games"]
+
+
+def test_relay_state_summary_default_fields() -> None:
+    """Test RelayStateSummary has all expected default fields."""
+    summary = RelayStateSummary()
+    assert hasattr(summary, "total_games")
+    assert hasattr(summary, "total_pbp_rows")
+    assert hasattr(summary, "total_events")
+    assert hasattr(summary, "allowed_source_games")
+    assert hasattr(summary, "unknown_source_games")
+    assert hasattr(summary, "unclassified_event_games")
+    assert hasattr(summary, "source_mismatch_games")
+    assert hasattr(summary, "redundant_source_games")
+    assert hasattr(summary, "issues")
+    assert hasattr(summary, "source_breakdown")
+    assert hasattr(summary, "game_level_issues")
+
+
+def test_fix_unknown_sources_apply_with_issues() -> None:
+    """Test fix_unknown_sources apply mode with issues found."""
+    with patch("scripts.maintenance.fix_relay_state.audit_relay_source_states") as mock_audit:
+        summary = RelayStateSummary()
+        summary.game_level_issues = {"test_game_1": ["unknown_source:bad_source"]}
+        summary.source_breakdown = {"bad_source": 1}
+        summary.total_games = 1
+        mock_audit.return_value = summary
+
+        with patch("scripts.maintenance.fix_relay_state.SessionLocal") as mock_session_local:
+            mock_session = MagicMock()
+            mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_session)
+            mock_session_local.return_value.__exit__ = MagicMock(return_value=False)
+            mock_session.execute.return_value.rowcount = 5
+
+            result = fix_unknown_sources(dry_run=False)
+
+            assert result["action"] == "fix_unknown_sources"
+            assert result["dry_run"] is False
+            assert result["affected_rows"] == 5
+            mock_session.commit.assert_called_once()
+
+
+def test_fix_unknown_sources_apply_with_no_issues() -> None:
+    """Test fix_unknown_sources apply mode when no issues found."""
+    with patch("scripts.maintenance.fix_relay_state.audit_relay_source_states") as mock_audit:
+        summary = RelayStateSummary()
+        summary.game_level_issues = {}
+        summary.source_breakdown = {}
+        summary.total_games = 0
+        mock_audit.return_value = summary
+
+        result = fix_unknown_sources(dry_run=False)
+
+        assert result["action"] == "none"
+        assert result["dry_run"] is False
+
+
+def test_unclassified_events_types() -> None:
+    """Test UNCLASSIFIED_EVENT_TYPES contains expected types."""
+    from scripts.maintenance.fix_relay_state import UNCLASSIFIED_EVENT_TYPES
+
+    assert "unknown" in UNCLASSIFIED_EVENT_TYPES
+    assert "unclassified" in UNCLASSIFIED_EVENT_TYPES
+    assert "other" in UNCLASSIFIED_EVENT_TYPES
+
+
+def test_known_redundant_prefixes() -> None:
+    """Test KNOWN_REDUNDANT_PREFIXES contains expected prefixes."""
+    from scripts.maintenance.fix_relay_state import KNOWN_REDUNDANT_PREFIXES
+
+    assert "jumper" in KNOWN_REDUNDANT_PREFIXES
+    assert "jump" in KNOWN_REDUNDANT_PREFIXES
+    assert "redirect" in KNOWN_REDUNDANT_PREFIXES
 
 
 if __name__ == "__main__":
