@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -52,31 +53,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     if args.json:
-        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     else:
-        print("=" * 70)  # noqa: T201
-        print("📊 [KBO RAG 검색 품질 & 성능 벤치마크 리포트]")  # noqa: T201
-        print("=" * 70)  # noqa: T201
-        print(f"• 총 평가 쿼리 수: {report.total_evaluated}개 (Top-K: {report.top_k})")  # noqa: T201
-        print(f"• Recall@{report.top_k}:      {report.metrics.recall_at_k * 100:.2f}%")  # noqa: T201
-        print(f"• Precision@{report.top_k}:   {report.metrics.precision_at_k * 100:.2f}%")  # noqa: T201
-        print(f"• MRR:               {report.metrics.mrr:.4f}")  # noqa: T201
-        print(f"• NDCG@{report.top_k}:        {report.metrics.ndcg:.4f}")  # noqa: T201
-        print(f"• Hit Rate:          {report.metrics.hit_rate * 100:.2f}%")  # noqa: T201
-        print("-" * 70)  # noqa: T201
-        print(f"• 지연 시간 p50:      {report.latency.p50_ms:.1f}ms")  # noqa: T201
-        print(f"• 지연 시간 p95:      {report.latency.p95_ms:.1f}ms")  # noqa: T201
-        print(f"• 지연 시간 Max:      {report.latency.max_ms:.1f}ms")  # noqa: T201
-        print(f"• 지연 시간 Avg:      {report.latency.avg_ms:.1f}ms")  # noqa: T201
-        print("-" * 70)  # noqa: T201
+        print("=" * 70)
+        print("📊 [KBO RAG 검색 품질 & 성능 벤치마크 리포트]")
+        print("=" * 70)
+        print(f"• 총 평가 쿼리 수: {report.total_evaluated}개 (Top-K: {report.top_k})")
+        print(f"• Recall@{report.top_k}:      {report.metrics.recall_at_k * 100:.2f}%")
+        print(f"• Precision@{report.top_k}:   {report.metrics.precision_at_k * 100:.2f}%")
+        print(f"• MRR:               {report.metrics.mrr:.4f}")
+        print(f"• NDCG@{report.top_k}:        {report.metrics.ndcg:.4f}")
+        print(f"• Hit Rate:          {report.metrics.hit_rate * 100:.2f}%")
+        print("-" * 70)
+        print(f"• 지연 시간 p50:      {report.latency.p50_ms:.1f}ms")
+        print(f"• 지연 시간 p95:      {report.latency.p95_ms:.1f}ms")
+        print(f"• 지연 시간 Max:      {report.latency.max_ms:.1f}ms")
+        print(f"• 지연 시간 Avg:      {report.latency.avg_ms:.1f}ms")
+        print("-" * 70)
         status_str = "✅ 통과 (PASSED)" if report.sla_passed else "❌ 위반 (FAILED)"
-        print(f"• SLA 판정:          {status_str}")  # noqa: T201
+        print(f"• SLA 판정:          {status_str}")
 
         if not report.sla_passed:
-            print("\n[SLA 위반 항목]:")  # noqa: T201
+            print("\n[SLA 위반 항목]:")
             for v in report.sla_violations:
-                print(f"  - ⚠️ {v}")  # noqa: T201
-        print("=" * 70)  # noqa: T201
+                print(f"  - ⚠️ {v}")
+        print("=" * 70)
 
     if args.strict and not report.sla_passed:
         return 1

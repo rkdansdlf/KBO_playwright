@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -81,20 +82,20 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
         mode_str = "Status" if args.status else ("Dry Run" if args.dry_run else "Execution")
-        print(f"=== Database Migration {mode_str} [{report.dialect.upper()}] ===")  # noqa: T201
-        print(  # noqa: T201
+        print(f"=== Database Migration {mode_str} [{report.dialect.upper()}] ===")
+        print(
             f"Available: {report.total_available} | Applied: {report.applied_count} | Pending: {report.pending_count}"
         )
         if report.pending_versions:
-            print(f"Pending Versions: {report.pending_versions}")  # noqa: T201
+            print(f"Pending Versions: {report.pending_versions}")
         if report.results:
             for r in report.results:
                 prefix = f"[{r.status}]"
                 err = f" (Error: {r.error_message})" if r.error_message else ""
-                print(f"  {prefix} v{r.version:03d} {r.filename} ({r.duration_seconds}s){err}")  # noqa: T201
+                print(f"  {prefix} v{r.version:03d} {r.filename} ({r.duration_seconds}s){err}")
 
     has_failures = any(r.status == "FAILED" for r in report.results)
     return 1 if has_failures else 0

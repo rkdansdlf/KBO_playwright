@@ -233,6 +233,7 @@ class PlayerSeasonBatting(Base, TimestampMixin):
             name="uq_player_season_batting",
         ),
         Index("idx_psb_player", "player_id", "season"),
+        Index("idx_psb_season", "season"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -299,6 +300,7 @@ class PlayerSeasonPitching(Base, TimestampMixin):
             name="uq_player_season_pitching",
         ),
         Index("idx_psp_player_season", "player_id", "season"),
+        Index("idx_psp_season", "season"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

@@ -55,6 +55,7 @@ from src.scheduler.jobs.maintenance import (
     recalc_milestones_and_rag_job,
     sparse_terms_catchup_job,
     sync_rag_incremental_job,
+    trim_scheduler_logs_job,
     weekly_sla_report_job,
 )
 from src.scheduler.jobs.sentinel import rag_audit_sentinel_job, selector_drift_sentinel_job
@@ -194,7 +195,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         ),
         (
             lock_health_check_job,
-            trigger_cls(hour=6, minute=50),
+            trigger_cls(hour=7, minute=5),
             "lock_health_check",
             "Scheduler Lock Health Check (post P1/P2)",
             600,
@@ -310,12 +311,18 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         (sync_rag_incremental_job, trigger_cls(hour=5, minute=0), "sync_rag_incremental", 7200),
         (sparse_terms_catchup_job, trigger_cls(hour=5, minute=40), "sparse_terms_catchup", 7200),
         (rag_audit_sentinel_job, trigger_cls(hour=6, minute=5), "rag_audit_sentinel", 7200),
-        (rag_identity_drift_job, trigger_cls(hour=6, minute=20), "rag_identity_drift", 7200),
+        (rag_identity_drift_job, trigger_cls(hour=6, minute=25), "rag_identity_drift", 7200),
         (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
         (
             cleanup_stale_data_job,
             trigger_cls(day_of_week="sun", hour=2, minute=30),
             "cleanup_stale_data_weekly",
+            7200,
+        ),
+        (
+            trim_scheduler_logs_job,
+            trigger_cls(day_of_week="sun", hour=2, minute=45),
+            "trim_scheduler_logs_weekly",
             7200,
         ),
     ]

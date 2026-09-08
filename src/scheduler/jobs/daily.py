@@ -130,12 +130,12 @@ def _run_legacy_daily_update(
             alert_warn("crawl_daily_games", fmt_fn(update_result))
 
 
+@_with_lock_skip_guard
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=30, max=300),
     retry_error_callback=alert_failure,
 )
-@_with_lock_skip_guard
 def crawl_daily_games() -> None:
     """Daily job: Run unified daily update entrypoint with dependency tracking.
 
@@ -511,12 +511,12 @@ def _write_p1p2_run_marker(status: str) -> None:
         logger.exception("Failed to write P1/P2 run marker")
 
 
+@_with_lock_skip_guard
 @retry(
     stop=stop_after_attempt(4),
     wait=wait_exponential(multiplier=1, min=300, max=1800),
     retry_error_callback=alert_failure,
 )
-@_with_lock_skip_guard
 def crawl_p1p2_data_job() -> None:
     """P1/P2 Crawlers: seat sections, parking, stadium food."""
     _register_job("crawl_p1p2_data_job", dependencies=["crawl_daily_games"])

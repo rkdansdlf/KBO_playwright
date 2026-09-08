@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -91,18 +92,18 @@ def main(argv: list[str] | None = None) -> int:
         report = dispatcher.dispatch_batch([msg], dry_run=args.dry_run)
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
         mode_tag = "[DRY-RUN]" if args.dry_run else "[DISPATCH]"
-        print(f"=== Notification Dispatch Summary {mode_tag} ===")  # noqa: T201
-        print(  # noqa: T201
+        print(f"=== Notification Dispatch Summary {mode_tag} ===")
+        print(
             f"Total: {report.total_messages} | Sent: {report.sent_count} | "
             f"Failed: {report.failed_count} | Suppressed: {report.suppressed_count}"
         )
         for r in report.results:
             tag = f"[{r.status}]"
             err = f" (Error: {r.error_message})" if r.error_message else ""
-            print(f"{tag:<12} {r.channel:<12}: {r.duration_seconds}s{err}")  # noqa: T201
+            print(f"{tag:<12} {r.channel:<12}: {r.duration_seconds}s{err}")
 
     return 1 if report.failed_count > 0 else 0
 

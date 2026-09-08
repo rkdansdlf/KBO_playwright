@@ -418,7 +418,7 @@ def _sync_live_poll_interval(mod: object | None, interval: int) -> None:
             mod.LAST_LIVE_POLL_INTERVAL = interval
 
 
-def crawl_live_refresh() -> None:
+def crawl_live_refresh() -> None:  # noqa: C901
     """Execute live polling crawler cycle if due."""
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
     live_lock = getattr(mod, "LIVE_LOCK", LIVE_LOCK) if mod else LIVE_LOCK
@@ -429,16 +429,24 @@ def crawl_live_refresh() -> None:
         return
 
     now = datetime.now(KST)
+    last_live_run = getattr(mod, "LAST_LIVE_RUN_TIME", _STATE.last_live_run_time) if mod else _STATE.last_live_run_time
+
+    # Fast exit using cached interval — avoid DB query on every 10s tick
+    cached_interval = _STATE.last_live_poll_interval
+    if last_live_run is not None and cached_interval is not None:
+        elapsed = (now - last_live_run).total_seconds()
+        if elapsed < cached_interval:
+            return
+
+    # Interval expired or first run — query DB for fresh interval
     interval_fn = getattr(mod, "_get_live_poll_interval_seconds", None) or _get_live_poll_interval_seconds
     interval = interval_fn()
     _sync_live_poll_interval(mod, interval)
 
-    last_live_run = getattr(mod, "LAST_LIVE_RUN_TIME", _STATE.last_live_run_time) if mod else _STATE.last_live_run_time
-
+    # Re-check with fresh interval (handles case where DB returns longer interval)
     if last_live_run is not None:
         elapsed = (now - last_live_run).total_seconds()
         if elapsed < interval:
-            # Fast exit without acquiring LIVE_LOCK
             return
 
     if not live_lock.acquire(blocking=False):

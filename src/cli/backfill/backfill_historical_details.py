@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -75,17 +76,17 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         if args.json:
-            print(json.dumps([r.to_dict() for r in results], indent=2, ensure_ascii=False))  # noqa: T201
+            print(json.dumps([r.to_dict() for r in results], indent=2, ensure_ascii=False))
         else:
-            print("\n" + "=" * 50)  # noqa: T201
-            print("📊 Historical Detail Backfill Summary")  # noqa: T201
-            print("=" * 50)  # noqa: T201
+            print("\n" + "=" * 50)
+            print("📊 Historical Detail Backfill Summary")
+            print("=" * 50)
             for r in results:
-                print(  # noqa: T201
+                print(
                     f"Season {r.year}: Missing={r.total_missing}, Attempted={r.attempted}, "
                     f"Saved/Validated={r.saved}, ValidationSkipped={r.skipped_validation}, Failed={r.failed}"
                 )
-            print("=" * 50 + "\n")  # noqa: T201
+            print("=" * 50 + "\n")
 
     except Exception:
         logger.exception("🔥 Fatal error during historical detail backfill")

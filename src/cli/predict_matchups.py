@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -107,11 +108,11 @@ def run_prediction(args: argparse.Namespace, session: Session | None = None) -> 
     output_fmt = "json" if args.json else args.format
 
     if output_fmt == "json":
-        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     elif output_fmt == "markdown":
-        print(result.to_markdown())  # noqa: T201
+        print(result.to_markdown())
     else:
-        print(result.to_ascii_card())  # noqa: T201
+        print(result.to_ascii_card())
 
     return 0
 

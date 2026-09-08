@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# DEPRECATED: Scheduled for removal. Use <replacement> instead.
 import argparse
 import asyncio
 import logging

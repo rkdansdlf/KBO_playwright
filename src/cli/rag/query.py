@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -47,26 +48,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = retriever.retrieve(query_obj)
 
     if args.json:
-        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
-    print("=" * 70)  # noqa: T201
+    print("=" * 70)
     header = f"🔍 [KBO RAG 검색]: '{result.query.query_text}' ({result.elapsed_ms:.1f}ms, {len(result.candidates)}건)"
-    print(header)  # noqa: T201
-    print("=" * 70)  # noqa: T201
+    print(header)
+    print("=" * 70)
 
     if not result.candidates:
-        print("일치하는 검색 결과를 찾지 못했습니다.")  # noqa: T201
+        print("일치하는 검색 결과를 찾지 못했습니다.")
         return 0
 
     for i, cand in enumerate(result.candidates, start=1):
-        print(f"\n[{i}] {cand.title or '제목 없음'} (Score: {cand.score:.4f} | Chunk ID: {cand.chunk_id})")  # noqa: T201
-        print("-" * 70)  # noqa: T201
-        print(cand.content.strip())  # noqa: T201
+        print(f"\n[{i}] {cand.title or '제목 없음'} (Score: {cand.score:.4f} | Chunk ID: {cand.chunk_id})")
+        print("-" * 70)
+        print(cand.content.strip())
         if cand.source_url:
-            print(f"출처: {cand.source_url}")  # noqa: T201
+            print(f"출처: {cand.source_url}")
 
-    print("\n" + "=" * 70)  # noqa: T201
+    print("\n" + "=" * 70)
     return 0
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -57,24 +58,24 @@ def main(argv: list[str] | None = None) -> int:
     report = orchestrator.execute_workflow(workflow_id, context=context, dry_run=args.dry_run)
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
         mode_tag = "[DRY-RUN]" if args.dry_run else "[EXECUTE]"
-        print(f"=== Master Workflow Execution {mode_tag} ({report.workflow_id}) ===")  # noqa: T201
-        print(  # noqa: T201
+        print(f"=== Master Workflow Execution {mode_tag} ({report.workflow_id}) ===")
+        print(
             f"Overall Status: {report.overall_status} | "
             f"Completed: {report.completed_stages}/{report.total_stages} | "
             f"Failed: {report.failed_stages} | Skipped: {report.skipped_stages} | "
             f"Duration: {report.duration_seconds}s"
         )
-        print("-" * 60)  # noqa: T201
+        print("-" * 60)
         for res in report.stage_results:
             tag = f"[{res.status.value}]"
             err = f" (Error: {res.error_message})" if res.error_message else ""
             summary_line = (
                 f"{tag:<14} Stage '{res.stage_id:<15}': {res.records_processed} records ({res.duration_seconds}s){err}"
             )
-            print(summary_line)  # noqa: T201
+            print(summary_line)
 
     return 1 if report.overall_status in ("FAILED", "PARTIAL_FAILURE") else 0
 

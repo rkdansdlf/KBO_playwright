@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import logging
@@ -103,11 +104,11 @@ def run_comparison(args: argparse.Namespace, session: Session | None) -> int:
             top_k=args.top_k,
         )
         if output_fmt == "json":
-            print(json.dumps(sim_result.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+            print(json.dumps(sim_result.to_dict(), ensure_ascii=False, indent=2))
         elif output_fmt == "markdown":
-            print(sim_result.to_markdown())  # noqa: T201
+            print(sim_result.to_markdown())
         else:
-            print(sim_result.to_ascii_card())  # noqa: T201
+            print(sim_result.to_ascii_card())
         return 0
 
     # Mode 2: 1:1 Head-to-Head Comparison
@@ -121,11 +122,11 @@ def run_comparison(args: argparse.Namespace, session: Session | None) -> int:
     )
 
     if output_fmt == "json":
-        print(json.dumps(cmp_result.to_dict(), ensure_ascii=False, indent=2))  # noqa: T201
+        print(json.dumps(cmp_result.to_dict(), ensure_ascii=False, indent=2))
     elif output_fmt == "markdown":
-        print(cmp_result.to_markdown())  # noqa: T201
+        print(cmp_result.to_markdown())
     else:
-        print(cmp_result.to_ascii_radar())  # noqa: T201
+        print(cmp_result.to_ascii_radar())
 
     return 0
 

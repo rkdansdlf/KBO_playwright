@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import json
 import sys
@@ -41,18 +42,16 @@ def main(argv: list[str] | None = None) -> int:
     report = verifier.verify_all_workflows(target_dir=args.dir)
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))  # noqa: T201
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     else:
-        print(f"=== Workflow Integrity Audit ({report.total_workflows} workflows, {report.total_jobs} jobs) ===")  # noqa: T201
-        print(  # noqa: T201
-            f"Passed: {report.passed_workflows} | Failed: {report.failed_workflows} | Issues: {len(report.issues)}"
-        )
+        print(f"=== Workflow Integrity Audit ({report.total_workflows} workflows, {report.total_jobs} jobs) ===")
+        print(f"Passed: {report.passed_workflows} | Failed: {report.failed_workflows} | Issues: {len(report.issues)}")
         if report.issues:
-            print("\nIssues:")  # noqa: T201
+            print("\nIssues:")
             for issue in report.issues:
                 prefix = f"[{issue.severity}]"
                 job_part = f" ({issue.job_id})" if issue.job_id else ""
-                print(f"  {prefix} {issue.workflow_file}{job_part}: {issue.rule_name} - {issue.message}")  # noqa: T201
+                print(f"  {prefix} {issue.workflow_file}{job_part}: {issue.rule_name} - {issue.message}")
 
     has_errors = any(i.severity == "ERROR" for i in report.issues)
     has_warnings = any(i.severity == "WARN" for i in report.issues)

@@ -18,6 +18,7 @@ Usage:
 
 from __future__ import annotations
 
+# ruff: noqa: T201
 import argparse
 import concurrent.futures
 import contextlib
@@ -777,15 +778,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             table_list = [t.strip() for t in args.tables.split(",")] if args.tables else None
             verify_res = sync.verify_consistency(table_list)
             if args.json:
-                print(json.dumps(verify_res, indent=2))  # noqa: T201
+                print(json.dumps(verify_res, indent=2))
             else:
-                print("\n=== Consistency Verification ===")  # noqa: T201
+                print("\n=== Consistency Verification ===")
                 for tbl, data in verify_res.items():
                     status = "OK" if data["is_consistent"] else "MISMATCH"  # type: ignore[index]
                     sq_cnt = data["sqlite_count"]  # type: ignore[index]
                     oci_cnt = data["oci_count"]  # type: ignore[index]
                     diff_cnt = data["diff"]  # type: ignore[index]
-                    print(f"[{status}] {tbl}: SQLite={sq_cnt}, OCI={oci_cnt} (diff={diff_cnt})")  # noqa: T201
+                    print(f"[{status}] {tbl}: SQLite={sq_cnt}, OCI={oci_cnt} (diff={diff_cnt})")
             return 0
 
         tables = [t.strip() for t in args.tables.split(",")] if args.tables else None
@@ -800,7 +801,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
         if args.json:
-            print(json.dumps(asdict(report), indent=2))  # noqa: T201
+            print(json.dumps(asdict(report), indent=2))
 
         return 1 if report.tables_failed > 0 else 0
 
