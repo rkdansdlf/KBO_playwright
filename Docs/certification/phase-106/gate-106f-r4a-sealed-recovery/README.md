@@ -1,8 +1,8 @@
 # Gate R4A Certification Report: Sealed-Snapshot Relay Replay Worker & Restart Recovery
 
 **Gate ID**: `GATE-106F-R4A-SEALED-RECOVERY`
-**Started At**: `2026-09-08T01:35:09.793655+00:00`
-**Completed At**: `2026-09-08T01:35:26.790341+00:00`
+**Started At**: `2026-09-08T13:16:16.067251+00:00`
+**Completed At**: `2026-09-08T13:16:36.648676+00:00`
 **Target Game**: `20240930NCHT0` (NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top)
 **Certification Status**: **`PASS`** (Level-3 Offline Integration Certified)
 **Recovery Architecture Model**: `REPLAY_FROM_START_WITH_IDEMPOTENT_PERSISTENCE`
@@ -19,7 +19,7 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 3. **Zero Protected Storage Mutations**: Bit-level SHA-256 of `data/kbo_dev.db` (`4be13e65d30621a8cc5d0134ba92b3fea9d56d3f6379d6b881c52a953cff229a`) is strictly unmutated.
 4. **Transaction Boundary Crash Resilience**: Simulated hard termination (`os._exit(137)`) during active transactions (CP4, CP6, CP7) rolls back uncommitted writes cleanly.
 5. **Permanent Revision Lineage**: Applied revisions are recorded in `_relay_revisions`. Re-applying identical payloads is a no-op (`mutations=0`), conflicting payloads raise `ValueError`, and regular replays preserve committed revisions without regression.
-6. **4-Entity Domain Convergence**: Full state hash and diffs explicitly verify all 4 substantive entities: `GameEvent` (5 rows), `GamePlayByPlay` (47 rows), `GameValidationMetrics` (`dual_canonical`), and `RelayRevisionRecord`.
+6. **4-Entity Domain Convergence**: Full state hash and diffs explicitly verify all 4 substantive entities: `GameEvent` (5 rows), `GamePlayByPlay` (47 rows), `GameValidationMetrics` (`dual_canonical` with cryptographic `payload_binding_hash`), and `RelayRevisionRecord` (with `target_provider_log_id` and `original_description` preimage).
 7. **Strict Confinement & Lock Protection**: Ephemeral DBs and locks are strictly confined to the allocated temporary workspace root; `ForceProcessLock` protects active live PIDs while safely reclaiming stale dead PID locks.
 
 ---
@@ -56,7 +56,7 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 | **Fixture Tamper Detection** | Corrupted KBO fixture bytes | Execution rejected with checksum mismatch | Rejected closed (code 1) | **PASS** |
 | **Correction Idempotency** | Repeat `apply_event_correction` | `mutations=0`, `already_applied=True`, 1 tag | 0 mutations, single tag | **PASS** |
 | **Revision Conflict Rejection** | Conflicting payload on same ID | Explicit `ValueError` raised | Rejected with conflict error | **PASS** |
-| **Regular Replay Preservation** | Replay with `apply_correction=False` | Committed revision retained on event 3 & PBP 3 | Retained with zero regression | **PASS** |
+| **Regular Replay Preservation** | Replay with `apply_correction=False` | Committed revision retained on event 3 & target PBP row 35 (Kim Hyeong-jun), row 3 (Kim Hwi-jip) untouched | Retained with zero regression | **PASS** |
 | **Path Confinement Violation** | DB path outside temporary root | Explicit `ValueError` raised | Rejected with confinement error | **PASS** |
 
 ---
