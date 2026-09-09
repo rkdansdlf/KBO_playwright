@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from src.models.game import GameEvent, GamePlayByPlay
@@ -294,9 +294,8 @@ def test_provider_id_ambiguity_rejected(ephemeral_db: Path, lock_dir: Path) -> N
     )
     pipeline.run(apply_correction=False)
 
-    engine = create_engine(f"sqlite:///{ephemeral_db}")
-    with sessionmaker(bind=engine)() as session:
-        # Pick an event that has a provider_log_id
+    # Setup: pick an event and insert a duplicate PBP row
+    with pipeline.session_factory() as session:
         ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
         assert ev3 is not None
         assert ev3.provider_log_id is not None
@@ -334,16 +333,34 @@ def test_provider_id_ambiguity_rejected(ephemeral_db: Path, lock_dir: Path) -> N
             f"Expected at least two PBP rows with provider_log_id {target_pid}, found {len(matches)}"
         )
 
-    # Attempt correction -> should raise ValueError about ambiguous provider_log_id
-    with pytest.raises(ValueError, match=r"Ambiguous PBP match: \d+ candidates found for provider_log_id"):
-        pipeline.apply_event_correction(
-            revision_id="REV-PID-AMBIGUOUS-TEST",
-            target_event_seq=ev3_event_seq,
-            revised_description="Should not happen",
-        )
+    # Set up write observation to detect any writes during the correction attempt
+    write_count = [0]
 
-    # Verify zero mutations
-    with sessionmaker(bind=engine)() as session:
+    def receive(conn, cursor, statement, parameters, context, executemany):
+        if statement.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            write_count[0] += 1
+
+    event.listen(pipeline.engine, "before_cursor_execute", receive)
+    try:
+        # Reset write count to ignore the setup writes
+        write_count[0] = 0
+
+        # Attempt correction -> should raise ValueError about ambiguous provider_log_id
+        with pytest.raises(ValueError, match=r"Ambiguous PBP match: \d+ candidates found for provider_log_id"):
+            pipeline.apply_event_correction(
+                revision_id="REV-PID-AMBIGUOUS-TEST",
+                target_event_seq=ev3_event_seq,
+                revised_description="Should not happen",
+            )
+
+        # Verify zero mutations during correction attempt
+        assert write_count[0] == 0, f"Expected zero write statements during failed correction, but got {write_count[0]}"
+
+    finally:
+        event.remove(pipeline.engine, "before_cursor_execute", receive)
+
+    # Verify the data remains unchanged (using a fresh session)
+    with pipeline.session_factory() as session:
         ev3_after = (
             session.query(GameEvent)
             .filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == ev3_event_seq)
@@ -490,10 +507,9 @@ def test_unresolved_explicit_provider_id_rejected(ephemeral_db: Path, lock_dir: 
     )
     pipeline.run(apply_correction=False)
 
-    engine = create_engine(f"sqlite:///{ephemeral_db}")
-    with sessionmaker(bind=engine)() as session:
-        # Pick an event and give it a provider_log_id that we know does not match any PBP row.
-        # We'll also change its batter and description to unique values to avoid accidental description matches.
+    # Setup: pick an event and give it a provider_log_id that we know does not match any PBP row.
+    # We'll also change its batter and description to unique values to avoid accidental description matches.
+    with pipeline.session_factory() as session:
         ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
         assert ev3 is not None
         ev3_event_seq = ev3.event_seq
@@ -550,20 +566,38 @@ def test_unresolved_explicit_provider_id_rejected(ephemeral_db: Path, lock_dir: 
         )
         assert len(pid_matches) == 0, f"Expected zero PBP rows for provider_log_id {fake_pid}, found {len(pid_matches)}"
 
-    # Attempt correction -> should return a dict with status PBP_MATCH_FAILED and 0 mutations
-    result = pipeline.apply_event_correction(
-        revision_id="REV-UNRESOLVED-PID-TEST",
-        target_event_seq=ev3_event_seq,
-        revised_description="Should not happen",
-    )
+    # Set up write observation to detect any writes during the correction attempt
+    write_count = [0]
 
-    # Check that the correction was not applied (0 mutations) and status is PBP_MATCH_FAILED
-    assert result["mutations"] == 0
-    assert result["status"] == "PBP_MATCH_FAILED"
-    assert result["already_applied"] is False
+    def receive(conn, cursor, statement, parameters, context, executemany):
+        if statement.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            write_count[0] += 1
 
-    # Verify zero mutations in the database
-    with sessionmaker(bind=engine)() as session:
+    event.listen(pipeline.engine, "before_cursor_execute", receive)
+    try:
+        # Reset write count to ignore the setup writes
+        write_count[0] = 0
+
+        # Attempt correction -> should return a dict with status PBP_MATCH_FAILED and 0 mutations
+        result = pipeline.apply_event_correction(
+            revision_id="REV-UNRESOLVED-PID-TEST",
+            target_event_seq=ev3_event_seq,
+            revised_description="Should not happen",
+        )
+
+        # Check that the correction was not applied (0 mutations) and status is PBP_MATCH_FAILED
+        assert result["mutations"] == 0
+        assert result["status"] == "PBP_MATCH_FAILED"
+        assert result["already_applied"] is False
+
+        # Verify zero mutations during correction attempt
+        assert write_count[0] == 0, f"Expected zero write statements during failed correction, but got {write_count[0]}"
+
+    finally:
+        event.remove(pipeline.engine, "before_cursor_execute", receive)
+
+    # Verify the data remains unchanged (using a fresh session)
+    with pipeline.session_factory() as session:
         ev3_after = (
             session.query(GameEvent)
             .filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == ev3_event_seq)
@@ -608,9 +642,8 @@ def test_ambiguous_match_by_batter_and_description_rejected(ephemeral_db: Path, 
     )
     pipeline.run(apply_correction=False)
 
-    engine = create_engine(f"sqlite:///{ephemeral_db}")
-    with sessionmaker(bind=engine)() as session:
-        # Choose an event and set its provider_log_id to None to fall back to batter-description matching.
+    # Setup: choose an event and set its provider_log_id to None to fall back to batter-description matching.
+    with pipeline.session_factory() as session:
         ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
         assert ev3 is not None
         orig_ev3_batter = ev3.batter_name
@@ -654,16 +687,34 @@ def test_ambiguous_match_by_batter_and_description_rejected(ephemeral_db: Path, 
             f"Expected at least two PBP rows for batter {orig_ev3_batter} and description {orig_ev3_desc}, found {len(matches)}"
         )
 
-    # Attempt correction on the event -> must raise ValueError with Ambiguous PBP match message
-    with pytest.raises(ValueError, match=r"Ambiguous PBP match: .* candidates found for batter"):
-        pipeline.apply_event_correction(
-            revision_id="REV-AMBIGUOUS-BATTER-DESC-TEST",
-            target_event_seq=ev3_event_seq,
-            revised_description="Ambiguous batter-desc correction",
-        )
+    # Set up write observation to detect any writes during the correction attempt
+    write_count = [0]
+
+    def receive(conn, cursor, statement, parameters, context, executemany):
+        if statement.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            write_count[0] += 1
+
+    event.listen(pipeline.engine, "before_cursor_execute", receive)
+    try:
+        # Reset write count to ignore the setup writes
+        write_count[0] = 0
+
+        # Attempt correction on the event -> must raise ValueError with Ambiguous PBP match message
+        with pytest.raises(ValueError, match=r"Ambiguous PBP match: .* candidates found for batter"):
+            pipeline.apply_event_correction(
+                revision_id="REV-AMBIGUOUS-BATTER-DESC-TEST",
+                target_event_seq=ev3_event_seq,
+                revised_description="Ambiguous batter-desc correction",
+            )
+
+        # Verify zero mutations during correction attempt
+        assert write_count[0] == 0, f"Expected zero write statements during failed correction, but got {write_count[0]}"
+
+    finally:
+        event.remove(pipeline.engine, "before_cursor_execute", receive)
 
     # Verify zero mutations occurred (transaction was rolled back)
-    with sessionmaker(bind=engine)() as session:
+    with pipeline.session_factory() as session:
         ev3_after = (
             session.query(GameEvent)
             .filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == ev3_event_seq)
@@ -692,8 +743,8 @@ def test_positional_trap_rejected(ephemeral_db: Path, lock_dir: Path) -> None:
     )
     pipeline.run(apply_correction=False)
 
-    engine = create_engine(f"sqlite:///{ephemeral_db}")
-    with sessionmaker(bind=engine)() as session:
+    # Setup: make provider_log_id and batter-description unmatchable, then plant a positional trap row.
+    with pipeline.session_factory() as session:
         # Pick an event and make sure its provider_log_id does not match any PBP row and its batter-description does not match any PBP row.
         ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
         assert ev3 is not None
@@ -775,19 +826,36 @@ def test_positional_trap_rejected(ephemeral_db: Path, lock_dir: Path) -> None:
             f"Expected at least two PBP rows with source_row_index {ev3_event_seq}, found {len(index_matches_after)}"
         )
 
-    # Attempt correction -> should return None for pbp_row, leading to PBP_MATCH_FAILED
-    result = pipeline.apply_event_correction(
-        revision_id="REV-POSITIONAL-TRAP-TEST",
-        target_event_seq=ev3_event_seq,
-        revised_description="Should not happen",
-    )
+    # Set up write observation to detect any writes during the correction attempt
+    write_count = [0]
 
-    assert result["mutations"] == 0
-    assert result["status"] == "PBP_MATCH_FAILED"
-    assert result["already_applied"] is False
+    def receive(conn, cursor, statement, parameters, context, executemany):
+        if statement.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            write_count[0] += 1
+
+    event.listen(pipeline.engine, "before_cursor_execute", receive)
+    try:
+        # Reset write count to ignore the fixture and setup writes
+        write_count[0] = 0
+
+        # Attempt correction -> should return None for pbp_row, leading to PBP_MATCH_FAILED
+        result = pipeline.apply_event_correction(
+            revision_id="REV-POSITIONAL-TRAP-TEST",
+            target_event_seq=ev3_event_seq,
+            revised_description="Should not happen",
+        )
+
+        assert result["mutations"] == 0
+        assert result["status"] == "PBP_MATCH_FAILED"
+        assert result["already_applied"] is False
+
+        # Verify zero writes during the correction call itself
+        assert write_count[0] == 0, f"Expected zero write statements during failed correction, but got {write_count[0]}"
+    finally:
+        event.remove(pipeline.engine, "before_cursor_execute", receive)
 
     # Verify no changes
-    with sessionmaker(bind=engine)() as session:
+    with pipeline.session_factory() as session:
         ev3_after = (
             session.query(GameEvent)
             .filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == ev3_event_seq)
@@ -819,3 +887,95 @@ def test_positional_trap_rejected(ephemeral_db: Path, lock_dir: Path) -> None:
             .first()
         )
         assert rev is None
+
+
+def test_successful_correction_has_writes(ephemeral_db: Path, lock_dir: Path) -> None:
+    """A successful correction should result in at least one write statement."""
+    pipeline = SealedSnapshotRelayPipeline(
+        game_id=TARGET_GAME_ID,
+        db_path_or_url=str(ephemeral_db),
+        kbo_fixture_path=KBO_FIXTURE,
+        naver_fixture_path=NAVER_FIXTURE,
+        lock_dir=lock_dir,
+    )
+    pipeline.run(apply_correction=False)
+
+    # Set up write observation on the pipeline's engine
+    write_count = [0]
+
+    def receive(conn, cursor, statement, parameters, context, executemany):
+        if statement.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            write_count[0] += 1
+
+    event.listen(pipeline.engine, "before_cursor_execute", receive)
+    try:
+        # Reset write count to ignore the initial setup and fixture loads
+        write_count[0] = 0
+
+        # Pick an event that has a provider_log_id and exactly one matching PBP row (event 3)
+        with pipeline.session_factory() as session:
+            ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+            assert ev3 is not None
+            assert ev3.provider_log_id is not None
+            target_pid = ev3.provider_log_id
+
+            # Verify there is exactly one PBP row with this provider_log_id
+            pbp_count = (
+                session.query(GamePlayByPlay)
+                .filter(
+                    GamePlayByPlay.game_id == TARGET_GAME_ID,
+                    GamePlayByPlay.provider_log_id == target_pid,
+                )
+                .count()
+            )
+            assert pbp_count == 1
+
+        # Apply a successful correction
+        result = pipeline.apply_event_correction(
+            revision_id="REV-SUCCESS-WRITE-TEST",
+            target_event_seq=3,
+            revised_description="Successful correction for write observation",
+            revised_result_code="SUCCESS",
+        )
+
+        # Check that the correction was applied
+        assert result["mutations"] > 0
+        assert result["status"] == "APPLIED"
+        assert result["already_applied"] is False
+
+        # Check that we observed at least one write statement
+        assert write_count[0] > 0, f"Expected at least one write statement, but got {write_count[0]}"
+
+        # Verify the changes in the database (optional)
+        with pipeline.session_factory() as session:
+            ev3_after = (
+                session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+            )
+            assert ev3_after is not None
+            assert ev3_after.description == "Successful correction for write observation"
+            assert ev3_after.result_code == "SUCCESS"
+
+            # The corresponding PBP row should also be updated
+            pbp_row = (
+                session.query(GamePlayByPlay)
+                .filter(
+                    GamePlayByPlay.game_id == TARGET_GAME_ID,
+                    GamePlayByPlay.provider_log_id == target_pid,
+                )
+                .first()
+            )
+            assert pbp_row is not None
+            # We don't check the exact values, just that they changed
+            # (we could check that they are not the original, but we trust the mutation count)
+
+            # Check that a revision record was created
+            rev = (
+                session.query(RelayRevisionRecord)
+                .filter(RelayRevisionRecord.revision_id == "REV-SUCCESS-WRITE-TEST")
+                .first()
+            )
+            assert rev is not None
+            assert rev.game_id == TARGET_GAME_ID
+            assert rev.target_event_seq == 3
+    finally:
+        event.remove(pipeline.engine, "before_cursor_execute", receive)
