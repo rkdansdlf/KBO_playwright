@@ -742,6 +742,54 @@ class SealedSnapshotRelayPipeline:
 
         return kbo_events, naver_events, raw_pbp_rows, source_used
 
+    def _match_pbp_for_revision(
+        self,
+        revision: RelayRevisionRecord,
+        raw_pbp_rows: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Match a PBP row for a revision using strict ID-priority policy.
+
+        Returns:
+            (matched_pbp_row, match_status) where match_status is one of:
+            - "MATCHED_BY_ID": matched via provider_log_id
+            - "MATCHED_BY_FALLBACK": matched via description (ID genuinely None)
+            - "NO_MATCH_ID": valid ID provided but no matching PBP row
+            - "AMBIGUOUS_ID": valid ID matches multiple PBP rows
+            - "INVALID_ID": target_provider_log_id is invalid (empty/whitespace)
+            - "NO_MATCH_FALLBACK": ID None but no matching description
+            - "AMBIGUOUS_FALLBACK": ID None but multiple matching descriptions
+
+        """
+        target_pid = revision.target_provider_log_id
+
+        # 1. Valid ID provided -> ID-only matching
+        if target_pid is not None:
+            # Reject empty string, whitespace-only, invalid types
+            if not isinstance(target_pid, str) or not target_pid.strip():
+                return None, "INVALID_ID"
+            candidates = [p for p in raw_pbp_rows if p.get("provider_log_id") == target_pid]
+            if len(candidates) == 0:
+                return None, "NO_MATCH_ID"
+            if len(candidates) > 1:
+                msg = f"Ambiguous PBP match: {len(candidates)} candidates for provider_log_id '{target_pid}'"
+                raise ValueError(msg)
+            return candidates[0], "MATCHED_BY_ID"
+
+        # 2. ID genuinely None -> contracted fallback mapping only
+        if revision.original_description:
+            candidates = [p for p in raw_pbp_rows if p.get("play_description") == revision.original_description]
+            if len(candidates) == 0:
+                return None, "NO_MATCH_FALLBACK"
+            if len(candidates) > 1:
+                msg = (
+                    f"Ambiguous fallback match: {len(candidates)} candidates for "
+                    f"description '{revision.original_description}'"
+                )
+                raise ValueError(msg)
+            return candidates[0], "MATCHED_BY_FALLBACK"
+
+        return None, "NO_IDENTIFIER"
+
     def _apply_revisions_to_staged(
         self,
         canonical_events: list[dict[str, Any]],
@@ -761,6 +809,7 @@ class SealedSnapshotRelayPipeline:
         if not applied_revisions:
             return
 
+        # Apply to canonical events (match by event_seq or provider_log_id)
         for ev in canonical_events:
             seq = ev.get("event_seq")
             pid = ev.get("provider_log_id")
@@ -772,16 +821,23 @@ class SealedSnapshotRelayPipeline:
                     ev["result_code"] = r.revised_result_code
                     break
 
-        for pbp in raw_pbp_rows:
-            pid = pbp.get("provider_log_id")
-            desc = pbp.get("play_description")
-            for r in applied_revisions:
-                if (pid and r.target_provider_log_id and pid == r.target_provider_log_id) or (
-                    desc and r.original_description and desc == r.original_description
-                ):
-                    pbp["play_description"] = r.revised_description
-                    pbp["result"] = r.revised_result_code
-                    break
+        # Apply to PBP rows using strict ID-priority policy
+        for r in applied_revisions:
+            matched_pbp, status = self._match_pbp_for_revision(r, raw_pbp_rows)
+            if status in ("MATCHED_BY_ID", "MATCHED_BY_FALLBACK"):
+                matched_pbp["play_description"] = r.revised_description
+                matched_pbp["result"] = r.revised_result_code
+            elif status == "INVALID_ID":
+                msg = f"Invalid target_provider_log_id: {r.target_provider_log_id!r}"
+                raise ValueError(msg)
+            elif status in ("NO_MATCH_ID", "NO_MATCH_FALLBACK", "NO_IDENTIFIER"):
+                # Log and skip - no mutation for this revision
+                logger.warning(
+                    "[REPLAY REVISION] Revision %s skipped: %s",
+                    r.revision_id,
+                    status,
+                )
+            # AMBIGUOUS_ID and AMBIGUOUS_FALLBACK raise ValueError from _match_pbp_for_revision
 
     def run(
         self,
