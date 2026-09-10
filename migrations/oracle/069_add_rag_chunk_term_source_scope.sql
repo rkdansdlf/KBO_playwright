@@ -20,7 +20,22 @@ END;
 TRUNCATE TABLE RAG_CHUNK_TERMS;
 /
 
-ALTER TABLE RAG_CHUNK_TERMS MODIFY (SOURCE_TABLE VARCHAR2(100 CHAR) NOT NULL);
+-- Fresh ORM baselines already define SOURCE_TABLE as NOT NULL; only enforce
+-- the constraint when the column is still nullable (avoids ORA-01442).
+DECLARE
+    v_nullable VARCHAR2(1);
+BEGIN
+    SELECT NULLABLE
+      INTO v_nullable
+      FROM user_tab_columns
+     WHERE table_name = 'RAG_CHUNK_TERMS'
+       AND column_name = 'SOURCE_TABLE';
+
+    IF v_nullable = 'Y' THEN
+        EXECUTE IMMEDIATE
+            'ALTER TABLE RAG_CHUNK_TERMS MODIFY (SOURCE_TABLE VARCHAR2(100 CHAR) NOT NULL)';
+    END IF;
+END;
 /
 
 DECLARE
