@@ -215,7 +215,10 @@ def crawl_daily_games() -> None:
 def _compact_date(d: object) -> str:
     if hasattr(d, "strftime"):
         return d.strftime("%Y%m%d")  # type: ignore[union-attr]
-    return str(d).replace("-", "")
+    s = str(d).replace("-", "")
+    if " " in s:
+        s = s.split(" ")[0]
+    return s[:8]
 
 
 def _to_compact_date(value: str) -> str:
