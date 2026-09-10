@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import time
 from datetime import datetime
 
 import pytest
 
 from src.cli.sync_sqlite_to_oci import (
+    PrepareContext,
     SyncOptions,
     SqliteToOciSynchronizer,
     WriteBatchContext,
@@ -230,6 +232,123 @@ def test_sync_write_batches_commits_at_configured_interval() -> None:
     assert sync._execute_write_batches(context) == (5, 0)
     assert writer.batch_sizes == [2, 2, 1]
     assert writer.commit_count == 2
+
+    sync.close()
+    conn.close()
+
+
+class _PathTrackingWriter:
+    """Record whether the INSERT fast path or MERGE path was selected."""
+
+    def __init__(self, target_count: int) -> None:
+        self.target_count = target_count
+        self.saw_insert_only: bool | None = None
+        self.merge_called = False
+
+    def get_columns(self, _table):
+        return {"ID": "NUMBER", "V": "VARCHAR2"}
+
+    def get_char_sizes(self, _table):
+        return {}
+
+    def get_column_names(self, _table):
+        return {"ID": "ID", "V": "V"}
+
+    def get_pk_columns(self, _table):
+        return ["ID"]
+
+    def count_table(self, _table):
+        return self.target_count
+
+    def truncate_table(self, _table) -> None:
+        self.target_count = 0
+
+    def set_table_triggers(self, _table, enable=True) -> int:
+        return 0
+
+    def convert_value(self, value, _oci_type, _char_limit=None):
+        return value
+
+    def build_insert_sql(self, _table, _columns, column_names=None):
+        return "INSERT"
+
+    def build_merge_sql(self, _table, _columns, _pks, column_names=None):
+        self.merge_called = True
+        return "MERGE"
+
+    def execute_batch(self, _sql, payloads, _table, _columns, _pks, _types, _names, *, insert_only=False):
+        self.saw_insert_only = insert_only
+        return len(payloads), 0
+
+    def commit(self) -> None:
+        return None
+
+
+def _prepare_apply_context(sync, writer, total):
+    meta = TableMeta("t", level=1, strategy=SyncStrategy.INCREMENTAL)
+    return PrepareContext(
+        meta=meta,
+        mode="incremental",
+        query="SELECT id, v FROM t ORDER BY id",
+        params=[],
+        sq_cols=["id", "v"],
+        total_candidates=total,
+        writer=writer,
+        t0=time.monotonic(),
+    )
+
+
+def test_prepare_uses_insert_path_for_empty_target() -> None:
+    """Empty Oracle targets take the array INSERT fast path instead of MERGE."""
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+    conn.executemany("INSERT INTO t VALUES (?, ?)", [(1, "a"), (2, "b")])
+    conn.commit()
+
+    sync = SqliteToOciSynchronizer(
+        sqlite_path=":memory:",
+        oci_url=None,
+        tns_admin=None,
+        options=SyncOptions(apply_changes=True),
+    )
+    sync.sq_conn = conn
+    writer = _PathTrackingWriter(target_count=0)
+
+    res = sync._prepare_and_sync_table(_prepare_apply_context(sync, writer, 2))
+
+    assert res.status == "SUCCESS"
+    assert res.synced_count == 2
+    assert writer.saw_insert_only is True
+    assert writer.merge_called is False
+
+    sync.close()
+    conn.close()
+
+
+def test_prepare_uses_merge_path_for_nonempty_target() -> None:
+    """Populated Oracle targets keep MERGE upsert semantics."""
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+    conn.execute("INSERT INTO t VALUES (1, 'a')")
+    conn.commit()
+
+    sync = SqliteToOciSynchronizer(
+        sqlite_path=":memory:",
+        oci_url=None,
+        tns_admin=None,
+        options=SyncOptions(apply_changes=True),
+    )
+    sync.sq_conn = conn
+    writer = _PathTrackingWriter(target_count=7)
+
+    res = sync._prepare_and_sync_table(_prepare_apply_context(sync, writer, 1))
+
+    assert res.status == "SUCCESS"
+    assert res.synced_count == 1
+    assert writer.saw_insert_only is False
+    assert writer.merge_called is True
 
     sync.close()
     conn.close()
