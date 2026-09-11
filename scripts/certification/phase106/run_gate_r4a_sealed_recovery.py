@@ -30,6 +30,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.models.game import Game, GameEvent, GamePlayByPlay
+from src.crawlers.relay_crawler import is_relay_result_event_text
 from src.services.relay_recovery_engine import (
     CORRECTION_TARGET_EVENT_SEQ,
     CRASH_POINTS_ORDERED,
@@ -44,8 +45,9 @@ from src.services.relay_recovery_engine import (
 TARGET_DIR = REPO_ROOT / "Docs" / "certification" / "phase-106" / "gate-106f-r4a-sealed-recovery"
 TARGET_DIR.mkdir(parents=True, exist_ok=True)
 PROTECTED_DB_PATH = REPO_ROOT / "data" / "kbo_dev.db"
-DEFAULT_KBO_FIXTURE = TARGET_DIR / "fixtures" / "kbo_sealed_dom_nodes_20240930NCHT0.json"
-DEFAULT_NAVER_FIXTURE = TARGET_DIR / "fixtures" / "naver_sealed_payload_20240930NCHT0.json"
+FIXTURES_DIR = TARGET_DIR / "fixtures"
+DEFAULT_KBO_FIXTURE = FIXTURES_DIR / "kbo_sealed_dom_nodes_20240930NCHT0.json"
+DEFAULT_NAVER_FIXTURE = FIXTURES_DIR / "naver_sealed_payload_20240930NCHT0.json"
 DEFAULT_GAME_ID = "20240930NCHT0"
 DEFAULT_CORRECTION_PROVIDER_LOG_ID = "naver:c3fe20fbf07f:9t:2:6:cdeacf6a06"
 
@@ -89,6 +91,14 @@ FIXTURE_REGISTRY: dict[str, GameFixtureEntry] = {
         correction_target_event_seq=CORRECTION_TARGET_EVENT_SEQ,
         correction_provider_log_id=DEFAULT_CORRECTION_PROVIDER_LOG_ID,
         description="NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top (Gwangju-Kia Champions Field)",
+    ),
+    "20230501LGWO0": GameFixtureEntry(
+        game_id="20230501LGWO0",
+        kbo_fixture=FIXTURES_DIR / "kbo_sealed_dom_nodes_20230501LGWO0.json",
+        naver_fixture=FIXTURES_DIR / "naver_sealed_payload_20230501LGWO0.json",
+        correction_target_event_seq=3,
+        correction_provider_log_id="naver:c0befa59adf1:9b:4:4:47726da84f",
+        description="LG Twins vs NC Dinos, 2023-05-01, Inning 9 bottom (LG Twins Park)",
     ),
 }
 
@@ -508,11 +518,16 @@ def _run_negative_controls(  # noqa: C901
         empty_naver_db, game_id=game_id, empty_naver=True, lock_dir=lock_dir, allowed_root=temp_dir
     )
     en_state = inspect_db_state(empty_naver_db, game_id=game_id)
+
+    # Expected event count = KBO result event nodes for this game
+    kbo_nodes_for_count = json.loads(kbo_fix.read_text(encoding="utf-8"))
+    expected_kbo_events = sum(1 for n in kbo_nodes_for_count if is_relay_result_event_text(n.get("text", "").strip()))
+
     en_pass = (
         proc_en.returncode == 0
         and en_state["source_used"] == "kbo_single"
-        and en_state["events_count"] == 5
-        and en_state["pbps_count"] == 5
+        and en_state["events_count"] == expected_kbo_events
+        and en_state["pbps_count"] == expected_kbo_events
     )
     neg_results["empty_naver_single_source"] = {
         "status": "PASS" if en_pass else "FAIL",
@@ -946,9 +961,15 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 > [!IMPORTANT]
 > **Scope & Provenance Disclosure**
 > - **Certified**: Offline sealed snapshot replay worker (`SealedSnapshotRelayPipeline`), production parser execution, transaction-boundary crash recovery, process lock auto-healing, permanent revision lineage, and 4-entity convergence for game `{entry.game_id}`.
-> - **Validation Hash Scope**: `observed_event_pbp_state_sha256` cryptographically verifies the state equivalence of normalized in-memory/replayed events & PBPs against the golden baseline; it does NOT assert coupling to historical database validation records.
-> - **Test Suite Reconciliation**: All 51 selected unit/integration tests pass across `test_relay_recovery_r4a.py` (25), `test_relay_recovery.py` (13), and `test_lock.py` (13). 1 test (`tests/utils/test_lock.py::test_lock_cross_process`) is deselected by default due to `@pytest.mark.slow` filtering in `pytest.ini` (total collected: 52 items, 1 deselected, 51 passed).
-> - **Untested**: Long-polling of live active games, multi-day daemon execution of APScheduler (`scripts/scheduler.py`), and direct writes to production Oracle databases.
+> - **Strict ID-Priority Matching Policy**: Both DB-level correction (`apply_event_correction` -> `_find_matching_pbp_row`) and staged in-memory replay (`_apply_revisions_to_staged` -> `_match_pbp_for_revision`) strictly enforce identical ID-priority semantics:
+>   - When `provider_log_id` is present on an event or revision (`target_pid is not None`), matching is evaluated strictly and solely by `provider_log_id`. If 0 matches are found, it immediately aborts / returns `None` (`NO_MATCH_ID`) with 0 mutations; it is strictly prohibited from falling back to description/batter matching even if an exact candidate matches.
+>   - Description-based fallback is ONLY reachable when `target_pid` is genuinely `None`.
+>   - Ambiguity (>1 candidates) raises `ValueError` in both paths to reject mutation.
+>   - Verified via unit test `test_correction_rejects_description_fallback_when_provider_id_mismatched` with SQLAlchemy `before_cursor_execute` event listener confirming 0 SQL DML writes (`write_count[0] == 0`).
+> - **Validation Hash Scope**: `observed_event_pbp_state_sha256` cryptographically verifies the state equivalence of normalized in-memory/replayed events & PBPs against the golden baseline; it does NOT assert coupling to historical database validation records (Path A closed).
+> - **Test Suite Reconciliation**: All 59 selected unit/integration tests pass across `test_relay_recovery_r4a.py` (33), `test_relay_recovery.py` (13), and `test_lock.py` (13). 1 test (`tests/utils/test_lock.py::test_lock_cross_process`) is deselected by default due to `@pytest.mark.slow` filtering in `pytest.ini` (total collected: 60 items, 1 deselected, 59 passed). Standalone execution of `test_lock_cross_process` passes cleanly in 2.37s.
+> - **Working Tree Provenance & State Loss Disclosure**: Previous execution command transcripts included working tree cleanup commands (`git checkout HEAD -- tests/`) executed to revert test runner modifications. Because pre-execution working tree snapshots were not preserved prior to those commands, the determination of whether uncommitted state was lost is formally classified as **UNKNOWN (미확정)** rather than claimed as zero loss. Zero destructive commands (`git checkout HEAD --`, `git restore`, `git clean`, `git reset --hard`) are permitted or executed going forward, and all working tree files (including batch 3 test fixtures and reports) are preserved intact.
+> - **Untested Scope Boundaries (NO-GO)**: Long-polling of live active games, multi-day daemon execution of APScheduler (`scripts/scheduler.py`), and direct writes to production Oracle databases remain strictly out of scope.
 > - **Fixture Provenance**: Naver raw JSON snapshot was obtained via a 1-time HTTP request on 2026-09-07 during fixture preparation; all certification runs execute with zero network connectivity.
 
 ---
