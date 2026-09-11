@@ -64,9 +64,16 @@ DEFAULT_REVISION_ID = "REV-20240930-EV03-01"
 DEFAULT_REVISED_DESCRIPTION_SUFFIX = " [CORRECTED]"
 DEFAULT_REVISED_RESULT_CODE = "투수 땅볼 (정정)"
 
-# Fixture SHA256 checksums
+# Fixture SHA256 checksums — keyed by game_id for multi-game support
 EXPECTED_KBO_FIXTURE_SHA256 = "5d04010809ff8cc85b0f95d51ebc0a6b6b98337387848446287934a199eb7c95"
 EXPECTED_NAVER_FIXTURE_SHA256 = "aa3a45fdf6fe380b5ec6df483064e45914667da9074fedd91d45cd11d88233ad"
+FIXTURE_SHA256_REGISTRY: dict[str, tuple[str, str]] = {
+    "20240930NCHT0": (EXPECTED_KBO_FIXTURE_SHA256, EXPECTED_NAVER_FIXTURE_SHA256),
+    "20230501LGWO0": (
+        "4008bc26a720e1ef8e7d467bcf35b38a67e199420a01b0e9b61b5ae90e1c9f20",
+        "df80233bc967ad1cd326d8443c7f88b4eb929b703406976eb3b965c2dc9363cf",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -378,6 +385,7 @@ def load_sealed_snapshots(
     kbo_path: Path,
     naver_path: Path,
     *,
+    game_id: str | None = None,
     empty_naver: bool = False,
     verify_checksums: bool = True,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -395,11 +403,14 @@ def load_sealed_snapshots(
     if verify_checksums:
         kbo_hash = hashlib.sha256(kbo_bytes).hexdigest()
         naver_hash = hashlib.sha256(naver_bytes).hexdigest()
-        if kbo_hash != EXPECTED_KBO_FIXTURE_SHA256:
-            msg = f"KBO fixture checksum mismatch: expected {EXPECTED_KBO_FIXTURE_SHA256}, got {kbo_hash}"
+        expected = FIXTURE_SHA256_REGISTRY.get(game_id) if game_id else None
+        expected_kbo = expected[0] if expected else EXPECTED_KBO_FIXTURE_SHA256
+        expected_naver = expected[1] if expected else EXPECTED_NAVER_FIXTURE_SHA256
+        if kbo_hash != expected_kbo:
+            msg = f"KBO fixture checksum mismatch for game {game_id}: expected {expected_kbo}, got {kbo_hash}"
             raise ValueError(msg)
-        if naver_hash != EXPECTED_NAVER_FIXTURE_SHA256:
-            msg = f"Naver fixture checksum mismatch: expected {EXPECTED_NAVER_FIXTURE_SHA256}, got {naver_hash}"
+        if naver_hash != expected_naver:
+            msg = f"Naver fixture checksum mismatch for game {game_id}: expected {expected_naver}, got {naver_hash}"
             raise ValueError(msg)
 
     kbo_nodes = json.loads(kbo_bytes.decode("utf-8"))
@@ -565,13 +576,16 @@ class SealedSnapshotRelayPipeline:
         target_pid = ev.provider_log_id
         pbp_query = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == self.game_id)
         if target_pid is not None:
-            pbp_rows = pbp_query.filter(GamePlayByPlay.provider_log_id == target_pid).all()
+            if not isinstance(target_pid, str) or not target_pid.strip():
+                return None
+            pbp_rows = pbp_query.filter(GamePlayByPlay.provider_log_id == target_pid.strip()).all()
             if len(pbp_rows) > 1:
                 msg = f"Ambiguous PBP match: {len(pbp_rows)} candidates found for provider_log_id '{target_pid}'"
                 raise ValueError(msg)
             if len(pbp_rows) == 1:
                 return pbp_rows[0]
-            # If we get here, target_pid was provided but no match -> return None, do not fall back
+            # Strict ID policy: target_pid provided but 0 matches -> return None;
+            # strictly prohibited from falling back to description
             return None
 
         if orig_desc:
@@ -860,6 +874,7 @@ class SealedSnapshotRelayPipeline:
             state.kbo_raw_nodes, state.naver_raw_groups = load_sealed_snapshots(
                 self.kbo_fixture_path,
                 self.naver_fixture_path,
+                game_id=self.game_id,
                 empty_naver=empty_naver,
                 verify_checksums=self.verify_checksums,
             )

@@ -741,6 +741,100 @@ def test_correction_fails_safely_when_pbp_not_matched(ephemeral_db: Path, lock_d
         assert rev is None
 
 
+def test_correction_rejects_description_fallback_when_provider_id_mismatched(
+    ephemeral_db: Path, lock_dir: Path
+) -> None:
+    """Verify that when GameEvent has a provider_log_id that does not match PBP,
+
+    the engine strictly fails match (0 mutations) and does NOT fall back to matching
+    by batter_name and description even if an exact 1-candidate description match exists.
+    """
+    from sqlalchemy import event
+
+    pipeline = SealedSnapshotRelayPipeline(
+        game_id=TARGET_GAME_ID,
+        db_path_or_url=str(ephemeral_db),
+        kbo_fixture_path=KBO_FIXTURE,
+        naver_fixture_path=NAVER_FIXTURE,
+        lock_dir=lock_dir,
+    )
+    pipeline.run(apply_correction=False)
+
+    engine = create_engine(f"sqlite:///{ephemeral_db}")
+    with sessionmaker(bind=engine)() as session:
+        # Event 3 has provider_log_id = "naver:expected:id:nomatch"
+        ev3 = session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        assert ev3 is not None
+        ev3.provider_log_id = "naver:expected:id:nomatch"
+        ev3.batter_name = "김형준"
+        ev3.description = "김형준 : 투수 땅볼 아웃 (투수->1루수 송구아웃)"
+        session.commit()
+
+        # PBP row 35 has provider_log_id = "naver:other:different:id", but EXACT SAME batter and description
+        pbp35 = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.source_row_index == 35)
+            .first()
+        )
+        assert pbp35 is not None
+        assert pbp35.batter_name == "김형준"
+        assert pbp35.play_description == "김형준 : 투수 땅볼 아웃 (투수->1루수 송구아웃)"
+        pbp35.provider_log_id = "naver:other:different:id"
+        session.commit()
+
+        orig_ev3_desc = ev3.description
+        orig_pbp35_desc = pbp35.play_description
+        orig_pbp35_pid = pbp35.provider_log_id
+
+    # Observe write statements on connection cursor
+    write_count = [0]
+
+    def count_writes(conn, cursor, statement, parameters, context, executemany):
+        if statement.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            write_count[0] += 1
+
+    event.listen(pipeline.engine, "before_cursor_execute", count_writes)
+    try:
+        # Attempt correction on event 3 -> strict ID-priority must fail because provider_log_id does not match
+        res = pipeline.apply_event_correction(
+            revision_id="REV-ID-MISMATCH-NO-BYPASS",
+            target_event_seq=3,
+            revised_description="Should NEVER be applied via description fallback",
+        )
+        assert res["already_applied"] is False
+        assert res["mutations"] == 0
+        assert res["status"] == "PBP_MATCH_FAILED"
+        assert write_count[0] == 0, f"Expected 0 DML writes during failed correction, got {write_count[0]}"
+    finally:
+        event.remove(pipeline.engine, "before_cursor_execute", count_writes)
+
+    # Verify zero database mutations occurred across GameEvent, GamePlayByPlay, and RelayRevisionRecord
+    with sessionmaker(bind=engine)() as session:
+        ev3_after = (
+            session.query(GameEvent).filter(GameEvent.game_id == TARGET_GAME_ID, GameEvent.event_seq == 3).first()
+        )
+        assert ev3_after is not None
+        assert ev3_after.description == orig_ev3_desc
+        assert "Should NEVER be applied" not in ev3_after.description
+
+        pbp35_after = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == TARGET_GAME_ID, GamePlayByPlay.source_row_index == 35)
+            .first()
+        )
+        assert pbp35_after is not None
+        assert pbp35_after.play_description == orig_pbp35_desc
+        assert pbp35_after.provider_log_id == orig_pbp35_pid
+        assert "[CORRECTED]" not in pbp35_after.play_description
+
+        rev = (
+            session.query(RelayRevisionRecord)
+            .filter(RelayRevisionRecord.revision_id == "REV-ID-MISMATCH-NO-BYPASS")
+            .first()
+        )
+        assert rev is None
+
+
 def test_correction_rejects_ambiguous_pbp_candidates(ephemeral_db: Path, lock_dir: Path) -> None:
     """Verify that multiple matching PBP candidates trigger an explicit ValueError and 0 mutations."""
     pipeline = SealedSnapshotRelayPipeline(
