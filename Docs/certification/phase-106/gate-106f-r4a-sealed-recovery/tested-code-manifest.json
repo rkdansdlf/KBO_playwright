@@ -1,9 +1,9 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
   "title": "Sealed-Snapshot Relay Pipeline Worker & Restart Recovery Manifest",
-  "started_at": "2026-09-08T23:27:03.650014+00:00",
-  "completed_at": "2026-09-08T23:27:22.881313+00:00",
-  "git_commit": "e0975913dd8fb7d87829811575c856489164ed6e",
+  "started_at": "2026-09-11T04:00:48.088050+00:00",
+  "completed_at": "2026-09-11T04:01:11.995906+00:00",
+  "git_commit": "1c49fbedee4c02f3c03d5ea19da4084d898ca289",
   "git_branch": "main",
   "scope_boundary": {
     "certified_scope": "Sealed-snapshot relay recovery pipeline worker (SealedSnapshotRelayPipeline) replay & restart recovery under process crash injection (os._exit(137) at transaction boundaries CP1~CP7) for target game 20240930NCHT0, top of the 9th inning. Re-uses production parsers (RelayCrawler._parse_naver_payload, PBPCrawler._update_out_base_state) and production repository (save_relay_data). Verifies all 4 substantive domain entities (Events, PBPs, Validation, Revisions), path confinement inside temporary workspace root, live PID protection, and permanent revision lineage.",
@@ -22,7 +22,7 @@
   "code_components": [
     {
       "file": "src/services/relay_recovery_engine.py",
-      "sha256": "452a0f495fc6fa59f6eb50c514bb1ff417e5f1ce695d13bee0d3ba975c77bf04",
+      "sha256": "fe09e61b008638faa85f14905916621e1fab3cf4f52814b271e48d1ef855d3e1",
       "role": "Recovery engine, production parser integration, transaction hooks, permanent revision ledger, and path confinement"
     },
     {
@@ -32,12 +32,12 @@
     },
     {
       "file": "tests/test_relay_recovery_r4a.py",
-      "sha256": "9e422afaec412355c8f22faf277d82fe81572b824aecea5adf4036d4eaff1d0a",
+      "sha256": "4a588014eb136f86b79f0ac27efbbea544d0f4e7645b9d12998abe1b3e81614e",
       "role": "Pytest verification test suite for crash-restart cycles, negative controls, revision conflicts, and lock protection"
     },
     {
       "file": "scripts/certification/phase106/run_gate_r4a_sealed_recovery.py",
-      "sha256": "9f86da97acee482430c5dacda2807a3edebdb6b3c2b64e154559faf0197e1cb7",
+      "sha256": "2f2689cbd76ecc8088a80bb91bab817469b1828fc4f81e713262dc3b184029d5",
       "role": "Master certification runner and evidence orchestrator"
     }
   ],
