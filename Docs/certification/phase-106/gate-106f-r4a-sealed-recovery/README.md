@@ -1,8 +1,8 @@
 # Gate R4A Certification Report: Sealed-Snapshot Relay Replay Worker & Restart Recovery
 
 **Gate ID**: `GATE-106F-R4A-SEALED-RECOVERY`
-**Started At**: `2026-09-08T23:27:03.650014+00:00`
-**Completed At**: `2026-09-08T23:27:22.881313+00:00`
+**Started At**: `2026-09-11T04:00:48.088050+00:00`
+**Completed At**: `2026-09-11T04:01:11.995906+00:00`
 **Target Game**: `20240930NCHT0` (NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top (Gwangju-Kia Champions Field))
 **Certification Status**: **`PASS`** (Level-3 Offline Integration Certified)
 **Recovery Architecture Model**: `REPLAY_FROM_START_WITH_IDEMPOTENT_PERSISTENCE`
@@ -29,9 +29,15 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 > [!IMPORTANT]
 > **Scope & Provenance Disclosure**
 > - **Certified**: Offline sealed snapshot replay worker (`SealedSnapshotRelayPipeline`), production parser execution, transaction-boundary crash recovery, process lock auto-healing, permanent revision lineage, and 4-entity convergence for game `20240930NCHT0`.
-> - **Validation Hash Scope**: `observed_event_pbp_state_sha256` cryptographically verifies the state equivalence of normalized in-memory/replayed events & PBPs against the golden baseline; it does NOT assert coupling to historical database validation records.
-> - **Test Suite Reconciliation**: All 51 selected unit/integration tests pass across `test_relay_recovery_r4a.py` (25), `test_relay_recovery.py` (13), and `test_lock.py` (13). 1 test (`tests/utils/test_lock.py::test_lock_cross_process`) is deselected by default due to `@pytest.mark.slow` filtering in `pytest.ini` (total collected: 52 items, 1 deselected, 51 passed).
-> - **Untested**: Long-polling of live active games, multi-day daemon execution of APScheduler (`scripts/scheduler.py`), and direct writes to production Oracle databases.
+> - **Strict ID-Priority Matching Policy**: Both DB-level correction (`apply_event_correction` -> `_find_matching_pbp_row`) and staged in-memory replay (`_apply_revisions_to_staged` -> `_match_pbp_for_revision`) strictly enforce identical ID-priority semantics:
+>   - When `provider_log_id` is present on an event or revision (`target_pid is not None`), matching is evaluated strictly and solely by `provider_log_id`. If 0 matches are found, it immediately aborts / returns `None` (`NO_MATCH_ID`) with 0 mutations; it is strictly prohibited from falling back to description/batter matching even if an exact candidate matches.
+>   - Description-based fallback is ONLY reachable when `target_pid` is genuinely `None`.
+>   - Ambiguity (>1 candidates) raises `ValueError` in both paths to reject mutation.
+>   - Verified via unit test `test_correction_rejects_description_fallback_when_provider_id_mismatched` with SQLAlchemy `before_cursor_execute` event listener confirming 0 SQL DML writes (`write_count[0] == 0`).
+> - **Validation Hash Scope**: `observed_event_pbp_state_sha256` cryptographically verifies the state equivalence of normalized in-memory/replayed events & PBPs against the golden baseline; it does NOT assert coupling to historical database validation records (Path A closed).
+> - **Test Suite Reconciliation**: All 59 selected unit/integration tests pass across `test_relay_recovery_r4a.py` (33), `test_relay_recovery.py` (13), and `test_lock.py` (13). 1 test (`tests/utils/test_lock.py::test_lock_cross_process`) is deselected by default due to `@pytest.mark.slow` filtering in `pytest.ini` (total collected: 60 items, 1 deselected, 59 passed). Standalone execution of `test_lock_cross_process` passes cleanly in 2.37s.
+> - **Working Tree Provenance & State Loss Disclosure**: Previous execution command transcripts included working tree cleanup commands (`git checkout HEAD -- tests/`) executed to revert test runner modifications. Because pre-execution working tree snapshots were not preserved prior to those commands, the determination of whether uncommitted state was lost is formally classified as **UNKNOWN (미확정)** rather than claimed as zero loss. Zero destructive commands (`git checkout HEAD --`, `git restore`, `git clean`, `git reset --hard`) are permitted or executed going forward, and all working tree files (including batch 3 test fixtures and reports) are preserved intact.
+> - **Untested Scope Boundaries (NO-GO)**: Long-polling of live active games, multi-day daemon execution of APScheduler (`scripts/scheduler.py`), and direct writes to production Oracle databases remain strictly out of scope.
 > - **Fixture Provenance**: Naver raw JSON snapshot was obtained via a 1-time HTTP request on 2026-09-07 during fixture preparation; all certification runs execute with zero network connectivity.
 
 ---
