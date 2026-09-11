@@ -360,8 +360,16 @@ class SqliteToOciSynchronizer:
         ):
             ctx.writer.truncate_table(table)
             sync_sql = ctx.writer.build_insert_sql(table, sync_columns, column_names=column_names)
+            insert_only = True
         else:
-            sync_sql = ctx.writer.build_merge_sql(table, sync_columns, pk_cols, column_names=column_names)
+            # Fast path: an empty target makes MERGE equivalent to INSERT, while
+            # array-bound INSERT batches avoid the per-batch UNION ALL plan cost.
+            insert_only = ctx.writer.count_table(table) == 0
+            if insert_only:
+                logger.info("[%s] Target empty, using fast INSERT path", table)
+                sync_sql = ctx.writer.build_insert_sql(table, sync_columns, column_names=column_names)
+            else:
+                sync_sql = ctx.writer.build_merge_sql(table, sync_columns, pk_cols, column_names=column_names)
 
         if not ctx.meta.omit_id:
             ctx.writer.set_table_triggers(table, enable=False)
@@ -378,6 +386,7 @@ class SqliteToOciSynchronizer:
             writer=ctx.writer,
             pk_columns=pk_cols,
             column_names=column_names,
+            insert_only=insert_only,
         )
         synced_total, error_total = self._execute_write_batches(batch_ctx)
 

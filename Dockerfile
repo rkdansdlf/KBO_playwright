@@ -25,6 +25,7 @@ WORKDIR /app
 
 # Runtime-only system dependencies (Playwright libs + PostgreSQL client)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
     postgresql-client \
     curl \
     wget \
@@ -67,6 +68,9 @@ COPY --chown=appuser:appuser scripts/ ./scripts/
 COPY --chown=appuser:appuser migrations/ ./migrations/
 COPY --chown=appuser:appuser docker/ ./docker/
 COPY --chown=appuser:appuser pyproject.toml ./
+
+# Strip Windows CRLF from shell scripts (host checkout may use CRLF).
+RUN sed -i 's/\r$//' docker/entrypoint.sh && chmod +x docker/entrypoint.sh
 
 VOLUME /app/data
 
