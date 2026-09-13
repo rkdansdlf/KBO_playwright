@@ -2,8 +2,8 @@
   "empty_naver_single_source": {
     "status": "PASS",
     "observed_source": "kbo_single",
-    "events_count": 5,
-    "pbps_count": 5
+    "events_count": 7,
+    "pbps_count": 7
   },
   "tampered_fixture_rejection": {
     "status": "PASS",

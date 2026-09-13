@@ -173,13 +173,14 @@ class OracleWriter:
             conn.execute(text(f'TRUNCATE TABLE "{table.upper()}"'))
 
     def count_table(self, table: str) -> int:
-        """Count total rows in the specified table."""
-        try:
-            with self.engine.connect() as conn:
-                cnt = conn.execute(text(f'SELECT COUNT(*) FROM "{table.upper()}"')).scalar()  # noqa: S608
-                return int(cnt or 0)
-        except (SQLAlchemyError, oracledb.Error):
-            return 0
+        """Count total rows in the specified table.
+
+        Returns integer row count, or 0 if empty/null.
+        Raises query exceptions on failure instead of silently returning 0.
+        """
+        with self.engine.connect() as conn:
+            cnt = conn.execute(text(f'SELECT COUNT(*) FROM "{table.upper()}"')).scalar()  # noqa: S608
+            return int(cnt or 0)
 
     def convert_value(self, value: object, oci_type: str, char_limit: int | None = None) -> object:
         """Convert a SQLite source value to an Oracle column type."""

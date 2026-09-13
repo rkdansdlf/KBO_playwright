@@ -92,6 +92,14 @@ FIXTURE_REGISTRY: dict[str, GameFixtureEntry] = {
         correction_provider_log_id=DEFAULT_CORRECTION_PROVIDER_LOG_ID,
         description="NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top (Gwangju-Kia Champions Field)",
     ),
+    "20230501LGWO0": GameFixtureEntry(
+        game_id="20230501LGWO0",
+        kbo_fixture=FIXTURES_DIR / "kbo_sealed_dom_nodes_20230501LGWO0.json",
+        naver_fixture=FIXTURES_DIR / "naver_sealed_payload_20230501LGWO0.json",
+        correction_target_event_seq=3,
+        correction_provider_log_id="naver:c0befa59adf1:9b:4:4:47726da84f",
+        description="LG Twins vs NC Dinos, 2023-05-01, Inning 9 bottom (LG Twins Park)",
+    ),
 }
 
 

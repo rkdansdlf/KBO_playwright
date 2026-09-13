@@ -1,0 +1,795 @@
+[
+  {
+    "title": "==============================",
+    "titleStyle": "divider",
+    "no": 111,
+    "inn": 9,
+    "homeOrAway": 0,
+    "statusCode": 0,
+    "textOptions": [
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 615,
+        "text": "==============================",
+        "type": 99
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 616,
+        "text": "승리투수: 장정훈",
+        "type": 99
+      }
+    ],
+    "ptsOptions": [],
+    "metricOption": {}
+  },
+  {
+    "title": "3번타자 김현수",
+    "titleStyle": "batter",
+    "no": 106,
+    "inn": 9,
+    "homeOrAway": 1,
+    "statusCode": 0,
+    "textOptions": [
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 4,
+          "homeHit": 8,
+          "awayHit": 11,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 580,
+        "text": "3번타자 김현수",
+        "type": 8,
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "58024",
+            "name": "김현수",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 4,
+          "homeHit": 8,
+          "awayHit": 11,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 581,
+        "text": "1구 볼",
+        "type": 1,
+        "batterRecord": {
+          "type": "ball",
+          "count": "1-0"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "58024",
+            "name": "김현수",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 582,
+        "text": "김현수 : 우측 담장 홈런 (1점)",
+        "type": 1,
+        "batterRecord": {
+          "type": "home_run",
+          "distance": 110,
+          "direction": "우"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "58024",
+            "name": "김현수",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 583,
+        "text": "- 1루 진출",
+        "type": 50,
+        "stuff": {}
+      }
+    ],
+    "ptsOptions": [],
+    "metricOption": {}
+  },
+  {
+    "title": "4번타자 이현성",
+    "titleStyle": "batter",
+    "no": 105,
+    "inn": 9,
+    "homeOrAway": 1,
+    "statusCode": 0,
+    "textOptions": [
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 584,
+        "text": "4번타자 이현성",
+        "type": 8,
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "81002",
+            "name": "이현성",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 585,
+        "text": "1구 스트라이크",
+        "type": 1,
+        "batterRecord": {
+          "type": "strike",
+          "count": "0-1"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "81002",
+            "name": "이현성",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 586,
+        "text": "이현성 : 좌익수 플라이 아웃",
+        "type": 1,
+        "batterRecord": {
+          "type": "fly_out",
+          "position": "LF",
+          "outs": 2
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "81002",
+            "name": "이현성",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      }
+    ],
+    "ptsOptions": [],
+    "metricOption": {}
+  },
+  {
+    "title": "5번타자 강백호",
+    "titleStyle": "batter",
+    "no": 104,
+    "inn": 9,
+    "homeOrAway": 1,
+    "statusCode": 0,
+    "textOptions": [
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 4,
+          "homeHit": 8,
+          "awayHit": 11,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 587,
+        "text": "5번타자 강백호",
+        "type": 8,
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "86025",
+            "name": "강백호",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 4,
+          "homeHit": 8,
+          "awayHit": 11,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 588,
+        "text": "1구 볼",
+        "type": 1,
+        "batterRecord": {
+          "type": "ball",
+          "count": "1-0"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "86025",
+            "name": "강백호",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 4,
+          "homeHit": 8,
+          "awayHit": 11,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 589,
+        "text": "강백호 : 중앙 냄새 2루타 (1루 2루 진출)",
+        "type": 1,
+        "batterRecord": {
+          "type": "double",
+          "direction": "중"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "86025",
+            "name": "강백호",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 4,
+          "homeHit": 8,
+          "awayHit": 11,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 590,
+        "text": "- 1루 2루 주자",
+        "type": 50,
+        "stuff": {}
+      }
+    ],
+    "ptsOptions": [],
+    "metricOption": {}
+  },
+  {
+    "title": "6번타자 조율",
+    "titleStyle": "batter",
+    "no": 103,
+    "inn": 9,
+    "homeOrAway": 1,
+    "statusCode": 0,
+    "textOptions": [
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 591,
+        "text": "6번타자 조율",
+        "type": 8,
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "83011",
+            "name": "조율",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 592,
+        "text": "1구 스트라이크",
+        "type": 1,
+        "batterRecord": {
+          "type": "strike",
+          "count": "0-1"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "83011",
+            "name": "조율",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 593,
+        "text": "2구 스트라이크",
+        "type": 1,
+        "batterRecord": {
+          "type": "strike",
+          "count": "0-2"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "83011",
+            "name": "조율",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 594,
+        "text": "3구 스트라이크",
+        "type": 1,
+        "batterRecord": {
+          "type": "strike",
+          "count": "0-3"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "83011",
+            "name": "조율",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 595,
+        "text": "조율 : 삼진 아웃",
+        "type": 1,
+        "batterRecord": {
+          "type": "strikeout",
+          "outs": 1
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "83011",
+            "name": "조율",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      }
+    ],
+    "ptsOptions": [],
+    "metricOption": {}
+  },
+  {
+    "title": "7번타자 박권수",
+    "titleStyle": "batter",
+    "no": 102,
+    "inn": 9,
+    "homeOrAway": 1,
+    "statusCode": 0,
+    "textOptions": [
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 596,
+        "text": "7번타자 박권수",
+        "type": 8,
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "75211",
+            "name": "박권수",
+            "team": "LG"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 4,
+          "homeHit": 8,
+          "awayHit": 11,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 597,
+        "text": "1구 볼",
+        "type": 1,
+        "batterRecord": {
+          "type": "ball",
+          "count": "1-0"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "75211",
+            "name": "박권수",
+            "team": "LG"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 598,
+        "text": "박권수 : 대주자 이재범 (으)로 교체",
+        "type": 2,
+        "batterRecord": {
+          "type": "substitution",
+          "from": "박권수",
+          "to": "이재범"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "77011",
+            "name": "이재범",
+            "team": "LG"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 599,
+        "text": "이재범 : 좌측 담장 홈런 (2점)",
+        "type": 1,
+        "batterRecord": {
+          "type": "home_run",
+          "distance": 115,
+          "direction": "좌"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "77011",
+            "name": "이재범",
+            "team": "LG"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 600,
+        "text": "- 1루 진출",
+        "type": 50,
+        "stuff": {}
+      }
+    ],
+    "ptsOptions": [],
+    "metricOption": {}
+  },
+  {
+    "title": "8번타자 양성민",
+    "titleStyle": "batter",
+    "no": 101,
+    "inn": 9,
+    "homeOrAway": 1,
+    "statusCode": 0,
+    "textOptions": [
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 601,
+        "text": "8번타자 양성민",
+        "type": 8,
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "76002",
+            "name": "양성민",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 602,
+        "text": "1구 스트라이크",
+        "type": 1,
+        "batterRecord": {
+          "type": "strike",
+          "count": "0-1"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "76002",
+            "name": "양성민",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 603,
+        "text": "2구 파울",
+        "type": 1,
+        "batterRecord": {
+          "type": "foul",
+          "count": "0-2"
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "76002",
+            "name": "양성민",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      },
+      {
+        "currentGameState": {
+          "homeScore": 3,
+          "awayScore": 7,
+          "homeHit": 8,
+          "awayHit": 12,
+          "homeBallFour": 2,
+          "awayBallFour": 3
+        },
+        "seqno": 604,
+        "text": "양성민 : 우익수 플라이 아웃",
+        "type": 1,
+        "batterRecord": {
+          "type": "fly_out",
+          "position": "RF",
+          "outs": 3
+        },
+        "currentPlayersInfo": {
+          "batter": {
+            "playerId": "76002",
+            "name": "양성민",
+            "team": "NC"
+          },
+          "pitcher": {
+            "playerId": "71025",
+            "name": "장정훈",
+            "team": "LG"
+          }
+        },
+        "stuff": {}
+      }
+    ],
+    "ptsOptions": [],
+    "metricOption": {}
+  }
+]
