@@ -1,8 +1,8 @@
 # Gate R4A Certification Report: Sealed-Snapshot Relay Replay Worker & Restart Recovery
 
 **Gate ID**: `GATE-106F-R4A-SEALED-RECOVERY`
-**Started At**: `2026-09-11T04:00:48.088050+00:00`
-**Completed At**: `2026-09-11T04:01:11.995906+00:00`
+**Started At**: `2026-09-13T19:35:44.527829+00:00`
+**Completed At**: `2026-09-13T19:36:07.726395+00:00`
 **Target Game**: `20240930NCHT0` (NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top (Gwangju-Kia Champions Field))
 **Certification Status**: **`PASS`** (Level-3 Offline Integration Certified)
 **Recovery Architecture Model**: `REPLAY_FROM_START_WITH_IDEMPOTENT_PERSISTENCE`

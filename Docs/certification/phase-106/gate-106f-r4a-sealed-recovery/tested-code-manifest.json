@@ -1,9 +1,9 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
   "title": "Sealed-Snapshot Relay Pipeline Worker & Restart Recovery Manifest",
-  "started_at": "2026-09-11T04:00:48.088050+00:00",
-  "completed_at": "2026-09-11T04:01:11.995906+00:00",
-  "git_commit": "1c49fbedee4c02f3c03d5ea19da4084d898ca289",
+  "started_at": "2026-09-13T19:35:44.527829+00:00",
+  "completed_at": "2026-09-13T19:36:07.726395+00:00",
+  "git_commit": "7c0fc4b20e23a3288438b669de5a245890e2a216",
   "git_branch": "main",
   "scope_boundary": {
     "certified_scope": "Sealed-snapshot relay recovery pipeline worker (SealedSnapshotRelayPipeline) replay & restart recovery under process crash injection (os._exit(137) at transaction boundaries CP1~CP7) for target game 20240930NCHT0, top of the 9th inning. Re-uses production parsers (RelayCrawler._parse_naver_payload, PBPCrawler._update_out_base_state) and production repository (save_relay_data). Verifies all 4 substantive domain entities (Events, PBPs, Validation, Revisions), path confinement inside temporary workspace root, live PID protection, and permanent revision lineage.",
@@ -22,7 +22,7 @@
   "code_components": [
     {
       "file": "src/services/relay_recovery_engine.py",
-      "sha256": "fe09e61b008638faa85f14905916621e1fab3cf4f52814b271e48d1ef855d3e1",
+      "sha256": "0c442aed0898f234acb8d4330474fc70992d9240dea17eb3f4e7923e1e36731e",
       "role": "Recovery engine, production parser integration, transaction hooks, permanent revision ledger, and path confinement"
     },
     {
