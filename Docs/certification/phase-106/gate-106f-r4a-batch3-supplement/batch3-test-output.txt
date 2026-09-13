@@ -1,0 +1,51 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-9.0.2, pluggy-1.6.0 -- /opt/homebrew/opt/python@3.14/bin/python3.14
+rootdir: /Users/mac/project/KBO_playwright
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: cov-7.1.0, anyio-4.12.0, asyncio-1.4.0, Faker-40.23.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 41 items
+
+tests/test_relay_recovery_r4a.py::test_protected_db_safety PASSED        [  2%]
+tests/test_relay_recovery_r4a.py::test_zero_network_invariance PASSED    [  4%]
+tests/test_relay_recovery_r4a.py::test_load_time_checksum_verification_failure PASSED [  7%]
+tests/test_relay_recovery_r4a.py::test_golden_baseline_run PASSED        [  9%]
+tests/test_relay_recovery_r4a.py::test_dual_source_and_negative_control PASSED [ 12%]
+tests/test_relay_recovery_r4a.py::test_cp1_crash_after_fetch_and_restart PASSED [ 14%]
+tests/test_relay_recovery_r4a.py::test_cp2_crash_during_normalization_and_restart PASSED [ 17%]
+tests/test_relay_recovery_r4a.py::test_cp3_crash_before_deduplication_and_restart PASSED [ 19%]
+tests/test_relay_recovery_r4a.py::test_cp4_crash_in_transaction_during_save_and_restart PASSED [ 21%]
+tests/test_relay_recovery_r4a.py::test_cp5_crash_after_commit_before_checkpoint_and_restart PASSED [ 24%]
+tests/test_relay_recovery_r4a.py::test_cp6_crash_during_checkpoint_record_and_restart PASSED [ 26%]
+tests/test_relay_recovery_r4a.py::test_cp7_crash_during_correction_update_and_restart PASSED [ 29%]
+tests/test_relay_recovery_r4a.py::test_correction_idempotency_and_zero_duplicate_tags PASSED [ 31%]
+tests/test_relay_recovery_r4a.py::test_checkpoint_monotonicity PASSED    [ 34%]
+tests/test_relay_recovery_r4a.py::test_deep_domain_hash_tamper_detection PASSED [ 36%]
+tests/test_relay_recovery_r4a.py::test_convergence_against_golden_baseline PASSED [ 39%]
+tests/test_relay_recovery_r4a.py::test_half_inning_context_provenance PASSED [ 41%]
+tests/test_relay_recovery_r4a.py::test_revision_conflict_rejection PASSED [ 43%]
+tests/test_relay_recovery_r4a.py::test_revision_persistence_across_regular_replay PASSED [ 46%]
+tests/test_relay_recovery_r4a.py::test_pbp_and_event_synchronized_correction PASSED [ 48%]
+tests/test_relay_recovery_r4a.py::test_path_confinement_violation PASSED [ 51%]
+tests/test_relay_recovery_r4a.py::test_live_pid_lock_protection PASSED   [ 53%]
+tests/test_relay_recovery_r4a.py::test_4_entity_domain_hash_tamper_detection PASSED [ 56%]
+tests/test_relay_recovery_r4a.py::test_correction_fails_safely_when_pbp_not_matched PASSED [ 58%]
+tests/test_relay_recovery_r4a.py::test_correction_rejects_ambiguous_pbp_candidates PASSED [ 60%]
+tests/test_relay_recovery_r4a.py::test_replay_revision_id_match_ignores_samedesc_other_row PASSED [ 63%]
+tests/test_relay_recovery_r4a.py::test_replay_revision_id_missing_returns_no_match PASSED [ 65%]
+tests/test_relay_recovery_r4a.py::test_replay_revision_id_genuine_none_fallback_unique PASSED [ 68%]
+tests/test_relay_recovery_r4a.py::test_replay_revision_id_genuine_none_fallback_multiple_rejected PASSED [ 70%]
+tests/test_relay_recovery_r4a.py::test_correction_kbo_single_verifies_mapping_or_rejects PASSED [ 73%]
+tests/test_relay_recovery_r4a.py::test_late_revision_failure_no_partial_application PASSED [ 75%]
+tests/test_relay_recovery_r4a.py::test_independent_revisions_no_interference PASSED [ 78%]
+tests/test_relay_correction_uniqueness.py::test_unique_match_by_provider_log_id_succeeds PASSED [ 80%]
+tests/test_relay_correction_uniqueness.py::test_unique_match_by_batter_and_description_succeeds PASSED [ 82%]
+tests/test_relay_correction_uniqueness.py::test_idempotent_correction PASSED [ 85%]
+tests/test_relay_correction_uniqueness.py::test_provider_id_ambiguity_rejected PASSED [ 87%]
+tests/test_relay_correction_uniqueness.py::test_provider_id_precedence_over_description PASSED [ 90%]
+tests/test_relay_correction_uniqueness.py::test_unresolved_explicit_provider_id_rejected PASSED [ 92%]
+tests/test_relay_correction_uniqueness.py::test_ambiguous_match_by_batter_and_description_rejected PASSED [ 95%]
+tests/test_relay_correction_uniqueness.py::test_positional_trap_rejected PASSED [ 97%]
+tests/test_relay_correction_uniqueness.py::test_successful_correction_has_writes PASSED [100%]
+
+============================= 41 passed in 28.32s ==============================
