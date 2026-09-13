@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
 from dotenv import load_dotenv
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.sync.checkpoint import CheckpointManager
 from src.sync.oracle_writer import TABLE_COL_OVERRIDE, TABLE_OVERRIDE, OracleWriter
@@ -83,8 +84,9 @@ class SyncReport:
     tables_total: int
     tables_synced: int
     tables_failed: int
-    rows_synced: int
-    results: list[TableSyncResult]
+    tables_partial: int = 0
+    rows_synced: int = 0
+    results: list[TableSyncResult] = field(default_factory=list)
 
 
 @dataclass

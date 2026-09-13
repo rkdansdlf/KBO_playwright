@@ -1,9 +1,9 @@
 {
   "gate_id": "GATE-106F-R4A-SEALED-RECOVERY",
   "title": "Sealed-Snapshot Relay Pipeline Worker & Restart Recovery Manifest",
-  "started_at": "2026-09-13T19:35:44.527829+00:00",
-  "completed_at": "2026-09-13T19:36:07.726395+00:00",
-  "git_commit": "7c0fc4b20e23a3288438b669de5a245890e2a216",
+  "started_at": "2026-09-13T19:43:41.227000+00:00",
+  "completed_at": "2026-09-13T19:44:05.622320+00:00",
+  "git_commit": "d641a9fb9f31dcb7155a85cd36ed652f85b3567a",
   "git_branch": "main",
   "scope_boundary": {
     "certified_scope": "Sealed-snapshot relay recovery pipeline worker (SealedSnapshotRelayPipeline) replay & restart recovery under process crash injection (os._exit(137) at transaction boundaries CP1~CP7) for target game 20240930NCHT0, top of the 9th inning. Re-uses production parsers (RelayCrawler._parse_naver_payload, PBPCrawler._update_out_base_state) and production repository (save_relay_data). Verifies all 4 substantive domain entities (Events, PBPs, Validation, Revisions), path confinement inside temporary workspace root, live PID protection, and permanent revision lineage.",
@@ -11,7 +11,7 @@
     "provenance_and_isolation_disclosure": "Initial game state context is typed via HalfInningContext with documented boxscore provenance (20240930NCHT0, Inning 9 top, score 10:5, relief pitcher 최지민). Socket blocking is enforced via worker subprocess socket monkeypatch (KBO_SEALED_REPLAY_OFFLINE=1). Naver raw JSON snapshot was obtained via a 1-time HTTP request on 2026-09-07 during fixture preparation; all certification runs execute 100% offline."
   },
   "target_game": {
-    "game_id": "20240930NCHT0",
+    "game_id": "20230501LGWO0",
     "season": 2024,
     "date": "2024-09-30",
     "matchup": "NC @ KIA",
@@ -22,7 +22,7 @@
   "code_components": [
     {
       "file": "src/services/relay_recovery_engine.py",
-      "sha256": "0c442aed0898f234acb8d4330474fc70992d9240dea17eb3f4e7923e1e36731e",
+      "sha256": "6ae794853ec0dda93433614aa41d1fabdbb2dc42e848bd43e0f46ecff9aad6f0",
       "role": "Recovery engine, production parser integration, transaction hooks, permanent revision ledger, and path confinement"
     },
     {
@@ -43,13 +43,13 @@
   ],
   "fixture_components": [
     {
-      "file": "Docs/certification/phase-106/gate-106f-r4a-sealed-recovery/fixtures/kbo_sealed_dom_nodes_20240930NCHT0.json",
-      "sha256": "5d04010809ff8cc85b0f95d51ebc0a6b6b98337387848446287934a199eb7c95",
+      "file": "Docs/certification/phase-106/gate-106f-r4a-sealed-recovery/fixtures/kbo_sealed_dom_nodes_20230501LGWO0.json",
+      "sha256": "4008bc26a720e1ef8e7d467bcf35b38a67e199420a01b0e9b61b5ae90e1c9f20",
       "role": "Sealed KBO DOM leaf nodes (41 raw nodes, dynamically parsed into 5 canonical events)"
     },
     {
-      "file": "Docs/certification/phase-106/gate-106f-r4a-sealed-recovery/fixtures/naver_sealed_payload_20240930NCHT0.json",
-      "sha256": "aa3a45fdf6fe380b5ec6df483064e45914667da9074fedd91d45cd11d88233ad",
+      "file": "Docs/certification/phase-106/gate-106f-r4a-sealed-recovery/fixtures/naver_sealed_payload_20230501LGWO0.json",
+      "sha256": "df80233bc967ad1cd326d8443c7f88b4eb929b703406976eb3b965c2dc9363cf",
       "role": "Sealed Naver JSON payload (8 relay groups, dynamically parsed into 5 events and 47 PBP rows)"
     }
   ]

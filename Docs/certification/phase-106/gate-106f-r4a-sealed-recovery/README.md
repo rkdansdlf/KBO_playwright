@@ -1,9 +1,9 @@
 # Gate R4A Certification Report: Sealed-Snapshot Relay Replay Worker & Restart Recovery
 
 **Gate ID**: `GATE-106F-R4A-SEALED-RECOVERY`
-**Started At**: `2026-09-13T19:35:44.527829+00:00`
-**Completed At**: `2026-09-13T19:36:07.726395+00:00`
-**Target Game**: `20240930NCHT0` (NC Dinos vs KIA Tigers, 2024-09-30, Inning 9 top (Gwangju-Kia Champions Field))
+**Started At**: `2026-09-13T19:43:41.227000+00:00`
+**Completed At**: `2026-09-13T19:44:05.622320+00:00`
+**Target Game**: `20230501LGWO0` (LG Twins vs NC Dinos, 2023-05-01, Inning 9 bottom (LG Twins Park))
 **Certification Status**: **`PASS`** (Level-3 Offline Integration Certified)
 **Recovery Architecture Model**: `REPLAY_FROM_START_WITH_IDEMPOTENT_PERSISTENCE`
 
@@ -28,7 +28,7 @@ Gate R4A certifies the crash recovery and restart resilience of the KBO text rel
 
 > [!IMPORTANT]
 > **Scope & Provenance Disclosure**
-> - **Certified**: Offline sealed snapshot replay worker (`SealedSnapshotRelayPipeline`), production parser execution, transaction-boundary crash recovery, process lock auto-healing, permanent revision lineage, and 4-entity convergence for game `20240930NCHT0`.
+> - **Certified**: Offline sealed snapshot replay worker (`SealedSnapshotRelayPipeline`), production parser execution, transaction-boundary crash recovery, process lock auto-healing, permanent revision lineage, and 4-entity convergence for game `20230501LGWO0`.
 > - **Strict ID-Priority Matching Policy**: Both DB-level correction (`apply_event_correction` -> `_find_matching_pbp_row`) and staged in-memory replay (`_apply_revisions_to_staged` -> `_match_pbp_for_revision`) strictly enforce identical ID-priority semantics:
 >   - When `provider_log_id` is present on an event or revision (`target_pid is not None`), matching is evaluated strictly and solely by `provider_log_id`. If 0 matches are found, it immediately aborts / returns `None` (`NO_MATCH_ID`) with 0 mutations; it is strictly prohibited from falling back to description/batter matching even if an exact candidate matches.
 >   - Description-based fallback is ONLY reachable when `target_pid` is genuinely `None`.
