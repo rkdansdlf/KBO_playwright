@@ -511,12 +511,13 @@ class SqliteToOciSynchronizer:
                 t0=t0,
             )
             return self._prepare_and_sync_table(prep_ctx)
-        except (sqlite3.Error, RuntimeError, ValueError, OSError) as e:
+        except (sqlite3.Error, RuntimeError, ValueError, OSError, SQLAlchemyError) as e:
             if writer:
                 writer.rollback()
                 with contextlib.suppress(Exception):
                     writer.set_table_triggers(table, enable=True)
-            self.checkpoint_mgr.record_failure(table, error_msg=str(e))
+            with contextlib.suppress(Exception):
+                self.checkpoint_mgr.record_failure(table, error_msg=str(e))
             logger.exception("[%s] Sync failed", table)
             return TableSyncResult(
                 table_name=table,
@@ -614,6 +615,7 @@ class SqliteToOciSynchronizer:
         total_elapsed = time.monotonic() - t0
         synced_count = sum(r.synced_count for r in all_results)
         failed_tables = sum(1 for r in all_results if r.status == "FAILED")
+        partial_tables = sum(1 for r in all_results if r.status == "PARTIAL")
         success_tables = sum(1 for r in all_results if r.status in ("SUCCESS", "DRY_RUN"))
 
         report = SyncReport(
@@ -625,17 +627,19 @@ class SqliteToOciSynchronizer:
             tables_total=len(all_results),
             tables_synced=success_tables,
             tables_failed=failed_tables,
+            tables_partial=partial_tables,
             rows_synced=synced_count,
             results=all_results,
         )
 
         logger.info(
-            "Sync completed in %.2fs: %d rows synced across %d/%d tables (%d failed)",
+            "Sync completed in %.2fs: %d rows synced across %d/%d tables (%d failed, %d partial)",
             total_elapsed,
             synced_count,
             success_tables,
             len(all_results),
             failed_tables,
+            partial_tables,
         )
 
         return report
@@ -648,24 +652,39 @@ class SqliteToOciSynchronizer:
 
         for table in target:
             if not self._get_sqlite_columns(table):
+                oci_cnt: int | None = None
+                try:
+                    oci_cnt = writer.count_table(table)
+                except (SQLAlchemyError, RuntimeError, OSError):
+                    logger.exception("[%s] Failed to query Oracle count", table)
                 stats[table] = {
                     "sqlite_count": None,
-                    "oci_count": writer.count_table(table),
+                    "oci_count": oci_cnt,
                     "diff": None,
                     "is_consistent": False,
                     "status": "MISSING_SOURCE_TABLE",
                 }
                 continue
             sq_count = self.sq_conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]  # noqa: S608
-            oci_count = writer.count_table(table)
-            diff = sq_count - oci_count
-            match = diff == 0
-            stats[table] = {
-                "sqlite_count": sq_count,
-                "oci_count": oci_count,
-                "diff": diff,
-                "is_consistent": match,
-            }
+            try:
+                oci_count = writer.count_table(table)
+                diff = sq_count - oci_count
+                match = diff == 0
+                stats[table] = {
+                    "sqlite_count": sq_count,
+                    "oci_count": oci_count,
+                    "diff": diff,
+                    "is_consistent": match,
+                }
+            except (SQLAlchemyError, RuntimeError, OSError):
+                logger.exception("[%s] Failed to query Oracle count", table)
+                stats[table] = {
+                    "sqlite_count": sq_count,
+                    "oci_count": None,
+                    "diff": None,
+                    "is_consistent": False,
+                    "status": "QUERY_ERROR",
+                }
         return stats
 
 
@@ -793,12 +812,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 print("\n=== Consistency Verification ===")
                 for tbl, data in verify_res.items():
-                    status = "OK" if data["is_consistent"] else "MISMATCH"  # type: ignore[index]
-                    sq_cnt = data["sqlite_count"]  # type: ignore[index]
-                    oci_cnt = data["oci_count"]  # type: ignore[index]
-                    diff_cnt = data["diff"]  # type: ignore[index]
+                    d = data if isinstance(data, dict) else {}
+                    is_consistent = d.get("is_consistent") is True
+                    status = d.get("status") or ("OK" if is_consistent else "MISMATCH")
+                    sq_cnt = d.get("sqlite_count")
+                    oci_cnt = d.get("oci_count")
+                    diff_cnt = d.get("diff")
                     print(f"[{status}] {tbl}: SQLite={sq_cnt}, OCI={oci_cnt} (diff={diff_cnt})")
-            return 0
+            all_consistent = bool(verify_res) and all(
+                isinstance(d, dict) and d.get("is_consistent") is True for d in verify_res.values()
+            )
+            return 0 if all_consistent else 1
 
         tables = [t.strip() for t in args.tables.split(",")] if args.tables else None
         exclude = [t.strip() for t in args.exclude_tables.split(",")] if args.exclude_tables else None
@@ -814,7 +838,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.json:
             print(json.dumps(asdict(report), indent=2))
 
-        return 1 if report.tables_failed > 0 else 0
+        return 1 if (report.tables_failed > 0 or report.tables_partial > 0) else 0
 
     finally:
         sync.close()
