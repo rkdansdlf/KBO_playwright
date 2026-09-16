@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html as html_mod
 import logging
 import zoneinfo
 from datetime import datetime
@@ -36,13 +37,14 @@ def generate_dashboard() -> None:
         status_class = "violation" if m.is_violation else "pass"
         status_text = "Violation" if m.is_violation else "Pass"
         check_time_str = m.check_time.strftime("%Y-%m-%d %H:%M:%S") if m.check_time else "N/A"
-        notes_str = m.notes or "-"
+        notes_str = html_mod.escape(m.notes or "-")
+        category_str = html_mod.escape(m.category.upper() if m.category else "")
 
         rows_html.append(
             f"""
             <tr>
                 <td>{check_time_str}</td>
-                <td><span class="badge cat-{m.category}">{m.category.upper()}</span></td>
+                <td><span class="badge cat-{html_mod.escape(m.category or "")}">{category_str}</span></td>
                 <td>{m.sla_threshold_hours} hrs</td>
                 <td>{m.actual_delay_hours} hrs</td>
                 <td><span class="status-indicator {status_class}">{status_text}</span></td>
