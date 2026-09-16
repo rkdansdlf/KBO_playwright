@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload Data Quality Regression Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-quality-regression-${{ steps.job-setup.outputs.KST_DATE }}
           path: ${{ runner.temp }}/data_quality_regression_*.json
@@ -221,7 +221,7 @@ jobs:
 
       - name: Upload Completeness Audit Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: completeness-audit-${{ needs.finalize.outputs.date }}
           path: ${{ runner.temp }}/completeness_audit.json

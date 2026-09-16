@@ -78,7 +78,7 @@ jobs:
 
       - name: Upload unit test profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-unit-${{ matrix.python-version }}-${{ github.run_number }}
           path: pytest-unit.log
@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.python-version }}-${{ github.run_number }}
           path: coverage.xml
@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload SQLite integration profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-integration-sqlite-${{ github.run_number }}
           path: pytest-integration-sqlite.log
@@ -225,7 +225,7 @@ jobs:
 
       - name: Upload PostgreSQL integration profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-integration-postgres-${{ github.run_number }}
           path: pytest-integration-postgres.log
@@ -260,7 +260,7 @@ jobs:
 
       - name: Upload slow test profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-slow-no-network-${{ github.run_number }}
           path: pytest-slow-no-network.log
@@ -342,7 +342,7 @@ jobs:
           --json
       - name: Upload RAG acceptance artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rag-acceptance-${{ github.run_number }}
           path: rag-retrieval-evaluation.json
