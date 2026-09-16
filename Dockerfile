@@ -1,7 +1,7 @@
 ###############################################################################
 # Stage 1: Builder — compile native extensions, install all pip packages
 ###############################################################################
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -16,7 +16,7 @@ RUN uv pip install --system --no-cache -r requirements.txt
 ###############################################################################
 # Stage 2: Runtime — lean image without build-essential (~250 MB smaller)
 ###############################################################################
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
