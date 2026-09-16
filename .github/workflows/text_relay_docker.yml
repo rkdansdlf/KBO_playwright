@@ -164,7 +164,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Download artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: text-relay-csv-${{ github.run_id }}
           path: data/
