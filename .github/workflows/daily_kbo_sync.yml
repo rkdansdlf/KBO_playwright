@@ -30,7 +30,7 @@ jobs:
       date: ${{ steps.job-setup.outputs.KST_DATE }}
       year: ${{ steps.job-setup.outputs.KST_YEAR }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         id: job-setup
@@ -114,7 +114,7 @@ jobs:
     needs: finalize
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -143,7 +143,7 @@ jobs:
     needs: [finalize, post-process]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -241,7 +241,7 @@ jobs:
     needs: [finalize, quality]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
