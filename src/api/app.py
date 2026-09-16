@@ -124,6 +124,12 @@ app = FastAPI(
 )
 
 allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",") if origin.strip()]
+if "*" in allowed_origins and os.getenv("ENVIRONMENT", "local").lower() in ("production", "staging"):
+    logger.warning(
+        "⚠️ CORS wildcard '*' is configured in %s environment. "
+        "Set ALLOWED_ORIGINS to explicit domain list for production security.",
+        os.getenv("ENVIRONMENT", "local"),
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

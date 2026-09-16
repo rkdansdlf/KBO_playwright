@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import os
 
 from fastapi import Depends, HTTPException
@@ -17,7 +18,7 @@ def get_api_key(api_key: str | None = Depends(api_key_header)) -> str | None:
     if not expected_key:
         return api_key
 
-    if not api_key or api_key != expected_key:
+    if not api_key or not hmac.compare_digest(api_key, expected_key):
         raise HTTPException(
             status_code=403,
             detail="Could not validate credentials",
