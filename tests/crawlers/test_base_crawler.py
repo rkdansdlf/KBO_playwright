@@ -115,6 +115,47 @@ class TestBasePlaywrightCrawler:
         assert mock_page.goto.await_count == 2
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("redirect", [False, True])
+async def test_http_client_blocks_private_targets(monkeypatch, redirect):
+    import socket
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *args, **kwargs: [(2, 1, 6, "", ("8.8.8.8", 443))])
+    requests = []
+
+    async def handle(request):
+        requests.append(str(request.url))
+        return httpx.Response(302, headers={"Location": "http://127.0.0.1/internal"})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        "src.crawlers.base.httpx.AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    crawler = DummyHttpCrawler(request_delay=0)
+    async with crawler.http_client() as client:
+        with pytest.raises(ValueError, match="private/reserved"):
+            await client.get("https://example.com" if redirect else "http://127.0.0.1/internal")
+    assert requests == (["https://example.com"] if redirect else [])
+
+
+@pytest.mark.asyncio
+async def test_http_client_accepts_public_source(monkeypatch):
+    import socket
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *args, **kwargs: [(2, 1, 6, "", ("8.8.8.8", 443))])
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        "src.crawlers.base.httpx.AsyncClient",
+        lambda **kwargs: real_client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True})), **kwargs
+        ),
+    )
+    crawler = DummyHttpCrawler(request_delay=0)
+    async with crawler.http_client() as client:
+        assert await crawler.fetch_json(client, "https://example.com") == {"ok": True}
+
+
 class TestBaseHttpCrawler:
     def test_init_defaults(self) -> None:
         crawler = DummyHttpCrawler()
