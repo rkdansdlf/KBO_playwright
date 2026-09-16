@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from http import HTTPStatus
@@ -18,6 +19,7 @@ from src.crawlers.resilience import AdaptiveRateLimiter
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: TC001
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
+from src.utils.url_validator import validate_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -180,6 +182,12 @@ class BaseHttpCrawler(BaseCrawler):
         }
         self.timeout = timeout
 
+    async def _validate_request_url(self, request: httpx.Request) -> None:
+        """Check each outgoing HTTP target, including redirect destinations."""
+        ok, reason = await asyncio.to_thread(validate_url, str(request.url))
+        if not ok:
+            raise ValueError(reason)
+
     @asynccontextmanager
     async def http_client(
         self,
@@ -193,6 +201,7 @@ class BaseHttpCrawler(BaseCrawler):
             headers=merged_headers,
             timeout=client_timeout,
             follow_redirects=True,
+            event_hooks={"request": [self._validate_request_url]},
         ) as client:
             yield client
 
