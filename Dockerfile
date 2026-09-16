@@ -59,7 +59,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Install Playwright Chromium as appuser
-RUN mkdir -p /ms-playwright && chmod 777 /ms-playwright && \
+RUN mkdir -p /ms-playwright && chown appuser:appuser /ms-playwright && chmod 755 /ms-playwright && \
     su appuser -c "python -m playwright install chromium"
 
 # Copy source code with correct ownership (avoids extra chown layer)
