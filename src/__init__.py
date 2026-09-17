@@ -7,6 +7,7 @@ import logging
 import os
 import time
 from threading import Lock
+from typing import Any
 
 from playwright.async_api import BrowserType as AsyncBrowserType
 from playwright.sync_api import BrowserType as SyncBrowserType
@@ -164,7 +165,7 @@ def _apply_playwright_patch() -> None:  # noqa: C901, PLR0915
 
         _original_dispatch = Connection.dispatch
 
-        def _patched_dispatch(self: Connection, msg: dict) -> None:
+        def _patched_dispatch(self: Connection, msg: Any) -> None:  # noqa: ANN401
             try:
                 _original_dispatch(self, msg)
             except KeyError:
@@ -174,7 +175,7 @@ def _apply_playwright_patch() -> None:  # noqa: C901, PLR0915
                 )
                 raise
 
-        Connection.dispatch = _patched_dispatch  # type: ignore[assignment]
+        Connection.dispatch = _patched_dispatch  # type: ignore[method-assign]
         logger.info("[PLAYWRIGHT-PATCH] Connection.dispatch successfully patched for debugging.")
     except Exception as e:  # noqa: BLE001
         logger.warning("[PLAYWRIGHT-PATCH] Failed to apply playwright patches: %s", e)
