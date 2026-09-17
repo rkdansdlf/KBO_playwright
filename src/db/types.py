@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import String, Time
-from sqlalchemy.types import TypeDecorator
+from sqlalchemy.types import TypeDecorator, TypeEngine
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Dialect
@@ -18,7 +18,7 @@ class OracleCompatibleTime(TypeDecorator):
     impl = Time
     cache_ok = True
 
-    def load_dialect_impl(self, dialect: Dialect) -> Time | String:
+    def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[Any]:
         """Select a native time type or Oracle's string representation."""
         if dialect.name == "oracle":
             return dialect.type_descriptor(String(32))
