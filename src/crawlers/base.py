@@ -148,6 +148,9 @@ class BasePlaywrightCrawler(BaseCrawler):
             reraise=True,
         ):
             with attempt:
+                ok, reason = await asyncio.to_thread(validate_url, url)
+                if not ok:
+                    raise ValueError(reason)
                 self.logger.debug("Navigating to %s (attempt %d)", url, attempt.retry_state.attempt_number)
                 await page.goto(url, wait_until=wait_until, timeout=timeout)  # type: ignore[arg-type]
 
