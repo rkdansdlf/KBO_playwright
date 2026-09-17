@@ -154,17 +154,17 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
 
         scoreboard = [
             InningScoreSchema(
-                team=game.away_team or "AWAY",
-                scores=scoreboard_map["away"] or [0],
-                r=game.away_score or 0,
+                team=str(game.away_team or "AWAY"),
+                scores=list(scoreboard_map["away"] or [0]),
+                r=int(game.away_score or 0),
                 h=sum(b.hits for b in game.batting_stats if b.team_side == "away") if game.batting_stats else 0,
                 e=0,
                 b=sum(b.walks for b in game.batting_stats if b.team_side == "away") if game.batting_stats else 0,
             ).model_dump(),
             InningScoreSchema(
-                team=game.home_team or "HOME",
-                scores=scoreboard_map["home"] or [0],
-                r=game.home_score or 0,
+                team=str(game.home_team or "HOME"),
+                scores=list(scoreboard_map["home"] or [0]),
+                r=int(game.home_score or 0),
                 h=sum(b.hits for b in game.batting_stats if b.team_side == "home") if game.batting_stats else 0,
                 e=0,
                 b=sum(b.walks for b in game.batting_stats if b.team_side == "home") if game.batting_stats else 0,
@@ -179,10 +179,10 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
         lineup_rows = list(session.execute(lineup_stmt).scalars().all())
         away_lineup = [
             GameLineupPlayerSchema(
-                order=row.batting_order,
+                order=int(row.batting_order) if row.batting_order is not None else None,
                 player_id=str(row.player_id) if row.player_id else None,
-                player_name=row.player_name,
-                position=row.position or row.standard_position,
+                player_name=str(row.player_name or ""),
+                position=str(pos) if (pos := row.position or row.standard_position) else None,
                 is_starter=bool(row.is_starter),
             ).model_dump()
             for row in lineup_rows
@@ -190,10 +190,10 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
         ]
         home_lineup = [
             GameLineupPlayerSchema(
-                order=row.batting_order,
+                order=int(row.batting_order) if row.batting_order is not None else None,
                 player_id=str(row.player_id) if row.player_id else None,
-                player_name=row.player_name,
-                position=row.position or row.standard_position,
+                player_name=str(row.player_name or ""),
+                position=str(pos) if (pos := row.position or row.standard_position) else None,
                 is_starter=bool(row.is_starter),
             ).model_dump()
             for row in lineup_rows
@@ -210,17 +210,17 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
 
         away_batters = [
             HitterBoxscoreSchema(
-                order=b.batting_order,
+                order=int(b.batting_order) if b.batting_order is not None else None,
                 player_id=str(b.player_id) if b.player_id else None,
-                player_name=b.player_name,
-                position=b.position or b.standard_position,
-                ab=b.at_bats or 0,
-                r=b.runs or 0,
-                h=b.hits or 0,
-                rbi=b.rbi or 0,
-                bb=b.walks or 0,
-                so=b.strikeouts or 0,
-                avg=b.avg,
+                player_name=str(b.player_name or ""),
+                position=str(b.position or b.standard_position) if (b.position or b.standard_position) else None,
+                ab=int(b.at_bats or 0),
+                r=int(b.runs or 0),
+                h=int(b.hits or 0),
+                rbi=int(b.rbi or 0),
+                bb=int(b.walks or 0),
+                so=int(b.strikeouts or 0),
+                avg=float(b.avg) if b.avg is not None else None,
             ).model_dump()
             for b in batting_rows
             if b.team_side == "away"
@@ -228,17 +228,17 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
 
         home_batters = [
             HitterBoxscoreSchema(
-                order=b.batting_order,
+                order=int(b.batting_order) if b.batting_order is not None else None,
                 player_id=str(b.player_id) if b.player_id else None,
-                player_name=b.player_name,
-                position=b.position or b.standard_position,
-                ab=b.at_bats or 0,
-                r=b.runs or 0,
-                h=b.hits or 0,
-                rbi=b.rbi or 0,
-                bb=b.walks or 0,
-                so=b.strikeouts or 0,
-                avg=b.avg,
+                player_name=str(b.player_name or ""),
+                position=str(b.position or b.standard_position) if (b.position or b.standard_position) else None,
+                ab=int(b.at_bats or 0),
+                r=int(b.runs or 0),
+                h=int(b.hits or 0),
+                rbi=int(b.rbi or 0),
+                bb=int(b.walks or 0),
+                so=int(b.strikeouts or 0),
+                avg=float(b.avg) if b.avg is not None else None,
             ).model_dump()
             for b in batting_rows
             if b.team_side == "home"
@@ -254,18 +254,18 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
 
         away_pitchers = [
             PitcherBoxscoreSchema(
-                order=p.appearance_seq,
+                order=int(p.appearance_seq) if p.appearance_seq is not None else None,
                 player_id=str(p.player_id) if p.player_id else None,
-                player_name=p.player_name,
-                decision=p.decision,
+                player_name=str(p.player_name or ""),
+                decision=str(p.decision) if p.decision else None,
                 innings=str(p.innings_pitched) if p.innings_pitched is not None else None,
-                h=p.hits_allowed or 0,
-                r=p.runs_allowed or 0,
-                er=p.earned_runs or 0,
-                bb=p.walks_allowed or 0,
-                so=p.strikeouts or 0,
-                hr=p.home_runs_allowed or 0,
-                era=p.era,
+                h=int(p.hits_allowed or 0),
+                r=int(p.runs_allowed or 0),
+                er=int(p.earned_runs or 0),
+                bb=int(p.walks_allowed or 0),
+                so=int(p.strikeouts or 0),
+                hr=int(p.home_runs_allowed or 0),
+                era=float(p.era) if p.era is not None else None,
             ).model_dump()
             for p in pitching_rows
             if p.team_side == "away"
@@ -273,18 +273,18 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
 
         home_pitchers = [
             PitcherBoxscoreSchema(
-                order=p.appearance_seq,
+                order=int(p.appearance_seq) if p.appearance_seq is not None else None,
                 player_id=str(p.player_id) if p.player_id else None,
-                player_name=p.player_name,
-                decision=p.decision,
+                player_name=str(p.player_name or ""),
+                decision=str(p.decision) if p.decision else None,
                 innings=str(p.innings_pitched) if p.innings_pitched is not None else None,
-                h=p.hits_allowed or 0,
-                r=p.runs_allowed or 0,
-                er=p.earned_runs or 0,
-                bb=p.walks_allowed or 0,
-                so=p.strikeouts or 0,
-                hr=p.home_runs_allowed or 0,
-                era=p.era,
+                h=int(p.hits_allowed or 0),
+                r=int(p.runs_allowed or 0),
+                er=int(p.earned_runs or 0),
+                bb=int(p.walks_allowed or 0),
+                so=int(p.strikeouts or 0),
+                hr=int(p.home_runs_allowed or 0),
+                era=float(p.era) if p.era is not None else None,
             ).model_dump()
             for p in pitching_rows
             if p.team_side == "home"
@@ -298,16 +298,16 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
         highlight_rows = list(session.execute(highlights_stmt).scalars().all())
         highlights = [
             GameHighlightItemSchema(
-                id=row.id,
-                game_id=row.game_id,
-                event_seq=row.event_seq,
-                inning=row.inning,
-                inning_half=row.inning_half,
-                highlight_type=row.highlight_type,
-                description=row.description,
-                wpa=row.wpa,
-                importance_score=row.importance_score,
-                tags=row.tags or [],
+                id=int(row.id) if row.id is not None else 0,
+                game_id=str(row.game_id or ""),
+                event_seq=int(row.event_seq) if row.event_seq is not None else None,
+                inning=int(row.inning) if row.inning is not None else None,
+                inning_half=str(row.inning_half) if row.inning_half else None,
+                highlight_type=str(row.highlight_type or ""),
+                description=str(row.description or ""),
+                wpa=float(row.wpa) if row.wpa is not None else None,
+                importance_score=float(row.importance_score or 0.0),
+                tags=list(row.tags or []),
             ).model_dump()
             for row in highlight_rows
         ]
@@ -345,8 +345,8 @@ def _summarize_h2h_game(
     recent_items: list[dict[str, Any]],
 ) -> tuple[int, int, int, int, int, int]:
     """Summarize a single game record for head-to-head aggregation."""
-    h_score = g.home_score if g.home_score is not None else 0
-    a_score = g.away_score if g.away_score is not None else 0
+    h_score = int(g.home_score) if g.home_score is not None else 0
+    a_score = int(g.away_score) if g.away_score is not None else 0
     t1_score, t2_score = (h_score, a_score) if g.home_team == team1 else (a_score, h_score)
 
     t1_w, t2_w, draw, valid_cnt = 0, 0, 0, 0
@@ -363,13 +363,13 @@ def _summarize_h2h_game(
         winner = g.winning_team or (g.home_team if h_score > a_score else g.away_team if a_score > h_score else None)
         recent_items.append(
             HeadToHeadGameItemSchema(
-                game_id=g.game_id,
+                game_id=str(g.game_id),
                 game_date=str(g.game_date),
-                home_team=g.home_team or "",
-                away_team=g.away_team or "",
+                home_team=str(g.home_team or ""),
+                away_team=str(g.away_team or ""),
                 home_score=h_score,
                 away_score=a_score,
-                winner=winner,
+                winner=str(winner) if winner else None,
             ).model_dump()
         )
 
