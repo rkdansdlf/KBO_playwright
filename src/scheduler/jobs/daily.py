@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.cli.daily_preview_batch import run_preview_batch
-from src.cli.run_daily_update import format_stability_alert_summary
-from src.cli.run_daily_update import main as run_daily_update_main
+from src.cli.pipelines.daily_preview_batch import run_preview_batch
+from src.cli.pipelines.run_daily_update import format_stability_alert_summary
+from src.cli.pipelines.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
 from src.scheduler.alerting import alert_failure, alert_success, alert_warning
 from src.scheduler.config import (
@@ -97,7 +97,7 @@ def _can_run_job(job_name: str) -> tuple[bool, str]:
 def _run_legacy_daily_update(
     target_date: str,
     run_main: Callable[..., object],
-    fmt_fn: Callable[[object], str],
+    fmt_fn: Callable[[object], str | None],
     alert_succ: Callable[[str, str], None],
     alert_warn: Callable[[str, str], None],
 ) -> None:
@@ -116,8 +116,9 @@ def _run_legacy_daily_update(
 
     update_result = run_main(args, acquire_lock=False)
 
+    summary = fmt_fn(update_result) or ""
     logger.info("=== Daily Games Crawl Completed Successfully ===")
-    alert_succ("crawl_daily_games", fmt_fn(update_result))
+    alert_succ("crawl_daily_games", summary)
 
     if isinstance(update_result, dict):
         stability = update_result.get("stability", {})
@@ -127,7 +128,7 @@ def _run_legacy_daily_update(
         repeated_failures = detail_recovery.get("escalation_game_ids") if isinstance(detail_recovery, dict) else []
         total_failures = sum(detail_counts.values()) if isinstance(detail_counts, dict) else 0
         if repeated_failures or total_failures > 0:
-            alert_warn("crawl_daily_games", fmt_fn(update_result))
+            alert_warn("crawl_daily_games", fmt_fn(update_result) or "")
 
 
 @_with_lock_skip_guard
@@ -214,7 +215,7 @@ def crawl_daily_games() -> None:
 
 def _compact_date(d: object) -> str:
     if hasattr(d, "strftime"):
-        return d.strftime("%Y%m%d")  # type: ignore[union-attr]
+        return d.strftime("%Y%m%d")
     s = str(d).replace("-", "")
     if " " in s:
         s = s.split(" ")[0]
@@ -320,20 +321,20 @@ def _find_player_profile_gaps(session: object) -> list[int]:
     return [row.player_id for row in rows]
 
 
-def _get_session_local() -> type[SessionLocal]:
+def _get_session_local() -> Callable[[], Any]:
     from src.db import engine
 
     return getattr(engine, "SessionLocal", SessionLocal)
 
 
-def _get_run_daily_update() -> object:
+def _get_run_daily_update() -> Callable[..., object]:
     mod = sys.modules.get("scripts.scheduler")
     if mod and hasattr(mod, "run_daily_update_main"):
         return mod.run_daily_update_main
     return run_daily_update_main
 
 
-def _get_run_preview_batch() -> object:
+def _get_run_preview_batch() -> Callable[[str], Any]:
     mod = sys.modules.get("scripts.scheduler")
     if mod and hasattr(mod, "run_preview_batch"):
         return mod.run_preview_batch
@@ -492,9 +493,9 @@ def crawl_phase1_extra_job() -> None:
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Phase 1 Extra Crawlers ===")
         try:
-            from src.cli.crawl_phase1_extra import run_all_crawlers
+            from src.cli.collection.crawl_phase1_extra import run_all_crawlers as _run_all_crawlers
 
-            asyncio.run(run_all_crawlers(save=True))
+            asyncio.run(_run_all_crawlers(save=True))
             logger.info("=== Phase 1 Extra Crawlers Completed Successfully ===")
             _update_job_status("crawl_phase1_extra_job", JobStatus.SUCCESS, "Completed")
         except SCHEDULER_JOB_EXCEPTIONS:
@@ -534,9 +535,9 @@ def crawl_p1p2_data_job() -> None:
     with _scheduler_job_lock(DAILY_LOCK):
         logger.info("=== Starting P1/P2 Data Crawlers ===")
         try:
-            from src.cli.crawl_parking import main as parking_main
-            from src.cli.crawl_seat_sections import main as seat_main
-            from src.cli.crawl_stadium_food import main as food_main
+            from src.cli.collection.crawl_parking import main as parking_main
+            from src.cli.collection.crawl_seat_sections import main as seat_main
+            from src.cli.collection.crawl_stadium_food import main as food_main
 
             logger.info("Running seat sections crawler...")
             seat_main(["--save"])
@@ -608,7 +609,7 @@ def crawl_p0_non_game_job() -> None:
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("[P0NonGame] Starting P0 non-game crawl")
         try:
-            from src.cli.crawl_p0_data import main as crawl_p0_data_main
+            from src.cli.collection.crawl_p0_data import main as crawl_p0_data_main
 
             crawl_p0_data_main(
                 [
@@ -642,7 +643,7 @@ def crawl_kbo_press_releases_job() -> None:
     with _scheduler_job_lock(DAILY_LOCK):
         logger.info("=== Starting KBO Press Releases Crawl ===")
         try:
-            from src.cli.crawl_press_releases import main as press_main
+            from src.cli.collection.crawl_press_releases import main as press_main
 
             press_main(["--save", "--max-pages", "1"])
             logger.info("=== KBO Press Releases Crawl Completed ===")
@@ -666,7 +667,7 @@ def crawl_futures_schedule_job() -> None:
     with _scheduler_job_lock(DAILY_LOCK):
         logger.info("=== Starting Futures League Schedule Crawl ===")
         try:
-            from src.cli.crawl_futures_schedule import main as futures_main
+            from src.cli.collection.crawl_futures_schedule import main as futures_main
 
             futures_main(["--save"])
             logger.info("=== Futures League Schedule Crawl Completed ===")
@@ -690,7 +691,7 @@ def daily_gap_report_job() -> None:
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Daily Gap Report Summary Notification ===")
         try:
-            from src.cli.gap_report import run_gap_report
+            from src.cli.reports.gap_report import run_gap_report
 
             run_gap_report(alert=True, send_summary=True)
             logger.info("=== Daily Gap Report Summary Completed Successfully ===")
