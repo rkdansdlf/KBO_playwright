@@ -102,7 +102,8 @@ class TestBasePlaywrightCrawler:
         mock_page = MagicMock()
         mock_page.goto = AsyncMock()
 
-        await crawler.goto_with_retry(mock_page, "https://example.com", max_attempts=2, min_wait=0.01)
+        with patch("src.crawlers.base.validate_url", return_value=(True, "OK")):
+            await crawler.goto_with_retry(mock_page, "https://example.com", max_attempts=2, min_wait=0.01)
         mock_page.goto.assert_awaited_once_with("https://example.com", wait_until="networkidle", timeout=30000)
 
     @pytest.mark.asyncio
@@ -111,8 +112,102 @@ class TestBasePlaywrightCrawler:
         mock_page = MagicMock()
         mock_page.goto = AsyncMock(side_effect=[PlaywrightTimeoutError("timeout"), None])
 
-        await crawler.goto_with_retry(mock_page, "https://example.com", max_attempts=2, min_wait=0.01, max_wait=0.02)
+        with patch("src.crawlers.base.validate_url", return_value=(True, "OK")):
+            await crawler.goto_with_retry(
+                mock_page, "https://example.com", max_attempts=2, min_wait=0.01, max_wait=0.02
+            )
         assert mock_page.goto.await_count == 2
+
+
+class TestPlaywrightUrlValidation:
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "file:///tmp/test.html",
+            "ftp://example.com/file",
+            "data:text/html,test",
+            "javascript:void(0)",
+            "http://127.0.0.1",
+            "http://10.0.0.1",
+            "http://192.168.1.1",
+            "http://169.254.169.254",
+            "http://[::1]",
+            "http://[ff02::1]",
+            "https://example.com:bad",
+            "https://",
+        ],
+    )
+    async def test_rejects_before_navigation(self, url):
+        page = MagicMock()
+        page.goto = AsyncMock()
+        with pytest.raises(ValueError):
+            await DummyPlaywrightCrawler().goto_with_retry(page, url)
+        page.goto.assert_not_awaited()
+
+    @pytest.mark.parametrize("addresses", [[], ["127.0.0.1"], ["8.8.8.8", "10.0.0.1"], ["::1"]])
+    async def test_rejects_dns_results(self, monkeypatch, addresses):
+        monkeypatch.setattr(
+            "socket.getaddrinfo", lambda *args, **kwargs: [(2, 1, 6, "", (ip, 443)) for ip in addresses]
+        )
+        page = MagicMock()
+        page.goto = AsyncMock()
+        with pytest.raises(ValueError):
+            await DummyPlaywrightCrawler().goto_with_retry(page, "https://example.com")
+        page.goto.assert_not_awaited()
+
+    @pytest.mark.parametrize("wait_until", ["load", "domcontentloaded", "networkidle"])
+    async def test_public_navigation_preserves_options(self, monkeypatch, wait_until):
+        monkeypatch.setattr("socket.getaddrinfo", lambda *args, **kwargs: [(2, 1, 6, "", ("8.8.8.8", 443))])
+        page = MagicMock()
+        page.goto = AsyncMock()
+        await DummyPlaywrightCrawler().goto_with_retry(page, "https://example.com", wait_until=wait_until, timeout=1234)
+        page.goto.assert_awaited_once_with("https://example.com", wait_until=wait_until, timeout=1234)
+
+    async def test_revalidates_before_retry(self):
+        page = MagicMock()
+        page.goto = AsyncMock(side_effect=PlaywrightTimeoutError("timeout"))
+        with patch("src.crawlers.base.validate_url", side_effect=[(True, "OK"), (False, "blocked")]) as validate:
+            with pytest.raises(ValueError, match="blocked"):
+                await DummyPlaywrightCrawler().goto_with_retry(page, "https://example.com", min_wait=0, max_wait=0)
+        assert validate.call_count == 2
+        page.goto.assert_awaited_once()
+
+    async def test_dns_failure_never_navigates(self):
+        import socket
+
+        page = MagicMock()
+        page.goto = AsyncMock()
+        with patch("socket.getaddrinfo", side_effect=socket.gaierror("unavailable")):
+            with pytest.raises(ValueError, match="DNS resolution failed"):
+                await DummyPlaywrightCrawler().goto_with_retry(page, "https://example.com")
+        page.goto.assert_not_awaited()
+
+    async def test_validation_runs_off_event_loop(self):
+        import threading
+
+        main_thread = threading.get_ident()
+        threads = []
+
+        def validate(url):
+            threads.append(threading.get_ident())
+            return True, "OK"
+
+        page = MagicMock()
+        page.goto = AsyncMock()
+        with patch("src.crawlers.base.validate_url", side_effect=validate):
+            await DummyPlaywrightCrawler().goto_with_retry(page, "https://example.com")
+        assert len(threads) == 1
+        assert threads[0] != main_thread
+
+    async def test_timeout_exhaustion_preserved(self):
+        page = MagicMock()
+        page.goto = AsyncMock(side_effect=PlaywrightTimeoutError("timeout"))
+        with patch("src.crawlers.base.validate_url", return_value=(True, "OK")) as validate:
+            with pytest.raises(PlaywrightTimeoutError):
+                await DummyPlaywrightCrawler().goto_with_retry(
+                    page, "https://example.com", max_attempts=2, min_wait=0, max_wait=0
+                )
+        assert validate.call_count == page.goto.await_count == 2
 
 
 @pytest.mark.asyncio
