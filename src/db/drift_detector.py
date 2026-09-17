@@ -51,7 +51,7 @@ class SchemaDriftDetector:
         """Initialize schema drift detector with database engine/connection and ORM metadata."""
         self.bind = bind
         self.metadata = metadata or Base.metadata
-        self.dialect = (dialect or getattr(getattr(bind, "dialect", None), "name", "sqlite")).lower()
+        self.dialect = str(dialect or getattr(getattr(bind, "dialect", None), "name", "sqlite")).lower()
 
     def _map_sa_type_to_dialect(self, sa_type: TypeEngine[Any]) -> str:  # noqa: C901, PLR0911, PLR0912
         """Convert SQLAlchemy column type to target dialect SQL DDL type."""
@@ -192,7 +192,7 @@ class SchemaDriftDetector:
                         table_name,
                         col_name,
                         col_type_sql,
-                        nullable=col.nullable,
+                        nullable=bool(col.nullable),
                     )
                     generated_ddl.append(ddl)
 
