@@ -42,14 +42,14 @@ OrchestratorDep = Annotated["DailyPipelineOrchestrator", Depends(get_pipeline_or
 class PipelineHealRequest(BaseModel):
     """Request schema for POST /api/pipeline/heal."""
 
-    game_id: str | None = Field(default=None, example="20250615LGSS0", description="특정 경기 ID")
-    target_date: str | None = Field(default=None, example="2025-06-15", description="특정 대상 일자 (YYYY-MM-DD)")
+    game_id: str | None = Field(default=None, examples=["20250615LGSS0"], description="특정 경기 ID")
+    target_date: str | None = Field(default=None, examples=["2025-06-15"], description="특정 대상 일자 (YYYY-MM-DD)")
 
 
 class PipelineRunRequest(BaseModel):
     """Request schema for POST /api/pipeline/run."""
 
-    target_date: str | None = Field(default=None, example="2025-06-15", description="실행 대상 일자")
+    target_date: str | None = Field(default=None, examples=["2025-06-15"], description="실행 대상 일자")
     auto_heal: bool = Field(default=True, description="결함 자동 치유 여부")
     skip_rag: bool = Field(default=False, description="RAG 증분 색인 스킵 여부")
 
