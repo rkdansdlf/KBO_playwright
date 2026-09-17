@@ -52,7 +52,7 @@ class TableSchemaMeta:
     model_class_name: str = ""
     columns: dict[str, ColumnSchemaMeta] = field(default_factory=dict)
     primary_keys: list[str] = field(default_factory=list)
-    foreign_keys: list[dict[str, str]] = field(default_factory=list)
+    foreign_keys: list[dict[str, str | list[str]]] = field(default_factory=list)
     index_names: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:

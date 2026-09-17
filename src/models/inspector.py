@@ -127,14 +127,14 @@ class ModelInspector:
                     foreign_keys=fk_targets,
                 )
 
-            foreign_keys_list = [
+            foreign_keys_list: list[dict[str, str | list[str]]] = [
                 {
                     "constrained_column": fk.parent.name if fk.parent is not None else "",
                     "target": str(fk.target_fullname),
                 }
                 for fk in table.foreign_keys
             ]
-            index_names = [idx.name for idx in table.indexes if idx.name]
+            index_names = [str(idx.name) for idx in table.indexes if idx.name]
 
             tables_meta[table_name] = TableSchemaMeta(
                 table_name=table_name,
@@ -174,14 +174,14 @@ class ModelInspector:
                     default_val=str(col.get("default")) if col.get("default") is not None else None,
                 )
 
-            foreign_keys_list = [
+            foreign_keys_list: list[dict[str, str | list[str]]] = [
                 {
                     "constrained_columns": fk.get("constrained_columns", []),
                     "referred_table": fk.get("referred_table", ""),
                 }
                 for fk in fks
             ]
-            index_names = [idx.get("name", "") for idx in indexes if idx.get("name")]
+            index_names = [str(name) for idx in indexes if (name := idx.get("name"))]
 
             tables_meta[t_name] = TableSchemaMeta(
                 table_name=t_name,
