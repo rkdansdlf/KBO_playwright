@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
+import json
+
+from sqlalchemy import Column, ForeignKeyConstraint, Index, Integer, MetaData, String, Table, create_engine
 
 from src.models.dto import ColumnTypeCategory
 from src.models.inspector import ModelInspector, categorize_column_type
@@ -72,3 +74,39 @@ def test_compare_schemas_detects_missing_table_and_columns() -> None:
     issue_types = [i.issue_type for i in report.issues]
     assert "MISSING_TABLE" in issue_types
     assert "MISSING_COLUMN" in issue_types
+
+
+def test_inspect_database_preserves_fk_and_index_metadata() -> None:
+    """Regression: FK rows keep their list payloads and index names survive reflection."""
+    custom_meta = MetaData()
+    Table(
+        "orders",
+        custom_meta,
+        Column("id", Integer, primary_key=True),
+        Column("customer_id", Integer),
+        ForeignKeyConstraint(["customer_id"], ["customers.id"]),
+        Index("idx_orders_customer", "customer_id"),
+    )
+    Table(
+        "customers",
+        custom_meta,
+        Column("id", Integer, primary_key=True),
+    )
+
+    engine = create_engine("sqlite:///:memory:")
+    custom_meta.create_all(engine)
+
+    inspector = ModelInspector(metadata=custom_meta)
+    db_tables = inspector.inspect_database(engine)
+
+    orders = db_tables["orders"]
+    assert orders.index_names == ["idx_orders_customer"]
+    assert len(orders.foreign_keys) == 1
+    fk = orders.foreign_keys[0]
+    assert fk["referred_table"] == "customers"
+    assert fk["constrained_columns"] == ["customer_id"]
+
+    # to_dict round-trip preserves the new union value type
+    payload = json.dumps(orders.to_dict(), default=str)
+    assert "idx_orders_customer" in payload
+    assert "customers" in payload
