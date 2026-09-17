@@ -29,7 +29,7 @@ load_dotenv()
 
 # DATABASE_URL is always the application primary/target database. A separate
 # RAG_SOURCE_DB_URL is opened only by the explicit source-read path below.
-DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("RAG_TEST_DB_URL", "sqlite:///./data/kbo_dev.db")
+DATABASE_URL: str = os.getenv("DATABASE_URL") or os.getenv("RAG_TEST_DB_URL") or "sqlite:///./data/kbo_dev.db"
 DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 DB_SESSION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 
@@ -106,12 +106,12 @@ def _install_oracle_json_compiler() -> None:
             def visit_JSON(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
                 return "CLOB"
 
-            OracleTypeCompiler.visit_JSON = visit_JSON
+            OracleTypeCompiler.visit_JSON = visit_JSON  # type: ignore[attr-defined]
 
         def visit_TIME(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
             return "VARCHAR2(8 CHAR)"
 
-        OracleTypeCompiler.visit_TIME = visit_TIME
+        OracleTypeCompiler.visit_TIME = visit_TIME  # type: ignore[method-assign]
     except ImportError:
         pass
 
@@ -139,7 +139,7 @@ def _install_oracle_fk_restrict_compiler() -> None:
                 constraint.ondelete = original_ondelete
             return res
 
-        OracleDDLCompiler.visit_foreign_key_constraint = visit_foreign_key_constraint
+        OracleDDLCompiler.visit_foreign_key_constraint = visit_foreign_key_constraint  # type: ignore[method-assign]
         _oracle_fk_restrict_compiler_installed = True
     except ImportError:
         pass
@@ -256,8 +256,8 @@ def _create_oracle_engine(
         **extra_kwargs,
     )
     if hasattr(eng, "dialect"):
-        eng.dialect._json_serializer = json.dumps  # noqa: SLF001
-        eng.dialect._json_deserializer = _custom_json_deserializer  # noqa: SLF001
+        eng.dialect._json_serializer = json.dumps  # type: ignore[attr-defined]  # noqa: SLF001
+        eng.dialect._json_deserializer = _custom_json_deserializer  # type: ignore[attr-defined]  # noqa: SLF001
     return eng
 
 
@@ -381,7 +381,10 @@ def init_rag_index_db() -> None:
 
     index_engine = create_engine_for_url(index_url)
     try:
-        Base.metadata.create_all(bind=index_engine, tables=[RagChunk.__table__, EmbeddingCache.__table__])
+        Base.metadata.create_all(
+            bind=index_engine,
+            tables=[RagChunk.__table__, EmbeddingCache.__table__],  # type: ignore[list-item]
+        )
         if index_engine.dialect.name == "postgresql":
             from sqlalchemy import text
 
