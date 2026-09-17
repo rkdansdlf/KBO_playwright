@@ -54,7 +54,7 @@ def _check_lock_status(lock_name: str) -> bool:
 
 
 def _async_run_daily_update(job_id: str) -> None:
-    from src.cli.run_daily_update import main as run_daily_update_main
+    from src.cli.pipelines.run_daily_update import main as run_daily_update_main
 
     logger.info("[API] Starting background daily update crawl for job %s...", job_id)
     try:
@@ -148,9 +148,9 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
 
         scoreboard_map: dict[str, list[int]] = {"away": [], "home": []}
         for inn in innings:
-            side = inn.team_side or "away"
+            side = str(inn.team_side or "away")
             if side in scoreboard_map:
-                scoreboard_map[side].append(inn.runs or 0)
+                scoreboard_map[side].append(int(inn.runs or 0))
 
         scoreboard = [
             InningScoreSchema(
