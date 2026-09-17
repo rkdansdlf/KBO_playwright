@@ -162,7 +162,7 @@ def _check_resolved_ips(hostname: str) -> tuple[bool, str]:
         return False, f"DNS resolution returned no addresses for: {hostname}"
 
     for _family, _type, _proto, _canonname, sockaddr in resolved_ips:
-        ip_str = sockaddr[0]
+        ip_str = str(sockaddr[0])
         if is_private_ip(ip_str):
             logger.warning(
                 "[SSRF_BLOCK] Host %s resolved to private IP %s - blocked",
