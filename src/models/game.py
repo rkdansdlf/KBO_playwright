@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import time
+
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -17,7 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, relationship
 
 from src.db.types import OracleCompatibleTime
 from src.models.base import Base, TimestampMixin
@@ -132,8 +134,8 @@ class GameMetadata(Base, TimestampMixin):
     stadium_code = Column(String(30))
     stadium_name = Column(String(64))
     attendance = Column(Integer)
-    start_time = Column(OracleCompatibleTime())
-    end_time = Column(OracleCompatibleTime())
+    start_time: Mapped[time | None] = Column(OracleCompatibleTime())  # type: ignore[assignment]
+    end_time: Mapped[time | None] = Column(OracleCompatibleTime())  # type: ignore[assignment]
     game_time_minutes = Column(Integer)
     weather = Column(String(32))
     source_payload = Column(JSON)
