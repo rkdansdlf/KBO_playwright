@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -58,7 +58,7 @@ jobs:
       matrix:
         python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -123,7 +123,7 @@ jobs:
           --health-timeout=5s
           --health-retries=5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/kbo-job-setup
         with:
           python-version: "3.12"
@@ -156,7 +156,7 @@ jobs:
     needs: test
     if: always() && needs.test.result == 'success'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -203,7 +203,7 @@ jobs:
           --health-timeout=5s
           --health-retries=5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -239,7 +239,7 @@ jobs:
     needs: test
     if: always() && needs.test.result == 'success'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -299,7 +299,7 @@ jobs:
           --health-timeout=5s
           --health-retries=5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/kbo-job-setup
         with:
           python-version: "3.12"
