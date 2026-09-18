@@ -23,6 +23,8 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/api/routers/games.py",
     "src/api/routers/pipeline.py",
     "src/api/schemas.py",
+    "src/certification/models.py",
+    "src/certification/registry.py",
     "src/cli/live/dashboard.py",
     "src/cli/rag/build_rag_index.py",
     "src/cli/rag/evaluate_rag_retrieval.py",
