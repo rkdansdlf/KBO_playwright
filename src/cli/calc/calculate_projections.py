@@ -149,7 +149,7 @@ def calculate_projections_batch(
         pitcher_ids = list(session.execute(stmt_pitchers).scalars().all())
 
         for pid in pitcher_ids:
-            hist_stmt = (
+            pitcher_hist_stmt = (
                 select(PlayerSeasonPitching)
                 .where(
                     PlayerSeasonPitching.player_id == pid,
@@ -157,8 +157,8 @@ def calculate_projections_batch(
                 )
                 .order_by(PlayerSeasonPitching.season.desc())
             )
-            seasons = list(session.execute(hist_stmt).scalars().all())
-            if not seasons:
+            pitcher_seasons = list(session.execute(pitcher_hist_stmt).scalars().all())
+            if not pitcher_seasons:
                 continue
 
             hist_payload = [
@@ -171,7 +171,7 @@ def calculate_projections_batch(
                     "hits": float(s.hits_allowed or 0),
                     "home_runs": float(s.home_runs_allowed or 0),
                 }
-                for s in seasons
+                for s in pitcher_seasons
             ]
             proj_dict = engine.project_pitcher(history_seasons=hist_payload, league_rates=league_rates_pitcher, age=28)
             pitchers_projected += 1
@@ -181,7 +181,7 @@ def calculate_projections_batch(
                     target_season=target_season,
                     player_id=pid,
                     player_name=f"Player_{pid}",
-                    team_code=seasons[0].team_code if hasattr(seasons[0], "team_code") else None,
+                    team_code=(pitcher_seasons[0].team_code if hasattr(pitcher_seasons[0], "team_code") else None),
                     position_type="PITCHER",
                     age=28,
                     projected_ip=proj_dict.get("projected_ip"),
