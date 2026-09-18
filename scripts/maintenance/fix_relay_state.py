@@ -255,8 +255,8 @@ def print_summary(summary: RelayStateSummary) -> None:
             logger.info(f"  [{issue.issue_type}] {issue.source_name}: {issue.count}개 게임")
 
 
-def fix_unknown_sources(dry_run: bool = True) -> dict[str, Any]:
-    summary = audit_relay_source_states()
+def fix_unknown_sources(dry_run: bool = True, sample_size: int | None = None) -> dict[str, Any]:
+    summary = audit_relay_source_states(sample_size=sample_size)
     fixable = _get_games_by_criterion(summary, "unknown_source")
 
     if not fixable:
@@ -291,8 +291,8 @@ def fix_unknown_sources(dry_run: bool = True) -> dict[str, Any]:
     return results
 
 
-def fix_source_mismatch(dry_run: bool = True) -> dict[str, Any]:
-    summary = audit_relay_source_states()
+def fix_source_mismatch(dry_run: bool = True, sample_size: int | None = None) -> dict[str, Any]:
+    summary = audit_relay_source_states(sample_size=sample_size)
     mismatch_games = _get_games_by_criterion(summary, "source_mismatch")
 
     if not mismatch_games:
@@ -309,8 +309,8 @@ def fix_source_mismatch(dry_run: bool = True) -> dict[str, Any]:
     }
 
 
-def remove_redundant_sources(dry_run: bool = True) -> dict[str, Any]:
-    summary = audit_relay_source_states()
+def remove_redundant_sources(dry_run: bool = True, sample_size: int | None = None) -> dict[str, Any]:
+    summary = audit_relay_source_states(sample_size=sample_size)
     redundant_games = _get_games_by_criterion(summary, "redundant")
 
     if not redundant_games:

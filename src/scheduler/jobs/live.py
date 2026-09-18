@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import text
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.cli.daily_preview_batch import run_preview_batch
-from src.cli.live_crawler import run_live_crawler_cycle
+from src.cli.live.live_crawler import run_live_crawler_cycle
+from src.cli.pipelines.daily_preview_batch import run_preview_batch
 from src.db.engine import DATABASE_URL, SessionLocal
 from src.db.sqlite_integrity import check_sqlite_database, is_sqlite_corruption_error
 from src.scheduler.alerting import alert_failure, alert_success
@@ -31,6 +31,8 @@ from src.scheduler.locks import LIVE_LOCK, _sqlite_writer_lock
 from src.utils.alerting import SlackWebhookClient
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from src.utils.polling_policy import AdaptivePollingEngine
 
 logger = logging.getLogger("src.scheduler.jobs.live")
@@ -245,7 +247,7 @@ def crawl_pregame_refresh() -> None:
         now_val = datetime.now(KST)
         _STATE.last_pregame_run_time = now_val
         if mod and hasattr(mod, "LAST_PREGAME_RUN_TIME"):
-            mod.LAST_PREGAME_RUN_TIME = now_val
+            setattr(mod, "LAST_PREGAME_RUN_TIME", now_val)  # noqa: B010
     finally:
         live_lock.release()
 
@@ -280,11 +282,13 @@ def _parse_update_time(
     latest_update_time: datetime | None,
 ) -> datetime | None:
     try:
-        updated_dt = datetime.fromisoformat(updated_at_raw) if isinstance(updated_at_raw, str) else updated_at_raw
-        if getattr(updated_dt, "tzinfo", None) is None:
-            updated_kst = updated_dt.replace(tzinfo=KST)  # type: ignore[union-attr]
+        if isinstance(updated_at_raw, str):
+            updated_dt = datetime.fromisoformat(updated_at_raw)
+        elif isinstance(updated_at_raw, datetime):
+            updated_dt = updated_at_raw
         else:
-            updated_kst = updated_dt.astimezone(KST)  # type: ignore[union-attr]
+            return latest_update_time
+        updated_kst = updated_dt.replace(tzinfo=KST) if updated_dt.tzinfo is None else updated_dt.astimezone(KST)
         if latest_update_time is None or updated_kst > latest_update_time:
             return updated_kst
     except (ValueError, TypeError, OSError, AttributeError):
@@ -307,7 +311,9 @@ def _categorize_game_row(
     return not_terminal, is_active, is_suspended
 
 
-def _analyze_game_rows(rows: list[object], now: datetime) -> tuple[bool, bool, bool, datetime | None, datetime | None]:
+def _analyze_game_rows(
+    rows: Sequence[object], now: datetime
+) -> tuple[bool, bool, bool, datetime | None, datetime | None]:
     terminal_statuses = {"COMPLETED", "CANCELLED", "POSTPONED", "DRAW"}
     terminal_lifecycles = {"cancelled", "final", "result_pending_stabilization"}
     active_statuses = {"LIVE", "DELAYED", "SUSPENDED", "RUNNING"}
@@ -415,7 +421,7 @@ def _sync_live_poll_interval(mod: object | None, interval: int) -> None:
         )
         _STATE.last_live_poll_interval = interval
         if mod and hasattr(mod, "LAST_LIVE_POLL_INTERVAL"):
-            mod.LAST_LIVE_POLL_INTERVAL = interval
+            setattr(mod, "LAST_LIVE_POLL_INTERVAL", interval)  # noqa: B010
 
 
 def crawl_live_refresh() -> None:  # noqa: C901
@@ -455,7 +461,7 @@ def crawl_live_refresh() -> None:  # noqa: C901
 
     _STATE.last_live_run_time = now
     if mod and hasattr(mod, "LAST_LIVE_RUN_TIME"):
-        mod.LAST_LIVE_RUN_TIME = now
+        setattr(mod, "LAST_LIVE_RUN_TIME", now)  # noqa: B010
     try:
         logger.info("Running live refresh cycle")
         cycle_fn = getattr(mod, "run_live_crawler_cycle", None) or run_live_crawler_cycle
@@ -472,9 +478,9 @@ def crawl_live_refresh() -> None:  # noqa: C901
         _STATE.last_live_run_time = now
         _STATE.last_live_poll_interval = max(interval, 60)
         if mod and hasattr(mod, "LAST_LIVE_RUN_TIME"):
-            mod.LAST_LIVE_RUN_TIME = now
+            setattr(mod, "LAST_LIVE_RUN_TIME", now)  # noqa: B010
         if mod and hasattr(mod, "LAST_LIVE_POLL_INTERVAL"):
-            mod.LAST_LIVE_POLL_INTERVAL = _STATE.last_live_poll_interval
+            setattr(mod, "LAST_LIVE_POLL_INTERVAL", _STATE.last_live_poll_interval)  # noqa: B010
         raise
     finally:
         live_lock.release()
