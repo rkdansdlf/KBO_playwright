@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
 if TYPE_CHECKING:
     from src.certification.context import CertificationContext
@@ -52,7 +52,7 @@ class CertificationGate(Protocol):
     gate_id: str
     name: str
     blocking: bool
-    dependencies: list[str]
+    dependencies: ClassVar[list[str]]
 
     def run(self, context: CertificationContext) -> GateResult:
         """Execute the gate evaluation and return verifiable results."""
