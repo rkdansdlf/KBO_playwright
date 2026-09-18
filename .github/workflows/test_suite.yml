@@ -32,6 +32,8 @@ jobs:
         run: ruff format --check src/ tests/ scripts/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
+      - name: Scoped mypy gate (certified-clean modules)
+        run: python scripts/check_mypy_scoped.py 2>&1
       - name: Verify repository transaction ownership
         run: python scripts/audit_transaction_ownership.py 2>&1
       - name: Master CLI Smoke & Config Gate Check
