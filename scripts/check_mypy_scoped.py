@@ -27,6 +27,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/certification/registry.py",
     "src/cli/collection/ingest_historical_archive.py",
     "src/cli/live/dashboard.py",
+    "src/cli/sync/stage_official_season_stats.py",
     "src/crawlers/historical_season_crawler.py",
     "src/cli/rag/build_rag_index.py",
     "src/cli/rag/evaluate_rag_retrieval.py",
