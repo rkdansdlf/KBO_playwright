@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Integer, String, UniqueConstraint
@@ -61,7 +62,7 @@ class TeamDailyRoster(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("roster_date", "team_code", "player_id", name="uq_team_daily_roster"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    roster_date: Mapped[Date] = mapped_column(Date, nullable=False, index=True)
+    roster_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     team_code: Mapped[str] = mapped_column(
         String(10),
         ForeignKey("teams.team_id", ondelete="RESTRICT"),

@@ -139,7 +139,7 @@ class Player(Base, TimestampMixin):
         nullable=True,
         comment="Canonical player_basic.player_id mirror when this row represents a KBO player",
     )
-    birth_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    birth_date: Mapped[date_type | None] = mapped_column(Date, nullable=True)
     birth_place: Mapped[str | None] = mapped_column(String(64), nullable=True)
     height_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
     weight_kg: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -208,8 +208,8 @@ class PlayerIdentity(Base, TimestampMixin):
     player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
     name_kor: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name_eng: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    start_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
-    end_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    start_date: Mapped[date_type | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date_type | None] = mapped_column(Date, nullable=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -381,7 +381,7 @@ class PlayerMovement(Base, TimestampMixin):
     __tablename__ = "player_movements"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    movement_date: Mapped[Date] = mapped_column(Date, nullable=False, comment="Event date")
+    movement_date: Mapped[date_type] = mapped_column(Date, nullable=False, comment="Event date")
     section: Mapped[str] = mapped_column(String(50), nullable=False, comment="Movement type (e.g. Trade)")
     team_code: Mapped[str] = mapped_column(String(20), nullable=False, comment="Related team")
     canonical_team_id: Mapped[str | None] = mapped_column(

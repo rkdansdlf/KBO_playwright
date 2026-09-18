@@ -8,7 +8,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,6 +27,10 @@ from src.services.retrieval_evaluation import GoldenQuery, evaluate_variants, lo
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+    from sqlalchemy.orm import Session
+
+    from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -47,7 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, TypeError, ValueError, SQLAlchemyError, RuntimeError) as exc:
         sys.stderr.write(f"evaluation_error: {_error_message(exc)}\n")
         return 2
-    report = next(iter(reports.values())) if not args.all_variants else {"variants": reports}
+    report: dict[str, Any] = next(iter(reports.values())) if not args.all_variants else {"variants": reports}
     report.update(
         {
             "dataset": str(args.dataset),
@@ -118,21 +122,35 @@ def _validate_request(queries: list[GoldenQuery], args: argparse.Namespace) -> s
     return None
 
 
-def _render_report(report: dict[str, object], args: argparse.Namespace) -> None:
+def _render_report(report: dict[str, Any], args: argparse.Namespace) -> None:
     """Render a retrieval report in JSON or concise text form."""
     if args.as_json:
         sys.stdout.write(json.dumps(report, ensure_ascii=False) + "\n")
     elif args.all_variants:
-        for name, variant_report in report["variants"].items():
+        variants = report.get("variants")
+        if not isinstance(variants, dict):
+            return
+        for name, variant_report in variants.items():
+            if not isinstance(variant_report, dict):
+                continue
             sys.stdout.write(
                 "{name}: recall={recall_at_k:.4f} precision={precision_at_k:.4f} mrr={mrr:.4f}\n".format(
-                    name=name, **variant_report
+                    name=name,
+                    recall_at_k=float(variant_report.get("recall_at_k", 0.0)),
+                    precision_at_k=float(variant_report.get("precision_at_k", 0.0)),
+                    mrr=float(variant_report.get("mrr", 0.0)),
                 )
             )
     else:
         sys.stdout.write(
             "queries={query_count} k={top_k} recall={recall_at_k:.4f} precision={precision_at_k:.4f} "
-            "mrr={mrr:.4f}\n".format(**report)
+            "mrr={mrr:.4f}\n".format(
+                query_count=report.get("query_count"),
+                top_k=report.get("top_k"),
+                recall_at_k=float(report.get("recall_at_k", 0.0)),
+                precision_at_k=float(report.get("precision_at_k", 0.0)),
+                mrr=float(report.get("mrr", 0.0)),
+            )
         )
 
 
@@ -149,13 +167,14 @@ def _evaluate_queries(queries: list[GoldenQuery], args: argparse.Namespace) -> d
 
 
 def _build_variants(
-    session: object,
+    session: Session,
     *,
     include_vector: bool,
     embedding_mode: str = "configured",
 ) -> dict[str, Callable[[GoldenQuery, int], Sequence[object]]]:
     """Build named lexical, dense, and hybrid retrieval callables."""
     bm25 = RagSearchEngine(session)
+    vector_repo: VectorSearchRepository | OracleVectorSearchRepository | None
     if include_vector and is_oracle_vector_backend():
         from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
 
@@ -249,7 +268,7 @@ def _missing_corpus_ids(queries: list[GoldenQuery], *, require_vector: bool) -> 
     return sorted(missing)
 
 
-def _below_threshold(report: dict[str, object], args: argparse.Namespace) -> bool:
+def _below_threshold(report: dict[str, Any], args: argparse.Namespace) -> bool:
     """Return whether a requested evaluation threshold failed."""
     if args.min_recall is None and args.min_mrr is None:
         return False
