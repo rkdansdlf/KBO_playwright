@@ -48,6 +48,11 @@ class CanaryArchetype(StrEnum):
     INVERSE_ROLLBACK_REPLAY = "INVERSE_ROLLBACK_REPLAY"
 
 
+def _affected_rows(result: object) -> int:
+    """Return the DML rowcount without depending on the concrete Result subtype."""
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 @dataclass
 class CanaryOutcome:
     """Detailed verification record for a single canary test case."""
@@ -119,14 +124,14 @@ def execute_archetype_safe_rekey(
     res = session.execute(stmt)
     session.flush()
 
-    passed = res.rowcount == 1
+    passed = _affected_rows(res) == 1
     return CanaryOutcome(
         archetype=CanaryArchetype.SAFE_REKEY,
         source_table=chunk.source_table,
         chunk_id=chunk_id,
         status="PASS" if passed else "FAIL",
         action_taken="UPDATE",
-        mutations=res.rowcount,
+        mutations=_affected_rows(res),
         detail=f"Rekeyed to {target_natural_key}",
     )
 
@@ -158,14 +163,14 @@ def execute_archetype_safe_rekey_stats(
     res = session.execute(stmt)
     session.flush()
 
-    passed = res.rowcount == 1
+    passed = _affected_rows(res) == 1
     return CanaryOutcome(
         archetype=CanaryArchetype.SAFE_REKEY_STATS,
         source_table=chunk.source_table,
         chunk_id=chunk_id,
         status="PASS" if passed else "FAIL",
         action_taken="UPDATE",
-        mutations=res.rowcount,
+        mutations=_affected_rows(res),
         detail=f"Rekeyed to stats natural key {target_natural_key}",
     )
 
@@ -213,9 +218,9 @@ def execute_archetype_collision_tombstone(
         archetype=CanaryArchetype.TARGET_COLLISION_TOMBSTONE,
         source_table=legacy_chunk.source_table,
         chunk_id=legacy_chunk_id,
-        status="PASS" if res.rowcount == 1 else "FAIL",
+        status="PASS" if _affected_rows(res) == 1 else "FAIL",
         action_taken="TOMBSTONE",
-        mutations=res.rowcount,
+        mutations=_affected_rows(res),
         detail=f"Legacy chunk tombstoned; natural chunk {natural_chunk.id} preserved",
     )
 
@@ -287,7 +292,7 @@ def execute_archetype_stale_cas_reject(
     res = session.execute(stmt)
     session.flush()
 
-    if res.rowcount == 0:
+    if _affected_rows(res) == 0:
         return CanaryOutcome(
             archetype=CanaryArchetype.STALE_CAS_REJECT,
             source_table=chunk.source_table,
@@ -304,7 +309,7 @@ def execute_archetype_stale_cas_reject(
         chunk_id=chunk_id,
         status="FAIL",
         action_taken="UNEXPECTED_UPDATE",
-        mutations=res.rowcount,
+        mutations=_affected_rows(res),
         detail="Stale CAS update unexpectedly mutated row",
     )
 

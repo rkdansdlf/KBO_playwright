@@ -92,21 +92,21 @@ class HistoricalSeasonCrawler:
             )
             session.add(game_row)
 
-        game_row.game_date = g_date
-        game_row.home_team = home_team
-        game_row.away_team = away_team
-        game_row.home_score = g_dict.get("home_score")
-        game_row.away_score = g_dict.get("away_score")
+        game_row.game_date = g_date  # type: ignore[assignment]
+        game_row.home_team = home_team  # type: ignore[assignment]
+        game_row.away_team = away_team  # type: ignore[assignment]
+        game_row.home_score = g_dict.get("home_score")  # type: ignore[assignment]
+        game_row.away_score = g_dict.get("away_score")  # type: ignore[assignment]
         game_row.game_status = g_dict.get("game_status", "COMPLETED")
-        game_row.stadium = g_dict.get("stadium")
+        game_row.stadium = g_dict.get("stadium")  # type: ignore[assignment]
 
         meta_row = session.execute(select(GameMetadata).where(GameMetadata.game_id == game_id)).scalar_one_or_none()
         if not meta_row:
             meta_row = GameMetadata(game_id=game_id)
             session.add(meta_row)
 
-        meta_row.stadium_name = g_dict.get("stadium")
-        meta_row.source_payload = {
+        meta_row.stadium_name = g_dict.get("stadium")  # type: ignore[assignment]
+        meta_row.source_payload = {  # type: ignore[assignment]
             "source_name": source_name,
             "crawled_at": now.isoformat(),
             "raw_game_data": g_dict,
