@@ -104,6 +104,11 @@ def _has_field(row: Mapping[str, Any] | object, key: str) -> bool:
     return hasattr(row, key)
 
 
+def _str_or_none(value: object) -> str | None:
+    """Narrow a dynamic row value to an optional string for finding payloads."""
+    return str(value) if value is not None else None
+
+
 def _source_key(row: Mapping[str, Any] | object) -> str:
     """Build the stable source identity for a row."""
     return f"{_value(row, 'source_table')}:{_value(row, 'source_row_id')}"
@@ -152,10 +157,10 @@ def compare_index_rows(
         primary_version = _value(primary_row, "index_version")
         vector_version = _value(vector_row, "index_version")
         finding_kwargs = {
-            "primary_hash": primary_hash,
-            "vector_hash": vector_hash,
-            "primary_version": primary_version,
-            "vector_version": vector_version,
+            "primary_hash": _str_or_none(primary_hash),
+            "vector_hash": _str_or_none(vector_hash),
+            "primary_version": _str_or_none(primary_version),
+            "vector_version": _str_or_none(vector_version),
         }
         if not primary_hash or not vector_hash or primary_hash != vector_hash:
             issue = "CONTENT_HASH_MISMATCH" if primary_hash and vector_hash else "CONTENT_HASH_MISSING"
@@ -256,10 +261,10 @@ def audit_single_store_session(session: Session) -> IndexConsistencyReport:
     for row in defect_rows:
         source_key = _source_key(row)
         finding_kwargs = {
-            "primary_hash": _value(row, "content_hash"),
-            "vector_hash": _value(row, "content_hash"),
-            "primary_version": _value(row, "index_version"),
-            "vector_version": _value(row, "index_version"),
+            "primary_hash": _str_or_none(_value(row, "content_hash")),
+            "vector_hash": _str_or_none(_value(row, "content_hash")),
+            "primary_version": _str_or_none(_value(row, "index_version")),
+            "vector_version": _str_or_none(_value(row, "index_version")),
         }
         if not _value(row, "content_hash"):
             findings.append(IndexConsistencyFinding(source_key, "CONTENT_HASH_MISSING", **finding_kwargs))
