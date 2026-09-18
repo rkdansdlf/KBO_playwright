@@ -9,9 +9,9 @@ from datetime import datetime
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.cli.crawl_retire import main as crawl_retire_main
+from src.cli.collection.crawl_retire import main as crawl_retire_main
 from src.db.engine import SessionLocal, get_db_session
-from src.scheduler.alerting import alert_failure, alert_success
+from src.scheduler.alerting import alert_failure, alert_success, alert_warning
 from src.scheduler.config import (
     KST,
     SCHEDULER_JOB_EXCEPTIONS,
@@ -152,7 +152,7 @@ def compute_rankings_job() -> None:
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Rankings Computation ===")
         try:
-            from src.cli.calculate_rankings import rebuild_rankings
+            from src.cli.calc.calculate_rankings import rebuild_rankings
 
             current_year = datetime.now(KST).year
             rebuild_rankings(current_year)
@@ -167,7 +167,7 @@ def auto_heal_games_job() -> None:
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Auto-Healer (Stuck & Inconsistent Games) ===")
         try:
-            from src.cli.auto_healer import run_healer_async
+            from src.cli.backfill.auto_healer import run_healer_async
 
             unresolved_count = asyncio.run(run_healer_async(dry_run=False))
             if unresolved_count == 0:
@@ -186,7 +186,7 @@ def heal_unverified_pbp_job() -> None:
         try:
             import os
 
-            from src.cli.auto_healer import run_pbp_healer
+            from src.cli.backfill.auto_healer import run_pbp_healer
 
             lookback = os.getenv("PBP_HEALER_LOOKBACK_DAYS", "3")
             exit_code = run_pbp_healer(["--lookback-days", lookback])
@@ -205,7 +205,7 @@ def data_integrity_check_job() -> None:
         logger.info("=== Starting Data Integrity Check ===")
         try:
             target_date = _previous_day_kst()
-            from src.cli.data_integrity_checker import run_integrity_checks
+            from src.cli.reports.data_integrity_checker import run_integrity_checks
 
             report = run_integrity_checks(target_date)
             if report.failed_checks == 0:
@@ -226,7 +226,7 @@ def sync_rag_incremental_job() -> None:
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting RAG Vector DB Incremental Sync ===")
         try:
-            from src.cli.build_rag_index import main as build_rag_index_main
+            from src.cli.rag.build_rag_index import main as build_rag_index_main
 
             previous_env = {key: os.environ.get(key) for key in _RAG_INCREMENTAL_WRITE_ENV}
             os.environ.update(_RAG_INCREMENTAL_WRITE_ENV)
@@ -318,8 +318,8 @@ def recalc_milestones_and_rag_job() -> None:
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Milestone Recalculation and RAG Indexing ===")
         try:
-            from src.cli.index_rag_knowledge import main as index_main
-            from src.cli.recalc_milestones import main as recalc_main
+            from src.cli.calc.recalc_milestones import main as recalc_main
+            from src.cli.rag.index_rag_knowledge import main as index_main
 
             recalc_main([])
             index_main([])
@@ -471,4 +471,4 @@ def relay_state_cleanup_job() -> None:
 
         except Exception:
             logger.exception("Relay state cleanup failed")
-            alert_failure("relay_state_cleanup", "Relay state cleanup failed")
+            alert_warning("relay_state_cleanup", "Relay state cleanup failed")

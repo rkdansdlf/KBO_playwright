@@ -122,11 +122,15 @@ def test_relay_state_cleanup_success_alert_sent() -> None:
 
 
 def test_relay_state_cleanup_failure_alert_sent() -> None:
-    """Test that failure alert is sent when an exception occurs."""
+    """Test that a warning alert is sent when an exception occurs.
+
+    The job uses alert_warning (direct-call alert) because alert_failure is a
+    tenacity retry callback and raises TypeError when called with job details.
+    """
     with (
         patch("src.scheduler.jobs.maintenance._scheduler_job_lock") as mock_lock,
         patch("src.scheduler.jobs.maintenance.alert_success") as mock_success,
-        patch("src.scheduler.jobs.maintenance.alert_failure") as mock_failure,
+        patch("src.scheduler.jobs.maintenance.alert_warning") as mock_warning,
         patch("scripts.maintenance.fix_relay_state.audit_relay_source_states", side_effect=Exception("Test error")),
         patch("scripts.maintenance.fix_relay_state.print_summary"),
     ):
@@ -134,7 +138,7 @@ def test_relay_state_cleanup_failure_alert_sent() -> None:
         relay_state_cleanup_job()
 
     assert mock_success.called is False
-    assert mock_failure.called is True
+    assert mock_warning.called is True
 
 
 def test_relay_state_cleanup_skips_fixes_when_no_issues() -> None:
