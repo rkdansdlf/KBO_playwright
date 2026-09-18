@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import func
 
@@ -63,11 +63,11 @@ class MatchupAnalyticsEngine:
         bvp_map: dict[tuple[int, int], dict[str, Any]] = {}
 
         for ev in events:
-            key = (ev.batter_id, ev.pitcher_id)
+            key = (cast("int", ev.batter_id), cast("int", ev.pitcher_id))
             if key not in bvp_map:
                 bvp_map[key] = {
-                    "batter_id": ev.batter_id,
-                    "pitcher_id": ev.pitcher_id,
+                    "batter_id": cast("int", ev.batter_id),
+                    "pitcher_id": cast("int", ev.pitcher_id),
                     "pa": 0,
                     "ab": 0,
                     "h": 0,
@@ -81,7 +81,7 @@ class MatchupAnalyticsEngine:
                 }
             st = bvp_map[key]
             st["pa"] += 1
-            desc = ev.description or ""
+            desc = str(ev.description or "")
             _apply_event_to_bvp_stat(st, desc)
 
         results: list[MatchupMatrix] = []
@@ -131,7 +131,6 @@ class MatchupAnalyticsEngine:
             bvp_row = (
                 self.session.query(MatchupBvP)
                 .filter(
-                    MatchupBvP.season == season_year,
                     MatchupBvP.batter_id == m.batter_id,
                     MatchupBvP.pitcher_id == m.pitcher_id,
                 )
@@ -139,24 +138,27 @@ class MatchupAnalyticsEngine:
             )
             if not bvp_row:
                 bvp_row = MatchupBvP(
-                    season=season_year,
                     batter_id=m.batter_id,
                     pitcher_id=m.pitcher_id,
                 )
                 self.session.add(bvp_row)
 
-            bvp_row.plate_appearances = m.plate_appearances
-            bvp_row.at_bats = m.at_bats
-            bvp_row.hits = m.hits
-            bvp_row.doubles = m.doubles
-            bvp_row.triples = m.triples
-            bvp_row.home_runs = m.home_runs
-            bvp_row.walks = m.walks
-            bvp_row.strikeouts = m.strikeouts
-            bvp_row.avg = m.avg
-            bvp_row.obp = m.obp
-            bvp_row.slg = m.slg
-            bvp_row.ops = m.ops
+            sync_values = {
+                "plate_appearances": m.plate_appearances,
+                "at_bats": m.at_bats,
+                "hits": m.hits,
+                "doubles": m.doubles,
+                "triples": m.triples,
+                "home_runs": m.home_runs,
+                "walks": m.walks,
+                "strikeouts": m.strikeouts,
+                "avg": m.avg,
+                "obp": m.obp,
+                "slg": m.slg,
+                "ops": m.ops,
+            }
+            for field_name, value in sync_values.items():
+                setattr(bvp_row, field_name, value)
 
         self.session.flush()
         return len(matrix)
@@ -173,11 +175,11 @@ class MatchupAnalyticsEngine:
 
         risp_map: dict[int, dict[str, int]] = {}
         for ev in events:
-            desc = ev.description or ""
+            desc = str(ev.description or "")
             # Consider RISP if runner on 2B or 3B
             is_risp = False
             if ev.bases_before and len(ev.bases_before) == BASES_LEN:
-                is_risp = ev.bases_before[1] == "1" or ev.bases_before[2] == "1"
+                is_risp = bool(ev.bases_before[1] == "1" or ev.bases_before[2] == "1")
             elif ev.base_state is not None:
                 is_risp = bool(ev.base_state & 6)  # 2nd or 3rd base bit
             elif "득점권" in desc or "주자 2루" in desc or "주자 3루" in desc:
@@ -186,7 +188,7 @@ class MatchupAnalyticsEngine:
             if not is_risp:
                 continue
 
-            b_id = ev.batter_id
+            b_id = cast("int", ev.batter_id)
             if b_id not in risp_map:
                 risp_map[b_id] = {"pa": 0, "ab": 0, "h": 0, "rbi": 0}
 
@@ -197,15 +199,15 @@ class MatchupAnalyticsEngine:
                 st["h"] += 1
             elif "볼넷" not in desc and "사구" not in desc and "희생" not in desc:
                 st["ab"] += 1
-            st["rbi"] += ev.rbi or 0
+            st["rbi"] += int(ev.rbi or 0)
 
         splits: list[SplitMetrics] = []
-        for b_id, st in risp_map.items():
+        for risp_batter_id, st in risp_map.items():
             avg = (st["h"] / st["ab"]) if st["ab"] > 0 else 0.0
             splits.append(
                 SplitMetrics(
                     category="risp",
-                    entity_id=b_id,
+                    entity_id=risp_batter_id,
                     season=season_year,
                     split_key="RISP",
                     sample_size=st["pa"],
