@@ -439,7 +439,7 @@ def propagate_index_delete(
     )
 
 
-def _row(session: Session, model: type[object], source_table: str, source_row_id: str) -> object | None:
+def _row(session: Session, model: Any, source_table: str, source_row_id: str) -> Any:  # noqa: ANN401
     return session.scalar(
         select(model).where(
             model.source_table == source_table,
