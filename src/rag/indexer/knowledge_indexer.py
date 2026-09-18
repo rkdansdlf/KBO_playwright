@@ -82,19 +82,20 @@ class KnowledgeIndexer:
 
         chunks: list[dict[str, Any]] = []
         for m in milestones:
+            progress = f"{m.current_val}/{m.target_val} (잔여 {m.remaining_val})"
             content = (
-                f"[{m.achieved_date}] {m.player_name} ({m.team_name}) - {m.milestone_type}: {m.record_detail}\n"
-                f"상대: {m.opponent_team or '미정'}, 구장: {m.stadium or '미정'}"
+                f"[{m.achieved_date}] {m.player_name} ({m.team_code or '미정'}) - {m.milestone_category}: {progress}\n"
+                f"달성여부: {'달성' if m.is_achieved else '진행중'}"
             )
             chunks.append(
                 {
-                    "title": f"기록 달성 - {m.player_name} {m.milestone_type}",
+                    "title": f"기록 달성 - {m.player_name} {m.milestone_category}",
                     "content": content,
                     "meta": {
                         "category": "milestone",
                         "player_name": m.player_name,
-                        "team_name": m.team_name,
-                        "milestone_type": m.milestone_type,
+                        "team_code": m.team_code,
+                        "milestone_category": m.milestone_category,
                         "achieved_date": str(m.achieved_date) if m.achieved_date else None,
                     },
                 }
@@ -120,7 +121,7 @@ class KnowledgeIndexer:
         for g in games:
             content = (
                 f"[{g.game_date}] 퓨처스리그 {g.away_team} vs {g.home_team}\n"
-                f"구장: {g.stadium}, 시간: {g.game_time or '미정'}, 상태: {g.game_status or '예정'}"
+                f"구장: {g.stadium or '미정'}, 상태: {g.game_status or '예정'}"
             )
             chunks.append(
                 {
@@ -155,12 +156,12 @@ class KnowledgeIndexer:
         chunks: list[dict[str, Any]] = []
         for s in splits:
             content = (
-                f"[{s.season}] {s.player_name} ({s.team_code}) {s.split_type}/{s.split_value} 기록:\n"
+                f"[{s.season}] {s.player_name} ({s.team_code}) {s.split_type}/{s.split_key} 기록:\n"
                 f"타율: {s.avg}, 안타: {s.hits}, 홈런: {s.hr}, 타점: {s.rbi}, OPS: {s.ops}"
             )
             chunks.append(
                 {
-                    "title": f"선수 스플릿 - {s.season} {s.player_name} {s.split_type}:{s.split_value}",
+                    "title": f"선수 스플릿 - {s.season} {s.player_name} {s.split_type}:{s.split_key}",
                     "content": content,
                     "meta": {
                         "category": "player_splits",
@@ -168,7 +169,7 @@ class KnowledgeIndexer:
                         "player_name": s.player_name,
                         "team_code": s.team_code,
                         "split_type": s.split_type,
-                        "split_value": s.split_value,
+                        "split_key": s.split_key,
                     },
                 }
             )
