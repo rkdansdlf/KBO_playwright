@@ -57,7 +57,7 @@ class StageRows:
     team_batting: list[dict[str, Any]]
     team_pitching: list[dict[str, Any]]
     player_batting: list[dict[str, Any]]
-    player_pitching: list[object]
+    player_pitching: Sequence[object]
     expected_team_ids: set[str]
 
 
@@ -69,7 +69,7 @@ def _value(row: object, field: str) -> object:
 
 def _as_number(value: object) -> float:
     try:
-        return float(value or 0)
+        return float(value or 0)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0.0
 
@@ -127,8 +127,8 @@ def _diffs(
 
 
 def _available_fields(
-    team_rows: list[object],
-    player_rows: list[object],
+    team_rows: Sequence[object],
+    player_rows: Sequence[object],
     fields: tuple[str, ...],
     value_getter: Callable[[object, str], object],
 ) -> tuple[tuple[str, ...], list[str]]:
@@ -143,8 +143,8 @@ def _available_fields(
 
 
 def _source_comparison(
-    team_rows: list[object],
-    player_rows: list[object],
+    team_rows: Sequence[object],
+    player_rows: Sequence[object],
     fields: tuple[str, ...],
     *,
     value_getter: Callable[[object, str], object] = _value,
@@ -173,8 +173,8 @@ def _source_comparison(
 
 
 def _team_comparison(
-    team_rows: list[object],
-    player_rows: list[object],
+    team_rows: Sequence[object],
+    player_rows: Sequence[object],
     fields: tuple[str, ...],
     *,
     value_getter: Callable[[object, str], object] = _value,
@@ -207,7 +207,7 @@ def _team_comparison(
     }
 
 
-def _invalid_era_rows(rows: list[object]) -> list[dict[str, object]]:
+def _invalid_era_rows(rows: Sequence[object]) -> list[dict[str, object]]:
     invalid: list[dict[str, object]] = []
     for row in rows:
         era = _as_number(_value(row, "era"))
