@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from itertools import islice
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
@@ -260,7 +260,7 @@ def _resolve_build_targets(
     """Resolve and validate explicit source, sparse, and vector build targets."""
     target_db_url = target_db_url or source_db_url
     configured_sparse_url = os.getenv("RAG_INDEX_DB_URL", "")
-    configured_vector_url = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL", "")
+    configured_vector_url = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL") or ""
     if configured_sparse_url:
         vector_db = target_db_url if configured_sparse_url.startswith("oracle") else configured_vector_url
     elif target_db_url.startswith("oracle"):
@@ -518,7 +518,9 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
             "content": content,
             "team_id": None,
             "player_id": None,
-            "season_year": game.game_date.year if game.game_date else _season_year_from_id(game.season_id),
+            "season_year": (
+                game.game_date.year if game.game_date else _season_year_from_id(cast("int | None", game.season_id))
+            ),
             "document_type": "game_result",
             "game_date": game.game_date,
             "published_at": None,
@@ -1228,7 +1230,7 @@ def _iter_regulation_chunks(_session: Session, _season: int | None, limit: int |
     yield from _iter_local_markdown_chunks("kbo_regulations", limit)
 
 
-def _row_value(row: Mapping[str, Any], *keys: str) -> object:
+def _row_value(row: Mapping[Any, Any], *keys: str) -> object:
     """Return the first non-null value from a source row."""
     for key in keys:
         value = row.get(key)
@@ -1237,7 +1239,7 @@ def _row_value(row: Mapping[str, Any], *keys: str) -> object:
     return None
 
 
-def _row_metadata(row: Mapping[str, Any]) -> dict[str, Any]:
+def _row_metadata(row: Mapping[Any, Any]) -> dict[str, Any]:
     """Normalize metadata from either KBO RAG schema variant."""
     value = _row_value(row, "meta", "metadata")
     if isinstance(value, dict):

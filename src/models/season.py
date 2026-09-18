@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import Date, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,8 +23,8 @@ class KboSeason(Base, TimestampMixin):
     season_year: Mapped[int] = mapped_column(Integer, nullable=False, comment="시즌 연도")
     league_type_code: Mapped[int] = mapped_column(Integer, nullable=False, comment="시즌 종류 코드")
     league_type_name: Mapped[str] = mapped_column(String(50), nullable=False, comment="시즌 종류 이름")
-    start_date: Mapped[Date | None] = mapped_column(Date, nullable=True, comment="시즌 시작일")
-    end_date: Mapped[Date | None] = mapped_column(Date, nullable=True, comment="시즌 종료일")
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="시즌 시작일")
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="시즌 종료일")
 
     def __repr__(self) -> str:
         """Return a string representation of this object."""
