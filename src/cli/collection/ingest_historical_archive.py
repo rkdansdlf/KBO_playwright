@@ -102,12 +102,12 @@ class HistoricalArchiveIngestor:
             parsed_date = dt_date.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
             existing_game = self.session.execute(select(Game).where(Game.game_id == g["game_id"])).scalar_one_or_none()
             if existing_game:
-                existing_game.game_date = parsed_date
-                existing_game.away_team = g.get("away_team")
-                existing_game.home_team = g.get("home_team")
-                existing_game.away_score = g.get("away_score")
-                existing_game.home_score = g.get("home_score")
-                existing_game.stadium = g.get("stadium")
+                existing_game.game_date = parsed_date  # type: ignore[assignment]
+                existing_game.away_team = g.get("away_team")  # type: ignore[assignment]
+                existing_game.home_team = g.get("home_team")  # type: ignore[assignment]
+                existing_game.away_score = g.get("away_score")  # type: ignore[assignment]
+                existing_game.home_score = g.get("home_score")  # type: ignore[assignment]
+                existing_game.stadium = g.get("stadium")  # type: ignore[assignment]
                 existing_game.game_status = g.get("game_status", "COMPLETED")
             else:
                 self.session.add(
@@ -127,7 +127,7 @@ class HistoricalArchiveIngestor:
                 select(GameMetadata).where(GameMetadata.game_id == g["game_id"])
             ).scalar_one_or_none()
             if existing_meta:
-                existing_meta.source_payload = source_payload
+                existing_meta.source_payload = source_payload  # type: ignore[assignment]
             else:
                 self.session.add(
                     GameMetadata(
@@ -278,7 +278,7 @@ class HistoricalArchiveIngestor:
         player_pitching: list[dict[str, Any]],
         season: int,
     ) -> None:
-        batting_aliases = {
+        batting_aliases: dict[str, tuple[str, ...]] = {
             "plate_appearances": ("pa",),
             "at_bats": ("ab",),
             "runs": ("r",),
@@ -295,7 +295,7 @@ class HistoricalArchiveIngestor:
             "sacrifice_flies": ("sf",),
             "gdp": ("gidp",),
         }
-        pitching_aliases = {
+        pitching_aliases: dict[str, tuple[str, ...]] = {
             "innings_pitched": ("ip",),
             "innings_outs": ("outs",),
             "hits_allowed": ("h",),
@@ -336,7 +336,7 @@ class HistoricalArchiveIngestor:
         team_pitching: list[dict[str, Any]],
         season: int,
     ) -> None:
-        batting_aliases = {
+        batting_aliases: dict[str, tuple[str, ...]] = {
             "team_id": ("team_code",),
             "plate_appearances": ("pa",),
             "at_bats": ("ab",),
@@ -354,7 +354,7 @@ class HistoricalArchiveIngestor:
             "sacrifice_flies": ("sf",),
             "gdp": ("gidp",),
         }
-        pitching_aliases = {
+        pitching_aliases: dict[str, tuple[str, ...]] = {
             "team_id": ("team_code",),
             "innings_pitched": ("ip",),
             "innings_outs": ("outs",),
@@ -395,7 +395,7 @@ class HistoricalArchiveIngestor:
         if not provenance and not source_name:
             error_msg = "provenance is required"
             raise ValueError(error_msg)
-        src_name = source_name or (provenance.get("source_name") if provenance else "")
+        src_name = source_name or (provenance.get("source_name") if provenance else "") or ""
         if src_name == "fixture" or (
             provenance and (provenance.get("data_class") == "synthetic_fixture" or provenance.get("verified") is False)
         ):
