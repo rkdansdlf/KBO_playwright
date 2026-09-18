@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if os.environ.get("KBO_SEALED_REPLAY_OFFLINE") == "1":
     import socket
@@ -20,7 +20,7 @@ if os.environ.get("KBO_SEALED_REPLAY_OFFLINE") == "1":
         msg = "Network forbidden during sealed replay: external socket connection blocked"
         raise RuntimeError(msg)
 
-    socket.socket.connect = _blocked_connect
+    socket.socket.connect = _blocked_connect  # type: ignore[method-assign]
 
 from sqlalchemy import (
     JSON,
@@ -346,7 +346,7 @@ class RelayCheckpointManager:
             if not rows:
                 return None, 0, None
             latest = rows[0]
-            return latest.step, latest.seq_no, latest.state_hash
+            return latest.step, int(latest.seq_no) if latest.seq_no is not None else 0, latest.state_hash
 
     def record_checkpoint(
         self,
@@ -461,7 +461,7 @@ def parse_kbo_nodes_to_events(
                 "result_code": res_code,
                 "rbi": 0,
                 "bases_before": PBPCrawler._format_base_string(runners_before),  # noqa: SLF001
-                "bases_after": PBPCrawler._format_base_string(state["current_runners"]),  # noqa: SLF001
+                "bases_after": PBPCrawler._format_base_string(cast("int", state["current_runners"])),  # noqa: SLF001
                 "home_score": ctx.home_score,
                 "away_score": ctx.away_score,
                 "source": "kbo",
@@ -636,7 +636,7 @@ class SealedSnapshotRelayPipeline:
                     "status": "EVENT_NOT_FOUND",
                 }
 
-            base_desc = ev3.description or ""
+            base_desc = str(ev3.description or "")
             if revised_description:
                 target_revised_desc = revised_description
             elif DEFAULT_REVISED_DESCRIPTION_SUFFIX in base_desc:
@@ -665,12 +665,12 @@ class SealedSnapshotRelayPipeline:
                     }
                 msg = (
                     f"Revision conflict: revision {revision_id} already applied with different payload "
-                    f"(existing hash={existing_rev.payload_hash[:8]}, incoming hash={incoming_hash[:8]})"
+                    f"(existing hash={(existing_rev.payload_hash or '')[:8]}, incoming hash={incoming_hash[:8]})"
                 )
                 raise ValueError(msg)
 
-            orig_desc = ev3.description
-            orig_code = ev3.result_code
+            orig_desc = str(ev3.description) if ev3.description is not None else None
+            orig_code = str(ev3.result_code) if ev3.result_code is not None else None
 
             # Strict ambiguity guard & fallback elimination:
             # Locate corresponding PBP before mutating any entity. If multiple candidates exist,
@@ -690,12 +690,12 @@ class SealedSnapshotRelayPipeline:
                 }
 
             # 2. Update GameEvent
-            ev3.description = target_revised_desc
-            ev3.result_code = target_revised_code
+            ev3.description = target_revised_desc  # type: ignore[assignment]
+            ev3.result_code = target_revised_code  # type: ignore[assignment]
 
             # 3. Synchronize GamePlayByPlay via semantic provider_log_id link
-            pbp_row.play_description = target_revised_desc
-            pbp_row.result = target_revised_code
+            pbp_row.play_description = target_revised_desc  # type: ignore[assignment]
+            pbp_row.result = target_revised_code  # type: ignore[assignment]
             matched_provider_log_id = pbp_row.provider_log_id or ev3.provider_log_id
 
             # 4. Insert permanent RelayRevisionRecord with preimage & provider_log_id binding
@@ -703,7 +703,7 @@ class SealedSnapshotRelayPipeline:
                 revision_id=revision_id,
                 game_id=self.game_id,
                 target_event_seq=target_event_seq,
-                target_provider_log_id=matched_provider_log_id,
+                target_provider_log_id=(str(matched_provider_log_id) if matched_provider_log_id is not None else None),
                 original_description=orig_desc or "",
                 revised_description=target_revised_desc,
                 original_result_code=orig_code,
@@ -838,7 +838,7 @@ class SealedSnapshotRelayPipeline:
         # Apply to PBP rows using strict ID-priority policy
         for r in applied_revisions:
             matched_pbp, status = self._match_pbp_for_revision(r, raw_pbp_rows)
-            if status in ("MATCHED_BY_ID", "MATCHED_BY_FALLBACK"):
+            if matched_pbp is not None and status in ("MATCHED_BY_ID", "MATCHED_BY_FALLBACK"):
                 matched_pbp["play_description"] = r.revised_description
                 matched_pbp["result"] = r.revised_result_code
             elif status == "INVALID_ID":
