@@ -134,7 +134,7 @@ def audit_relay_source_states(sample_size: int | None = None) -> RelayStateSumma
         summary.total_pbp_rows = session.query(func.count(GamePlayByPlay.id)).scalar() or 0
         summary.total_events = session.query(func.count(GameEvent.id)).scalar() or 0
 
-        game_ids = _collect_game_ids_with_pbp(sample_size=sample_size)
+        game_ids = _collect_game_ids_with_pbp(session, sample_size=sample_size)
         summary.total_games = len(game_ids)
 
         source_counts: Counter[str] = Counter()
@@ -280,13 +280,14 @@ def fix_unknown_sources(dry_run: bool = True, sample_size: int | None = None) ->
         unknown_names = [n for n in summary.source_breakdown if n not in ALLOWED_SOURCE_TYPES_LOWER and n != "none"]
         if unknown_names:
             affected = session.execute(
-                GamePlayByPlay.__table__.update()
+                GamePlayByPlay.__table__.update()  # type: ignore[attr-defined]
                 .where(GamePlayByPlay.source_name.in_(unknown_names))
                 .values(source_name="none")
             )
-            results["affected_rows"] = affected.rowcount
+            affected_rows = int(getattr(affected, "rowcount", 0) or 0)
+            results["affected_rows"] = affected_rows
             session.commit()
-            logger.info(f"  {affected.rowcount}개 행의 source_name을 'none'으로 변경했습니다.")
+            logger.info(f"  {affected_rows}개 행의 source_name을 'none'으로 변경했습니다.")
 
     return results
 
@@ -355,7 +356,7 @@ def fix_unclassified_events(
             }
 
         for row in rows:
-            row.event_type = "noise"
+            row.event_type = "noise"  # type: ignore[assignment]
         session.commit()
         logger.info(f"  {affected_count}개 행의 event_type을 'noise'로 변경했습니다.")
 

@@ -103,13 +103,13 @@ class BasePlaywrightCrawler(BaseCrawler):
         base_mod = sys.modules.get("src.crawlers.base")
         base_pool = getattr(base_mod, "AsyncPlaywrightPool", None) if base_mod else None
         if base_pool is not None and base_pool is not RealAsyncPlaywrightPool:
-            return base_pool(max_pages=self._max_pages)  # type: ignore[no-any-return]
+            return base_pool(max_pages=self._max_pages)
 
         mod = sys.modules.get(self.__class__.__module__)
         if mod and hasattr(mod, "AsyncPlaywrightPool"):
             target_cls = mod.AsyncPlaywrightPool
             if target_cls is not None and target_cls is not RealAsyncPlaywrightPool:
-                return target_cls(max_pages=self._max_pages)  # type: ignore[no-any-return]
+                return target_cls(max_pages=self._max_pages)
 
         return RealAsyncPlaywrightPool(max_pages=self._max_pages)
 
