@@ -127,12 +127,12 @@ def _source_details(
     source_ids = {_value(row, "id"): _value(row, "source_key") for row in data_sources}
     snapshots_by_source: dict[str, list[object]] = defaultdict(list)
     for snapshot in snapshots:
-        source_key = source_ids.get(_value(snapshot, "data_source_id"))
+        source_key = _text(source_ids.get(_value(snapshot, "data_source_id")))
         if source_key:
             snapshots_by_source[source_key].append(snapshot)
     probes_by_source: dict[str, list[object]] = defaultdict(list)
     for run in probe_runs:
-        source_key = _value(run, "source_key")
+        source_key = _text(_value(run, "source_key"))
         if source_key:
             probes_by_source[source_key].append(run)
 
@@ -143,12 +143,14 @@ def _source_details(
         probe_rows = probes_by_source[source_key]
         parse_status = Counter(_text(_value(row, "parse_status")) or "unknown" for row in source_snapshots)
         probe_errors = [_text(_value(row, "error")) for row in probe_rows if _value(row, "error")]
-        probe_parsed_count = sum(int(_value(row, "parsed_records") or 0) for row in probe_rows) if probe_rows else None
+        probe_parsed_count = (
+            sum((_int_value(_value(row, "parsed_records")) or 0) for row in probe_rows) if probe_rows else None
+        )
         snapshot_parsed_count = _snapshot_parsed_record_total(source_snapshots)
         latest_snapshot = max(
             (_value(row, "fetched_at") for row in source_snapshots if _value(row, "fetched_at") is not None),
             default=None,
-        )
+        )  # type: ignore[type-var]
         details.append(
             {
                 "source_key": source_key,
@@ -225,7 +227,7 @@ def _audit_award_row(
 def _parsed_record_total(probe_runs: list[object] | None, snapshots: list[object]) -> int | None:
     """Return live-probe counts or persisted snapshot parser counts."""
     if probe_runs:
-        return sum(int(_value(run, "parsed_records") or 0) for run in probe_runs)
+        return sum((_int_value(_value(run, "parsed_records")) or 0) for run in probe_runs)
     return _snapshot_parsed_record_total(snapshots)
 
 
@@ -234,9 +236,12 @@ def _snapshot_parsed_record_total(snapshots: list[object]) -> int | None:
     parsed_counts: list[int] = []
     for snapshot in snapshots:
         metadata = _value(snapshot, "capture_metadata")
-        if not isinstance(metadata, Mapping) or metadata.get("parsed_records") is None:
+        if not isinstance(metadata, Mapping):
             continue
-        parsed_counts.append(int(metadata["parsed_records"]))
+        parsed_value = _int_value(metadata.get("parsed_records"))
+        if parsed_value is None:
+            continue
+        parsed_counts.append(parsed_value)
     return sum(parsed_counts) if parsed_counts else None
 
 
@@ -259,7 +264,7 @@ def _int_value(value: object) -> int | None:
     if value is None or isinstance(value, bool):
         return None
     try:
-        return int(value)
+        return int(value)  # type: ignore[call-overload]
     except (TypeError, ValueError):
         return None
 
