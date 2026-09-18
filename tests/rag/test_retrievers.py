@@ -128,3 +128,37 @@ def test_unified_hybrid_retriever_rrf_fusion() -> None:
     assert res.candidates[2].chunk_id == "chk_C"
     assert res.candidates[2].vector_rank is None
     assert res.candidates[2].bm25_rank == 2
+
+
+def test_unified_hybrid_retriever_resolves_entities() -> None:
+    """Regression: entity resolution must use ResolvedKboEntities fields, not missing attrs."""
+    from unittest.mock import patch
+
+    from src.services.kbo_entity_resolver import ResolvedKboEntities
+    from src.utils.kbo_entity_extractor import ExtractedKboEntities
+
+    mock_session = MagicMock()
+    mock_dense = MagicMock()
+    mock_dense.retrieve.return_value.candidates = []
+    mock_sparse = MagicMock()
+    mock_sparse.retrieve.return_value.candidates = []
+
+    resolved = ResolvedKboEntities(
+        extracted=ExtractedKboEntities(team_id="KIA", season_year=2025),
+        player_id="78224",
+    )
+    with patch("src.rag.retrievers.hybrid.resolve_kbo_entities", return_value=resolved):
+        retriever = UnifiedHybridRetriever(
+            mock_session,
+            dense_retriever=mock_dense,
+            sparse_retriever=mock_sparse,
+        )
+        query = RetrievalQuery(query_text="KIA 2025 김도영", top_k=3, resolve_entities=True)
+        res = retriever.retrieve(query)
+
+    assert res.resolved_entities["player_id"] == "78224"
+    assert res.resolved_entities["extracted"]["team_id"] == "KIA"
+    sub_query = mock_sparse.retrieve.call_args[0][0]
+    assert sub_query.filters["team_id"] == "KIA"
+    assert sub_query.filters["player_id"] == "78224"
+    assert sub_query.filters["season_year"] == 2025

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from src.rag.base_retriever import BaseRetriever
@@ -52,14 +53,14 @@ class UnifiedHybridRetriever(BaseRetriever):
             try:
                 extracted = extract_kbo_entities(norm_query.query_text)
                 resolved = resolve_kbo_entities(self.session, extracted)
-                resolved_entities_dict = resolved.to_dict()
+                resolved_entities_dict = asdict(resolved)
 
-                if resolved.team_id and "team_id" not in effective_filters:
-                    effective_filters["team_id"] = resolved.team_id
+                if resolved.extracted.team_id and "team_id" not in effective_filters:
+                    effective_filters["team_id"] = resolved.extracted.team_id
                 if resolved.player_id and "player_id" not in effective_filters:
                     effective_filters["player_id"] = resolved.player_id
-                if resolved.season and "season_year" not in effective_filters:
-                    effective_filters["season_year"] = resolved.season
+                if resolved.extracted.season_year and "season_year" not in effective_filters:
+                    effective_filters["season_year"] = resolved.extracted.season_year
             except Exception:
                 logger.exception("Error extracting/resolving KBO entities from query: %s", norm_query.query_text)
 
