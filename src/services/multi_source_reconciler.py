@@ -168,7 +168,7 @@ class MultiSourceReconciler:
         if not qr or qr.status != "PENDING":
             return False
 
-        raw = qr.raw_payload if isinstance(qr.raw_payload, dict) else json.loads(qr.raw_payload)
+        raw = qr.raw_payload if isinstance(qr.raw_payload, dict) else json.loads(qr.raw_payload)  # type: ignore[arg-type]
         rule_id = qr.rule_id
 
         # Auto-healing for Batting hits > AB discrepancy
@@ -180,19 +180,19 @@ class MultiSourceReconciler:
                 self.record_correction_audit(
                     session,
                     CorrectionAuditRequest(
-                        game_id=qr.game_id,
-                        entity_type=qr.entity_type,
-                        entity_id=qr.entity_id,
+                        game_id=str(qr.game_id) if qr.game_id is not None else None,
+                        entity_type=str(qr.entity_type),
+                        entity_id=str(qr.entity_id) if qr.entity_id is not None else None,
                         field_name="hits",
                         raw_value=raw.get("hits"),
-                        raw_source=qr.source,
+                        raw_source=str(qr.source),
                         corrected_value=sec_hits,
                         corrected_source="naver_sports",
                         reason=f"Reconciled {rule_id} via secondary payload",
                         confidence=0.95,
                     ),
                 )
-                qr.status = "RECONCILED"
+                qr.status = "RECONCILED"  # type: ignore[assignment]
                 session.flush()
                 return True
 
