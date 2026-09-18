@@ -123,8 +123,8 @@ class TeamStatAggregator:
         """Aggregate a team's games into a season record using canonical team codes."""
         record = {"games": 0, "wins": 0, "losses": 0, "ties": 0}
         for game in rows:
-            away_code = canonical_code_for_team_code(game.away_team or "", year) or game.away_team
-            home_code = canonical_code_for_team_code(game.home_team or "", year) or game.home_team
+            away_code = canonical_code_for_team_code(str(game.away_team or ""), year) or str(game.away_team or "")
+            home_code = canonical_code_for_team_code(str(game.home_team or ""), year) or str(game.home_team or "")
             is_away = team_id in (away_code, game.away_team)
             is_home = team_id in (home_code, game.home_team)
             if not (is_away or is_home) or game.away_score is None or game.home_score is None:
@@ -157,8 +157,8 @@ class TeamStatAggregator:
 
         coverage: dict[str, list[int]] = {}
         for game in rows:
-            away_code = canonical_code_for_team_code(game.away_team or "", year) or game.away_team
-            home_code = canonical_code_for_team_code(game.home_team or "", year) or game.home_team
+            away_code = canonical_code_for_team_code(str(game.away_team or ""), year) or str(game.away_team or "")
+            home_code = canonical_code_for_team_code(str(game.home_team or ""), year) or str(game.home_team or "")
             for team_code in {away_code, home_code}:
                 if team_code:
                     coverage.setdefault(team_code, [0, 0])[0] += 1
@@ -312,7 +312,7 @@ class TeamStatAggregator:
             *((model.source == source, rank) for rank, source in enumerate(PLAYER_SEASON_SOURCE_PRIORITY)),
             else_=len(PLAYER_SEASON_SOURCE_PRIORITY),
         )
-        partition_by = [model.player_id, model.season, model.league]
+        partition_by: list[Any] = [model.player_id, model.season, model.league]
         if hasattr(model, "level"):
             partition_by.append(func.coalesce(model.level, "KBO1"))
         partition_by.append(self._team_code_expression(model))
