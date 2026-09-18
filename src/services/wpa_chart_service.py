@@ -139,21 +139,21 @@ class WpaChartService:
         """Assemble timeline from stored GameEvent rows."""
         items: list[WpaTimelineItem] = []
         for e in events:
-            win_prob = e.win_expectancy_after if e.win_expectancy_after is not None else 0.5
-            wpa_val = e.wpa if e.wpa is not None else 0.0
+            win_prob = float(e.win_expectancy_after) if e.win_expectancy_after is not None else 0.5
+            wpa_val = float(e.wpa) if e.wpa is not None else 0.0
 
             items.append(
                 WpaTimelineItem(
-                    event_seq=e.event_seq or len(items) + 1,
-                    inning=e.inning or 1,
-                    inning_half=e.inning_half or "top",
-                    batter_name=e.batter_name,
-                    pitcher_name=e.pitcher_name,
-                    description=e.description or "",
+                    event_seq=int(e.event_seq) if e.event_seq is not None else len(items) + 1,
+                    inning=int(e.inning) if e.inning is not None else 1,
+                    inning_half=str(e.inning_half or "top"),
+                    batter_name=str(e.batter_name) if e.batter_name else None,
+                    pitcher_name=str(e.pitcher_name) if e.pitcher_name else None,
+                    description=str(e.description or ""),
                     home_win_prob=win_prob,
                     wpa=wpa_val,
-                    home_score=e.home_score or 0,
-                    away_score=e.away_score or 0,
+                    home_score=int(e.home_score or 0),
+                    away_score=int(e.away_score or 0),
                 )
             )
         return items
@@ -169,8 +169,8 @@ class WpaChartService:
         prev_home_prob = 0.50
 
         for idx, play in enumerate(plays, start=1):
-            inn = play.inning or 1
-            half = (play.inning_half or "top").lower()
+            inn = int(play.inning) if play.inning is not None else 1
+            half = str(play.inning_half or "top").lower()
             is_bottom = half in ("bottom", "말", "b")
 
             score_diff = current_home_score - current_away_score
@@ -189,10 +189,10 @@ class WpaChartService:
                 WpaTimelineItem(
                     event_seq=idx,
                     inning=inn,
-                    inning_half=play.inning_half or "top",
-                    batter_name=play.batter_name,
-                    pitcher_name=play.pitcher_name,
-                    description=play.play_description or "",
+                    inning_half=str(play.inning_half or "top"),
+                    batter_name=str(play.batter_name) if play.batter_name else None,
+                    pitcher_name=str(play.pitcher_name) if play.pitcher_name else None,
+                    description=str(play.play_description or ""),
                     home_win_prob=home_prob,
                     wpa=wpa_change,
                     home_score=current_home_score,
