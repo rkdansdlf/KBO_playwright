@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from src.analytics.matchup import MatchupAnalyticsEngine
 from src.models.base import Base
 from src.models.game import Game, GameEvent
+from src.models.matchup import MatchupBvP
 
 
 @pytest.fixture
@@ -77,6 +78,41 @@ def test_calculate_bvp_matchups(db_session) -> None:
     assert m.strikeouts == 1
     assert m.avg == pytest.approx(2 / 3, rel=1e-2)
     assert m.slg == pytest.approx(5 / 3, rel=1e-2)
+
+
+def test_sync_bvp_to_db_persists_and_upserts(db_session) -> None:
+    """Regression: sync_bvp_to_db must persist rows without referencing MatchupBvP.season."""
+    g = Game(
+        game_id="20250503LGSS0",
+        game_date=date(2025, 5, 3),
+        home_team="SS",
+        away_team="LG",
+        game_status="COMPLETED",
+    )
+    ev = GameEvent(
+        game_id="20250503LGSS0",
+        inning=1,
+        inning_half="T",
+        event_seq=1,
+        batter_id=103,
+        pitcher_id=203,
+        description="중전 안타",
+    )
+    db_session.add_all([g, ev])
+    db_session.flush()
+
+    engine = MatchupAnalyticsEngine(db_session)
+    assert engine.sync_bvp_to_db(2025) == 1
+
+    row = db_session.query(MatchupBvP).filter_by(batter_id=103, pitcher_id=203).one_or_none()
+    assert row is not None
+    assert int(row.plate_appearances or 0) == 1
+    assert int(row.hits or 0) == 1
+
+    # Re-sync must update in place, not duplicate.
+    assert engine.sync_bvp_to_db(2025) == 1
+    rows = db_session.query(MatchupBvP).filter_by(batter_id=103, pitcher_id=203).all()
+    assert len(rows) == 1
 
 
 def test_calculate_situational_splits(db_session) -> None:
