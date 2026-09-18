@@ -44,6 +44,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/services/relay_recovery_engine.py",
     "src/services/wpa_chart_service.py",
     "src/utils/url_validator.py",
+    "src/validators/quality_gate.py",
 )
 
 

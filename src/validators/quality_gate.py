@@ -19,6 +19,8 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.team_codes import STANDARD_TEAM_CODES
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from sqlalchemy.orm import Session
     from sqlalchemy.sql.elements import ColumnElement
 
@@ -255,6 +257,7 @@ class QualityGate:
         except (SQLAlchemyError, AttributeError, TypeError):
             return None, None
 
+        source_column: Any
         if "source" in columns:
             source_column = model.source
         elif "data_source" in columns:
@@ -267,7 +270,7 @@ class QualityGate:
                 *((source_column == source, rank) for rank, source in enumerate(PLAYER_SEASON_SOURCE_PRIORITY)),
                 else_=len(PLAYER_SEASON_SOURCE_PRIORITY),
             )
-            partition_by = [model.player_id, model.season, model.league]
+            partition_by: list[Any] = [model.player_id, model.season, model.league]
             if "level" in columns:
                 partition_by.append(func.coalesce(model.level, "KBO1"))
             partition_by.append(self._team_code_expression(model))
@@ -301,10 +304,10 @@ class QualityGate:
         return source_column == selected, selected
 
     @staticmethod
-    def _cumulative_map(rows: list[object]) -> dict[object, object]:
+    def _cumulative_map(rows: Sequence[Any]) -> dict[Any, Any]:
         """Prefer generated aggregates when multiple cumulative rows exist."""
         source_rank = {source: rank for rank, source in enumerate(CUMULATIVE_SOURCE_PRIORITY)}
-        cumulative_map: dict[object, object] = {}
+        cumulative_map: dict[Any, Any] = {}
         for row in rows:
             player_id = getattr(row, "player_id", None)
             current = cumulative_map.get(player_id)
