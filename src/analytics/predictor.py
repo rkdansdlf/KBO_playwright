@@ -49,12 +49,12 @@ class SabermetricFeatureStore:
             if not game:
                 return self._generate_fallback_vector(game_id=game_id)
 
-            home_team = game.home_team or "KIA"
-            away_team = game.away_team or "LG"
+            home_team = str(game.home_team or "KIA")
+            away_team = str(game.away_team or "LG")
             game_date = str(game.game_date) if game.game_date else "2024-09-01"
-            stadium = game.stadium or "Gwangju"
-            home_starter = game.home_pitcher or "선발 미정"
-            away_starter = game.away_pitcher or "선발 미정"
+            stadium = str(game.stadium or "Gwangju")
+            home_starter = str(game.home_pitcher or "선발 미정")
+            away_starter = str(game.away_pitcher or "선발 미정")
             is_valid_year = len(game_date) >= DATE_YEAR_LEN and game_date[:DATE_YEAR_LEN].isdigit()
             season = int(game_date[:DATE_YEAR_LEN]) if is_valid_year else 2024
 
