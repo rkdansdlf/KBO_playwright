@@ -46,6 +46,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/models/player.py",
     "src/models/season.py",
     "src/models/team.py",
+    "src/orchestration/master.py",
     "src/scheduler/jobs/daily.py",
     "src/scheduler/jobs/live.py",
     "src/scheduler/jobs/maintenance.py",
