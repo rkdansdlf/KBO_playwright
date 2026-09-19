@@ -137,10 +137,10 @@ def _load_alias_map(path: Path | None = None) -> dict[str, str]:
     return aliases
 
 
-def load_overrides(path: Path) -> dict[tuple[str, int, str, str], OverrideEntry]:
+def load_overrides(path: Path) -> dict[tuple[str, int | None, str | None, str], OverrideEntry]:
     if not path.exists():
         return {}
-    overrides: dict[tuple[str, int, str, str], OverrideEntry] = {}
+    overrides: dict[tuple[str, int | None, str | None, str], OverrideEntry] = {}
     with path.open("r", newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
@@ -474,11 +474,11 @@ def choose_candidate_ids(
     player_name: str,
     uniform_nos: list[str],
     alias_map: dict[str, str],
-    overrides: dict[tuple[str, int | None, str, str], OverrideEntry],
+    overrides: dict[tuple[str, int | None, str | None, str], OverrideEntry],
 ) -> dict[str, Any]:
     canonical_team = canonical_team_code(team_code)
     existing_group_ids = _existing_non_null_player_ids_for_group(
-        session, table_name=table_name, year=season, team_code=team_code, player_name=player_name
+        session, table_name=table_name, year=season, team_code=canonical_team, player_name=player_name
     )
     override = _lookup_group_override(
         overrides, table_name=table_name, season=season, team_code=team_code, player_name=player_name

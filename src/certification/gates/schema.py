@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,6 +14,8 @@ from src.db.engine import Engine, get_db_session
 from src.db.migration_engine import MigrationEngine
 
 if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine as SQLAlchemyEngine
+
     from src.certification.context import CertificationContext
 
 
@@ -34,7 +36,9 @@ class SchemaMigrationGate:
         try:
             try:
                 with get_db_session() as session:
-                    target_engine = session.bind or Engine
+                    # The application session factory is bound to an Engine;
+                    # SQLAlchemy's broad bind type also includes Connection.
+                    target_engine = cast("SQLAlchemyEngine", session.bind or Engine)
                     inspector = inspect(target_engine)
                     db_tables = inspector.get_table_names()
             except (SQLAlchemyError, OSError):

@@ -287,8 +287,8 @@ def _apply_pbp_fixes(game_ids: list[str]) -> list[str]:
 
 
 def _recalc_and_sync(year: int, game_ids: list[str]) -> None:
-    from src.cli.recalc_player_game_stats import run_recalc as recalc_game_stats
-    from src.cli.recalc_player_stats import run_recalc as recalc_season_stats
+    from src.cli.calc.recalc_player_game_stats import run_recalc as recalc_game_stats
+    from src.cli.calc.recalc_player_stats import run_recalc as recalc_season_stats
 
     logger.info("Recalculating player game stats for %s games...", len(game_ids))
     for game_id in game_ids:

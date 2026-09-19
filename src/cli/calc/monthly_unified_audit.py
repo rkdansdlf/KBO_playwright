@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.exc import SQLAlchemyError
 
 from scripts.maintenance.audit_pa_formula import audit_year, fix_year_formula
-from src.cli.monthly_team_audit import run_monthly_team_audit
+from src.cli.calc.monthly_team_audit import run_monthly_team_audit
 from src.constants import KBO_QUALITY_AUDIT_START_YEAR
 
 logger = logging.getLogger(__name__)

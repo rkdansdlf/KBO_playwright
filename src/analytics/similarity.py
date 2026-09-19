@@ -122,7 +122,7 @@ class PlayerSimilarityEngine:
                     player_name=report.player_name,
                     team_code=report.team_code,
                     season=report.season,
-                    role=report.role,
+                    role=PlayerRole(report.role.value),
                     dimensions=dims,
                     key_stats=key_stats,
                 )

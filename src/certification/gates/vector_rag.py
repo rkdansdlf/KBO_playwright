@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -53,7 +53,7 @@ class VectorRagGate:
         try:
             try:
                 with get_db_session() as session:
-                    bind_engine = session.bind
+                    bind_engine = cast("Engine", session.bind)
                     chunks = _get_rag_chunks_safe(bind_engine, context) if bind_engine else []
             except (SQLAlchemyError, OSError):
                 if context.target == "local":
