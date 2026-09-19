@@ -86,7 +86,7 @@ def _table_staleness_message(
 
 def _season_staleness_message(*, domain: str, table: str, latest_value: object, now: datetime) -> str | None:
     try:
-        latest_season = int(latest_value)
+        latest_season = int(latest_value)  # type: ignore[call-overload]
     except (TypeError, ValueError):
         return f"[STALE] Table {table} (domain={domain}) has invalid season={latest_value!r}"
     required_season = now.year - 1 if now.month in PRESEASON_GRACE_MONTHS else now.year
@@ -186,7 +186,7 @@ def check_table_completeness(*, dry_run: bool = False) -> list[str]:
         List of results.
 
     """
-    alerts = []
+    alerts: list[str] = []
     if dry_run:
         logger.debug("Table freshness dry-run returns findings without alert delivery")
     now = datetime.now(KST)
@@ -201,16 +201,16 @@ def check_table_completeness(*, dry_run: bool = False) -> list[str]:
                     alerts.append(msg)
                 else:
                     latest = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()  # noqa: S608
-                    msg = _table_staleness_message(
+                    staleness_msg = _table_staleness_message(
                         domain=domain,
                         table=table,
                         date_column=date_col,
                         latest_value=latest,
                         now=now,
                     )
-                    if msg:
-                        logger.warning(msg)
-                        alerts.append(msg)
+                    if staleness_msg:
+                        logger.warning(staleness_msg)
+                        alerts.append(staleness_msg)
                     else:
                         logger.info("[OK] %s: %s rows, latest %s=%s", table, row, date_col, latest)
             except SQLAlchemyError as e:

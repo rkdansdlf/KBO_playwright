@@ -10,11 +10,11 @@ from pathlib import Path
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
-from src.db.engine import create_engine_for_url
+from src.db.engine import DATABASE_URL, create_engine_for_url
 from src.services.award_source_audit import AwardAuditInput, build_award_audit
 
 
-def _load_awards(session: Session) -> tuple[list[dict], dict]:
+def _load_awards(session: Session) -> tuple[list[object], dict[str, list[str]]]:
     inspector = inspect(session.get_bind())
     columns = [col["name"] for col in inspector.get_columns("awards")]
     missing = []
@@ -24,7 +24,7 @@ def _load_awards(session: Session) -> tuple[list[dict], dict]:
         missing.append("team_code")
 
     schema = {"missing_optional_columns": missing}
-    rows: list[dict] = []
+    rows: list[object] = []
     return rows, schema
 
 
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=str)
     args = parser.parse_args(argv)
 
-    engine = create_engine_for_url()
+    engine = create_engine_for_url(DATABASE_URL)
     with Session(engine) as session:
         rows, _schema = _load_awards(session)
 

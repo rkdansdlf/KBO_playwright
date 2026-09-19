@@ -25,7 +25,7 @@ from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.auto_healer import run_healer_async
+from src.cli.backfill.auto_healer import run_healer_async
 from src.constants import DATE_STR_LEN
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -969,8 +969,10 @@ async def _step_7_rosters(ctx: _RunContext) -> None:
         m_crawler = PlayerMovementCrawler()
         movements = await m_crawler.crawl_years(ctx.year, ctx.year, save_snapshots=True)
         if movements:
-            m_repo = PlayerRepository()
-            m_count = m_repo.save_player_movements(movements)
+            with SessionLocal() as session:
+                m_repo = PlayerRepository(session)
+                m_count = m_repo.save_player_movements(movements)
+                session.commit()
             logger.info("   \u2705 Saved %s player movements for %s", m_count, ctx.year)
 
         r_crawler = DailyRosterCrawler()

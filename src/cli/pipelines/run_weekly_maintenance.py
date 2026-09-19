@@ -17,8 +17,8 @@ from zoneinfo import ZoneInfo
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.collect_profiles import collect_profiles
-from src.cli.db_healthcheck import main as healthcheck_main
+from src.cli.collection.collect_profiles import collect_profiles
+from src.cli.reports.db_healthcheck import main as healthcheck_main
 from src.db.engine import SessionLocal
 
 if TYPE_CHECKING:

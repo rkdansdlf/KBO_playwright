@@ -203,7 +203,7 @@ def _load_games(
     ]
 
 
-def _row_year(row: Mapping[str, object], start_year: int, end_year: int) -> int:
+def _row_year(row: Mapping[Any, Any], start_year: int, end_year: int) -> int:
     """Resolve a report year from season metadata, date, or game ID."""
     season_year = row.get("season_year") if hasattr(row, "get") else None
     if season_year is not None:
