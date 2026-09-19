@@ -45,7 +45,7 @@ class PipelineDefectDetector:
 
         return [
             DefectItem(
-                game_id=g.game_id,
+                game_id=str(g.game_id),
                 defect_type=PipelineDefectType.STUCK_SCHEDULED,
                 severity="ERROR",
                 description=f"Past game on {g.game_date} is stuck in {g.game_status} status.",
@@ -136,7 +136,7 @@ class PipelineDefectDetector:
 
                 defects.append(
                     DefectItem(
-                        game_id=g.game_id,
+                        game_id=str(g.game_id),
                         defect_type=PipelineDefectType.MISSING_STATS,
                         severity="WARNING",
                         description=f"Completed game missing {', '.join(missing)} statistics.",
@@ -155,26 +155,29 @@ class PipelineDefectDetector:
         stmt = (
             select(GameMetadata)
             .join(Game, GameMetadata.game_id == Game.game_id)
-            .where(
-                Game.game_status.in_(["COMPLETED", "DRAW"]),
-                GameMetadata.pbp_validation_status == "unverified",
-            )
+            .where(Game.game_status.in_(["COMPLETED", "DRAW"]))
         )
         if target_date:
             stmt = stmt.where(Game.game_date == target_date)
 
         metas = list(self.session.execute(stmt).scalars().all())
 
-        return [
-            DefectItem(
-                game_id=m.game_id,
-                defect_type=PipelineDefectType.UNVERIFIED_PBP,
-                severity="WARNING",
-                description="Game PBP data has not been successfully verified.",
-                details={"pbp_validation_status": m.pbp_validation_status},
+        defects: list[DefectItem] = []
+        for m in metas:
+            payload = m.source_payload
+            status = payload.get("pbp_validation_status") if isinstance(payload, dict) else None
+            if status != "unverified":
+                continue
+            defects.append(
+                DefectItem(
+                    game_id=str(m.game_id),
+                    defect_type=PipelineDefectType.UNVERIFIED_PBP,
+                    severity="WARNING",
+                    description="Game PBP data has not been successfully verified.",
+                    details={"pbp_validation_status": status},
+                )
             )
-            for m in metas
-        ]
+        return defects
 
     def detect_all(self, target_date: date | None = None) -> DefectReport:
         """Run all defect detection rules and compile a consolidated DefectReport."""

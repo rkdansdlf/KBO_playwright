@@ -106,3 +106,39 @@ def test_find_missing_player_stats(db_session) -> None:
     assert defects[0].game_id == "20240403LGSS0"
     assert defects[0].defect_type == PipelineDefectType.MISSING_STATS
     assert "pitching" in defects[0].details["missing"]
+
+
+def test_find_unverified_pbp_games_reads_payload_status(db_session) -> None:
+    """Regression: unverified status lives in source_payload JSON, not a column."""
+    from src.models.game import GameMetadata
+
+    g1 = Game(
+        game_id="20240404LGSS0",
+        game_date=date(2024, 4, 4),
+        home_team="SS",
+        away_team="LG",
+        game_status="COMPLETED",
+    )
+    g2 = Game(
+        game_id="20240404KTNC0",
+        game_date=date(2024, 4, 4),
+        home_team="NC",
+        away_team="KT",
+        game_status="COMPLETED",
+    )
+    db_session.add_all(
+        [
+            g1,
+            g2,
+            GameMetadata(game_id="20240404LGSS0", source_payload={"pbp_validation_status": "unverified"}),
+            GameMetadata(game_id="20240404KTNC0", source_payload={"pbp_validation_status": "verified"}),
+        ]
+    )
+    db_session.flush()
+
+    detector = PipelineDefectDetector(db_session)
+    defects = detector.find_unverified_pbp_games(target_date=date(2024, 4, 4))
+
+    assert len(defects) == 1
+    assert defects[0].game_id == "20240404LGSS0"
+    assert defects[0].defect_type == PipelineDefectType.UNVERIFIED_PBP
