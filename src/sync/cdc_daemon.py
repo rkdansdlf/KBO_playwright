@@ -53,7 +53,7 @@ class CDCDaemon:
         now = datetime.now(UTC)
 
         try:
-            from src.cli.sync_sqlite_to_oci import SqliteToOciSynchronizer, SyncOptions
+            from src.cli.sync.sync_sqlite_to_oci import SqliteToOciSynchronizer, SyncOptions
 
             options = SyncOptions(
                 apply_changes=not dry_run,

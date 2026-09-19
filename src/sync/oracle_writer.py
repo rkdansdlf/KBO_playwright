@@ -6,6 +6,7 @@ import hashlib
 import logging
 import re
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo
 
 try:
@@ -14,6 +15,11 @@ except ImportError:
     oracledb = None  # type: ignore[assignment]
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy.engine.interfaces import DBAPICursor
 
 from src.db.engine import create_engine_for_url
 
@@ -29,7 +35,7 @@ def _detail_hash(v: object) -> object:
     return _SHA256(str(v).encode("utf-8")).hexdigest()
 
 
-TABLE_OVERRIDE: dict[str, object] = {
+TABLE_OVERRIDE: dict[str, Callable[[object], object]] = {
     "detail_text_hash": _detail_hash,
 }
 
@@ -46,7 +52,7 @@ TEAM_CODE_MAP = {
     "WO": "KH",
 }
 
-TABLE_COL_OVERRIDE: dict[tuple[str, str], object] = {
+TABLE_COL_OVERRIDE: dict[tuple[str, str], Callable[[object], object]] = {
     ("player_season_batting", "level"): lambda v: LEVEL_NORMALIZE.get(str(v), v),
     ("player_season_pitching", "level"): lambda v: LEVEL_NORMALIZE.get(str(v), v),
     ("player_season_batting", "team_code"): lambda v: TEAM_CODE_MAP.get(str(v), v),
@@ -98,7 +104,7 @@ class OracleWriter:
             wallet_password=wallet_password,
         )
         self.conn = self.engine.raw_connection()
-        self.conn.autocommit = False
+        self.conn.autocommit = False  # type: ignore[attr-defined]
 
     def close(self) -> None:
         """Close connection and dispose engine."""
@@ -295,15 +301,16 @@ class OracleWriter:
 
     def _execute_insert_batch(
         self,
-        cursor: oracledb.Cursor,
+        cursor: DBAPICursor,
         sql: str,
         payloads: list[dict[str, object]],
         table: str,
     ) -> tuple[int, int]:
         """Execute an array INSERT and fall back to individual rows on error."""
+        ora_cursor = cast("Any", cursor)
         try:
-            cursor.executemany(sql, payloads, batcherrors=True)
-            batch_errors = cursor.getbatcherrors()
+            ora_cursor.executemany(sql, payloads, batcherrors=True)
+            batch_errors = ora_cursor.getbatcherrors()
             if batch_errors:
                 logger.warning(
                     "[%s] Bulk INSERT skipped %d row errors; first error: %s",

@@ -532,7 +532,7 @@ def _group_source_records(
     source_tables: Sequence[str],
 ) -> dict[str, list[SourceIdentityRecord]]:
     """Group source projections by their RAG source table."""
-    grouped = {source: [] for source in source_tables}
+    grouped: dict[str, list[SourceIdentityRecord]] = {source: [] for source in source_tables}
     for record in records:
         if record.source_table in grouped:
             grouped[record.source_table].append(record)
@@ -544,7 +544,7 @@ def _group_existing_rows(
     source_tables: Sequence[str],
 ) -> dict[str, list[ExistingIdentityRow]]:
     """Group persisted RAG rows by their RAG source table."""
-    grouped = {source: [] for source in source_tables}
+    grouped: dict[str, list[ExistingIdentityRow]] = {source: [] for source in source_tables}
     for row in rows:
         if row.source_table in grouped:
             grouped[row.source_table].append(row)
