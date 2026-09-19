@@ -364,7 +364,6 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
     # 2단계: 각 선수를 병렬로 처리
     logger.info("Processing %s players...\n", len(player_positions))
 
-    repository = PlayerRepository()
     pool = AsyncPlaywrightPool(
         max_pages=args.concurrency,
         context_kwargs={"locale": "ko-KR"},
@@ -373,7 +372,6 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
 
     results, failure_counts = await _run_futures_players(
         player_positions,
-        repository,
         pool,
         semaphore,
     )
@@ -396,7 +394,6 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
 
 async def _run_futures_players(
     player_positions: dict[str, dict[str, str]],
-    repository: PlayerRepository,
     pool: AsyncPlaywrightPool,
     semaphore: asyncio.Semaphore,
 ) -> tuple[list[dict[str, Any]], Counter]:
@@ -417,11 +414,14 @@ async def _run_futures_players(
             pos = meta["position"]
             name = meta["name"]
             try:
-                result = await process_player_result(
-                    FuturesPlayerTarget(pid, pos, name),
-                    repository,
-                    pool,
-                )
+                with SessionLocal() as session:
+                    repository = PlayerRepository(session)
+                    result = await process_player_result(
+                        FuturesPlayerTarget(pid, pos, name),
+                        repository,
+                        pool,
+                    )
+                    session.commit()
             except FUTURES_PROCESS_EXCEPTIONS:
                 logger.exception("Unhandled exception for player %s (%s)", pid, pos)
                 result = {"player_id": pid, "status": "failed", "saved": 0, "failure_reason": "exception"}
