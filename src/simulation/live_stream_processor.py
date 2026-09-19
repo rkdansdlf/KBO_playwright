@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from src.notifications.dispatcher import NotificationDispatcher
+from src.notifications.dto import NotificationChannel, NotificationMessage, NotificationPriority
 from src.services.wpa_calculator import WPACalculator, WpaInput
 from src.simulation.dto import SimulationEvent, SimulationSummary
 from src.simulation.stream_generator import GameStreamGenerator
@@ -168,10 +169,12 @@ class LiveStreamProcessor:
                         f"{away_team} {ev.away_score} - {ev.home_score} {home_team}"
                     )
                     self.dispatcher.dispatch(
-                        title=f"🔥 [KBO 핫모먼트] {ev.inning}회{half_text} {ev.batter_name}",
-                        body=notif_body,
-                        channel="console",
-                        priority="high",
+                        NotificationMessage(
+                            title=f"🔥 [KBO 핫모먼트] {ev.inning}회{half_text} {ev.batter_name}",
+                            body=notif_body,
+                            channel=NotificationChannel.CONSOLE,
+                            priority=NotificationPriority.HIGH,
+                        ),
                     )
 
             # Track cumulative WPA per player

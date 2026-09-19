@@ -53,6 +53,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/services/award_snapshot_lifecycle.py",
     "src/services/award_source_audit.py",
     "src/services/multi_source_reconciler.py",
+    "src/simulation/live_stream_processor.py",
     "src/services/rag_index_propagation.py",
     "src/services/relay_recovery_engine.py",
     "src/services/staging_canary.py",

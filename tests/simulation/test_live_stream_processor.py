@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from src.notifications.dispatcher import NotificationDispatcher
+from src.notifications.dto import NotificationChannel, NotificationMessage, NotificationPriority
 from src.services.wpa_calculator import WPACalculator
 from src.simulation.dto import SimulationEvent
 from src.simulation.live_stream_processor import LiveStreamProcessor
@@ -58,6 +59,11 @@ def test_process_stream_wpa_and_hot_moment() -> None:
 
     # Notification dispatched for hot moment
     mock_dispatcher.dispatch.assert_called_once()
+    dispatched_message = mock_dispatcher.dispatch.call_args[0][0]
+    assert isinstance(dispatched_message, NotificationMessage)
+    assert dispatched_message.channel == NotificationChannel.CONSOLE
+    assert dispatched_message.priority == NotificationPriority.HIGH
+    assert "김도영" in dispatched_message.title
 
     assert summary.winner == "KIA"
     assert summary.hot_moments_count == 1
