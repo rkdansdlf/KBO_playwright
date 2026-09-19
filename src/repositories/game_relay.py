@@ -28,6 +28,7 @@ from src.repositories.game_helpers import (
     RecordReplaceContext,
     _apply_game_team_identity,
     _canonicalize_game_id,
+    _delete_records,
     _enrich_existing_child_team_identity,
     _ensure_game_stub,
     _has_game_child_rows,
@@ -224,7 +225,7 @@ def backfill_game_play_by_play_from_existing_events(game_id: str, session: Sessi
                 for event in stored_events
             ],
         )
-        session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).delete()
+        _delete_records(session, GamePlayByPlay, GamePlayByPlay.game_id == game_id)
         session.add_all(
             [
                 GamePlayByPlay(

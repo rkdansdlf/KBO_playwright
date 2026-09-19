@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 import contextlib
 import re
 
-from sqlalchemy import text
+from sqlalchemy import delete, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN, GAME_ID_MIN_LEN
@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from sqlalchemy.orm import Session
+    from sqlalchemy.sql.elements import ColumnElement
 
 SEASON_TYPE_TO_LEAGUE_CODE = {
     "regular": 0,
@@ -1035,7 +1036,7 @@ def _replace_records(
         return False
 
     if existing_rows:
-        query.delete()
+        _delete_records(session, model, model.game_id == game_id)
     if mappings:
         now = datetime.now(UTC).replace(tzinfo=None)
         has_created_at = "created_at" in model.__table__.columns
@@ -1072,7 +1073,12 @@ def _replace_records_for_side(
         return False
 
     if existing_rows:
-        query.delete()
+        _delete_records(
+            session,
+            record_key.model,
+            record_key.model.game_id == record_key.game_id,
+            record_key.model.team_side == record_key.team_side,
+        )
     if mappings:
         now = datetime.now(UTC).replace(tzinfo=None)
         has_created_at = "created_at" in record_key.model.__table__.columns
@@ -1107,12 +1113,26 @@ def _replace_orm_records(
         return False
 
     if existing_rows:
-        query.delete()
+        _delete_records(session, model, model.game_id == game_id)
     if records:
         session.add_all(records)
     if source and write_contract:
         write_contract.dataset_replaced(game_id, source, dataset, len(records))
     return True
+
+
+def _delete_records(session: Session, model: type[Any], *criteria: ColumnElement[bool]) -> None:
+    """Delete rows without breaking the caller-owned transaction.
+
+    Oracle sessions with parallel DML enabled can deadlock when a bulk delete and
+    replacement insert use the same unique keys. Keep the operation in one caller
+    transaction and prevent only this delete from entering parallel DML.
+    """
+    statement = delete(model).where(*criteria)
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "oracle":
+        statement = statement.prefix_with("/*+ NO_PARALLEL */")
+    session.execute(statement.execution_options(synchronize_session="fetch"))
 
 
 def _dict_sort_key(record: dict[str, Any]) -> tuple[tuple[str, str], ...]:
