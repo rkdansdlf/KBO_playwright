@@ -107,11 +107,9 @@ def backfill_stats(years: list[int], series: str) -> None:
         series: Series.
 
     """
-    fielding_repo = PlayerSeasonFieldingRepository()
-
-    baserun_repo = PlayerSeasonBaserunningRepository()
-
     with SessionLocal() as session:
+        fielding_repo = PlayerSeasonFieldingRepository(session)
+        baserun_repo = PlayerSeasonBaserunningRepository(session)
         for year in years:
             logger.info("🛠️  Backfilling Advanced Stats for %s %s...", year, series)
             team_map = _build_player_team_map(session)
@@ -119,6 +117,7 @@ def backfill_stats(years: list[int], series: str) -> None:
             _backfill_pitching(session, year, series, team_map)
             _backfill_baserunning(session, year, series, team_map, baserun_repo)
             _backfill_fielding(session, year, series, team_map, fielding_repo)
+        session.commit()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
