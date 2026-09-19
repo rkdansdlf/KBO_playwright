@@ -102,8 +102,8 @@ class AutoHealerService:
         old_home = game.home_score
         old_away = game.away_score
 
-        game.home_score = home_sum
-        game.away_score = away_sum
+        game.home_score = home_sum  # type: ignore[assignment]
+        game.away_score = away_sum  # type: ignore[assignment]
         self.session.flush()
 
         return HealingActionSummary(

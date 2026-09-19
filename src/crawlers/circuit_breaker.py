@@ -105,7 +105,7 @@ class CircuitBreaker:
 
             if self.fallback is not None:
                 logger.warning("Circuit '%s' is OPEN. Invoking fallback handler.", self.name)
-                return self.fallback(*args, **kwargs)  # type: ignore[no-any-return]
+                return self.fallback(*args, **kwargs)
 
             raise CircuitOpenError(self.name, remaining)
 
@@ -116,7 +116,7 @@ class CircuitBreaker:
             self.record_failure(exc)
             if self.fallback is not None and self._state == CircuitState.OPEN:
                 logger.warning("Circuit '%s' tripped on error. Invoking fallback handler.", self.name)
-                return self.fallback(*args, **kwargs)  # type: ignore[no-any-return]
+                return self.fallback(*args, **kwargs)
             raise
         else:
             return result

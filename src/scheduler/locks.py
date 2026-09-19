@@ -173,10 +173,10 @@ class _LockSkipped(Exception):  # noqa: N818
 def _with_lock_skip_guard(func: Callable[..., object]) -> Callable[..., object]:
     """Catch ``_LockSkipped`` and log a clean warning."""
 
-    @functools.wraps(func)  # type: ignore[arg-type]
+    @functools.wraps(func)
     def wrapper(*args: object, **kwargs: object) -> object:
         try:
-            return func(*args, **kwargs)  # type: ignore[operator]
+            return func(*args, **kwargs)
         except _LockSkipped:
             logger.warning("Job %s skipped: sqlite_writer lock timed out", getattr(func, "__name__", "unknown"))
             return None
