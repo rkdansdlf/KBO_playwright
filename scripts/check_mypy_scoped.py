@@ -176,6 +176,8 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/services/rag_sparse_terms.py",
     "src/scheduler/registry.py",
     "src/repositories/oracle_sparse_search_repository.py",
+    "src/repositories/game_helpers.py",
+    "src/repositories/game_relay.py",
     "src/services/staging_rollback.py",
     "src/services/rag_service.py",
     "src/services/rag_identity_census.py",
