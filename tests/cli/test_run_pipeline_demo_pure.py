@@ -40,7 +40,7 @@ def test_ingest_game_fixtures_counts_successes(tmp_path):
 
 def test_run_futures_builds_namespace() -> None:
     crawl_futures = AsyncMock()
-    with patch.dict("sys.modules", {"src.cli.crawl_futures": MagicMock(crawl_futures=crawl_futures)}):
+    with patch.dict("sys.modules", {"src.cli.collection.crawl_futures": MagicMock(crawl_futures=crawl_futures)}):
         asyncio.run(demo.run_futures(limit=5, season=2025, delay=0.25, concurrency=2))
 
     args = crawl_futures.await_args.args[0]
