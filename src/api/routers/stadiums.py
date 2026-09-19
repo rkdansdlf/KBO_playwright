@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, true
@@ -174,7 +174,7 @@ def _build_seat_items(session: Session, stadium_code: str) -> list[dict[str, Any
     ]
 
 
-def _raise_stadium_not_found(stadium_code: str) -> None:
+def _raise_stadium_not_found(stadium_code: str) -> NoReturn:
     msg = f"Stadium '{stadium_code}' not found"
     raise HTTPException(status_code=404, detail=msg)
 

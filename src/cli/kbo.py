@@ -363,13 +363,13 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     from src.cli.generate_reports import main as rep_main
     from src.cli.predict_matchups import main as pred_main
     from src.cli.run_maintenance import main as maint_main
-    from src.cli.run_migrations import main as mig_main
     from src.cli.run_workflow import main as wf_main
     from src.cli.seed_synthetic_data import main as seed_main
     from src.cli.send_notification import main as notif_main
     from src.cli.serve_api import main as srv_main
     from src.cli.simulate_game import main as sim_main
-    from src.cli.sync_sqlite_to_oci import main as sync_main
+    from src.cli.sync.run_migrations import main as mig_main
+    from src.cli.sync.sync_sqlite_to_oci import main as sync_main
     from src.cli.validate_config import main as conf_main
 
     def _rag_dispatcher(sub_args: list[str]) -> int:

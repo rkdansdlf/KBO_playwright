@@ -348,7 +348,7 @@ def _upsert_player_stats(
                 )
                 session.execute(stmt)
             elif dialect == "oracle":
-                upsert_model_by_unique_keys(session, model, data, conflict_keys)
+                upsert_model_by_unique_keys(session, model, data, tuple(conflict_keys))
             else:
                 from sqlalchemy.dialects.mysql import insert as my_insert
 
@@ -388,7 +388,7 @@ def _delete_stale_aggregated_rows(session: Session, model: type[object], season:
         model.canonical_team_code.isnot(None),  # type: ignore[attr-defined]
     )
     result = session.execute(stmt)
-    return int(result.rowcount or 0)
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def _print_batting_results(records: list[dict[str, Any]]) -> None:
