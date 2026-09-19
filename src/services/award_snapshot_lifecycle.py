@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 
@@ -39,21 +40,15 @@ def find_supersede_candidates(
         for pending in snapshots:
             if _value(pending, "parse_status") != "pending":
                 continue
-            later = [
-                row
-                for row in done
-                if _value(row, "fetched_at") is not None
-                and _value(pending, "fetched_at") is not None
-                and _value(row, "fetched_at") > _value(pending, "fetched_at")
-            ]
+            later = [row for row in done if _is_later(row, pending)]
             if not later:
                 continue
-            replacement = min(later, key=lambda row: _value(row, "fetched_at"))
+            replacement = min(later, key=lambda row: str(_value(row, "fetched_at")))
             candidates.append(
                 SupersedeCandidate(
                     source_key=str(source_keys.get(data_source_id) or data_source_id),
-                    snapshot_id=int(_value(pending, "id")),
-                    replacement_snapshot_id=int(_value(replacement, "id")),
+                    snapshot_id=int(_value(pending, "id")),  # type: ignore[call-overload]
+                    replacement_snapshot_id=int(_value(replacement, "id")),  # type: ignore[call-overload]
                 ),
             )
     return tuple(sorted(candidates, key=lambda candidate: (candidate.source_key, candidate.snapshot_id)))
@@ -64,3 +59,14 @@ def _value(row: object, key: str) -> object:
     if isinstance(row, dict):
         return row.get(key)
     return getattr(row, key, None)
+
+
+def _is_later(row: object, pending: object) -> bool:
+    """Return whether a done snapshot was fetched after a pending one."""
+    row_fetched = _value(row, "fetched_at")
+    pending_fetched = _value(pending, "fetched_at")
+    if row_fetched is None or pending_fetched is None:
+        return False
+    if isinstance(row_fetched, datetime) and isinstance(pending_fetched, datetime):
+        return row_fetched > pending_fetched
+    return str(row_fetched) > str(pending_fetched)
