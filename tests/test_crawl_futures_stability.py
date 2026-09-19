@@ -243,6 +243,9 @@ def test_crawl_futures_changed_since_skips_recent_futures_rows(monkeypatch):
         def __exit__(self, *_args):
             return False
 
+        def commit(self):
+            return None
+
         def query(self, *_args):
             return _FakeQuery(self.query_results.pop(0))
 

@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.crawlers.retire import RetiredPlayerDetailCrawler, RetiredPlayerListingCrawler
+from src.db.engine import SessionLocal
 
 # Ensure all models are loaded to resolve foreign keys
 from src.parsers.player_profile_parser import PlayerProfileParsed, parse_profile
@@ -169,7 +170,6 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
 
     # 2단계: 각 선수를 병렬로 처리합니다.
     detail_crawler = RetiredPlayerDetailCrawler(request_delay=args.delay)
-    repository = PlayerRepository()
     semaphore = asyncio.Semaphore(args.concurrency)  # 동시 요청 수 제어
 
     async def runner(pid: str) -> None:
@@ -183,7 +183,10 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
         async with semaphore:
             try:
                 logger.info("📡 Processing player %s...", pid)
-                await process_player(pid, detail_crawler, repository)
+                with SessionLocal() as session:
+                    repository = PlayerRepository(session)
+                    await process_player(pid, detail_crawler, repository)
+                    session.commit()
                 logger.info("✅ Processed retired player %s", pid)
             except RETIRED_PLAYER_PROCESS_EXCEPTIONS:
                 logger.exception("❌ Failed to process player %s", pid)

@@ -13,7 +13,7 @@ import asyncio
 import logging
 
 from src.crawlers.player_search_crawler import crawl_all_players, player_row_to_dict
-from src.db.engine import init_db
+from src.db.engine import SessionLocal, init_db
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.utils.player_validation import filter_valid_player_payloads
 
@@ -60,7 +60,9 @@ def _save_players_if_requested(valid_dicts: list[dict], *, save: bool) -> None:
         logger.info("Skipping save (use --save flag)")
         return
     logger.info("Saving %d players...", len(valid_dicts))
-    saved = PlayerBasicRepository().upsert_players(valid_dicts)
+    with SessionLocal() as session:
+        saved = PlayerBasicRepository(session).upsert_players(valid_dicts)
+        session.commit()
     logger.info("Saved %d players", saved)
 
 
