@@ -153,10 +153,12 @@ class Historical1982PilotService:
         team_counts: dict[str, int] = dict.fromkeys(HISTORICAL_1982_TEAMS, 0)
 
         for g in games:
-            if g.home_team in team_counts:
-                team_counts[g.home_team] += 1
-            if g.away_team in team_counts:
-                team_counts[g.away_team] += 1
+            home_team = str(g.home_team)
+            away_team = str(g.away_team)
+            if home_team in team_counts:
+                team_counts[home_team] += 1
+            if away_team in team_counts:
+                team_counts[away_team] += 1
 
         is_count_valid = total_games == HISTORICAL_1982_EXPECTED_TOTAL_GAMES
         missing_count = max(0, HISTORICAL_1982_EXPECTED_TOTAL_GAMES - total_games)

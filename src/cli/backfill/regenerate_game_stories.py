@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.daily_story_batch import (
+from src.cli.pipelines.daily_story_batch import (
     dump_story_json,
 )
 from src.constants import KST

@@ -87,7 +87,7 @@ def _persist_result(result: ExternalCrawlResult, options: Options) -> None:
             )
 
     if options.rebuild_rankings:
-        from src.cli.calculate_rankings import rebuild_rankings
+        from src.cli.calc.calculate_rankings import rebuild_rankings
 
         ranking_count = rebuild_rankings(options.season, external_provider=options.providers[0])
         logger.info("External stats ranking rebuild: provider=%s rows=%s", options.providers[0], ranking_count)

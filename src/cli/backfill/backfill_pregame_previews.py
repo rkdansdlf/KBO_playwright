@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 
-from src.cli.daily_preview_batch import run_preview_batch
+from src.cli.pipelines.daily_preview_batch import run_preview_batch
 from src.constants import DATE_STR_LEN
 from src.db.engine import SessionLocal
 from src.utils.date_helpers import parse_datetime_str

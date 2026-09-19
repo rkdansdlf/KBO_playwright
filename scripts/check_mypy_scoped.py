@@ -194,6 +194,20 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/validators/lineup_rules.py",
     "src/validators/quality_gate.py",
     "src/validators/season_team_code.py",
+    "scripts/maintenance/audit_pa_formula.py",
+    "scripts/maintenance/resolve_null_player_ids_conservative.py",
+    "src/analytics/similarity.py",
+    "src/certification/gates/schema.py",
+    "src/certification/gates/vector_rag.py",
+    "src/ci/verifier.py",
+    "src/cli/backfill/backfill_pregame_previews.py",
+    "src/cli/backfill/regenerate_game_stories.py",
+    "src/cli/backfill/retry_daily_failures.py",
+    "src/cli/calc/monthly_unified_audit.py",
+    "src/cli/collection/crawl_external_stats.py",
+    "src/cli/crawl_futures.py",
+    "src/cli/crawl_p0_data.py",
+    "src/services/historical_1982_pilot_service.py",
 )
 
 

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.cli.run_daily_update import DEFAULT_DAILY_SUMMARY_DIR
+from src.cli.pipelines.run_daily_update import DEFAULT_DAILY_SUMMARY_DIR
 from src.constants import DATE_STR_LEN
 from src.utils.team_codes import normalize_kbo_game_id
 

@@ -71,7 +71,8 @@ class WorkflowVerifier:
         steps = j_data.get("steps", [])
         composite_used: list[str] = []
         secrets_found: set[str] = set()
-        env_keys: list[str] = list(j_data.get("env", {}).keys()) if isinstance(j_data.get("env"), dict) else []
+        env = j_data.get("env", {})
+        env_keys: list[str] = list(env.keys()) if isinstance(env, dict) else []
 
         if isinstance(steps, list):
             for step in steps:
