@@ -62,11 +62,11 @@ async def collect_profiles(
         team_missing: Target players with missing team in PlayerBasic.
 
     """
-    repo = PlayerRepository()
     pool = AsyncPlaywrightPool(max_pages=1)
     crawler = PlayerProfileCrawler(request_delay=1.5, pool=pool)
 
     with SessionLocal() as session:
+        repo = PlayerRepository(session)
         try:
             pids: list[str] = []
             if target_ids:
@@ -87,8 +87,10 @@ async def collect_profiles(
                 pids = [str(r) for r in results]
                 logger.info("🎯 Found %s players with missing team in PlayerBasic", len(pids))
             else:
-                stmt = select(Player).where(or_(Player.birth_date.is_(None), Player.debut_year.is_(None))).limit(limit)
-                target_players = session.execute(stmt).scalars().all()
+                player_stmt = (
+                    select(Player).where(or_(Player.birth_date.is_(None), Player.debut_year.is_(None))).limit(limit)
+                )
+                target_players = session.execute(player_stmt).scalars().all()
                 pids = [str(p.kbo_person_id) for p in target_players if p.kbo_person_id]
 
             if not pids:

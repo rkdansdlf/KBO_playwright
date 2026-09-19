@@ -68,7 +68,10 @@ async def _crawl_fielding_step(year: int) -> None:
     records = await asyncio.wait_for(asyncio.to_thread(crawl_all_fielding_stats, year), timeout=CRAWL_TIMEOUT)
     if records:
         processed = _filter_player_rows(records, {column.key for column in PlayerSeasonFielding.__table__.columns})
-        logger.info("   ✅ Saved %s fielding records", PlayerSeasonFieldingRepository().upsert_many(processed))
+        with SessionLocal() as session:
+            saved = PlayerSeasonFieldingRepository(session).upsert_many(processed)
+            session.commit()
+        logger.info("   ✅ Saved %s fielding records", saved)
 
 
 async def _crawl_baserunning_step(year: int) -> None:
@@ -77,7 +80,10 @@ async def _crawl_baserunning_step(year: int) -> None:
     records = await asyncio.wait_for(asyncio.to_thread(crawl_baserunning_stats, year), timeout=CRAWL_TIMEOUT)
     if records:
         processed = _filter_player_rows(records, {column.key for column in PlayerSeasonBaserunning.__table__.columns})
-        logger.info("   ✅ Saved %s baserunning records", PlayerSeasonBaserunningRepository().upsert_many(processed))
+        with SessionLocal() as session:
+            saved = PlayerSeasonBaserunningRepository(session).upsert_many(processed)
+            session.commit()
+        logger.info("   ✅ Saved %s baserunning records", saved)
 
 
 async def _crawl_team_batting_step(year: int, *, headless: bool) -> None:
@@ -107,7 +113,7 @@ async def _aggregate_team_defense_step(year: int) -> None:
 
 
 async def _rebuild_rankings_step(year: int) -> None:
-    from src.cli.calculate_rankings import rebuild_rankings
+    from src.cli.calc.calculate_rankings import rebuild_rankings
 
     saved_rankings = await asyncio.wait_for(asyncio.to_thread(rebuild_rankings, year), timeout=CRAWL_TIMEOUT)
     logger.info("   ✅ Recalculated %s ranking records", saved_rankings)
