@@ -14,6 +14,7 @@ from playwright.async_api import Error as PlaywrightError
 from src.utils.playwright_blocking import install_async_resource_blocking
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
     from types import TracebackType
 
 logger = logging.getLogger(__name__)
@@ -224,8 +225,8 @@ class AsyncPlaywrightPool:
             self._pages.append(page)
         await self._queue.put(page)
 
-    @asynccontextmanager  # type: ignore[arg-type]
-    async def page(self) -> Page:  # type: ignore[misc]
+    @asynccontextmanager
+    async def page(self) -> AsyncIterator[Page]:
         """Handle the page operation.
 
         Returns:

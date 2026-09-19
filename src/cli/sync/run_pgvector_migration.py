@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 _MIGRATION_DIR = Path(__file__).resolve().parents[3] / "migrations" / "pgvector"
 
 
-def _apply_sql_files(engine: object) -> None:  # type: ignore[type-arg]
+def _apply_sql_files(engine: object) -> None:
     """migrations/pgvector/*.sql 파일을 번호 순서대로 실행합니다."""
     sql_files = sorted(_MIGRATION_DIR.glob("*.sql"))
     if not sql_files:
