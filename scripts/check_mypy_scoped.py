@@ -208,6 +208,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/cli/crawl_futures.py",
     "src/cli/crawl_p0_data.py",
     "src/services/historical_1982_pilot_service.py",
+    "src/sync/sync_engine.py",
 )
 
 
