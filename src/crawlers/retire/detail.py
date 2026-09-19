@@ -79,7 +79,7 @@ class RetiredPlayerDetailCrawler:
 
         for attempt in range(retries + 1):
             try:
-                async with pool.page() as page:  # type: ignore[var-annotated]
+                async with pool.page() as page:
                     hitter_payload = await self._fetch_page(page, self.hitter_url, player_id)
                     pitcher_payload = await self._fetch_page(page, self.pitcher_url, player_id)
                     return {

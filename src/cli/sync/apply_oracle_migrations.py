@@ -158,14 +158,15 @@ def apply_migrations(
         if check:
             if not _tracking_table_exists(connection):
                 return versions
-            applied = _applied_versions(connection)
+            applied: set[str] = _applied_versions(connection)
             return [version for version in versions if version not in applied]
 
     with engine.begin() as connection:
         tracking_exists = _tracking_table_exists(connection)
+        applied = set()
         if not tracking_exists:
             _ensure_tracking_table(connection)
-            applied: set[str] = set()
+            applied = set()
         else:
             applied = _applied_versions(connection)
 
