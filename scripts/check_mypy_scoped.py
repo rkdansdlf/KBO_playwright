@@ -49,6 +49,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/scheduler/jobs/live.py",
     "src/scheduler/jobs/maintenance.py",
     "src/services/rag_index_consistency.py",
+    "src/services/award_snapshot_lifecycle.py",
     "src/services/award_source_audit.py",
     "src/services/multi_source_reconciler.py",
     "src/services/rag_index_propagation.py",
