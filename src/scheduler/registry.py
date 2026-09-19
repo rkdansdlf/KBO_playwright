@@ -17,7 +17,7 @@ from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_SU
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job
+from src.cli.calc.monthly_unified_audit import crawl_monthly_unified_audit_job
 from src.scheduler.config import (
     KST,
     SCHEDULER_JOB_EXCEPTIONS,

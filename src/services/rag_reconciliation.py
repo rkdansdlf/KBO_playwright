@@ -251,6 +251,7 @@ def reconcile_manifests(
             else:
                 healthy.append(key)
             continue
+        holder: ManifestEntry | None
         if left_entry is not None:
             holder, missing_issue = left_entry, "MISSING_IN_RIGHT"
         else:

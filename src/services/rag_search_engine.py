@@ -242,8 +242,8 @@ class RagSearchEngine:
         )
         if filters and filters.get("source_table"):
             stmt = stmt.where(RagChunk.source_table == filters["source_table"])
-        if rank_candidates:
-            stmt = stmt.order_by(sum(relevance_terms).desc())
+        if rank_candidates and relevance_terms:
+            stmt = stmt.order_by(sum(relevance_terms[1:], relevance_terms[0]).desc())
         stmt = stmt.limit(candidate_limit)
         return list(self.session.execute(stmt).scalars().all())
 

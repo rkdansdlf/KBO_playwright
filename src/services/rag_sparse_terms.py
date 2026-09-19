@@ -73,7 +73,9 @@ def _game_date(meta: Mapping[str, object] | None) -> str | None:
     if value is None:
         return None
     if hasattr(value, "isoformat"):
-        return value.isoformat()  # type: ignore[union-attr]
+        isoformat = getattr(value, "isoformat", None)
+        if callable(isoformat):
+            return str(isoformat())
     return str(value)
 
 

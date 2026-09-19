@@ -66,7 +66,7 @@ class OracleSparseSearchRepository:
     ) -> defaultdict[int, int]:
         """Sum weighted postings per chunk using one bounded lookup per token."""
         scores: defaultdict[int, int] = defaultdict(int)
-        needs_chunk_join = bool(filters) and any(filters.get(key) is not None for key, _ in _CHUNK_COLUMN_FILTERS)
+        needs_chunk_join = filters is not None and any(filters.get(key) is not None for key, _ in _CHUNK_COLUMN_FILTERS)
         for token in tokens:
             postings = self._token_postings(session, token, per_token_limit, filters, needs_chunk_join=needs_chunk_join)
             for row in postings:

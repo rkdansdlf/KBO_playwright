@@ -11,7 +11,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 from sqlalchemy import select
 
-from src.cli.historical_boxscore_import import validate_boxscore_payload
+from src.cli.reports.historical_boxscore_import import validate_boxscore_payload
 from src.crawlers.legacy_game_detail_crawler import LegacyGameDetailCrawler
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.season import KboSeason
