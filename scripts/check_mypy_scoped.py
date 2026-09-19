@@ -26,6 +26,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/analytics/predictor.py",
     "src/analytics/sabermetrics.py",
     "src/cli/backfill/auto_healer.py",
+    "src/cli/backfill/backfill_advanced_stats.py",
     "src/api/routers/health.py",
     "src/api/schemas.py",
     "src/certification/models.py",
