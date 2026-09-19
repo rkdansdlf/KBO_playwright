@@ -80,7 +80,7 @@ def crawl_operation_notices_job() -> None:
     with lock_fn(daily_lock):
         logger.info("=== Starting Operation Notices Crawl (Club Sites) ===")
         try:
-            from src.cli.crawl_operation_notices import main as notices_main
+            from src.cli.collection.crawl_operation_notices import main as notices_main
 
             notices_main(["--save"])
             logger.info("=== Operation Notices Crawl Completed Successfully ===")
@@ -98,7 +98,7 @@ def crawl_operation_notices_naver_job() -> None:
     with lock_fn(daily_lock):
         logger.info("=== Starting Operation Notices Crawl (Naver) ===")
         try:
-            from src.cli.crawl_operation_notices import main as notices_main
+            from src.cli.collection.crawl_operation_notices import main as notices_main
 
             notices_main(["--naver", "--save"])
             logger.info("=== Operation Notices Naver Crawl Completed Successfully ===")

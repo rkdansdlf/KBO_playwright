@@ -121,7 +121,7 @@ def _register_builtin_crawlers() -> None:
             CrawlerMetadata(
                 "awards",
                 CrawlerCategory.AWARDS,
-                AwardCrawler,
+                AwardCrawler,  # type: ignore[arg-type]  # Standalone crawler predating BaseCrawler contract.
                 "KBO 역대 수상 내역 (MVP, 신인상, GG 등) 크롤러",
             ),
             CrawlerMetadata(
@@ -151,7 +151,7 @@ def _register_builtin_crawlers() -> None:
             CrawlerMetadata(
                 "fan_culture",
                 CrawlerCategory.MEDIA,
-                FanCultureCrawler,
+                FanCultureCrawler,  # type: ignore[arg-type]  # Standalone crawler predating BaseCrawler contract.
                 "KBO 응원가 및 팬 문화 미디어 크롤러",
             ),
         ]

@@ -148,6 +148,9 @@ class ScoutingReportEngine:
 
     def _evaluate_batter(self, target: PlayerSeasonBatting, player_name: str, year: int) -> ScoutingReport:
         """Evaluate batter across Contact, Power, Discipline, Speed, and Overall Production."""
+        if self.session is None:
+            msg = "ScoutingReportEngine requires a database session for batter evaluation"
+            raise ValueError(msg)
         all_batters = (
             self.session.query(PlayerSeasonBatting)
             .filter(PlayerSeasonBatting.season == year, PlayerSeasonBatting.plate_appearances >= MIN_BATTER_PA)
@@ -271,6 +274,9 @@ class ScoutingReportEngine:
 
     def _evaluate_pitcher(self, target: PlayerSeasonPitching, player_name: str, year: int) -> ScoutingReport:
         """Evaluate pitcher across Stuff/Strikeouts, Command, Damage Control, Efficiency, and Volume."""
+        if self.session is None:
+            msg = "ScoutingReportEngine requires a database session for pitcher evaluation"
+            raise ValueError(msg)
         all_pitchers = (
             self.session.query(PlayerSeasonPitching)
             .filter(PlayerSeasonPitching.season == year, PlayerSeasonPitching.innings_outs >= MIN_PITCHER_OUTS)
