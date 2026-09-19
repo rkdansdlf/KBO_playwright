@@ -123,15 +123,16 @@ def _execute_daily(ctx: dict[str, Any], monkeypatch, extra=()) -> Any:
 
 
 def test_enabled_happy_path_reaches_sync(monkeypatch) -> None:
-    """With the same enabled config, the happy path reaches sync and notifies."""
-    mock_sync_cls = MagicMock()
-    mock_sync_cls.return_value.sync_incremental.return_value = MagicMock(total_synced_rows=7)
+    """With the same enabled config, the happy path runs and notifies.
+
+    Live Oracle sync wiring is a pending product decision, so the cloud_sync
+    stage reports SKIPPED with a wiring-pending reason instead of COMPLETED.
+    """
     mock_notify = MagicMock(return_value=MagicMock(is_delivered=True))
     report = _execute_daily(
         _daily_ctx(),
         monkeypatch,
         extra=[
-            patch("src.sync.sync_engine.OciSyncEngine", new=mock_sync_cls),
             patch(
                 "src.notifications.dispatcher.NotificationDispatcher.dispatch",
                 new=mock_notify,
@@ -139,12 +140,12 @@ def test_enabled_happy_path_reaches_sync(monkeypatch) -> None:
         ],
     )
     by_id = {r.stage_id: r for r in report.stage_results}
-    assert by_id["cloud_sync"].status == StageExecutionStatus.COMPLETED
-    assert by_id["cloud_sync"].records_processed == 7
-    mock_sync_cls.assert_called_once_with()
+    assert by_id["cloud_sync"].status == StageExecutionStatus.SKIPPED
+    assert "wiring pending" in (by_id["cloud_sync"].error_message or "")
+    assert by_id["cloud_sync"].records_processed == 0
     mock_notify.assert_called_once()
     assert report.overall_status == "SUCCESS"
-    assert report.completed_stages == 6
+    assert report.completed_stages == 5
 
 
 def test_quality_fail_verdict_blocks_downstream(monkeypatch) -> None:

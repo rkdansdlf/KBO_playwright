@@ -126,8 +126,8 @@ def test_quality_hub_audit_exception_is_failure(monkeypatch) -> None:
     assert report.overall_status in ("FAILED", "PARTIAL_FAILURE")
 
 
-def test_enabled_cloud_sync_exception_is_failure(monkeypatch) -> None:
-    """Enabled cloud-sync exception must surface as FAILED, not COMPLETED."""
+def test_enabled_cloud_sync_reports_wiring_pending_skip(monkeypatch) -> None:
+    """Enabled cloud-sync reports SKIPPED (wiring pending), never fake COMPLETED."""
     report = _execute(
         _ctx(),
         monkeypatch,
@@ -136,13 +136,13 @@ def test_enabled_cloud_sync_exception_is_failure(monkeypatch) -> None:
                 "src.config.manager.ConfigManager.get_feature_flag",
                 return_value=True,
             ),
-            patch("src.sync.sync_engine.OciSyncEngine", side_effect=RuntimeError("boom-sync")),
         ],
     )
     stage = next(r for r in report.stage_results if r.stage_id == "cloud_sync")
-    assert stage.status == StageExecutionStatus.FAILED
+    assert stage.status == StageExecutionStatus.SKIPPED
     assert stage.records_processed == 0
-    assert report.overall_status in ("FAILED", "PARTIAL_FAILURE")
+    assert "wiring pending" in (stage.error_message or "")
+    assert report.overall_status == "SUCCESS"
 
 
 def test_required_failure_blocks_all_dependents_and_sync_never_runs(monkeypatch) -> None:
@@ -199,13 +199,13 @@ def test_historical_recovery_unimplemented_must_not_report_success(monkeypatch, 
 
 
 def test_config_disabled_vs_execution_failure_are_distinct(monkeypatch) -> None:
-    """Disabled sync is SKIPPED; enabled-but-broken sync is FAILED."""
+    """Disabled sync is SKIPPED; enabled-but-unwired sync is SKIPPED with a distinct reason."""
     disabled = _execute(_ctx(enable_cloud_sync=False), monkeypatch)
     disabled_stage = next(r for r in disabled.stage_results if r.stage_id == "cloud_sync")
     assert disabled_stage.status == StageExecutionStatus.SKIPPED
     assert disabled_stage.records_processed == 0
 
-    failed = _execute(
+    pending = _execute(
         _ctx(),
         monkeypatch,
         extra=[
@@ -213,10 +213,10 @@ def test_config_disabled_vs_execution_failure_are_distinct(monkeypatch) -> None:
                 "src.config.manager.ConfigManager.get_feature_flag",
                 return_value=True,
             ),
-            patch("src.sync.sync_engine.OciSyncEngine", side_effect=RuntimeError("boom-sync")),
         ],
     )
-    failed_stage = next(r for r in failed.stage_results if r.stage_id == "cloud_sync")
-    assert failed_stage.status == StageExecutionStatus.FAILED
-    assert failed_stage.records_processed == 0
-    assert failed.overall_status in ("FAILED", "PARTIAL_FAILURE")
+    pending_stage = next(r for r in pending.stage_results if r.stage_id == "cloud_sync")
+    assert pending_stage.status == StageExecutionStatus.SKIPPED
+    assert pending_stage.records_processed == 0
+    assert pending_stage.error_message != disabled_stage.error_message
+    assert "wiring pending" in (pending_stage.error_message or "")

@@ -37,7 +37,7 @@ def _run_ingestion(ctx: dict[str, Any]) -> StageExecutionResult:
     auto_remediation = ctx.get("auto_remediation", True)
 
     try:
-        from src.cli.run_daily_update import main as default_run_daily_update_main
+        from src.cli.pipelines.run_daily_update import main as default_run_daily_update_main
 
         run_main = ctx.get("run_main") or default_run_daily_update_main
 
@@ -73,7 +73,7 @@ def _run_ingestion(ctx: dict[str, Any]) -> StageExecutionResult:
 def _run_processing(ctx: dict[str, Any]) -> StageExecutionResult:
     year = _extract_target_year(ctx)
     try:
-        from src.cli.calculate_standings import StandingsCalculator
+        from src.cli.calc.calculate_standings import StandingsCalculator
         from src.db.engine import get_db_session
 
         with get_db_session() as session:
@@ -99,7 +99,7 @@ def _run_analytics(ctx: dict[str, Any]) -> StageExecutionResult:
     year = _extract_target_year(ctx)
     try:
         from src.analytics.sabermetrics import SabermetricsEngine
-        from src.cli.calculate_rankings import rebuild_rankings
+        from src.cli.calc.calculate_rankings import rebuild_rankings
         from src.db.engine import get_db_session
 
         with get_db_session() as session:
@@ -166,16 +166,15 @@ def _run_cloud_sync(ctx: dict[str, Any]) -> StageExecutionResult:
                 records_processed=0,
                 error_message="Cloud sync disabled by feature flag (enable_oci_sync=False)",
             )
-        from src.sync.sync_engine import OciSyncEngine
-
-        engine = OciSyncEngine()
-        sync_res = engine.sync_incremental()
-        synced_count = getattr(sync_res, "total_synced_rows", 0)
+        # NOTE: OciSyncEngine requires explicit sqlite/oracle connections and
+        # exposes run_full_sync (no sync_incremental); wiring live Oracle sync
+        # into this stage is a pending product decision. Report SKIPPED instead
+        # of crashing with TypeError when both sync flags are force-enabled.
         return StageExecutionResult(
             stage_id="cloud_sync",
-            status=StageExecutionStatus.COMPLETED,
-            records_processed=synced_count,
-            artifacts={"synced_rows": synced_count},
+            status=StageExecutionStatus.SKIPPED,
+            records_processed=0,
+            error_message="Cloud sync engine wiring pending (no sync_incremental API)",
         )
     except Exception as exc:
         logger.exception("Cloud sync step failed")
