@@ -85,8 +85,8 @@ class QuarantineService:
         """Mark a quarantined record as resolved (RECONCILED or DISCARDED)."""
         qr = self.session.get(QuarantinedRecord, quarantine_id)
         if qr:
-            qr.status = status
-            qr.resolved_at = datetime.now(UTC).replace(tzinfo=None)
+            qr.status = status  # type: ignore[assignment]
+            qr.resolved_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
             self.session.flush()
             return True
         return False

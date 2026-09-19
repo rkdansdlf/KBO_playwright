@@ -92,8 +92,8 @@ class NotificationService:
         dispatches: list[dict[str, Any]] = []
         for g in games:
             res = self.send_game_preview_report(
-                away_team=g.away_team,
-                home_team=g.home_team,
+                away_team=str(g.away_team or ""),
+                home_team=str(g.home_team or ""),
                 season=season,
                 channels=channels,
             )
