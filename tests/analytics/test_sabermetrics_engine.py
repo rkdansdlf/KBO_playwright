@@ -135,5 +135,10 @@ def test_calculate_season_sabermetrics(db_session) -> None:
 
     db_session.refresh(b1)
     db_session.refresh(p1)
-    assert b1.woba is not None
+    # Advanced stats must persist in extra_stats JSON (not evaporating transient attrs).
+    assert (b1.extra_stats or {}).get("woba") is not None
+    assert (b1.extra_stats or {}).get("wrc_plus") is not None
+    assert (b1.extra_stats or {}).get("war") is not None
     assert p1.fip is not None
+    assert (p1.extra_stats or {}).get("kfip") is not None
+    assert (p1.extra_stats or {}).get("war") is not None
