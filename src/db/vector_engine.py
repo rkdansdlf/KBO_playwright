@@ -149,15 +149,15 @@ def get_vector_session() -> Iterator[Session]:
             "pgvector DB를 사용할 수 없습니다. .env에 PGVECTOR_URL을 설정하고 Docker pgvector 서비스를 기동하세요."
         )
         raise RuntimeError(message)
-    session: Session = VectorSessionLocal()
+    vector_session: Session = VectorSessionLocal()
     try:
-        yield session
-        session.commit()
+        yield vector_session
+        vector_session.commit()
     except _VECTOR_ENGINE_EXCEPTIONS:
-        session.rollback()
+        vector_session.rollback()
         raise
     finally:
-        session.close()
+        vector_session.close()
 
 
 def init_vector_db() -> None:

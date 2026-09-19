@@ -400,6 +400,7 @@ def parse_entry_year_team(s: str) -> dict[str, Any | None]:
 def parse_profile(
     raw_text: str,
     *,
+    tokens: dict[str, str] | None = None,
     is_active: bool | None = None,
     is_foreign: bool | None = None,
     team: str | None = None,
@@ -410,12 +411,13 @@ def parse_profile(
 
     Args:
         raw_text: Raw Text.
+        tokens: Pre-tokenized profile labels (tokenized from raw_text when None).
         is_active: Is Active.
         is_foreign: Is Foreign.
         team: Team.
 
     """
-    tokens = tokenize_profile(raw_text)
+    tokens = tokens if tokens is not None else tokenize_profile(raw_text)
 
     # Initialize standard payload
     out: dict[str, Any] = {

@@ -300,7 +300,7 @@ class FormulaEngine:
             pit_players = conn.execute(text(sql_pitching)).fetchall()
 
             # Pre-populate constants
-            seasons_set = {int(r[1]) for r in (bat_players + pit_players)}
+            seasons_set = {int(r[1]) for r in ([*bat_players, *pit_players])}
             for s_yr in seasons_set:
                 self.get_season_constants(s_yr)
 

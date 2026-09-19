@@ -46,7 +46,7 @@ class CrawlGate:
             True if successful, False otherwise.
 
         """
-        from src.cli.freshness_gate import collect_freshness_issues
+        from src.cli.reports.freshness_gate import collect_freshness_issues
 
         issues = collect_freshness_issues(self.session, target_date=target_date)
         if issues:
