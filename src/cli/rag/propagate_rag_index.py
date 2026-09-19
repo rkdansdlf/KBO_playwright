@@ -45,9 +45,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.delete:
         payload: dict[str, Any] = {}
     else:
-        payload = _load_payload(args.payload, args.source_table, args.source_row_id)
-        if payload is None:
+        loaded_payload = _load_payload(args.payload, args.source_table, args.source_row_id)
+        if loaded_payload is None:
             return 2
+        payload = loaded_payload
 
     plan: dict[str, Any] = {
         "source_key": f"{args.source_table}:{args.source_row_id}",
