@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,7 +23,6 @@ from src.sync.dto import (
     SyncVerificationReport,
     TableSyncResult,
 )
-from src.sync.oracle_writer import OracleWriter
 from src.sync.table_dag import SyncStrategy, TableMeta, get_tables_by_level
 from src.sync.verifier import SyncConsistencyVerifier
 
@@ -32,6 +31,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _KST = ZoneInfo("Asia/Seoul")
+
+
+class SyncWriter(Protocol):
+    """Minimal writer contract required by the orchestration engine."""
+
+    def upsert_rows(
+        self,
+        *,
+        table_name: str,
+        rows: list[dict[str, object]],
+        natural_keys: list[str] | None,
+        strategy: str,
+    ) -> int:
+        """Upsert source rows and return the number of rows written."""
 
 
 class OciSyncEngine:
@@ -44,7 +57,7 @@ class OciSyncEngine:
         *,
         config: SyncEngineConfig | None = None,
         checkpoint_manager: CheckpointManager | None = None,
-        oracle_writer: OracleWriter | None = None,
+        oracle_writer: SyncWriter | None = None,
     ) -> None:
         """Initialize the sync engine."""
         self.sqlite_conn = sqlite_conn
@@ -55,7 +68,9 @@ class OciSyncEngine:
             sqlite_conn,
             initialize=self.config.apply,
         )
-        self.oracle_writer = oracle_writer or (OracleWriter(oracle_engine) if oracle_engine else None)
+        # The current OracleWriter requires OCI URL/wallet settings and exposes
+        # a lower-level batch API, so this engine accepts an adapter explicitly.
+        self.oracle_writer = oracle_writer
         self.verifier = SyncConsistencyVerifier(sqlite_conn, oracle_engine)
         self._lock = threading.Lock()
 
