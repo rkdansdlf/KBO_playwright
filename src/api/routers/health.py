@@ -68,7 +68,7 @@ def _build_status_payload() -> dict[str, Any]:
 
 def _build_healing_payload() -> dict[str, Any]:
     """Query DB integrity status, then update the healing cache."""
-    from src.cli.auto_healer import (
+    from src.cli.backfill.auto_healer import (
         _find_inconsistent_games,
         _find_pa_formula_inconsistent_games,
         _find_season_stat_discrepancies,

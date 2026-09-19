@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.daily_review_batch import (
+from src.cli.pipelines.daily_review_batch import (
     REVIEW_SUMMARY_TYPE,
     _build_review_data,
     _upsert_review_summary,
