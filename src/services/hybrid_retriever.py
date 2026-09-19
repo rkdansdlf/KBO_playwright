@@ -16,6 +16,9 @@ from src.utils.kbo_entity_extractor import extract_kbo_entities
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
+    from src.repositories.vector_search_repository import VectorSearchRepository
+
 logger = logging.getLogger(__name__)
 BM25_RRF_WEIGHT = 1.0
 DEFAULT_RRF_K = 2
@@ -34,7 +37,7 @@ class EmbeddingProvider(Protocol):
         """Return one embedding for a query string."""
 
 
-def _dense_repository() -> object:
+def _dense_repository() -> VectorSearchRepository | OracleVectorSearchRepository:
     """Build the repository for the configured dense backend."""
     if is_oracle_vector_backend():
         from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
