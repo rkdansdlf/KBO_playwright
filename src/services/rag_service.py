@@ -9,11 +9,14 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.db.vector_engine import is_oracle_vector_backend, is_pgvector_available
 from src.repositories.vector_search_repository import VectorSearchRepository
 from src.services.embedding_service import EmbeddingService
+
+if TYPE_CHECKING:
+    from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +70,14 @@ class RagService:
     def __init__(self) -> None:
         """Initialize a new instance."""
         self._embedding_service = EmbeddingService()
+        self._search_repo: VectorSearchRepository | OracleVectorSearchRepository
         if is_oracle_vector_backend():
             from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
 
             self._search_repo = OracleVectorSearchRepository()
         else:
             self._search_repo = VectorSearchRepository()
+        self._cache: dict[tuple[str, int, str], tuple[list[RagResult], dict[str, float]]] = {}
 
     def search(
         self,
@@ -104,7 +109,7 @@ class RagService:
 
         # 0단계: LRU 캐시 키 확인
         cache_key = (query.strip(), top_k, str(sorted(filters.items())))
-        if hasattr(self, "_cache") and cache_key in self._cache:
+        if cache_key in self._cache:
             cached_results, _ = self._cache[cache_key]
             logger.info("RAG search [CACHE HIT]: query=%r top_k=%d", query[:60], top_k)
             return cached_results, {"embedding_ms": 0.0, "search_ms": 0.0, "cache_hit": 1.0}
@@ -157,8 +162,6 @@ class RagService:
             timings["search_ms"],
         )
 
-        if not hasattr(self, "_cache"):
-            self._cache = {}
         if len(self._cache) >= _MAX_CACHE_SIZE:
             self._cache.pop(next(iter(self._cache)))
         self._cache[cache_key] = (results, timings)
