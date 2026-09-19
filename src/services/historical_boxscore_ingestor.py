@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _deleted_rows(result: object) -> int:
+    """Return the DML rowcount without depending on the concrete Result subtype."""
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 HISTORICAL_1982_YEAR = 1982
 HISTORICAL_1982_TOTAL_GAMES = 240
 
@@ -49,9 +55,15 @@ class HistoricalBoxscoreIngestor:
     def cleanup_synthetic_records(self, season_year: int = HISTORICAL_1982_YEAR) -> int:
         """Remove any legacy synthetic boxscore and stats records for a season."""
         prefix = f"{season_year}%"
-        del_bat = self.session.execute(delete(GameBattingStat).where(GameBattingStat.game_id.like(prefix))).rowcount
-        del_pit = self.session.execute(delete(GamePitchingStat).where(GamePitchingStat.game_id.like(prefix))).rowcount
-        del_inn = self.session.execute(delete(GameInningScore).where(GameInningScore.game_id.like(prefix))).rowcount
+        del_bat = _deleted_rows(
+            self.session.execute(delete(GameBattingStat).where(GameBattingStat.game_id.like(prefix)))
+        )
+        del_pit = _deleted_rows(
+            self.session.execute(delete(GamePitchingStat).where(GamePitchingStat.game_id.like(prefix)))
+        )
+        del_inn = _deleted_rows(
+            self.session.execute(delete(GameInningScore).where(GameInningScore.game_id.like(prefix)))
+        )
         self.session.commit()
         logger.info(
             "[HistoricalBoxscore] Cleaned up synthetic records for %d: bat=%d, pit=%d, inn=%d",

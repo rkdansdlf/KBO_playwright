@@ -169,7 +169,7 @@ class AwardCrawler:
             await self._client.aclose()
             self._client = None
 
-    async def _fetch(self, url: str, params: dict[str, str] | None = None) -> tuple[str, int]:
+    async def _fetch(self, url: str, params: dict[str, str | int] | None = None) -> tuple[str, int]:
         """Fetch a page.
 
         Args:
@@ -391,7 +391,7 @@ class AwardCrawler:
                     cell_idx += 1
                     text = re.sub(r"\s+", " ", cell.get_text(strip=True))
                     row.append(text)
-                    rowspan = int(cell.get("rowspan") or 1)
+                    rowspan = int(str(cell.get("rowspan") or 1))
                     if rowspan > 1:
                         next_pending[col] = (text, rowspan - 1)
                 else:
@@ -535,6 +535,8 @@ class AwardCrawler:
         """
         node: Tag | None = table
         for _ in range(10):
+            if node is None:
+                return None
             prev = node.find_previous()
             if prev is None:
                 return None
