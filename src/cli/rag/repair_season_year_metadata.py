@@ -117,7 +117,7 @@ def _optional_int(value: object) -> int | None:
     if value is None:
         return None
     try:
-        return int(value)
+        return int(value)  # type: ignore[call-overload]
     except (TypeError, ValueError):
         return None
 
@@ -151,9 +151,8 @@ def build_repair_plan(
         if old_year == expected:
             skipped["already_correct"] += 1
             continue
-        try:
-            normalized_chunk_id = int(chunk_id)
-        except (TypeError, ValueError):
+        normalized_chunk_id = _optional_int(chunk_id)
+        if normalized_chunk_id is None:
             skipped["invalid_chunk_id"] += 1
             continue
         repair = SeasonYearRepair(
@@ -182,7 +181,7 @@ def apply_repair_plan(session: Session, plan: SeasonYearRepairPlan, *, batch_siz
     if not plan.repairs:
         return 0
     statement = (
-        RagChunk.__table__.update()
+        RagChunk.__table__.update()  # type: ignore[attr-defined]
         .where(
             RagChunk.__table__.c.id == bindparam("repair_chunk_id"),
         )

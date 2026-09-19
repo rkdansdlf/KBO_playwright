@@ -22,8 +22,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import or_, select, text, true
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.freshness_gate import collect_freshness_issues
-from src.cli.monitor_data_freshness import check_freshness
+from src.cli.reports.freshness_gate import collect_freshness_issues
+from src.cli.reports.monitor_data_freshness import check_freshness
 from src.constants import MIN_KBO_PLAYER_ID
 from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
@@ -113,7 +113,7 @@ def check_id_resolution_gaps() -> dict[str, Any]:
 
 def check_pa_formula_gaps() -> dict[str, Any]:
     """Find PA formula violations (PA != AB+BB+HBP+SH+SF) for the current season."""
-    from src.cli.generate_quality_report import get_pa_formula_integrity
+    from src.cli.reports.generate_quality_report import get_pa_formula_integrity
 
     year = datetime.now(KST).year
     with SessionLocal() as session:
