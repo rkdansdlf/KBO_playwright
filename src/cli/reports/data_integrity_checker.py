@@ -29,6 +29,8 @@ from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sqlalchemy.orm import InstrumentedAttribute
+
 from sqlalchemy import func
 
 from src.constants import DATE_STR_LEN, KST
@@ -77,7 +79,7 @@ def _primary_game_predicate(session: Session, column: ColumnElement[bool]) -> Co
 
 def _target_date_predicate(
     session: Session,
-    column: ColumnElement[object],
+    column: ColumnElement[object] | InstrumentedAttribute[Any],
     target: date,
 ) -> ColumnElement[bool]:
     """Build a cross-dialect date comparison for timestamp columns."""
@@ -491,8 +493,8 @@ def check_duplicate_games(session: Session, target: date) -> CheckResult:
     )
     games_by_slot: dict[str, list[str]] = {}
     for game in games:
-        canonical_slot = normalize_kbo_game_id(game.game_id)
-        games_by_slot.setdefault(canonical_slot, []).append(game.game_id)
+        canonical_slot = normalize_kbo_game_id(str(game.game_id))
+        games_by_slot.setdefault(canonical_slot, []).append(str(game.game_id))
     duplicate_slots = {slot: game_ids for slot, game_ids in games_by_slot.items() if len(game_ids) > 1}
 
     if duplicate_slots:
