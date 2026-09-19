@@ -61,6 +61,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/pipeline/defect_detector.py",
     "src/services/multi_source_reconciler.py",
     "src/simulation/live_stream_processor.py",
+    "src/services/rag_corpus_inventory.py",
     "src/services/rag_index_propagation.py",
     "src/services/rag_service.py",
     "src/services/relay_recovery_engine.py",

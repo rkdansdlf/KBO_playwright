@@ -103,7 +103,9 @@ def inventory_source_chunks(
 ) -> SourceInventory:
     """Compare generated source chunks with canonical sparse rows."""
     started = perf_counter()
-    existing = {_source_key(row): row for row in existing_rows if _source_key(row) is not None}
+    existing: dict[str, Mapping[str, Any] | object] = {
+        key: row for row in existing_rows if (key := _source_key(row)) is not None
+    }
     generated_tables: set[str] = set()
     seen: set[str] = set()
     documents_generated = 0
