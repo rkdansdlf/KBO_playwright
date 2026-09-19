@@ -155,7 +155,7 @@ def heal_season_stat_discrepancies(*, dry_run: bool = False) -> int:
         logger.info("[Dry Run] Would trigger recalc_player_stats for seasons: %s", discrepant_seasons)
         return len(discrepant_seasons)
 
-    from src.cli.recalc_player_stats import recalc_season
+    from src.cli.calc.recalc_player_stats import run_recalc as recalc_season
 
     fixed_count = 0
     for season in discrepant_seasons:
@@ -311,18 +311,18 @@ AUTO_HEALER_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, 
 
 
 def _apply_pa_formula_backfill(recovery_candidates: list[Game]) -> int:
-    from src.cli.recalc_player_game_stats import run_recalc as recalc_game_stats
+    from src.cli.calc.recalc_player_game_stats import run_recalc as recalc_game_stats
     from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
 
     pa_fixed_count = 0
     with SessionLocal() as session:
         for game in recovery_candidates:
             try:
-                updated_rows = apply_sh_sf_to_batting_stats(session, game.game_id)
+                updated_rows = apply_sh_sf_to_batting_stats(session, str(game.game_id))
                 if updated_rows > 0:
                     session.commit()
                     pa_fixed_count += 1
-                    recalc_game_stats(game_id=game.game_id, dry_run=False)
+                    recalc_game_stats(game_id=str(game.game_id), dry_run=False)
                     logger.info("  ✅ PA formula backfilled & game stats recalculated for %s", game.game_id)
             except (SQLAlchemyError, ValueError, RuntimeError) as e:
                 session.rollback()
@@ -399,7 +399,7 @@ def reconcile_pending_quarantines(
             if not secondary:
                 continue
             try:
-                if reconciler.reconcile_and_heal_quarantine(session, qr.id, secondary):
+                if reconciler.reconcile_and_heal_quarantine(session, int(qr.id), secondary):
                     session.commit()
                     reconciled += 1
             except (SQLAlchemyError, ValueError, TypeError):
@@ -460,7 +460,7 @@ async def _run_recovery(
             results["pa_formula_fixed"] = pa_fixed_count
 
         reconciled_count = reconcile_pending_quarantines(
-            game_ids=[game.game_id for game in recovery_candidates],
+            game_ids=[str(game.game_id) for game in recovery_candidates],
         )
         if reconciled_count > 0:
             results["reconciled_quarantines"] = reconciled_count
