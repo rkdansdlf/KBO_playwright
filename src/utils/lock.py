@@ -17,6 +17,8 @@ from sqlalchemy.exc import SQLAlchemyError
 if TYPE_CHECKING:
     from types import TracebackType
 
+    from sqlalchemy.engine import Connection
+
 logger = logging.getLogger(__name__)
 
 # Try importing fcntl for Unix/macOS file locking
@@ -53,7 +55,7 @@ class _LockState(threading.local):
         self.file_fd: IO[str] | None = None
         self.thread_lock_acquired = False
         self.acquire_count = 0
-        self.db_connection = None
+        self.db_connection: Connection | None = None
 
 
 class ProcessLock:
@@ -123,7 +125,7 @@ class ProcessLock:
         return self._state.db_connection
 
     @db_connection.setter
-    def db_connection(self, value: object | None) -> None:
+    def db_connection(self, value: Connection | None) -> None:
         self._state.db_connection = value
 
     def _get_lock_id(self) -> int:
@@ -170,7 +172,7 @@ class ProcessLock:
 
             conn = engine.connect() if not isinstance(engine, Connection) else engine  # type: ignore[attr-defined]
 
-            self._state.db_connection = conn  # type: ignore[assignment]
+            self._state.db_connection = conn
             lock_id = self._get_lock_id()
 
             if effective_blocking and timeout is not None:

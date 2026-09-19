@@ -135,7 +135,9 @@ class RelayRecoveryOrchestrator:
                 "exception",
             )
         else:
-            status = result.status if result.is_not_modified else "success" if not result.is_empty else "miss"
+            status = (
+                (result.status or "miss") if result.is_not_modified else "success" if not result.is_empty else "miss"
+            )
             return result, status
 
     def source_order_for_bucket(self, bucket_id: str, override: Iterable[str] | None = None) -> list[str]:

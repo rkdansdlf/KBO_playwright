@@ -139,7 +139,7 @@ def apply_preimage_rollback(session: Session, preimage: PreimageManifest) -> int
             )
         )
         result = session.execute(stmt)
-        restored_count += result.rowcount
+        restored_count += int(getattr(result, "rowcount", 0) or 0)
 
     session.flush()
     return restored_count

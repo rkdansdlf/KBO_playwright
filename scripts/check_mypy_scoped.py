@@ -32,6 +32,9 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/api/schemas.py",
     "src/certification/models.py",
     "src/crawlers/award_crawler.py",
+    "src/sources/relay/orchestrator.py",
+    "src/sources/relay/relay_deduplicator.py",
+    "src/sources/stats/fangraphs.py",
     "src/cli/backfill/regenerate_review_summaries.py",
     "src/cli/calc/calculate_projections.py",
     "src/cli/calc/recalc_player_stats.py",
@@ -88,6 +91,7 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/services/rag_corpus_inventory.py",
     "src/services/historical_boxscore_ingestor.py",
     "src/services/rag_index_propagation.py",
+    "src/services/staging_rollback.py",
     "src/services/rag_service.py",
     "src/services/rag_identity_census.py",
     "src/services/quarantine_service.py",
@@ -98,8 +102,12 @@ SCOPED_FILES: tuple[str, ...] = (
     "src/services/relay_recovery_engine.py",
     "src/services/staging_canary.py",
     "src/services/wpa_chart_service.py",
+    "src/testing/synthetic_generator.py",
+    "src/utils/lock.py",
     "src/utils/url_validator.py",
+    "src/validators/lineup_rules.py",
     "src/validators/quality_gate.py",
+    "src/validators/season_team_code.py",
 )
 
 

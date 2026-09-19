@@ -72,7 +72,7 @@ class RelayDeduplicator:
         new_events = []
         for event in events:
             if use_semantic_key:
-                event_id = self.semantic_event_key(event)
+                event_id: Any = self.semantic_event_key(event)
             else:
                 event_id = event.get(key_field)
                 if not event_id:

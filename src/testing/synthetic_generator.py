@@ -304,7 +304,7 @@ class SyntheticKBOGenerator:
         players = self.generate_players(config.team_codes, config.players_per_team)
         players_by_team: dict[str, list[PlayerBasic]] = {}
         for p in players:
-            players_by_team.setdefault(p.team, []).append(p)
+            players_by_team.setdefault(p.team or "", []).append(p)
 
         all_games: list[Game] = []
         all_metadata: list[GameMetadata] = []
