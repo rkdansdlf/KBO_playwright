@@ -149,7 +149,8 @@ class SeasonTeamCodeAudit:
 
 def _row_counts(row: object) -> tuple[int, int, int]:
     """Convert one aggregate SQL row to integer counts."""
-    return tuple(int(row[index] or 0) for index in range(3))  # type: ignore[index]
+    counts = tuple(int(row[index] or 0) for index in range(3))  # type: ignore[index]
+    return (counts[0], counts[1], counts[2])
 
 
 def audit_season_team_codes(

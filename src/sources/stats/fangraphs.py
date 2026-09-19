@@ -189,7 +189,7 @@ class FanGraphsKboAdapter(ExternalStatsAdapter):
         """Parse one FanGraphs API row after checking its season."""
         row_season = row.get("Season")
         try:
-            if row_season is not None and int(row_season) != season:
+            if row_season is not None and int(row_season) != season:  # type: ignore[call-overload]
                 return None
         except (TypeError, ValueError):
             return None

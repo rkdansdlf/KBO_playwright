@@ -46,7 +46,7 @@ def classify_appearance_type(row: dict[str, Any]) -> str:
         return "PITCHER"
 
     try:
-        bo_int = int(batting_order)
+        bo_int = int(batting_order) if batting_order is not None else 0
     except (ValueError, TypeError):
         bo_int = 0
 
