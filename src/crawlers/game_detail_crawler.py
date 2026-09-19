@@ -708,7 +708,7 @@ class GameDetailCrawler:
                 "sacrifice_hits": sacrifice_hits,
                 "sacrifice_flies": sacrifice_flies,
                 "stolen_bases": _as_int(raw.get("sb")),
-                "avg": round(hits / at_bats, 3) if at_bats else None,
+                "avg": round(hits / at_bats, 3) if at_bats and hits is not None else None,
             }
             self._backfill_hitter_plate_appearances(stats)
             entries.append(

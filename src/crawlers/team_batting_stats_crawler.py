@@ -177,7 +177,7 @@ class TeamBattingStatsCrawler(BaseCrawler):
                     # 순위 데이터도 함께 재계산 (통합 폴백 로직)
                     logger.warning("⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: %s)...", season)
                     try:
-                        from src.cli.calculate_standings import StandingsCalculator
+                        from src.cli.calc.calculate_standings import StandingsCalculator
 
                         calc = StandingsCalculator(session)
                         calc.calculate_year(season)

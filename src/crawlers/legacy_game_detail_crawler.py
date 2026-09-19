@@ -9,7 +9,6 @@ from src.parsers.game_detail_parser import parse_game_detail_html
 from src.utils.request_policy import RequestPolicy
 
 if TYPE_CHECKING:
-    from playwright.async_api import Page as AsyncPage
     from playwright.sync_api import Page as SyncPage
     from sqlalchemy.orm import Session
 
@@ -64,7 +63,7 @@ class LegacyGameDetailCrawler:
 
     def extract_game_details(
         self,
-        page_or_html: SyncPage | AsyncPage | str,
+        page_or_html: SyncPage | str,
         game_id: str,
         game_date: str,
         db_session: Session | None = None,
