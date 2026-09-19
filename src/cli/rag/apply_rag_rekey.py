@@ -531,7 +531,7 @@ def _apply_rekey(  # noqa: C901, PLR0912, PLR0915
     for update_stmt, meta in pending_mutations:
         if not dry_run:
             result = session.execute(update_stmt)
-            if result.rowcount != 1:
+            if int(getattr(result, "rowcount", 0) or 0) != 1:
                 if strict_atomic:
                     session.rollback()
                     skipped.append(

@@ -84,7 +84,7 @@ async def run_futures(limit: int | None, season: int, delay: float, concurrency:
         concurrency: Maximum number of concurrent requests.
 
     """
-    from src.cli.crawl_futures import crawl_futures
+    from src.cli.collection.crawl_futures import crawl_futures
 
     args = argparse.Namespace(
         season=season,

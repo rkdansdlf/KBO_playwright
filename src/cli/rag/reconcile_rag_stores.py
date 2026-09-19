@@ -7,7 +7,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
 from src.services.rag_reconciliation import (
@@ -37,12 +37,14 @@ def _default_stamp() -> str:
     return datetime.now(KST).strftime("%Y%m%d_%H%M%S")
 
 
-def _entry_from_db_row(row: Mapping[str, object]) -> ManifestEntry:
+def _entry_from_db_row(row: Mapping[Any, Any]) -> ManifestEntry:
     """Convert one DB identity row mapping into a manifest entry."""
     mapping = dict(row)
     raw_ts = mapping.get("updated_at")
-    if hasattr(raw_ts, "isoformat"):
-        mapping["updated_at"] = raw_ts.isoformat()
+    if raw_ts is not None and hasattr(raw_ts, "isoformat"):
+        isoformat = getattr(raw_ts, "isoformat", None)
+        if callable(isoformat):
+            mapping["updated_at"] = isoformat()
     return entry_from_manifest_row(mapping)
 
 

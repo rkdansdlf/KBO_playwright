@@ -59,7 +59,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if not is_pgvector_available() and not is_oracle_vector_backend():
         payload = {"consistent": False, "error": "pgvector is unavailable; Oracle VECTOR backend is also unavailable"}
-        rendered = json.dumps(payload, ensure_ascii=False) if args.as_json else payload["error"]
+        rendered = json.dumps(payload, ensure_ascii=False) if args.as_json else str(payload["error"])
         sys.stdout.write(rendered + "\n")
         return 2
 
