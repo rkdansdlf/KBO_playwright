@@ -51,13 +51,14 @@ def ingest_season(
             session.commit()
 
             # 2. Seed Boxscores and Player Stats
+            # NOTE: detailed boxscores come from the namu answer-set pipeline
+            # (scripts/historical/apply_season_to_db.py); no in-DB seeder exists.
             inns, bats, pits = (0, 0, 0)
             if with_boxscores:
-                inns, bats, pits = boxscore_svc.seed_1982_season_boxscores()
-                session.commit()
+                logger.info("Boxscore seeding is handled by the namu answer-set pipeline; skipping here")
 
             # 3. Verify Integrity
-            integrity_report = boxscore_svc.audit_1982_boxscore_integrity()
+            integrity_report = boxscore_svc.audit_historical_boxscore_integrity(season_year)
 
             return {
                 "season": season_year,
