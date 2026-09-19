@@ -291,15 +291,21 @@ class SabermetricsEngine:
 
         for b in bat_rows:
             metrics = self.calculate_batting_metrics(b, consts)
-            b.woba = metrics.woba
-            b.wrc_plus = metrics.wrc_plus
-            b.war = metrics.war
+            b.extra_stats = {
+                **(b.extra_stats or {}),
+                "woba": metrics.woba,
+                "wrc_plus": metrics.wrc_plus,
+                "war": metrics.war,
+            }
 
         for p in pit_rows:
             p_metrics = self.calculate_pitching_metrics(p, consts)
             p.fip = p_metrics.fip
-            p.kfip = p_metrics.kfip
-            p.war = p_metrics.war
+            p.extra_stats = {
+                **(p.extra_stats or {}),
+                "kfip": p_metrics.kfip,
+                "war": p_metrics.war,
+            }
 
         self.session.flush()
         return {"batting_updated": len(bat_rows), "pitching_updated": len(pit_rows)}
