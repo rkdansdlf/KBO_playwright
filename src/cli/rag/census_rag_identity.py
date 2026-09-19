@@ -123,7 +123,8 @@ def _render_summary(
     if as_json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
         return
-    totals = payload["totals"]
+    totals_raw = payload["totals"]
+    totals = totals_raw if isinstance(totals_raw, dict) else {}
     sys.stdout.write(
         "read_only=true sources={sources} source_rows={source_rows} legacy_numeric={legacy_numeric_rows} "
         "mapped={safe_source_matches} safe_rekey={safe_rekey_candidates} orphan={orphan_rows} "

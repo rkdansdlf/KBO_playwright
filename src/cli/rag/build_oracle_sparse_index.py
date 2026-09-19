@@ -125,7 +125,7 @@ def _build_sparse_terms(session: Session, options: SparseTermBuildOptions) -> Sp
     for batch in _iter_chunk_batches(session, options.limit, options.batch_size, options.after_id):
         postings = _build_batch_postings(batch)
         chunks_scanned += len(batch)
-        chunks_with_terms += len({int(row["rag_chunk_id"]) for row in postings})
+        chunks_with_terms += len({int(row["rag_chunk_id"]) for row in postings})  # type: ignore[call-overload]
         term_rows += len(postings)
 
         if not options.apply:

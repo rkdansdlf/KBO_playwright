@@ -61,6 +61,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             msg = f"Crawl evidence not found: {args.evidence_id}"
             raise SystemExit(msg)
         expected = load_json_artifact(evidence.normalized_payload_path, evidence.normalized_hash)
+        if not isinstance(expected, dict):
+            msg = f"Crawl evidence payload missing or invalid: {args.evidence_id}"
+            raise SystemExit(msg)
         actual = (
             _load_json_file(args.actual_json)
             if args.actual_json
