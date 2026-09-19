@@ -1,8 +1,10 @@
 from src.parsers.retired_player_parser import (
+    RetiredPlayerParser,
     _apply_stat,
     _clean_header,
     _cleanup_consumed,
     _merge_extra_stats,
+    _select_pitcher_table,
     _select_tables,
     _table_to_dicts,
     parse_retired_hitter_tables,
@@ -405,3 +407,32 @@ class TestMergeCleanup:
         _merge_extra_stats(record, row, record["_consumed_keys"])
         assert "" not in record["extra_stats"]
         assert record["extra_stats"]["유효"] == "data"
+
+
+class TestRetiredPlayerParserParse:
+    def test_parse_selects_pitcher_table(self):
+        hitter_table = {
+            "headers": ["연도", "팀명", "경기", "타수", "안타"],
+            "rows": [["2021", "삼성", "100", "350", "120"]],
+        }
+        pitcher_table = {
+            "headers": ["연도", "팀명", "경기", "승", "패"],
+            "rows": [["2021", "삼성", "45", "5", "3"]],
+        }
+        assert _select_pitcher_table([hitter_table, pitcher_table]) == pitcher_table
+        assert _select_pitcher_table([hitter_table]) is None
+        assert _select_pitcher_table([]) is None
+
+    def test_parse_returns_both_sides(self):
+        hitter_table = {
+            "headers": ["연도", "팀명", "경기", "타수", "안타"],
+            "rows": [["2021", "삼성", "100", "350", "120"]],
+        }
+        pitcher_table = {
+            "headers": ["연도", "팀명", "경기", "승", "패"],
+            "rows": [["2021", "삼성", "45", "5", "3"]],
+        }
+        hitters, pitchers = RetiredPlayerParser([hitter_table, pitcher_table]).parse()
+        assert len(hitters) == 1
+        assert len(pitchers) == 1
+        assert pitchers[0]["wins"] == 5

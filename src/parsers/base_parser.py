@@ -131,7 +131,7 @@ class BaseHtmlParser(BaseParser[T]):
             headers = [self.clean_text(th) for th in header_row.select("th, td")]
 
         rows: list[dict[str, str]] = []
-        body_rows = table_elem.select("tbody tr") or table_elem.select("tr")
+        body_rows: list[Tag] = table_elem.select("tbody tr") or table_elem.select("tr")
         # If the first row was treated as header, skip it if body_rows selected all trs
         if not table_elem.select("tbody tr") and body_rows and header_row:
             body_rows = body_rows[1:]

@@ -15,6 +15,8 @@ from bs4 import BeautifulSoup
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from bs4 import Tag
+
 
 @dataclass(frozen=True, slots=True)
 class PageContract:
@@ -74,7 +76,7 @@ class SelectorDriftSentinel:
                 mismatched_columns.append(f"Table '{table_sel}' not found")
                 continue
 
-            header_cells = table.select("th")
+            header_cells: list[Tag] = table.select("th")
             if not header_cells:
                 first_row = table.select_one("tr")
                 header_cells = first_row.select("td") if first_row else []

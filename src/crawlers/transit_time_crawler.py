@@ -185,8 +185,7 @@ class TransitTimeCrawler(BaseCrawler):
         with SessionLocal() as session:
             try:
                 repo = TransitTimeRepository(session)
-                save_fn = getattr(repo, "bulk_upsert", None) or repo.bulk_save
-                count = save_fn(records)
+                count = repo.bulk_upsert(records)
                 session.commit()
                 logger.info("[Transit] Saved %s transit time records.", count)
             except Exception:

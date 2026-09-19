@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from src.db.vector_engine import is_oracle_vector_backend, is_pgvector_available
 from src.rag.base_retriever import BaseRetriever
@@ -13,8 +14,11 @@ from src.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
 
-def _build_dense_repository() -> object:
+
+def _build_dense_repository() -> VectorSearchRepository | OracleVectorSearchRepository:
     """Build the repository for the active vector backend."""
     if is_oracle_vector_backend():
         from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
@@ -30,7 +34,7 @@ class OracleDenseRetriever(BaseRetriever):
         self,
         *,
         embedding_service: EmbeddingService | None = None,
-        vector_repo: object | None = None,
+        vector_repo: VectorSearchRepository | OracleVectorSearchRepository | None = None,
         name: str = "OracleDenseRetriever",
     ) -> None:
         """Initialize the dense retriever."""

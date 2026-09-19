@@ -66,6 +66,18 @@ def _select_tables(tables: list[dict[str, Any]]) -> tuple[list[dict[str, str]], 
     return base_rows, adv_rows
 
 
+_PITCHER_TABLE_MARKERS = frozenset({"승", "W", "이닝", "IP", "평균자책", "ERA", "세이브", "SV"})
+
+
+def _select_pitcher_table(tables: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the first table carrying pitching headers, if any."""
+    for table in tables:
+        headers = {_clean_header(header) for header in (table.get("headers") or [])}
+        if _PITCHER_TABLE_MARKERS & headers:
+            return table
+    return None
+
+
 def parse_retired_hitter_tables(
     tables: list[dict[str, Any]],
     *,
@@ -306,7 +318,8 @@ class RetiredPlayerParser(BaseParser[tuple[list[dict[str, Any]], list[dict[str, 
 
         """
         hitter_stats = parse_retired_hitter_tables(self.tables)
-        pitcher_stats = parse_retired_pitcher_table(self.tables)
+        pitcher_table = _select_pitcher_table(self.tables)
+        pitcher_stats = parse_retired_pitcher_table(pitcher_table) if pitcher_table is not None else []
         return hitter_stats, pitcher_stats
 
 
