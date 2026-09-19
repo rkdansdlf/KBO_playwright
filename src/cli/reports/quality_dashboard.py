@@ -177,7 +177,7 @@ def generate_daily_quality_dashboard(
     dashboard = build_quality_dashboard(report_dir, days=days, limit=limit)
 
     try:
-        from src.cli.gap_report import build_gap_report
+        from src.cli.reports.gap_report import build_gap_report
 
         gap_report = build_gap_report()
         dashboard["gap_report"] = gap_report.get("gaps", {})
@@ -185,7 +185,7 @@ def generate_daily_quality_dashboard(
         logger.warning("Failed to integrate gap_report in quality_dashboard: %s", e)
 
     try:
-        from src.cli.health_check import run_health_check
+        from src.cli.reports.health_check import run_health_check
 
         health_report = run_health_check(json_format=True)
         dashboard["health_check"] = health_report

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.auto_healer import _find_season_stat_discrepancies, _find_stuck_games
+from src.cli.backfill.auto_healer import _find_season_stat_discrepancies, _find_stuck_games
 from src.db.engine import get_db_session, init_db
 from src.models.game import Game, GameEvent, GamePlayByPlay
 from src.models.player import PlayerBasic

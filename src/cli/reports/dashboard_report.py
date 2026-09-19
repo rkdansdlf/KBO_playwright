@@ -148,7 +148,7 @@ def _build_team_defense(session: Session, year: int) -> dict[str, Any]:
 
 
 def _build_quality(session: Session, date_str: str, year: int) -> dict[str, Any]:
-    from src.cli.generate_quality_report import get_daily_metrics
+    from src.cli.reports.generate_quality_report import get_daily_metrics
     from src.validators.quality_gate import run_quality_gate
 
     metrics = get_daily_metrics(session, date_str)
@@ -158,7 +158,7 @@ def _build_quality(session: Session, date_str: str, year: int) -> dict[str, Any]
 
 
 def _build_freshness(session: Session, date_str: str) -> dict[str, Any]:
-    from src.cli.freshness_gate import collect_freshness_issues
+    from src.cli.reports.freshness_gate import collect_freshness_issues
 
     issues = collect_freshness_issues(session, target_date=date_str)
     return {"date": date_str, "issues": issues, "total_issues": sum(len(v) for v in issues.values())}
