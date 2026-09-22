@@ -24,7 +24,9 @@ class HarnessPlan:
 
     def to_dict(self) -> dict[str, object]:
         """Serialize the plan to JSON-compatible values."""
-        return asdict(self)
+        from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION
+
+        return {"schema_version": EVIDENCE_SCHEMA_VERSION, **asdict(self)}
 
 
 def build_plan(task: str, decision: RouteDecision) -> HarnessPlan:
