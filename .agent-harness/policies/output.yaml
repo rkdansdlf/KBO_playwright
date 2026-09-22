@@ -1,0 +1,7 @@
+version: 1
+human: i-have-adhd
+subagent: caveman
+rules:
+  - Human-facing reports use answer-first concise output.
+  - Caveman compression is never applied to human-facing reports.
+  - Reports must distinguish executed skills from selected reference-only adapters.

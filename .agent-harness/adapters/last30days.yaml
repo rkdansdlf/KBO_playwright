@@ -1,0 +1,6 @@
+name: last30days
+source: mvanhorn/last30days-skill
+role: fresh_research
+transport: native
+executable: false
+capabilities: [recent-web-research]

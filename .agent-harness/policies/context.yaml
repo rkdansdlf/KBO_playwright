@@ -1,0 +1,13 @@
+version: 1
+default_engine: graphify
+deep_engine: understand-anything
+deep_profiles: [refactor, architecture]
+never_combine_unless_profiled: [graphify, understand-anything]
+include:
+  - AGENTS.md
+  - pyproject.toml
+exclude:
+  - .env
+  - data
+  - logs
+  - Wallet_*

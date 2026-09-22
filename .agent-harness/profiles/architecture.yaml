@@ -1,0 +1,4 @@
+name: architecture
+description: Explain or visualize architecture, lineage, dependencies, and system flows.
+triggers: [architecture, diagram, dependency, lineage, 아키텍처, 다이어그램, 계보]
+requires_network: false

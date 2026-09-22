@@ -1,0 +1,7 @@
+name: caveman
+source: praxstack/JuliusBrussee-caveman
+role: compression
+transport: policy
+executable: false
+license_gate: prohibited_pending_review
+capabilities: [subagent-compression]

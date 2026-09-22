@@ -1,0 +1,6 @@
+name: understand-anything
+source: Egonex-AI/Understand-Anything
+role: deep_architecture
+transport: native
+executable: false
+capabilities: [multi-subsystem-exploration, knowledge-graph]

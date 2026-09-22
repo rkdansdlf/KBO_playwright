@@ -1,0 +1,93 @@
+version: 1
+
+project:
+  name: KBO_playwright
+  language: python
+  instructions: AGENTS.md
+
+paths:
+  profiles: .agent-harness/profiles
+  policies: .agent-harness/policies
+  adapters: .agent-harness/adapters
+  artifacts: artifacts/agent-harness
+  lock: harness.lock.json
+  stack: aas-stack.json
+
+defaults:
+  profile: feature
+  graph_engine: graphify
+  human_output: i-have-adhd
+  subagent_output: caveman
+  implementation_workflow: superpowers
+
+skills:
+  superpowers:
+    role: workflow
+    mode: auto
+  ponytail:
+    role: complexity_gate
+    mode: auto
+  graphify:
+    role: code_graph
+    mode: on_demand
+  understand-anything:
+    role: deep_architecture
+    mode: conditional
+  caveman:
+    role: compression
+    mode: subagents_only
+    proxy: false
+  last30days:
+    role: fresh_research
+    mode: explicit_or_router
+  i-have-adhd:
+    role: human_output
+    mode: always
+  aas:
+    role: skill_registry
+    mode: control_plane
+    apply: false
+  scientific:
+    role: analytics
+    mode: selected_skills_only
+  diagram-design:
+    role: visualization
+    mode: on_demand
+
+routes:
+  crawler-bug:
+    context: [graphify]
+    workflow: [superpowers]
+    guards: [ponytail]
+    verification: crawler
+    output: i-have-adhd
+  feature:
+    context: [graphify]
+    workflow: [superpowers]
+    guards: [ponytail]
+    verification: project
+    output: i-have-adhd
+  refactor:
+    context: [graphify, understand-anything]
+    workflow: [superpowers]
+    guards: [ponytail]
+    verification: full
+    output: i-have-adhd
+  research:
+    context: []
+    workflow: [last30days]
+    guards: []
+    verification: research
+    output: i-have-adhd
+  analytics:
+    context: [graphify]
+    workflow: [scientific]
+    guards: [ponytail]
+    verification: analytics
+    output: i-have-adhd
+  architecture:
+    context: [graphify, understand-anything]
+    workflow: [diagram-design]
+    guards: [ponytail]
+    verification: project
+    output: i-have-adhd

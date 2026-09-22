@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "generated_at": "2026-09-22",
+  "install_policy": "reference_only",
+  "skills": {
+    "superpowers": {
+      "repository": "https://github.com/obra/superpowers.git",
+      "revision": "5bf4e78011075bcfc0dc295f0724994cd123ee71",
+      "license": "MIT",
+      "redistribution": "allowed"
+    },
+    "ponytail": {
+      "repository": "https://github.com/DietrichGebert/ponytail.git",
+      "revision": "e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156",
+      "license": "MIT",
+      "redistribution": "allowed"
+    },
+    "graphify": {
+      "repository": "https://github.com/Graphify-Labs/graphify.git",
+      "revision": "20a20d30d8e7eef77675651f0199d87f913bd3e7",
+      "license": "Apache-2.0",
+      "redistribution": "allowed"
+    },
+    "caveman": {
+      "repository": "https://github.com/praxstack/JuliusBrussee-caveman.git",
+      "revision": "4a5141f2fe91bc78ca8e288aeed64cd7cdd53b66",
+      "license": "NOASSERTION",
+      "redistribution": "prohibited_pending_review"
+    },
+    "understand-anything": {
+      "repository": "https://github.com/Egonex-AI/Understand-Anything.git",
+      "revision": "6df3065f1d8ddc2ce3615314d1d493f36d6b1c80",
+      "license": "MIT",
+      "redistribution": "allowed"
+    },
+    "last30days": {
+      "repository": "https://github.com/mvanhorn/last30days-skill.git",
+      "revision": "349ca444b4fda466e74d471dffa2aff36bb997f1",
+      "license": "MIT",
+      "redistribution": "allowed"
+    },
+    "i-have-adhd": {
+      "repository": "https://github.com/ayghri/i-have-adhd.git",
+      "revision": "839872f9d1cd634fed642b4589ce7226199cc15f",
+      "license": "MIT",
+      "redistribution": "allowed"
+    },
+    "aas": {
+      "repository": "https://github.com/sickn33/agentic-awesome-skills.git",
+      "revision": "12123b491916cbde2811e2a6b3855a3839298a1c",
+      "license": "MIT",
+      "redistribution": "selected_asset_review_required"
+    },
+    "scientific": {
+      "repository": "https://github.com/K-Dense-AI/scientific-agent-skills.git",
+      "revision": "49c6e97775eaa18ba791bebe23162a70ae601c18",
+      "license": "MIT",
+      "redistribution": "selected_asset_review_required"
+    },
+    "diagram-design": {
+      "repository": "https://github.com/cathrynlavery/diagram-design.git",
+      "revision": "dc1ace47b99a419e42d01a03cb6ace5346efa8ae",
+      "license": "MIT",
+      "redistribution": "allowed"
+    }
+  }
+}
