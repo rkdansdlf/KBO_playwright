@@ -10,13 +10,16 @@ python3 -m tools.agent_harness doctor
 python3 -m tools.agent_harness route "boxscore crawler timeout 수정"
 python3 -m tools.agent_harness plan "boxscore crawler timeout 수정"
 python3 -m tools.agent_harness run "boxscore crawler timeout 수정" --profile crawler-bug
+python3 -m tools.agent_harness run "정리해줘" --changed-files src/crawlers/x.py
 python3 -m tools.agent_harness verify <run-id>
 python3 -m tools.agent_harness report <run-id>
 ```
 
 - `route`: 분류+스킬 선택만 표시 (plan과 달리 실행계획을 만들지 않음).
 - `plan`: route + context + verification 실행계획 생성.
+- `route/plan/run`은 `--changed-files <paths...>`를 받으며 파일 신호가 프롬프트 키워드보다 우선한다.
 - `verify`: `plan.json`의 verification 프로파일로 기존 프로젝트 게이트 실행.
+  모든 명령은 `CommandRunner` allowlist를 통과하며 거부 시 exit 2로 종료된다.
 
 ## 프로파일 선택 규칙
 

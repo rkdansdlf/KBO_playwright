@@ -36,9 +36,12 @@ class HarnessRunner:
         self.registry = registry
         self.permissions = permissions
 
-    def run(self, task: str, profile: str | None = None) -> HarnessRun:
+    def run(self, task: str, profile: str | None = None, changed_files: list[str] | tuple[str, ...] = ()) -> HarnessRun:
         """Create task, plan, context, trace, command, and report artifacts."""
-        decision = TaskRouter(self.registry).route(task, profile)
+        from tools.agent_harness.dto import TaskRequest
+
+        request = TaskRequest(prompt=task, changed_files=list(changed_files), explicit_profile=profile)
+        decision = TaskRouter(self.registry).route_request(request)
         plan = build_plan(task, decision)
         artifacts_root = self.registry.root / "artifacts" / "agent-harness"
         evidence = EvidenceStore.create(artifacts_root, self.permissions)

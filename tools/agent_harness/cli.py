@@ -20,6 +20,8 @@ from tools.agent_harness.verifier import ProjectVerifier
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from tools.agent_harness.router import RouteDecision
+
 
 @dataclass(frozen=True)
 class DoctorReport:
@@ -48,11 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan", help="Route a task and render its Harness stages.")
     plan.add_argument("task", help="Development task to route.")
     plan.add_argument("--profile", help="Explicit Harness profile override.")
+    plan.add_argument("--changed-files", nargs="*", default=[], help="Changed files for file-signal routing.")
     plan.add_argument("--json", action="store_true", help="Render machine-readable JSON.")
 
     route = subparsers.add_parser("route", help="Show task classification and skill selection only.")
     route.add_argument("task", help="Development task to classify.")
     route.add_argument("--profile", help="Explicit Harness profile override.")
+    route.add_argument("--changed-files", nargs="*", default=[], help="Changed files for file-signal routing.")
     route.add_argument("--json", action="store_true", help="Render machine-readable JSON.")
 
     context = subparsers.add_parser("context", help="Manage local Harness context metadata.")
@@ -62,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="Create an auditable Harness task handoff.")
     run.add_argument("task", help="Development task to initialize.")
     run.add_argument("--profile", help="Explicit Harness profile override.")
+    run.add_argument("--changed-files", nargs="*", default=[], help="Changed files for file-signal routing.")
     run.add_argument("--json", action="store_true", help="Render machine-readable JSON.")
 
     verify = subparsers.add_parser("verify", help="Run existing project gates for a Harness run.")
@@ -158,11 +163,20 @@ def _refresh_context(registry: HarnessRegistry, permissions: PermissionPolicy) -
 
 
 def _verify_run(registry: HarnessRegistry, permissions: PermissionPolicy, run_id: str) -> dict[str, object]:
+    from tools.agent_harness.command_runner import CommandRunner
+    from tools.agent_harness.exceptions import PermissionDeniedError
+
     artifacts_root = registry.root / "artifacts" / "agent-harness"
     evidence = EvidenceStore.open(artifacts_root, run_id, permissions)
     plan = json.loads((evidence.root / "plan.json").read_text(encoding="utf-8"))
     verification_profile = str(plan["verification"])
-    report = ProjectVerifier.load(registry.root).verify(verification_profile, evidence=evidence)
+    runner = CommandRunner(permissions=permissions, root=registry.root)
+    try:
+        report = ProjectVerifier.load(registry.root).verify(
+            verification_profile, evidence=evidence, skill_id="harness", runner=runner
+        )
+    except PermissionDeniedError as exc:
+        return {"run_id": run_id, "passed": False, "error": str(exc)}
     status = "passed" if report.passed else "failed"
     report_path = evidence.root / "report.md"
     current = report_path.read_text(encoding="utf-8")
@@ -202,12 +216,24 @@ def _render_route(payload: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _route_request(args: argparse.Namespace, registry: HarnessRegistry) -> RouteDecision:
+    """Build a TaskRequest from CLI args with explicit, files, prompt priority."""
+    from tools.agent_harness.dto import TaskRequest
+
+    request = TaskRequest(
+        prompt=args.task,
+        changed_files=list(args.changed_files or []),
+        explicit_profile=args.profile,
+    )
+    return TaskRouter(registry).route_request(request)
+
+
 def _handle_route(
     args: argparse.Namespace,
     registry: HarnessRegistry,
     _permissions: PermissionPolicy,
 ) -> int:
-    decision = TaskRouter(registry).route(args.task, args.profile)
+    decision = _route_request(args, registry)
     payload = {"task": args.task, **decision.to_dict()}
     _write_output(payload if args.json else _render_route(payload), as_json=args.json)
     return 0
@@ -218,7 +244,7 @@ def _handle_plan(
     registry: HarnessRegistry,
     _permissions: PermissionPolicy,
 ) -> int:
-    decision = TaskRouter(registry).route(args.task, args.profile)
+    decision = _route_request(args, registry)
     payload = build_plan(args.task, decision).to_dict()
     _write_output(payload if args.json else _render_plan(payload), as_json=args.json)
     return 0
@@ -239,7 +265,9 @@ def _handle_run(
     registry: HarnessRegistry,
     permissions: PermissionPolicy,
 ) -> int:
-    run = HarnessRunner(registry, permissions).run(args.task, args.profile)
+    run = HarnessRunner(registry, permissions).run(
+        args.task, args.profile, changed_files=list(args.changed_files or [])
+    )
     payload = {"run_id": run.run_id, "profile": run.profile, "artifact_dir": str(run.artifact_dir)}
     _write_output(payload if args.json else f"Harness run initialized: {run.run_id}\n", as_json=args.json)
     return 0
@@ -251,6 +279,9 @@ def _handle_verify(
     permissions: PermissionPolicy,
 ) -> int:
     payload = _verify_run(registry, permissions, args.run_id)
+    if payload.get("error") is not None:
+        _write_output(payload if args.json else f"Verification denied: {args.run_id}\n", as_json=args.json)
+        return 2
     _write_output(payload if args.json else f"Verification passed: {args.run_id}\n", as_json=args.json)
     return 0 if payload["passed"] is True else 1
 
