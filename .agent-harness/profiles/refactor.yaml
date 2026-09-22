@@ -1,0 +1,4 @@
+name: refactor
+description: Change architecture across multiple subsystems with deep context and full verification.
+triggers: [refactor, migration, redesign, large, 리팩터, 마이그레이션, 재설계]
+requires_network: false

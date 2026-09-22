@@ -1,0 +1,38 @@
+version: 1
+levels:
+  none:
+    description: "No automated checks (research-only routes)."
+  quick:
+    pytest: affected
+    ruff: changed
+  standard:
+    pytest: affected
+    ruff: project
+    crawler_gate: conditional
+  full:
+    pytest: full
+    ruff: project
+    format_check: true
+    mypy: true
+    certification: conditional
+profiles:
+  project:
+    commands:
+      - [python, -m, pytest, tests/agent_harness, -q]
+      - [python, -m, ruff, check, src, tests, scripts, tools]
+  crawler:
+    commands:
+      - [python, -m, src.cli.crawler_selector_gate, --config, Docs/references/crawler_selector_gate.json, --json]
+      - [python, -m, pytest, tests/agent_harness, tests/monitoring/test_crawler_selector_gate.py, -q]
+      - [python, -m, ruff, check, src, tests, scripts, tools]
+  analytics:
+    commands:
+      - [python, -m, pytest, tests/agent_harness, tests/analytics, -q]
+      - [python, -m, ruff, check, src, tests, scripts, tools]
+  research:
+    commands:
+      - [python, -m, tools.agent_harness, doctor, --json]
+  full:
+    commands:
+      - [python, -m, pytest, -q]
+      - [python, -m, ruff, check, src, tests, scripts, tools]

@@ -1,0 +1,4 @@
+name: crawler-bug
+description: Diagnose and minimally fix crawler, selector, parser, timing, or persistence failures.
+triggers: [crawler, crawl, selector, playwright, timeout, parser, boxscore, 크롤러, 셀렉터, 타임아웃]
+requires_network: false

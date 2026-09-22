@@ -1,0 +1,4 @@
+name: research
+description: Research recent external changes when freshness is material to the answer.
+triggers: [recent, latest, last30days, research, 최신, 최근, 조사]
+requires_network: true

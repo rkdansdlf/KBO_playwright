@@ -1,0 +1,4 @@
+name: feature
+description: Implement a bounded product or developer feature with TDD and project verification.
+triggers: [feature, add, implement, 기능, 추가, 구현]
+requires_network: false

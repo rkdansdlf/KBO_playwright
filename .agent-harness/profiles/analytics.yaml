@@ -1,0 +1,4 @@
+name: analytics
+description: Analyze KBO statistics, anomalies, time series, or model evaluation evidence.
+triggers: [analytics, statistic, anomaly, model, 분석, 통계, 이상탐지]
+requires_network: false

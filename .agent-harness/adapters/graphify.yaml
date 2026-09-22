@@ -1,0 +1,6 @@
+name: graphify
+source: Graphify-Labs/graphify
+role: code_graph
+transport: cli
+executable: false
+capabilities: [local-ast-graph, dependency-context]

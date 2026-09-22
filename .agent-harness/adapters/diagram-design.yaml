@@ -1,0 +1,6 @@
+name: diagram-design
+source: cathrynlavery/diagram-design
+role: visualization
+transport: native
+executable: false
+capabilities: [html-svg-diagrams]
