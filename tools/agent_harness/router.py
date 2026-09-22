@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -77,7 +77,8 @@ class TaskRouter:
 
             inferred = KBOProjectAdapter().infer_profile_from_files(request.changed_files)
             if inferred is not None and inferred in self.registry.profiles:
-                return self.route(request.prompt, inferred)
+                decision = self.route(request.prompt, inferred)
+                return replace(decision, reason=f"file signal matched {inferred}")
         return self.route(request.prompt)
 
 
