@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from tools.agent_harness.context_builder import ContextBuilder
+from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION
 from tools.agent_harness.evidence import EvidenceStore
 from tools.agent_harness.planner import build_plan
 from tools.agent_harness.router import TaskRouter
@@ -47,7 +48,14 @@ class HarnessRunner:
         evidence = EvidenceStore.create(artifacts_root, self.permissions)
         context = ContextBuilder(self.registry, self.permissions).build(decision)
 
-        evidence.write_json("task.json", {"task": task, "profile": decision.profile})
+        evidence.write_json(
+            "task.json",
+            {
+                "schema_version": EVIDENCE_SCHEMA_VERSION,
+                "task": task,
+                "profile": decision.profile,
+            },
+        )
         evidence.write_json("plan.json", plan.to_dict())
         evidence.write_json("context.json", context)
         for stage in plan.stages:

@@ -37,6 +37,9 @@ class PermissionDecision(StrEnum):
     REQUIRE_APPROVAL = "require_approval"
 
 
+EVIDENCE_SCHEMA_VERSION = "2"
+
+
 @dataclass(frozen=True)
 class TaskRequest:
     """Describe one Harness routing request with file signals."""
@@ -125,6 +128,7 @@ class RegistryHealthReport:
 
 
 __all__ = [
+    "EVIDENCE_SCHEMA_VERSION",
     "PermissionDecision",
     "PermissionResult",
     "RegistryHealthReport",
