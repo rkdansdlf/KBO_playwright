@@ -20,6 +20,7 @@ from tools.agent_harness.verifier import ProjectVerifier
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from tools.agent_harness.command_runner import CommandRunner
     from tools.agent_harness.router import RouteDecision
 
 
@@ -71,6 +72,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify = subparsers.add_parser("verify", help="Run existing project gates for a Harness run.")
     verify.add_argument("run_id", help="Harness run identifier.")
+    verify.add_argument(
+        "--level",
+        choices=["none", "quick", "standard", "full"],
+        help="Impact-based verification level (default: run's fixed profile).",
+    )
+    verify.add_argument("--changed-files", nargs="*", default=[], help="Changed files for impact selection.")
     verify.add_argument("--json", action="store_true", help="Render machine-readable JSON.")
 
     report = subparsers.add_parser("report", help="Print a Harness run report.")
@@ -162,7 +169,13 @@ def _refresh_context(registry: HarnessRegistry, permissions: PermissionPolicy) -
     return {**payload, "path": str(relative)}
 
 
-def _verify_run(registry: HarnessRegistry, permissions: PermissionPolicy, run_id: str) -> dict[str, object]:
+def _verify_run(
+    registry: HarnessRegistry,
+    permissions: PermissionPolicy,
+    run_id: str,
+    level: str | None = None,
+    changed_files: list[str] | tuple[str, ...] = (),
+) -> dict[str, object]:
     from tools.agent_harness.command_runner import CommandRunner
     from tools.agent_harness.exceptions import PermissionDeniedError
 
@@ -171,6 +184,9 @@ def _verify_run(registry: HarnessRegistry, permissions: PermissionPolicy, run_id
     plan = json.loads((evidence.root / "plan.json").read_text(encoding="utf-8"))
     verification_profile = str(plan["verification"])
     runner = CommandRunner(permissions=permissions, root=registry.root)
+    if level is not None:
+        verifier = ProjectVerifier.load(registry.root)
+        return _verify_level(verifier, evidence, level, changed_files, runner)
     try:
         report = ProjectVerifier.load(registry.root).verify(
             verification_profile, evidence=evidence, skill_id="harness", runner=runner
@@ -182,6 +198,41 @@ def _verify_run(registry: HarnessRegistry, permissions: PermissionPolicy, run_id
     current = report_path.read_text(encoding="utf-8")
     updated = current.replace(f"`{verification_profile}` (pending)", f"`{verification_profile}` ({status})")
     evidence.write_text("report.md", updated)
+    return {"run_id": run_id, **report.to_dict()}
+
+
+def _verify_level(
+    verifier: ProjectVerifier,
+    evidence: EvidenceStore,
+    level: str,
+    changed_files: list[str] | tuple[str, ...],
+    runner: CommandRunner,
+) -> dict[str, object]:
+    from tools.agent_harness.exceptions import PermissionDeniedError
+    from tools.agent_harness.verifier import VerificationReport
+
+    run_id = evidence.run_id
+    vplan = verifier.build_plan(level=level, changed_files=changed_files)
+    results = []
+    for check in vplan.checks:
+        try:
+            result = runner.run(check.argv, skill_id="harness", timeout_seconds=check.timeout_seconds)
+        except PermissionDeniedError as exc:
+            return {"run_id": run_id, "passed": False, "error": str(exc)}
+        results.append(result)
+        evidence.append_jsonl("commands.jsonl", result.to_dict())
+        if result.exit_code != 0 and check.blocking:
+            break
+    report = VerificationReport(
+        profile=f"level:{level}",
+        passed=all(result.exit_code == 0 for result in results),
+        commands=tuple(results),
+    )
+    evidence.write_json("verification.json", report.to_dict())
+    status = "passed" if report.passed else "failed"
+    report_path = evidence.root / "report.md"
+    current = report_path.read_text(encoding="utf-8")
+    evidence.write_text("report.md", current.replace("(pending)", f"(level:{level} {status})"))
     return {"run_id": run_id, **report.to_dict()}
 
 
@@ -278,7 +329,7 @@ def _handle_verify(
     registry: HarnessRegistry,
     permissions: PermissionPolicy,
 ) -> int:
-    payload = _verify_run(registry, permissions, args.run_id)
+    payload = _verify_run(registry, permissions, args.run_id, args.level, list(args.changed_files or []))
     if payload.get("error") is not None:
         _write_output(payload if args.json else f"Verification denied: {args.run_id}\n", as_json=args.json)
         return 2

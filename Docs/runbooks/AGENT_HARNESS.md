@@ -20,6 +20,10 @@ python3 -m tools.agent_harness report <run-id>
 - `route/plan/run`은 `--changed-files <paths...>`를 받으며 파일 신호가 프롬프트 키워드보다 우선한다.
 - `verify`: `plan.json`의 verification 프로파일로 기존 프로젝트 게이트 실행.
   모든 명령은 `CommandRunner` allowlist를 통과하며 거부 시 exit 2로 종료된다.
+- `verify --level <none|quick|standard|full> --changed-files <paths...>`: 고정 프로파일 대신
+  영향 기반 플랜으로 실행. 예: crawler 파일 변경 시 selector gate 자동 포함.
+  주의: `quick` 이상은 하네스 테스트 스위트 자체를 실행하므로 하네스 테스트 내부에서는
+  fake runner로 구성만 검증한다 (실행 시 자기재귀 발생).
 
 ## 프로파일 선택 규칙
 
