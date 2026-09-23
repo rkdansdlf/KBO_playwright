@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
@@ -63,7 +63,7 @@ def load_official_report(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _model_specs() -> tuple[tuple[str, type[object], object], ...]:
+def _model_specs() -> tuple[tuple[str, Any, Any], ...]:
     return (
         ("game_batting_stats", GameBattingStat, GameBattingStat.position),
         ("game_pitching_stats", GamePitchingStat, GamePitchingStat.standard_position),
@@ -73,7 +73,7 @@ def _model_specs() -> tuple[tuple[str, type[object], object], ...]:
 
 def load_db_evidence(target: Mapping[str, object]) -> DbEvidence:
     """Read all matching game-level rows for one report target."""
-    target_data = target["target"]
+    target_data: Any = target["target"]
     name = _text(target_data["name"])
     team_code = _text(target_data.get("team_code"))
     season = int(target_data["season"])
@@ -148,7 +148,7 @@ def render_review_markdown(
 ) -> str:
     """Render official candidates and DB evidence into one Markdown document."""
     resolver_rows = resolver_rows or {}
-    results = report.get("results", [])
+    results: Any = report.get("results", [])
     lines = [
         "# Official Player ID Review",
         "",
@@ -165,7 +165,7 @@ def render_review_markdown(
     ]
     details: list[str] = []
     for result in results:
-        target = result["target"]
+        target: Any = result["target"]
         evidence = load_db_evidence(result)
         resolver = resolver_rows.get((_text(target["name"]), _text(target.get("team_code")), int(target["season"])), {})
         details.extend(_render_target_detail(result, evidence, resolver))
@@ -196,7 +196,7 @@ def _render_target_detail(
     evidence: DbEvidence,
     resolver: Mapping[str, str],
 ) -> list[str]:
-    target = result["target"]
+    target: Any = result["target"]
     lines = [
         f"### {_text(target['name'])} ({_text(target.get('team_code'))}, {target['season']})",
         "",
@@ -210,7 +210,8 @@ def _render_target_detail(
         "| Official ID | Uniform | Name | Current team | Position | Current team match | Career team match | Uniform match | Position match | DB ID match | Review | Career |",
         "|---:|---|---|---|---|---|---|---|---|---|---|---|",
     ]
-    lines.extend(_candidate_markdown(candidate, evidence) for candidate in result.get("candidates", []))
+    candidates: Any = result.get("candidates", [])
+    lines.extend(_candidate_markdown(candidate, evidence) for candidate in candidates)
     lines.extend(
         ["", "**Manual decision:** approve one candidate only after reviewing official profile and DB evidence.", ""]
     )

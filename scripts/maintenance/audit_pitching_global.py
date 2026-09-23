@@ -116,6 +116,8 @@ def _empty_totals() -> dict[str, int]:
 
 
 def _as_int(value: object) -> int:
+    if not isinstance(value, (str, int, float, bytes, bytearray)):
+        return 0
     try:
         return int(value or 0)
     except (TypeError, ValueError):
@@ -144,7 +146,7 @@ def _source_report(conn: Connection, source: str, year: int) -> dict[str, Any]:
         return {"available": False, "table": table}
 
     rows = [dict(row) for row in conn.execute(text(SOURCE_QUERIES[source]), {"year": year}).mappings()]
-    by_team = {
+    by_team: dict[str, dict[str, Any]] = {
         str(row["team_code"] or ""): {
             "rows": _as_int(row["row_count"]),
             "games": _as_int(row["game_count"]),

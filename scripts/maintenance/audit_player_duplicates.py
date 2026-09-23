@@ -84,14 +84,15 @@ def audit_player_duplicates(conn: Connection) -> dict:
         placeholders = ", ".join(f":n{i}" for i in range(len(clean_name_set)))
         params = {f"n{i}": name for i, name in enumerate(clean_name_set)}
         params["legacy"] = LEGACY_MAX_ID
-        mergeable_psp_rows = conn.execute(
+        count_row = conn.execute(
             text(
                 "SELECT COUNT(*) FROM player_season_pitching s "
                 "JOIN player_basic pb ON pb.player_id = s.player_id "
                 f"WHERE pb.name IN ({placeholders}) AND pb.player_id < :legacy"
             ),
             params,
-        ).fetchone()[0]
+        ).fetchone()
+        mergeable_psp_rows = count_row[0] if count_row else 0
 
     return {
         "total_players": len(rows),
