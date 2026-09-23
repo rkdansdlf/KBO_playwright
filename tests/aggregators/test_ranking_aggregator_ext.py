@@ -436,3 +436,29 @@ class TestRankingAggregatorAllConfigs:
         )
         era_all = next(r for r in results if r["metric"] == "era_all")
         assert era_all["extra"]["rank_mode"] == "all"
+
+
+class TestRankingDedupe:
+    def test_duplicate_entity_keeps_max_games(self):
+        from src.aggregators.ranking_aggregator import MetricConfig
+
+        agg = RankingAggregator()
+        small = _make_batter(player_id=10001, team="LG", pa=100, avg=0.300)
+        small["games"] = 50
+        big = _make_batter(player_id=10001, team="SS", pa=200, avg=0.280)
+        big["games"] = 100
+        rows = [small, big]
+        config = MetricConfig(name="avg", source="BATTING", value_key="avg")
+        results = agg._rank_single_metric(2026, rows, config)
+        assert len(results) == 1
+        assert results[0]["team_id"] == "SS"
+
+
+class TestRankingCrossMetricDedupe:
+    def test_duplicate_keys_keep_last(self):
+        agg = RankingAggregator()
+        first = {"season": 2026, "metric": "stolen_bases", "entity_id": 64646, "entity_type": "PLAYER", "value": 13.0}
+        second = {"season": 2026, "metric": "stolen_bases", "entity_id": "64646", "entity_type": "PLAYER", "value": 8.0}
+        results = agg._dedupe_rankings([first, second])
+        assert len(results) == 1
+        assert results[0]["value"] == 8.0

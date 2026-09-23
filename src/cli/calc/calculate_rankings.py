@@ -7,10 +7,11 @@ import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import text
+from sqlalchemy import extract, func, select
 
 from src.aggregators.ranking_aggregator import RankingAggregator, RankingGenerationRequest
 from src.db.engine import SessionLocal
+from src.models.game import Game
 from src.models.player import (
     PlayerBasic,
     PlayerSeasonBaserunning,
@@ -61,13 +62,10 @@ def _games_played_in_season(session: Session, season: int) -> int:
 
     """
     row = session.execute(
-        text("""
-        SELECT COUNT(DISTINCT game_date) AS played
-        FROM game
-        WHERE CAST(strftime('%Y', game_date) AS INTEGER) = :yr
-          AND game_status IN ('COMPLETED', 'DRAW')
-        """),
-        {"yr": season},
+        select(func.count(func.distinct(Game.game_date))).where(
+            extract("year", Game.game_date) == season,
+            Game.game_status.in_(["COMPLETED", "DRAW"]),
+        )
     ).fetchone()
     return int(row[0]) if row and row[0] else 0
 
