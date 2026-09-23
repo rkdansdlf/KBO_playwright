@@ -14,7 +14,7 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
 
@@ -37,9 +37,10 @@ REVIEW_FIELDS = [*OVERRIDE_FIELDS, "review_status", "validation_reason", "decisi
 
 def _candidate_evidence_rows(group: dict[str, object], evidence_key: str) -> list[dict[str, object]]:
     """Return candidates with positive evidence in one local source."""
+    candidates: Any = group.get("candidates", [])
     return [
         candidate
-        for candidate in group.get("candidates", [])
+        for candidate in candidates
         if int(candidate.get(evidence_key, {}).get("rows", 0)) > 0
         and (
             evidence_key != "local_season"
@@ -71,7 +72,8 @@ def build_review_rows(
     existing = _existing_keys(existing_rows)
     year = str(report.get("year", 2021))
     review_rows: list[dict[str, str]] = []
-    for group in report.get("groups", []):
+    groups: Any = report.get("groups", [])
+    for group in groups:
         team_code = str(group.get("team_code", ""))
         player_name = str(group.get("player_name", ""))
         resolved_id = group.get("resolved_player_id")
@@ -144,7 +146,12 @@ def apply_approved_candidates(review_csv: Path, override_csv: Path) -> int:
         if row.get("review_status") != "eligible":
             message = f"cannot approve non-eligible candidate: {row.get('player_name', '')}"
             raise ValueError(message)
-        key = tuple(row.get(field, "") for field in OVERRIDE_FIELDS[:4])
+        key = (
+            row.get("source_table", ""),
+            row.get("year", ""),
+            row.get("team_code", ""),
+            row.get("player_name", ""),
+        )
         current = existing.get(key)
         resolved_id = row.get("resolved_player_id", "")
         if current and current != resolved_id:

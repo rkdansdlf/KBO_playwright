@@ -28,11 +28,11 @@ load_dotenv(PROJECT_ROOT / ".env")
 from src.db.engine import create_engine_for_url
 from src.sync.checkpoint import SyncCheckpoint
 from src.sync.table_dag import SyncStrategy, TableMeta
-from src.cli.sync_sqlite_to_oci import SqliteToOciSynchronizer, SyncOptions
+from src.cli.sync.sync_sqlite_to_oci import SqliteToOciSynchronizer, SyncOptions
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
-    from src.cli.sync_sqlite_to_oci import TableSyncResult
+    from src.cli.sync.sync_sqlite_to_oci import TableSyncResult
 
 TEST_TABLE = "E2E_CDC_CHECKPOINT_GAME"
 TEST_META = TableMeta(
@@ -232,7 +232,7 @@ def run_verification() -> CheckpointRecoveryReport:
     tns_admin = os.getenv("TNS_ADMIN")
     wallet_password = os.getenv("OCI_WALLET_PASSWORD")
     if not target_url or not target_url.startswith("oracle") or not tns_admin:
-        report = CheckpointRecoveryReport(
+        return CheckpointRecoveryReport(
             timestamp=timestamp,
             database_user="",
             initial_synced_count=0,

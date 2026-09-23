@@ -22,9 +22,9 @@ from apscheduler.triggers.cron import CronTrigger
 from requests import RequestException
 import requests
 
-from src.cli.live_crawler import run_live_crawler_cycle
-from src.cli.run_daily_update import format_stability_alert_summary
-from src.cli.run_daily_update import main as run_daily_update_main
+from src.cli.live.live_crawler import run_live_crawler_cycle
+from src.cli.pipelines.run_daily_update import format_stability_alert_summary
+from src.cli.pipelines.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
 from src.scheduler import (
     ALERT_EXCEPTIONS,

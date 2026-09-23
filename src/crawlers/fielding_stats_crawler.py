@@ -488,7 +488,7 @@ def _save_fielding_stats_oracle(year: int) -> None:
             for record in fielding_records:
                 if not record.get("player_id"):
                     continue
-                payload = {
+                payload: dict[str, Any] = {
                     key: record.get(key)
                     for key in (
                         "player_id",

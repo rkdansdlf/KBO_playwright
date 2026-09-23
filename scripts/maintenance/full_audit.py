@@ -208,7 +208,7 @@ def _distribution(
 
 def _valid_team_code_select(conn) -> str | None:
     columns = table_columns(conn, "teams")
-    candidates = [column for column in ("team_id", "code") if column in columns]
+    candidates: list[str] = [column for column in ("team_id", "code") if column in columns]
     if "alternate_code" in columns:
         candidates.append("alternate_code")
     if not candidates:
