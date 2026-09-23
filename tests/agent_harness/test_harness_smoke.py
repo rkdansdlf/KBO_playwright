@@ -82,6 +82,34 @@ def test_evidence_schema_version_present(capsys: pytest.CaptureFixture[str]) -> 
         shutil.rmtree(artifact_dir, ignore_errors=True)
 
 
+def test_routing_inputs_and_reason_persisted(capsys: pytest.CaptureFixture[str]) -> None:
+    assert (
+        main(
+            [
+                "run",
+                "정리해줘",
+                "--changed-files",
+                "src/crawlers/x.py",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    run_id = str(json.loads(capsys.readouterr().out)["run_id"])
+    artifact_dir = Path("artifacts") / "agent-harness" / run_id
+    try:
+        task = json.loads((artifact_dir / "task.json").read_text(encoding="utf-8"))
+        plan = json.loads((artifact_dir / "plan.json").read_text(encoding="utf-8"))
+
+        assert task["profile"] == "crawler-bug"
+        assert task["changed_files"] == ["src/crawlers/x.py"]
+        assert task["explicit_profile"] is None
+        assert plan["profile"] == "crawler-bug"
+        assert "file signal" in plan["reason"]
+    finally:
+        shutil.rmtree(artifact_dir, ignore_errors=True)
+
+
 def test_v1_evidence_without_version_still_verifies(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["run", "v1 compat probe", "--profile", "research", "--json"]) == 0
     run_id = str(json.loads(capsys.readouterr().out)["run_id"])

@@ -21,6 +21,7 @@ class HarnessPlan:
     verification: str
     output: str
     external_execution: str
+    reason: str = ""
 
     def to_dict(self) -> dict[str, object]:
         """Serialize the plan to JSON-compatible values."""
@@ -49,6 +50,7 @@ def build_plan(task: str, decision: RouteDecision) -> HarnessPlan:
         verification=decision.verification,
         output=decision.output,
         external_execution=decision.external_execution,
+        reason=decision.reason,
     )
 
 

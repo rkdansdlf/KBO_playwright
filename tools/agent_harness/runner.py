@@ -54,6 +54,8 @@ class HarnessRunner:
                 "schema_version": EVIDENCE_SCHEMA_VERSION,
                 "task": task,
                 "profile": decision.profile,
+                "changed_files": request.changed_files,
+                "explicit_profile": request.explicit_profile,
             },
         )
         evidence.write_json("plan.json", plan.to_dict())
