@@ -47,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="Validate skill locks, adapters, policy, and OpenCode wiring.")
     doctor.add_argument("--json", action="store_true", help="Render machine-readable JSON.")
+    doctor.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat license-gate warnings as failures.",
+    )
 
     plan = subparsers.add_parser("plan", help="Route a task and render its Harness stages.")
     plan.add_argument("task", help="Development task to route.")
@@ -243,7 +248,10 @@ def _handle_doctor(
 ) -> int:
     report = _doctor(registry)
     if args.json:
-        _write_output(report.to_dict(), as_json=True)
+        payload = report.to_dict()
+        if args.strict:
+            payload = {**payload, "strict": True}
+        _write_output(payload, as_json=True)
     else:
         _write_output(
             f"Harness doctor: {report.status} ({report.skill_count} skills, {report.profile_count} profiles)\n"
@@ -251,7 +259,11 @@ def _handle_doctor(
             + "".join(f"ERROR: {issue}\n" for issue in report.issues),
             as_json=False,
         )
-    return 0 if report.status == "PASS" else 1
+    if report.status != "PASS":
+        return 1
+    if args.strict and report.warnings:
+        return 1
+    return 0
 
 
 def _render_route(payload: dict[str, object]) -> str:

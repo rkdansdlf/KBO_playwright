@@ -26,3 +26,17 @@ def test_plan_routes_crawler_task(capsys: pytest.CaptureFixture[str]) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["profile"] == "crawler-bug"
     assert payload["verification"] == "crawler"
+
+
+def test_doctor_strict_fails_on_license_warnings(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["doctor", "--strict", "--json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "PASS"
+    assert payload["strict"] is True
+    assert len(payload["warnings"]) > 0
+
+
+def test_doctor_default_ignores_warnings_for_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["doctor", "--json"]) == 0
+    capsys.readouterr()

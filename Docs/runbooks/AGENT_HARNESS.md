@@ -65,8 +65,8 @@ python3 -m tools.agent_harness report <run-id>
 `harness.lock.json`의 40자 SHA를 새 릴리스 커밋으로 교체 후:
 
 ```bash
-python3 -m tools.agent_harness doctor --json
-python3 -m pytest tests/agent_harness -q
+python3 -m tools.agent_harness doctor
+python3 -m tools.agent_harness doctor --strict   # 라이선스 경고를 실패로 승격
 ```
 
 `doctor`가 FAIL이면 상위 작업을 진행하지 않는다.
