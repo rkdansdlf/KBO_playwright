@@ -3,12 +3,40 @@
 This module is additive: existing ``registry``/``router`` dataclasses keep
 their current shape so P0 baseline tests stay green. New code should build
 on these typed contracts instead of raw dict/YAML structures.
+
+It also hosts ``gate_verdict``, the single pass/fail rule for verification attempts.
+The rule is shared by the profile-mode runner, the level-mode runner, and the evidence
+contract checker, which previously disagreed on whether running zero gates passed.
+Putting it here avoids a cycle: this module has no internal imports, while every other
+candidate is imported by at least one of those three call sites.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+
+def gate_verdict(*, declared_gate_ids: Iterable[str], exit_codes: Iterable[int]) -> bool:
+    """Return whether a verification attempt may be reported as passed.
+
+    Passing requires every declared gate to have run and exited zero. A policy that
+    deliberately declares no gates (research routes run none) passes, but a policy that
+    declared gates and ran fewer does not, so a skipped or misconfigured gate can never
+    look green.
+
+    Both the runner and the evidence contract checker call this, which is what keeps
+    ``verify`` exit codes and ``validate`` from disagreeing.
+    """
+    declared = tuple(declared_gate_ids)
+    observed = tuple(exit_codes)
+    if len(observed) != len(declared):
+        return False
+    return all(code == 0 for code in observed)
 
 
 class SkillTransport(StrEnum):
