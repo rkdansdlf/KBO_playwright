@@ -29,6 +29,12 @@ repos:
         language: system
         files: \.py$
         pass_filenames: true
+      - id: crawler-client-bypass
+        name: crawler HTTP client bypass check
+        entry: python3 scripts/lint_crawler_client_bypass.py
+        language: system
+        files: ^src/crawlers/.*\.py$
+        pass_filenames: true
       - id: forbid-env-files
         name: block .env files
         entry: "bash -c 'echo \"ERROR: .env files must not be committed\" && exit 1'"

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.crawlers.parking_crawler import TEAM_PARKING_SOURCES, ParkingCrawler
+from src.crawlers.result import CrawlOutcome, CrawlResult
 
 
 class TestParseParkingPage:
@@ -44,22 +45,31 @@ def test_parking_sources_cover_seeded_jamsil_source():
 class TestParkingCrawlerOperations:
     @pytest.mark.asyncio
     async def test_crawl_team_fetches_lots_and_tracks_snapshot(self):
-        client = MagicMock()
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=False)
-        client.get = AsyncMock(return_value=MagicMock(status_code=200, text="기본 요금 5,000원"))
         crawler = ParkingCrawler()
-        info = TEAM_PARKING_SOURCES["LG"]
+        crawler._http.fetch_text = AsyncMock(
+            return_value=CrawlResult.success("기본 요금 5,000원", http_status=200, url="https://example.invalid"),
+        )
 
-        with (
-            patch("src.crawlers.parking_crawler.httpx.AsyncClient", return_value=client),
-            patch("src.crawlers.parking_crawler.throttle.wait", new=AsyncMock()) as wait,
-        ):
-            lots = await crawler._crawl_team_parking("LG", info)
+        lots = await crawler._crawl_team_parking("LG", TEAM_PARKING_SOURCES["LG"])
 
-        wait.assert_awaited_once_with("stadium.seoul.go.kr")
         assert lots[0]["lot"]["stadium_id"] == "JAMSIL"
         assert crawler._raw_pages[0]["source_key"] == "jamsil_parking_official"
+
+    @pytest.mark.asyncio
+    async def test_crawl_team_returns_empty_for_failed_fetch(self):
+        crawler = ParkingCrawler()
+        crawler._http.fetch_text = AsyncMock(
+            return_value=CrawlResult.failure(
+                CrawlOutcome.PERMANENT_ERROR,
+                error="HTTP 404",
+                http_status=404,
+            ),
+        )
+
+        lots = await crawler._crawl_team_parking("LG", TEAM_PARKING_SOURCES["LG"])
+
+        assert lots == []
+        assert crawler._raw_pages == []
 
     @pytest.mark.asyncio
     async def test_run_continues_when_one_team_fails(self):

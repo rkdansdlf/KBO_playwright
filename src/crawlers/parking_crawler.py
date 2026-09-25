@@ -5,20 +5,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.base import BaseHttpCrawler
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.result import CrawlOutcome
 from src.db.engine import SessionLocal
 from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.throttle import throttle
 
 if TYPE_CHECKING:
     from src.utils.request_policy import RequestPolicy
@@ -68,6 +67,11 @@ class ParkingCrawler(BaseHttpCrawler):
         """
         super().__init__(request_delay=request_delay, policy=policy, default_headers=HEADERS)
         self._raw_pages: list[dict] = []
+        self._http = CrawlerHttpClient(
+            name=type(self).__name__,
+            policy=HttpPolicy(base_delay_seconds=request_delay, timeout_seconds=15.0),
+            headers=HEADERS,
+        )
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:
         """Run run.
@@ -101,27 +105,35 @@ class ParkingCrawler(BaseHttpCrawler):
         return all_lots
 
     async def _crawl_team_parking(self, team_code: str, info: dict) -> list[dict[str, Any]]:
-        lots = []
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
-            try:
-                host = urlparse(info["url"]).hostname or "koreabaseball.com"
-                await throttle.wait(host)
-                resp = await client.get(info["url"])
-                if resp.status_code != HTTPStatus.OK:
-                    return []
-                html = resp.text
-                self._raw_pages.append(
-                    {
-                        "source_key": info["source_key"],
-                        "url": info["url"],
-                        "html": html,
-                        "status_code": resp.status_code,
-                    },
+        result = await self._http.fetch_text(info["url"])
+        if not result.ok:
+            if result.outcome is CrawlOutcome.SCHEMA_CHANGED:
+                logger.error(
+                    "[PARKING] %s page structure changed at %s: %s",
+                    team_code,
+                    info["url"],
+                    result.error,
                 )
-                lots = self._parse_parking_page(html, info)
-            except httpx.HTTPError:
-                logger.exception("Failed to fetch parking page for %s", team_code)
-        return lots
+            else:
+                logger.warning(
+                    "[PARKING] %s fetch failed (%s, status=%s): %s",
+                    team_code,
+                    result.outcome,
+                    result.http_status,
+                    result.error,
+                )
+            return []
+
+        html = result.data
+        self._raw_pages.append(
+            {
+                "source_key": info["source_key"],
+                "url": info["url"],
+                "html": html,
+                "status_code": result.http_status,
+            },
+        )
+        return self._parse_parking_page(html, info)
 
     def _parse_parking_page(self, html: str, info: dict) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")

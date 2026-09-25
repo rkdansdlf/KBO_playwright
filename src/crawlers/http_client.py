@@ -15,13 +15,16 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import httpx
 
-from src.crawlers.circuit_breaker import CircuitOpenError, circuit_registry
+from src.crawlers.circuit_breaker import circuit_registry
+from src.crawlers.circuit_breaker_dto import CircuitState
 from src.crawlers.resilience import AdaptiveRateLimiter
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.retry_after import parse_retry_after
+from src.utils.throttle import throttle
 from src.utils.url_validator import validate_url
 
 if TYPE_CHECKING:
@@ -146,11 +149,50 @@ class CrawlerHttpClient:
             message = f"Blocked crawler request to {request.url}: {reason}"
             raise ValueError(message)
 
-    async def _throttle(self) -> float:
+    async def _throttle(self, host: str) -> float:
+        """Wait for both the shared per-host delay and the adaptive penalty.
+
+        The per-host `AsyncThrottle` is what ten crawlers already rely on and
+        what `KBO_REQUEST_DELAY` configures, so it stays authoritative. The
+        adaptive limiter is layered on top so a server that throttles us
+        pushes the delay up for subsequent requests.
+
+        Args:
+            host: Target host, used as the throttle key.
+
+        Returns:
+            Total seconds spent waiting on the adaptive component.
+
+        """
+        await throttle.wait(host)
         waited = await self.rate_limiter.acquire()
         if waited:
-            logger.debug("[%s] throttled %.2fs", self.name, waited)
+            logger.debug("[%s] adaptive backoff %.2fs for %s", self.name, waited, host)
         return waited
+
+    @staticmethod
+    def _host_of(url: str) -> str:
+        return urlparse(url).hostname or "koreabaseball.com"
+
+    async def fetch_text(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> CrawlResult[str]:
+        """Fetch a page body, classifying the outcome.
+
+        Args:
+            url: Target URL.
+            params: Optional query parameters.
+            headers: Extra headers for this request only.
+
+        Returns:
+            A `CrawlResult` whose `data` is the response body on success.
+
+        """
+        return await self._fetch(url, params=params, headers=headers, decode_json=False)
 
     async def fetch_json(
         self,
@@ -171,11 +213,27 @@ class CrawlerHttpClient:
             result, a transient fault, a schema drift, and a permanent fault.
 
         """
+        return await self._fetch(url, params=params, headers=headers, decode_json=True)
+
+    async def _fetch(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None,
+        headers: dict[str, str] | None,
+        decode_json: bool,
+    ) -> CrawlResult[Any]:
+        """Run the retry loop and return the final classified result."""
         started = time.monotonic()
         last_result: CrawlResult[Any] | None = None
 
         for attempt in range(1, self.max_attempts + 1):
-            last_result = await self._attempt(url, params=params, headers=headers)
+            last_result = await self._attempt(
+                url,
+                params=params,
+                headers=headers,
+                decode_json=decode_json,
+            )
             if not last_result.should_retry or attempt >= self.max_attempts:
                 break
             delay = last_result.retry_after if last_result.retry_after is not None else self._backoff(attempt)
@@ -213,20 +271,19 @@ class CrawlerHttpClient:
         *,
         params: dict[str, Any] | None,
         headers: dict[str, str] | None,
+        decode_json: bool,
     ) -> CrawlResult[Any]:
         """Perform a single request and classify its outcome."""
-        await self._throttle()
+        blocked = self._open_circuit_result(url)
+        if blocked is not None:
+            return blocked
+
+        await self._throttle(self._host_of(url))
         request_headers = {**self.default_headers, **(headers or {})} if headers else None
 
         try:
             async with self._client() as client:
                 response = await client.get(url, params=params, headers=request_headers)
-        except CircuitOpenError as exc:
-            return CrawlResult.failure(
-                CrawlOutcome.RETRYABLE_ERROR,
-                error=str(exc),
-                url=url,
-            )
         except ValueError as exc:
             # Raised by the URL validation hook for blocked or invalid targets.
             return CrawlResult.failure(
@@ -235,28 +292,66 @@ class CrawlerHttpClient:
                 url=url,
             )
         except (httpx.TimeoutException, httpx.TransportError) as exc:
-            self.rate_limiter.record_rate_limit()
+            self._record_failure(exc)
             return CrawlResult.failure(
                 CrawlOutcome.RETRYABLE_ERROR,
                 error=f"{type(exc).__name__}: {exc}",
                 url=url,
             )
         except httpx.HTTPError as exc:
+            self._record_failure(exc)
             return CrawlResult.failure(
                 CrawlOutcome.PERMANENT_ERROR,
                 error=f"{type(exc).__name__}: {exc}",
                 url=url,
             )
 
-        return self._classify(response, url=url)
+        result = self._classify(response, url=url, decode_json=decode_json)
+        if result.ok or result.outcome is CrawlOutcome.EMPTY:
+            self.breaker.record_success()
+        else:
+            self._record_failure(
+                RuntimeError(result.error or str(result.outcome)),
+                retry_after=result.retry_after,
+            )
+        return result
 
-    def _classify(self, response: httpx.Response, *, url: str) -> CrawlResult[Any]:
+    def _record_failure(self, exc: Exception, *, retry_after: float | None = None) -> None:
+        """Record a failed attempt against the circuit and the adaptive limiter."""
+        self.breaker.record_failure(exc)
+        self.rate_limiter.record_rate_limit(retry_after)
+
+    def _open_circuit_result(self, url: str) -> CrawlResult[Any] | None:
+        """Return a fast-fail result while the circuit is open.
+
+        `get_state()` moves an expired OPEN circuit to HALF_OPEN, so this also
+        acts as the probe gate: a HALF_OPEN circuit is allowed through.
+        """
+        stats = self.breaker.get_stats()
+        if stats.state is not CircuitState.OPEN:
+            return None
+        remaining = 0.0
+        if stats.last_failure_time is not None:
+            elapsed = time.time() - stats.last_failure_time
+            remaining = max(0.0, stats.recovery_timeout_seconds - elapsed)
+        logger.warning(
+            "[%s] circuit OPEN, skipping request to %s (cooldown %.1fs)",
+            self.name,
+            url,
+            remaining,
+        )
+        return CrawlResult.failure(
+            CrawlOutcome.RETRYABLE_ERROR,
+            error=f"circuit breaker {stats.name} is OPEN (cooldown {remaining:.1f}s)",
+            url=url,
+        )
+
+    def _classify(self, response: httpx.Response, *, url: str, decode_json: bool) -> CrawlResult[Any]:
         """Map an HTTP response onto a `CrawlOutcome`."""
         status = response.status_code
 
         if status in THROTTLE_STATUS_CODES:
             retry_after = parse_retry_after(response.headers.get("Retry-After"))
-            self.rate_limiter.record_rate_limit(retry_after)
             return CrawlResult.failure(
                 CrawlOutcome.RETRYABLE_ERROR,
                 error=f"throttled: HTTP {status}",
@@ -266,7 +361,6 @@ class CrawlerHttpClient:
             )
 
         if status in RETRYABLE_STATUS_CODES:
-            self.rate_limiter.record_rate_limit()
             return CrawlResult.failure(
                 CrawlOutcome.RETRYABLE_ERROR,
                 error=f"HTTP {status}",
@@ -283,9 +377,14 @@ class CrawlerHttpClient:
             )
 
         self.rate_limiter.record_success()
-        return self._parse_body(response, url=url, status=status)
+        if decode_json:
+            return self._parse_json_body(response, url=url, status=status)
+        body = response.text
+        if not body.strip():
+            return CrawlResult.empty(http_status=status, url=url)
+        return CrawlResult.success(body, http_status=status, url=url)
 
-    def _parse_body(
+    def _parse_json_body(
         self,
         response: httpx.Response,
         *,
