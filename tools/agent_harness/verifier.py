@@ -15,11 +15,68 @@ from tools.agent_harness.exceptions import HarnessConfigError, PermissionDeniedE
 from tools.agent_harness.registry import _mapping, load_yaml_mapping, project_root
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
     from tools.agent_harness.command_runner import CommandRunner
     from tools.agent_harness.evidence import EvidenceStore
+
+
+def _load_gate_policies(
+    payload: dict[str, object],
+    section: str,
+    levels: dict[str, GatePolicy] | None = None,
+) -> dict[str, GatePolicy]:
+    """Load one gate-policy table, letting a profile inherit its level's gates."""
+    rows = _mapping(payload.get(section), f"verification.{section}")
+    policies: dict[str, GatePolicy] = {}
+    for name, raw in rows.items():
+        row = _mapping(raw, f"verification.{section}.{name}")
+        label = f"{section}.{name}"
+        raw_gates = row.get("gates")
+        gates = () if raw_gates is None else tuple(str(gate) for gate in _string_list(raw_gates, f"{label}.gates"))
+        level = row.get("level")
+        inherited = levels.get(str(level)) if levels is not None and level is not None else None
+        if level is not None and inherited is None:
+            msg = f"verification.{section}.{name} references unknown level: {level}"
+            raise ValueError(msg)
+        conditional = inherited.conditional_gates if inherited is not None else ()
+        if gates:
+            declared = _mapping(row.get("conditional_gates", {}), f"verification.{label}.conditional_gates")
+            conditional = tuple((str(gate), str(predicate)) for gate, predicate in declared.items())
+        always_gates = tuple(str(gate) for gate in _string_list(row.get("always_gates", []), f"{label}.always_gates"))
+        extra_targets = _string_list(row.get("extra_pytest_targets", []), f"{label}.extra_pytest_targets")
+        policies[name] = GatePolicy(
+            gates=gates or (inherited.gates if inherited is not None else ()),
+            conditional_gates=conditional,
+            always_gates=always_gates,
+            extra_pytest_targets=tuple(str(target) for target in extra_targets),
+            level=str(level) if level is not None else None,
+            description=str(row.get("description", "")),
+        )
+    _validate_gate_ids(section, policies)
+    return policies
+
+
+def _string_list(value: object, label: str) -> list[str]:
+    """Require a YAML list of strings."""
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        msg = f"Expected string list for {label}"
+        raise ValueError(msg)
+    return value
+
+
+def _validate_gate_ids(section: str, policies: dict[str, GatePolicy]) -> None:
+    """Fail fast when policy names a gate or predicate the catalog cannot build."""
+    for name, policy in policies.items():
+        for gate_id in (*policy.gates, *policy.always_gates, *(gate for gate, _ in policy.conditional_gates)):
+            if gate_id not in GATE_CATALOG:
+                msg = f"verification.{section}.{name} references unknown gate: {gate_id}"
+                raise ValueError(msg)
+        for _, predicate in policy.conditional_gates:
+            if predicate not in CONDITION_PREDICATES:
+                msg = f"verification.{section}.{name} references unknown predicate: {predicate}"
+                raise ValueError(msg)
 
 
 @dataclass(frozen=True)
@@ -56,12 +113,194 @@ class VerificationPlan:
 
 
 @dataclass(frozen=True)
+class GatePolicy:
+    """Describe the gates one verification level or profile requires."""
+
+    gates: tuple[str, ...]
+    conditional_gates: tuple[tuple[str, str], ...] = ()
+    always_gates: tuple[str, ...] = ()
+    extra_pytest_targets: tuple[str, ...] = ()
+    level: str | None = None
+    description: str = ""
+
+
+DEFAULT_TIMEOUT_SECONDS = 300
+PYTEST_FULL_TIMEOUT_SECONDS = 900
+MYPY_SCOPED_TIMEOUT_SECONDS = 600
+CRAWLER_GATE_CONFIG = "Docs/references/crawler_selector_gate.json"
+CRAWLER_GATE_TEST_TARGET = "tests/monitoring/test_crawler_selector_gate.py"
+
+
+def _python_module(*tokens: str) -> tuple[str, ...]:
+    """Return an argv that runs an allowlisted module under the Harness interpreter."""
+    return (sys.executable, "-m", *tokens)
+
+
+PYTHON_MODULE_FLAG_INDEX = 1
+PYTHON_MODULE_NAME_INDEX = 2
+
+
+def _gate_name(argv: tuple[str, ...]) -> str:
+    """Return a readable gate label for a `-m <module>` argv, else the whole command."""
+    if len(argv) > PYTHON_MODULE_NAME_INDEX and argv[PYTHON_MODULE_FLAG_INDEX] == "-m":
+        return argv[PYTHON_MODULE_NAME_INDEX]
+    return " ".join(argv)
+
+
+def _needs_crawler_gate(changed_files: tuple[str, ...]) -> bool:
+    """Return whether crawler selector contracts are affected by these files."""
+    from tools.agent_harness.project_adapter import KBOProjectAdapter
+
+    return KBOProjectAdapter().needs_crawler_gate(changed_files)
+
+
+@dataclass(frozen=True)
+class _GateContext:
+    """Carry the inputs a gate builder needs to assemble argv."""
+
+    changed_files: tuple[str, ...] = ()
+    extra_pytest_targets: tuple[str, ...] = ()
+
+    @property
+    def pytest_targets(self) -> tuple[str, ...]:
+        """Return affected pytest targets extended with any profile-specific targets."""
+        from tools.agent_harness.project_adapter import KBOProjectAdapter
+
+        targets = list(KBOProjectAdapter().pytest_targets(self.changed_files))
+        targets.extend(target for target in self.extra_pytest_targets if target not in targets)
+        return tuple(targets)
+
+
+def _build_pytest_affected(ctx: _GateContext) -> VerificationCheck:
+    """Run pytest against the affected test targets."""
+    return VerificationCheck(
+        check_id="pytest-affected",
+        argv=_python_module("pytest", *ctx.pytest_targets, "-q"),
+    )
+
+
+def _build_pytest_full(_ctx: _GateContext) -> VerificationCheck:
+    """Run the entire test suite with a timeout sized for the documented baseline."""
+    return VerificationCheck(
+        check_id="pytest-full",
+        argv=_python_module("pytest", "-q"),
+        timeout_seconds=PYTEST_FULL_TIMEOUT_SECONDS,
+    )
+
+
+def _build_pytest_crawler_gate(ctx: _GateContext) -> VerificationCheck:
+    """Run the affected tests plus the crawler selector gate's own test module."""
+    targets = (*ctx.pytest_targets, CRAWLER_GATE_TEST_TARGET)
+    return VerificationCheck(check_id="pytest-crawler-gate", argv=_python_module("pytest", *targets, "-q"))
+
+
+def _build_ruff_changed(_ctx: _GateContext) -> VerificationCheck:
+    """Lint the Harness control plane only."""
+    return VerificationCheck(check_id="ruff-changed", argv=_python_module("ruff", "check", "tools/agent_harness"))
+
+
+def _build_ruff_project(_ctx: _GateContext) -> VerificationCheck:
+    """Lint the whole repository scope used by CI."""
+    return VerificationCheck(
+        check_id="ruff-project",
+        argv=_python_module("ruff", "check", "src", "tests", "scripts", "tools"),
+    )
+
+
+def _build_format_check(_ctx: _GateContext) -> VerificationCheck:
+    """Verify formatter compliance across the repository scope used by CI."""
+    return VerificationCheck(
+        check_id="format-check",
+        argv=_python_module("ruff", "format", "--check", "src", "tests", "scripts", "tools"),
+    )
+
+
+def _build_mypy_scoped(_ctx: _GateContext) -> VerificationCheck:
+    """Run the certified-clean scoped mypy gate through its allowlisted module entrypoint."""
+    return VerificationCheck(
+        check_id="mypy-scoped",
+        argv=_python_module("scripts.check_mypy_scoped"),
+        timeout_seconds=MYPY_SCOPED_TIMEOUT_SECONDS,
+    )
+
+
+def _build_crawler_gate(_ctx: _GateContext) -> VerificationCheck:
+    """Validate crawler selector contracts against fixtures."""
+    return VerificationCheck(
+        check_id="crawler-gate",
+        argv=_python_module(
+            "src.cli.crawler_selector_gate",
+            "--config",
+            CRAWLER_GATE_CONFIG,
+            "--json",
+        ),
+    )
+
+
+def _build_doctor(_ctx: _GateContext) -> VerificationCheck:
+    """Validate the Harness manifest, policies, and golden datasets."""
+    return VerificationCheck(check_id="doctor", argv=_python_module("tools.agent_harness", "doctor", "--json"))
+
+
+GATE_CATALOG: dict[str, Callable[[_GateContext], VerificationCheck]] = {
+    "pytest-affected": _build_pytest_affected,
+    "pytest-crawler-gate": _build_pytest_crawler_gate,
+    "pytest-full": _build_pytest_full,
+    "ruff-changed": _build_ruff_changed,
+    "ruff-project": _build_ruff_project,
+    "format-check": _build_format_check,
+    "mypy-scoped": _build_mypy_scoped,
+    "crawler-gate": _build_crawler_gate,
+    "doctor": _build_doctor,
+}
+
+CONDITION_PREDICATES: dict[str, Callable[[tuple[str, ...]], bool]] = {
+    "crawler_changed": _needs_crawler_gate,
+}
+
+
+def _build_gate(gate_id: str, ctx: _GateContext) -> VerificationCheck:
+    """Build one gate from the catalog, failing loudly on an unknown id."""
+    builder = GATE_CATALOG.get(gate_id)
+    if builder is None:
+        msg = f"Unknown verification gate: {gate_id} (known: {', '.join(sorted(GATE_CATALOG))})"
+        raise ValueError(msg)
+    return builder(ctx)
+
+
+def _resolve_gates(policy: GatePolicy, ctx: _GateContext) -> tuple[VerificationCheck, ...]:
+    """Expand a gate policy into ordered checks, applying conditional predicates once.
+
+    A profile may declare a gate unconditionally that its inherited level also declares
+    conditionally, so gate ids are de-duplicated while preserving declaration order.
+    """
+    ordered: list[str] = []
+    for gate_id in (*policy.gates, *policy.always_gates, *(gate for gate, _ in policy.conditional_gates)):
+        predicate_name = next(
+            (name for gate, name in policy.conditional_gates if gate == gate_id),
+            None,
+        )
+        if predicate_name is not None:
+            predicate = CONDITION_PREDICATES.get(predicate_name)
+            if predicate is None:
+                msg = f"Unknown conditional gate predicate: {predicate_name}"
+                raise ValueError(msg)
+            if not predicate(ctx.changed_files):
+                continue
+        if gate_id not in ordered:
+            ordered.append(gate_id)
+    return tuple(_build_gate(gate_id, ctx) for gate_id in ordered)
+
+
+@dataclass(frozen=True)
 class VerificationReport:
     """Summarize all commands in one verification profile."""
 
     profile: str
     passed: bool
     commands: tuple[CommandResult, ...]
+    timed_out: bool = False
+    timed_out_check: str = ""
 
     def to_dict(self) -> dict[str, object]:
         """Serialize the complete verification report."""
@@ -196,39 +435,33 @@ class ProjectVerifier:
     """Run allowlisted, shell-free project verification commands."""
 
     root: Path
-    profiles: dict[str, tuple[tuple[str, ...], ...]]
+    levels: dict[str, GatePolicy]
+    profiles: dict[str, GatePolicy]
 
     @classmethod
     def load(cls, root: Path | None = None) -> ProjectVerifier:
-        """Load fixed argv command lists from verification policy."""
+        """Load gate policies for every verification level and profile."""
         repo_root = (root or project_root()).resolve()
         payload = load_yaml_mapping(repo_root / ".agent-harness" / "policies" / "verification.yaml")
-        rows = _mapping(payload.get("profiles"), "verification.profiles")
-        profiles: dict[str, tuple[tuple[str, ...], ...]] = {}
-        for name, raw in rows.items():
-            row = _mapping(raw, f"verification.profiles.{name}")
-            raw_commands = row.get("commands")
-            if not isinstance(raw_commands, list):
-                msg = f"Expected command list for verification profile {name}"
-                raise TypeError(msg)
-            commands: list[tuple[str, ...]] = []
-            for raw_command in raw_commands:
-                if not isinstance(raw_command, list) or not all(isinstance(item, str) for item in raw_command):
-                    msg = f"Expected argv list for verification profile {name}"
-                    raise ValueError(msg)
-                command = tuple(raw_command)
-                if command and command[0] in {"python", "python3"}:
-                    command = (sys.executable, *command[1:])
-                commands.append(command)
-            profiles[name] = tuple(commands)
-        return cls(root=repo_root, profiles=profiles)
+        levels = _load_gate_policies(payload, "levels")
+        profiles = _load_gate_policies(payload, "profiles", levels)
+        if not levels:
+            msg = "verification policy declares no levels"
+            raise HarnessConfigError(msg)
+        return cls(root=repo_root, levels=levels, profiles=profiles)
+
+    def policy_for(self, name: str) -> GatePolicy:
+        """Return the level or profile policy, reporting known names on failure."""
+        for table in (self.levels, self.profiles):
+            policy = table.get(name)
+            if policy is not None:
+                return policy
+        msg = f"Unknown verification level or profile: {name}"
+        raise ValueError(msg)
 
     def commands_for(self, profile: str) -> tuple[tuple[str, ...], ...]:
         """Return immutable argv commands for a known profile."""
-        if profile not in self.profiles:
-            msg = f"Unknown verification profile: {profile}"
-            raise ValueError(msg)
-        return self.profiles[profile]
+        return self.commands_for_profile(profile)
 
     def verify(
         self,
@@ -262,6 +495,22 @@ class ProjectVerifier:
                     )
                 if result.exit_code != 0:
                     break
+        except subprocess.TimeoutExpired as exc:
+            if evidence is not None:
+                finish_verification_failure(
+                    evidence,
+                    profile=profile,
+                    verification_id=verification_id,
+                    error=f"gate timed out after {timeout_seconds}s: {exc}",
+                    commands=tuple(results),
+                )
+            return VerificationReport(
+                profile=profile,
+                passed=False,
+                commands=tuple(results),
+                timed_out=True,
+                timed_out_check=_gate_name(argv),
+            )
         except (OSError, PermissionDeniedError, subprocess.SubprocessError) as exc:
             if evidence is not None:
                 finish_verification_failure(
@@ -310,64 +559,37 @@ class ProjectVerifier:
         return KBOProjectAdapter().needs_certification(changed_files, profile)
 
     def build_plan(self, *, level: str, changed_files: list[str] | tuple[str, ...] = ()) -> VerificationPlan:
-        """Build an impact-based verification plan for one level."""
-        from tools.agent_harness.project_adapter import KBOProjectAdapter
+        """Build an impact-based verification plan for one level declared in policy."""
+        policy = self.levels.get(level)
+        if policy is None:
+            msg = f"Unknown verification level: {level} (known: {', '.join(sorted(self.levels))})"
+            raise ValueError(msg)
+        context = _GateContext(changed_files=tuple(changed_files))
+        return VerificationPlan(level=level, checks=_resolve_gates(policy, context))
 
-        adapter = KBOProjectAdapter()
-        python = sys.executable
-        targets = adapter.pytest_targets(changed_files)
-        if level == "none":
-            return VerificationPlan(level=level, checks=())
-        if level == "quick":
-            return VerificationPlan(
-                level=level,
-                checks=(
-                    VerificationCheck(
-                        check_id="pytest-affected",
-                        argv=(python, "-m", "pytest", *targets, "-q"),
-                    ),
-                    VerificationCheck(
-                        check_id="ruff",
-                        argv=(python, "-m", "ruff", "check", "tools/agent_harness"),
-                    ),
-                ),
-            )
-        if level == "full":
-            return VerificationPlan(
-                level=level,
-                checks=(
-                    VerificationCheck(check_id="pytest-full", argv=(python, "-m", "pytest", "-q")),
-                    VerificationCheck(
-                        check_id="ruff-project",
-                        argv=(python, "-m", "ruff", "check", "src", "tests", "scripts", "tools"),
-                    ),
-                ),
-            )
-        checks: list[VerificationCheck] = [
-            VerificationCheck(
-                check_id="pytest-affected",
-                argv=(python, "-m", "pytest", *targets, "-q"),
-            ),
-            VerificationCheck(
-                check_id="ruff-project",
-                argv=(python, "-m", "ruff", "check", "src", "tests", "scripts", "tools"),
-            ),
-        ]
-        if adapter.needs_crawler_gate(changed_files):
-            checks.append(
-                VerificationCheck(
-                    check_id="crawler-gate",
-                    argv=(
-                        python,
-                        "-m",
-                        "src.cli.crawler_selector_gate",
-                        "--config",
-                        "Docs/references/crawler_selector_gate.json",
-                        "--json",
-                    ),
-                )
-            )
-        return VerificationPlan(level="standard", checks=tuple(checks))
+    def build_profile_plan(
+        self,
+        profile: str,
+        changed_files: list[str] | tuple[str, ...] = (),
+    ) -> VerificationPlan:
+        """Build the gate plan for a named verification profile, inheriting its level."""
+        policy = self.profiles.get(profile)
+        if policy is None:
+            msg = f"Unknown verification profile: {profile} (known: {', '.join(sorted(self.profiles))})"
+            raise ValueError(msg)
+        context = _GateContext(
+            changed_files=tuple(changed_files),
+            extra_pytest_targets=policy.extra_pytest_targets,
+        )
+        return VerificationPlan(level=profile, checks=_resolve_gates(policy, context))
+
+    def commands_for_profile(
+        self,
+        profile: str,
+        changed_files: list[str] | tuple[str, ...] = (),
+    ) -> tuple[tuple[str, ...], ...]:
+        """Return the argv a verification profile runs through the shared gate catalog."""
+        return tuple(check.argv for check in self.build_profile_plan(profile, changed_files).checks)
 
 
 __all__ = [

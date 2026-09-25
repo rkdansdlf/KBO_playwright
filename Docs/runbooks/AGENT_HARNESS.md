@@ -14,9 +14,14 @@ python3 -m tools.agent_harness plan "boxscore crawler timeout 수정"
 python3 -m tools.agent_harness run "boxscore crawler timeout 수정" --profile crawler-bug
 python3 -m tools.agent_harness run "정리해줘" --changed-files src/crawlers/x.py
 python3 -m tools.agent_harness verify <run-id>
+python3 -m tools.agent_harness verify <run-id> --level standard
 python3 -m tools.agent_harness validate <run-id> --require-verified
 python3 -m tools.agent_harness report <run-id>
 ```
+
+로컬에서 `run`/`verify`는 **프로젝트 인터프리터**로 실행하십시오
+(`venv/bin/python -m tools.agent_harness ...`). 게이트 도구 버전이 실행 환경에서
+나오기 때문입니다. 상세는 [게이트 도구 버전 재현성](#게이트-도구-버전-재현성).
 
 - `route`: 분류+스킬 선택만 표시 (plan과 달리 실행계획을 만들지 않음).
 - `replay --round <1|2|3>`: 실제 KBO 작업 replay dataset을 read-only로 평가한다.
@@ -26,6 +31,7 @@ python3 -m tools.agent_harness report <run-id>
 - `route/plan/run`은 `--changed-files <paths...>`를 받으며 파일 신호가 프롬프트 키워드보다 우선한다.
 - `verify`: `plan.json`의 verification 프로파일로 기존 프로젝트 게이트 실행.
   모든 명령은 `CommandRunner` allowlist를 통과하며 거부 시 exit 2로 종료된다.
+  exit code: 0 통과 / 1 게이트 실패 / 2 설정·권한·계약 오류 / **3 게이트 미완료(timeout)**.
 - `verify --level <none|quick|standard|full> --changed-files <paths...>`: 고정 프로파일 대신
   영향 기반 플랜으로 실행. 예: crawler 파일 변경 시 selector gate 자동 포함.
   주의: `quick` 이상은 하네스 테스트 스위트 자체를 실행하므로 하네스 테스트 내부에서는
@@ -228,14 +234,101 @@ python3 -m tools.agent_harness doctor --strict   # 라이선스 경고를 실패
 
 `doctor`가 FAIL이면 상위 작업을 진행하지 않는다.
 
-## 검증 레벨
+## 검증 게이트 계약
 
-`policies/verification.yaml: levels` 기준, `verifier.build_plan()`이 변경 파일로 구체화:
+`policies/verification.yaml`이 **어떤 게이트를 요구하는지**를 선언하고,
+`verifier.py`의 게이트 카탈로그가 **각 게이트를 어떻게 실행하는지**를 안다.
+두 모드(`verify <run-id>` 프로필 모드, `verify <run-id> --level <L>` 레벨 모드)가
+**같은 카탈로그**를 지나므로 "무엇이 도는가"의 진실 공급원은 하나뿐이다.
 
-- `none`: 검사 없음 (research 전용).
-- `quick`: 영향 pytest + 변경 범위 ruff.
-- `standard`: 영향 pytest + 프로젝트 ruff + 조건부 crawler gate.
-- `full`: 전체 pytest + ruff (+ 조건부 certification, 승인 필요 시).
+게이트 카탈로그(`GATE_CATALOG`): `pytest-affected`, `pytest-crawler-gate`, `pytest-full`,
+`ruff-changed`, `ruff-project`, `format-check`, `mypy-scoped`, `crawler-gate`, `doctor`.
+
+| 레벨 | 게이트 |
+|---|---|
+| `none` | (없음 — research 전용) |
+| `quick` | `pytest-affected` + `ruff-changed` + `doctor` |
+| `standard` | `pytest-affected` + `ruff-project` + `doctor` (+ `crawler-gate` when changed files touch crawlers/parsers) |
+| `full` | `pytest-full` + `ruff-project` + `format-check` + `mypy-scoped` + `doctor` |
+
+프로필은 레벨을 상속합니다. `project`=`standard`, `full`=`full`, `analytics`=`standard` +
+`tests/analytics`, `crawler`=`standard` + `crawler-gate`/`pytest-crawler-gate`,
+`research`=`doctor`만.
+
+`levels`와 `profiles`에 없는 게이트 id나 조건 술어를 쓰면 **로드 시점에 실패**합니다
+(오타가 조용히 무시되지 않습니다). 알 수 없는 레벨로 `build_plan`을 부르면 `ValueError`입니다.
+
+### doctor는 선택할 수 없다
+
+`doctor`는 Harness manifest·정책·golden dataset을 검증하는 **유일한** 게이트입니다.
+P19 이전에는 `research` 프로필에만 있어서, `.agent-harness/`를 가장 많이 건드리는
+`refactor`(→ `full`)가 자기 설정을 검증하지 못하는 **위험도 역전**이 있었습니다.
+이제 `none`을 제외한 모든 레벨과 모든 프로필이 `doctor`를Mandatory로 실행합니다.
+
+### 게이트 timeout
+
+| 게이트 | timeout | 근거 |
+|---|---|---|
+| `pytest-full` | 900s | 문서화된 전체 스위트 baseline 186.06s. 이전 300s는 여유 1.57배였고 coverage 붙이면 335s로 초과 |
+| `mypy-scoped` | 600s | 실측 cold 13.4s / warm 1.5s (198 모듈) |
+| 나머지 | 300s | pytest-affected ~7s, ruff ~0.1s, doctor ~0.1s |
+
+### exit code 계약 (`verify`)
+
+| exit | 의미 |
+|---|---|
+| 0 | 게이트 전부 통과 |
+| 1 | 게이트가 **실행되어** 실패 — 진짜 검증 실패 |
+| 2 | 설정 오류, 권한 거부, artifact/plan 계약 위반 |
+| 3 | 게이트가 **완료되지 못함** (timeout) |
+
+1과 3을 구분하는 것이 목적이었습니다. 이전에는 timeout이 exit 1로 보고되어
+"느린 머신"이 "테스트 실패"로 보이게 만들었습니다. `verification.json`에는
+`timed_out`과 `timed_out_check`가 기록되고, `run`은 계약 위반 시 traceback이 아니라
+exit 2로 끝납니다.
+
+### 게이트 도구 버전 재현성
+
+게이트는 항상 `sys.executable -m <module>`로 실행됩니다(권한 정책이 `python script.py`를
+DENY하므로 `scripts/` 게이트도 `python -m scripts.check_mypy_scoped` 형태여야 합니다).
+덕분에 게이트 도구 버전은 **Harness를 실행한 인터프리터**에서 나옵니다.
+
+- CI는 문제없습니다. `.[dev]`가 `ruff==0.15.14`를 pin하고 `kbo-job-setup`이 `.[dev]`를 설치합니다.
+- 로컬에서는 **프로젝트 인터프리터로 실행하십시오** (`venv/bin/python -m tools.agent_harness ...`).
+  시스템 python으로 실행하면 설치된 ruff 버전을 그대로 씁니다. 실제로 ruff 0.15.20은
+  이 트리에서 `src/crawlers/http_client.py`의 F821 등 **오탐**을 냅니다(해당 이름은
+  18·26행에서 정상 import). 게이트가 거짓 실패를 내면 people이 게이트를 무시하게 되므로
+  버전 고정된 인터프리터가 중요합니다.
+
+`scripts.check_mypy_scoped`는 mypy가 없으면 **exit 2로 실패**합니다. 이전에는
+"No module named mypy" 출력이 어느 scoped 파일로 시작하지도 않아서 게이트가
+"198 files clean"을 보고하며 조용히 통과했습니다.
+
+## 죽은 코드 게이트
+
+Ruff의 RET/B012는 함수 본문에서 terminator 뒤에 오는 문장을 잡지 않습니다.
+그래서 `scripts/lint_unreachable_code.py`가 AST로 검사합니다(`src`/`scripts`/`tools` 대상).
+검사 기준은 **첫 번째** top-level `return`/`raise` 이후의 모든 문장입니다 —
+죽은 블록이 자기 own `return`으로 끝나도 잡아야 하기 때문입니다. `yield`는 terminator가
+아닙니다(generator는 그 뒤에 재개됩니다).
+
+## CI 실행 경로 게이트
+
+`.github/workflows/agent_harness.yml`에는 job이 두 개 있습니다.
+
+- `harness-gate` (read-only): scoped ruff → format → `pytest tests/agent_harness` →
+  `doctor` → replay 1/2/3 + metrics. 외부 명령을 실행하지 않습니다.
+- `harness-execution-gate` (신규): `run` → `verify` → `validate --require-verified`.
+  실제 CommandRunner subprocess로 게이트를 돌리고 evidence bundle을 업로드합니다.
+
+read-only job은 `run`/`verify`/evidence 회귀를 잡을 수 없었습니다. Harness가 게이트를
+실제로 실행하는 경로가 CI에서 한 번도 증명되지 않았기 때문입니다. `feature` 프로필을
+사용하므로 `pytest-affected` + `ruff-project` + `doctor`, 약 7초입니다
+(`refactor`→`full`은 전체 스위트라 CI에 넣지 않습니다).
+
+run_id는 step output으로 스레딩합니다. `verify`는 run 디렉터리가 없으면 traceback으로 죽습니다.
+또한 정책이 `DATABASE_URL`을 제거하므로 `tests/conftest.py`가 `data/test_runtime.db`로
+폴백합니다 — 그래서 job에서 `mkdir -p data`가 필요합니다.
 
 ## 아티팩트 읽는 법
 
@@ -273,8 +366,18 @@ v1 run을 실제 검증할 때는 first verification 전에 현재 schema로 재
 
 - `doctor FAIL`: 출력의 `ERROR` 행이 가리키는 yaml/lock 불일치 수정.
 - `verify` 실패: `verification.json`의 첫 실패 명령부터 확인, 증거는 `commands.jsonl`.
+- `verify` **exit 3**: 게이트가 끝나지 못했습니다(timeout). 테스트 실패가 아닙니다.
+  `timed_out_check`로 어느 게이트인지 확인하고, 느린 것이면 그 게이트의 timeout을 올립니다.
+  300s로 되돌리지 마십시오 — `full`의 300s는 baseline 186s 대비 여유 1.57배였습니다.
+- 게이트가 `ruff`에서만 이상하게 실패한다면: 실행 인터프리터의 ruff 버전을 확인합니다.
+  이 트리에서는 ruff 0.15.20이 F821 등 오탐을 냅니다. `.[dev]`는 0.15.14를 pin합니다.
 - `PermissionDeniedError`: allowlist에 없는 실행 시도. 정책을 우회하지 말고
   `permissions.yaml` 변경 + 보안 회귀 테스트(`test_command_runner.py`)로 승인.
+  `python scripts/x.py`는 항상 DENY이므로 `python -m scripts.x` 형태와 `python_modules` 등록이 필요합니다.
+- `scoped mypy gate` exit 2: mypy가 없습니다. 게이트는 조용히 통과하지 않습니다.
+  `<interpreter> -m pip install -e '.[dev]'`로 설치합니다.
+- `Unknown verification gate/level`: `verification.yaml`에 오타가 있습니다.
+  카탈로그는 없는 게이트를 조용히 무시하지 않고 로드 시점에 실패시킵니다.
 - `replay --metrics-out` exit 2 + `denied metrics path`: `artifacts/agent-harness/**`
   밖 경로다. 경로를 옮기고 다시 실행한다.
 - `route_accuracy` 하락 또는 `undeclared_failure_count > 0`: 라우터/프로파일 변경 의도를
@@ -286,3 +389,5 @@ v1 run을 실제 검증할 때는 first verification 전에 현재 schema로 재
   `--profile` 명시를 요구하거나, collision로 정직하게 선언하는 것이다.
 - `test_redaction_coverage` 실패: 새 `env.example` 항목이 `redact_env`에 없다. 값을 넣지 말고
   이름만 정책에 추가한다.
+- `lint_unreachable_code`가 파일을 잡으면: 죽은 코드입니다. 지우지 말고 이유를 확인합니다.
+  대개 이전 리팩터링에서 정본 사본이 남은 경우이며, 둘 중 하나를 지워 단일 진실 공급원을 유지합니다.

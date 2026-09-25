@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
+import pytest
+
 from tools.agent_harness.dto import TaskRequest
 from tools.agent_harness.project_adapter import KBOProjectAdapter
 from tools.agent_harness.registry import HarnessRegistry
 from tools.agent_harness.router import TaskRouter
-from tools.agent_harness.verifier import ProjectVerifier
+from tools.agent_harness.verifier import GatePolicy, ProjectVerifier, _load_gate_policies
 
 
 def test_explicit_profile_beats_changed_files() -> None:
@@ -68,13 +72,81 @@ def test_verifier_build_plan_levels() -> None:
     assert verifier.build_plan(level="none").checks == ()
 
     quick = verifier.build_plan(level="quick", changed_files=["tools/agent_harness/x.py"])
-    assert [check.check_id for check in quick.checks] == ["pytest-affected", "ruff"]
+    assert [check.check_id for check in quick.checks] == ["pytest-affected", "ruff-changed", "doctor"]
 
     standard_crawler = verifier.build_plan(level="standard", changed_files=["src/crawlers/x.py"])
-    assert "crawler-gate" in [check.check_id for check in standard_crawler.checks]
+    assert [check.check_id for check in standard_crawler.checks] == [
+        "pytest-affected",
+        "ruff-project",
+        "doctor",
+        "crawler-gate",
+    ]
 
     standard_plain = verifier.build_plan(level="standard", changed_files=["src/rag/x.py"])
     assert "crawler-gate" not in [check.check_id for check in standard_plain.checks]
 
     full = verifier.build_plan(level="full")
-    assert [check.check_id for check in full.checks] == ["pytest-full", "ruff-project"]
+    assert [check.check_id for check in full.checks] == [
+        "pytest-full",
+        "ruff-project",
+        "format-check",
+        "mypy-scoped",
+        "doctor",
+    ]
+
+
+def test_every_level_except_none_runs_doctor() -> None:
+    """Check that doctor is mandatory, because it is the only gate validating the manifest."""
+    verifier = ProjectVerifier.load()
+
+    for level in ("quick", "standard", "full"):
+        assert "doctor" in [check.check_id for check in verifier.build_plan(level=level).checks], level
+    for profile in ("project", "crawler", "analytics", "full"):
+        assert "doctor" in [check.check_id for check in verifier.build_profile_plan(profile).checks], profile
+
+
+def test_unknown_level_and_gate_fail_loudly() -> None:
+    verifier = ProjectVerifier.load()
+
+    with pytest.raises(ValueError, match="Unknown verification level"):
+        verifier.build_plan(level="turbo")
+
+    broken = replace(verifier, levels={"standard": GatePolicy(gates=("no-such-gate",))})
+    with pytest.raises(ValueError, match="Unknown verification gate"):
+        broken.build_plan(level="standard")
+
+
+def test_policy_referencing_an_unknown_gate_is_rejected_at_load() -> None:
+    payload = {
+        "levels": {"standard": {"gates": ["pytest-affected", "imaginary-gate"]}},
+        "profiles": {"project": {"level": "standard"}},
+    }
+    with pytest.raises(ValueError, match="unknown gate"):
+        _load_gate_policies(payload, "levels")
+
+
+def test_policy_referencing_an_unknown_level_is_rejected_at_load() -> None:
+    payload = {"levels": {}, "profiles": {"project": {"level": "nonexistent"}}}
+    with pytest.raises(ValueError, match="unknown level"):
+        _load_gate_policies(payload, "profiles", {})
+
+
+def test_crawler_profile_does_not_duplicate_its_conditional_gate() -> None:
+    """`crawler` declares crawler-gate unconditionally and inherits it conditionally."""
+    verifier = ProjectVerifier.load()
+
+    plan = verifier.build_profile_plan("crawler", changed_files=["src/crawlers/x.py"])
+    gate_ids = [check.check_id for check in plan.checks]
+
+    assert gate_ids.count("crawler-gate") == 1
+    assert "pytest-crawler-gate" in gate_ids
+
+
+def test_full_level_sizes_the_suite_timeout_above_the_documented_baseline() -> None:
+    """The documented full-suite baseline is ~186s, so a 300s cap is a false-negative trap."""
+    verifier = ProjectVerifier.load()
+
+    checks = {check.check_id: check for check in verifier.build_plan(level="full").checks}
+
+    assert checks["pytest-full"].timeout_seconds >= 600
+    assert checks["mypy-scoped"].timeout_seconds >= 600

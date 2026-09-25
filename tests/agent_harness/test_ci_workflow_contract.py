@@ -50,3 +50,26 @@ def test_agent_harness_workflow_stays_secret_free_and_offline() -> None:
     assert "curl" not in workflow
     assert "wget" not in workflow
     assert "PLAYWRIGHT" not in workflow
+
+
+def test_execution_gate_job_proves_the_run_verify_validate_path() -> None:
+    """The read-only job cannot catch a regression in run/verify/evidence."""
+    workflow = _workflow()
+
+    assert "harness-execution-gate:" in workflow
+    assert 'python3 -m tools.agent_harness run "harness execution path verification"' in workflow
+    assert 'python3 -m tools.agent_harness verify "${{ steps.harness_run.outputs.run_id }}" --json' in workflow
+    assert "--require-verified" in workflow
+    # run_id must be threaded between steps: verify crashes on a missing run dir.
+    assert 'echo "run_id=${RUN_ID}" | tee -a "$GITHUB_OUTPUT"' in workflow
+    assert "steps.harness_run.outputs.run_id" in workflow
+
+
+def test_execution_gate_stays_offline_and_uses_a_cheap_profile() -> None:
+    """`feature` -> `project` gates cost ~7s; `refactor` -> `full` would run the whole suite."""
+    workflow = _workflow()
+
+    assert "--profile feature" in workflow
+    assert "secrets." not in workflow
+    assert "curl" not in workflow
+    assert "wget" not in workflow

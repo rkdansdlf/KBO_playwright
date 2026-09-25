@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -12,7 +13,11 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from tools.agent_harness.artifact_contract import validate_artifact_bundle, validate_execution_plan
+from tools.agent_harness.artifact_contract import (
+    ArtifactContractError,
+    validate_artifact_bundle,
+    validate_execution_plan,
+)
 from tools.agent_harness.context_builder import ContextBuilder
 from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION
 from tools.agent_harness.evidence import EvidenceStore
@@ -292,6 +297,22 @@ def _verify_level(
     for check in vplan.checks:
         try:
             result = runner.run(check.argv, skill_id="harness", timeout_seconds=check.timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            error = f"gate '{check.check_id}' timed out after {check.timeout_seconds}s: {exc}"
+            finish_verification_failure(
+                evidence,
+                profile=profile,
+                verification_id=verification_id,
+                error=error,
+                commands=tuple(results),
+            )
+            return {
+                "run_id": run_id,
+                "passed": False,
+                "timed_out": True,
+                "timed_out_check": check.check_id,
+                "error": error,
+            }
         except (OSError, PermissionDeniedError, SubprocessError) as exc:
             finish_verification_failure(
                 evidence,
@@ -527,9 +548,17 @@ def _handle_run(
     registry: HarnessRegistry,
     permissions: PermissionPolicy,
 ) -> int:
-    run = HarnessRunner(registry, permissions).run(
-        args.task, args.profile, changed_files=list(args.changed_files or [])
-    )
+    try:
+        run = HarnessRunner(registry, permissions).run(
+            args.task, args.profile, changed_files=list(args.changed_files or [])
+        )
+    except ArtifactContractError as exc:
+        # Fail closed with a clean exit code instead of a traceback on a contract violation.
+        _write_output(
+            {"status": "error", "error": str(exc)} if args.json else f"Harness run failed: {exc}\n",
+            as_json=args.json,
+        )
+        return 2
     payload = {"run_id": run.run_id, "profile": run.profile, "artifact_dir": str(run.artifact_dir)}
     _write_output(payload if args.json else f"Harness run initialized: {run.run_id}\n", as_json=args.json)
     return 0
@@ -541,6 +570,15 @@ def _handle_verify(
     permissions: PermissionPolicy,
 ) -> int:
     payload = _verify_run(registry, permissions, args.run_id, args.level, list(args.changed_files or []))
+    # Exit 3 keeps an unfinished gate distinguishable from a real gate failure, so a slow
+    # machine is never reported as a test failure. Checked before `error` because profile
+    # mode reports a timeout through `timed_out` while level mode also sets `error`.
+    if payload.get("timed_out") is True:
+        _write_output(
+            payload if args.json else f"Verification timed out: {args.run_id}\n",
+            as_json=args.json,
+        )
+        return 3
     if payload.get("error") is not None:
         _write_output(payload if args.json else f"Verification denied: {args.run_id}\n", as_json=args.json)
         return 2

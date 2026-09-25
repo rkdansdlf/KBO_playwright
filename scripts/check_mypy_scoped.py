@@ -216,12 +216,35 @@ SCOPED_FILES: tuple[str, ...] = (
 )
 
 
+def _mypy_runs() -> bool:
+    """Return whether this interpreter can actually execute mypy.
+
+    Without this preflight a missing mypy looks like a clean run: the subprocess prints
+    "No module named mypy", no output line starts with a scoped file path, and the gate
+    would report success while verifying nothing.
+    """
+    probe = subprocess.run(
+        [sys.executable, "-m", "mypy", "--version"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return probe.returncode == 0 and "mypy" in (probe.stdout or "").lower()
+
+
 def main() -> int:
     """Run mypy on scoped files and fail on any attributed error."""
     repo_root = Path(__file__).resolve().parents[1]
     missing = [f for f in SCOPED_FILES if not (repo_root / f).exists()]
     if missing:
         sys.stderr.write(f"scoped mypy gate: listed files missing: {missing}\n")
+        return 2
+    if not _mypy_runs():
+        sys.stderr.write(
+            "scoped mypy gate: mypy is not importable by this interpreter, so the gate was skipped.\n"
+            f"Install the dev extras first: {sys.executable} -m pip install -e '.[dev]'\n"
+        )
         return 2
     proc = subprocess.run(
         [sys.executable, "-m", "mypy", *SCOPED_FILES],

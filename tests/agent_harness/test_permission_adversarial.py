@@ -17,7 +17,7 @@ from tools.agent_harness.evidence import EvidenceStore
 from tools.agent_harness.exceptions import HarnessConfigError, PermissionDeniedError
 from tools.agent_harness.permissions import PermissionPolicy
 from tools.agent_harness.registry import HarnessRegistry, project_root
-from tools.agent_harness.verifier import ProjectVerifier
+from tools.agent_harness.verifier import GatePolicy, ProjectVerifier
 
 
 def _policy_for_root(root: Path) -> PermissionPolicy:
@@ -266,7 +266,8 @@ def test_runner_denied_command_never_reaches_subprocess(monkeypatch: pytest.Monk
 def test_verifier_without_command_runner_fails_closed(tmp_path: Path) -> None:
     verifier = ProjectVerifier(
         root=tmp_path,
-        profiles={"test": (("ruff", "--version"),)},
+        levels={},
+        profiles={"test": GatePolicy(gates=("doctor",))},
     )
 
     with pytest.raises(HarnessConfigError):

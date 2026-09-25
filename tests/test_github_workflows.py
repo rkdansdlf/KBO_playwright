@@ -350,6 +350,7 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert "ruff check --output-format=github src/ tests/ scripts/ tools/ 2>&1" in workflow
     assert "ruff format --check src/ tests/ scripts/ tools/ 2>&1" in workflow
     assert "scripts/lint_bare_except.py" in workflow
+    assert "scripts/lint_unreachable_code.py" in workflow
     assert "pytest --tb=short -v --durations=10" in workflow
     assert "if line_rate < 75:" in workflow
     assert "migration-apply" in workflow

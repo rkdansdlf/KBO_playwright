@@ -82,17 +82,6 @@ class TaskRouter:
             reason = f"matched {domain_counts[selected]} domain trigger(s)"
         return selected, reason
 
-        route = self.registry.routes[selected]
-        return RouteDecision(
-            profile=selected,
-            reason=reason,
-            context=route.context,
-            workflow=route.workflow,
-            guards=route.guards,
-            verification=route.verification,
-            output=route.output,
-        )
-
     def route_request(self, request: TaskRequest) -> RouteDecision:
         """Route with explicit profile, changed files, prompt, then default priority."""
         if request.explicit_profile is not None:
