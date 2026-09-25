@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import sys
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import islice
@@ -46,12 +47,21 @@ from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import KST
+from src.constants import KST, RAG_EMBEDDING_DIMENSION
 from src.parsers.text_transformer import TextTransformer
 from src.services.markdown_document_loader import load_local_markdown_docs, markdown_source_table
+from src.services.rag_incremental_selection import (
+    IncrementalDecisionOptions,
+    RagIndexState,
+    decide_incremental_candidate,
+    embedding_fingerprint,
+    index_state_from_projection,
+)
 from src.services.rag_index_identity import (
     PbpSourceIdentity,
+    chunk_content_hash,
     current_index_version,
     stable_award_source_row_id,
     stable_highlight_source_row_id,
@@ -61,7 +71,7 @@ from src.services.rag_index_identity import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from sqlalchemy.orm import Session
     from sqlalchemy.sql import Select
@@ -159,6 +169,28 @@ class BuildTargets:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class IncrementalSelectionOptions:
+    """Describe target state used by content-aware candidate selection."""
+
+    source_table: str | None = None
+    vector_session: Session | None = None
+    desired_index_version: str | None = None
+    desired_embedding_fingerprint: str | None = None
+    include_healthy: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class BuildSourceOptions:
+    """Describe source traversal and incremental filtering options."""
+
+    season: int | None = None
+    limit: int | None = None
+    offset: int = 0
+    skip_existing: bool = False
+    desired_embedding_fingerprint: str | None = None
+
+
 def _redact_url(url: str | None) -> str:
     """Remove credentials from a database URL for logs and reports."""
     if not url:
@@ -173,6 +205,11 @@ def _redact_url(url: str | None) -> str:
         return urlunsplit((parsed.scheme, host, parsed.path, parsed.query, parsed.fragment))
     except ValueError:
         return "<redacted-invalid-url>"
+
+
+def _is_oracle_url(url: str | None) -> bool:
+    """Return whether a database URL targets Oracle."""
+    return bool(url and url.lower().startswith("oracle"))
 
 
 def _provider_target_errors(
@@ -208,22 +245,31 @@ def _oracle_write_target_errors(
     return errors
 
 
-def _index_target_errors(
-    source_url: str,
-    sparse_url: str,
-    vector_url: str,
-    *,
-    is_oracle: bool,
-) -> list[str]:
+def _index_target_errors(source_url: str, target_url: str, sparse_url: str, vector_url: str) -> list[str]:
     """Return cross-database target separation and dialect errors."""
     errors: list[str] = []
+    sparse_is_oracle = _is_oracle_url(sparse_url or target_url)
     if sparse_url and _redact_url(source_url) == _redact_url(sparse_url):
         errors.append("source and sparse index targets must be different")
-    if sparse_url and vector_url and not is_oracle and _redact_url(sparse_url) == _redact_url(vector_url):
+    if sparse_url and vector_url and not sparse_is_oracle and _redact_url(sparse_url) == _redact_url(vector_url):
         errors.append("sparse index and vector targets must be different")
-    if sparse_url and not is_oracle and not urlsplit(sparse_url).scheme.startswith("postgres"):
+    if sparse_url and not sparse_is_oracle and not urlsplit(sparse_url).scheme.startswith("postgres"):
         errors.append("RAG_INDEX_DB_URL must target PostgreSQL for staging writes")
     return errors
+
+
+def _sparse_vector_target_errors(sparse_url: str, target_url: str, vector_url: str) -> list[str]:
+    """Return errors for the effective sparse/vector target shape."""
+    effective_sparse_url = sparse_url or target_url
+    if _is_oracle_url(effective_sparse_url):
+        if vector_url:
+            return ["Oracle sparse targets require an empty PGVECTOR_URL"]
+        return []
+    if not vector_url:
+        return ["non-Oracle sparse targets require PGVECTOR_URL or PGVECTOR_TEST_URL"]
+    if not vector_url.lower().startswith("postgres"):
+        return ["non-Oracle sparse targets require a PostgreSQL vector URL"]
+    return []
 
 
 def _write_target_errors(
@@ -235,7 +281,7 @@ def _write_target_errors(
 ) -> list[str]:
     """Return write-target safety errors for a staging build."""
     errors: list[str] = []
-    is_oracle = target_url.startswith("oracle")
+    is_oracle = _is_oracle_url(target_url)
     if not sparse_url and not is_oracle:
         errors.append("non-dry-run builds require an explicit RAG_INDEX_DB_URL")
     if target_environment not in ({"staging", "production"} if is_oracle else {"staging"}):
@@ -246,7 +292,7 @@ def _write_target_errors(
         errors.append("production Oracle builds require RAG_INDEX_ALLOW_PRODUCTION_WRITE=1")
     if is_oracle:
         errors.extend(_oracle_write_target_errors(sparse_url, vector_url, target_environment))
-    errors.extend(_index_target_errors(source_url, sparse_url, vector_url, is_oracle=is_oracle))
+    errors.extend(_index_target_errors(source_url, target_url, sparse_url, vector_url))
     return errors
 
 
@@ -262,14 +308,15 @@ def _resolve_build_targets(
     configured_sparse_url = os.getenv("RAG_INDEX_DB_URL", "")
     configured_vector_url = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL") or ""
     if configured_sparse_url:
-        vector_db = target_db_url if configured_sparse_url.startswith("oracle") else configured_vector_url
-    elif target_db_url.startswith("oracle"):
+        vector_db = configured_sparse_url if _is_oracle_url(configured_sparse_url) else configured_vector_url
+    elif _is_oracle_url(target_db_url):
         vector_db = target_db_url
     else:
         vector_db = configured_vector_url
     target_environment = os.getenv("RAG_TARGET_ENV", "").strip().lower()
     errors = _provider_target_errors(embedding_mode, target_environment, target_db_url, vector_db)
     if not dry_run:
+        errors.extend(_sparse_vector_target_errors(configured_sparse_url, target_db_url, configured_vector_url))
         errors.extend(
             _write_target_errors(
                 source_db_url,
@@ -1267,20 +1314,41 @@ def _row_metadata(row: Mapping[Any, Any]) -> dict[str, Any]:
     return metadata
 
 
+_STAGING_LIGHTWEIGHT_QUERY = (
+    "SELECT id, source_table, source_row_id, title, content, team_id, player_id, season_year, "
+    "season_id, league_type_code, document_type, game_date, published_at, source_url, language, "
+    "content_hash, index_status, is_active, meta FROM rag_chunks ORDER BY id"
+)
+
+
+def _staging_query(session: Session, *, skip_populated: bool, lightweight: bool) -> str:
+    """Build the staging query for the requested payload mode."""
+    if skip_populated:
+        dialect_name = getattr(getattr(session.get_bind(), "dialect", None), "name", "")
+        embedding_column = "embedding_vector" if dialect_name == "oracle" else "embedding"
+        return f"SELECT * FROM rag_chunks WHERE {embedding_column} IS NULL ORDER BY id"  # noqa: S608
+    if lightweight:
+        return _STAGING_LIGHTWEIGHT_QUERY
+    return "SELECT * FROM rag_chunks ORDER BY id"
+
+
 def _iter_staging_rag_chunks(
     session: Session,
     _season: int | None,
     limit: int | None,
     *,
     skip_populated: bool = False,
+    lightweight: bool = False,
 ) -> Iterator[dict[str, Any]]:
     """Yield staging RAG content while deliberately discarding old vectors."""
-    query = "SELECT * FROM rag_chunks ORDER BY id"
-    if skip_populated:
-        dialect_name = getattr(getattr(session.get_bind(), "dialect", None), "name", "")
-        embedding_column = "embedding_vector" if dialect_name == "oracle" else "embedding"
-        query = f"SELECT * FROM rag_chunks WHERE {embedding_column} IS NULL ORDER BY id"  # noqa: S608
-    rows = session.execute(text(query)).mappings()
+    query = _staging_query(session, skip_populated=skip_populated, lightweight=lightweight)
+    try:
+        rows = session.execute(text(query)).mappings()
+    except SQLAlchemyError:
+        if not lightweight:
+            raise
+        session.rollback()
+        rows = session.execute(text("SELECT * FROM rag_chunks ORDER BY id")).mappings()
     yielded = 0
     for row in rows:
         if row.get("is_active") is False or row.get("is_active") == 0:
@@ -1329,6 +1397,15 @@ def _iter_staging_missing_rag_chunks(
     return _iter_staging_rag_chunks(session, season, limit, skip_populated=True)
 
 
+def _iter_staging_candidate_chunks(
+    session: Session,
+    season: int | None,
+    limit: int | None,
+) -> Iterator[dict[str, Any]]:
+    """Yield staging chunks without loading vector payloads during selection."""
+    return _iter_staging_rag_chunks(session, season, limit, lightweight=True)
+
+
 # ─── 소스 매핑 ────────────────────────────────────────────────────────────────
 
 _SOURCE_MAP = {
@@ -1349,7 +1426,7 @@ _SOURCE_MAP = {
     "markdown_docs": _iter_markdown_chunks,
     "kbo_definitions": _iter_definition_chunks,
     "kbo_regulations": _iter_regulation_chunks,
-    "staging_rag_chunks": _iter_staging_rag_chunks,
+    "staging_rag_chunks": _iter_staging_candidate_chunks,
 }
 
 _SOURCE_TABLE_BY_SOURCE = {
@@ -1384,32 +1461,174 @@ def _dedupe_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
+def _state_from_index_row(row: Sequence[object]) -> RagIndexState:
+    """Normalize a sparse or vector index projection."""
+    return index_state_from_projection(row)
+
+
+def _load_index_states(index_session: Session, source_table: str | None) -> dict[tuple[str, str], RagIndexState]:
+    """Load canonical sparse states used by incremental selection."""
+    from src.models.rag_chunk import RagChunk
+
+    statement = select(
+        RagChunk.source_table,
+        RagChunk.source_row_id,
+        RagChunk.content_hash,
+        RagChunk.index_version,
+        RagChunk.index_status,
+        RagChunk.embedding.is_not(None).label("embedding_present"),
+        RagChunk.meta,
+    )
+    if source_table:
+        statement = statement.where(RagChunk.source_table == source_table)
+    return {
+        state.key: state for state in (_state_from_index_row(row) for row in index_session.execute(statement).all())
+    }
+
+
+def _load_vector_states(vector_session: Session, source_table: str | None) -> dict[tuple[str, str], RagIndexState]:
+    """Load vector states used when sparse and vector stores are separated."""
+    from src.models.rag_chunk_vector import RagChunkVector
+
+    statement = select(
+        RagChunkVector.source_table,
+        RagChunkVector.source_row_id,
+        RagChunkVector.content_hash,
+        RagChunkVector.index_version,
+        RagChunkVector.index_status,
+        RagChunkVector.embedding.is_not(None).label("embedding_present"),
+        RagChunkVector.meta,
+    )
+    if source_table:
+        statement = statement.where(RagChunkVector.source_table == source_table)
+    return {
+        state.key: state for state in (_state_from_index_row(row) for row in vector_session.execute(statement).all())
+    }
+
+
+def rag_source_choices() -> tuple[str, ...]:
+    """Return the supported source names for read-only planners."""
+    return _VALID_SOURCES
+
+
+def rag_source_map() -> Mapping[str, Callable[[Session, int | None, int | None], Iterator[dict[str, Any]]]]:
+    """Return the source iterator registry for planners."""
+    return _SOURCE_MAP
+
+
+def source_table_for_source(source_name: str) -> str | None:
+    """Return the canonical table name for one source iterator."""
+    return _SOURCE_TABLE_BY_SOURCE.get(source_name)
+
+
+def load_incremental_index_states(
+    index_session: Session,
+    source_table: str | None,
+) -> dict[tuple[str, str], RagIndexState]:
+    """Load canonical states for a read-only planner."""
+    return _load_index_states(index_session, source_table)
+
+
+def load_incremental_vector_states(
+    vector_session: Session,
+    source_table: str | None,
+) -> dict[tuple[str, str], RagIndexState]:
+    """Load vector states for a read-only planner."""
+    return _load_vector_states(vector_session, source_table)
+
+
+def _embedding_fingerprint_for_service(embedding_service: object) -> str | None:
+    """Return the configured embedding fingerprint when all contract fields exist."""
+    model = getattr(embedding_service, "model_name", None)
+    if callable(model):
+        model = model()
+    if not model:
+        from src.services.embedding_service import DEFAULT_OPENROUTER_EMBEDDING_MODEL
+
+        model = os.getenv("EMBEDDING_MODEL", DEFAULT_OPENROUTER_EMBEDDING_MODEL)
+    dimension = getattr(embedding_service, "dimension", RAG_EMBEDDING_DIMENSION)
+    chunking_version = os.getenv("RAG_CHUNKING_VERSION", "rag-v1")
+    return embedding_fingerprint(model, dimension, chunking_version)
+
+
 def _skip_existing_index_rows(
     chunk_iter: Iterator[dict[str, Any]],
     index_session: Session,
+    options: IncrementalSelectionOptions | None = None,
     *,
     source_table: str | None = None,
 ) -> Iterator[dict[str, Any]]:
-    """Yield only chunks without an already populated target vector."""
-    from src.models.rag_chunk import RagChunk
-
-    stmt = select(RagChunk.source_table, RagChunk.source_row_id).where(RagChunk.embedding.is_not(None))
-    if source_table:
-        stmt = stmt.where(RagChunk.source_table == source_table)
-    existing_keys = {
-        (str(source_table), str(source_row_id)) for source_table, source_row_id in index_session.execute(stmt).all()
-    }
+    """Yield chunks whose content, version, lifecycle, or vector state is stale."""
+    if options is not None and source_table is not None:
+        message = "source_table cannot be combined with selection options"
+        raise ValueError(message)
+    selection = options or IncrementalSelectionOptions(source_table=source_table)
+    canonical_states = _load_index_states(index_session, selection.source_table)
+    vector_states = (
+        _load_vector_states(selection.vector_session, selection.source_table)
+        if selection.vector_session is not None
+        else {}
+    )
+    version = selection.desired_index_version or current_index_version()
+    metadata_gap_count = 0
+    blocked_count = 0
     for chunk in chunk_iter:
-        key = (str(chunk["source_table"]), str(chunk["source_row_id"]))
-        if key not in existing_keys:
+        key = (str(chunk.get("source_table") or ""), str(chunk.get("source_row_id") or ""))
+        decision = decide_incremental_candidate(
+            chunk,
+            canonical_states.get(key),
+            vector_states.get(key),
+            IncrementalDecisionOptions(
+                desired_index_version=version,
+                desired_embedding_fingerprint=selection.desired_embedding_fingerprint,
+                require_vector=selection.vector_session is not None,
+                require_primary_embedding=selection.vector_session is None,
+            ),
+        )
+        if decision.blocked:
+            blocked_count += 1
+            logger.debug("RAG incremental candidate blocked: %s (%s)", decision.source_key, decision.reason)
+            continue
+        if decision.metadata_repair and not decision.should_reembed:
+            metadata_gap_count += 1
+            continue
+        if decision.should_reembed or selection.include_healthy:
             yield chunk
+    if metadata_gap_count:
+        logger.warning(
+            "RAG incremental selection found %d legacy rows without embedding fingerprint; "
+            "metadata repair was not applied",
+            metadata_gap_count,
+        )
+    if blocked_count:
+        logger.info("RAG incremental selection blocked %d terminal identities", blocked_count)
+
+
+def _session_is_oracle(session: Session) -> bool:
+    """Return whether a SQLAlchemy session is bound to Oracle."""
+    bind = session.get_bind()
+    return str(getattr(getattr(bind, "dialect", None), "name", "")) == "oracle"
+
+
+def _oracle_vector_schema_available(index_session: Session) -> bool:
+    """Check the Oracle vector column on the actual sparse index session."""
+    if not _session_is_oracle(index_session):
+        return False
+    try:
+        result = index_session.execute(
+            text(
+                "SELECT COUNT(*) FROM user_tab_columns "
+                "WHERE table_name = 'RAG_CHUNKS' AND column_name = 'EMBEDDING_VECTOR'"
+            )
+        )
+        return int(result.scalar() or 0) == 1
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
+        return False
 
 
 def _persist_index_batch(batch: list[dict[str, Any]], index_session: Session) -> None:
     """Publish one batch through pending and final sparse/vector states."""
-    from src.db.vector_engine import is_oracle_vector_backend
-
-    if is_oracle_vector_backend():
+    if _session_is_oracle(index_session):
         from src.services.rag_index_propagation import publish_single_store_batch
 
         publish_single_store_batch(index_session, batch)
@@ -1433,17 +1652,22 @@ def _process_source(
     """단일 소스의 청크를 sparse/vector 인덱스에 동일하게 저장합니다."""
     total = 0
     batch: list[dict[str, Any]] = []
+    embedding_fingerprint_value = _embedding_fingerprint_for_service(embedding_service)
 
     def _flush_batch(batch: list[dict[str, Any]]) -> None:
         nonlocal total
         if not batch:
             return
         batch = _dedupe_batch(batch)
-        # 임베딩 배치 생성
         texts = [c["content"] for c in batch]
         embeddings = embedding_service.get_embeddings_batch(texts)  # type: ignore[attr-defined]
         _validate_embeddings(embeddings, len(batch))
         for chunk, emb in zip(batch, embeddings, strict=False):
+            chunk["content_hash"] = chunk_content_hash(chunk.get("title"), str(chunk.get("content") or ""))
+            if embedding_fingerprint_value:
+                metadata = dict(chunk.get("meta") or {})
+                metadata["embedding_fingerprint"] = embedding_fingerprint_value
+                chunk["meta"] = metadata
             chunk["embedding"] = emb
             chunk["index_version"] = current_index_version()
             chunk["indexed_at"] = datetime.now(KST)
@@ -1490,6 +1714,45 @@ def _prepare_source_chunks(
     return iter(chunks)
 
 
+def _iter_candidate_chunks(
+    source_name: str,
+    source_session: Session,
+    index_session: Session,
+    vector_session: Session | None,
+    options: BuildSourceOptions,
+) -> Iterator[dict[str, Any]]:
+    """Build one source iterator and apply incremental candidate selection."""
+    chunk_iter = _prepare_source_chunks(
+        source_name,
+        _SOURCE_MAP[source_name],
+        source_session,
+        options.season,
+        options.limit,
+    )
+    if options.offset:
+        chunk_iter = islice(chunk_iter, options.offset, None)
+    return _skip_existing_index_rows(
+        chunk_iter,
+        index_session,
+        IncrementalSelectionOptions(
+            source_table=_SOURCE_TABLE_BY_SOURCE.get(source_name),
+            vector_session=vector_session,
+            desired_index_version=current_index_version(),
+            desired_embedding_fingerprint=options.desired_embedding_fingerprint,
+            include_healthy=not options.skip_existing,
+        ),
+    )
+
+
+def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager[Session | None]:
+    """Select the vector session context for the resolved sparse target."""
+    if sparse_is_oracle:
+        return nullcontext(None)
+    from src.db.vector_engine import get_vector_session
+
+    return get_vector_session()
+
+
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
 
 
@@ -1525,7 +1788,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--skip-existing",
         action="store_true",
-        help="target에 이미 vector가 있는 identity는 건너뜀",
+        help="신규·변경·stale version·누락 vector만 처리하고 정상 identity는 건너뜀",
     )
     parser.add_argument(
         "--dry-run",
@@ -1541,12 +1804,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     from src.db.engine import DATABASE_URL
-    from src.db.vector_engine import (
-        init_vector_db,
-        is_oracle_vector_backend,
-        is_oracle_vector_schema_available,
-        is_pgvector_available,
-    )
+    from src.db.vector_engine import init_vector_db, is_pgvector_available
 
     try:
         source_db_url = os.getenv("RAG_SOURCE_DB_URL") or DATABASE_URL
@@ -1571,14 +1829,12 @@ def main(argv: list[str] | None = None) -> None:
         targets.write_enabled,
     )
 
-    if is_oracle_vector_backend() and not is_oracle_vector_schema_available():
-        logger.error("Oracle RAG vector schema is unavailable. Apply Oracle migrations before indexing.")
-        sys.exit(1)
-    if not is_oracle_vector_backend() and not is_pgvector_available():
+    sparse_is_oracle = _is_oracle_url(targets.sparse_index_db)
+    if not sparse_is_oracle and not is_pgvector_available():
         logger.error("vector DB에 연결할 수 없습니다. Oracle vector migration 또는 local pgvector setup을 확인하세요.")
         sys.exit(1)
 
-    if not args.dry_run and not is_oracle_vector_backend():
+    if not args.dry_run and not sparse_is_oracle:
         logger.info("pgvector 테이블 초기화 확인 중...")
         init_vector_db()
 
@@ -1603,30 +1859,31 @@ def main(argv: list[str] | None = None) -> None:
     grand_total = 0
     if not args.dry_run:
         init_rag_index_db()
-    with get_rag_source_session() as source_session, get_rag_index_session() as index_session:
+    vector_session_context = _vector_session_context(sparse_is_oracle=sparse_is_oracle)
+    build_source_options = BuildSourceOptions(
+        season=args.season,
+        limit=args.limit,
+        offset=args.offset,
+        skip_existing=args.skip_existing,
+        desired_embedding_fingerprint=_embedding_fingerprint_for_service(embedding_service),
+    )
+    with (
+        get_rag_source_session() as source_session,
+        get_rag_index_session() as index_session,
+        vector_session_context as vector_session,
+    ):
+        if sparse_is_oracle and not _oracle_vector_schema_available(index_session):
+            logger.error("Oracle RAG vector schema is unavailable. Apply Oracle migrations before indexing.")
+            raise SystemExit(1)
         for source_name in sources:
             logger.info("▶ [%s] 처리 시작...", source_name)
-            staging_same_target = (
-                source_name == "staging_rag_chunks"
-                and args.skip_existing
-                and _redact_url(targets.source_db) == _redact_url(targets.sparse_index_db)
-            )
-            chunk_fn = _iter_staging_missing_rag_chunks if staging_same_target else _SOURCE_MAP[source_name]
-            chunk_iter = _prepare_source_chunks(
+            chunk_iter = _iter_candidate_chunks(
                 source_name,
-                chunk_fn,
                 source_session,
-                args.season,
-                args.limit,
+                index_session,
+                vector_session,
+                build_source_options,
             )
-            if args.offset:
-                chunk_iter = islice(chunk_iter, args.offset, None)
-            if args.skip_existing and not staging_same_target:
-                chunk_iter = _skip_existing_index_rows(
-                    chunk_iter,
-                    index_session,
-                    source_table=_SOURCE_TABLE_BY_SOURCE.get(source_name),
-                )
             count = _process_source(
                 source_name,
                 chunk_iter,
