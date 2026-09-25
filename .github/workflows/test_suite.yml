@@ -27,9 +27,9 @@ jobs:
       - name: Install lint dependencies
         run: pip install ruff==0.15.14 pre-commit
       - name: Ruff lint check
-        run: ruff check --output-format=github src/ tests/ scripts/ 2>&1
+        run: ruff check --output-format=github src/ tests/ scripts/ tools/ 2>&1
       - name: Ruff format check
-        run: ruff format --check src/ tests/ scripts/ 2>&1
+        run: ruff format --check src/ tests/ scripts/ tools/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
       - name: Scoped mypy gate (certified-clean modules)
@@ -43,6 +43,8 @@ jobs:
         run: |
           python3 -m src.cli.kbo --help
           python3 -m src.cli.kbo config --env ci --strict
+      - name: Agent Harness manifest and policy gate
+        run: python3 -m tools.agent_harness doctor --json
       - name: Workflow YAML lint
         run: |
           if command -v actionlint >/dev/null 2>&1; then

@@ -1,0 +1,72 @@
+name: Agent Harness
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "tools/agent_harness/**"
+      - "tests/agent_harness/**"
+      - ".agent-harness/**"
+      - ".github/workflows/agent_harness.yml"
+      - ".github/actions/**"
+  pull_request:
+    paths:
+      - "tools/agent_harness/**"
+      - "tests/agent_harness/**"
+      - ".agent-harness/**"
+      - ".github/workflows/agent_harness.yml"
+      - ".github/actions/**"
+  workflow_dispatch:
+
+concurrency:
+  group: agent-harness-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  harness-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          python-version: "3.12"
+          init-db: 'false'
+
+      - name: Install harness lint dependencies
+        run: pip install ruff==0.15.14
+
+      - name: Scoped Ruff lint check
+        run: ruff check --output-format=github tools/agent_harness tests/agent_harness 2>&1
+
+      - name: Scoped Ruff format check
+        run: ruff format --check tools/agent_harness tests/agent_harness 2>&1
+
+      - name: Agent Harness test suite
+        run: pytest tests/agent_harness -q 2>&1
+
+      - name: Agent Harness manifest and policy gate
+        run: python3 -m tools.agent_harness doctor --json
+
+      - name: Replay operational golden tasks
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/agent-harness/ci
+          python3 -m tools.agent_harness replay --round 1 --metrics-out artifacts/agent-harness/ci/round-1-metrics.json
+          python3 -m tools.agent_harness replay --round 2 --metrics-out artifacts/agent-harness/ci/round-2-metrics.json
+          python3 -m tools.agent_harness replay --round 3 --metrics-out artifacts/agent-harness/ci/round-3-metrics.json
+
+      - name: Upload replay metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-harness-replay-metrics-${{ github.run_number }}
+          path: artifacts/agent-harness/ci
+          retention-days: 30
