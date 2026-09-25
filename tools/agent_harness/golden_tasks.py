@@ -199,20 +199,13 @@ def _load_permission(value: object, label: str) -> GoldenTaskPermission:
 def _load_expectation(value: object, label: str) -> GoldenTaskExpectation:
     """Parse one task expectation."""
     expected = _mapping(value, label)
-    level = _string(expected.get("level"), f"{label}.level")
-    if level not in {"none", "quick", "standard", "full"}:
-        msg = f"Unknown verification level at {label}: {level}"
-        raise HarnessConfigError(msg)
-    checks = _strings(expected.get("checks"), f"{label}.checks")
-    if (level == "none") != (not checks):
-        msg = f"{label}: level {level} and checks are inconsistent"
-        raise HarnessConfigError(msg)
+    # `checks` is compared against the plan resolved from `verification`, the axis that
+    # actually executes. A second declaration of the same decision could only drift.
     return GoldenTaskExpectation(
         profile=_string(expected.get("profile"), f"{label}.profile"),
         skills=_strings(expected.get("skills"), f"{label}.skills"),
         verification=_string(expected.get("verification"), f"{label}.verification"),
-        level=level,
-        checks=checks,
+        checks=_strings(expected.get("checks"), f"{label}.checks"),
         permission=_load_permission(expected.get("permission"), f"{label}.permission"),
     )
 
@@ -474,7 +467,10 @@ def replay_task(
     routed_permission_ok = routed_permission_decision == task.expected.permission.decision
     if expected_reason is not None and expected_reason not in routed_permission_reason:
         routed_permission_ok = False
-    plan = verifier.build_plan(level=task.expected.level, changed_files=task.request.changed_files)
+    # Derive the expected gates from the axis that actually executes. `plan.json` carries
+    # `expected.verification`, so deriving from a level instead would validate a run that
+    # never happens, and `crawler` would silently lose its selector-gate test.
+    plan = verifier.build_profile_plan(task.expected.verification, task.request.changed_files)
     planned_checks = tuple(check.check_id for check in plan.checks)
     checks_ok = planned_checks == task.expected.checks
     issues: list[str] = []

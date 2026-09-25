@@ -111,7 +111,7 @@ changed_files 신호나 default로만 도달하는 것이 맞습니다. "고치�
 권한 공격성 5건으로 구성하며 라운드 분배는 `10 / 9 / 9`이다.
 
 각 task는 `request`, `expected.profile`, `expected.skills`, `expected.verification`,
-`expected.permission`, `expected.level`, `expected.checks`를 가진다.
+`expected.permission`, `expected.checks`를 가진다.
 
 `known_deviations`는 의도한 계약과 실제 Router 결과가 다른 collision을 숨기지 않고
 회귀 지표로 남기는 장치다. 각 deviation은 실제 profile/skills/verification까지 고정하므로
@@ -304,18 +304,30 @@ exit 2로 끝납니다.
   정상적으로 만들어진 과거 evidence를 거부하지 않기 위한 의도적 예외이며, 그런 번들은
   "완전 수행의 증거"가 아니라 "통과한 증거"일 뿐입니다.
 
-### 검증 선언이 두 축인 채로 남은 부채 (P21)
+### golden task는 검증 축이 하나뿐입니다 (P21)
 
-golden task는 `expected.verification`(프로필 이름)과 `expected.level`(수준 이름)로
-검증을 **두 번** 선언하는데, 둘은 서로 파생되지 않습니다. 그래서 같은 task에
-`verify <run-id>`와 `verify <run-id> --level ...`이 **서로 다른 게이트**를 돌 수 있습니다.
-현재 15개가 어긋나고 있으며 `tests/agent_harness/test_verification_axes_ledger.py`가
-그 목록을 상수로 고정합니다. 새 불일치가 생기거나 사라지거나 형태가 바뀌면 그 테스트가
-실패합니다. 가장 위험한 그룹은 `security-*` 5건입니다 — `level: none`이라면서
-`verification: project`라서, profile 모드로 검증하면 "안 돈다"고 한 게이트가 돕니다.
+과거에는 `expected.verification`(프로필 이름)과 `expected.level`(수준 이름)로 검증을
+**두 번** 선언했는데, `expected.checks`는 **level 쪽에서** 파생됐습니다. 실제로 실행되는
+검증은 라우터가 고른 프로필(=`plan.json`의 `verification`)이므로, `checks_ok`는
+**실행되지 않는 계획을 검증**하고 있었습니다. 28개 중 15개가 영향을 받았고, 가장 나쁜
+그룹은 `security-*` 공격성 검증 5건이었습니다 — `checks: []`(아무것도 안 돈다)라면서
+라우터는 이들을 `project`로 보내므로 실제 실행은 pytest+Ruff+doctor였습니다.
 
-P21은 한 축을 주축으로 삼아 이 부채를 0으로 만듭니다. 그때 이 테스트의 상수는 비워지고
-별도 변경 없이 불변식이 됩니다.
+이제 `expected.checks`는 `expected.verification`에서 파생된 값이며, 같은 결정을 두 번
+선언할_second 축_은 schema에서 제거했습니다. 현재 28개 전원이 자기 실행과 일치합니다.
+
+- `crawler` 프로파일은 `standard` 수준을 상속한 뒤 게이트를 **추가**합니다. 기대값을
+  수준에서만 파생하면 `pytest-crawler-gate`가 조용히 사라져, 크롤러 task가 selector
+  gate 테스트를 돌지 않으면서도 완전히 검증된 것처럼 보였습니다.
+- `security-*` 5건의 의도가 "게이트 없음"에서 "project 게이트"로 바뀌었습니다. 라우터는
+  손대지 않았고, golden replay는 read-only라 런타임 비용은 0입니다. 커밋 메시지에
+  명시했습니다.
+- `quick` 수준은 이제 CLI 오버라이드 전용이라 dataset 멤버가 없습니다. 게이트 집합은
+  수준 카탈로그 테스트가 계속 고정합니다.
+
+회귀 방지는 `tests/agent_harness/test_verification_single_axis.py`에 있습니다: level
+키가 스키마로 돌아오지 못하게 하고, crawler task가 selector gate 테스트를 잃지 못하게
+하며, 어떤 task도 "게이트 없음"을 단언하면서 프로필이 게이트를 돌게 두지 않습니다.
 
 
 ### 게이트 도구 버전 재현성
