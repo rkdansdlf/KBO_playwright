@@ -16,9 +16,12 @@ pytestmark = pytest.mark.oci
 
 def _oci_target_url() -> str:
     """Return the explicitly configured OCI URL or skip the smoke test."""
-    load_dotenv()
     if os.getenv("KBO_RUN_OCI_INTEGRATION") != "1":
+        # Opt-in only: loading .env on the default skip path injects real
+        # provider credentials into the pytest process, which changes the
+        # behaviour of later tests that branch on those variables.
         pytest.skip("Set KBO_RUN_OCI_INTEGRATION=1 to run Oracle smoke tests")
+    load_dotenv()
     url = os.getenv("OCI_DB_URL")
     if not url or not url.startswith("oracle"):
         pytest.skip("OCI_DB_URL is not configured with an Oracle URL")
@@ -37,6 +40,22 @@ def _create_oci_engine():
         tns_admin=os.getenv("TNS_ADMIN"),
         wallet_password=os.getenv("OCI_WALLET_PASSWORD"),
     )
+
+
+def test_skipped_oracle_smoke_does_not_load_dotenv(monkeypatch) -> None:
+    """The default skip path must not import .env into the pytest process.
+
+    Loading the developer .env on the skip path injects real provider
+    credentials into every later test in the same worker, silently changing
+    which code branches those tests take.
+    """
+    monkeypatch.delenv("KBO_RUN_OCI_INTEGRATION", raising=False)
+    before = set(os.environ)
+
+    with pytest.raises(pytest.skip.Exception):
+        _oci_target_url()
+
+    assert set(os.environ) - before == set()
 
 
 def test_oracle_oci_read_only_smoke() -> None:
