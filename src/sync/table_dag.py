@@ -246,6 +246,12 @@ TABLE_REGISTRY: list[TableMeta] = [
         strategy=SyncStrategy.INCREMENTAL,
         natural_keys=["rag_chunk_id", "token"],
     ),
+    # Operational ledgers. Level 3 because they are logs of collection runs
+    # rather than domain data, and the natural key is the model's own unique
+    # identifier so a run's status transition upserts instead of duplicating.
+    TableMeta("crawl_execution_runs", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["run_id"]),
+    TableMeta("crawl_dead_letters", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["dlq_id"]),
+    TableMeta("notification_incidents", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["incident_key"]),
     TableMeta("matchup_batter_home_away", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("matchup_batter_splits", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("matchup_batter_stadium_split", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
