@@ -137,9 +137,11 @@ class TestCallNaverEdge:
     async def test_json_error_returns_none(self, monkeypatch):
         from src.utils.map_api_client import _call_naver
 
+        monkeypatch.setenv("NAVER_CLIENT_ID", "id")
+        monkeypatch.setenv("NAVER_CLIENT_SECRET", "secret")
         client = AsyncMock()
         mock_resp = MagicMock()
-        mock_resp.json.side_effect = ValueError("bad json")
+        mock_resp.json.side_effect = httpx.HTTPError("bad json")
         client.get.return_value = mock_resp
         result = await _call_naver(client, 37.0, 127.0, 37.5, 127.1, "car")
         assert result is None
@@ -150,9 +152,11 @@ class TestCallTmapEdge:
     async def test_nonok_result_code_returns_none(self, monkeypatch):
         from src.utils.map_api_client import _call_tmap
 
+        monkeypatch.setenv("TMAP_API_KEY", "tmap-key")
         client = AsyncMock()
-        client.post.return_value = {"resultCode": "FAIL"}
-        monkeypatch.setenv("TMAP_REST_API_KEY", "key")
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"resultCode": "FAIL"}
+        client.post.return_value = mock_resp
         result = await _call_tmap(client, 37.0, 127.0, 37.5, 127.1, "car")
         assert result is None
 
