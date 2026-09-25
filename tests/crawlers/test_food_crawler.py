@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.crawlers.food_crawler import TEAM_FOOD_SOURCES, FoodCrawler
+from src.crawlers.result import CrawlOutcome, CrawlResult
 
 
 class TestParseFoodPage:
@@ -43,37 +45,48 @@ def test_food_sources_cover_seeded_refresh_sources():
 class TestFoodCrawlerOperations:
     @pytest.mark.asyncio
     async def test_crawl_team_fetches_vendors_and_records_snapshot(self):
-        client = MagicMock()
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=False)
-        client.get = AsyncMock(return_value=MagicMock(status_code=200, text="떡볶이 3,000원"))
         crawler = FoodCrawler()
-        info = TEAM_FOOD_SOURCES["LT"]
+        crawler._http.fetch_text = AsyncMock(
+            return_value=CrawlResult.success("떡볶이 3,000원", http_status=200, url="https://example.invalid"),
+        )
 
-        with (
-            patch("src.crawlers.food_crawler.httpx.AsyncClient", return_value=client),
-            patch("src.crawlers.food_crawler.throttle.wait", new=AsyncMock()) as wait,
-        ):
-            vendors = await crawler._crawl_team_food("LT", info)
+        vendors = await crawler._crawl_team_food("LT", TEAM_FOOD_SOURCES["LT"])
 
-        wait.assert_awaited_once_with("www.giantsclub.com")
         assert vendors[0]["vendor"]["stadium_id"] == "SAJIK"
         assert crawler._raw_pages[0]["source_key"] == "lotte_giants_fnb"
 
     @pytest.mark.asyncio
-    async def test_crawl_team_returns_empty_for_non_ok_response(self):
-        client = MagicMock()
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=False)
-        client.get = AsyncMock(return_value=MagicMock(status_code=503))
+    async def test_crawl_team_returns_empty_for_failed_fetch(self):
+        crawler = FoodCrawler()
+        crawler._http.fetch_text = AsyncMock(
+            return_value=CrawlResult.failure(
+                CrawlOutcome.RETRYABLE_ERROR,
+                error="throttled: HTTP 503",
+                http_status=503,
+            ),
+        )
 
-        with (
-            patch("src.crawlers.food_crawler.httpx.AsyncClient", return_value=client),
-            patch("src.crawlers.food_crawler.throttle.wait", new=AsyncMock()),
-        ):
-            vendors = await FoodCrawler()._crawl_team_food("LT", TEAM_FOOD_SOURCES["LT"])
+        vendors = await crawler._crawl_team_food("LT", TEAM_FOOD_SOURCES["LT"])
 
         assert vendors == []
+        assert crawler._raw_pages == []
+
+    @pytest.mark.asyncio
+    async def test_crawl_team_escalates_schema_change_to_error(self, caplog):
+        crawler = FoodCrawler()
+        crawler._http.fetch_text = AsyncMock(
+            return_value=CrawlResult.failure(
+                CrawlOutcome.SCHEMA_CHANGED,
+                error="expected JSON, received text/html",
+                http_status=200,
+            ),
+        )
+
+        with caplog.at_level(logging.ERROR, logger="src.crawlers.food_crawler"):
+            vendors = await crawler._crawl_team_food("LT", TEAM_FOOD_SOURCES["LT"])
+
+        assert vendors == []
+        assert any("structure changed" in record.getMessage() for record in caplog.records)
 
     @pytest.mark.asyncio
     async def test_run_saves_filtered_team_results(self):

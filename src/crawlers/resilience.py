@@ -118,9 +118,15 @@ class AdaptiveRateLimiter:
             self.current_delay = max(self.base_delay, self.current_delay * 0.9)
 
     def record_rate_limit(self, retry_after: float | None = None) -> None:
-        """Increase delay aggressively when 429 / 503 / throttling is detected."""
+        """Increase delay when 429 / 503 / throttling is detected.
+
+        A server-provided `Retry-After` is honoured verbatim. Clamping it to
+        `max_delay` would only guarantee another 429, because we would come
+        back sooner than the server asked. The caller is responsible for
+        bounding the value; `max_delay` applies to the self-computed backoff.
+        """
         if retry_after is not None and retry_after > 0:
-            self.current_delay = min(self.max_delay, retry_after)
+            self.current_delay = retry_after
         else:
             self.current_delay = min(self.max_delay, self.current_delay * self.backoff_factor)
         logger.warning("AdaptiveRateLimiter backoff triggered: new delay = %.2fs", self.current_delay)
