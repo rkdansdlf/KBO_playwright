@@ -60,6 +60,7 @@ SUBSYSTEM_FILES: dict[str, str] = {
     "docker-compose.yml": "ci",
     "docker-compose.dev.yml": "ci",
     "docker-compose.prod.yml": "ci",
+    "Docs/references/COMPOSE_IMAGE_LOCK.md": "ci",
     "docker-compose.text-relay.yml": "ci",
     ".pre-commit-config.yaml": "ci",
     "pytest.ini": "ci",

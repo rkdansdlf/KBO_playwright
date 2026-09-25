@@ -27,7 +27,7 @@ APScheduler를 사용하여 정규시즌과 퓨처스리그 데이터 수집을 
 
 ## 3. Cron/워크플로우 예시
 
-### 3.1. `docker-compose.yml` 서비스 예시
+### 3.1. `docker-compose.prod.yml` 서비스 예시
 
 ```yaml
 services:
@@ -87,7 +87,7 @@ scheduler.start()
 
 - **구현:** `threading.Lock` 기반 `ProcessLock`/`ForceProcessLock`을 사용하며, `_scheduler_job_lock` 컨텍스트 매니저가 tier lock + `SQLITE_WRITE_LOCK`을 함께 획득합니다. Tier lock 획득은 `SQLITE_WRITE_LOCK_TIMEOUT_SECONDS`(기본 60s) 데드라인을 가지며, 타임아웃 시 `_LockSkipped`로 skip(경고 로그, 크래시 아님)됩니다.
 - **단일 인스턴스 guard:** `scripts/scheduler.py`는 `data/locks/scheduler.pid`로 중복 스케줄러 프로세스/컨테이너 실행을 차단합니다. 살아있는 PID가 있으면 두 번째 인스턴스는 `exit 1`, 죽은 PID는 stale로 간주하고 정리합니다. (2026-07 `crawl_p1p2_data_job` `LockAcquisitionError`의 근본 원인이었던 중복 실행 방지)
-- **컨테이너/restart 정합성:** `docker-compose.yml`은 단일 `scheduler` 서비스(`restart: always`, `./data` 볼륨 공유)로 구성됩니다. 컨테이너가 크래시 후 재시작되면 남은 `scheduler.pid`(죽은 PID)는 guard가 stale로 판단해 정리하므로 안전합니다. 다만 `restart: always` + 동일 `./data` 볼륨에서 **구 컨테이너가 완전히 종료되기 전 새 컨테이너가 먼저 뜨면**, guard가 새 인스턴스를 `exit 1`로 차단하고 `restart: always`가 재시도합니다 — 이는 의도된 안전 동작(데이터 손상 방지)이며, 결국 구 컨테이너가 죽으면 새 인스턴스가 정상 기동합니다. 컨테이너 2개를 동시에 띄우는 구성은 avoided 해야 합니다.
+- **컨테이너/restart 정합성:** `docker-compose.prod.yml`은 단일 `scheduler` 서비스(`restart: always`, `./data` 볼륨 공유)로 구성됩니다. 컨테이너가 크래시 후 재시작되면 남은 `scheduler.pid`(죽은 PID)는 guard가 stale로 판단해 정리하므로 안전합니다. 다만 `restart: always` + 동일 `./data` 볼륨에서 **구 컨테이너가 완전히 종료되기 전 새 컨테이너가 먼저 뜨면**, guard가 새 인스턴스를 `exit 1`로 차단하고 `restart: always`가 재시도합니다 — 이는 의도된 안전 동작(데이터 손상 방지)이며, 결국 구 컨테이너가 죽으면 새 인스턴스가 정상 기동합니다. 컨테이너 2개를 동시에 띄우는 구성은 avoided 해야 합니다.
 - **스케줄 간격:** `crawl_p0_non_game`(06:20)과 `crawl_p1p2_data`(06:45)는 25분 간격으로 분리되어, p0 크롤링 지연이 p1p2 락 획득을 막는 것을 방지합니다.
 - **진단:** `python3 scripts/diagnose_scheduler_locks.py` 로 stale lock 파일과 중복 스케줄러 프로세스를 read-only 진단 (exit 0=clean, 1=문제 있음).
 - **주의:** 동일 락을 사용하는 작업은 순차 실행되며, 다른 락은 병렬 실행 가능합니다 (예: LIVE_LOCK 작업과 MAINTENANCE_LOCK 작업은 동시에 실행될 수 있음).
