@@ -35,6 +35,12 @@ _RAG_INCREMENTAL_WRITE_ENV = {
 }
 
 
+def _rag_vector_backend_configured() -> bool:
+    """Return whether the scheduled RAG job has a supported dense target."""
+    database_url = os.getenv("DATABASE_URL", "")
+    return database_url.startswith("oracle") or bool(os.getenv("PGVECTOR_URL") or os.getenv("PGVECTOR_TEST_URL"))
+
+
 @_with_lock_skip_guard
 @retry(
     stop=stop_after_attempt(3),
@@ -224,6 +230,9 @@ def data_integrity_check_job() -> None:
 def sync_rag_incremental_job() -> None:
     """RAG Vector DB Incremental Sync Job: sync latest season data into the Oracle RAG index."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
+        if not _rag_vector_backend_configured():
+            logger.warning("=== RAG Vector DB Incremental Sync skipped: vector backend is not configured ===")
+            return
         logger.info("=== Starting RAG Vector DB Incremental Sync ===")
         try:
             from src.cli.rag.build_rag_index import main as build_rag_index_main

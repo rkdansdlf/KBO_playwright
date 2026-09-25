@@ -27,11 +27,26 @@ def _run_job_with_fake_build(captured: dict[str, Any], *, build_error: Exception
             raise build_error
 
     with (
+        patch.dict(os.environ, {"PGVECTOR_TEST_URL": "postgresql://vector:secret@127.0.0.1:5432/rag_vector"}),
         patch("src.scheduler.jobs.maintenance._scheduler_job_lock") as mock_lock,
         patch("src.cli.build_rag_index.main", side_effect=fake_main),
     ):
         mock_lock.return_value.__enter__.return_value = None
         sync_rag_incremental_job()
+
+
+@pytest.mark.usefixtures("_clean_write_env")
+def test_sync_rag_incremental_skips_without_vector_backend(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://source:secret@127.0.0.1:5432/bega_prod")
+    monkeypatch.delenv("PGVECTOR_URL", raising=False)
+    monkeypatch.delenv("PGVECTOR_TEST_URL", raising=False)
+    build = patch("src.cli.build_rag_index.main")
+
+    with patch("src.scheduler.jobs.maintenance._scheduler_job_lock") as mock_lock, build as build_main:
+        mock_lock.return_value.__enter__.return_value = None
+        sync_rag_incremental_job()
+
+    build_main.assert_not_called()
 
 
 @pytest.mark.usefixtures("_clean_write_env")
