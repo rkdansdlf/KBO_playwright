@@ -174,7 +174,7 @@ jobs:
           init-db: 'true'
 
       - name: Download DB Artifact from daily_update
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: kbo-db-${{ needs.polling_gate.outputs.target_date }}
           path: data/
