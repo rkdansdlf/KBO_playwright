@@ -8,6 +8,7 @@ crawl/resilience paths. No network calls except the integration test.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,6 +26,26 @@ from src.crawlers.award_crawler import (
 
 def _soup(html: str) -> BeautifulSoup:
     return BeautifulSoup(html, "html.parser")
+
+
+@contextmanager
+def _noop_track(spec, *, session=None):
+    """Stand-in for the run ledger context manager so run() stays DB-free."""
+    yield SimpleNamespace(
+        run_id="run-test",
+        status="running",
+        records_read=0,
+        records_written=0,
+        records_failed=0,
+        error_code=None,
+        error_message=None,
+        finished_at=None,
+    )
+
+
+def _fake_enqueue(spec, *, session=None):
+    """Stand-in for the DLQ enqueue helper so run() stays DB-free."""
+    return SimpleNamespace(dlq_id="dlq-test", status="pending", original_run_id=spec.original_run_id)
 
 
 MVP_HTML = """
@@ -593,15 +614,23 @@ class TestCrawlOrchestration:
     async def test_run_passes_types_to_crawl(self) -> None:
         crawler = self._crawler()
         crawler.crawl = AsyncMock(return_value=[])  # type: ignore[method-assign]
-        await crawler.run(save=False, types={"MVP"})
-        crawler.crawl.assert_awaited_once_with(types={"MVP"})
+        with (
+            patch("src.crawlers.award_crawler.track_crawl_run", _noop_track),
+            patch("src.crawlers.award_crawler.enqueue_failure", _fake_enqueue),
+        ):
+            await crawler.run(save=False, types={"MVP"})
+        crawler.crawl.assert_awaited_once_with(types={"MVP"}, source_key=None)
 
     @pytest.mark.asyncio
     async def test_run_dry_run_returns_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
         crawler = self._crawler()
         crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _soup("<html></html>"))
         crawler._fetch_yagoonara = AsyncMock(side_effect=httpx.ConnectError("offline"))
-        count = await crawler.run(save=False)
+        with (
+            patch("src.crawlers.award_crawler.track_crawl_run", _noop_track),
+            patch("src.crawlers.award_crawler.enqueue_failure", _fake_enqueue),
+        ):
+            count = await crawler.run(save=False)
         assert count == 0
 
     @pytest.mark.asyncio
@@ -609,9 +638,108 @@ class TestCrawlOrchestration:
         crawler = self._crawler()
         crawler.crawl = AsyncMock(return_value=[AwardRecord(2024, "MVP", None, "김영지", "LG 트윈스")])  # type: ignore[method-assign]
         crawler.save = AsyncMock(return_value=(1, 0))  # type: ignore[method-assign]
-        count = await crawler.run(save=True)
+        with (
+            patch("src.crawlers.award_crawler.track_crawl_run", _noop_track),
+            patch("src.crawlers.award_crawler.enqueue_failure", _fake_enqueue),
+        ):
+            count = await crawler.run(save=True)
         assert count == 1
         crawler.save.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_run_records_partial_execution_in_ledger(self) -> None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from src.models.crawl_execution import CrawlExecutionRun
+
+        engine = create_engine("sqlite:///:memory:")
+        CrawlExecutionRun.__table__.create(engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+        crawler = self._crawler()
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _soup("<html></html>"))
+        crawler._fetch_yagoonara = AsyncMock(side_effect=httpx.ConnectError("offline"))
+
+        with (
+            patch("src.services.crawl_run_service.SessionLocal", session_factory),
+            patch("src.crawlers.award_crawler.enqueue_failure", _fake_enqueue),
+        ):
+            count = await crawler.run(save=False)
+
+        assert count == 0
+        with session_factory() as session:
+            run = session.query(CrawlExecutionRun).one()
+            assert run.crawler == "awards"
+            assert run.status == "partial"
+            assert run.error_code == "SOURCE_PARTIAL"
+            assert run.finished_at is not None
+
+    @pytest.mark.asyncio
+    async def test_run_source_failure_enqueues_dead_letter(self) -> None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from src.models.crawl_dead_letter import CrawlDeadLetter
+        from src.models.crawl_execution import CrawlExecutionRun
+
+        engine = create_engine("sqlite:///:memory:")
+        CrawlExecutionRun.__table__.create(engine)
+        CrawlDeadLetter.__table__.create(engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+        crawler = self._crawler()
+        soups = self._soups()
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: soups[title])
+        crawler._fetch_yagoonara = AsyncMock(side_effect=httpx.ConnectError("offline"))
+
+        with (
+            patch("src.services.crawl_run_service.SessionLocal", session_factory),
+            patch("src.services.crawl_dead_letter_service.SessionLocal", session_factory),
+        ):
+            count = await crawler.run(save=False)
+
+        assert count > 0
+        with session_factory() as session:
+            run = session.query(CrawlExecutionRun).one()
+            letters = session.query(CrawlDeadLetter).all()
+            assert run.status == "partial"
+            assert len(letters) == 1
+            assert letters[0].crawler == "awards"
+            assert letters[0].target_id == "kbo_awards_yagoonara"
+            assert letters[0].original_run_id == run.run_id
+            assert letters[0].error_code == "FETCH_HTTP_ERROR"
+            assert letters[0].failure_stage == "fetch"
+
+    @pytest.mark.asyncio
+    async def test_run_success_enqueues_no_dead_letter(self) -> None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from src.models.crawl_dead_letter import CrawlDeadLetter
+        from src.models.crawl_execution import CrawlExecutionRun
+
+        engine = create_engine("sqlite:///:memory:")
+        CrawlExecutionRun.__table__.create(engine)
+        CrawlDeadLetter.__table__.create(engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+        crawler = self._crawler()
+        soups = self._soups()
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: soups[title])
+        crawler._fetch_yagoonara = AsyncMock(return_value=BeautifulSoup(YAGOO_HTML, "html.parser"))
+
+        with (
+            patch("src.services.crawl_run_service.SessionLocal", session_factory),
+            patch("src.services.crawl_dead_letter_service.SessionLocal", session_factory),
+        ):
+            count = await crawler.run(save=False)
+
+        assert count > 0
+        with session_factory() as session:
+            run = session.query(CrawlExecutionRun).one()
+            assert run.status == "success"
+            assert session.query(CrawlDeadLetter).count() == 0
 
 
 @pytest.mark.integration
