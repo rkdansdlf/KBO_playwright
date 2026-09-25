@@ -10,6 +10,9 @@ paths:
   policies: .agent-harness/policies
   adapters: .agent-harness/adapters
   artifacts: artifacts/agent-harness
+  golden_routing: .agent-harness/routing_golden.json
+  golden_tasks: .agent-harness/golden_tasks.yaml
+  routing_precedence: .agent-harness/policies/routing_precedence.yaml
   lock: harness.lock.json
   stack: aas-stack.json
 

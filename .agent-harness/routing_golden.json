@@ -1,0 +1,435 @@
+{
+  "schema_version": "1",
+  "external_execution": "reference_only",
+  "cases": [
+    {
+      "id": "explicit-crawler-overrides-files-and-prompt",
+      "request": {
+        "prompt": "add analytics feature",
+        "changed_files": ["src/rag/service.py"],
+        "explicit_profile": "crawler-bug"
+      },
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "explicit profile"
+      }
+    },
+    {
+      "id": "explicit-feature-overrides-crawler-signal",
+      "request": {
+        "prompt": "crawler timeout",
+        "changed_files": ["src/parsers/boxscore.py"],
+        "explicit_profile": "feature"
+      },
+      "expected": {
+        "profile": "feature",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "explicit profile"
+      }
+    },
+    {
+      "id": "explicit-refactor-overrides-analytics-signal",
+      "request": {
+        "prompt": "analytics anomaly",
+        "changed_files": ["src/analytics/model.py"],
+        "explicit_profile": "refactor"
+      },
+      "expected": {
+        "profile": "refactor",
+        "skills": ["graphify", "understand-anything", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "full",
+        "reason": "explicit profile"
+      }
+    },
+    {
+      "id": "explicit-research-overrides-architecture-signal",
+      "request": {
+        "prompt": "architecture diagram",
+        "changed_files": [".github/workflows/daily.yml"],
+        "explicit_profile": "research"
+      },
+      "expected": {
+        "profile": "research",
+        "skills": ["last30days", "i-have-adhd"],
+        "verification": "research",
+        "reason": "explicit profile"
+      }
+    },
+    {
+      "id": "explicit-analytics-overrides-crawler-signal",
+      "request": {
+        "prompt": "crawler selector",
+        "changed_files": ["src/crawlers/player.py"],
+        "explicit_profile": "analytics"
+      },
+      "expected": {
+        "profile": "analytics",
+        "skills": ["graphify", "scientific", "ponytail", "i-have-adhd"],
+        "verification": "analytics",
+        "reason": "explicit profile"
+      }
+    },
+    {
+      "id": "explicit-architecture-overrides-feature-signal",
+      "request": {
+        "prompt": "add feature",
+        "changed_files": ["src/rag/search.py"],
+        "explicit_profile": "architecture"
+      },
+      "expected": {
+        "profile": "architecture",
+        "skills": ["graphify", "understand-anything", "diagram-design", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "explicit profile"
+      }
+    },
+    {
+      "id": "file-crawler-source",
+      "request": {
+        "prompt": "정리해줘",
+        "changed_files": ["src/crawlers/game_boxscore.py"]
+      },
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "file signal matched crawler-bug"
+      }
+    },
+    {
+      "id": "file-parser-source",
+      "request": {
+        "prompt": "review this module",
+        "changed_files": ["src/parsers/award_parser.py"]
+      },
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "file signal matched crawler-bug"
+      }
+    },
+    {
+      "id": "file-crawler-test",
+      "request": {
+        "prompt": "check failures",
+        "changed_files": ["tests/crawlers/test_player_search.py"]
+      },
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "file signal matched crawler-bug"
+      }
+    },
+    {
+      "id": "file-parser-test",
+      "request": {
+        "prompt": "check failures",
+        "changed_files": ["tests/parsers/test_boxscore_parser.py"]
+      },
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "file signal matched crawler-bug"
+      }
+    },
+    {
+      "id": "file-rag-source",
+      "request": {
+        "prompt": "evaluate this change",
+        "changed_files": ["src/rag/search_engine.py"]
+      },
+      "expected": {
+        "profile": "analytics",
+        "skills": ["graphify", "scientific", "ponytail", "i-have-adhd"],
+        "verification": "analytics",
+        "reason": "file signal matched analytics"
+      }
+    },
+    {
+      "id": "file-analytics-source",
+      "request": {
+        "prompt": "evaluate this change",
+        "changed_files": ["src/analytics/predictor.py"]
+      },
+      "expected": {
+        "profile": "analytics",
+        "skills": ["graphify", "scientific", "ponytail", "i-have-adhd"],
+        "verification": "analytics",
+        "reason": "file signal matched analytics"
+      }
+    },
+    {
+      "id": "file-orchestration-source",
+      "request": {
+        "prompt": "map dependencies",
+        "changed_files": ["src/orchestration/master.py"]
+      },
+      "expected": {
+        "profile": "architecture",
+        "skills": ["graphify", "understand-anything", "diagram-design", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "file signal matched architecture"
+      }
+    },
+    {
+      "id": "file-harness-control-plane",
+      "request": {
+        "prompt": "tighten this contract",
+        "changed_files": ["tools/agent_harness/router.py"]
+      },
+      "expected": {
+        "profile": "feature",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "file signal matched feature"
+      }
+    },
+    {
+      "id": "prompt-crawler-boxscore-parser-timeout",
+      "request": {"prompt": "boxscore parser timeout"},
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "intent marker matched profile crawler-bug"
+      }
+    },
+    {
+      "id": "prompt-crawler-playwright-selector",
+      "request": {"prompt": "Playwright selector drift"},
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "matched 2 domain trigger(s)"
+      }
+    },
+    {
+      "id": "prompt-feature-export",
+      "request": {"prompt": "add export feature"},
+      "expected": {
+        "profile": "feature",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "matched 2 domain trigger(s)"
+      }
+    },
+    {
+      "id": "prompt-feature-korean",
+      "request": {"prompt": "새 알림 기능 구현"},
+      "expected": {
+        "profile": "feature",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "matched 2 domain trigger(s)"
+      }
+    },
+    {
+      "id": "prompt-refactor-migration",
+      "request": {"prompt": "database migration redesign"},
+      "expected": {
+        "profile": "refactor",
+        "skills": ["graphify", "understand-anything", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "full",
+        "reason": "intent marker matched profile refactor"
+      }
+    },
+    {
+      "id": "prompt-refactor-korean",
+      "request": {"prompt": "대규모 시스템 리팩터"},
+      "expected": {
+        "profile": "refactor",
+        "skills": ["graphify", "understand-anything", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "full",
+        "reason": "intent marker matched profile refactor"
+      }
+    },
+    {
+      "id": "prompt-research-latest",
+      "request": {"prompt": "latest KBO rule research"},
+      "expected": {
+        "profile": "research",
+        "skills": ["last30days", "i-have-adhd"],
+        "verification": "research",
+        "reason": "intent marker matched profile research"
+      }
+    },
+    {
+      "id": "prompt-research-korean",
+      "request": {"prompt": "최신 외부 변화 조사"},
+      "expected": {
+        "profile": "research",
+        "skills": ["last30days", "i-have-adhd"],
+        "verification": "research",
+        "reason": "intent marker matched profile research"
+      }
+    },
+    {
+      "id": "prompt-analytics-statistics",
+      "request": {"prompt": "season statistic anomaly"},
+      "expected": {
+        "profile": "analytics",
+        "skills": ["graphify", "scientific", "ponytail", "i-have-adhd"],
+        "verification": "analytics",
+        "reason": "matched 2 domain trigger(s)"
+      }
+    },
+    {
+      "id": "prompt-analytics-korean",
+      "request": {"prompt": "pitcher model 분석"},
+      "expected": {
+        "profile": "analytics",
+        "skills": ["graphify", "scientific", "ponytail", "i-have-adhd"],
+        "verification": "analytics",
+        "reason": "matched 2 domain trigger(s)"
+      }
+    },
+    {
+      "id": "prompt-architecture-dependencies",
+      "request": {"prompt": "system dependency diagram"},
+      "expected": {
+        "profile": "architecture",
+        "skills": ["graphify", "understand-anything", "diagram-design", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "matched 2 domain trigger(s)"
+      }
+    },
+    {
+      "id": "prompt-architecture-korean",
+      "request": {"prompt": "데이터 계보 아키텍처"},
+      "expected": {
+        "profile": "architecture",
+        "skills": ["graphify", "understand-anything", "diagram-design", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "intent marker matched profile architecture"
+      }
+    },
+    {
+      "id": "fallback-empty-request",
+      "request": {"prompt": ""},
+      "expected": {
+        "profile": "feature",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "default profile"
+      }
+    },
+    {
+      "id": "fallback-unknown-file-and-feature-prompt",
+      "request": {
+        "prompt": "implement cache",
+        "changed_files": ["Docs/plans/cache.md"]
+      },
+      "expected": {
+        "profile": "feature",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "matched 1 domain trigger(s)"
+      }
+    },
+    {
+      "id": "mixed-files-recognized-crawler-wins",
+      "request": {
+        "prompt": "review changes",
+        "changed_files": ["Docs/runbooks/crawler.md", "src/crawlers/game_detail.py"]
+      },
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "file signal matched crawler-bug"
+      }
+    },
+    {
+      "id": "mixed-files-analytics-precedes-workflow",
+      "request": {
+        "prompt": "review RAG workflow",
+        "changed_files": [".github/workflows/rag.yml", "src/rag/indexing.py"]
+      },
+      "expected": {
+        "profile": "analytics",
+        "skills": ["graphify", "scientific", "ponytail", "i-have-adhd"],
+        "verification": "analytics",
+        "reason": "file signal matched analytics"
+      }
+    },
+    {
+      "id": "normalized-dot-prefix-file",
+      "request": {
+        "prompt": "정리해줘",
+        "changed_files": ["./src/crawlers/player_search.py"]
+      },
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "file signal matched crawler-bug"
+      }
+    },
+    {
+      "id": "normalized-backslash-file",
+      "request": {
+        "prompt": "review this module",
+        "changed_files": ["src\\parsers\\boxscore.py"]
+      },
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "file signal matched crawler-bug"
+      }
+    },
+    {
+      "id": "normalized-korean-prompt",
+      "request": {"prompt": "크롤러 타임아웃"},
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "intent marker matched profile crawler-bug"
+      }
+    },
+    {
+      "id": "normalized-casefolded-prompt",
+      "request": {"prompt": "CRAWLER SELECTOR"},
+      "expected": {
+        "profile": "crawler-bug",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "crawler",
+        "reason": "matched 3 domain trigger(s)"
+      }
+    },
+    {
+      "id": "normalized-harness-dot-prefix",
+      "request": {
+        "prompt": "tighten this contract",
+        "changed_files": ["./tools/agent_harness/permissions.py"]
+      },
+      "expected": {
+        "profile": "feature",
+        "skills": ["graphify", "superpowers", "ponytail", "i-have-adhd"],
+        "verification": "project",
+        "reason": "file signal matched feature"
+      }
+    },
+    {
+      "id": "mixed-signal-analytics-file-beats-crawler-prompt",
+      "request": {
+        "prompt": "crawler timeout",
+        "changed_files": ["src/analytics/feature_store.py"]
+      },
+      "expected": {
+        "profile": "analytics",
+        "skills": ["graphify", "scientific", "ponytail", "i-have-adhd"],
+        "verification": "analytics",
+        "reason": "file signal matched analytics"
+      }
+    }
+  ]
+}

@@ -127,8 +127,102 @@ class RegistryHealthReport:
     conflicts: list[SkillConflict] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class GoldenRoutingExpectation:
+    """Describe the stable route output for one golden request."""
+
+    profile: str
+    skills: tuple[str, ...]
+    verification: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class GoldenRoutingCase:
+    """Bind one representative request to its expected route output."""
+
+    case_id: str
+    request: TaskRequest
+    expected: GoldenRoutingExpectation
+
+
+@dataclass(frozen=True)
+class GoldenRoutingDataset:
+    """Describe a versioned collection of routing regression cases."""
+
+    schema_version: str
+    external_execution: str
+    cases: tuple[GoldenRoutingCase, ...]
+
+
+@dataclass(frozen=True)
+class GoldenTaskPermission:
+    """Describe the expected permission probe for one operational task."""
+
+    action: str
+    decision: str
+    target: str | None = None
+    skill_id: str | None = None
+    argv: tuple[str, ...] = ()
+    reason_contains: str | None = None
+
+
+@dataclass(frozen=True)
+class GoldenTaskExpectation:
+    """Describe route, permission, and verification expectations for one task."""
+
+    profile: str
+    skills: tuple[str, ...]
+    verification: str
+    level: str
+    checks: tuple[str, ...]
+    permission: GoldenTaskPermission
+
+
+@dataclass(frozen=True)
+class GoldenTask:
+    """Bind one real KBO task to its operational replay expectations."""
+
+    task_id: str
+    title: str
+    category: str
+    risk: str
+    round: int
+    request: TaskRequest
+    expected: GoldenTaskExpectation
+
+
+@dataclass(frozen=True)
+class GoldenTaskDeviation:
+    """Record an intentional current-routing deviation for a task."""
+
+    task_id: str
+    reason: str
+    actual_profile: str
+    actual_skills: tuple[str, ...]
+    actual_verification: str
+    allow_permission_mismatch: bool = False
+
+
+@dataclass(frozen=True)
+class GoldenTaskDataset:
+    """Describe a versioned operational task replay dataset."""
+
+    schema_version: str
+    tasks: tuple[GoldenTask, ...]
+    known_deviations: tuple[GoldenTaskDeviation, ...]
+
+
 __all__ = [
     "EVIDENCE_SCHEMA_VERSION",
+    "GoldenRoutingCase",
+    "GoldenRoutingDataset",
+    "GoldenRoutingExpectation",
+    "GoldenTask",
+    "GoldenTaskDataset",
+    "GoldenTaskDeviation",
+    "GoldenTaskExpectation",
+    "GoldenTaskPermission",
     "PermissionDecision",
     "PermissionResult",
     "RegistryHealthReport",
