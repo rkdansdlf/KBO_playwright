@@ -32,6 +32,8 @@ jobs:
         run: ruff format --check src/ tests/ scripts/ tools/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
+      - name: Crawler HTTP client bypass check
+        run: python scripts/lint_crawler_client_bypass.py 2>&1
       - name: Unreachable code lint check
         run: python scripts/lint_unreachable_code.py 2>&1
       - name: Scoped mypy gate (certified-clean modules)
@@ -133,6 +135,7 @@ jobs:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
+          extras: "postgres"
       - name: Initialize PostgreSQL ORM baseline schema
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
@@ -214,6 +217,7 @@ jobs:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
+          extras: "postgres"
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
 
@@ -309,6 +313,7 @@ jobs:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
+          extras: "postgres"
       - name: Initialize primary evaluation schema
         env:
           RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
