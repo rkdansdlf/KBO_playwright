@@ -56,6 +56,8 @@ class _Outcome:
     replay_run_id: str
     status: str = "success"
     error_message: str | None = None
+    error_code: str | None = None
+    failure_stage: str | None = None
 
 
 @dataclass

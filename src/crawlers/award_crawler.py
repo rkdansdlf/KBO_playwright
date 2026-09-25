@@ -21,7 +21,13 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup, Tag
 
-from src.crawlers.failure_taxonomy import FailureCode, FailureStage, classify_failure
+from src.crawlers.failure_taxonomy import (
+    CrawlPersistError,
+    FailureCode,
+    FailureStage,
+    classify_failure,
+    classify_persist_failure,
+)
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_PARTIAL
 from src.repositories.award_repository import AwardRepository
@@ -662,11 +668,12 @@ class AwardCrawler:
             deduped.append(rec)
         return deduped
 
-    async def save(self, records: list[AwardRecord]) -> tuple[int, int]:
+    async def save(self, records: list[AwardRecord], *, raise_on_error: bool = False) -> tuple[int, int]:
         """Persist new award records (unique: year+type+player).
 
         Args:
             records: Award rows.
+            raise_on_error: Re-raise persistence failures as ``CrawlPersistError``.
 
         Returns:
             (saved count, skipped count).
@@ -693,14 +700,18 @@ class AwardCrawler:
                         skipped += 1
                 if self._raw_snapshots:
                     save_raw_snapshots(session, self._raw_snapshots)
-                    self._raw_snapshots = []
                 session.commit()
-            except Exception:
+                self._raw_snapshots = []
+            except Exception as exc:
                 session.rollback()
                 logger.exception("Error saving awards")
+                if raise_on_error:
+                    stage, code = classify_persist_failure(exc)
+                    message = f"{type(exc).__name__}: {exc}"
+                    raise CrawlPersistError(message, error_code=code, failure_stage=stage) from exc
         return saved, skipped
 
-    async def run(
+    async def run(  # noqa: PLR0913
         self,
         *,
         save: bool = False,
@@ -708,6 +719,7 @@ class AwardCrawler:
         source_key: str | None = None,
         run_spec: CrawlRunSpec | None = None,
         record_dead_letters: bool = True,
+        raise_on_persist_error: bool = False,
     ) -> int:
         """Crawl award sources and optionally persist.
 
@@ -717,6 +729,7 @@ class AwardCrawler:
             source_key: Optional single source filter used by replay.
             run_spec: Optional pre-built ledger spec (replay supplies one).
             record_dead_letters: Whether failed sources enqueue DLQ entries.
+            raise_on_persist_error: Re-raise persistence failures (replay).
 
         Returns:
             Number of unique records.
@@ -732,7 +745,7 @@ class AwardCrawler:
             records = await self.crawl(types=types, source_key=source_key)
             run.records_read = len(records)
             if save:
-                saved, skipped = await self.save(records)
+                saved, skipped = await self.save(records, raise_on_error=raise_on_persist_error)
                 run.records_written = saved
                 logger.info("Awards saved=%s skipped(existing)=%s total=%s", saved, skipped, len(records))
             else:

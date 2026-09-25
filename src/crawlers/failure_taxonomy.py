@@ -10,6 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 import httpx
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError, SQLAlchemyError
 
 _HTTP_RATE_LIMIT = 429
 _HTTP_FORBIDDEN = (401, 403)
@@ -115,3 +116,39 @@ def classify_failure(exc: BaseException) -> tuple[FailureStage, FailureCode]:
         if isinstance(exc, exc_types):
             return stage, code
     return FailureStage.UNKNOWN, FailureCode.UNKNOWN
+
+
+def classify_persist_failure(exc: BaseException) -> tuple[FailureStage, FailureCode]:
+    """Map a persistence exception to the ``persist`` stage and its code.
+
+    Kept separate from :func:`classify_failure` because a bare ``TimeoutError``
+    during a DB write is a persistence timeout, not a fetch timeout.
+    """
+    if isinstance(exc, IntegrityError):
+        return FailureStage.PERSIST, FailureCode.PERSIST_CONSTRAINT
+    if isinstance(exc, TimeoutError):
+        return FailureStage.PERSIST, FailureCode.PERSIST_TIMEOUT
+    if isinstance(exc, OperationalError):
+        message = str(exc).lower()
+        if "timeout" in message or "timed out" in message:
+            return FailureStage.PERSIST, FailureCode.PERSIST_TIMEOUT
+        return FailureStage.PERSIST, FailureCode.PERSIST_CONNECTION
+    if isinstance(exc, (DBAPIError, SQLAlchemyError, ConnectionError, OSError)):
+        return FailureStage.PERSIST, FailureCode.PERSIST_CONNECTION
+    return FailureStage.PERSIST, FailureCode.PERSIST_CONNECTION
+
+
+class CrawlPersistError(Exception):
+    """Raised when a persistence write fails and the run must be marked failed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: FailureCode,
+        failure_stage: FailureStage = FailureStage.PERSIST,
+    ) -> None:
+        """Initialize with a taxonomy classification for the failed write."""
+        self.error_code = error_code.value
+        self.failure_stage = failure_stage.value
+        super().__init__(message)

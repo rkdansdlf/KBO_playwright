@@ -37,6 +37,8 @@ class ReplayOutcome:
     replay_run_id: str
     status: str
     error_message: str | None = None
+    error_code: str | None = None
+    failure_stage: str | None = None
 
 
 ReplayHandler = Callable[["CrawlDeadLetter", str], ReplayOutcome]
@@ -100,6 +102,7 @@ async def _execute_award_replay(
             source_key=source_key,
             save=True,
             record_dead_letters=False,
+            raise_on_persist_error=True,
         )
     finally:
         await crawler.close()
@@ -135,6 +138,7 @@ def _replay_awards(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOu
         replay_run_id=replay_run_id,
         status=run.status,
         error_message=None if success else run.error_message,
+        error_code=None if success else run.error_code,
     )
 
 

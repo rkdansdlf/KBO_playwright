@@ -53,6 +53,8 @@ class ReplayOutcomeLike(Protocol):
     replay_run_id: str
     status: str
     error_message: str | None
+    error_code: str | None
+    failure_stage: str | None
 
 
 class ReplayDispatcherProtocol(Protocol):
@@ -145,7 +147,8 @@ class CrawlDeadLetterService:
         )
 
     def _schedule_next_attempt(self, letter: CrawlDeadLetter, outcome: ReplayOutcomeLike) -> None:
-        decision = decide(letter.error_code, retry_count=letter.retry_count)
+        effective_error_code = outcome.error_code or letter.error_code
+        decision = decide(effective_error_code, retry_count=letter.retry_count)
         if not decision.retryable:
             ensure_transition(letter.status, DlqStatus.EXHAUSTED)
             self.repository.mark_exhausted(letter, error_message=outcome.error_message)
@@ -213,7 +216,12 @@ def retry_dead_letter(
         outcome = dispatcher.replay(detached, replay_run_id=replay_run_id)
     except Exception as exc:
         logger.exception("Replay dispatcher raised for dlq_id=%s", dlq_id)
-        outcome = _FailedOutcome(replay_run_id=replay_run_id, error_message=str(exc))
+        outcome = _FailedOutcome(
+            replay_run_id=replay_run_id,
+            error_message=str(exc),
+            error_code=getattr(exc, "error_code", None),
+            failure_stage=getattr(exc, "failure_stage", None),
+        )
 
     with factory() as session:
         result = CrawlDeadLetterService(session).finalize_retry(dlq_id, outcome)
@@ -229,6 +237,8 @@ class _FailedOutcome:
     error_message: str
     success: bool = False
     status: str = "failed"
+    error_code: str | None = None
+    failure_stage: str | None = None
 
 
 __all__ = [

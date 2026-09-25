@@ -162,7 +162,8 @@ def track_crawl_run(
         yield run
     except BaseException as exc:
         try:
-            service.failed(run, error_code=type(exc).__name__, error_message=str(exc))
+            error_code = getattr(exc, "error_code", None) or type(exc).__name__
+            service.failed(run, error_code=str(error_code), error_message=str(exc))
             _persist(active, owns_session=owns_session)
         except Exception:
             logger.exception("Failed to persist crawl run failure for crawler=%s", spec.crawler)
