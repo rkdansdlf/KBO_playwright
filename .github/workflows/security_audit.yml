@@ -1,6 +1,22 @@
 name: Security Audit
 
 on:
+  pull_request:
+    paths:
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/security-audit-allowlist.txt'
+      - 'Dockerfile'
+      - 'Dockerfile.playwright'
+      - '.github/workflows/security_audit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/security-audit-allowlist.txt'
+      - 'Dockerfile'
+      - 'Dockerfile.playwright'
   schedule:
     - cron: '0 21 * * 0'  # 일요일 06:00 KST (토 21:00 UTC)
   workflow_dispatch:
@@ -8,6 +24,9 @@ on:
 concurrency:
   group: security-audit-${{ github.ref_name }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   pip-audit:
@@ -21,24 +40,51 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install the project runtime dependencies
+        run: pip install .
+
       - name: Install pip-audit
         run: pip install pip-audit
 
+      # A finding fails the job. `.github/security-audit-allowlist.txt` is the
+      # only escape hatch, and every entry there needs a reason and an expiry.
       - name: Run pip-audit
-        continue-on-error: true
-        id: audit
         run: |
-          pip-audit --requirement requirements.txt --desc on 2>&1 | tee pip-audit-output.txt
+          set -euo pipefail
+          ignore_args=()
+          allowlist=".github/security-audit-allowlist.txt"
+          if [ -s "$allowlist" ]; then
+            while read -r entry || [ -n "$entry" ]; do
+              entry="${entry%%#*}"
+              entry="$(printf '%s' "$entry" | tr -d '[:space:]')"
+              [ -z "$entry" ] && continue
+              ignore_args+=(--ignore-vuln "$entry")
+            done < "$allowlist"
+          fi
+          pip-audit --local --desc on "${ignore_args[@]}" 2>&1 | tee pip-audit-output.txt
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report-${{ github.run_number }}
+          path: pip-audit-output.txt
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Read audit output
         if: always()
         id: output
         run: |
-          {
-            echo "output<<EOF"
-            cat pip-audit-output.txt
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          if [ -f pip-audit-output.txt ]; then
+            {
+              echo "output<<EOF"
+              cat pip-audit-output.txt
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "output=pip-audit passed with no findings" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: ./.github/actions/notify
         if: always()
