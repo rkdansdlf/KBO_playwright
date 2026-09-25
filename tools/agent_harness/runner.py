@@ -52,28 +52,59 @@ class HarnessRunner:
             "task.json",
             {
                 "schema_version": EVIDENCE_SCHEMA_VERSION,
+                "run_id": evidence.run_id,
                 "task": task,
                 "profile": decision.profile,
                 "changed_files": request.changed_files,
                 "explicit_profile": request.explicit_profile,
             },
         )
-        evidence.write_json("plan.json", plan.to_dict())
-        evidence.write_json("context.json", context)
+        evidence.write_json("plan.json", {"run_id": evidence.run_id, **plan.to_dict()})
+        evidence.write_json(
+            "context.json",
+            {
+                "schema_version": EVIDENCE_SCHEMA_VERSION,
+                "run_id": evidence.run_id,
+                **context,
+            },
+        )
         for stage in plan.stages:
-            evidence.append_jsonl("skill-trace.jsonl", stage)
+            evidence.append_jsonl("skill-trace.jsonl", self._record(evidence.run_id, stage))
         for outcome in self.execute_stages(decision):
-            evidence.append_jsonl("skill-trace.jsonl", outcome.to_dict())
+            evidence.append_jsonl("skill-trace.jsonl", self._record(evidence.run_id, outcome.to_dict()))
         evidence.write_text("commands.jsonl", "")
         evidence.write_json(
             "verification.json",
-            {"profile": decision.verification, "status": "pending", "commands": []},
+            {
+                "schema_version": EVIDENCE_SCHEMA_VERSION,
+                "run_id": evidence.run_id,
+                "profile": decision.verification,
+                "status": "pending",
+                "commands": [],
+            },
         )
         evidence.write_text(
             "report.md",
             self._render_report(evidence.run_id, task, decision.profile, decision.verification),
         )
+        from tools.agent_harness.artifact_contract import assert_artifact_contract, validate_execution_plan
+        from tools.agent_harness.exceptions import ArtifactContractError
+
+        assert_artifact_contract(evidence.root)
+        plan_issues = validate_execution_plan(evidence.root, self.registry)
+        if plan_issues:
+            msg = "Harness execution plan contract failed: " + "; ".join(plan_issues)
+            raise ArtifactContractError(msg)
         return HarnessRun(evidence.run_id, evidence.root, decision.profile)
+
+    @staticmethod
+    def _record(run_id: str, payload: dict[str, object]) -> dict[str, object]:
+        """Add current schema and run identity to one JSONL record."""
+        return {
+            "schema_version": EVIDENCE_SCHEMA_VERSION,
+            "run_id": run_id,
+            **payload,
+        }
 
     def execute_stages(self, decision: RouteDecision) -> list[SkillExecutionResult]:
         """Record honest executor outcomes for a routing decision."""

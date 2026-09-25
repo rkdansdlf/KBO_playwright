@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -78,6 +79,54 @@ def _new_research_run(capsys: pytest.CaptureFixture[str], task: str = "level pro
 
 def _remove_run(run_id: str) -> None:
     shutil.rmtree(Path("artifacts") / "agent-harness" / run_id, ignore_errors=True)
+
+
+def test_verify_rejects_tampered_plan_before_execution(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools.agent_harness.command_runner import CommandRunner
+
+    assert main(["run", "plan tamper probe", "--profile", "feature", "--json"]) == 0
+    run_id = str(json.loads(capsys.readouterr().out)["run_id"])
+    artifact_dir = Path("artifacts") / "agent-harness" / run_id
+    plan_path = artifact_dir / "plan.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan["verification"] = "research"
+    plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    called = False
+
+    def _unexpected_run(*_args: object, **_kwargs: object) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(CommandRunner, "run", _unexpected_run)
+    try:
+        payload = _verify_run(HarnessRegistry.load(), PermissionPolicy.load(), run_id)
+
+        assert payload["passed"] is False
+        assert payload["error"] == "execution plan contract failed"
+        assert called is False
+    finally:
+        _remove_run(run_id)
+
+
+def test_verify_lock_contention_returns_exit_two(capsys: pytest.CaptureFixture[str]) -> None:
+    from tools.agent_harness.evidence import EvidenceStore
+    from tools.agent_harness.verifier import verification_run_lock
+
+    registry = HarnessRegistry.load()
+    permissions = PermissionPolicy.load()
+    run_id = _new_research_run(capsys, "lock contention probe")
+    evidence = EvidenceStore(registry.root / "artifacts" / "agent-harness" / run_id, permissions)
+    try:
+        with verification_run_lock(evidence):
+            assert main(["verify", run_id, "--json"]) == 2
+            payload = json.loads(capsys.readouterr().out)
+            assert payload["passed"] is False
+            assert "already active" in payload["error"]
+    finally:
+        _remove_run(run_id)
 
 
 def test_verify_level_none_passes_without_commands(capsys: pytest.CaptureFixture[str]) -> None:
@@ -163,6 +212,30 @@ def test_verify_level_denied_exits_two(capsys: pytest.CaptureFixture[str], monke
         monkeypatch.setattr(PermissionPolicy, "load", classmethod(lambda cls, root=None: locked))
         assert main(["verify", run_id, "--level", "quick"]) == 2
         capsys.readouterr()
+    finally:
+        _remove_run(run_id)
+
+
+def test_denied_reverification_invalidates_prior_success(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools.agent_harness.command_runner import CommandRunner
+
+    run_id = _new_research_run(capsys, "stale pass probe")
+    original_run = CommandRunner.run
+    monkeypatch.setattr(CommandRunner, "run", _fake_success_run)
+    try:
+        assert main(["verify", run_id, "--json"]) == 0
+        assert json.loads(capsys.readouterr().out)["passed"] is True
+        monkeypatch.setattr(CommandRunner, "run", original_run)
+        locked = replace(PermissionPolicy.load(), allowed_executables=(), python_modules=())
+
+        payload = _verify_run(HarnessRegistry.load(), locked, run_id)
+
+        assert payload["passed"] is False
+        assert main(["validate", run_id, "--require-verified", "--json"]) == 1
+        assert json.loads(capsys.readouterr().out)["valid"] is False
     finally:
         _remove_run(run_id)
 
