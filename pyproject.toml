@@ -25,6 +25,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "apscheduler>=3.10.4",
     "pydantic>=2.5.0",
+    "PyYAML>=6.0",
     "tzdata>=2024.1",
 ]
 
