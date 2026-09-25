@@ -88,6 +88,9 @@ data/kbo_auth_state.json
 
 # Temporary root-level crawler debug artifacts
 /*.json
+!/opencode.json
+!/aas-stack.json
+!/harness.lock.json
 /*.png
 /*.html
 /logs
@@ -105,6 +108,7 @@ coverage_report.txt
 # Integrity verification reports (generated artifacts)
 /reports/
 /.opencode
+/artifacts/agent-harness/
 # Runtime R2/Docker deployment manifests
 /r2_manifest*.json
 /data/*
