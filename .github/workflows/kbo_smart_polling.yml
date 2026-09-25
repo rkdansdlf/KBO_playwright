@@ -148,7 +148,7 @@ jobs:
 
       - name: Upload Local DB as Artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kbo-db-${{ needs.polling_gate.outputs.target_date }}
           path: data/kbo_dev.db
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload Integrity Report Artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integrity-report-${{ needs.polling_gate.outputs.target_date }}
           path: integrity_report.json
