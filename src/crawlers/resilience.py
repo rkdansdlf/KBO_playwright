@@ -1,81 +1,12 @@
-"""Adaptive rate limiting, dynamic backoff, and circuit breaker resilience mechanisms."""
+"""Adaptive rate limiting and dynamic backoff for crawler targets."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import random
-from enum import StrEnum
 
 logger = logging.getLogger(__name__)
-
-
-class CircuitBreakerState(StrEnum):
-    """Lifecycle states of the Circuit Breaker."""
-
-    CLOSED = "CLOSED"  # Normal operation
-    OPEN = "OPEN"  # Tripped, fast-failing all requests
-    HALF_OPEN = "HALF_OPEN"  # Testing recovery with canary requests
-
-
-class CircuitBreaker:
-    """Protects external crawler targets by fast-failing during consecutive outages."""
-
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        recovery_timeout_seconds: float = 30.0,
-        name: str = "default",
-    ) -> None:
-        """Initialize the CircuitBreaker."""
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout_seconds = recovery_timeout_seconds
-        self.name = name
-
-        self.state = CircuitBreakerState.CLOSED
-        self.consecutive_failures = 0
-        self.last_state_change = 0.0
-
-    def allow_request(self) -> bool:
-        """Determine if a request should be permitted."""
-        if self.state == CircuitBreakerState.CLOSED:
-            return True
-
-        if self.state == CircuitBreakerState.OPEN:
-            elapsed = asyncio.get_event_loop().time() - self.last_state_change
-            if elapsed >= self.recovery_timeout_seconds:
-                logger.info("CircuitBreaker '%s' transitioning OPEN -> HALF_OPEN (timeout elapsed)", self.name)
-                self.state = CircuitBreakerState.HALF_OPEN
-                self.last_state_change = asyncio.get_event_loop().time()
-                return True
-            return False
-
-        # HALF_OPEN allows test probe request
-        return True
-
-    def record_success(self) -> None:
-        """Record a successful request execution."""
-        if self.state in {CircuitBreakerState.HALF_OPEN, CircuitBreakerState.OPEN}:
-            logger.info("CircuitBreaker '%s' recovered -> CLOSED", self.name)
-            self.state = CircuitBreakerState.CLOSED
-        self.consecutive_failures = 0
-        self.last_state_change = asyncio.get_event_loop().time()
-
-    def record_failure(self) -> None:
-        """Record a failed request execution."""
-        self.consecutive_failures += 1
-        self.last_state_change = asyncio.get_event_loop().time()
-
-        if self.state == CircuitBreakerState.HALF_OPEN:
-            logger.warning("CircuitBreaker '%s' probe failed -> OPEN", self.name)
-            self.state = CircuitBreakerState.OPEN
-        elif self.consecutive_failures >= self.failure_threshold:
-            logger.warning(
-                "CircuitBreaker '%s' failure threshold reached (%d) -> OPEN",
-                self.name,
-                self.consecutive_failures,
-            )
-            self.state = CircuitBreakerState.OPEN
 
 
 class AdaptiveRateLimiter:

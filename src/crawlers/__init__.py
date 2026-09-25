@@ -7,6 +7,15 @@ from src.crawlers.base import (
     BaseHttpCrawler,
     BasePlaywrightCrawler,
 )
+from src.crawlers.circuit_breaker import (
+    CircuitBreaker,
+    circuit_breaker,
+    circuit_registry,
+)
+from src.crawlers.circuit_breaker_dto import (
+    CircuitOpenError,
+    CircuitState,
+)
 from src.crawlers.dto import (
     CrawlExecutionStats,
     CrawlRequest,
@@ -25,8 +34,6 @@ from src.crawlers.registry import (
 )
 from src.crawlers.resilience import (
     AdaptiveRateLimiter,
-    CircuitBreaker,
-    CircuitBreakerState,
 )
 from src.crawlers.result import (
     CrawlOutcome,
@@ -40,8 +47,9 @@ __all__ = [
     "BaseHttpCrawler",
     "BasePlaywrightCrawler",
     "CircuitBreaker",
-    "CircuitBreakerState",
+    "CircuitOpenError",
     "CircuitPolicy",
+    "CircuitState",
     "CrawlExecutionStats",
     "CrawlOutcome",
     "CrawlRequest",
@@ -53,5 +61,7 @@ __all__ = [
     "CrawlerRegistry",
     "ExtractorResult",
     "HttpPolicy",
+    "circuit_breaker",
+    "circuit_registry",
     "parse_retry_after",
 ]

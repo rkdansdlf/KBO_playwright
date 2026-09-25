@@ -248,7 +248,9 @@ async def test_http_client_accepts_public_source(monkeypatch):
     )
     crawler = DummyHttpCrawler(request_delay=0)
     async with crawler.http_client() as client:
-        assert await crawler.fetch_json(client, "https://example.com") == {"ok": True}
+        response = await client.get("https://example.com")
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
 
 
 class TestBaseHttpCrawler:
@@ -264,37 +266,3 @@ class TestBaseHttpCrawler:
         async with crawler.http_client() as client:
             assert isinstance(client, httpx.AsyncClient)
             assert client.headers.get("x-custom") == "val"
-
-    @pytest.mark.asyncio
-    async def test_fetch_json_success(self) -> None:
-        crawler = DummyHttpCrawler()
-        mock_resp = MagicMock()
-        mock_resp.status_code = HTTPStatus.OK
-        mock_resp.json.return_value = {"key": "value"}
-
-        mock_client = MagicMock(spec=httpx.AsyncClient)
-        mock_client.get = AsyncMock(return_value=mock_resp)
-
-        result = await crawler.fetch_json(mock_client, "https://api.example.com/data")
-        assert result == {"key": "value"}
-
-    @pytest.mark.asyncio
-    async def test_fetch_json_non_200(self) -> None:
-        crawler = DummyHttpCrawler()
-        mock_resp = MagicMock()
-        mock_resp.status_code = HTTPStatus.NOT_FOUND
-
-        mock_client = MagicMock(spec=httpx.AsyncClient)
-        mock_client.get = AsyncMock(return_value=mock_resp)
-
-        result = await crawler.fetch_json(mock_client, "https://api.example.com/404")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_fetch_json_exception(self) -> None:
-        crawler = DummyHttpCrawler()
-        mock_client = MagicMock(spec=httpx.AsyncClient)
-        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
-
-        result = await crawler.fetch_json(mock_client, "https://api.example.com/fail")
-        assert result is None
