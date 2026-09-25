@@ -169,6 +169,21 @@ class TestFinalizeRetry:
         assert letter.status == DlqStatus.EXHAUSTED.value
         assert letter.error_message == "still failing"
 
+    def test_failure_uses_per_letter_max_retries(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        letter = repo.create_dead_letter(_spec(max_retries=8))
+        repo.mark_retrying(letter)
+        for _ in range(6):
+            repo.increment_retry(letter)
+        repo.link_replay_run(letter, "run-b")
+
+        service = CrawlDeadLetterService(session)
+        service.finalize_retry(letter.dlq_id, _Outcome(success=False, replay_run_id="run-b"))
+
+        # 6 < 8 keeps retrying even though it is past DEFAULT_MAX_RETRIES.
+        assert letter.status == DlqStatus.PENDING.value
+        assert letter.next_retry_at is not None
+
 
 class TestRetryDeadLetter:
     def test_success_flow(self, session_factory: sessionmaker) -> None:
