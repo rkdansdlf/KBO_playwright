@@ -24,6 +24,7 @@ from src.repositories.crawl_dead_letter_repository import (
     DeadLetterSpec,
 )
 from src.services.crawl_dead_letter_state import (
+    ensure_requeue,
     ensure_transition,
     next_status_after_retry,
 )
@@ -166,10 +167,15 @@ class CrawlDeadLetterService:
         return self.repository.mark_ignored(letter, reason=reason)
 
     def requeue(self, dlq_id: str) -> CrawlDeadLetter:
-        """Explicitly return an ignored/exhausted letter to ``pending``."""
+        """Force an ignored/exhausted letter back to ``pending``.
+
+        This is an operator override, not a retry-budget reset: ``retry_count``
+        is preserved so the audit trail counts automatic plus forced attempts.
+        """
         letter = self.repository.get_by_dlq_id(dlq_id)
         if letter is None:
             raise DlqNotFoundError(dlq_id)
+        ensure_requeue(letter.status)
         return self.repository.mark_pending(letter, next_retry_at=_utcnow())
 
 

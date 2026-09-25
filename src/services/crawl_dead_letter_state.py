@@ -19,6 +19,12 @@ ALLOWED_TRANSITIONS: dict[DlqStatus, frozenset[DlqStatus]] = {
 
 RETRYABLE_STATUSES = frozenset({DlqStatus.PENDING})
 
+#: Operator ``requeue()`` is an explicit forced-retry override. It is only
+#: allowed from terminal states that still need intervention, never from a
+#: resolved incident; ``retry_count`` is preserved so the audit trail keeps
+#: counting automatic plus forced attempts.
+REQUEUEABLE_STATUSES = frozenset({DlqStatus.IGNORED, DlqStatus.EXHAUSTED})
+
 
 class InvalidDlqTransitionError(ValueError):
     """Raised when a dead letter lifecycle transition is not permitted."""
@@ -46,6 +52,18 @@ def can_retry(status: DlqStatus | str) -> bool:
 def requeue_target() -> DlqStatus:
     """Return the status an operator ``requeue()`` moves a letter to."""
     return DlqStatus.PENDING
+
+
+def can_requeue(status: DlqStatus | str) -> bool:
+    """Return whether an operator may force a letter back to pending."""
+    return DlqStatus(status) in REQUEUEABLE_STATUSES
+
+
+def ensure_requeue(status: DlqStatus | str) -> None:
+    """Raise unless ``status`` is eligible for an operator requeue."""
+    status_value = DlqStatus(status)
+    if status_value not in REQUEUEABLE_STATUSES:
+        raise InvalidDlqTransitionError(status_value, DlqStatus.PENDING)
 
 
 def next_status_after_retry(
