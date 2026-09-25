@@ -6,6 +6,7 @@ from .audit_trail import CorrectionAuditTrail as CorrectionAuditTrail
 from .award import Award as Award
 from .broadcast import GameBroadcast as GameBroadcast
 from .crawl import CrawlRun as CrawlRun
+from .crawl_dead_letter import CrawlDeadLetter as CrawlDeadLetter
 from .crawl_evidence import CrawlEvidence as CrawlEvidence
 from .crawl_execution import CrawlExecutionRun as CrawlExecutionRun
 from .dto import (
