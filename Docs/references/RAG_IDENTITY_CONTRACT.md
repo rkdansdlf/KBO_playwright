@@ -32,6 +32,10 @@ apply 게이트에서 수행한다.** id 체계 변경은 기존 chunk identity�
   - `game_highlights`: `{game_id}_{highlight_type}_{event_seq}`, or a description digest for summary rows
 - **R3 (계약 버전)**: id 체계 변경 시 `rag_chunks.index_version`을 올리고
   `Docs/references/rag_source_contract.json`의 규격을 함께 갱신한다.
+  embedding 모델·차원·청킹 버전은 sparse/vector metadata의
+  `embedding_fingerprint`으로 저장하며, 값이 다른 청크는 선택적으로 재임베딩한다.
+  fingerprint가 없는 legacy row는 read-only 선택 과정에서 보고만 하며,
+  metadata 보드는 별도 승인 gate로 수행한다.
   구버전 id 청크는 `tombstone_rag_chunks`로 무효화한다.
 
 ## 적용 대상 매핑 (확정)
