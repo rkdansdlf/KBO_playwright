@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -39,16 +38,12 @@ class ContextBuilder:
             for path in tracked_inputs
             if (root / path).is_file() and self.permissions.can_read(path)
         }
-        git = shutil.which("git")
-        revision = ""
-        if git is not None:
-            runner = CommandRunner(permissions=self.permissions, root=root)
-            try:
-                result = runner.run([git, "rev-parse", "HEAD"], skill_id="harness", timeout_seconds=10)
-            except (OSError, subprocess.SubprocessError, PermissionDeniedError):
-                result = None
-            if result is not None and result.exit_code == 0:
-                revision = result.stdout.strip()
+        runner = CommandRunner(permissions=self.permissions, root=root)
+        try:
+            result = runner.run(["git", "rev-parse", "HEAD"], skill_id="harness", timeout_seconds=10)
+        except (OSError, subprocess.SubprocessError, PermissionDeniedError):
+            result = None
+        revision = result.stdout.strip() if result is not None and result.exit_code == 0 else ""
         return {
             "git_revision": revision or "unknown",
             "files": files,
