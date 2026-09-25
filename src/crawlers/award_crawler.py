@@ -21,9 +21,15 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup, Tag
 
+from src.crawlers.failure_taxonomy import FailureCode, FailureStage, classify_failure
 from src.db.engine import SessionLocal
+from src.models.crawl_execution import RUN_STATUS_PARTIAL
 from src.repositories.award_repository import AwardRepository
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.repositories.source_registry_repository import save_raw_snapshots
+from src.services.crawl_dead_letter_service import enqueue_failure
+from src.services.crawl_run_service import track_crawl_run
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
@@ -68,6 +74,10 @@ _MIN_YAGOO_TABLE_ROWS = 2
 _YAGOO_CELL_COUNT = 4
 _AWARD_HAS_CATEGORY_PREFIXES = ("골든글러브", "수비상")
 AWARD_PARSER_VERSION = "award-crawler-v1"
+AWARD_CRAWLER_NAME = "awards"
+AWARD_TARGET_TYPE = "award_history"
+WIKI_SOURCE_KEY = "kbo_awards_wikipedia"
+YAGOONARA_SOURCE_KEY = "kbo_awards_yagoonara"
 
 
 @dataclass(frozen=True)
@@ -90,6 +100,8 @@ class AwardSourceRun:
     fetched: bool
     parsed_records: int
     error: str | None = None
+    error_code: str | None = None
+    failure_stage: str | None = None
 
 
 def _extract_year(text: str) -> int | None:
@@ -232,11 +244,16 @@ class AwardCrawler:
         )
         return BeautifulSoup(html, "html.parser")
 
-    async def crawl(self, types: set[str] | None = None) -> list[AwardRecord]:
-        """Crawl all award sources and merge duplicates.
+    async def crawl(
+        self,
+        types: set[str] | None = None,
+        source_key: str | None = None,
+    ) -> list[AwardRecord]:
+        """Crawl all (or one) award sources and merge duplicates.
 
         Args:
             types: Optional award type filter (e.g. {"MVP", "골든글러브"}).
+            source_key: Optional single source filter used by replay.
 
         Returns:
             Unique normalized award records.
@@ -247,18 +264,17 @@ class AwardCrawler:
         for award_type, title in WIKI_PAGES.items():
             if types is not None and award_type not in types:
                 continue
+            if source_key is not None and source_key != WIKI_SOURCE_KEY:
+                continue
+            source_url = f"{WIKI_API_URL}?page={title}"
             try:
                 soup = await self._fetch_wiki_page(title)
                 parsed = self._parse_wiki_soup(soup, award_type)
-                self._mark_snapshot_parse_status(
-                    "kbo_awards_wikipedia",
-                    f"{WIKI_API_URL}?page={title}",
-                    parsed_records=len(parsed),
-                )
+                self._mark_snapshot_parse_status(WIKI_SOURCE_KEY, source_url, parsed_records=len(parsed))
                 self._source_runs.append(
                     AwardSourceRun(
-                        source_key="kbo_awards_wikipedia",
-                        source_url=f"{WIKI_API_URL}?page={title}",
+                        source_key=WIKI_SOURCE_KEY,
+                        source_url=source_url,
                         fetched=True,
                         parsed_records=len(parsed),
                     ),
@@ -266,67 +282,72 @@ class AwardCrawler:
                 logger.info("wikipedia %-8s -> %s records", award_type, len(parsed))
                 records.extend(parsed)
             except AWARD_FETCH_EXCEPTIONS as exc:
+                stage, code = classify_failure(exc)
                 self._mark_snapshot_parse_status(
-                    "kbo_awards_wikipedia",
-                    f"{WIKI_API_URL}?page={title}",
+                    WIKI_SOURCE_KEY,
+                    source_url,
                     parsed_records=0,
                     error=f"{type(exc).__name__}: {exc}",
                 )
                 self._source_runs.append(
                     AwardSourceRun(
-                        source_key="kbo_awards_wikipedia",
-                        source_url=f"{WIKI_API_URL}?page={title}",
-                        fetched=any(
-                            snapshot.get("source_key") == "kbo_awards_wikipedia" for snapshot in self._raw_snapshots
-                        ),
+                        source_key=WIKI_SOURCE_KEY,
+                        source_url=source_url,
+                        fetched=any(snapshot.get("source_key") == WIKI_SOURCE_KEY for snapshot in self._raw_snapshots),
                         parsed_records=0,
                         error=f"{type(exc).__name__}: {exc}",
+                        error_code=code.value,
+                        failure_stage=stage.value,
                     ),
                 )
                 logger.exception("wikipedia %s failed (skipped)", title)
             await self.policy.delay_async(host="ko.wikipedia.org")
 
-        try:
-            soup = await self._fetch_yagoonara()
-            parsed = self._parse_yagoonara(soup)
-            if types is not None:
-                parsed = [rec for rec in parsed if rec.award_type in types]
-            self._mark_snapshot_parse_status(
-                "kbo_awards_yagoonara",
-                YAGOONARA_URL,
-                parsed_records=len(parsed),
-            )
-            self._source_runs.append(
-                AwardSourceRun(
-                    source_key="kbo_awards_yagoonara",
-                    source_url=YAGOONARA_URL,
-                    fetched=True,
+        if source_key is None or source_key == YAGOONARA_SOURCE_KEY:
+            try:
+                soup = await self._fetch_yagoonara()
+                parsed = self._parse_yagoonara(soup)
+                if types is not None:
+                    parsed = [rec for rec in parsed if rec.award_type in types]
+                self._mark_snapshot_parse_status(
+                    YAGOONARA_SOURCE_KEY,
+                    YAGOONARA_URL,
                     parsed_records=len(parsed),
-                ),
-            )
-            logger.info("yagoonara -> %s records", len(parsed))
-            records.extend(parsed)
-        except AWARD_FETCH_EXCEPTIONS as exc:
-            self._mark_snapshot_parse_status(
-                "kbo_awards_yagoonara",
-                YAGOONARA_URL,
-                parsed_records=0,
-                error=f"{type(exc).__name__}: {exc}",
-            )
-            self._source_runs.append(
-                AwardSourceRun(
-                    source_key="kbo_awards_yagoonara",
-                    source_url=YAGOONARA_URL,
-                    fetched=any(
-                        snapshot.get("source_key") == "kbo_awards_yagoonara" for snapshot in self._raw_snapshots
+                )
+                self._source_runs.append(
+                    AwardSourceRun(
+                        source_key=YAGOONARA_SOURCE_KEY,
+                        source_url=YAGOONARA_URL,
+                        fetched=True,
+                        parsed_records=len(parsed),
                     ),
+                )
+                logger.info("yagoonara -> %s records", len(parsed))
+                records.extend(parsed)
+            except AWARD_FETCH_EXCEPTIONS as exc:
+                stage, code = classify_failure(exc)
+                self._mark_snapshot_parse_status(
+                    YAGOONARA_SOURCE_KEY,
+                    YAGOONARA_URL,
                     parsed_records=0,
                     error=f"{type(exc).__name__}: {exc}",
-                ),
-            )
-            logger.warning("yagoonara fetch failed (skipped)")
+                )
+                self._source_runs.append(
+                    AwardSourceRun(
+                        source_key=YAGOONARA_SOURCE_KEY,
+                        source_url=YAGOONARA_URL,
+                        fetched=any(
+                            snapshot.get("source_key") == YAGOONARA_SOURCE_KEY for snapshot in self._raw_snapshots
+                        ),
+                        parsed_records=0,
+                        error=f"{type(exc).__name__}: {exc}",
+                        error_code=code.value,
+                        failure_stage=stage.value,
+                    ),
+                )
+                logger.warning("yagoonara fetch failed (skipped)")
+            await self.policy.delay_async(host="yagoonara.com")
 
-        await self.policy.delay_async(host="yagoonara.com")
         return self._dedup(records)
 
     def _mark_snapshot_parse_status(
@@ -679,33 +700,87 @@ class AwardCrawler:
                 logger.exception("Error saving awards")
         return saved, skipped
 
-    async def run(self, *, save: bool = False, types: set[str] | None = None) -> int:
+    async def run(
+        self,
+        *,
+        save: bool = False,
+        types: set[str] | None = None,
+        source_key: str | None = None,
+        run_spec: CrawlRunSpec | None = None,
+        record_dead_letters: bool = True,
+    ) -> int:
         """Crawl award sources and optionally persist.
 
         Args:
             save: Whether to persist into the DB.
             types: Optional award type filter.
+            source_key: Optional single source filter used by replay.
+            run_spec: Optional pre-built ledger spec (replay supplies one).
+            record_dead_letters: Whether failed sources enqueue DLQ entries.
 
         Returns:
             Number of unique records.
 
         """
-        records = await self.crawl(types=types)
-        if save:
-            saved, skipped = await self.save(records)
-            logger.info("Awards saved=%s skipped(existing)=%s total=%s", saved, skipped, len(records))
-        else:
-            logger.info("Awards parsed (dry-run): %s records", len(records))
-            for rec in records[:12]:
-                logger.info(
-                    "  %s %s %s -> %s (%s)",
-                    rec.year,
-                    rec.award_type,
-                    rec.category or "-",
-                    rec.player_name,
-                    rec.team_name or "-",
+        spec = run_spec or CrawlRunSpec(
+            crawler=AWARD_CRAWLER_NAME,
+            target_type=AWARD_TARGET_TYPE,
+            source_url=f"{WIKI_API_URL}|{YAGOONARA_URL}",
+            parser_version=AWARD_PARSER_VERSION,
+        )
+        with track_crawl_run(spec) as run:
+            records = await self.crawl(types=types, source_key=source_key)
+            run.records_read = len(records)
+            if save:
+                saved, skipped = await self.save(records)
+                run.records_written = saved
+                logger.info("Awards saved=%s skipped(existing)=%s total=%s", saved, skipped, len(records))
+            else:
+                logger.info("Awards parsed (dry-run): %s records", len(records))
+                for rec in records[:12]:
+                    logger.info(
+                        "  %s %s %s -> %s (%s)",
+                        rec.year,
+                        rec.award_type,
+                        rec.category or "-",
+                        rec.player_name,
+                        rec.team_name or "-",
+                    )
+
+            failed_sources = [source_run for source_run in self._source_runs if source_run.error]
+            if failed_sources:
+                run.status = RUN_STATUS_PARTIAL
+                run.error_code = FailureCode.SOURCE_PARTIAL.value
+                run.error_message = "; ".join(
+                    f"{source_run.source_key}: {source_run.error}" for source_run in failed_sources[:5]
                 )
-        return len(records)
+                if record_dead_letters:
+                    self._enqueue_source_failures(run.run_id, failed_sources)
+            return len(records)
+
+    @staticmethod
+    def _enqueue_source_failures(original_run_id: str, failed_sources: list[AwardSourceRun]) -> None:
+        """Enqueue one DLQ entry per distinct failed source, never breaking the crawl."""
+        seen: set[str] = set()
+        for source_run in failed_sources:
+            if source_run.source_key in seen:
+                continue
+            seen.add(source_run.source_key)
+            try:
+                enqueue_failure(
+                    DeadLetterSpec(
+                        original_run_id=original_run_id,
+                        crawler=AWARD_CRAWLER_NAME,
+                        target_type=AWARD_TARGET_TYPE,
+                        target_id=source_run.source_key,
+                        source_url=source_run.source_url,
+                        failure_stage=source_run.failure_stage or FailureStage.FETCH.value,
+                        error_code=source_run.error_code or FailureCode.UNKNOWN.value,
+                        error_message=source_run.error,
+                    ),
+                )
+            except Exception:
+                logger.exception("Failed to enqueue dead letter for source %s", source_run.source_key)
 
 
 if __name__ == "__main__":
