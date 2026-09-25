@@ -1,0 +1,15 @@
+# Dependency audit allowlist
+#
+# One advisory id per line. This is the ONLY way to keep `pip-audit` green
+# while a finding is unresolved; anything not listed here fails the Security
+# Audit job, including on pull requests.
+#
+# Format:
+#   <advisory-id>  # reason -- reviewed YYYY-MM-DD, remove after <milestone>
+#
+# Rules:
+#   - Never add a blanket entry. Each id needs a concrete reason and a review date.
+#   - Prefer removing the dependency over allowlisting the advisory.
+#   - An entry older than 90 days must be re-reviewed or removed.
+#
+# Current entries: none.
