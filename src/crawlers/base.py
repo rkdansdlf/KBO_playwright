@@ -5,8 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from http import HTTPStatus
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import httpx
 from playwright.async_api import Error as PlaywrightError
@@ -207,22 +206,3 @@ class BaseHttpCrawler(BaseCrawler):
             event_hooks={"request": [self._validate_request_url]},
         ) as client:
             yield client
-
-    async def fetch_json(
-        self,
-        client: httpx.AsyncClient,
-        url: str,
-        *,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any] | list[Any] | None:
-        """Fetch JSON payload safely with error logging."""
-        await self.throttle()
-        try:
-            resp = await client.get(url, params=params)
-            if resp.status_code != HTTPStatus.OK:
-                self.logger.warning("HTTP %d when fetching %s", resp.status_code, url)
-                return None
-            return resp.json()
-        except (httpx.HTTPError, ValueError, TypeError, KeyError):
-            self.logger.exception("Failed to fetch JSON from %s", url)
-            return None
