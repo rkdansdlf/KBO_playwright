@@ -13,6 +13,11 @@ from src.crawlers.dto import (
     CrawlResponse,
     ExtractorResult,
 )
+from src.crawlers.http_client import (
+    CircuitPolicy,
+    CrawlerHttpClient,
+    HttpPolicy,
+)
 from src.crawlers.registry import (
     CrawlerCategory,
     CrawlerMetadata,
@@ -23,6 +28,11 @@ from src.crawlers.resilience import (
     CircuitBreaker,
     CircuitBreakerState,
 )
+from src.crawlers.result import (
+    CrawlOutcome,
+    CrawlResult,
+)
+from src.crawlers.retry_after import parse_retry_after
 
 __all__ = [
     "AdaptiveRateLimiter",
@@ -31,11 +41,17 @@ __all__ = [
     "BasePlaywrightCrawler",
     "CircuitBreaker",
     "CircuitBreakerState",
+    "CircuitPolicy",
     "CrawlExecutionStats",
+    "CrawlOutcome",
     "CrawlRequest",
     "CrawlResponse",
+    "CrawlResult",
     "CrawlerCategory",
+    "CrawlerHttpClient",
     "CrawlerMetadata",
     "CrawlerRegistry",
     "ExtractorResult",
+    "HttpPolicy",
+    "parse_retry_after",
 ]
