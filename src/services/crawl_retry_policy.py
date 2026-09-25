@@ -8,14 +8,16 @@ Backoff contract (``retry_count`` is incremented *before* a replay runs):
     attempt #4 fails -> RETRY_SCHEDULE[3] = 3600s
     attempt #5 fails -> exhausted
 
-Hence ``len(RETRY_SCHEDULE) == MAX_RETRIES - 1``.
+``DEFAULT_MAX_RETRIES`` is the default budget; a letter may carry its own
+``max_retries``. The backoff index is clamped so a larger budget keeps repeating
+the final delay instead of raising ``IndexError``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-MAX_RETRIES = 5
+DEFAULT_MAX_RETRIES = 5
 RETRY_SCHEDULE: tuple[int, ...] = (60, 300, 900, 3600)
 
 RETRYABLE_CODES: frozenset[str] = frozenset(
@@ -52,11 +54,22 @@ class RetryDecision:
     reason: str
 
 
-def decide(error_code: str, retry_count: int) -> RetryDecision:
+def _backoff_delay(retry_count: int) -> int:
+    """Return the bounded backoff delay for an attempt count."""
+    schedule_index = min(retry_count - 1, len(RETRY_SCHEDULE) - 1)
+    return RETRY_SCHEDULE[schedule_index]
+
+
+def decide(
+    error_code: str,
+    retry_count: int,
+    *,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+) -> RetryDecision:
     """Return the retry decision for an error code at a given attempt count."""
     if str(error_code) not in RETRYABLE_CODES:
         return RetryDecision(retryable=False, delay_seconds=None, reason=f"non-retryable:{error_code}")
-    if retry_count >= MAX_RETRIES:
+    if retry_count >= max_retries:
         return RetryDecision(retryable=False, delay_seconds=None, reason="max retries exhausted")
-    delay = RETRY_SCHEDULE[retry_count - 1] if retry_count >= 1 else None
+    delay = _backoff_delay(retry_count) if retry_count >= 1 else None
     return RetryDecision(retryable=True, delay_seconds=delay, reason="retryable")

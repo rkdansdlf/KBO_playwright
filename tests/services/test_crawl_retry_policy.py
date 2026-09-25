@@ -5,16 +5,16 @@ from __future__ import annotations
 import pytest
 
 from src.services.crawl_retry_policy import (
-    MAX_RETRIES,
+    DEFAULT_MAX_RETRIES,
     RETRY_SCHEDULE,
     decide,
 )
 
 
-def test_schedule_contract_matches_max_retries() -> None:
-    assert MAX_RETRIES == 5
+def test_schedule_contract_matches_default_max_retries() -> None:
+    assert DEFAULT_MAX_RETRIES == 5
     assert RETRY_SCHEDULE == (60, 300, 900, 3600)
-    assert len(RETRY_SCHEDULE) == MAX_RETRIES - 1
+    assert len(RETRY_SCHEDULE) == DEFAULT_MAX_RETRIES - 1
 
 
 @pytest.mark.parametrize(
@@ -64,7 +64,38 @@ def test_backoff_index_contract(retry_count: int, expected_delay: int) -> None:
 
 
 def test_exhausted_after_max_retries() -> None:
-    decision = decide("FETCH_TIMEOUT", retry_count=MAX_RETRIES)
+    decision = decide("FETCH_TIMEOUT", retry_count=DEFAULT_MAX_RETRIES)
     assert decision.retryable is False
     assert decision.delay_seconds is None
     assert decision.reason == "max retries exhausted"
+
+
+def test_per_letter_budget_extends_retries() -> None:
+    """A letter budget above the default keeps retrying past DEFAULT_MAX_RETRIES."""
+    decision = decide("FETCH_TIMEOUT", retry_count=DEFAULT_MAX_RETRIES, max_retries=8)
+    assert decision.retryable is True
+
+    exhausted = decide("FETCH_TIMEOUT", retry_count=8, max_retries=8)
+    assert exhausted.retryable is False
+    assert exhausted.reason == "max retries exhausted"
+
+
+def test_per_letter_budget_truncates_retries() -> None:
+    decision = decide("FETCH_TIMEOUT", retry_count=3, max_retries=3)
+    assert decision.retryable is False
+    assert decision.reason == "max retries exhausted"
+
+
+@pytest.mark.parametrize(
+    ("retry_count", "expected_delay"),
+    [
+        (5, 3600),
+        (6, 3600),
+        (7, 3600),
+    ],
+)
+def test_backoff_index_is_clamped_to_last_delay(retry_count: int, expected_delay: int) -> None:
+    """Beyond the schedule length the last delay repeats instead of raising."""
+    decision = decide("FETCH_TIMEOUT", retry_count=retry_count, max_retries=8)
+    assert decision.retryable is True
+    assert decision.delay_seconds == expected_delay

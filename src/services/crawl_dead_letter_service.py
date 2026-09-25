@@ -28,7 +28,7 @@ from src.services.crawl_dead_letter_state import (
     ensure_transition,
     next_status_after_retry,
 )
-from src.services.crawl_retry_policy import MAX_RETRIES, decide
+from src.services.crawl_retry_policy import DEFAULT_MAX_RETRIES, decide
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -149,7 +149,11 @@ class CrawlDeadLetterService:
 
     def _schedule_next_attempt(self, letter: CrawlDeadLetter, outcome: ReplayOutcomeLike) -> None:
         effective_error_code = outcome.error_code or letter.error_code
-        decision = decide(effective_error_code, retry_count=letter.retry_count)
+        decision = decide(
+            effective_error_code,
+            retry_count=letter.retry_count,
+            max_retries=letter.max_retries,
+        )
         if not decision.retryable:
             ensure_transition(letter.status, DlqStatus.EXHAUSTED)
             self.repository.mark_exhausted(letter, error_message=outcome.error_message)
@@ -248,7 +252,7 @@ class _FailedOutcome:
 
 
 __all__ = [
-    "MAX_RETRIES",
+    "DEFAULT_MAX_RETRIES",
     "CrawlDeadLetterService",
     "DlqNotFoundError",
     "DlqRetryResult",
