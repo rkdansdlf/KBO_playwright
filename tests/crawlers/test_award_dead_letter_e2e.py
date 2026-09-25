@@ -13,13 +13,15 @@ import httpx
 import pytest
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.crawlers.award_crawler import AwardCrawler
+from src.crawlers.award_crawler import AwardCrawler, AwardRecord
 from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.crawl_execution import CrawlExecutionRun
-from src.services.crawl_dead_letter_service import retry_dead_letter
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.services.crawl_dead_letter_service import CrawlDeadLetterService, retry_dead_letter
 from src.services.crawl_replay_dispatcher import build_default_dispatcher
 from src.utils.request_policy import RequestPolicy
 
@@ -125,3 +127,57 @@ async def test_run_a_partial_replays_to_run_b_and_resolves(
         assert letter.replay_run_id == run_b.run_id
         assert letter.resolved_at is not None
         assert run_b.records_read == 0
+
+
+@pytest.mark.asyncio
+async def test_replay_persistence_failure_exhausts_dlq(
+    session_factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P0: a persistence failure during replay must NOT resolve the DLQ."""
+    _wire_sessions(monkeypatch, session_factory)
+
+    async def fake_crawl(
+        self: AwardCrawler, types: set[str] | None = None, source_key: str | None = None
+    ) -> list[AwardRecord]:
+        return [AwardRecord(2024, "MVP", None, "김영지", "LG 트윈스")]
+
+    class IntegrityRepo:
+        def __init__(self, session: object) -> None:
+            pass
+
+        def save_award(self, award_data: dict) -> object:
+            raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+    monkeypatch.setattr(AwardCrawler, "crawl", fake_crawl)
+    monkeypatch.setattr("src.crawlers.award_crawler.AwardRepository", IntegrityRepo)
+
+    with session_factory() as setup:
+        letter = CrawlDeadLetterService(setup).enqueue(
+            DeadLetterSpec(
+                original_run_id="run-a",
+                crawler="awards",
+                target_type="award_history",
+                target_id="kbo_awards_yagoonara",
+                failure_stage="fetch",
+                error_code="SOURCE_PARTIAL",
+            ),
+        )
+        setup.commit()
+        dlq_id = letter.dlq_id
+
+    result = retry_dead_letter(dlq_id, build_default_dispatcher(), session_factory=session_factory)
+
+    assert result.success is False
+    assert result.status.value == "exhausted"
+
+    with session_factory() as check:
+        run_b = check.query(CrawlExecutionRun).filter_by(run_id=result.replay_run_id).one()
+        stored = check.query(CrawlDeadLetter).filter_by(dlq_id=dlq_id).one()
+        assert run_b.status == "failed"
+        assert run_b.error_code == "PERSIST_CONSTRAINT"
+        assert stored.status == "exhausted"
+        assert stored.status != "resolved"
+        assert stored.resolved_at is None
+        # Original incident cause is preserved on the letter.
+        assert stored.error_code == "SOURCE_PARTIAL"

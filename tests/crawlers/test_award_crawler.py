@@ -16,12 +16,15 @@ import httpx
 import pytest
 from bs4 import BeautifulSoup
 
+from sqlalchemy.exc import IntegrityError
+
 from src.crawlers.award_crawler import (
     AwardCrawler,
     AwardRecord,
     _extract_year,
     _split_pairs,
 )
+from src.crawlers.failure_taxonomy import CrawlPersistError
 
 
 def _soup(html: str) -> BeautifulSoup:
@@ -506,6 +509,59 @@ class TestSave:
 
         assert (saved, skipped) == (0, 0)
         session.rollback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_save_strict_raises_taxonomy_error(self) -> None:
+        session = MagicMock()
+        session_cm = MagicMock()
+        session_cm.__enter__.return_value = session
+        session_cm.__exit__.return_value = False
+
+        class IntegrityRepo:
+            def __init__(self, session: object) -> None:
+                pass
+
+            def save_award(self, award_data: dict) -> object:
+                raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+        with (
+            patch("src.crawlers.award_crawler.SessionLocal", return_value=session_cm),
+            patch("src.crawlers.award_crawler.AwardRepository", IntegrityRepo),
+        ):
+            with pytest.raises(CrawlPersistError) as excinfo:
+                await AwardCrawler().save(
+                    [AwardRecord(2024, "MVP", None, "김영지", "LG 트윈스")],
+                    raise_on_error=True,
+                )
+
+        assert excinfo.value.error_code == "PERSIST_CONSTRAINT"
+        assert excinfo.value.failure_stage == "persist"
+        session.rollback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_save_lenient_swallows_and_keeps_snapshots(self) -> None:
+        session = MagicMock()
+        session_cm = MagicMock()
+        session_cm.__enter__.return_value = session
+        session_cm.__exit__.return_value = False
+
+        class IntegrityRepo:
+            def __init__(self, session: object) -> None:
+                pass
+
+            def save_award(self, award_data: dict) -> object:
+                raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+        crawler = AwardCrawler()
+        crawler._raw_snapshots = [{"url": "https://example.com/a", "source_key": "kbo_awards_wikipedia"}]
+        with (
+            patch("src.crawlers.award_crawler.SessionLocal", return_value=session_cm),
+            patch("src.crawlers.award_crawler.AwardRepository", IntegrityRepo),
+        ):
+            saved, skipped = await crawler.save([AwardRecord(2024, "MVP", None, "김영지", "LG 트윈스")])
+
+        assert (saved, skipped) == (0, 0)
+        assert crawler._raw_snapshots == [{"url": "https://example.com/a", "source_key": "kbo_awards_wikipedia"}]
 
     @pytest.mark.asyncio
     async def test_save_persists_raw_snapshots_and_clears(self) -> None:
