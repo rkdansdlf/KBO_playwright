@@ -272,8 +272,18 @@ def test_research_network_probe_targets_the_intended_skill() -> None:
     assert observation.routed_permission_ok is True
 
 
-def test_quick_verification_level_is_covered() -> None:
-    assert any(task.expected.level == "quick" for task in DATASET.tasks)
+def test_quick_level_gate_set_stays_exercised() -> None:
+    """`quick` is a CLI override now that golden tasks declare one verification axis.
+
+    It therefore has no dataset member, so the level catalog itself must keep pinning the
+    quick gate set; otherwise the cheapest verification path could rot unnoticed.
+    """
+    quick = ProjectVerifier.load().build_plan(level="quick")
+
+    assert [check.check_id for check in quick.checks] == ["pytest-affected", "ruff-changed", "doctor"]
+    assert "ruff-changed" not in {
+        check.check_id for check in ProjectVerifier.load().build_plan(level="standard").checks
+    }
 
 
 def test_round_three_tasks_create_complete_evidence(

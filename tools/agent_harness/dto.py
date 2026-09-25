@@ -202,7 +202,6 @@ class GoldenTaskExpectation:
     profile: str
     skills: tuple[str, ...]
     verification: str
-    level: str
     checks: tuple[str, ...]
     permission: GoldenTaskPermission
 
