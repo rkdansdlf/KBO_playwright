@@ -3,6 +3,7 @@ version: 1
 read:
   deny:
     - .env
+    - "**/.env"
     - "**/*.pem"
     - "**/*.key"
     - "**/*wallet*"
@@ -14,12 +15,39 @@ read:
 
 redact_env:
   - DATABASE_URL
+  - OCI_DB_URL
+  - ORACLE_TARGET_URL
+  - RAG_SOURCE_DB_URL
+  - RAG_INDEX_DB_URL
+  - ORACLE_APP_PASSWORD
   - OCI_WALLET_PASSWORD
+  - POSTGRES_PASSWORD
+  - PGVECTOR_PASSWORD
+  - KBO_USER_ID
+  - KBO_USER_PWD
   - YOUTUBE_API_KEY
+  - OPENROUTER_API_KEY
+  - BEGA_PROD_PASSWORD
+  - SEOUL_OPEN_DATA_API_KEY
+  - KAKAO_REST_API_KEY
   - NAVER_CLIENT_ID
   - NAVER_CLIENT_SECRET
+  - TMAP_API_KEY
   - TELEGRAM_BOT_TOKEN
   - SLACK_WEBHOOK_URL
+  - SENTRY_DSN
+
+environment:
+  denied:
+    - BASH_ENV
+    - CDPATH
+    - ENV
+  denied_prefixes:
+    - DYLD_
+    - GIT_
+    - LD_
+    - PYTEST_
+    - PYTHON
 
 write:
   default: false

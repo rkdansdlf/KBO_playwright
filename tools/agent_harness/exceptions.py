@@ -27,11 +27,16 @@ class PermissionDeniedError(HarnessError):
     """Raised when a permission boundary denies an action."""
 
 
+class ArtifactContractError(HarnessError):
+    """Raised when a Harness evidence bundle violates its artifact contract."""
+
+
 class VerificationFailedError(HarnessError):
     """Raised when project verification fails for a Harness run."""
 
 
 __all__ = [
+    "ArtifactContractError",
     "HarnessConfigError",
     "HarnessError",
     "PermissionDeniedError",
