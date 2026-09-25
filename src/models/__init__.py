@@ -7,6 +7,7 @@ from .award import Award as Award
 from .broadcast import GameBroadcast as GameBroadcast
 from .crawl import CrawlRun as CrawlRun
 from .crawl_evidence import CrawlEvidence as CrawlEvidence
+from .crawl_execution import CrawlExecutionRun as CrawlExecutionRun
 from .dto import (
     ColumnSchemaMeta as ColumnSchemaMeta,
 )
@@ -58,6 +59,7 @@ from .matchup import MatchupBvP as MatchupBvP
 from .matchup import PitcherHomeAwaySplit as PitcherHomeAwaySplit
 from .matchup import PitcherSplit as PitcherSplit
 from .matchup import PitcherTeamSplit as PitcherTeamSplit
+from .notification_incident import NotificationIncident as NotificationIncident
 from .parking_fee_rule import ParkingFeeRule as ParkingFeeRule
 from .parking_lot import ParkingLot as ParkingLot
 from .player import PlayerBasic as PlayerBasic
