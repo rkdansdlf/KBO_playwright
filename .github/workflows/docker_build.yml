@@ -5,7 +5,8 @@ on:
     branches: [main]
     paths:
       - 'Dockerfile'
-      - 'requirements.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'docker/**'
       - '.dockerignore'
   workflow_dispatch:

@@ -61,7 +61,7 @@ GitHub Actions `test_suite.yml`에서 실행:
 - Matrix: Python 3.12
 
 `.gitignore`-된 `inspect_*.py` 스크립트는 `pytest.importorskip()` 사용.
-`pytest-asyncio` 필요 (requirements.txt에 포함).
+`pytest-asyncio` 필요 (`pyproject.toml`의 `dev` extra에 포함).
 
 ## 주의사항
 

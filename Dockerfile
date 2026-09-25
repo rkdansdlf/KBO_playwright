@@ -10,8 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY requirements.txt ./
-RUN uv pip install --system --no-cache -r requirements.txt
+# Dependencies come from pyproject.toml, the single source of truth.
+# The project source is removed again so the runtime stage can COPY its own
+# copy without shipping two divergent trees.
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+RUN uv pip install --system --no-cache . && rm -rf /app/src
 
 ###############################################################################
 # Stage 2: Runtime — lean image without build-essential (~250 MB smaller)

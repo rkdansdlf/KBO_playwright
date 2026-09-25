@@ -13,6 +13,10 @@ inputs:
     description: 'Initialize database and seed metadata'
     required: false
     default: 'false'
+  extras:
+    description: 'Optional dependency extras to install (comma separated, e.g. dev or dev,postgres)'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -28,7 +32,13 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: uv pip install --system -r requirements.txt -r requirements-dev.txt
+      run: |
+        set -euo pipefail
+        target=".[dev]"
+        if [ -n "${{ inputs.extras }}" ]; then
+          target=".[dev,${{ inputs.extras }}]"
+        fi
+        uv pip install --system "$target"
 
     - name: Get Playwright version
       if: ${{ inputs.playwright == 'true' }}

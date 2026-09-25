@@ -52,7 +52,7 @@ GitHub Actions 기반, 14개 워크플로와 3개 Composite Action으로 구성�
 
 ### 보안 감사 (`security_audit.yml`)
 - **Schedule**: 일요일 21:00 UTC (월 06:00 KST)
-- **1 Job**: `pip-audit --requirement requirements.txt`
+- **1 Job**: `pip-audit --local` (설치된 런타임 환경 감사)
 
 ### Docker 빌드 (`docker_build.yml`)
 - **Trigger**: Push to main (Dockerfile/requirements 변경)
