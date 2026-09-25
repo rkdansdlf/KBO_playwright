@@ -44,18 +44,43 @@ class TaskRouter:
             selected = profile
             reason = "explicit profile"
         else:
-            normalized = task.casefold()
-            scores = {
-                name: sum(trigger.casefold() in normalized for trigger in spec.triggers)
-                for name, spec in self.registry.profiles.items()
-            }
-            best_score = max(scores.values(), default=0)
-            if best_score == 0:
-                selected = self.registry.default_profile
-                reason = "default profile"
-            else:
-                selected = max(scores, key=lambda name: (scores[name], name == self.registry.default_profile))
-                reason = f"matched {scores[selected]} profile trigger(s)"
+            selected, reason = self._score_profiles(task)
+
+        route = self.registry.routes[selected]
+        return RouteDecision(
+            profile=selected,
+            reason=reason,
+            context=route.context,
+            workflow=route.workflow,
+            guards=route.guards,
+            verification=route.verification,
+            output=route.output,
+        )
+
+    def _score_profiles(self, task: str) -> tuple[str, str]:
+        """Rank profiles by strong intent markers, then capped domain trigger nouns."""
+        precedence = self.registry.precedence
+        normalized = task.casefold()
+        scores: dict[str, int] = {}
+        intent_counts: dict[str, int] = {}
+        domain_counts: dict[str, int] = {}
+        for name, spec in self.registry.profiles.items():
+            domain_matches = sum(trigger.casefold() in normalized for trigger in spec.triggers)
+            score, intent_matches = precedence.score(name, task, domain_matches)
+            scores[name] = score
+            intent_counts[name] = intent_matches
+            domain_counts[name] = domain_matches
+
+        best_score = max(scores.values(), default=0)
+        if best_score == 0:
+            return self.registry.default_profile, "default profile"
+
+        selected = max(scores, key=lambda name: (scores[name], name == self.registry.default_profile))
+        if intent_counts[selected]:
+            reason = f"intent marker matched profile {selected}"
+        else:
+            reason = f"matched {domain_counts[selected]} domain trigger(s)"
+        return selected, reason
 
         route = self.registry.routes[selected]
         return RouteDecision(

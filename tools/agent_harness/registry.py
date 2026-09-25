@@ -56,6 +56,30 @@ def _strings(value: object, label: str) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _positive_int(value: object, label: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        msg = f"Expected positive integer for {label}"
+        raise ValueError(msg)
+    return value
+
+
+def _load_routing_precedence(path: Path) -> RoutingPrecedence:
+    """Load the strong-intent-marker scoring policy from the Harness config directory."""
+    payload = load_yaml_mapping(path)
+    intent_rows = _mapping(payload.get("intent_triggers"), "routing_precedence.intent_triggers")
+    intent_triggers = {
+        name: _strings(markers, f"routing_precedence.intent_triggers.{name}") for name, markers in intent_rows.items()
+    }
+    if any(not markers for markers in intent_triggers.values()):
+        msg = "routing_precedence.intent_triggers must not declare an empty marker list"
+        raise ValueError(msg)
+    return RoutingPrecedence(
+        intent_score=_positive_int(payload.get("intent_score"), "routing_precedence.intent_score"),
+        domain_cap=_positive_int(payload.get("domain_cap"), "routing_precedence.domain_cap"),
+        intent_triggers=intent_triggers,
+    )
+
+
 @dataclass(frozen=True)
 class SkillSpec:
     """Describe one skill role selected by the Harness."""
@@ -112,15 +136,44 @@ class RouteSpec:
 
 
 @dataclass(frozen=True)
+class RoutingPrecedence:
+    """Describe how strong intent markers outrank domain trigger nouns.
+
+    `score(profile) = intent_score * intent_matches + min(domain_matches, domain_cap)`.
+    The single invariant that keeps this correct is `intent_score > domain_cap`, so one
+    strong marker always beats any number of domain nouns.
+    """
+
+    intent_score: int
+    domain_cap: int
+    intent_triggers: dict[str, tuple[str, ...]]
+
+    def markers_for(self, profile: str) -> tuple[str, ...]:
+        """Return the strong intent markers declared for a profile."""
+        return self.intent_triggers.get(profile, ())
+
+    def score(self, profile: str, task: str, domain_matches: int) -> tuple[int, int]:
+        """Return the weighted score and strong-marker count for one profile."""
+        normalized = task.casefold()
+        intent_matches = sum(marker.casefold() in normalized for marker in self.markers_for(profile))
+        score = self.intent_score * intent_matches + min(domain_matches, self.domain_cap)
+        return score, intent_matches
+
+
+@dataclass(frozen=True)
 class HarnessRegistry:
     """Hold validated Harness, profile, adapter, stack, and lock metadata."""
 
     root: Path
+    golden_routing_path: Path
+    golden_tasks_path: Path
+    routing_precedence_path: Path
     skills: dict[str, SkillSpec]
     locked_skills: dict[str, LockedSkill]
     adapters: dict[str, AdapterSpec]
     profiles: dict[str, ProfileSpec]
     routes: dict[str, RouteSpec]
+    precedence: RoutingPrecedence
     default_profile: str
     stack_skills: tuple[str, ...]
     stack_apply: bool
@@ -132,6 +185,18 @@ class HarnessRegistry:
         harness_dir = repo_root / ".agent-harness"
         harness = load_yaml_mapping(harness_dir / "harness.yaml")
         defaults = _mapping(harness.get("defaults"), "defaults")
+        paths = _mapping(harness.get("paths"), "paths")
+        golden_routing = Path(_string(paths.get("golden_routing"), "paths.golden_routing"))
+        golden_tasks = Path(_string(paths.get("golden_tasks"), "paths.golden_tasks"))
+        routing_precedence = Path(_string(paths.get("routing_precedence"), "paths.routing_precedence"))
+        for label, path in (
+            ("golden_routing", golden_routing),
+            ("golden_tasks", golden_tasks),
+            ("routing_precedence", routing_precedence),
+        ):
+            if path.is_absolute() or ".." in path.parts:
+                msg = f"paths.{label} must stay within the repository"
+                raise ValueError(msg)
 
         skill_rows = _mapping(harness.get("skills"), "skills")
         skills: dict[str, SkillSpec] = {}
@@ -197,17 +262,23 @@ class HarnessRegistry:
                 output=_string(row.get("output"), f"routes.{name}.output"),
             )
 
+        precedence = _load_routing_precedence(repo_root / routing_precedence)
+
         stack_payload = _mapping(
             json.loads((repo_root / "aas-stack.json").read_text(encoding="utf-8")),
             "stack",
         )
         return cls(
             root=repo_root,
+            golden_routing_path=repo_root / golden_routing,
+            golden_tasks_path=repo_root / golden_tasks,
+            routing_precedence_path=repo_root / routing_precedence,
             skills=skills,
             locked_skills=locked_skills,
             adapters=adapters,
             profiles=profiles,
             routes=routes,
+            precedence=precedence,
             default_profile=_string(defaults.get("profile"), "defaults.profile"),
             stack_skills=_strings(stack_payload.get("skills"), "stack.skills"),
             stack_apply=stack_payload.get("apply") is True,
@@ -219,7 +290,47 @@ class HarnessRegistry:
         issues.extend(self._validate_skill_sets())
         issues.extend(self._validate_locked_skills())
         issues.extend(self._validate_routes())
+        issues.extend(self._validate_routing_precedence())
+        issues.extend(self._validate_golden_routing())
+        issues.extend(self._validate_golden_tasks())
         return issues
+
+    def _validate_routing_precedence(self) -> list[str]:
+        issues: list[str] = []
+        precedence = self.precedence
+        if precedence.intent_score <= precedence.domain_cap:
+            issues.append(
+                "routing_precedence requires intent_score > domain_cap "
+                f"(got {precedence.intent_score} <= {precedence.domain_cap})"
+            )
+        unknown = set(precedence.intent_triggers) - set(self.profiles)
+        if unknown:
+            issues.append(f"routing_precedence references unknown profiles: {', '.join(sorted(unknown))}")
+        return issues
+
+    def _validate_golden_tasks(self) -> list[str]:
+        from tools.agent_harness.exceptions import HarnessConfigError
+        from tools.agent_harness.golden_tasks import load_golden_tasks, validate_golden_tasks
+        from tools.agent_harness.permissions import PermissionPolicy
+        from tools.agent_harness.verifier import ProjectVerifier
+
+        try:
+            dataset = load_golden_tasks(self.golden_tasks_path)
+            permissions = PermissionPolicy.load(self.root)
+            verifier = ProjectVerifier.load(self.root)
+        except (HarnessConfigError, OSError, TypeError, ValueError, yaml.YAMLError) as exc:
+            return [str(exc)]
+        return list(validate_golden_tasks(dataset, self, permissions, verifier))
+
+    def _validate_golden_routing(self) -> list[str]:
+        from tools.agent_harness.exceptions import HarnessConfigError
+        from tools.agent_harness.routing_golden import load_golden_routing, validate_golden_routing
+
+        try:
+            dataset = load_golden_routing(self.golden_routing_path)
+        except (HarnessConfigError, OSError, TypeError, ValueError, yaml.YAMLError) as exc:
+            return [str(exc)]
+        return list(validate_golden_routing(dataset, self))
 
     def _validate_skill_sets(self) -> list[str]:
         issues: list[str] = []
@@ -369,6 +480,7 @@ __all__ = [
     "LockedSkill",
     "ProfileSpec",
     "RouteSpec",
+    "RoutingPrecedence",
     "SkillSpec",
     "load_yaml_mapping",
     "project_root",

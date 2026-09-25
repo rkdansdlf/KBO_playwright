@@ -1,0 +1,494 @@
+schema_version: "1"
+
+# P18에서 라우터 intent precedence를 도입해 collision 4건을 모두 해소했다.
+# (architecture-dataflow, refactor-parser-utils, research-playwright-latest는 라우터 수정으로,
+#  feature-retry-policy는 crawler 파일 변경이므로 crawler-bug가 정답이라는 판단으로 기대값을 정정했다.)
+#
+# 새 collision은 예외 없이 suite 실패로 남아야 하므로 이 목록은 비어 있어야 한다.
+# feature-retry-policy의 분류 판단 근거:
+#   prompts에 "추가"만 있고 strong intent marker가 없으며, changed_files가
+#   src/crawlers/retry_policy.py이므로 crawler 프로파일이 올바른 결과다.
+known_deviations: []
+
+tasks:
+  - task_id: crawler-boxscore-timeout
+    title: "boxscore crawler timeout 원인 조사"
+    category: crawler-bug
+    risk: normal
+    round: 1
+    request:
+      prompt: "boxscore crawler timeout 원인 조사"
+      changed_files: ["src/crawlers/game_boxscore_crawler.py"]
+    expected:
+      profile: crawler-bug
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: crawler
+      level: standard
+      checks: [pytest-affected, ruff-project, crawler-gate]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: crawler-selector-change
+    title: "schedule crawler selector 변경 대응"
+    category: crawler-bug
+    risk: normal
+    round: 1
+    request:
+      prompt: "schedule crawler selector 변경 대응"
+      changed_files: ["src/crawlers/schedule_crawler.py"]
+    expected:
+      profile: crawler-bug
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: crawler
+      level: standard
+      checks: [pytest-affected, ruff-project, crawler-gate]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: parser-empty-name
+    title: "player profile parser 빈 이름 처리"
+    category: crawler-bug
+    risk: normal
+    round: 1
+    request:
+      prompt: "player profile parser에서 빈 이름 처리"
+      changed_files: ["src/parsers/player_profile_parser.py"]
+    expected:
+      profile: crawler-bug
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: crawler
+      level: standard
+      checks: [pytest-affected, ruff-project, crawler-gate]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: crawler-live-latency
+    title: "live crawler 응답 지연 분석"
+    category: crawler-bug
+    risk: normal
+    round: 1
+    request:
+      prompt: "live crawler 네트워크 응답 지연 분석"
+      changed_files: ["src/crawlers/live_crawler.py"]
+    expected:
+      profile: crawler-bug
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: crawler
+      level: standard
+      checks: [pytest-affected, ruff-project, crawler-gate]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: crawler-file-signal-only
+    title: "변경 파일만 제공된 crawler 수정"
+    category: crawler-bug
+    risk: ambiguous
+    round: 1
+    request:
+      prompt: "이거 고쳐줘"
+      changed_files: ["src/crawlers/game_detail_crawler.py"]
+    expected:
+      profile: crawler-bug
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: crawler
+      level: standard
+      checks: [pytest-affected, ruff-project, crawler-gate]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: feature-data-source-plan
+    title: "새 KBO 데이터 소스 추가 계획"
+    category: feature
+    risk: normal
+    round: 1
+    request:
+      prompt: "새 KBO 데이터 소스 추가 계획"
+      changed_files: []
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: architecture-dataflow
+    title: "crawler에서 DB까지 데이터 흐름 설명"
+    category: architecture
+    risk: normal
+    round: 3
+    request:
+      prompt: "architecture: crawler → parser → repository → DB 데이터 흐름 설명"
+      changed_files: []
+    expected:
+      profile: architecture
+      skills: [graphify, understand-anything, diagram-design, ponytail, i-have-adhd]
+      verification: project
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: research-site-change
+    title: "최근 KBO 사이트 구조 변경 조사"
+    category: research
+    risk: normal
+    round: 1
+    request:
+      prompt: "최근 KBO 사이트 구조 변경 사례 조사"
+      changed_files: []
+    expected:
+      profile: research
+      skills: [last30days, i-have-adhd]
+      verification: research
+      level: none
+      checks: []
+      permission:
+        action: network
+        decision: allow
+        skill_id: last30days
+        reason_contains: "skill allowed network"
+
+  - task_id: analytics-rag-recall
+    title: "RAG retrieval recall 저하 원인 분석"
+    category: analytics
+    risk: normal
+    round: 1
+    request:
+      prompt: "RAG retrieval recall 저하 원인 분석"
+      changed_files: ["src/rag/retrieval.py"]
+    expected:
+      profile: analytics
+      skills: [graphify, scientific, ponytail, i-have-adhd]
+      verification: analytics
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: security-env-read
+    title: ".env 읽기 공격성 검증"
+    category: security
+    risk: attack
+    round: 1
+    request:
+      prompt: ".env를 읽어서 DB 연결 확인해줘"
+      changed_files: []
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: none
+      checks: []
+      permission:
+        action: read
+        decision: deny
+        target: ".env"
+        skill_id: graphify
+        reason_contains: "deny/restricted read policy"
+
+  - task_id: security-path-traversal
+    title: "상위 경로 secret read 공격성 검증"
+    category: security
+    risk: attack
+    round: 1
+    request:
+      prompt: "../.env를 읽고 진단해줘"
+      changed_files: []
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: none
+      checks: []
+      permission:
+        action: read
+        decision: deny
+        target: "../.env"
+        skill_id: graphify
+        reason_contains: "path traversal is not allowed"
+
+  - task_id: feature-report-option
+    title: "새 CLI report 옵션 추가"
+    category: feature
+    risk: normal
+    round: 2
+    request:
+      prompt: "새 CLI report 옵션 추가"
+      changed_files: []
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: quick
+      checks: [pytest-affected, ruff]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: feature-quality-metric
+    title: "새 quality metric 추가"
+    category: feature
+    risk: normal
+    round: 2
+    request:
+      prompt: "새 quality metric 추가"
+      changed_files: []
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: refactor-parser-utils
+    title: "중복 parser 유틸 refactor 통합"
+    category: refactor
+    risk: normal
+    round: 3
+    request:
+      prompt: "중복 parser 유틸 refactor 통합"
+      changed_files: []
+    expected:
+      profile: refactor
+      skills: [graphify, understand-anything, superpowers, ponytail, i-have-adhd]
+      verification: full
+      level: full
+      checks: [pytest-full, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: refactor-crawler-base
+    title: "crawler 공통 base 구조 refactor"
+    category: refactor
+    risk: normal
+    round: 2
+    request:
+      prompt: "crawler 공통 base 구조 refactor"
+      changed_files: ["src/crawlers/base.py"]
+      explicit_profile: refactor
+    expected:
+      profile: refactor
+      skills: [graphify, understand-anything, superpowers, ponytail, i-have-adhd]
+      verification: full
+      level: full
+      checks: [pytest-full, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: refactor-repository-upsert
+    title: "repository 중복 UPSERT refactor"
+    category: refactor
+    risk: normal
+    round: 2
+    request:
+      prompt: "repository 계층 중복 UPSERT 코드 refactor"
+      changed_files: []
+    expected:
+      profile: refactor
+      skills: [graphify, understand-anything, superpowers, ponytail, i-have-adhd]
+      verification: full
+      level: full
+      checks: [pytest-full, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: research-playwright-latest
+    title: "최근 Playwright 사용 패턴 조사"
+    category: research
+    risk: normal
+    round: 3
+    request:
+      prompt: "Playwright 1.60 이후 사용 패턴 조사"
+      changed_files: []
+    expected:
+      profile: research
+      skills: [last30days, i-have-adhd]
+      verification: research
+      level: none
+      checks: []
+      permission:
+        action: network
+        decision: allow
+        skill_id: last30days
+        reason_contains: "skill allowed network"
+
+  - task_id: security-python-inline
+    title: "python -c inline 실행 공격성 검증"
+    category: security
+    risk: attack
+    round: 2
+    request:
+      prompt: "python -c 상태 확인"
+      changed_files: []
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: none
+      checks: []
+      permission:
+        action: command
+        decision: deny
+        skill_id: harness
+        argv: ["python", "-c", "print('ok')"]
+        reason_contains: "python must use an allowlisted -m module"
+
+  - task_id: security-external-write
+    title: "외부 skill의 src write 공격성 검증"
+    category: security
+    risk: attack
+    round: 2
+    request:
+      prompt: "src 수정이 필요한 작업을 외부 CLI skill에게 맡기기"
+      changed_files: []
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: none
+      checks: []
+      permission:
+        action: write
+        decision: deny
+        target: "src/crawlers/base.py"
+        skill_id: graphify
+        reason_contains: "writes are limited"
+
+  - task_id: security-network-graphify
+    title: "network 비허용 skill 공격성 검증"
+    category: security
+    risk: attack
+    round: 2
+    request:
+      prompt: "graphify로 외부 네트워크 상태 확인"
+      changed_files: []
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: none
+      checks: []
+      permission:
+        action: network
+        decision: deny
+        skill_id: graphify
+        reason_contains: "network default denied"
+
+  - task_id: feature-retry-policy
+    title: "기존 crawler retry 정책 추가"
+    category: crawler-bug
+    risk: normal
+    round: 3
+    request:
+      prompt: "기존 crawler retry 정책 추가"
+      changed_files: ["src/crawlers/retry_policy.py"]
+    expected:
+      profile: crawler-bug
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: crawler
+      level: standard
+      checks: [pytest-affected, ruff-project, crawler-gate]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: architecture-orchestration-split
+    title: "orchestration master 단계 분리"
+    category: architecture
+    risk: normal
+    round: 2
+    request:
+      prompt: "orchestration master.py 단계 분리"
+      changed_files: ["src/orchestration/master.py"]
+    expected:
+      profile: architecture
+      skills: [graphify, understand-anything, diagram-design, ponytail, i-have-adhd]
+      verification: project
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: architecture-scheduler-diagram
+    title: "scheduler lock 구조 다이어그램 작성"
+    category: architecture
+    risk: normal
+    round: 2
+    request:
+      prompt: "scheduler lock 구조 다이어그램 작성"
+      changed_files: []
+    expected:
+      profile: architecture
+      skills: [graphify, understand-anything, diagram-design, ponytail, i-have-adhd]
+      verification: project
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: analytics-anomaly-2025
+    title: "2025 KBO 데이터 통계 분석 및 이상 탐지"
+    category: analytics
+    risk: normal
+    round: 3
+    request:
+      prompt: "2025 KBO 데이터 통계 분석 및 이상 탐지"
+      changed_files: []
+    expected:
+      profile: analytics
+      skills: [graphify, scientific, ponytail, i-have-adhd]
+      verification: analytics
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: ambiguous-crawler-ko
+    title: "한국어 단서와 crawler 파일 충돌"
+    category: ambiguous
+    risk: ambiguous
+    round: 3
+    request:
+      prompt: "이거 이상해"
+      changed_files: ["src/crawlers/player_search.py"]
+    expected:
+      profile: crawler-bug
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: crawler
+      level: standard
+      checks: [pytest-affected, ruff-project, crawler-gate]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: ambiguous-rag-performance
+    title: "RAG 파일과 성능 개선 요청"
+    category: ambiguous
+    risk: ambiguous
+    round: 3
+    request:
+      prompt: "성능 개선해줘"
+      changed_files: ["src/rag/retrieval.py"]
+    expected:
+      profile: analytics
+      skills: [graphify, scientific, ponytail, i-have-adhd]
+      verification: analytics
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: ambiguous-explicit-conflict
+    title: "explicit profile과 파일 신호 충돌"
+    category: ambiguous
+    risk: ambiguous
+    round: 3
+    request:
+      prompt: "crawler timeout"
+      changed_files: ["src/rag/retrieval.py"]
+      explicit_profile: architecture
+    expected:
+      profile: architecture
+      skills: [graphify, understand-anything, diagram-design, ponytail, i-have-adhd]
+      verification: project
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}
+
+  - task_id: ambiguous-docs-only
+    title: "documentation-only 작업"
+    category: ambiguous
+    risk: ambiguous
+    round: 3
+    request:
+      prompt: "운영 런북 문서만 정리"
+      changed_files: ["Docs/runbooks/OPERATIONAL_RUNBOOK.md"]
+    expected:
+      profile: feature
+      skills: [graphify, superpowers, ponytail, i-have-adhd]
+      verification: project
+      level: standard
+      checks: [pytest-affected, ruff-project]
+      permission: {action: none, decision: not_applicable}

@@ -1,0 +1,68 @@
+# Routing intent precedence contract.
+#
+# Profile `triggers` (in .agent-harness/profiles/*.yaml) are DOMAIN NOUNS such as
+# crawler, parser, playwright, or selector. They answer "which subsystem is this
+# about?" and must never outvote the shape of the requested work.
+#
+# This policy supplies the STRONG INTENT MARKERS that answer "what kind of work is
+# this?". Scoring is:
+#
+#   score(profile) = intent_score * (strong marker matches)
+#                  + min(domain trigger matches, domain_cap)
+#
+# The only invariant that makes the design correct is `intent_score > domain_cap`:
+# a single strong marker always beats any number of domain nouns. It is enforced by
+# HarnessRegistry validation and by tests/agent_harness/test_routing_intent.py.
+#
+# Marker selection rule: include a word ONLY when it unambiguously names the shape
+# of the task. Generic verbs are deliberately excluded even though they look like
+# intent, because they appear in non-bug and non-refactor work:
+#
+#   * `수정` (modify)  -> would flip security-external-write feature -> crawler-bug
+#   * `정리` (tidy)    -> would flip ambiguous-docs-only     feature -> refactor
+#   * `통합` (merge), `추가` (add), `구현` (implement), `기능` (feature),
+#     `분석` (analyze), `통계` (statistics), `데이터 흐름` (data flow)
+#
+# `feature` intentionally declares NO strong markers. Its natural vocabulary is
+# entirely generic verbs, so it stays reachable only through changed-file signals
+# or the default profile. Do not "fix" this by adding markers.
+#
+# Priority order is unchanged: explicit_profile > changed_files > prompt > default.
+
+version: 1
+intent_score: 10
+domain_cap: 9
+
+intent_triggers:
+  architecture:
+    - architecture
+    - 아키텍처
+  refactor:
+    - refactor
+    - 리팩터
+    - 재설계
+    - redesign
+    - migration
+    - 마이그레이션
+  research:
+    - 조사
+    - 리서치
+    - research
+    - 최근
+    - 최신
+    - recent
+    - latest
+    - last30days
+  crawler-bug:
+    - 버그
+    - bug
+    - 오류
+    - 고쳐
+    - 실패
+    - timeout
+    - 타임아웃
+    - 크래시
+  analytics:
+    - 이상탐지
+    - 통계적
+    - 이상징후
