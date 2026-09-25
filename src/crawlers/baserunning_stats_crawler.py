@@ -337,16 +337,7 @@ def _insert_baserunning_record(
 def _log_baserunning_summary(success_count: int, fail_count: int) -> None:
     logger.info("\n%s", "=" * 60)
     logger.info("✅ 주루 기록 저장 완료!")
-    logger.info("%s", "=" * 60)
+    logger.info("=" * 60)
     logger.info("  - 성공: %s명", success_count)
     logger.info("  - 실패: %s명", fail_count)
     logger.info("%s\n", "=" * 60)
-
-
-if __name__ == "__main__":
-    # 테스트용
-    from player_list_crawler import crawl_player_list
-
-    YEAR = datetime.now(KST).year
-    players = crawl_player_list(YEAR)
-    save_baserunning_stats(players, YEAR)

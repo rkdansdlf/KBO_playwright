@@ -17,6 +17,8 @@ htmlcov/
 
 # Build artifacts
 *.egg-info/
+/build/
+/dist/
 
 # Playwright browser binaries
 pw-browsers/

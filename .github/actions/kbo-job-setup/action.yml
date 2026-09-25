@@ -13,6 +13,10 @@ inputs:
     description: 'Initialize database and seed metadata'
     required: false
     default: 'true'
+  extras:
+    description: 'Optional dependency extras forwarded to python-env (e.g. postgres)'
+    required: false
+    default: ''
   resolve-date:
     description: 'Resolve KST date outputs (for first job in pipeline)'
     required: false
@@ -41,6 +45,7 @@ runs:
         python-version: ${{ inputs.python-version }}
         playwright: ${{ inputs.playwright }}
         init-db: ${{ inputs.init-db }}
+        extras: ${{ inputs.extras }}
 
     - name: Resolve target date in KST
       if: ${{ inputs.resolve-date == 'true' }}

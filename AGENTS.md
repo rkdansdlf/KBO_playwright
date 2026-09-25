@@ -52,7 +52,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m tools.agent_harness route "<task>" --changed-files <paths...>`: Show task classification and skill selection only (file signals beat prompt keywords).
 - `python3 -m tools.agent_harness verify <run-id>`: Run the existing project verification profile selected for a Harness run (all commands pass the CommandRunner allowlist; denial exits 2).
 - `python3 -m venv venv && source venv/bin/activate`: Create and activate virtual environment.
-- `pip3 install -r requirements.txt`: Install Python dependencies.
+- `pip3 install -e ".[dev]"`: Install runtime plus development dependencies from `pyproject.toml` (single source of truth; no `requirements.txt`).
 - `playwright install chromium`: Install Playwright browser binaries.
 - `python3 scripts/scheduler.py`: Run the automated scheduler.
 - `python3 -m src.cli.crawl_schedule --year 2025 --month 3`: Crawl schedule data.

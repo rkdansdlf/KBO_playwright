@@ -8,8 +8,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 # 2. 의존성 설치
-pip3 install -r requirements.txt
-pip3 install -r requirements-dev.txt  # 추가 개발 도구
+pip3 install -e ".[dev]"
 
 # 3. Playwright 브라우저 설치
 playwright install chromium

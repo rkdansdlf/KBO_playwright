@@ -14,7 +14,7 @@ Two-track data pipeline:
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
-pip3 install -r requirements.txt
+pip3 install -e ".[dev]"
 playwright install chromium
 cp env.example .env
 # Edit .env as needed, then:

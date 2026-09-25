@@ -52,7 +52,7 @@ source venv/bin/activate  # Linux/macOS
 # venv\Scripts\activate   # Windows
 
 # 의존성 설치
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
 # Playwright 브라우저 설치
 playwright install chromium
