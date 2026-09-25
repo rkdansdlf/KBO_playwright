@@ -19,7 +19,7 @@ from tools.agent_harness.artifact_contract import (
     validate_execution_plan,
 )
 from tools.agent_harness.context_builder import ContextBuilder
-from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION
+from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION, gate_verdict
 from tools.agent_harness.evidence import EvidenceStore
 from tools.agent_harness.exceptions import HarnessConfigError, PermissionDeniedError
 from tools.agent_harness.permissions import PermissionPolicy
@@ -336,8 +336,12 @@ def _verify_level(
             break
     report = VerificationReport(
         profile=profile,
-        passed=all(result.exit_code == 0 for result in results),
+        passed=gate_verdict(
+            declared_gate_ids=(check.check_id for check in vplan.checks),
+            exit_codes=(result.exit_code for result in results),
+        ),
         commands=tuple(results),
+        gate_ids=tuple(check.check_id for check in vplan.checks),
     )
     evidence.write_json(
         "verification.json",

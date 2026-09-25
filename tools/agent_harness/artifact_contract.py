@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION, TaskRequest
+from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION, TaskRequest, gate_verdict
 from tools.agent_harness.exceptions import ArtifactContractError
 
 if TYPE_CHECKING:
@@ -162,10 +162,28 @@ def _check_non_final_verification(
     return True
 
 
-def _expected_verification_result(profile: object, commands: list[dict[str, object]]) -> bool:
-    if profile == "level:none" and not commands:
-        return True
-    return bool(commands) and all(command.get("exit_code") == 0 for command in commands)
+def _expected_verification_result(verification: dict[str, object]) -> bool:
+    """Recompute the verdict from the recorded gates using the shared rule.
+
+    This previously matched on the literal string ``level:none`` to decide whether an
+    empty command list was a pass, which coupled the contract to one caller's naming and
+    disagreed with the profile-mode runner. The recorded ``gate_ids`` now carry the fact.
+    """
+    commands = verification.get("commands")
+    if not isinstance(commands, list):
+        return False
+    exit_codes = [int(command.get("exit_code", 1)) for command in commands if isinstance(command, dict)]
+    declared = verification.get("gate_ids")
+    if not isinstance(declared, list):
+        # A bundle written before gate ids were recorded cannot prove how many gates the
+        # policy declared, so fall back to the weaker historical rule instead of
+        # rejecting evidence that was legitimately produced. Such a bundle is not
+        # evidence of a complete run, only of a passing one.
+        return bool(exit_codes) and all(code == 0 for code in exit_codes)
+    return gate_verdict(
+        declared_gate_ids=(str(item) for item in declared),
+        exit_codes=exit_codes,
+    )
 
 
 def _check_verification(
@@ -193,7 +211,7 @@ def _check_verification(
         return
     for index, command in enumerate(commands):
         _check_command_record(command, f"{label}.commands.{index}", issues)
-    if isinstance(passed, bool) and passed is not _expected_verification_result(profile, commands):
+    if isinstance(passed, bool) and passed is not _expected_verification_result(payload):
         issues.append(f"{label}: passed flag does not match command exit codes")
     if require_verified and passed is not True:
         issues.append(f"{label}: verification passed flag is false")
