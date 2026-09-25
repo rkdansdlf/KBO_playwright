@@ -57,13 +57,28 @@ def test_adapter_file_inference_and_subsystems() -> None:
     assert adapter.needs_certification(["src/rag/x.py"], "analytics") is False
 
 
-def test_verifier_pytest_targets_and_gates() -> None:
-    verifier = ProjectVerifier.load()
+def test_gate_context_resolves_targets_through_the_adapter() -> None:
+    """Gate argv must be built from the adapter, which is the single impact API.
 
-    assert "tests/monitoring/test_crawler_selector_gate.py" in verifier.determine_pytest_targets(["src/crawlers/x.py"])
-    assert verifier.determine_pytest_targets([]) == ["tests/agent_harness"]
-    assert verifier.needs_crawler_gate(["src/parsers/x.py"]) is True
-    assert verifier.needs_certification(["migrations/001.sql"], "feature") is True
+    `ProjectVerifier` used to expose pass-through wrappers for these; the gate context
+    calls `KBOProjectAdapter` directly, so the test asserts that real path instead.
+    """
+    verifier = ProjectVerifier.load()
+    adapter = KBOProjectAdapter()
+    crawler_files = ("src/crawlers/x.py",)
+
+    assert adapter.pytest_targets(list(crawler_files)) == [
+        "tests/agent_harness",
+        "tests/monitoring/test_crawler_selector_gate.py",
+    ]
+    assert adapter.pytest_targets([]) == ["tests/agent_harness"]
+    assert [
+        check.argv[3:]
+        for check in verifier.build_plan(level="standard", changed_files=crawler_files).checks
+        if check.check_id == "pytest-affected"
+    ] == [
+        ("tests/agent_harness", "tests/monitoring/test_crawler_selector_gate.py", "-q"),
+    ]
 
 
 def test_verifier_build_plan_levels() -> None:

@@ -107,8 +107,6 @@ CERTIFICATION_SUBSYSTEMS = frozenset({"database", "dependencies"})
 class KBOProjectAdapter:
     """Describe existing project commands without reimplementing their logic."""
 
-    verification_profiles: tuple[str, ...] = ("project", "crawler", "analytics", "research", "full")
-
     def source_of_truth(self, profile: str) -> str:
         """Return the existing project gate represented by a verifier profile."""
         mapping = {
