@@ -28,6 +28,13 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - For quality gate, freshness, gap report, or data quality summaries that need analytical presentation, use the Data Analytics reporting or visualization skills when useful.
 - Verification should normally include the narrowest relevant `pytest` target plus `ruff check src/ tests/`; for CLI behavior, prefer a dry-run or read-only command before any save/sync operation.
 
+### Agent Harness Contract
+- `AGENTS.md` remains policy; `.agent-harness/` stores routing and permission configuration; `tools/agent_harness/` is the development-task control plane; `artifacts/agent-harness/` contains generated evidence only.
+- Route crawler bugs, features, refactors, research, analytics, and architecture tasks with `python3 -m tools.agent_harness plan "<task>"` when the Harness is available.
+- External skill adapters are pinned in `harness.lock.json` but remain `reference_only`. Do not fetch, vendor, install, or claim execution of third-party skills without explicit approval and a passing license review.
+- Graphify is the default context role. Add Understand Anything only for `refactor` or `architecture`; use Caveman only for subagent output and i-have-adhd only for human-facing output.
+- Harness verification delegates to existing pytest, Ruff, crawler, certification, and quality gates. It must not replace those sources of truth.
+
 ## Build, Test, and Development Commands
 - `python3 -m src.cli.kbo <subcommand>` (or `python3 -m src.cli <subcommand>`): Unified Master CLI for all platform tasks (workflow, diagnose, report, maintenance, config, notify, migrate, seed, detect, sync).
 - `python3 -m src.cli.kbo workflow --workflow daily_sync --dry-run`: Execute master DAG workflow pipeline.
@@ -39,6 +46,11 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.kbo detect --sensitivity medium --json`: Run statistical anomaly detection.
 - `python3 -m src.cli.kbo migrate --dialect oracle --status`: Inspect database schema migration status.
 - `python3 -m src.cli.kbo seed --season 2026 --games-per-team 2`: Generate synthetic KBO scenario data.
+- `python3 -m tools.agent_harness doctor`: Validate the pinned skill stack, adapters, permissions, and OpenCode skill path.
+- `python3 -m tools.agent_harness plan "<task>"`: Select a Harness profile and render its stages without executing external skills.
+- `python3 -m tools.agent_harness run --profile crawler-bug "<task>"`: Create an auditable task handoff under `artifacts/agent-harness/`.
+- `python3 -m tools.agent_harness route "<task>" --changed-files <paths...>`: Show task classification and skill selection only (file signals beat prompt keywords).
+- `python3 -m tools.agent_harness verify <run-id>`: Run the existing project verification profile selected for a Harness run (all commands pass the CommandRunner allowlist; denial exits 2).
 - `python3 -m venv venv && source venv/bin/activate`: Create and activate virtual environment.
 - `pip3 install -r requirements.txt`: Install Python dependencies.
 - `playwright install chromium`: Install Playwright browser binaries.

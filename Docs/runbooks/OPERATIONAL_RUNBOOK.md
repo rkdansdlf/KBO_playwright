@@ -81,22 +81,34 @@ RAG_TARGET_ENV=staging python3 -m src.cli.rag.build_rag_index \
 RAG_TARGET_ENV=staging python3 -m src.cli.rag.build_rag_index \
   --source pitching --season 1982 --dry-run --embedding-mode deterministic
 
-# 1) 사전 집계 결과와 현재 target을 확인한 뒤, 승인된 provider로 샘플 적재
+# 1) 사전 집계 결과와 현재 target을 확인한 뒤, 승인된 provider로 샘플 비용만 확인
 #    (OPENROUTER 임베딩 비용 및 production write gate 필요)
-python3 -m src.cli.rag.build_rag_index --source games --season 1982 --limit 50 \
-  --embedding-mode configured
+RAG_TARGET_ENV=staging RAG_INDEX_ALLOW_WRITE=1 \
+  python3 -m src.cli.rag.build_rag_index --source games --season 1982 --limit 50 \
+  --embedding-mode deterministic --dry-run
 
-# 2) 샘플 시즌 실적재 후 reconcile로 확인
+# 2) 승인된 sample apply를 별도 변경 티켓에서 수행한 뒤 reconcile로 확인
+#    (이 문서에서는 production write 명령을 자동 실행하지 않는다)
 python3 -m src.cli.rag.reconcile_rag_stores export --side primary \
   --out reports/rag_reconciliation/primary_1982.ndjson
 
-# 3) 나머지 역사 대상 루프 (--skip-existing은 신규 identity만 처리)
+# 3) 나머지 역사 대상 루프 (--skip-existing은 hash/version/vector 상태를 비교)
 for y in $(seq 1982 2000); do
   for source in games standings batting pitching; do
-    python3 -m src.cli.rag.build_rag_index --source "$source" --season "$y" \
+    RAG_TARGET_ENV=staging RAG_INDEX_ALLOW_WRITE=1 \
+      python3 -m src.cli.rag.build_rag_index --source "$source" --season "$y" \
       --skip-existing || break 2
   done
 done
+
+# read-only 후보 계획: vector endpoint가 없으면 UNKNOWN으로 표시하고 write하지 않음
+python3 -m src.cli.rag.plan_rag_rebuild \
+  --source players --vector-state unknown --json \
+  --output reports/rag-rebuild-plan-players.json
+
+# vector endpoint를 확인한 뒤에만 required 모드를 사용한다.
+# python3 -m src.cli.rag.plan_rag_rebuild --source players \
+#   --vector-state required --json --output reports/rag-rebuild-plan-players.json
 
 # 4) 최종 검증: canonical Oracle audit와 source identity census
 python3 -m src.cli.rag.audit_rag_index --require-nonempty --require-postings --json
@@ -114,8 +126,11 @@ python3 -m src.cli.rag.reconcile_rag_stores compare \
 
 롤백: 잘못 인덱싱한 시즌은 `tombstone_rag_chunks`로 무효화한다. 재색인 후
 현재 원본에 없는 이전 identity는 stale 후보로 별도 manifest를 만들어 검토한 뒤
-tombstone한다. `--skip-existing`은 기존 identity의 내용 변경을 갱신하지 않으므로,
-사전 집계에서 `updated`가 있으면 해당 소스는 `--skip-existing` 없이 재색인한다.
+tombstone한다. `--skip-existing`은 원본 `content_hash`, 현재 `index_version`,
+lifecycle, sparse/vector 임베딩 존재 여부를 비교하여 신규·변경·stale·누락
+청크만 다시 임베딩한다. 정상 identity는 건너뛴다. 모델·청킹 fingerprint가
+저장된 경우 값이 달라진 청크도 재임베딩 대상이다. fingerprint가 없는
+legacy row는 보고만 하고 metadata write는 별도 승인 gate에서 수행한다.
 player_season_*의 팀 코드 규약은 `Docs/references/RAG_IDENTITY_CONTRACT.md`의
 현재 primary DB 저장값 원칙을 따른다.
 
