@@ -287,6 +287,37 @@ P19 이전에는 `research` 프로필에만 있어서, `.agent-harness/`를 가�
 `timed_out`과 `timed_out_check`가 기록되고, `run`은 계약 위반 시 traceback이 아니라
 exit 2로 끝납니다.
 
+### 통과 판정은 규칙이 하나뿐입니다
+
+`dto.py::gate_verdict`가 통과 규칙의 유일한 구현이고, **3개 호출부가 전부 이것을 씁니다.**
+그 이전에는 같은 질문에 세 곳이 다른 답을 냈습니다 — 게이트를 하나도 안 돌았을 때
+레벨 모드는 성공, 프로필 모드는 실패, 계약 검사는 `profile == "level:none"`일 때만 성공
+이었습니다.
+
+현재 규칙은 "선언된 게이트가 전부 실행되어 0으로 끝났다"입니다.
+
+- **의도적으로 0게이트를 선언한 정책**(research)은 성공입니다.
+- 게이트를 선언했는데 덜 돌았다면 **실패**입니다. 게이트가 조용히 건너뛰어져도
+  성공으로 보일 수 없습니다. `verification.json`의 `gate_ids`가 선언 목록이므로
+  계약 검사자가 개수를 대조합니다.
+- `gate_ids`가 **없는** 구버전 번들은 약한 규칙(비어 있지 않고 전부 0)으로 판정합니다.
+  정상적으로 만들어진 과거 evidence를 거부하지 않기 위한 의도적 예외이며, 그런 번들은
+  "완전 수행의 증거"가 아니라 "통과한 증거"일 뿐입니다.
+
+### 검증 선언이 두 축인 채로 남은 부채 (P21)
+
+golden task는 `expected.verification`(프로필 이름)과 `expected.level`(수준 이름)로
+검증을 **두 번** 선언하는데, 둘은 서로 파생되지 않습니다. 그래서 같은 task에
+`verify <run-id>`와 `verify <run-id> --level ...`이 **서로 다른 게이트**를 돌 수 있습니다.
+현재 15개가 어긋나고 있으며 `tests/agent_harness/test_verification_axes_ledger.py`가
+그 목록을 상수로 고정합니다. 새 불일치가 생기거나 사라지거나 형태가 바뀌면 그 테스트가
+실패합니다. 가장 위험한 그룹은 `security-*` 5건입니다 — `level: none`이라면서
+`verification: project`라서, profile 모드로 검증하면 "안 돈다"고 한 게이트가 돕니다.
+
+P21은 한 축을 주축으로 삼아 이 부채를 0으로 만듭니다. 그때 이 테스트의 상수는 비워지고
+별도 변경 없이 불변식이 됩니다.
+
+
 ### 게이트 도구 버전 재현성
 
 게이트는 항상 `sys.executable -m <module>`로 실행됩니다(권한 정책이 `python script.py`를
@@ -306,11 +337,27 @@ DENY하므로 `scripts/` 게이트도 `python -m scripts.check_mypy_scoped` 형�
 
 ## 죽은 코드 게이트
 
-Ruff의 RET/B012는 함수 본문에서 terminator 뒤에 오는 문장을 잡지 않습니다.
-그래서 `scripts/lint_unreachable_code.py`가 AST로 검사합니다(`src`/`scripts`/`tools` 대상).
-검사 기준은 **첫 번째** top-level `return`/`raise` 이후의 모든 문장입니다 —
-죽은 블록이 자기 own `return`으로 끝나도 잡아야 하기 때문입니다. `yield`는 terminator가
-아닙니다(generator는 그 뒤에 재개됩니다).
+Harness에는 두 종류의 죽은 코드가 있고 각각 다른 게이트가 잡습니다.
+
+**도달 불가능 문장** — Ruff의 RET/B012는 함수 본문에서 terminator 뒤에 오는 문장을
+잡지 않습니다. `scripts/lint_unreachable_code.py`가 AST로 검사합니다
+(`src`/`scripts`/`tools` 대상). 검사 기준은 **첫 번째** top-level `return`/`raise` 이후의
+모든 문장입니다 — 죽은 블록이 자기 own `return`으로 끝나도 잡아야 하기 때문입니다.
+`yield`는 terminator가 아닙니다(generator는 그 뒤에 재개됩니다).
+
+**참조되지 않는 공개 심볼** — `scripts/lint_unused_defs.py`가 호출되지 않는 공개
+함수·클래스·메서드를 검사합니다(`tools/agent_harness` 대상). 참조는 Python의 호출/
+속성 접근만 세므로 docstring에 이름이 있어도 죽은 API가 산 채로 있지 않습니다.
+대입 타깃(`FLAG: tuple = ()`)은 바인딩이지 사용이므로 자기 참조로 세지 않습니다.
+
+검사 범위가 `tools/agent_harness`에 한정된 이유: `src/`는 라이브러리 표면이라
+참조되지 않는 공개 헬퍼가 정상입니다. 거기까지 확장하면 게이트가 노이즈가 됩니다.
+클래스 속성(Annotated 할당)도 범위 밖입니다 — DTO/dataclass 필드는 `asdict()`와
+직렬화 dict 키로 소비되므로 attribute 기준 카운터가 정당한 필드까지 죽은 것으로
+보고합니다. 판정 불가능한 것은 추측이 아니라 review 대상입니다.
+
+`ALLOWLIST`에 이름을 넣을 때는 이유를 적어야 합니다. 제외는 기록된 결정이지
+조용한 구멍이 아닙니다.
 
 ## CI 실행 경로 게이트
 
@@ -376,6 +423,12 @@ v1 run을 실제 검증할 때는 first verification 전에 현재 schema로 재
   `python scripts/x.py`는 항상 DENY이므로 `python -m scripts.x` 형태와 `python_modules` 등록이 필요합니다.
 - `scoped mypy gate` exit 2: mypy가 없습니다. 게이트는 조용히 통과하지 않습니다.
   `<interpreter> -m pip install -e '.[dev]'`로 설치합니다.
+- `lint_unused_defs`가 파일을 잡으면: 그 심볼은 어디서도 호출되지 않습니다. 지우거나,
+  실제로 쓰려던 것이라면 그 호출을 추가하십시오. `ALLOWLIST`에 넣을 때는 이유를 적습니다.
+- `validate`가 `passed flag does not match command exit codes`로 실패하면: 선언한 게이트
+  개수와 실행 기록 개수가 다르거나, 0이 아닌 exit가 있습니다. 구버전 번로드 인한 것이라면
+  `gate_ids`가 없는 경우이며, 그 경우 약한 규칙으로 판정하므로 이 오류가 나오면 실제
+  불일치입니다.
 - `Unknown verification gate/level`: `verification.yaml`에 오타가 있습니다.
   카탈로그는 없는 게이트를 조용히 무시하지 않고 로드 시점에 실패시킵니다.
 - `replay --metrics-out` exit 2 + `denied metrics path`: `artifacts/agent-harness/**`

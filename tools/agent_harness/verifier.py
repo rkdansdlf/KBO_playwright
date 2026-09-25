@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
-from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION
+from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION, gate_verdict
 from tools.agent_harness.exceptions import HarnessConfigError, PermissionDeniedError
 from tools.agent_harness.registry import _mapping, load_yaml_mapping, project_root
 
@@ -294,11 +294,12 @@ def _resolve_gates(policy: GatePolicy, ctx: _GateContext) -> tuple[VerificationC
 
 @dataclass(frozen=True)
 class VerificationReport:
-    """Summarize all commands in one verification profile."""
+    """Summarize one verification attempt against the gates its policy declared."""
 
     profile: str
     passed: bool
     commands: tuple[CommandResult, ...]
+    gate_ids: tuple[str, ...] = ()
     timed_out: bool = False
     timed_out_check: str = ""
 
@@ -450,15 +451,6 @@ class ProjectVerifier:
             raise HarnessConfigError(msg)
         return cls(root=repo_root, levels=levels, profiles=profiles)
 
-    def policy_for(self, name: str) -> GatePolicy:
-        """Return the level or profile policy, reporting known names on failure."""
-        for table in (self.levels, self.profiles):
-            policy = table.get(name)
-            if policy is not None:
-                return policy
-        msg = f"Unknown verification level or profile: {name}"
-        raise ValueError(msg)
-
     def commands_for(self, profile: str) -> tuple[tuple[str, ...], ...]:
         """Return immutable argv commands for a known profile."""
         return self.commands_for_profile(profile)
@@ -476,7 +468,9 @@ class ProjectVerifier:
         if runner is None:
             msg = "ProjectVerifier requires a CommandRunner"
             raise HarnessConfigError(msg)
-        commands = self.commands_for(profile)
+        plan = self.build_profile_plan(profile)
+        commands = tuple(check.argv for check in plan.checks)
+        gate_ids = tuple(check.check_id for check in plan.checks)
         verification_id = begin_verification(evidence, profile) if evidence is not None else secrets.token_hex(8)
         results: list[CommandResult] = []
         try:
@@ -508,6 +502,7 @@ class ProjectVerifier:
                 profile=profile,
                 passed=False,
                 commands=tuple(results),
+                gate_ids=gate_ids,
                 timed_out=True,
                 timed_out_check=_gate_name(argv),
             )
@@ -523,8 +518,12 @@ class ProjectVerifier:
             raise
         report = VerificationReport(
             profile=profile,
-            passed=bool(results) and all(result.exit_code == 0 for result in results),
+            passed=gate_verdict(
+                declared_gate_ids=gate_ids,
+                exit_codes=(result.exit_code for result in results),
+            ),
             commands=tuple(results),
+            gate_ids=gate_ids,
         )
         if evidence is not None:
             evidence.write_json(
@@ -539,24 +538,6 @@ class ProjectVerifier:
             status = "passed" if report.passed else "failed"
             update_verification_report(evidence, status=status, profile=profile)
         return report
-
-    def determine_pytest_targets(self, changed_files: list[str] | tuple[str, ...]) -> list[str]:
-        """Return minimal pytest targets for the changed files."""
-        from tools.agent_harness.project_adapter import KBOProjectAdapter
-
-        return KBOProjectAdapter().pytest_targets(changed_files)
-
-    def needs_crawler_gate(self, changed_files: list[str] | tuple[str, ...]) -> bool:
-        """Return whether the crawler selector gate is required."""
-        from tools.agent_harness.project_adapter import KBOProjectAdapter
-
-        return KBOProjectAdapter().needs_crawler_gate(changed_files)
-
-    def needs_certification(self, changed_files: list[str] | tuple[str, ...], profile: str = "") -> bool:
-        """Return whether certification-gated review is required."""
-        from tools.agent_harness.project_adapter import KBOProjectAdapter
-
-        return KBOProjectAdapter().needs_certification(changed_files, profile)
 
     def build_plan(self, *, level: str, changed_files: list[str] | tuple[str, ...] = ()) -> VerificationPlan:
         """Build an impact-based verification plan for one level declared in policy."""
