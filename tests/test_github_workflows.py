@@ -336,12 +336,36 @@ def test_security_audit_uses_pip_audit():
     workflow = _read(WORKFLOW_DIR / "security_audit.yml")
 
     assert "pip-audit" in workflow
-    assert "--requirement requirements.txt" in workflow
-    assert "--desc on" in workflow
-    assert "continue-on-error: true" in workflow
+    assert "--local --desc on" in workflow
     assert "timeout-minutes: 10" in workflow
     assert "Dependency Security Audit" in workflow
     assert "actions/setup-python@v6" in workflow
+
+
+def test_security_audit_fails_on_unallowlisted_vulnerabilities():
+    """A dependency finding must fail the job, including on pull requests."""
+    workflow = _read(WORKFLOW_DIR / "security_audit.yml")
+
+    # The old workflow set `continue-on-error: true`, which let a known-vulnerable
+    # dependency report a green run. The allowlist file is now the only escape hatch.
+    assert "continue-on-error" not in workflow
+    assert "pull_request" in workflow
+    assert "pyproject.toml" in workflow
+    assert ".github/security-audit-allowlist.txt" in workflow
+    assert "--ignore-vuln" in workflow
+
+
+def test_security_audit_allowlist_is_documented():
+    allowlist = (ROOT / ".github" / "security-audit-allowlist.txt").read_text()
+
+    assert "advisory id per line" in allowlist.lower()
+    # Every non-comment entry must carry a reason and a review date.
+    for line in allowlist.splitlines():
+        entry = line.split("#", 1)[0].strip()
+        if not entry:
+            continue
+        assert "#" in line, f"allowlist entry without a reason: {line}"
+        assert any(ch.isdigit() for ch in line), f"allowlist entry without a review date: {line}"
 
 
 def test_test_suite_runs_lint_and_test_matrix():
