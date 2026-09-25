@@ -228,3 +228,28 @@ class TestManualActions:
         service.requeue(letter.dlq_id)
         assert letter.status == DlqStatus.PENDING.value
         assert letter.next_retry_at is not None
+
+    def test_requeue_rejects_resolved(self, session: Session) -> None:
+        service = CrawlDeadLetterService(session)
+        letter = service.enqueue(_spec())
+        letter.status = DlqStatus.RESOLVED.value
+        session.flush()
+        with pytest.raises(InvalidDlqTransitionError):
+            service.requeue(letter.dlq_id)
+
+    def test_requeue_rejects_retrying(self, session: Session) -> None:
+        service = CrawlDeadLetterService(session)
+        letter = service.enqueue(_spec())
+        service.prepare_retry(letter.dlq_id)
+        with pytest.raises(InvalidDlqTransitionError):
+            service.requeue(letter.dlq_id)
+
+    def test_requeue_preserves_retry_count(self, session: Session) -> None:
+        service = CrawlDeadLetterService(session)
+        letter = service.enqueue(_spec())
+        letter.status = DlqStatus.EXHAUSTED.value
+        letter.retry_count = 5
+        session.flush()
+        service.requeue(letter.dlq_id)
+        assert letter.status == DlqStatus.PENDING.value
+        assert letter.retry_count == 5

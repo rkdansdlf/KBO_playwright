@@ -7,7 +7,9 @@ import pytest
 from src.models.crawl_dead_letter import DlqStatus
 from src.services.crawl_dead_letter_state import (
     InvalidDlqTransitionError,
+    can_requeue,
     can_retry,
+    ensure_requeue,
     ensure_transition,
     next_status_after_retry,
     requeue_target,
@@ -61,6 +63,29 @@ def test_can_retry_only_from_pending() -> None:
 
 def test_requeue_target_is_pending() -> None:
     assert requeue_target() is DlqStatus.PENDING
+
+
+@pytest.mark.parametrize("status", [DlqStatus.IGNORED, DlqStatus.EXHAUSTED])
+def test_requeue_allows_unresolved_terminal(status: DlqStatus) -> None:
+    assert can_requeue(status) is True
+    ensure_requeue(status)
+
+
+@pytest.mark.parametrize(
+    "status",
+    [DlqStatus.PENDING, DlqStatus.RETRYING, DlqStatus.RESOLVED],
+)
+def test_requeue_rejects_other_states(status: DlqStatus) -> None:
+    assert can_requeue(status) is False
+    with pytest.raises(InvalidDlqTransitionError):
+        ensure_requeue(status)
+
+
+def test_requeue_rejects_resolved_target_pending() -> None:
+    with pytest.raises(InvalidDlqTransitionError) as excinfo:
+        ensure_requeue(DlqStatus.RESOLVED)
+    assert excinfo.value.current == "resolved"
+    assert excinfo.value.target == "pending"
 
 
 def test_next_status_after_retry_success() -> None:
