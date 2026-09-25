@@ -42,7 +42,7 @@ from src.cli.sync.sync_sqlite_to_postgres import (
     sync_table,
     verify_counts,
 )
-from src.sync.table_dag import TableMeta
+from src.sync.table_dag import TABLE_REGISTRY, TableMeta
 
 
 def _probe_table(metadata: MetaData) -> Table:
@@ -230,7 +230,9 @@ def test_run_sync_dry_run_empty_databases(tmp_path):
     source_url = f"sqlite:///{source_path.as_posix()}"
     target_url = f"sqlite:///{target_path.as_posix()}"
     report = run_sync(source_url, target_url, SyncOptions())
-    assert report.tables_total == 87
+    # Derived, not pinned: the registry grows every time a table is added,
+    # and a hardcoded count turns that into a spurious failure.
+    assert report.tables_total == len(TABLE_REGISTRY)
     assert report.tables_failed == 0
     assert report.rows_synced == 0
 
@@ -245,7 +247,7 @@ def test_main_json_emit_empty_databases(tmp_path, capsys):
     code = main(["--source-url", source_url, "--target-url", target_url, "--json"])
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["tables_total"] == 87
+    assert payload["tables_total"] == len(TABLE_REGISTRY)
 
 
 def test_dry_run_skip_places_message_field(tmp_path):
