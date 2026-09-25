@@ -146,13 +146,14 @@ class TransitTimeCrawler(BaseCrawler):
         records = []
         for r in all_results:
             origin_info = self._origin_map.get(r.origin_label, {})
+            dest_label = getattr(r, "destination_label", "잠실야구장")
             records.append(
                 {
                     "stadium_code": self.stadium_code,
                     "origin_label": r.origin_label,
                     "origin_lat": origin_info.get("lat"),
                     "origin_lng": origin_info.get("lng"),
-                    "destination_label": getattr(r, "destination_label", "잠실야구장"),
+                    "destination_label": dest_label,
                     "transport_mode": getattr(r, "transport_mode", getattr(r, "transit_mode", "walk")),
                     "duration_minutes": r.duration_minutes,
                     "distance_meters": r.distance_meters,
@@ -185,7 +186,10 @@ class TransitTimeCrawler(BaseCrawler):
         with SessionLocal() as session:
             try:
                 repo = TransitTimeRepository(session)
-                count = repo.bulk_upsert(records)
+                # destination_label is display-only; the model identifies the
+                # destination via stadium_code.
+                payloads = [{k: v for k, v in rec.items() if k != "destination_label"} for rec in records]
+                count = repo.bulk_upsert(payloads)
                 session.commit()
                 logger.info("[Transit] Saved %s transit time records.", count)
             except Exception:
