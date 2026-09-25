@@ -22,7 +22,7 @@ status: SURVEY_ONLY - findings are documentation, not protection
 | 경로 | 근거 | 검증 적용 | 실제 실행 위치(구성) |
 |---|---|---|---|
 | AsyncPlaywrightPool → local `chromium.launch` + `new_context` + 리소스 블로킹 설치 | `src/utils/playwright_pool.py:137,146,102-103` | goto 시에만(base.py:151) | launchd: 로컬 Chromium. Docker: browserless로 우회(§2.5) |
-| 전역 launch 패치 → 원격 WS connect, 실패 시 로컬 launch fallback | `src/__init__.py:44,78,92-98,132,146-152` | WS 엔드포인트 검증 없음 | Docker: `ws://browserless:3000`(docker-compose.yml:41). fallback 활성 기본값(`src/__init__.py:59`) — browserless 장애 시 scheduler 컨테이너 로컬 브라우저로 전환 |
+| 전역 launch 패치 → 원격 WS connect, 실패 시 로컬 launch fallback | `src/__init__.py:44,78,92-98,132,146-152` | WS 엔드포인트 검증 없음 | Docker: `ws://browserless:3000`(docker-compose.prod.yml). fallback 활성 기본값(`src/__init__.py:59`) — browserless 장애 시 scheduler 컨테이너 로컬 브라우저로 전환 |
 | sync 백필 서비스: 로컬 launch + page.route(확장자 차단) | `src/services/historical_detail_backfill_service.py:255-265` | goto(:169) 검증 없음 | launchd/CI 호스트 로컬 Chromium |
 | 인증 로그인(자격증명 fill + 클릭, goto :79) | `src/utils/kbo_auth.py:62,69,79-86` | goto URL 검증 없음 | 로컬 launch(:62) |
 
@@ -65,10 +65,10 @@ status: SURVEY_ONLY - findings are documentation, not protection
 | 항목 | Docker 구성 | launchd 구성 | CI(GitHub Actions) |
 |---|---|---|---|
 | 프로세스 | kbo_scheduler + kbo_api_server + browserless | scripts/scheduler.py 단일 PID(plist:9-14) | 워크플로우별 잡 |
-| 브라우저 위치 | **별도 browserless 컨테이너**(`ws://browserless:3000`, docker-compose.yml:41) — 네트워크 격리 단위가 scheduler와 다름 | 호스트 로컬 Chromium | runner 로컬 Chromium(`playwright: true`) |
+| 브라우저 위치 | **별도 browserless 컨테이너**(`ws://browserless:3000`, docker-compose.prod.yml) — 네트워크 격리 단위가 scheduler와 다름 | 호스트 로컬 Chromium | runner 로컬 Chromium(`playwright: true`) |
 | 로컬 fallback | browserless 연결 실패 시 로컬 launch(`src/__init__.py:92-98`) → **격리 단위 전환 발생** | 해당 없음(로컬 사용) | 로컬 사용 |
 | DB | Oracle(Autonomous) | Oracle | Oracle |
-| browserless 제어 포트 | 3000이 호스트에도 노출(docker-compose.yml:97-98) | 해당 없음 | 해당 없음 |
+| browserless 제어 포트 | 3000이 호스트에도 노출(docker-compose.dev.yml) | 해당 없음 | 해당 없음 |
 | 프록시/DNS | 커밋된 설정에 proxy·DNS 커스터마이징 없음 → 호스트/데몬 설정 상속, 실제 값 UNKNOWN | 동일 | runner 환경, UNKNOWN |
 | 도커 네트워크 | default bridge(compose 정의 네트워크 단일) — 서비스 간 상호 도달 가능; text-relay는 별도 네트워크(docker-compose.text-relay.yml:67-68) | 해당 없음 | 해당 없음 |
 
