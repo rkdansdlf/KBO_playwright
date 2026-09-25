@@ -542,6 +542,22 @@ def test_oracle_source_rejects_non_postgres_split_vector_target(monkeypatch) -> 
         )
 
 
+def test_postgresql_production_build_remains_fail_closed(monkeypatch) -> None:
+    """Do not silently allow production writes to a non-Oracle target."""
+    monkeypatch.setenv("PGVECTOR_URL", "postgresql://vector:secret@127.0.0.1:5432/rag_vector")
+    monkeypatch.setenv("RAG_TARGET_ENV", "production")
+    monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
+    monkeypatch.setenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+    with pytest.raises(ValueError, match="staging"):
+        build_rag_index._resolve_build_targets(
+            "postgresql://source:secret@127.0.0.1:5432/bega_prod",
+            embedding_mode="configured",
+            dry_run=False,
+        )
+
+
 def test_separate_oracle_sparse_target_reports_itself_as_vector_store(monkeypatch) -> None:
     """Keep an explicitly configured Oracle index and vector target aligned."""
     for key in ("PGVECTOR_URL", "PGVECTOR_TEST_URL"):
