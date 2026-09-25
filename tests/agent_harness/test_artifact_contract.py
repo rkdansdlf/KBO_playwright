@@ -20,7 +20,7 @@ from tools.agent_harness.exceptions import PermissionDeniedError
 from tools.agent_harness.permissions import PermissionPolicy
 from tools.agent_harness.registry import HarnessRegistry
 from tools.agent_harness.runner import HarnessRunner
-from tools.agent_harness.verifier import CommandResult, ProjectVerifier, verification_run_lock
+from tools.agent_harness.verifier import CommandResult, GatePolicy, ProjectVerifier, verification_run_lock
 
 if TYPE_CHECKING:
     from tools.agent_harness.runner import HarnessRun
@@ -74,7 +74,11 @@ def _verify(run: HarnessRun, permissions: PermissionPolicy, *, exit_code: int = 
             )
 
     evidence = EvidenceStore(run.artifact_dir, permissions)
-    verifier = ProjectVerifier(root=run.artifact_dir, profiles={"research": (("placeholder",),)})
+    verifier = ProjectVerifier(
+        root=run.artifact_dir,
+        levels={},
+        profiles={"research": GatePolicy(gates=("doctor",))},
+    )
     verifier.verify("research", evidence=evidence, runner=_Runner())
 
 

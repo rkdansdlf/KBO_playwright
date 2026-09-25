@@ -77,5 +77,10 @@ commands:
     - tools.agent_harness
     - src.cli.crawler_selector_gate
     - src.cli.data_quality_regression_pack
+    # Repository gate entrypoints invoked as modules. `python scripts/x.py` is denied by
+    # the -m rule, so the module form is the only allowlisted way to reach a script gate.
+    - scripts.check_mypy_scoped
+    - scripts.lint_unreachable_code
+    - scripts.lint_bare_except
   forbidden_flags:
     - "--shell"

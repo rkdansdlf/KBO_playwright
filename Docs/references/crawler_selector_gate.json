@@ -189,6 +189,125 @@
           "min_count": 1
         }
       ]
+    },
+    {
+      "name": "hh_events_notice",
+      "source": "../../tests/fixtures/html/hh_events_notice.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "board_table",
+          "selector": "table.board_list",
+          "min_count": 1
+        },
+        {
+          "name": "board_headers",
+          "selector": "table.board_list thead th",
+          "min_count": 5,
+          "required_text": "작성일"
+        },
+        {
+          "name": "board_rows",
+          "selector": "table.board_list tbody tr",
+          "min_count": 2
+        },
+        {
+          "name": "board_links",
+          "selector": "table.board_list a[href]",
+          "min_count": 2
+        }
+      ]
+    },
+    {
+      "name": "lg_events_notice",
+      "source": "../../tests/fixtures/html/lg_events_notice.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "board_table",
+          "selector": "table",
+          "min_count": 1
+        },
+        {
+          "name": "board_headers",
+          "selector": "table thead th",
+          "min_count": 5,
+          "required_text": "작성일"
+        },
+        {
+          "name": "board_rows",
+          "selector": "table tbody tr",
+          "min_count": 2
+        },
+        {
+          "name": "board_links",
+          "selector": "table a[href]",
+          "min_count": 2
+        }
+      ]
+    },
+    {
+      "name": "ob_events_notice",
+      "source": "../../tests/fixtures/html/ob_events_notice.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "board_table",
+          "selector": "table.tbl_list",
+          "min_count": 1
+        },
+        {
+          "name": "board_headers",
+          "selector": "table.tbl_list thead th",
+          "min_count": 5,
+          "required_text": "날짜"
+        },
+        {
+          "name": "board_rows",
+          "selector": "table.tbl_list tbody tr",
+          "min_count": 2
+        },
+        {
+          "name": "board_links",
+          "selector": "table.tbl_list a[href]",
+          "min_count": 2
+        }
+      ]
+    },
+    {
+      "name": "lg_ticket_prices",
+      "source": "../../tests/fixtures/html/lg_ticket_prices.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "price_table",
+          "selector": "table.price-table",
+          "min_count": 1
+        },
+        {
+          "name": "price_headers",
+          "selector": "table.price-table th",
+          "min_count": 3,
+          "required_text": "구분"
+        },
+        {
+          "name": "price_rows",
+          "selector": "table.price-table tr",
+          "min_count": 2
+        }
+      ]
+    },
+    {
+      "name": "ssg_ticket_prices",
+      "source": "../../tests/fixtures/html/ssg_ticket_prices.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "price_list",
+          "selector": "dl",
+          "min_count": 1
+        }
+      ]
     }
   ]
 }

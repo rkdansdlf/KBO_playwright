@@ -8,6 +8,14 @@ schema_version: "1"
 # feature-retry-policy의 분류 판단 근거:
 #   prompts에 "추가"만 있고 strong intent marker가 없으며, changed_files가
 #   src/crawlers/retry_policy.py이므로 crawler 프로파일이 올바른 결과다.
+#
+# P19에서 `expected.checks`를 실제 게이트 집합으로 다시 고정했다:
+#   - doctor: manifest/policy를 검증하는 유일한 게이트인데 research 프로필에만 있었다.
+#     가장 위험한 refactor가 자기 설정을 검증하지 못하는 역전을 없애기 위해
+#     none을 제외한 모든 수준에 넣었다.
+#   - format-check, mypy-scoped: verification.yaml가 선언만 하고 실행되지 않던 죽은
+#     설정을 실제 게이트로 연결했다.
+#   - ruff -> ruff-changed: quick 수준 게이트 id를 카탈로그 이름과 일치시켰다.
 known_deviations: []
 
 tasks:
@@ -24,7 +32,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: crawler
       level: standard
-      checks: [pytest-affected, ruff-project, crawler-gate]
+      checks: [pytest-affected, ruff-project, doctor, crawler-gate]
       permission: {action: none, decision: not_applicable}
 
   - task_id: crawler-selector-change
@@ -40,7 +48,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: crawler
       level: standard
-      checks: [pytest-affected, ruff-project, crawler-gate]
+      checks: [pytest-affected, ruff-project, doctor, crawler-gate]
       permission: {action: none, decision: not_applicable}
 
   - task_id: parser-empty-name
@@ -56,7 +64,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: crawler
       level: standard
-      checks: [pytest-affected, ruff-project, crawler-gate]
+      checks: [pytest-affected, ruff-project, doctor, crawler-gate]
       permission: {action: none, decision: not_applicable}
 
   - task_id: crawler-live-latency
@@ -72,7 +80,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: crawler
       level: standard
-      checks: [pytest-affected, ruff-project, crawler-gate]
+      checks: [pytest-affected, ruff-project, doctor, crawler-gate]
       permission: {action: none, decision: not_applicable}
 
   - task_id: crawler-file-signal-only
@@ -88,7 +96,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: crawler
       level: standard
-      checks: [pytest-affected, ruff-project, crawler-gate]
+      checks: [pytest-affected, ruff-project, doctor, crawler-gate]
       permission: {action: none, decision: not_applicable}
 
   - task_id: feature-data-source-plan
@@ -104,7 +112,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: project
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: architecture-dataflow
@@ -120,7 +128,7 @@ tasks:
       skills: [graphify, understand-anything, diagram-design, ponytail, i-have-adhd]
       verification: project
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: research-site-change
@@ -156,7 +164,7 @@ tasks:
       skills: [graphify, scientific, ponytail, i-have-adhd]
       verification: analytics
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: security-env-read
@@ -214,7 +222,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: project
       level: quick
-      checks: [pytest-affected, ruff]
+      checks: [pytest-affected, ruff-changed, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: feature-quality-metric
@@ -230,7 +238,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: project
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: refactor-parser-utils
@@ -246,7 +254,7 @@ tasks:
       skills: [graphify, understand-anything, superpowers, ponytail, i-have-adhd]
       verification: full
       level: full
-      checks: [pytest-full, ruff-project]
+      checks: [pytest-full, ruff-project, format-check, mypy-scoped, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: refactor-crawler-base
@@ -263,7 +271,7 @@ tasks:
       skills: [graphify, understand-anything, superpowers, ponytail, i-have-adhd]
       verification: full
       level: full
-      checks: [pytest-full, ruff-project]
+      checks: [pytest-full, ruff-project, format-check, mypy-scoped, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: refactor-repository-upsert
@@ -279,7 +287,7 @@ tasks:
       skills: [graphify, understand-anything, superpowers, ponytail, i-have-adhd]
       verification: full
       level: full
-      checks: [pytest-full, ruff-project]
+      checks: [pytest-full, ruff-project, format-check, mypy-scoped, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: research-playwright-latest
@@ -377,7 +385,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: crawler
       level: standard
-      checks: [pytest-affected, ruff-project, crawler-gate]
+      checks: [pytest-affected, ruff-project, doctor, crawler-gate]
       permission: {action: none, decision: not_applicable}
 
   - task_id: architecture-orchestration-split
@@ -393,7 +401,7 @@ tasks:
       skills: [graphify, understand-anything, diagram-design, ponytail, i-have-adhd]
       verification: project
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: architecture-scheduler-diagram
@@ -409,7 +417,7 @@ tasks:
       skills: [graphify, understand-anything, diagram-design, ponytail, i-have-adhd]
       verification: project
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: analytics-anomaly-2025
@@ -425,7 +433,7 @@ tasks:
       skills: [graphify, scientific, ponytail, i-have-adhd]
       verification: analytics
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: ambiguous-crawler-ko
@@ -441,7 +449,7 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: crawler
       level: standard
-      checks: [pytest-affected, ruff-project, crawler-gate]
+      checks: [pytest-affected, ruff-project, doctor, crawler-gate]
       permission: {action: none, decision: not_applicable}
 
   - task_id: ambiguous-rag-performance
@@ -457,7 +465,7 @@ tasks:
       skills: [graphify, scientific, ponytail, i-have-adhd]
       verification: analytics
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: ambiguous-explicit-conflict
@@ -474,7 +482,7 @@ tasks:
       skills: [graphify, understand-anything, diagram-design, ponytail, i-have-adhd]
       verification: project
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}
 
   - task_id: ambiguous-docs-only
@@ -490,5 +498,5 @@ tasks:
       skills: [graphify, superpowers, ponytail, i-have-adhd]
       verification: project
       level: standard
-      checks: [pytest-affected, ruff-project]
+      checks: [pytest-affected, ruff-project, doctor]
       permission: {action: none, decision: not_applicable}

@@ -32,6 +32,8 @@ jobs:
         run: ruff format --check src/ tests/ scripts/ tools/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
+      - name: Unreachable code lint check
+        run: python scripts/lint_unreachable_code.py 2>&1
       - name: Scoped mypy gate (certified-clean modules)
         run: python scripts/check_mypy_scoped.py 2>&1
       - name: Verify repository transaction ownership

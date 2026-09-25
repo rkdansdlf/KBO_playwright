@@ -168,7 +168,9 @@ def test_verify_level_composition_without_execution(
         assert main(["verify", run_id, "--level", "quick", "--json"]) == 0
         quick_payload = json.loads(capsys.readouterr().out)
         assert quick_payload["passed"] is True
-        assert len(recorded) == len(quick_payload["commands"]) == 2
+        # quick = pytest-affected + ruff-changed + doctor
+        assert len(recorded) == len(quick_payload["commands"]) == 3
+        assert any("tools.agent_harness" in token for argv in recorded for token in argv)
 
         recorded.clear()
         assert (
@@ -187,8 +189,16 @@ def test_verify_level_composition_without_execution(
         )
         standard_payload = json.loads(capsys.readouterr().out)
         assert standard_payload["passed"] is True
+        # standard + crawler files = pytest-affected + ruff-project + doctor + crawler-gate
+        assert len(recorded) == len(standard_payload["commands"]) == 4
         assert any("crawler_selector_gate" in token for argv in recorded for token in argv)
-        assert any("tests/monitoring/test_crawler_selector_gate.py" in token for argv in recorded for token in argv)
+
+        recorded.clear()
+        assert main(["verify", run_id, "--level", "full", "--json"]) == 0
+        full_payload = json.loads(capsys.readouterr().out)
+        # full = pytest-full + ruff-project + format-check + mypy-scoped + doctor
+        assert len(recorded) == len(full_payload["commands"]) == 5
+        assert any("scripts.check_mypy_scoped" in token for argv in recorded for token in argv)
         _ = standard_payload
     finally:
         _remove_run(run_id)
@@ -212,6 +222,56 @@ def test_verify_level_denied_exits_two(capsys: pytest.CaptureFixture[str], monke
         monkeypatch.setattr(PermissionPolicy, "load", classmethod(lambda cls, root=None: locked))
         assert main(["verify", run_id, "--level", "quick"]) == 2
         capsys.readouterr()
+    finally:
+        _remove_run(run_id)
+
+
+def test_verify_timeout_exits_three_and_is_not_reported_as_a_gate_failure(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A slow machine must never look like a failing test suite.
+
+    Exit 1 means a gate ran and failed. Exit 3 means a gate never finished.
+    """
+    import subprocess
+
+    from tools.agent_harness.command_runner import CommandRunner
+
+    def _timeout(self: object, argv: object, **kwargs: object) -> CommandResult:
+        raise subprocess.TimeoutExpired(cmd=list(argv) if isinstance(argv, list | tuple) else "gate", timeout=1)
+
+    monkeypatch.setattr(CommandRunner, "run", _timeout)
+    run_id = _new_research_run(capsys)
+    try:
+        assert main(["verify", run_id, "--level", "quick", "--json"]) == 3
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["passed"] is False
+        assert payload["timed_out"] is True
+        assert payload["timed_out_check"] == "pytest-affected"
+        assert "timed out" in payload["error"]
+    finally:
+        _remove_run(run_id)
+
+
+def test_verify_profile_timeout_exits_three(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    from tools.agent_harness.command_runner import CommandRunner
+
+    def _timeout(self: object, argv: object, **kwargs: object) -> CommandResult:
+        raise subprocess.TimeoutExpired(cmd="gate", timeout=1)
+
+    monkeypatch.setattr(CommandRunner, "run", _timeout)
+    run_id = _new_research_run(capsys)
+    try:
+        assert main(["verify", run_id, "--json"]) == 3
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["timed_out"] is True
+        assert payload["timed_out_check"] == "tools.agent_harness"
     finally:
         _remove_run(run_id)
 

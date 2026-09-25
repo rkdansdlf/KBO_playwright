@@ -70,3 +70,45 @@ jobs:
           name: agent-harness-replay-metrics-${{ github.run_number }}
           path: artifacts/agent-harness/ci
           retention-days: 30
+
+  # Proves the Harness execution path itself: a real run, real gate subprocesses through the
+  # CommandRunner allowlist, real evidence, and a verified artifact contract. The job above
+  # only exercises the read-only analysis path (route/replay/doctor), so without this job a
+  # regression in run/verify/evidence would ship green.
+  harness-execution-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          python-version: "3.12"
+          init-db: 'false'
+
+      - name: Prepare test data directory
+        run: mkdir -p data
+
+      - name: Initialize a real harness run
+        id: harness_run
+        run: |
+          set -o pipefail
+          RUN_ID="$(python3 -m tools.agent_harness run "harness execution path verification" \
+            --profile feature --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["run_id"])')"
+          echo "run_id=${RUN_ID}" | tee -a "$GITHUB_OUTPUT"
+
+      # `feature` resolves to the `project` verification profile:
+      # pytest-affected + ruff-project + doctor. Real subprocesses, no fixtures, no network.
+      - name: Run verification gates through the command allowlist
+        run: python3 -m tools.agent_harness verify "${{ steps.harness_run.outputs.run_id }}" --json
+
+      - name: Assert the artifact bundle is a verified contract
+        run: python3 -m tools.agent_harness validate "${{ steps.harness_run.outputs.run_id }}" --require-verified
+
+      - name: Upload verified harness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-harness-evidence-${{ steps.harness_run.outputs.run_id }}
+          path: artifacts/agent-harness/${{ steps.harness_run.outputs.run_id }}
+          retention-days: 30
