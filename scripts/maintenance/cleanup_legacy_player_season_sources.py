@@ -18,6 +18,7 @@ from sqlalchemy import MetaData, case, delete, exists, func, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql.schema import Table
+from sqlalchemy.sql.selectable import NamedFromClause
 
 from src.db.engine import create_engine_for_url
 
@@ -42,7 +43,7 @@ def _default_backup_path() -> Path:
     return DEFAULT_BACKUP_DIR / f"legacy_player_season_sources_{stamp}.json"
 
 
-def _source_column(table: Table) -> Any:
+def _source_column(table: Table | NamedFromClause) -> Any:
     return table.c.source if "source" in table.c else table.c.data_source
 
 

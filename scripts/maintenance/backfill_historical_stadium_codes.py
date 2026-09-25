@@ -122,11 +122,12 @@ def _process_single_game(
     apply_changes: bool,
 ) -> tuple[int, int, int]:
     """Process a single game row. Returns (cleaned, created, updated)."""
-    raw_stadium = g.stadium
-    cleaned_stadium = clean_stadium_name(raw_stadium, g.home_team)
+    raw_stadium = str(g.stadium) if g.stadium else None
+    home_team = str(g.home_team) if g.home_team else None
+    cleaned_stadium = clean_stadium_name(raw_stadium, home_team)
     cleaned = 1 if cleaned_stadium != raw_stadium else 0
     if cleaned and apply_changes:
-        g.stadium = cleaned_stadium
+        g.stadium = cleaned_stadium  # type: ignore[assignment]
 
     stadium_code = resolve_stadium_code(cleaned_stadium, season_year=year) or "JAMSIL"
     stadium_name = HISTORICAL_STADIUM_NAMES.get(stadium_code, f"{cleaned_stadium}야구장")

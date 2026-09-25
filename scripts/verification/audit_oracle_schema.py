@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
-from sqlalchemy import inspect, text
+from sqlalchemy import UniqueConstraint, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 type ForeignKeySignature = tuple[tuple[str, ...], str, tuple[str, ...]]
 type IndexSignature = tuple[tuple[str, ...], bool]
 
-KNOWN_ORACLE_SCHEMA_EXCEPTIONS = {
+KNOWN_ORACLE_SCHEMA_EXCEPTIONS: dict[tuple[str, tuple[str, ...]], str] = {
     ("stadium_seat_sections", ("section_code", "stadium_id")): (
         "Oracle migration 052 intentionally drops this nullable section-code constraint"
     ),
@@ -72,7 +72,7 @@ def _expected_unique_constraints(table: Table) -> set[tuple[str, ...]]:
     return {
         tuple(sorted(_normalized(column.name) for column in constraint.columns))
         for constraint in table.constraints
-        if constraint.__class__.__name__ == "UniqueConstraint"
+        if isinstance(constraint, UniqueConstraint)
     }
 
 

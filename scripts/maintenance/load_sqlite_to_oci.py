@@ -93,6 +93,18 @@ TABLE_OVERRIDE: dict[str, Any] = {
     "detail_text_hash": _detail_hash,
 }
 
+LEVEL_NORMALIZE = {"1": "KBO1", "1군": "KBO1"}
+
+TEAM_CODE_MAP = {
+    "BE": "HH",
+    "HT": "KIA",
+    "MBC": "LG",
+    "NX": "KH",
+    "OB": "DB",
+    "SK": "SSG",
+    "WO": "KH",
+}
+
 TABLE_COL_OVERRIDE: dict[tuple[str, str], Any] = {
     ("player_season_batting", "level"): lambda v: LEVEL_NORMALIZE.get(v, v),
     ("player_season_pitching", "level"): lambda v: LEVEL_NORMALIZE.get(v, v),
@@ -124,18 +136,6 @@ REPLACE_TABLES = {
 
 NO_ID_TABLES: set[str] = set()
 
-LEVEL_NORMALIZE = {"1": "KBO1", "1군": "KBO1"}
-
-TEAM_CODE_MAP = {
-    "BE": "HH",
-    "HT": "KIA",
-    "MBC": "LG",
-    "NX": "KH",
-    "OB": "DB",
-    "SK": "SSG",
-    "WO": "KH",
-}
-
 
 def log(msg: str) -> None:
     print(f"{datetime.now().strftime('%H:%M:%S')} {msg}", flush=True)
@@ -164,6 +164,9 @@ class OciLoader:
             connect_args["wallet_password"] = wallet_password
         self.engine = create_engine(oci_url, connect_args=connect_args)
         m = re.match(r"oracle\+oracledb://([^:]+):([^@]+)@(.+)$", oci_url)
+        if m is None:
+            message = f"Invalid OCI URL: {oci_url}"
+            raise ValueError(message)
         conn_kwargs: dict[str, Any] = {
             "user": m.group(1),
             "password": urllib.parse.unquote(m.group(2)),

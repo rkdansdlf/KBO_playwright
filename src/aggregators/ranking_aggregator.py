@@ -128,6 +128,14 @@ class RankingAggregator:
             # Fallback for tests that don't pass either (when persist=False)
             self.repository = None  # type: ignore[assignment]
 
+    def _dedupe_rankings(self, rankings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Collapse duplicate unique keys keeping the last occurrence (upsert parity)."""
+        by_key: dict[tuple[Any, str, str, str], dict[str, Any]] = {}
+        for entry in rankings:
+            key = (entry["season"], entry["metric"], str(entry["entity_id"]), entry["entity_type"])
+            by_key[key] = entry
+        return list(by_key.values())
+
     def generate_rankings(self, request: RankingGenerationRequest) -> list[dict[str, Any]]:
         """Generate rankings.
 
@@ -167,6 +175,7 @@ class RankingAggregator:
                 ),
             )
 
+        rankings = self._dedupe_rankings(rankings)
         if request.persist and rankings:
             self.repository.save_rankings(rankings)
         return rankings
@@ -278,6 +287,21 @@ class RankingAggregator:
                 value = extra.get(value_key) or extra.get(value_key.upper())
         return value
 
+    def _dedupe_entries(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep one season line per entity so unique ranking keys never collide."""
+        best: dict[str, dict[str, Any]] = {}
+        for entry in entries:
+            key = str(entry["entity_id"])
+            current = best.get(key)
+            if current is None:
+                best[key] = entry
+                continue
+            raw = entry.get("raw") or {}
+            current_raw = current.get("raw") or {}
+            if (raw.get("games") or 0) > (current_raw.get("games") or 0):
+                best[key] = entry
+        return list(best.values())
+
     def _rank_single_metric(
         self,
         season: int,
@@ -287,6 +311,7 @@ class RankingAggregator:
         kbo_min_ip_outs: int | None = None,
     ) -> list[dict[str, Any]]:
         processed = [entry for row in rows if (entry := self._ranking_entry(row, config)) is not None]
+        processed = self._dedupe_entries(processed)
 
         processed.sort(key=lambda item: item["value"], reverse=config.descending)
         ranked: list[dict[str, Any]] = []
