@@ -45,7 +45,7 @@ jobs:
       reason: ${{ steps.force_gate.outputs.reason || steps.gate.outputs.reason }}
       target_date: ${{ steps.date.outputs.KST_DATE }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         id: date
@@ -121,7 +121,7 @@ jobs:
     outputs:
       target_date: ${{ needs.polling_gate.outputs.target_date }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -166,7 +166,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -207,7 +207,7 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Notify on polling gate failure
         if: needs.polling_gate.result == 'failure'
