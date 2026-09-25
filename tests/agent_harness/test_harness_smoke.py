@@ -115,14 +115,28 @@ def test_v1_evidence_without_version_still_verifies(capsys: pytest.CaptureFixtur
     run_id = str(json.loads(capsys.readouterr().out)["run_id"])
     artifact_dir = Path("artifacts") / "agent-harness" / run_id
     try:
-        for name in ("task.json", "plan.json"):
+        for name in ("task.json", "plan.json", "context.json", "verification.json"):
             path = artifact_dir / name
             payload = json.loads(path.read_text(encoding="utf-8"))
             payload.pop("schema_version", None)
+            payload.pop("run_id", None)
             path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        for name in ("skill-trace.jsonl", "commands.jsonl"):
+            path = artifact_dir / name
+            records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+            for record in records:
+                record.pop("schema_version", None)
+                record.pop("run_id", None)
+            path.write_text(
+                "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
+                encoding="utf-8",
+            )
 
         assert main(["verify", run_id, "--json"]) == 0
         assert json.loads(capsys.readouterr().out)["passed"] is True
+        upgraded = json.loads((artifact_dir / "task.json").read_text(encoding="utf-8"))
+        assert upgraded["schema_version"] == "2"
+        assert upgraded["run_id"] == run_id
     finally:
         shutil.rmtree(artifact_dir, ignore_errors=True)
 
