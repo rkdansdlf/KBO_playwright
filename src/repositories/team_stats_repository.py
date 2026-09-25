@@ -58,6 +58,13 @@ class BaseStatsUpsertRepository:
 
         # Filter fields that exist in the model to avoid CompileError
         cleaned = [self._filter_model_fields(self._filter_none(record)) for record in records]
+        # PostgreSQL rejects multi-VALUES upserts whose rows repeat a conflict
+        # target within one statement (SQLite applies them sequentially instead).
+        # Deduplicate by unique keys, keeping the last occurrence.
+        deduped: dict[tuple[Any, ...], dict[str, Any]] = {}
+        for payload in cleaned:
+            deduped[tuple(payload.get(key) for key in self.unique_keys)] = payload
+        cleaned = list(deduped.values())
         db_type = get_database_type()
 
         try:
