@@ -1,16 +1,49 @@
 # Default owners for all files
-* @anomalyco
+* @rkdansdlf
 
 # CI/CD workflows and actions
-.github/ @anomalyco
+/.github/ @rkdansdlf
 
 # Core application code
-/src/ @anomalyco
+/src/ @rkdansdlf
 
 # Tests
-/tests/ @anomalyco
+/tests/ @rkdansdlf
 
 # Documentation
-/Docs/ @anomalyco
-/AGENTS.md @anomalyco
-/README.md @anomalyco
+/Docs/ @rkdansdlf
+/AGENTS.md @rkdansdlf
+/README.md @rkdansdlf
+
+# Areas where a change can break production without an obvious test failure.
+# These are listed individually so a branch protection rule can require
+# review on exactly these paths instead of every commit.
+# A code owner without repository access is ignored by GitHub, so
+# tests/test_codeowners_contract.py pins every handle here to the repo owner.
+
+# Schema, migrations, and the write path
+/src/db/ @rkdansdlf
+/src/models/ @rkdansdlf
+/src/repositories/ @rkdansdlf
+/src/sync/ @rkdansdlf
+/src/aggregators/ @rkdansdlf
+/src/validators/ @rkdansdlf
+/migrations/ @rkdansdlf
+
+# Outbound data collection
+/src/crawlers/ @rkdansdlf
+/src/parsers/ @rkdansdlf
+/src/utils/ @rkdansdlf
+
+# Scheduling and orchestration
+/src/scheduler/ @rkdansdlf
+/src/orchestration/ @rkdansdlf
+
+# Dependency and build surface
+/pyproject.toml @rkdansdlf
+/uv.lock @rkdansdlf
+/Dockerfile @rkdansdlf
+/Dockerfile.playwright @rkdansdlf
+/docker-compose.dev.yml @rkdansdlf
+/docker-compose.prod.yml @rkdansdlf
+/pre-commit-config.yaml @rkdansdlf
