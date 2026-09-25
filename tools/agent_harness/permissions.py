@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from tools.agent_harness.dto import PermissionDecision, PermissionResult
 from tools.agent_harness.registry import _mapping, _strings, load_yaml_mapping, project_root
 
-if TYPE_CHECKING:
-    from pathlib import Path
+SHELL_METACHARACTERS = (";", "&", "|", "<", ">", "\n", "\r", "\x00", "$(", "${", "`")
 
 
 def _matches(path: str, patterns: tuple[str, ...]) -> bool:
@@ -37,6 +37,9 @@ class PermissionPolicy:
     allowed_executables: tuple[str, ...] = ()
     python_modules: tuple[str, ...] = ()
     forbidden_flags: tuple[str, ...] = ("--shell",)
+    denied_env: tuple[str, ...] = ()
+    denied_env_prefixes: tuple[str, ...] = ()
+    root: Path | None = None
 
     @classmethod
     def load(cls, root: Path | None = None) -> PermissionPolicy:
@@ -47,6 +50,7 @@ class PermissionPolicy:
         write_policy = _mapping(payload.get("write"), "permissions.write")
         network_policy = _mapping(payload.get("network"), "permissions.network")
         commands_policy = _mapping(payload.get("commands", {}), "permissions.commands")
+        environment_policy = _mapping(payload.get("environment", {}), "permissions.environment")
         return cls(
             deny_read=_strings(read_policy.get("deny", []), "permissions.read.deny"),
             restricted_read=_strings(read_policy.get("restricted", []), "permissions.read.restricted"),
@@ -62,18 +66,61 @@ class PermissionPolicy:
             forbidden_flags=_strings(
                 commands_policy.get("forbidden_flags", []), "permissions.commands.forbidden_flags"
             ),
+            denied_env=_strings(environment_policy.get("denied", []), "permissions.environment.denied"),
+            denied_env_prefixes=_strings(
+                environment_policy.get("denied_prefixes", []), "permissions.environment.denied_prefixes"
+            ),
+            root=repo_root,
         )
+
+    @staticmethod
+    def _file_link_error(path: Path) -> str | None:
+        """Return a hard-link or metadata error for an existing regular file."""
+        if not path.is_file():
+            return None
+        try:
+            return "path contains a hard-linked file" if path.stat().st_nlink != 1 else None
+        except OSError:
+            return "path metadata cannot be inspected"
+
+    def _safe_relative_path(self, path: str | Path) -> tuple[str | None, str | None]:
+        root = (self.root or project_root()).resolve()
+        value = str(path)
+        raw = Path(value)
+        if "\x00" in value or ".." in raw.parts:
+            reason = "path contains a null byte" if "\x00" in value else "path traversal is not allowed"
+            return None, reason
+        candidate = raw if raw.is_absolute() else root / raw
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError:
+            return None, "path is outside the repository root"
+        current = root
+        for part in relative.parts:
+            current /= part
+            if current.is_symlink():
+                return None, "path contains a symbolic link"
+        link_error = self._file_link_error(candidate)
+        if link_error is not None:
+            return None, link_error
+        try:
+            resolved = candidate.resolve()
+            resolved_relative = resolved.relative_to(root).as_posix()
+        except (OSError, ValueError):
+            return None, "path cannot be resolved within the repository root"
+        return resolved_relative, None
 
     def can_read(self, path: str | Path) -> bool:
         """Return whether a path is available without restricted-data approval."""
-        value = str(path)
-        return not _matches(value, self.deny_read + self.restricted_read)
+        relative, reason = self._safe_relative_path(path)
+        return reason is None and not _matches(relative or "", self.deny_read + self.restricted_read)
 
     def can_write(self, path: str | Path) -> bool:
         """Return whether generated output may be written to a path."""
-        if _matches(str(path), self.allowed_write):
-            return True
-        return self.write_default
+        relative, reason = self._safe_relative_path(path)
+        if reason is not None:
+            return False
+        return _matches(relative or "", self.allowed_write) or self.write_default
 
     def can_use_network(self, skill: str) -> bool:
         """Return whether a skill is explicitly allowed external network access."""
@@ -93,23 +140,47 @@ class PermissionPolicy:
     def check_read(self, path: str | Path, skill_id: str) -> PermissionResult:
         """Return the typed read decision for one skill and path."""
         _ = skill_id
-        if _matches(str(path), self.deny_read + self.restricted_read):
+        relative, path_error = self._safe_relative_path(path)
+        if path_error is not None:
+            return PermissionResult(decision=PermissionDecision.DENY, reason=path_error, matched_rule=str(path))
+        if _matches(relative or "", self.deny_read + self.restricted_read):
             return PermissionResult(
                 decision=PermissionDecision.DENY,
                 reason="path matched deny/restricted read policy",
-                matched_rule=str(path),
+                matched_rule=relative,
             )
         return PermissionResult(decision=PermissionDecision.ALLOW, reason="path allowed")
 
     def check_write(self, path: str | Path, skill_id: str) -> PermissionResult:
         """Return the typed write decision for one skill and path."""
         _ = skill_id
-        if _matches(str(path), self.allowed_write):
+        relative, path_error = self._safe_relative_path(path)
+        if path_error is not None:
+            return PermissionResult(decision=PermissionDecision.DENY, reason=path_error, matched_rule=str(path))
+        if _matches(relative or "", self.allowed_write):
             return PermissionResult(decision=PermissionDecision.ALLOW, reason="path allowed")
         return PermissionResult(
             decision=PermissionDecision.DENY,
             reason="writes are limited to artifact and plan paths",
-            matched_rule=str(path),
+            matched_rule=relative,
+        )
+
+    def check_cwd(self, path: str | Path) -> PermissionResult:
+        """Return whether a command working directory is safely contained."""
+        relative, path_error = self._safe_relative_path(path)
+        if path_error is not None:
+            return PermissionResult(decision=PermissionDecision.DENY, reason=path_error, matched_rule=str(path))
+        root = (self.root or project_root()).resolve()
+        if not (root / (relative or ".")).is_dir():
+            return PermissionResult(
+                decision=PermissionDecision.DENY,
+                reason="command working directory does not exist",
+                matched_rule=relative,
+            )
+        return PermissionResult(
+            decision=PermissionDecision.ALLOW,
+            reason="working directory allowed",
+            matched_rule=relative,
         )
 
     def check_network(self, skill_id: str) -> PermissionResult:
@@ -122,35 +193,30 @@ class PermissionPolicy:
         """Authorize an argv command without shell expansion or string matching."""
         _ = skill_id
         tokens = list(argv)
+        if not tokens:
+            return PermissionResult(decision=PermissionDecision.DENY, reason="empty command")
         injection = self._injection_hit(tokens)
         if injection is not None:
             return injection
-        if self._is_python_launcher(tokens[0]) if tokens else False:
+        if self.is_python_launcher(tokens[0]):
             return self._authorize_python_module(tokens)
-        if not tokens:
-            return PermissionResult(decision=PermissionDecision.DENY, reason="empty command")
         return self._authorize_executable(tokens[0])
 
     @staticmethod
-    def _is_python_launcher(program: str) -> bool:
-        """Return whether a program token is a Python interpreter."""
-        import sys
-        from pathlib import Path as _Path
-
-        return _Path(str(program)).name in {"python", "python3", _Path(sys.executable).name}
+    def is_python_launcher(program: str) -> bool:
+        """Return whether a program token is the trusted Python interpreter."""
+        return str(program) in {"python", "python3", sys.executable, Path(sys.executable).name}
 
     def _injection_hit(self, tokens: list[str]) -> PermissionResult | None:
         """Return a DENY result when shell metacharacters or flags appear."""
-        if not tokens:
-            return PermissionResult(decision=PermissionDecision.DENY, reason="empty command")
         for token in tokens:
-            if any(flag in token for flag in (";", "|", "&&", "$(", "`", "\n")):
+            if any(metacharacter in token for metacharacter in SHELL_METACHARACTERS):
                 return PermissionResult(
                     decision=PermissionDecision.DENY,
                     reason="shell metacharacter in command token",
                     matched_rule=token,
                 )
-            if token in self.forbidden_flags:
+            if any(token == flag or token.startswith(f"{flag}=") for flag in self.forbidden_flags):
                 return PermissionResult(
                     decision=PermissionDecision.DENY,
                     reason="forbidden flag",
@@ -176,9 +242,13 @@ class PermissionPolicy:
 
     def _authorize_executable(self, program: str) -> PermissionResult:
         """Authorize a non-Python executable against the allowlist."""
-        from pathlib import Path as _Path
-
-        executable = _Path(str(program)).name
+        executable = str(program)
+        if "/" in executable or "\\" in executable:
+            return PermissionResult(
+                decision=PermissionDecision.DENY,
+                reason="executable paths must be resolved by CommandRunner",
+                matched_rule=executable,
+            )
         if executable not in self.allowed_executables:
             return PermissionResult(
                 decision=PermissionDecision.DENY,
@@ -188,9 +258,15 @@ class PermissionPolicy:
         return PermissionResult(decision=PermissionDecision.ALLOW, reason="allowlisted executable")
 
     def sanitize_environment(self, env: dict[str, str], skill_id: str) -> dict[str, str]:
-        """Strip configured secret values from a child-process environment."""
+        """Strip configured secrets and execution-control variables from a child environment."""
         _ = skill_id
-        return {key: value for key, value in env.items() if key not in self.redact_env}
+        denied = {name.casefold() for name in (*self.redact_env, *self.denied_env)}
+        prefixes = tuple(prefix.casefold() for prefix in self.denied_env_prefixes)
+        return {
+            key: value
+            for key, value in env.items()
+            if key.casefold() not in denied and not any(key.casefold().startswith(prefix) for prefix in prefixes)
+        }
 
 
 __all__ = ["PermissionPolicy"]
