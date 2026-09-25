@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import sessionmaker
 
-from src.cli.historical_coverage_report import build_historical_coverage_report
+from src.cli.reports.historical_coverage_report import build_historical_coverage_report
 from src.db.engine import create_engine_for_url
 from src.validators.coverage_contract_matrix import TableContractStatus, evaluate_table_contract
 from src.validators.data_quality_regression_pack import run_regression_pack

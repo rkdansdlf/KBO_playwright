@@ -24,7 +24,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.cli.data_integrity_checker import run_integrity_checks
+from src.cli.reports.data_integrity_checker import run_integrity_checks
 from src.db.engine import SessionLocal as _SessionLocal
 
 

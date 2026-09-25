@@ -67,7 +67,7 @@ def _extract_pitching_updates(
     # Extract Home Runs Allowed
     hr_val = _safe_int(extra.get("홈런") or extra.get("피홈런") or extra.get("HR"))
     if hr_val is not None and (current_hr is None or current_hr == 0):
-        new_hr = hr_val
+        new_hr: int | None = hr_val
         if hr_val > 0 or current_hr is None:
             needs_update = True
             hr_updated = True
@@ -77,7 +77,7 @@ def _extract_pitching_updates(
     # Extract Walks Allowed
     bb_val = _safe_int(extra.get("4사구") or extra.get("사사구") or extra.get("볼넷") or extra.get("BB"))
     if bb_val is not None and (current_bb is None or current_bb == 0):
-        new_bb = bb_val
+        new_bb: int | None = bb_val
         if bb_val > 0 or current_bb is None:
             needs_update = True
             bb_updated = True
@@ -87,7 +87,7 @@ def _extract_pitching_updates(
     # Extract ERA
     era_val = _safe_float(extra.get("평균자책점") or extra.get("ERA"))
     if era_val is not None and current_era is None:
-        new_era = era_val
+        new_era: float | None = era_val
         needs_update = True
         era_updated = True
     else:
