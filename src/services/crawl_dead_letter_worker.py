@@ -19,6 +19,7 @@ from src.repositories.crawl_dead_letter_repository import CrawlDeadLetterReposit
 from src.services.crawl_dead_letter_service import DlqNotFoundError, retry_dead_letter
 from src.services.crawl_dead_letter_state import InvalidDlqTransitionError
 from src.services.crawl_replay_dispatcher import ReplayDispatcher, build_default_dispatcher
+from src.utils.metrics import record_dlq_retry_outcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -69,21 +70,23 @@ def retry_due_dead_letters(
 
     with factory() as session:
         due = CrawlDeadLetterRepository(session).get_retryable(now=reference, limit=limit)
-        dlq_ids = [letter.dlq_id for letter in due]
+        candidates = [(letter.dlq_id, letter.crawler) for letter in due]
 
     active_dispatcher = dispatcher if dispatcher is not None else build_default_dispatcher()
 
     resolved = pending = exhausted = conflicted = errored = 0
-    for dlq_id in dlq_ids:
+    for dlq_id, crawler in candidates:
         try:
             result = retry_dead_letter(dlq_id, active_dispatcher, session_factory=factory)
         except (InvalidDlqTransitionError, DlqNotFoundError):
             # Another actor (operator CLI, prior worker pass) already claimed the letter.
             conflicted += 1
+            record_dlq_retry_outcome(crawler, "conflict")
             logger.warning("DLQ retry worker skipped already-claimed letter dlq_id=%s", dlq_id)
             continue
         except Exception:
             errored += 1
+            record_dlq_retry_outcome(crawler, "error")
             logger.exception("DLQ retry worker failed for dlq_id=%s", dlq_id)
             continue
         if result.status is DlqStatus.RESOLVED:
@@ -94,7 +97,7 @@ def retry_due_dead_letters(
             pending += 1
 
     return DlqWorkerSummary(
-        attempted=len(dlq_ids),
+        attempted=len(candidates),
         resolved=resolved,
         pending=pending,
         exhausted=exhausted,

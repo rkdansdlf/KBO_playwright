@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.models.crawl_dead_letter import CrawlDeadLetter, DlqStatus
 
@@ -239,6 +239,45 @@ class CrawlDeadLetterRepository:
         dead_letter.next_retry_at = next_retry_at
         self.session.flush()
         return dead_letter
+
+    def count_by_status_crawler(self) -> list[tuple[str, str, int]]:
+        """Return ``(status, crawler, count)`` rows for every non-empty group."""
+        stmt = select(CrawlDeadLetter.status, CrawlDeadLetter.crawler, func.count()).group_by(
+            CrawlDeadLetter.status,
+            CrawlDeadLetter.crawler,
+        )
+        return [(row[0], row[1], int(row[2])) for row in self.session.execute(stmt).all()]
+
+    def count_due(self, *, now: datetime) -> int:
+        """Return the number of pending letters that are due for retry."""
+        stmt = (
+            select(func.count())
+            .select_from(CrawlDeadLetter)
+            .where(
+                CrawlDeadLetter.status == DlqStatus.PENDING.value,
+                (CrawlDeadLetter.next_retry_at.is_(None)) | (CrawlDeadLetter.next_retry_at <= now),
+            )
+        )
+        return int(self.session.execute(stmt).scalar_one())
+
+    def count_stale_retrying(self, *, stale_before: datetime) -> int:
+        """Return the number of letters stuck in ``retrying`` past the cutoff."""
+        stmt = (
+            select(func.count())
+            .select_from(CrawlDeadLetter)
+            .where(
+                CrawlDeadLetter.status == DlqStatus.RETRYING.value,
+                CrawlDeadLetter.updated_at <= stale_before,
+            )
+        )
+        return int(self.session.execute(stmt).scalar_one())
+
+    def oldest_pending_created_at(self) -> datetime | None:
+        """Return the creation time of the oldest pending letter, if any."""
+        stmt = select(func.min(CrawlDeadLetter.created_at)).where(
+            CrawlDeadLetter.status == DlqStatus.PENDING.value,
+        )
+        return self.session.execute(stmt).scalar_one_or_none()
 
     def list_recent(
         self,

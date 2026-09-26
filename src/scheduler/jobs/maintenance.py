@@ -229,9 +229,6 @@ def _integrity_target_dates() -> list[str]:
     forever and the dashboard never cleared. Re-checking a short trailing window
     re-evaluates those keys so a genuine recovery resolves the incident by itself.
 
-    Args:
-        None.
-
     Returns:
         Compact ``YYYYMMDD`` dates, newest first, always at least one entry.
 
@@ -666,6 +663,16 @@ def relay_state_cleanup_job() -> None:
             alert_warning("relay_state_cleanup", "Relay state cleanup failed")
 
 
+def _refresh_dlq_metrics() -> None:
+    """Refresh DLQ state gauges from the DB; metrics must never break the job."""
+    try:
+        from src.services.crawl_dead_letter_stats import publish_dlq_state_metrics
+
+        publish_dlq_state_metrics()
+    except Exception:
+        logger.exception("Failed to refresh DLQ metrics")
+
+
 @_with_lock_skip_guard
 @retry(
     stop=stop_after_attempt(3),
@@ -680,6 +687,7 @@ def crawl_dead_letter_recovery_job() -> None:
             from src.services.crawl_dead_letter_recovery import recover_stuck_retrying
 
             results = recover_stuck_retrying()
+            _refresh_dlq_metrics()
             if not results:
                 logger.info("=== Dead Letter Recovery: nothing stuck ===")
                 return
@@ -712,6 +720,7 @@ def crawl_dead_letter_retry_job() -> None:
             from src.services.crawl_dead_letter_worker import retry_due_dead_letters
 
             summary = retry_due_dead_letters()
+            _refresh_dlq_metrics()
             if summary.attempted == 0:
                 logger.info("=== Dead Letter Retry: nothing due ===")
                 return
