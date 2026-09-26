@@ -69,7 +69,9 @@ def test_gate_context_resolves_targets_through_the_adapter() -> None:
 
     assert adapter.pytest_targets(list(crawler_files)) == [
         "tests/agent_harness",
+        "tests/crawlers",
         "tests/monitoring/test_crawler_selector_gate.py",
+        "tests/parsers",
     ]
     assert adapter.pytest_targets([]) == ["tests/agent_harness"]
     assert [
@@ -77,7 +79,13 @@ def test_gate_context_resolves_targets_through_the_adapter() -> None:
         for check in verifier.build_plan(level="standard", changed_files=crawler_files).checks
         if check.check_id == "pytest-affected"
     ] == [
-        ("tests/agent_harness", "tests/monitoring/test_crawler_selector_gate.py", "-q"),
+        (
+            "tests/agent_harness",
+            "tests/crawlers",
+            "tests/monitoring/test_crawler_selector_gate.py",
+            "tests/parsers",
+            "-q",
+        ),
     ]
 
 

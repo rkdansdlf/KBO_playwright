@@ -254,12 +254,24 @@ def _verify_run_locked(  # noqa: PLR0911
         }
     plan = evidence.read_json("plan.json")
     verification_profile = str(plan["verification"])
+    # `plan.json` records only which verification was selected, not what changed. The change
+    # set lives in `task.json`, so the affected-pytest gate has to read it from there or the
+    # default `verify <run-id>` path silently runs the Harness suite alone.
+    recorded_task = evidence.read_json("task.json")
+    recorded_changes = recorded_task.get("changed_files", [])
+    run_changed_files = list(recorded_changes) if isinstance(recorded_changes, list) else []
     runner = CommandRunner(permissions=permissions, root=registry.root)
     try:
         verifier = ProjectVerifier.load(registry.root)
         if level is not None:
-            return _verify_level(verifier, evidence, level, changed_files, runner)
-        report = verifier.verify(verification_profile, evidence=evidence, skill_id="harness", runner=runner)
+            return _verify_level(verifier, evidence, level, changed_files or run_changed_files, runner)
+        report = verifier.verify(
+            verification_profile,
+            changed_files=run_changed_files,
+            evidence=evidence,
+            skill_id="harness",
+            runner=runner,
+        )
     except HARNESS_LOAD_ERRORS as exc:
         return {"run_id": run_id, "passed": False, "error": str(exc)}
     except (OSError, PermissionDeniedError, SubprocessError) as exc:

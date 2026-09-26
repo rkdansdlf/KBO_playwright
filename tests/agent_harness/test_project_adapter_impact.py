@@ -63,8 +63,11 @@ class TestSubsystemMapping:
         assert adapter.subsystem_of(path) in {"dependencies", "ci"}
 
     def test_unmapped_source_path_falls_back_to_platform(self, adapter: KBOProjectAdapter) -> None:
-        assert adapter.subsystem_of("src/cli/kbo.py") is None
-        assert "platform" in adapter.affected_subsystems(["src/cli/kbo.py"])
+        # `src/cli` used to be this test's example, but P22 mapped it to `tests/cli` because
+        # a CLI change was reaching no tests at all. The fallback still needs a subject, and
+        # the shared root modules that never got a dedicated suite are the honest ones left.
+        assert adapter.subsystem_of("src/constants.py") is None
+        assert "platform" in adapter.affected_subsystems(["src/constants.py"])
 
     def test_documentation_is_not_a_subsystem(self, adapter: KBOProjectAdapter) -> None:
         assert adapter.subsystem_of("Docs/guide.md") is None

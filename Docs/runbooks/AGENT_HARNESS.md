@@ -251,6 +251,44 @@ python3 -m tools.agent_harness doctor --strict   # 라이선스 경고를 실패
 | `standard` | `pytest-affected` + `ruff-project` + `doctor` (+ `crawler-gate` when changed files touch crawlers/parsers) |
 | `full` | `pytest-full` + `ruff-project` + `format-check` + `mypy-scoped` + `doctor` |
 
+### affected pytest가 실제로 돌리는 것 (P22)
+
+`pytest-affected`는 변경 파일이 건드린 서브시스템의 테스트를 돌립니다. 서브시스템은
+`project_adapter.py`의 `SUBSYSTEM_PREFIXES`(파일 → 서브시스템)와
+`SUBSYSTEM_PYTEST_TARGETS`(서브시스템 → 테스트 경로) 두 표로 결정됩니다.
+
+**P22 이전에는 이 게이트가 거의 아무것도 검증하지 않았습니다.**
+
+- `ProjectVerifier.verify()`에 `changed_files` 파라미터가 없어서, 기본 경로인
+  `verify <run-id>`는 **항상** `pytest tests/agent_harness`만 돌렸습니다. `run()`이
+  `task.json`에 기록해 둔 변경 파일 집합이 있었는데 읽히지 않았습니다. 표 전체가
+  기본 경로에서 죽어 있었습니다.
+- 표 자체도 `src/` 파일의 56%(469/836)를 어떤 타깃에도 매핑하지 못했습니다.
+  `src/orchestration`, `src/scheduler`, `src/cli`, `src/utils` 등이 여기 속했습니다.
+- 과소 매핑도 있었습니다. `crawler`는 selector gate 테스트 43개만 돌리고
+  `tests/crawlers`(1,585개)를 돌리지 않았습니다 — 이 저장소에서 가장 위험한 범주가
+  가장 무관한 테스트를 돌고 있었습니다.
+- `tests/streaming/`은 `61ba0738`에서 미구현 참조 테스트로 삭제된 디렉터리입니다.
+  존재하지 않는 경로를 타깃으로 넣으면 pytest가 조용히 skip 하지 않고 **실패**하므로,
+  `src/streaming`은 실제로 존재하는 두 테스트 파일로 매핑했습니다.
+
+매핑되지 않은 채 남은 파일은 3개뿐이고, 각각 사유를 명시한 예외입니다
+(`test_affected_test_coverage.py`가 열거와 사유를 함께 강제합니다):
+`src/__init__.py`(패키지 마커), `src/constants.py`·`src/urls.py`(공용 루트 모듈,
+전용 테스트 디렉터리 없음).
+
+**스키마 표면은 넓게 유지합니다.** `src/models`, `src/db`, `src/repositories`,
+`migrations`, `src/sync`, `src/aggregators`, `src/validators`는 `database` 하나로 묶여
+있습니다. 이건 의도적입니다 — `database`는 `refactor` 프로파일로 **상승**하고
+인증(certification)을 요구하므로, 스키마·쓰기 경로 변경은 그 강도를 유지해야 합니다.
+P22는 여기에 자기 테스트 디렉터리(`tests/models`, `tests/validators`,
+`tests/aggregators`, `tests/sync`)를 **추가**했을 뿐, 상향이나 인증을 약화시키지
+않았습니다.
+
+검증 비용은 변경 범위에 따라 달라집니다. `src/cli` 변경은 `tests/cli`(약 1,750개),
+`src/crawlers` 변경은 `tests/crawlers` + `tests/parsers`를 돌게 됩니다. 이는 의도된
+trade-off입니다 — 이전에는 이 비용 없이 "검증 통과"를 보고했습니다.
+
 프로필은 레벨을 상속합니다. `project`=`standard`, `full`=`full`, `analytics`=`standard` +
 `tests/analytics`, `crawler`=`standard` + `crawler-gate`/`pytest-crawler-gate`,
 `research`=`doctor`만.
@@ -271,7 +309,7 @@ P19 이전에는 `research` 프로필에만 있어서, `.agent-harness/`를 가�
 |---|---|---|
 | `pytest-full` | 900s | 문서화된 전체 스위트 baseline 186.06s. 이전 300s는 여유 1.57배였고 coverage 붙이면 335s로 초과 |
 | `mypy-scoped` | 600s | 실측 cold 13.4s / warm 1.5s (198 모듈) |
-| 나머지 | 300s | pytest-affected ~7s, ruff ~0.1s, doctor ~0.1s |
+| 나머지 | 900s | pytest-affected는 도메인에 따라 수십 초(가장 큰 것은 tests/cli 약 1,750개), ruff ~0.1s, doctor ~0.1s |
 
 ### exit code 계약 (`verify`)
 
@@ -449,6 +487,13 @@ v1 run을 실제 검증할 때는 first verification 전에 현재 schema로 재
   먼저 확인하고, 의도된 변화면 `.agent-harness/golden_tasks.yaml`의
   `known_deviations`에 실제 profile/skills/verification를 명시하고 해당 task의
   `risk`를 `router-collision`으로 바꾼다. 명시 없이 두면 실패가 된다.
+- `verify <run-id>`가 도메인 테스트를 돌지 않는다면: `run()`을 호출할 때
+  `--changed-files`를 줬는지 먼저 본다. `task.json`의 `changed_files`가 비어 있으면
+  affected 게이트는 harness 스위트만 돌게 됩니다. 그 다음 `project_adapter`의 두 표를
+  확인하고, `test_affected_test_coverage.py`가 표의 구멍을 잡아 줍니다.
+- `pytest`가 "file or directory not found"로 실패한다면: 타깃 경로가 존재하지 않습니다.
+  존재하지 않는 경로는 skip이 아니라 수집 실패가 됩니다. 새 타깃을 추가할 때는 반드시
+  디스크에 존재하는지 확인하십시오(`test_every_declared_target_exists`가 강제).
 - intent marker를 추가했다가 golden이 깨지면: 먼저 그 단어가 domain trigger와 겹치는지 본다.
   겹치면 score가 2배로 올라가 의도와 무관한 task까지 뒤집는다. 대안은 marker를 빼고
   `--profile` 명시를 요구하거나, collision로 정직하게 선언하는 것이다.

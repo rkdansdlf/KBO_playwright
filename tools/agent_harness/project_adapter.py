@@ -16,38 +16,62 @@ from dataclasses import dataclass
 #: Order matters only in that the first match wins for a single path, so the
 #: more specific prefixes come first.
 SUBSYSTEM_PREFIXES: tuple[tuple[str, str], ...] = (
+    # Source prefixes. Each production area resolves to the subsystem whose suite proves it,
+    # so a change runs its own tests instead of a neighbouring domain's. Order matters only
+    # for overlapping prefixes; these are disjoint.
     ("src/crawlers/", "crawler"),
     ("src/parsers/", "crawler"),
     ("src/selenium/", "crawler"),
+    ("src/rag/", "analytics"),
+    ("src/analytics/", "analytics"),
+    ("src/simulation/", "simulation"),
+    ("src/reporting/", "reporting"),
+    ("src/api/", "api"),
+    ("src/monitoring/", "observability"),
+    ("src/notifications/", "notifications"),
+    ("src/diagnostics/", "diagnostics"),
+    ("src/orchestration/", "orchestration"),
+    ("src/scheduler/", "orchestration"),
+    ("src/services/", "services"),
+    # The schema surface is one subsystem on purpose: `database` escalates to the `refactor`
+    # profile and requires certification, and a model, migration, or write-path change must
+    # keep that. Its target list is therefore wide by design.
+    ("src/repositories/", "database"),
+    ("src/db/", "database"),
+    ("migrations/", "database"),
+    ("src/models/", "database"),
+    ("src/sync/", "database"),
+    ("src/aggregators/", "database"),
+    ("src/validators/", "database"),
+    ("src/cli/", "cli"),
+    ("src/utils/", "utils"),
+    ("src/certification/", "certification"),
+    ("src/sources/", "sources"),
+    ("src/lineage/", "lineage"),
+    ("src/formulas/", "formulas"),
+    ("src/pipeline/", "pipeline"),
+    ("src/config/", "config"),
+    ("src/maintenance/", "maintenance"),
+    ("src/testing/", "testing"),
+    ("src/ci/", "ci"),
+    ("src/analyzers/", "analyzers"),
+    ("src/streaming/", "streaming"),
+    # Test prefixes, so changing a test re-runs the suite that owns it.
     ("tests/crawlers/", "crawler"),
     ("tests/parsers/", "crawler"),
     ("tests/monitoring/", "observability"),
     ("tests/api/", "api"),
     ("tests/services/", "services"),
-    ("src/rag/", "analytics"),
-    ("src/analytics/", "analytics"),
-    ("src/simulation/", "analytics"),
-    ("src/reporting/", "analytics"),
-    ("src/monitoring/", "observability"),
-    ("src/notifications/", "observability"),
-    ("src/diagnostics/", "observability"),
-    ("src/orchestration/", "orchestration"),
-    ("src/scheduler/", "orchestration"),
-    ("src/api/", "api"),
-    ("src/services/", "services"),
-    ("src/repositories/", "database"),
-    ("src/models/", "database"),
-    ("src/db/", "database"),
-    ("src/sync/", "database"),
-    ("src/aggregators/", "database"),
-    ("src/validators/", "database"),
-    ("migrations/", "database"),
+    ("tests/analytics/", "analytics"),
+    ("tests/repositories/", "database"),
+    ("tests/migrations/", "database"),
+    ("tests/db/", "database"),
+    ("tests/agent_harness/", "harness"),
     (".github/workflows/", "ci"),
     (".github/actions/", "ci"),
     (".github/dependabot.yml", "ci"),
     (".agent-harness/", "harness"),
     ("tools/agent_harness/", "harness"),
-    ("tests/agent_harness/", "harness"),
 )
 
 #: Whole-file (not prefix) paths that carry infrastructure contracts.
@@ -69,10 +93,21 @@ SUBSYSTEM_FILES: dict[str, str] = {
 
 #: Extra pytest targets per subsystem, run on top of the base target.
 SUBSYSTEM_PYTEST_TARGETS: dict[str, tuple[str, ...]] = {
-    "crawler": ("tests/monitoring/test_crawler_selector_gate.py",),
+    # A crawler change is the highest-risk category in this repository, so it runs the
+    # crawler suites themselves in addition to the selector-gate contract.
+    "crawler": (
+        "tests/crawlers",
+        "tests/parsers",
+        "tests/monitoring/test_crawler_selector_gate.py",
+    ),
     "analytics": ("tests/analytics",),
+    "simulation": ("tests/simulation",),
+    "reporting": ("tests/reporting",),
     "api": ("tests/api",),
     "observability": ("tests/monitoring",),
+    "notifications": ("tests/notifications",),
+    "diagnostics": ("tests/diagnostics",),
+    "orchestration": ("tests/orchestration", "tests/scheduler"),
     "services": ("tests/services",),
     # A schema change cannot be trusted on unit tests alone: it needs the
     # migration contract, the dialect contract, and the repository layer.
@@ -80,7 +115,26 @@ SUBSYSTEM_PYTEST_TARGETS: dict[str, tuple[str, ...]] = {
         "tests/migrations",
         "tests/db",
         "tests/repositories",
+        "tests/models",
+        "tests/validators",
+        "tests/aggregators",
+        "tests/sync",
     ),
+    "cli": ("tests/cli",),
+    "utils": ("tests/utils",),
+    "certification": ("tests/certification",),
+    "sources": ("tests/sources",),
+    "lineage": ("tests/lineage",),
+    "formulas": ("tests/formulas",),
+    "pipeline": ("tests/pipeline",),
+    "config": ("tests/config",),
+    "maintenance": ("tests/maintenance",),
+    "testing": ("tests/testing",),
+    "ci": ("tests/ci",),
+    "analyzers": ("tests/analyzers",),
+    # `tests/streaming/` was removed as premature (61ba0738); the streaming code is
+    # covered by these two real modules instead.
+    "streaming": ("tests/test_pbp_stream.py", "tests/api/test_websocket_stream.py"),
 }
 
 #: Subsystems that always require certification-grade review.
