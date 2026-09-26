@@ -455,20 +455,25 @@ class ProjectVerifier:
         """Return immutable argv commands for a known profile."""
         return self.commands_for_profile(profile)
 
-    def verify(
+    def verify(  # noqa: PLR0913
         self,
         profile: str,
         *,
+        changed_files: list[str] | tuple[str, ...] = (),
         evidence: EvidenceStore | None = None,
         timeout_seconds: int = 900,
         skill_id: str = "harness",
         runner: CommandRunner | None = None,
     ) -> VerificationReport:
-        """Run profile commands sequentially through the required command boundary."""
+        """Run profile commands sequentially through the required command boundary.
+
+        `changed_files` must be the run's recorded change set, otherwise the affected-pytest
+        gate collapses to the Harness' own suite and the profile's tests never run.
+        """
         if runner is None:
             msg = "ProjectVerifier requires a CommandRunner"
             raise HarnessConfigError(msg)
-        plan = self.build_profile_plan(profile)
+        plan = self.build_profile_plan(profile, changed_files)
         commands = tuple(check.argv for check in plan.checks)
         gate_ids = tuple(check.check_id for check in plan.checks)
         verification_id = begin_verification(evidence, profile) if evidence is not None else secrets.token_hex(8)
