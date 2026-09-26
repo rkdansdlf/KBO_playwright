@@ -13,7 +13,8 @@ from sqlalchemy.pool import StaticPool
 from src.models.crawl_dead_letter import CrawlDeadLetter, DlqStatus
 from src.models.crawl_execution import CrawlExecutionRun
 from src.repositories.crawl_dead_letter_repository import CrawlDeadLetterRepository, DeadLetterSpec
-from src.services.crawl_dead_letter_service import CrawlDeadLetterService
+from src.services.crawl_dead_letter_service import CrawlDeadLetterService, DlqNotFoundError
+from src.services.crawl_dead_letter_state import InvalidDlqTransitionError
 from src.services.crawl_dead_letter_worker import retry_due_dead_letters
 
 
@@ -87,7 +88,14 @@ class _FakeDispatcher:
 def test_no_due_letters_is_noop(session_factory: sessionmaker) -> None:
     summary = retry_due_dead_letters(session_factory=session_factory, dispatcher=_FakeDispatcher())
     assert summary.attempted == 0
-    assert summary.to_dict() == {"attempted": 0, "resolved": 0, "pending": 0, "exhausted": 0, "errored": 0}
+    assert summary.to_dict() == {
+        "attempted": 0,
+        "resolved": 0,
+        "pending": 0,
+        "exhausted": 0,
+        "conflicted": 0,
+        "errored": 0,
+    }
 
 
 def test_successful_retry_resolves(session_factory: sessionmaker) -> None:
@@ -163,5 +171,33 @@ def test_worker_isolates_and_counts_errors(
 
     assert summary.attempted == 1
     assert summary.errored == 1
+    assert summary.conflicted == 0
     # The letter is untouched and remains eligible for a later pass.
+    assert _stored(session_factory, dlq_id).status == DlqStatus.PENDING.value
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        InvalidDlqTransitionError("retrying", "retrying"),
+        DlqNotFoundError("gone"),
+    ],
+)
+def test_already_claimed_letter_counts_as_conflict(
+    session_factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+) -> None:
+    dlq_id = _seed_pending(session_factory)
+
+    def _conflict(*_args: object, **_kwargs: object) -> object:
+        raise error
+
+    monkeypatch.setattr("src.services.crawl_dead_letter_worker.retry_dead_letter", _conflict)
+
+    summary = retry_due_dead_letters(session_factory=session_factory, dispatcher=_FakeDispatcher())
+
+    assert summary.attempted == 1
+    assert summary.conflicted == 1
+    assert summary.errored == 0
     assert _stored(session_factory, dlq_id).status == DlqStatus.PENDING.value

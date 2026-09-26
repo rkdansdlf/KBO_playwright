@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -16,6 +16,7 @@ from src.scheduler.alerting import alert_failure, alert_success, alert_warning
 from src.scheduler.config import (
     KST,
     SCHEDULER_JOB_EXCEPTIONS,
+    _env_int,
 )
 from src.scheduler.jobs.live import _previous_day_kst
 from src.scheduler.locks import (
@@ -34,6 +35,10 @@ _RAG_INCREMENTAL_WRITE_ENV = {
     "RAG_INDEX_ALLOW_WRITE": "1",
     "RAG_INDEX_ALLOW_PRODUCTION_WRITE": "1",
 }
+
+#: Upper bound for the integrity recheck window. Each extra day re-runs the whole
+#: check suite, so an unbounded window would let one job monopolise the database.
+_INTEGRITY_RECHECK_LOOKBACK_MAX = 7
 
 
 def _rag_vector_backend_configured() -> bool:
@@ -205,36 +210,80 @@ def heal_unverified_pbp_job() -> None:
             logger.exception("PBP Auto-Healer job failed")
 
 
+def _integrity_recheck_lookback_days() -> int:
+    """Return how many prior days the integrity job re-evaluates."""
+    raw = os.getenv("INTEGRITY_RECHECK_LOOKBACK_DAYS", "2").strip()
+    try:
+        return max(0, min(int(raw), _INTEGRITY_RECHECK_LOOKBACK_MAX))
+    except ValueError:
+        return 2
+
+
+def _integrity_target_dates() -> list[str]:
+    """Return the previous KST day plus a bounded recheck window, newest first.
+
+    Incident keys are date-scoped (``integrity:<check>:<YYYYMMDD>``) and the job
+    only ever evaluated the previous day. A check that failed transiently -- for
+    example when it ran before the 03:00 crawl landed, or against a briefly stale
+    database -- therefore had no later chance to pass, so its incident stayed OPEN
+    forever and the dashboard never cleared. Re-checking a short trailing window
+    re-evaluates those keys so a genuine recovery resolves the incident by itself.
+
+    Args:
+        None.
+
+    Returns:
+        Compact ``YYYYMMDD`` dates, newest first, always at least one entry.
+
+    """
+    from src.utils.date_helpers import parse_date_str_lenient
+
+    newest = parse_date_str_lenient(_previous_day_kst())
+    lookback = _integrity_recheck_lookback_days()
+    return [(newest - timedelta(days=offset)).strftime("%Y%m%d") for offset in range(lookback + 1)]
+
+
 @_with_lock_skip_guard
 def data_integrity_check_job() -> None:
     """Run post-crawl data integrity validation (daily at 04:45 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Data Integrity Check ===")
         try:
-            target_date = _previous_day_kst()
             from src.cli.reports.data_integrity_checker import run_integrity_checks
             from src.notifications.bridge import apply_incidents
 
-            report = run_integrity_checks(target_date)
-
             events: list[AlertEvent] = []
             resolve_keys: list[str] = []
-            for result in report.results:
-                key = f"integrity:{result.name}:{target_date}"
-                if result.passed:
-                    resolve_keys.append(key)
+            for target_date in _integrity_target_dates():
+                try:
+                    report = run_integrity_checks(target_date)
+                except SCHEDULER_JOB_EXCEPTIONS:
+                    # Isolate the fault: a date we could not evaluate must not block
+                    # the rest of the window, and its incidents stay untouched because
+                    # their state is unknown rather than healthy.
+                    logger.exception("Data Integrity Check raised for %s; skipping its incidents", target_date)
+                    continue
+                for result in report.results:
+                    key = f"integrity:{result.name}:{target_date}"
+                    if result.passed:
+                        resolve_keys.append(key)
+                    else:
+                        events.append(_integrity_alert_event(result, target_date, key))
+                if report.failed_checks:
+                    logger.warning(
+                        "=== Data Integrity Check Failed for %s (%d/%d checks failed) ===",
+                        target_date,
+                        report.failed_checks,
+                        report.total_checks,
+                    )
                 else:
-                    events.append(_integrity_alert_event(result, target_date, key))
-            apply_incidents(events, resolve_keys=resolve_keys)
+                    logger.info(
+                        "=== Data Integrity Check Passed for %s (%d checks) ===",
+                        target_date,
+                        report.total_checks,
+                    )
 
-            if report.failed_checks == 0:
-                logger.info("=== Data Integrity Check Passed (%d checks) ===", report.total_checks)
-            else:
-                logger.warning(
-                    "=== Data Integrity Check Failed (%d/%d checks failed) ===",
-                    report.failed_checks,
-                    report.total_checks,
-                )
+            apply_incidents(events, resolve_keys=resolve_keys)
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Data Integrity Check job failed")
 
@@ -393,6 +442,35 @@ def cleanup_stale_data_job() -> None:
             logger.info("=== Stale Data Cleanup Completed (%d files cleaned) ===", total_cleaned)
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Stale data cleanup job failed")
+
+
+@_with_lock_skip_guard
+def notification_retention_job() -> None:
+    """Weekly prune of delivery audit rows and recovered incidents (Sunday 03:00 KST)."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Notification Retention Job ===")
+        try:
+            from src.notifications.retention import (
+                prune_delivery_history,
+                prune_incident_history,
+            )
+
+            now = datetime.now(UTC).replace(tzinfo=None)
+            delivery_days = _env_int("NOTIFICATION_DELIVERY_RETENTION_DAYS", 90)
+            incident_days = _env_int("NOTIFICATION_INCIDENT_RETENTION_DAYS", 30)
+            with SessionLocal() as session:
+                deliveries = prune_delivery_history(session, before=now - timedelta(days=delivery_days))
+                incidents = prune_incident_history(session, before=now - timedelta(days=incident_days))
+                session.commit()
+            logger.info(
+                "=== Notification Retention Completed (deliveries=%d > %dd, incidents=%d > %dd) ===",
+                deliveries,
+                delivery_days,
+                incidents,
+                incident_days,
+            )
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Notification retention job failed")
 
 
 def trim_scheduler_logs_job() -> None:
@@ -615,9 +693,9 @@ def crawl_dead_letter_recovery_job() -> None:
             if counts.get("exhausted") or counts.get("finalized_interrupted") or counts.get("failed"):
                 alert_warning("crawl_dead_letter_recovery", f"DLQ recovery: {summary}")
 
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Dead letter recovery failed")
-            alert_warning("crawl_dead_letter_recovery", "Dead letter recovery failed")
+            raise
 
 
 @_with_lock_skip_guard
@@ -642,6 +720,6 @@ def crawl_dead_letter_retry_job() -> None:
             if summary.exhausted or summary.errored:
                 alert_warning("crawl_dead_letter_retry", f"DLQ retry: {summary.to_dict()}")
 
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Dead letter retry failed")
-            alert_warning("crawl_dead_letter_retry", "Dead letter retry failed")
+            raise
