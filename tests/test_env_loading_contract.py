@@ -37,6 +37,38 @@ SECRET_ENV_KEYS = (
     "OPENROUTER_API_KEY",
 )
 
+#: Injected into isolated interpreters that need a path that does not exist.
+MISSING = str(ROOT / "tests" / "_no_such_env_file_for_the_disabled_case")
+
+
+def _run_isolated(
+    code: str,
+    *,
+    env: dict[str, str] | None = None,
+    unset: tuple[str, ...] = (),
+) -> str:
+    """Run `code` in a fresh interpreter and return its stdout.
+
+    Anything that needs the loading guard *enabled* has to happen here rather
+    than in the pytest process. Enabling the guard in-process opens a window in
+    which an unrelated import can pull the real `.env` into the worker, and the
+    credentials it loads survive the test that caused them.
+    """
+    child_env = {**os.environ, **(env or {})}
+    for key in unset:
+        child_env.pop(key, None)
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        env=child_env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        cwd=ROOT,
+    )
+    assert result.returncode == 0, f"isolated run failed: {result.stderr}"
+    return result.stdout.strip()
+
 
 class TestGuardIsHonoured:
     def test_test_session_disables_env_loading(self):
@@ -57,16 +89,14 @@ class TestGuardIsHonoured:
         for key in SECRET_ENV_KEYS:
             assert os.environ.get(key) is None, f"{key} leaked into the test process"
 
-    def test_flag_is_read_at_call_time(self, monkeypatch):
-        """A test can opt back in, which is what opt-in tests need."""
+    def test_disabled_flag_is_read_at_call_time(self, monkeypatch):
         from src.config.env_loader import env_file_loading_enabled, load_project_env
 
         monkeypatch.setenv("KBO_ENV_FILE_LOADING", "0")
         assert env_file_loading_enabled() is False
+        # No path given, so this would read the real `.env` if the guard were
+        # ever bypassed. The guard being on is what makes this safe in-process.
         assert load_project_env() is False
-
-        monkeypatch.setenv("KBO_ENV_FILE_LOADING", "1")
-        assert env_file_loading_enabled() is True
 
     @pytest.mark.parametrize("falsy", ["0", "false", "FALSE", "no", "off", " 0 "])
     def test_every_falsy_spelling_disables_loading(self, monkeypatch, falsy: str):
@@ -75,35 +105,65 @@ class TestGuardIsHonoured:
         monkeypatch.setenv("KBO_ENV_FILE_LOADING", falsy)
         assert env_file_loading_enabled() is False
 
-    def test_production_path_still_loads(self, monkeypatch, tmp_path):
-        """Default behaviour is unchanged, so real runs keep working."""
-        from src.config.env_loader import load_project_env
+    def test_flag_enables_loading_when_opted_in(self):
+        """The enabled half runs out-of-process on purpose.
 
-        monkeypatch.delenv("KBO_ENV_FILE_LOADING", raising=False)
+        Flipping the ambient flag to a truthy value opens a window in which any
+        module imported by pytest -- and several `src` modules call
+        `load_project_env()` at module scope -- reads the real `.env` and leaks
+        live credentials into the worker. The window closes when the test ends,
+        but the secrets it loaded do not, so the leak outlives the test and
+        surfaces later as an unrelated failure. An isolated interpreter has no
+        such window.
+        """
+        output = _run_isolated(
+            "from src.config.env_loader import env_file_loading_enabled, load_project_env\n"
+            "print(env_file_loading_enabled())\n"
+            f"print(load_project_env({MISSING!r}))\n",
+            env={"KBO_ENV_FILE_LOADING": "1"},
+        )
+
+        assert output.splitlines() == ["True", "False"]
+
+    def test_production_path_still_loads(self, tmp_path):
+        """Default behaviour is unchanged, so real runs keep working."""
         env_file = tmp_path / ".env"
         env_file.write_text("KBO_TEST_PROBE_VALUE=loaded\n", encoding="utf-8")
-        monkeypatch.delenv("KBO_TEST_PROBE_VALUE", raising=False)
 
-        assert load_project_env(env_file) is True
-        assert os.environ["KBO_TEST_PROBE_VALUE"] == "loaded"
+        output = _run_isolated(
+            "from src.config.env_loader import load_project_env\n"
+            "import os\n"
+            f"print(load_project_env({str(env_file)!r}))\n"
+            "print(os.environ['KBO_TEST_PROBE_VALUE'])\n",
+            unset=("KBO_ENV_FILE_LOADING", "KBO_TEST_PROBE_VALUE"),
+        )
 
-    def test_explicit_environment_wins_over_the_file(self, monkeypatch, tmp_path):
+        assert output.splitlines() == ["True", "loaded"]
+
+    def test_explicit_environment_wins_over_the_file(self, tmp_path):
         """`override=False` keeps a deliberately-set variable authoritative."""
-        from src.config.env_loader import load_project_env
-
-        monkeypatch.delenv("KBO_ENV_FILE_LOADING", raising=False)
         env_file = tmp_path / ".env"
         env_file.write_text("KBO_TEST_PROBE_VALUE=from_file\n", encoding="utf-8")
-        monkeypatch.setenv("KBO_TEST_PROBE_VALUE", "from_process")
 
-        load_project_env(env_file)
-        assert os.environ["KBO_TEST_PROBE_VALUE"] == "from_process"
+        output = _run_isolated(
+            "from src.config.env_loader import load_project_env\n"
+            "import os\n"
+            f"load_project_env({str(env_file)!r})\n"
+            "print(os.environ['KBO_TEST_PROBE_VALUE'])\n",
+            env={"KBO_TEST_PROBE_VALUE": "from_process"},
+            unset=("KBO_ENV_FILE_LOADING",),
+        )
 
-    def test_missing_file_is_not_an_error(self, monkeypatch, tmp_path):
-        from src.config.env_loader import load_project_env
+        assert output.splitlines() == ["from_process"]
 
-        monkeypatch.delenv("KBO_ENV_FILE_LOADING", raising=False)
-        assert load_project_env(tmp_path / "absent.env") is False
+    def test_missing_file_is_not_an_error(self, tmp_path):
+        output = _run_isolated(
+            "from src.config.env_loader import load_project_env\n"
+            f"print(load_project_env({str(tmp_path / 'absent.env')!r}))\n",
+            unset=("KBO_ENV_FILE_LOADING",),
+        )
+
+        assert output.splitlines() == ["False"]
 
 
 class TestUnguardedPatternCannotReturn:
