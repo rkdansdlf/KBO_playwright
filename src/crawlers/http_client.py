@@ -21,6 +21,7 @@ import httpx
 
 from src.crawlers.circuit_breaker import circuit_registry
 from src.crawlers.circuit_breaker_dto import CircuitState
+from src.crawlers.failure_taxonomy import FailureCode, failure_code_for_status
 from src.crawlers.resilience import AdaptiveRateLimiter
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.retry_after import parse_retry_after
@@ -258,6 +259,10 @@ class CrawlerHttpClient:
             elapsed_seconds=elapsed,
             retry_after=last_result.retry_after,
             error=last_result.error,
+            # Carried forward explicitly: rebuilding the result field by field
+            # would otherwise drop the classification, and a run that succeeded
+            # only after a retry must not report the first attempt's error_code.
+            error_code=last_result.error_code,
             url=url,
         )
 
@@ -289,13 +294,26 @@ class CrawlerHttpClient:
             return CrawlResult.failure(
                 CrawlOutcome.PERMANENT_ERROR,
                 error=str(exc),
+                error_code=FailureCode.FETCH_BLOCKED.value,
                 url=url,
             )
-        except (httpx.TimeoutException, httpx.TransportError) as exc:
+        except httpx.TimeoutException as exc:
+            # Split from TransportError: a timeout is a distinct operational
+            # signal from a connection-level fault, and collapsing them would
+            # hide timeouts in the failure breakdown.
             self._record_failure(exc)
             return CrawlResult.failure(
                 CrawlOutcome.RETRYABLE_ERROR,
                 error=f"{type(exc).__name__}: {exc}",
+                error_code=FailureCode.FETCH_TIMEOUT.value,
+                url=url,
+            )
+        except httpx.TransportError as exc:
+            self._record_failure(exc)
+            return CrawlResult.failure(
+                CrawlOutcome.RETRYABLE_ERROR,
+                error=f"{type(exc).__name__}: {exc}",
+                error_code=FailureCode.FETCH_HTTP_ERROR.value,
                 url=url,
             )
         except httpx.HTTPError as exc:
@@ -303,6 +321,7 @@ class CrawlerHttpClient:
             return CrawlResult.failure(
                 CrawlOutcome.PERMANENT_ERROR,
                 error=f"{type(exc).__name__}: {exc}",
+                error_code=FailureCode.FETCH_HTTP_ERROR.value,
                 url=url,
             )
 
@@ -343,6 +362,7 @@ class CrawlerHttpClient:
         return CrawlResult.failure(
             CrawlOutcome.RETRYABLE_ERROR,
             error=f"circuit breaker {stats.name} is OPEN (cooldown {remaining:.1f}s)",
+            error_code=FailureCode.FETCH_HTTP_ERROR.value,
             url=url,
         )
 
@@ -355,6 +375,7 @@ class CrawlerHttpClient:
             return CrawlResult.failure(
                 CrawlOutcome.RETRYABLE_ERROR,
                 error=f"throttled: HTTP {status}",
+                error_code=failure_code_for_status(status).value,
                 http_status=status,
                 retry_after=retry_after,
                 url=url,
@@ -364,6 +385,7 @@ class CrawlerHttpClient:
             return CrawlResult.failure(
                 CrawlOutcome.RETRYABLE_ERROR,
                 error=f"HTTP {status}",
+                error_code=failure_code_for_status(status).value,
                 http_status=status,
                 url=url,
             )
@@ -372,6 +394,7 @@ class CrawlerHttpClient:
             return CrawlResult.failure(
                 CrawlOutcome.PERMANENT_ERROR,
                 error=f"HTTP {status}",
+                error_code=failure_code_for_status(status).value,
                 http_status=status,
                 url=url,
             )
@@ -403,6 +426,7 @@ class CrawlerHttpClient:
             return CrawlResult.failure(
                 CrawlOutcome.SCHEMA_CHANGED,
                 error=f"expected JSON, received {content_type or 'unknown content type'}",
+                error_code=FailureCode.PARSE_INVALID_FORMAT.value,
                 http_status=status,
                 url=url,
             )
@@ -413,6 +437,7 @@ class CrawlerHttpClient:
             return CrawlResult.failure(
                 CrawlOutcome.SCHEMA_CHANGED,
                 error=f"JSON decode failed: {exc}",
+                error_code=FailureCode.PARSE_INVALID_FORMAT.value,
                 http_status=status,
                 url=url,
             )

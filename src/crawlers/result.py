@@ -46,7 +46,14 @@ RETRYABLE_OUTCOMES = frozenset({CrawlOutcome.RETRYABLE_ERROR})
 
 @dataclass(frozen=True)
 class CrawlResult[T]:
-    """The classified result of a single crawler request."""
+    """The classified result of a single crawler request.
+
+    `error_code` carries the failure taxonomy code for a failed request. It is
+    attached at the point where the failure is best understood -- the transport
+    that saw the timeout or the status -- rather than recovered later by parsing
+    `error`. Re-parsing an error string is how the same failure ends up with
+    three different names in the ledger, the dead letter queue, and the metrics.
+    """
 
     outcome: CrawlOutcome
     data: Any = None
@@ -55,7 +62,20 @@ class CrawlResult[T]:
     elapsed_seconds: float = 0.0
     retry_after: float | None = None
     error: str | None = None
+    error_code: str | None = None
     url: str = ""
+
+    def __post_init__(self) -> None:
+        """Reject a classification that contradicts the outcome.
+
+        A failure is allowed to have no `error_code`: results built before the
+        taxonomy was attached still need to normalize, so `None` means "unknown
+        to the producer" rather than "not a failure". A success carrying a code
+        is a bug, because it would be counted as a failure downstream.
+        """
+        if self.outcome in {CrawlOutcome.SUCCESS, CrawlOutcome.EMPTY} and self.error_code is not None:
+            message = f"{self.outcome} cannot carry a failure error_code (got {self.error_code!r})"
+            raise ValueError(message)
 
     @property
     def ok(self) -> bool:
@@ -100,22 +120,39 @@ class CrawlResult[T]:
         return cls(outcome=CrawlOutcome.EMPTY, http_status=http_status, url=url)
 
     @classmethod
-    def failure(
+    def failure(  # noqa: PLR0913 - public builder; the keyword-only call shape is the API
         cls,
         outcome: CrawlOutcome,
         *,
         error: str,
+        error_code: str | None = None,
         http_status: int | None = None,
         retry_after: float | None = None,
         url: str = "",
     ) -> CrawlResult[Any]:
-        """Build a failed result, rejecting outcomes that are not failures."""
+        """Build a failed result, rejecting outcomes that are not failures.
+
+        Args:
+            outcome: A failure outcome.
+            error: Human-readable detail, for logs and evidence.
+            error_code: Failure taxonomy code. Optional because a producer that
+                predates the taxonomy still has to be normalizable; prefer
+                passing it whenever the cause is known.
+            http_status: Response status, when there was one.
+            retry_after: Server-requested retry delay.
+            url: Target URL.
+
+        Returns:
+            A failed result.
+
+        """
         if outcome in {CrawlOutcome.SUCCESS, CrawlOutcome.EMPTY}:
             message = f"{outcome} is not a failure outcome"
             raise ValueError(message)
         return cls(
             outcome=outcome,
             error=error,
+            error_code=error_code,
             http_status=http_status,
             retry_after=retry_after,
             url=url,
@@ -130,6 +167,7 @@ class CrawlResult[T]:
             "elapsed_seconds": round(self.elapsed_seconds, 3),
             "retry_after": self.retry_after,
             "error": self.error,
+            "error_code": self.error_code,
             "url": self.url,
         }
 
