@@ -11,6 +11,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.collection.crawl_retire import main as crawl_retire_main
 from src.db.engine import SessionLocal, get_db_session
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.scheduler.alerting import alert_failure, alert_success, alert_warning
 from src.scheduler.config import (
     KST,
@@ -212,8 +213,20 @@ def data_integrity_check_job() -> None:
         try:
             target_date = _previous_day_kst()
             from src.cli.reports.data_integrity_checker import run_integrity_checks
+            from src.notifications.bridge import apply_incidents
 
             report = run_integrity_checks(target_date)
+
+            events: list[AlertEvent] = []
+            resolve_keys: list[str] = []
+            for result in report.results:
+                key = f"integrity:{result.name}:{target_date}"
+                if result.passed:
+                    resolve_keys.append(key)
+                else:
+                    events.append(_integrity_alert_event(result, target_date, key))
+            apply_incidents(events, resolve_keys=resolve_keys)
+
             if report.failed_checks == 0:
                 logger.info("=== Data Integrity Check Passed (%d checks) ===", report.total_checks)
             else:
@@ -224,6 +237,22 @@ def data_integrity_check_job() -> None:
                 )
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Data Integrity Check job failed")
+
+
+def _integrity_alert_event(result: object, target_date: str, key: str) -> AlertEvent:
+    """Build an alert event for one failed integrity check."""
+    name = str(getattr(result, "name", "unknown"))
+    message = str(getattr(result, "message", "integrity check failed"))
+    return AlertEvent(
+        source=AlertSource.INTEGRITY,
+        component=name,
+        severity=AlertSeverity.ERROR,
+        title=f"데이터 무결성 검사 실패: {name}",
+        message=message,
+        incident_key=key,
+        remediation=(f"python3 -m src.cli.data_integrity_checker --date {target_date}",),
+        metadata={"target_date": target_date},
+    )
 
 
 @_with_lock_skip_guard
@@ -426,12 +455,88 @@ def rag_identity_drift_job() -> None:
                 census_data = json.loads(result.stdout) if result.stdout else {}
                 unsafe_count = census_data.get("unsafe_entry_count", "unknown")
                 logger.warning("RAG identity drift detected: %s unsafe entries (legacy rekey needed)", unsafe_count)
-                # Alert but don't fail the job - drift is informational
+                from src.notifications.bridge import apply_incidents
+
+                apply_incidents(
+                    [
+                        AlertEvent(
+                            source=AlertSource.RAG,
+                            component="identity",
+                            severity=AlertSeverity.WARNING,
+                            title="RAG identity drift 감지",
+                            message=f"{unsafe_count}건의 unsafe identity entry (legacy rekey 필요)",
+                            incident_key="rag:identity",
+                            remediation=("python3 -m src.cli.kbo rag census --fail-on-unsafe",),
+                            metadata={"unsafe_entry_count": unsafe_count},
+                        ),
+                    ],
+                )
             else:
                 logger.info("RAG identity drift check passed: no unsafe entries")
+                from src.notifications.bridge import apply_incidents
+
+                apply_incidents([], resolve_keys=["rag:identity"])
 
         except Exception:
             logger.exception("RAG identity drift detection failed")
+
+
+@_with_lock_skip_guard
+def schema_drift_check_job() -> None:
+    """Daily schema drift detection: alert when ORM metadata and the live DB diverge."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Schema Drift Check ===")
+        try:
+            from src.db.drift_detector import SchemaDriftDetector
+            from src.db.engine import Engine
+            from src.notifications.bridge import apply_incidents
+
+            report = SchemaDriftDetector(Engine).detect_drift()
+            if report.drift_count == 0:
+                logger.info("=== Schema Drift Check Passed (0 drifts, %d tables) ===", report.total_tables_checked)
+                apply_incidents([], resolve_keys=["drift:schema"])
+                return
+
+            severity = _drift_alert_severity(report.drifts)
+            counts: dict[str, int] = {}
+            for drift in report.drifts:
+                key = drift.drift_type.value
+                counts[key] = counts.get(key, 0) + 1
+            summary = ", ".join(f"{name}={count}" for name, count in sorted(counts.items()))
+            logger.warning(
+                "=== Schema Drift Detected: %d drift(s) across %d tables (%s) ===",
+                report.drift_count,
+                report.total_tables_checked,
+                summary,
+            )
+            apply_incidents(
+                [
+                    AlertEvent(
+                        source=AlertSource.DRIFT,
+                        component="schema",
+                        severity=severity,
+                        title=f"스키마 드리프트 {report.drift_count}건 감지",
+                        message=summary or "schema drift detected",
+                        incident_key="drift:schema",
+                        remediation=tuple(report.generated_ddl[:5]),
+                        metadata={"drift_count": report.drift_count, "dialect": report.dialect},
+                    ),
+                ],
+            )
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Schema drift check failed")
+
+
+def _drift_alert_severity(drifts: list[object]) -> AlertSeverity:
+    """Map the worst ``DriftSeverity`` onto an alert severity."""
+    from src.db.drift_dto import DriftSeverity
+
+    severities = {getattr(drift, "severity", DriftSeverity.LOW) for drift in drifts}
+    if DriftSeverity.HIGH in severities:
+        return AlertSeverity.ERROR
+    if DriftSeverity.MEDIUM in severities:
+        return AlertSeverity.WARNING
+    return AlertSeverity.INFO
 
 
 @_with_lock_skip_guard
@@ -481,3 +586,35 @@ def relay_state_cleanup_job() -> None:
         except Exception:
             logger.exception("Relay state cleanup failed")
             alert_warning("relay_state_cleanup", "Relay state cleanup failed")
+
+
+@_with_lock_skip_guard
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=120, max=600),
+    retry_error_callback=alert_failure,
+)
+def crawl_dead_letter_recovery_job() -> None:
+    """Recover dead letters stranded in ``retrying`` after a crash."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Dead Letter Recovery ===")
+        try:
+            from src.services.crawl_dead_letter_recovery import recover_stuck_retrying
+
+            results = recover_stuck_retrying()
+            if not results:
+                logger.info("=== Dead Letter Recovery: nothing stuck ===")
+                return
+
+            counts: dict[str, int] = {}
+            for result in results:
+                counts[result.action] = counts.get(result.action, 0) + 1
+            summary = ", ".join(f"{action}={count}" for action, count in sorted(counts.items()))
+            logger.info("=== Dead Letter Recovery processed %d (%s) ===", len(results), summary)
+
+            if counts.get("exhausted") or counts.get("finalized_interrupted") or counts.get("failed"):
+                alert_warning("crawl_dead_letter_recovery", f"DLQ recovery: {summary}")
+
+        except Exception:
+            logger.exception("Dead letter recovery failed")
+            alert_warning("crawl_dead_letter_recovery", "Dead letter recovery failed")

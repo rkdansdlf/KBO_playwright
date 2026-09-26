@@ -47,6 +47,7 @@ from src.scheduler.jobs.maintenance import (
     compute_park_factor_job,
     compute_rankings_job,
     compute_standings_job,
+    crawl_dead_letter_recovery_job,
     crawl_fan_culture_job,
     crawl_retired_players_job,
     data_integrity_check_job,
@@ -54,6 +55,7 @@ from src.scheduler.jobs.maintenance import (
     rag_identity_drift_job,
     recalc_milestones_and_rag_job,
     relay_state_cleanup_job,
+    schema_drift_check_job,
     sparse_terms_catchup_job,
     sync_rag_incremental_job,
     trim_scheduler_logs_job,
@@ -313,6 +315,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         (sparse_terms_catchup_job, trigger_cls(hour=5, minute=40), "sparse_terms_catchup", 7200),
         (rag_audit_sentinel_job, trigger_cls(hour=6, minute=5), "rag_audit_sentinel", 7200),
         (rag_identity_drift_job, trigger_cls(hour=6, minute=25), "rag_identity_drift", 7200),
+        (schema_drift_check_job, trigger_cls(hour=6, minute=35), "schema_drift_check", 3600),
         (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
         (
             cleanup_stale_data_job,
@@ -336,6 +339,16 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     for fn, trigger, job_id, grace in tier2_jobs:
         scheduler.add_job(fn, trigger=trigger, id=job_id, name=job_id, misfire_grace_time=grace, max_instances=1)
         logger.info("Registered job: %s (Daily)", job_id)
+
+    scheduler.add_job(
+        crawl_dead_letter_recovery_job,
+        trigger=trigger_cls(minute="*/30"),
+        id="crawl_dead_letter_recovery",
+        name="Dead Letter Recovery",
+        misfire_grace_time=900,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_dead_letter_recovery (Every 30 min)")
 
     scheduler.add_job(
         crawl_transit_time_job,
