@@ -27,6 +27,8 @@ RETRYABLE_CODES: frozenset[str] = frozenset(
         "FETCH_RATE_LIMITED",
         "PERSIST_CONNECTION",
         "PERSIST_TIMEOUT",
+        "REPLAY_INTERRUPTED",
+        "REPLAY_RUN_MISSING",
         "SOURCE_PARTIAL",
         "UNKNOWN",
     },

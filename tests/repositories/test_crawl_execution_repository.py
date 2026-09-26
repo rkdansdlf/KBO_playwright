@@ -127,6 +127,14 @@ class TestCountsAndQueries:
         assert repo.get_by_run_id("lookup-me") is run
         assert repo.get_by_run_id("missing") is None
 
+    def test_get_by_run_ids_batches_and_skips_missing(self, session: Session) -> None:
+        repo = CrawlExecutionRepository(session)
+        repo.start_run(_spec(run_id="a"))
+        repo.start_run(_spec(run_id="b"))
+        found = repo.get_by_run_ids(["a", "b", "missing"])
+        assert set(found) == {"a", "b"}
+        assert repo.get_by_run_ids([]) == {}
+
     def test_list_recent_filters(self, session: Session) -> None:
         repo = CrawlExecutionRepository(session)
         first = repo.start_run(_spec(crawler="boxscore"))

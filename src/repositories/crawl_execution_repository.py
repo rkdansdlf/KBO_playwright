@@ -18,6 +18,8 @@ from src.models.crawl_execution import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from sqlalchemy.orm import Session
 
 
@@ -157,6 +159,14 @@ class CrawlExecutionRepository:
         return self.session.execute(
             select(CrawlExecutionRun).where(CrawlExecutionRun.run_id == run_id),
         ).scalar_one_or_none()
+
+    def get_by_run_ids(self, run_ids: Collection[str]) -> dict[str, CrawlExecutionRun]:
+        """Return runs keyed by ``run_id`` for the supplied ids."""
+        ids = list(run_ids)
+        if not ids:
+            return {}
+        stmt = select(CrawlExecutionRun).where(CrawlExecutionRun.run_id.in_(ids))
+        return {run.run_id: run for run in self.session.execute(stmt).scalars().all()}
 
     def list_recent(
         self,

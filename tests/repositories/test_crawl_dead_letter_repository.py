@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.models.crawl_dead_letter import CrawlDeadLetter, DlqStatus
@@ -113,6 +113,30 @@ class TestQueries:
         repo.set_next_retry_at(ready, now - timedelta(seconds=1))
         repo.set_next_retry_at(later, now + timedelta(minutes=5))
         assert [letter.dlq_id for letter in repo.get_retryable(now=now)] == ["ready"]
+
+    def test_get_stale_retrying_only_returns_old_retrying(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        cutoff = datetime(2026, 9, 26, 12, 0, 0)
+
+        stale = repo.create_dead_letter(_spec(dlq_id="stale"))
+        repo.mark_retrying(stale)
+        fresh = repo.create_dead_letter(_spec(dlq_id="fresh", target_id="kbo_awards_wikipedia"))
+        repo.mark_retrying(fresh)
+        repo.create_dead_letter(_spec(dlq_id="pending", target_id="other"))
+
+        session.execute(
+            update(CrawlDeadLetter)
+            .where(CrawlDeadLetter.dlq_id == "stale")
+            .values(updated_at=cutoff - timedelta(minutes=5)),
+        )
+        session.execute(
+            update(CrawlDeadLetter)
+            .where(CrawlDeadLetter.dlq_id.in_(["fresh", "pending"]))
+            .values(updated_at=cutoff + timedelta(minutes=5)),
+        )
+        session.flush()
+
+        assert [letter.dlq_id for letter in repo.get_stale_retrying(stale_before=cutoff)] == ["stale"]
 
     def test_list_recent_filters(self, session: Session) -> None:
         repo = CrawlDeadLetterRepository(session)

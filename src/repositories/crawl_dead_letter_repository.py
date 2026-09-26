@@ -137,6 +137,24 @@ class CrawlDeadLetterRepository:
         )
         return list(self.session.execute(stmt).scalars().all())
 
+    def get_stale_retrying(
+        self,
+        *,
+        stale_before: datetime,
+        limit: int = 100,
+    ) -> list[CrawlDeadLetter]:
+        """Return letters stuck in ``retrying`` whose update predates the cutoff."""
+        stmt = (
+            select(CrawlDeadLetter)
+            .where(
+                CrawlDeadLetter.status == DlqStatus.RETRYING.value,
+                CrawlDeadLetter.updated_at <= stale_before,
+            )
+            .order_by(CrawlDeadLetter.updated_at.asc(), CrawlDeadLetter.id.asc())
+            .limit(limit)
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
     def mark_retrying(
         self,
         dead_letter: CrawlDeadLetter,
