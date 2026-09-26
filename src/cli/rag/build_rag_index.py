@@ -45,7 +45,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
-from dotenv import load_dotenv
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -76,8 +75,11 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
     from sqlalchemy.sql import Select
 
+from src.config.env_loader import load_project_env
+
 logger = logging.getLogger(__name__)
-load_dotenv()
+
+load_project_env()
 
 # 임베딩 배치 크기: API 호출 당 처리할 청크 수.
 _BATCH_SIZE = max(1, int(os.getenv("RAG_EMBED_BATCH_SIZE", "50")))

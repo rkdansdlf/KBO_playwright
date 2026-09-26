@@ -12,12 +12,9 @@ import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-
-load_dotenv()
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -25,7 +22,11 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
 
+from src.config.env_loader import load_project_env
+
 logger = logging.getLogger(__name__)
+
+load_project_env()
 
 PGVECTOR_URL = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL", "")
 

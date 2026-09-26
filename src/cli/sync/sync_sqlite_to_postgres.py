@@ -36,7 +36,6 @@ from datetime import time as dtime
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from dotenv import load_dotenv
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -56,6 +55,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.config.env_loader import load_project_env
 from src.sync.table_dag import TABLE_REGISTRY, TableMeta
 
 if TYPE_CHECKING:
@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from sqlalchemy import Table
     from sqlalchemy.engine import Connection, Engine
 
-load_dotenv()
+load_project_env()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("sync_sqlite_to_postgres")

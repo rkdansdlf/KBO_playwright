@@ -34,6 +34,10 @@ jobs:
         run: python scripts/lint_bare_except.py 2>&1
       - name: Crawler HTTP client bypass check
         run: python scripts/lint_crawler_client_bypass.py 2>&1
+      - name: Module-level .env load check
+        run: python scripts/lint_module_level_dotenv.py 2>&1
+      - name: Alert transport bypass check
+        run: python scripts/lint_alert_transport_bypass.py 2>&1
       - name: Unreachable code lint check
         run: python scripts/lint_unreachable_code.py 2>&1
       - name: Unreferenced public symbol lint check

@@ -11,11 +11,12 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.config.env_loader import load_project_env
+
 logger = logging.getLogger(__name__)
-load_dotenv()
+load_project_env()
 
 EMBEDDING_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 EMBEDDING_HTTP_EXCEPTIONS = (httpx.HTTPError, ValueError, TypeError, RuntimeError, OSError)

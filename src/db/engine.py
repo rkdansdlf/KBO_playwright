@@ -10,12 +10,12 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus, unquote, urlsplit
 
-from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
 from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from src.config.env_loader import load_project_env
 from src.db.sqlite_integrity import is_sqlite_corruption_error
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_project_env()
 
 # DATABASE_URL is always the application primary/target database. A separate
 # RAG_SOURCE_DB_URL is opened only by the explicit source-read path below.

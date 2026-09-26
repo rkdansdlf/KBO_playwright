@@ -22,9 +22,10 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
-from dotenv import load_dotenv
 
-load_dotenv()
+from src.config.env_loader import load_project_env
+
+load_project_env()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("verify_oci_live_sync")
