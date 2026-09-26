@@ -4,11 +4,14 @@ from __future__ import annotations
 
 # ruff: noqa: T201
 import argparse
+import importlib
 import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+_DLQ_OPERATOR_COMMANDS = frozenset({"retry", "requeue", "ignore"})
 
 
 def _add_core_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -414,14 +417,14 @@ def _lazy_lineage(args: list[str]) -> int:
 
 
 def _lazy_dlq(args: list[str]) -> int:
-    """Import and dispatch the DLQ CLI on demand."""
+    """Import and dispatch the DLQ CLI (read-only or operator) on demand."""
+    module_name = "src.cli.dlq_operator" if args and args[0] in _DLQ_OPERATOR_COMMANDS else "src.cli.dlq"
     try:
-        from src.cli.dlq import main as dlq_main
-
-        return dlq_main(args)
+        module = importlib.import_module(module_name)
     except ImportError:
         print("dlq command not available", file=sys.stderr)
         return 1
+    return module.main(args)
 
 
 def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
