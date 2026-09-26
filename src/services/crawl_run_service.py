@@ -11,8 +11,9 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from src.crawlers.failure_taxonomy import FailureCode
 from src.db.engine import SessionLocal
-from src.models.crawl_execution import RUN_STATUS_RUNNING, CrawlExecutionRun
+from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL, RUN_STATUS_RUNNING, CrawlExecutionRun
 from src.monitoring.crawler_metrics import record_crawl_run
 from src.repositories.crawl_execution_repository import (
     CrawlExecutionRepository,
@@ -189,11 +190,38 @@ def track_crawl_run(
             logger.exception("Failed to persist crawl run failure for crawler=%s", spec.crawler)
         raise
     else:
-        if run.status == RUN_STATUS_RUNNING:
-            service.success(run)
-        elif run.finished_at is None:
-            run.finished_at = _utcnow()
+        _finalize_unmeasured(service, run)
         _persist(active, owns_session=owns_session)
     finally:
         if owns_session:
             active.close()
+
+
+def _finalize_unmeasured(service: CrawlRunService, run: CrawlExecutionRun) -> None:
+    """Route a pre-marked terminal status through the service boundary.
+
+    A crawler that sets `run.status` itself before leaving the block has still
+    not been measured: the Prometheus projection lives in the service terminal
+    methods, not in the row. Finalizing here is what stops a `partial` run from
+    being invisible to `kbo_crawl_runs_total{status="partial"}` while looking
+    complete in the ledger.
+
+    A run that already carries `finished_at` went through the service on the
+    caller's side, so it is left alone and never counted twice.
+    """
+    if run.finished_at is not None:
+        return
+    if run.status == RUN_STATUS_RUNNING:
+        service.success(run)
+    elif run.status == RUN_STATUS_PARTIAL:
+        service.partial(run)
+    elif run.status == RUN_STATUS_FAILED:
+        service.failed(
+            run,
+            error_code=run.error_code or FailureCode.UNKNOWN.value,
+            error_message=run.error_message or "crawler marked the run failed without a message",
+        )
+    else:
+        # An unrecognized terminal status still needs a finish time so the row
+        # does not look indefinitely in flight.
+        run.finished_at = _utcnow()
