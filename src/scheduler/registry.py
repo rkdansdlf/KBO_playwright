@@ -48,6 +48,7 @@ from src.scheduler.jobs.maintenance import (
     compute_rankings_job,
     compute_standings_job,
     crawl_dead_letter_recovery_job,
+    crawl_dead_letter_retry_job,
     crawl_fan_culture_job,
     crawl_retired_players_job,
     data_integrity_check_job,
@@ -349,6 +350,16 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     logger.info("Registered job: crawl_dead_letter_recovery (Every 30 min)")
+
+    scheduler.add_job(
+        crawl_dead_letter_retry_job,
+        trigger=trigger_cls(minute="*/10"),
+        id="crawl_dead_letter_retry",
+        name="Dead Letter Retry",
+        misfire_grace_time=300,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_dead_letter_retry (Every 10 min)")
 
     scheduler.add_job(
         crawl_transit_time_job,

@@ -618,3 +618,30 @@ def crawl_dead_letter_recovery_job() -> None:
         except Exception:
             logger.exception("Dead letter recovery failed")
             alert_warning("crawl_dead_letter_recovery", "Dead letter recovery failed")
+
+
+@_with_lock_skip_guard
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=120, max=600),
+    retry_error_callback=alert_failure,
+)
+def crawl_dead_letter_retry_job() -> None:
+    """Retry due ``pending`` dead letters through their replay handlers."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Dead Letter Retry ===")
+        try:
+            from src.services.crawl_dead_letter_worker import retry_due_dead_letters
+
+            summary = retry_due_dead_letters()
+            if summary.attempted == 0:
+                logger.info("=== Dead Letter Retry: nothing due ===")
+                return
+
+            logger.info("=== Dead Letter Retry processed: %s ===", summary.to_dict())
+            if summary.exhausted or summary.errored:
+                alert_warning("crawl_dead_letter_retry", f"DLQ retry: {summary.to_dict()}")
+
+        except Exception:
+            logger.exception("Dead letter retry failed")
+            alert_warning("crawl_dead_letter_retry", "Dead letter retry failed")
