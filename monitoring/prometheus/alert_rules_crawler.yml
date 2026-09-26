@@ -1,0 +1,68 @@
+# Crawler alert rules.
+#
+# Kept separate from alert_rules.yml so the scheduler/infrastructure rules and
+# the data-collection rules can be reviewed independently.
+#
+# Every metric referenced here is defined in src/monitoring/crawler_metrics.py.
+# tests/monitoring/test_crawler_alert_rules_contract.py asserts that in both
+# directions, so a renamed or deleted metric fails CI rather than leaving a
+# rule that silently never fires.
+
+groups:
+  - name: kbo_crawler_alerts
+    rules:
+      # ── Failure burst ────────────────────────────────────────────────
+      # A crawler failing repeatedly is either an outage or a broken selector.
+      - alert: KboCrawlerFailureBurst
+        expr: sum by (crawler) (increase(kbo_crawl_failures_total[15m])) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크롤러 실패 급증: {{ $labels.crawler }}"
+          description: "최근 15분 동안 {{ $labels.crawler }} 실패가 {{ $value }}회 발생했습니다."
+
+      # ── No recent success ────────────────────────────────────────────
+      # Self-configuring: a crawler that did not run at all has no increase(),
+      # so a weekly or monthly job never fires. A crawler that ran but has not
+      # succeeded inside the window is exactly the case worth reporting.
+      # A crawler that has never succeeded exposes last_success = 0, so it is
+      # caught from its first failure rather than staying silent.
+      #
+      # `sum by (crawler)` is not cosmetic: without it the result carries
+      # `status`, so a crawler with both success and failure series would raise
+      # the same alert under two different label sets, which breaks grouping
+      # and dedup downstream.
+      - alert: KboCrawlerNoRecentSuccess
+        expr: |
+          (sum by (crawler) (increase(kbo_crawl_runs_total[6h])) > 0)
+          and on (crawler)
+          (time() - kbo_crawl_last_success_timestamp > 21600)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "크롤러 성공 없음: {{ $labels.crawler }}"
+          description: "{{ $labels.crawler }} 은(는) 최근 6시간 내 실행은 있었으나 성공 기록이 없습니다."
+
+      # ── Write drop ───────────────────────────────────────────────────
+      # The dangerous failure is a 200 with no exception that writes almost
+      # nothing because a selector changed. The baseline is the 7-day
+      # time-weighted average of the last-run write count, not a true per-run
+      # average; a crawler with no history has a baseline of 0 and stays quiet.
+      # Note the deliberate absence of a `> 0` guard on the current value:
+      # "existed at 100, now writes 0" is the case this rule exists for.
+      - alert: KboCrawlerWriteDrop
+        expr: |
+          (avg_over_time(kbo_crawl_records_written_last[7d]) > 0)
+          and on (crawler)
+          (
+            kbo_crawl_records_written_last
+              < 0.2 * avg_over_time(kbo_crawl_records_written_last[7d])
+          )
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크롤러 쓰기 급감: {{ $labels.crawler }}"
+          description: "{{ $labels.crawler }} 의 최근 쓰기 건수가 7일 기준의 20% 미만으로 떨어졌습니다. selector 변경 가능성을 확인하세요."

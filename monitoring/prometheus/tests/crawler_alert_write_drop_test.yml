@@ -1,0 +1,88 @@
+# Rule-level tests for KboCrawlerWriteDrop in monitoring/prometheus/alert_rules_crawler.yml.
+#
+# `promtool check rules` validates syntax and structure only; it cannot tell you
+# that a rule never fires. These fixtures assert the actual alerting behaviour,
+# including the cases that must stay quiet.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_write_drop_test.yml
+#
+# Note: promtool does not accept a per-test `evaluation_interval`, so each rule
+# has its own fixture. The evaluation interval has to match the sample interval:
+# a 1m rule interval over hourly samples never reaches the firing state here.
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 1h
+
+tests:
+  # The baseline is a 7-day window over a gauge, so the historical samples are
+  # placed inside that window with hourly spacing.
+  #
+  # Every series extends past its evaluation time on purpose. Prometheus drops a
+  # sample once it is older than the 5m lookback, so a series that stops short of
+  # the evaluation point reads as absent and the rule can never fire.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_records_written_last{crawler="awards"}'
+        # 96 hourly samples of 100, then a drop to 0.
+        values: '100x96 0x5'
+    alert_rule_test:
+      # The case the rule exists for, and the reason there is no `> 0` guard on
+      # the current value: "was 100, now writes 0" is a 200 with no exception
+      # that silently collects nothing.
+      - eval_time: 98h
+        alertname: KboCrawlerWriteDrop
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: awards
+            exp_annotations:
+              summary: "크롤러 쓰기 급감: awards"
+              description: "awards 의 최근 쓰기 건수가 7일 기준의 20% 미만으로 떨어졌습니다. selector 변경 가능성을 확인하세요."
+
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_records_written_last{crawler="awards"}'
+        # A drop to 10, which is 10% of the baseline.
+        values: '100x96 10x5'
+    alert_rule_test:
+      - eval_time: 98h
+        alertname: KboCrawlerWriteDrop
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: awards
+            exp_annotations:
+              summary: "크롤러 쓰기 급감: awards"
+              description: "awards 의 최근 쓰기 건수가 7일 기준의 20% 미만으로 떨어졌습니다. selector 변경 가능성을 확인하세요."
+
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_records_written_last{crawler="awards"}'
+        # 90% of baseline: above the threshold, so quiet.
+        values: '100x96 90x5'
+    alert_rule_test:
+      - eval_time: 98h
+        alertname: KboCrawlerWriteDrop
+        exp_alerts: []
+
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_records_written_last{crawler="awards"}'
+        values: '100x96 100x5'
+    alert_rule_test:
+      - eval_time: 98h
+        alertname: KboCrawlerWriteDrop
+        exp_alerts: []
+
+  - interval: 1h
+    input_series:
+      # A brand new crawler with no history: the baseline is 0, so the rule stays
+      # quiet even though the current value is also 0.
+      - series: 'kbo_crawl_records_written_last{crawler="brand_new"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 39h
+        alertname: KboCrawlerWriteDrop
+        exp_alerts: []

@@ -1,0 +1,99 @@
+# Rule-level tests for KboCrawlerNoRecentSuccess in monitoring/prometheus/alert_rules_crawler.yml.
+#
+# `promtool check rules` validates syntax and structure only; it cannot tell you
+# that a rule never fires. These fixtures assert the actual alerting behaviour,
+# including the cases that must stay quiet.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_freshness_test.yml
+#
+# Note: promtool does not accept a per-test `evaluation_interval`, so each rule
+# has its own fixture. The evaluation interval has to match the sample interval:
+# a 1m rule interval over hourly samples never reaches the firing state here.
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 1h
+
+tests:
+  # promtool has no absolute eval_time, so `time()` is the offset from the start of
+  # the test. The 6h freshness window is expressed by evaluating at 7d and giving
+  # a stale crawler a last_success of 0.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_runs_total{crawler="awards", status="failed"}'
+        values: '0x166 1x2'
+      - series: 'kbo_crawl_last_success_timestamp{crawler="awards"}'
+        values: '0x168'
+    alert_rule_test:
+      # Ran recently and never succeeded: must fire from the first failure,
+      # because record_crawl_run initialises last_success to 0.
+      - eval_time: 7d
+        alertname: KboCrawlerNoRecentSuccess
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              crawler: awards
+            exp_annotations:
+              summary: "크롤러 성공 없음: awards"
+              description: "awards 은(는) 최근 6시간 내 실행은 있었으나 성공 기록이 없습니다."
+
+  - interval: 1h
+    input_series:
+      # Never ran, so there is no increase in the window: a weekly or monthly
+      # job must stay quiet even though its last_success is also 0.
+      - series: 'kbo_crawl_runs_total{crawler="retired_players", status="success"}'
+        values: '0x168'
+      - series: 'kbo_crawl_last_success_timestamp{crawler="retired_players"}'
+        values: '0x168'
+    alert_rule_test:
+      - eval_time: 7d
+        alertname: KboCrawlerNoRecentSuccess
+        exp_alerts: []
+
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_runs_total{crawler="brand_new", status="failed"}'
+        values: '0x166 1x2'
+      - series: 'kbo_crawl_last_success_timestamp{crawler="brand_new"}'
+        values: '0x168'
+    alert_rule_test:
+      - eval_time: 7d
+        alertname: KboCrawlerNoRecentSuccess
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              crawler: brand_new
+            exp_annotations:
+              summary: "크롤러 성공 없음: brand_new"
+              description: "brand_new 은(는) 최근 6시간 내 실행은 있었으나 성공 기록이 없습니다."
+
+  - interval: 1h
+    input_series:
+      # Ran and succeeded about 48 minutes before eval time: healthy.
+      - series: 'kbo_crawl_runs_total{crawler="awards", status="success"}'
+        values: '0x166 1x2'
+      - series: 'kbo_crawl_last_success_timestamp{crawler="awards"}'
+        values: '0x166 601920x2'
+    alert_rule_test:
+      - eval_time: 7d
+        alertname: KboCrawlerNoRecentSuccess
+        exp_alerts: []
+
+  - interval: 1h
+    input_series:
+      # A success exists but falls just outside the 6h window: must fire.
+      - series: 'kbo_crawl_runs_total{crawler="awards", status="success"}'
+        values: '0x166 1x2'
+      - series: 'kbo_crawl_last_success_timestamp{crawler="awards"}'
+        values: '0x160 552960x8'
+    alert_rule_test:
+      - eval_time: 7d
+        alertname: KboCrawlerNoRecentSuccess
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              crawler: awards
+            exp_annotations:
+              summary: "크롤러 성공 없음: awards"
+              description: "awards 은(는) 최근 6시간 내 실행은 있었으나 성공 기록이 없습니다."

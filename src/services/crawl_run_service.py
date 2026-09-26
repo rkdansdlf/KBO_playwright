@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_RUNNING, CrawlExecutionRun
+from src.monitoring.crawler_metrics import record_crawl_run
 from src.repositories.crawl_execution_repository import (
     CrawlExecutionRepository,
     CrawlRunSpec,
@@ -24,6 +25,19 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+def _measure(run: CrawlExecutionRun) -> None:
+    """Project a terminal run onto the Prometheus metrics.
+
+    Metrics are a projection of the ledger, so every terminal transition routes
+    through here. A measurement failure must not fail the crawl it describes,
+    hence the guard: an unmeasurable run is still a recorded run.
+    """
+    try:
+        record_crawl_run(run)
+    except Exception:  # measurement is best-effort; the run is still recorded
+        logger.exception("Failed to record crawl metrics for run %s", getattr(run, "run_id", "?"))
 
 
 def _utcnow() -> datetime:
@@ -54,7 +68,7 @@ class CrawlRunService:
         finished_at: datetime | None = None,
     ) -> CrawlExecutionRun:
         """Finalize a run as successful."""
-        return self.repository.mark_success(
+        result = self.repository.mark_success(
             run,
             records_read=records_read,
             records_written=records_written,
@@ -62,6 +76,8 @@ class CrawlRunService:
             checkpoint=checkpoint,
             finished_at=finished_at,
         )
+        _measure(result)
+        return result
 
     def partial(  # noqa: PLR0913
         self,
@@ -74,7 +90,7 @@ class CrawlRunService:
         finished_at: datetime | None = None,
     ) -> CrawlExecutionRun:
         """Finalize a run as partially successful."""
-        return self.repository.mark_partial(
+        result = self.repository.mark_partial(
             run,
             records_read=records_read,
             records_written=records_written,
@@ -82,6 +98,8 @@ class CrawlRunService:
             checkpoint=checkpoint,
             finished_at=finished_at,
         )
+        _measure(result)
+        return result
 
     def failed(  # noqa: PLR0913
         self,
@@ -95,7 +113,7 @@ class CrawlRunService:
         finished_at: datetime | None = None,
     ) -> CrawlExecutionRun:
         """Finalize a run as failed with an error classification."""
-        return self.repository.mark_failed(
+        result = self.repository.mark_failed(
             run,
             error_code=error_code,
             error_message=error_message,
@@ -104,6 +122,8 @@ class CrawlRunService:
             records_failed=records_failed,
             finished_at=finished_at,
         )
+        _measure(result)
+        return result
 
     def record_counts(
         self,
