@@ -12,7 +12,6 @@ and stored in the `awards` table (idempotent by unique key).
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 from dataclasses import dataclass
@@ -24,19 +23,20 @@ from bs4 import BeautifulSoup, Tag
 from src.crawlers.failure_taxonomy import (
     CrawlPersistError,
     FailureCode,
-    FailureStage,
-    classify_failure,
+    classification_for_result,
     classify_persist_failure,
+    stage_for_code,
 )
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.db.engine import SessionLocal
-from src.models.crawl_execution import RUN_STATUS_PARTIAL
+from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.award_repository import AwardRepository
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
 from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.services.crawl_dead_letter_service import enqueue_failure
 from src.services.crawl_run_service import track_crawl_run
-from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,13 @@ class AwardRecord:
 
 @dataclass(frozen=True)
 class AwardSourceRun:
-    """Summarize one source fetch and parse attempt."""
+    """Summarize one source fetch and parse attempt.
+
+    `error_code` is the canonical failure taxonomy code. There is deliberately
+    no `failure_stage` field: a stage is a function of the code
+    (`stage_for_code`), and storing both independently is how an impossible pair
+    such as `FETCH_TIMEOUT` + `persist` gets recorded.
+    """
 
     source_key: str
     source_url: str
@@ -107,7 +113,6 @@ class AwardSourceRun:
     parsed_records: int
     error: str | None = None
     error_code: str | None = None
-    failure_stage: str | None = None
 
 
 def _extract_year(text: str) -> int | None:
@@ -149,12 +154,20 @@ class AwardCrawler:
 
     """
 
-    def __init__(self) -> None:
-        """Initialize a new instance."""
-        self.policy = RequestPolicy()
+    def __init__(self, http_client: CrawlerHttpClient | None = None) -> None:
+        """Initialize a new instance.
+
+        Args:
+            http_client: Transport to use. Defaults to a client named for this
+                crawler. Tests inject a client backed by a mock transport.
+
+        """
+        self._http = http_client or CrawlerHttpClient(
+            name=AWARD_CRAWLER_NAME,
+            policy=HttpPolicy(timeout_seconds=30.0),
+        )
         self._raw_snapshots: list[dict[str, Any]] = []
         self._source_runs: list[AwardSourceRun] = []
-        self._client: httpx.AsyncClient | None = None
 
     @property
     def source_runs(self) -> tuple[AwardSourceRun, ...]:
@@ -166,89 +179,238 @@ class AwardCrawler:
         """Return raw snapshots captured by the most recent crawl."""
         return tuple(dict(snapshot) for snapshot in self._raw_snapshots)
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Return the shared lazily-created httpx client.
-
-        Returns:
-            AsyncClient.
-
-        """
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=30,
-                follow_redirects=True,
-                headers={"User-Agent": WIKI_USER_AGENT},
-            )
-        return self._client
-
     async def close(self) -> None:
-        """Close network resources."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        """Close network resources.
 
-    async def _fetch(self, url: str, params: dict[str, str | int] | None = None) -> tuple[str, int]:
-        """Fetch a page.
-
-        Args:
-            url: URL.
-            params: Optional query parameters.
-
-        Returns:
-            A tuple of (response text, HTTP status code).
-
+        Kept for call-site compatibility. `CrawlerHttpClient` opens and closes a
+        connection per request, so there is nothing left for the crawler to own.
         """
-        client = await self._get_client()
-        headers = {"User-Agent": WIKI_USER_AGENT}
-        if YAGOONARA_URL in url:
-            headers["User-Agent"] = YAGOONARA_USER_AGENT
-        resp = await client.get(url, params=params, headers=headers)
-        resp.raise_for_status()
-        return resp.text, resp.status_code
+        return
 
-    async def _fetch_wiki_page(self, title: str) -> BeautifulSoup:
+    async def _fetch_wiki_page(self, title: str) -> CrawlResult[BeautifulSoup]:
         """Fetch a wikipedia page via the parse API and cache the snapshot.
+
+        The API speaks JSON, so it is fetched as JSON: decoding here means a
+        malformed body or an HTML substitution is classified as
+        `PARSE_INVALID_FORMAT` instead of escaping as a decode error.
 
         Args:
             title: Page title.
 
         Returns:
-            Parsed HTML.
+            A result carrying the parsed HTML, or the classified failure.
 
         """
-        raw, status_code = await self._fetch(
+        result = await self._http.fetch_json(
             WIKI_API_URL,
-            {"action": "parse", "page": title, "format": "json", "prop": "text", "redirects": 1},
+            params={"action": "parse", "page": title, "format": "json", "prop": "text", "redirects": 1},
+            headers={"User-Agent": WIKI_USER_AGENT},
         )
-        data = json.loads(raw)
-        html = data["parse"]["text"]["*"]
+        if not result.ok:
+            return result
+        try:
+            html = result.data["parse"]["text"]["*"]
+        except (KeyError, TypeError) as exc:
+            return self._as_result_failure(exc)
         self._raw_snapshots.append(
             {
                 "url": f"{WIKI_API_URL}?page={title}",
                 "html": html,
-                "source_key": "kbo_awards_wikipedia",
-                "status_code": status_code,
+                "source_key": WIKI_SOURCE_KEY,
+                "status_code": result.http_status,
             },
         )
-        return BeautifulSoup(html, "html.parser")
+        return CrawlResult.success(
+            BeautifulSoup(html, "html.parser"),
+            http_status=result.http_status,
+        )
 
-    async def _fetch_yagoonara(self) -> BeautifulSoup:
+    async def _fetch_yagoonara(self) -> CrawlResult[BeautifulSoup]:
         """Fetch the yagoonara awards page.
 
         Returns:
-            Parsed HTML.
+            A result carrying the parsed HTML, or the classified failure.
 
         """
-        html, status_code = await self._fetch(YAGOONARA_URL)
+        result = await self._http.fetch_text(
+            YAGOONARA_URL,
+            headers={"User-Agent": YAGOONARA_USER_AGENT},
+        )
+        if not result.ok:
+            return result
         self._raw_snapshots.append(
             {
                 "url": YAGOONARA_URL,
-                "html": html,
-                "source_key": "kbo_awards_yagoonara",
-                "status_code": status_code,
+                "html": result.data,
+                "source_key": YAGOONARA_SOURCE_KEY,
+                "status_code": result.http_status,
             },
         )
-        return BeautifulSoup(html, "html.parser")
+        return CrawlResult.success(
+            BeautifulSoup(result.data, "html.parser"),
+            http_status=result.http_status,
+        )
+
+    @staticmethod
+    def _as_result_failure(exc: BaseException) -> CrawlResult[Any]:
+        """Wrap an exception raised after a successful fetch as a failed result.
+
+        Used where the transport succeeded but the payload did not match the
+        shape the caller needs, so the failure is classified the same way as a
+        transport failure instead of escaping as a raw exception.
+        """
+        return CrawlResult.failure(
+            CrawlOutcome.SCHEMA_CHANGED,
+            error=f"{type(exc).__name__}: {exc}",
+            error_code=FailureCode.PARSE_INVALID_FORMAT.value,
+        )
+
+    def _source_run(
+        self,
+        source_key: str,
+        source_url: str,
+        result: CrawlResult[Any],
+        *,
+        parsed_records: int,
+        fetched: bool,
+    ) -> AwardSourceRun:
+        """Project a fetch result onto a source run, deriving the taxonomy code.
+
+        The result's own code is carried through untouched; the error text is
+        never re-analysed, because the transport already decided what happened.
+
+        Args:
+            source_key: Source identifier.
+            source_url: Source URL.
+            result: The classified fetch/parse result.
+            parsed_records: Records obtained, or 0 on failure.
+            fetched: Whether a raw snapshot was captured.
+
+        Returns:
+            The source run summary.
+
+        """
+        if result.ok:
+            return AwardSourceRun(
+                source_key=source_key,
+                source_url=source_url,
+                fetched=fetched,
+                parsed_records=parsed_records,
+            )
+        if result.outcome is CrawlOutcome.EMPTY:
+            # An award source that answers with no rows is a domain-level
+            # empty, not a transport success: there is nothing to save and
+            # nothing to trust, so it is classified as a parse-level empty.
+            return AwardSourceRun(
+                source_key=source_key,
+                source_url=source_url,
+                fetched=fetched,
+                parsed_records=0,
+                error=result.error or "source returned no records",
+                error_code=FailureCode.PARSE_EMPTY.value,
+            )
+        classification = classification_for_result(result)
+        assert classification is not None  # noqa: S101 - a non-ok, non-empty result always classifies
+        return AwardSourceRun(
+            source_key=source_key,
+            source_url=source_url,
+            fetched=fetched,
+            parsed_records=0,
+            error=result.error,
+            error_code=classification[1].value,
+        )
+
+    def _record_source_failure(
+        self,
+        source_key: str,
+        source_url: str,
+        result: CrawlResult[Any],
+    ) -> None:
+        """Record a failed source attempt for the ledger and the dead letter queue."""
+        self._mark_snapshot_parse_status(
+            source_key,
+            source_url,
+            parsed_records=0,
+            error=result.error,
+        )
+        self._source_runs.append(
+            self._source_run(
+                source_key,
+                source_url,
+                result,
+                parsed_records=0,
+                fetched=any(snapshot.get("source_key") == source_key for snapshot in self._raw_snapshots),
+            ),
+        )
+
+    def _record_source_success(
+        self,
+        source_key: str,
+        source_url: str,
+        parsed_records: int,
+    ) -> None:
+        """Record a successful source attempt."""
+        self._mark_snapshot_parse_status(source_key, source_url, parsed_records=parsed_records)
+        self._source_runs.append(
+            AwardSourceRun(
+                source_key=source_key,
+                source_url=source_url,
+                fetched=True,
+                parsed_records=parsed_records,
+            ),
+        )
+
+    async def _crawl_wiki_source(self, award_type: str, title: str, source_url: str) -> list[AwardRecord]:
+        """Fetch and parse one wikipedia award table.
+
+        Args:
+            award_type: Award type, used as the record's `award_type`.
+            title: Wikipedia page title.
+            source_url: Recorded source URL.
+
+        Returns:
+            Parsed records, or an empty list when the source failed.
+
+        """
+        result = await self._fetch_wiki_page(title)
+        if result.ok:
+            try:
+                parsed = self._parse_wiki_soup(result.data, award_type)
+            except AWARD_FETCH_EXCEPTIONS as exc:
+                result = self._as_result_failure(exc)
+            else:
+                self._record_source_success(WIKI_SOURCE_KEY, source_url, len(parsed))
+                logger.info("wikipedia %-8s -> %s records", award_type, len(parsed))
+                return parsed
+        self._record_source_failure(WIKI_SOURCE_KEY, source_url, result)
+        logger.warning("wikipedia %s failed (skipped): %s", title, result.error)
+        return []
+
+    async def _crawl_yagoonara_source(self, types: set[str] | None) -> list[AwardRecord]:
+        """Fetch and parse the yagoonara award table.
+
+        Args:
+            types: Optional award type filter.
+
+        Returns:
+            Parsed records, or an empty list when the source failed.
+
+        """
+        result = await self._fetch_yagoonara()
+        if result.ok:
+            try:
+                parsed = self._parse_yagoonara(result.data)
+            except AWARD_FETCH_EXCEPTIONS as exc:
+                result = self._as_result_failure(exc)
+            else:
+                if types is not None:
+                    parsed = [rec for rec in parsed if rec.award_type in types]
+                self._record_source_success(YAGOONARA_SOURCE_KEY, YAGOONARA_URL, len(parsed))
+                logger.info("yagoonara -> %s records", len(parsed))
+                return parsed
+        self._record_source_failure(YAGOONARA_SOURCE_KEY, YAGOONARA_URL, result)
+        logger.warning("yagoonara fetch failed (skipped): %s", result.error)
+        return []
 
     async def crawl(
         self,
@@ -272,87 +434,10 @@ class AwardCrawler:
                 continue
             if source_key is not None and source_key != WIKI_SOURCE_KEY:
                 continue
-            source_url = f"{WIKI_API_URL}?page={title}"
-            try:
-                soup = await self._fetch_wiki_page(title)
-                parsed = self._parse_wiki_soup(soup, award_type)
-                self._mark_snapshot_parse_status(WIKI_SOURCE_KEY, source_url, parsed_records=len(parsed))
-                self._source_runs.append(
-                    AwardSourceRun(
-                        source_key=WIKI_SOURCE_KEY,
-                        source_url=source_url,
-                        fetched=True,
-                        parsed_records=len(parsed),
-                    ),
-                )
-                logger.info("wikipedia %-8s -> %s records", award_type, len(parsed))
-                records.extend(parsed)
-            except AWARD_FETCH_EXCEPTIONS as exc:
-                stage, code = classify_failure(exc)
-                self._mark_snapshot_parse_status(
-                    WIKI_SOURCE_KEY,
-                    source_url,
-                    parsed_records=0,
-                    error=f"{type(exc).__name__}: {exc}",
-                )
-                self._source_runs.append(
-                    AwardSourceRun(
-                        source_key=WIKI_SOURCE_KEY,
-                        source_url=source_url,
-                        fetched=any(snapshot.get("source_key") == WIKI_SOURCE_KEY for snapshot in self._raw_snapshots),
-                        parsed_records=0,
-                        error=f"{type(exc).__name__}: {exc}",
-                        error_code=code.value,
-                        failure_stage=stage.value,
-                    ),
-                )
-                logger.exception("wikipedia %s failed (skipped)", title)
-            await self.policy.delay_async(host="ko.wikipedia.org")
+            records.extend(await self._crawl_wiki_source(award_type, title, f"{WIKI_API_URL}?page={title}"))
 
         if source_key is None or source_key == YAGOONARA_SOURCE_KEY:
-            try:
-                soup = await self._fetch_yagoonara()
-                parsed = self._parse_yagoonara(soup)
-                if types is not None:
-                    parsed = [rec for rec in parsed if rec.award_type in types]
-                self._mark_snapshot_parse_status(
-                    YAGOONARA_SOURCE_KEY,
-                    YAGOONARA_URL,
-                    parsed_records=len(parsed),
-                )
-                self._source_runs.append(
-                    AwardSourceRun(
-                        source_key=YAGOONARA_SOURCE_KEY,
-                        source_url=YAGOONARA_URL,
-                        fetched=True,
-                        parsed_records=len(parsed),
-                    ),
-                )
-                logger.info("yagoonara -> %s records", len(parsed))
-                records.extend(parsed)
-            except AWARD_FETCH_EXCEPTIONS as exc:
-                stage, code = classify_failure(exc)
-                self._mark_snapshot_parse_status(
-                    YAGOONARA_SOURCE_KEY,
-                    YAGOONARA_URL,
-                    parsed_records=0,
-                    error=f"{type(exc).__name__}: {exc}",
-                )
-                self._source_runs.append(
-                    AwardSourceRun(
-                        source_key=YAGOONARA_SOURCE_KEY,
-                        source_url=YAGOONARA_URL,
-                        fetched=any(
-                            snapshot.get("source_key") == YAGOONARA_SOURCE_KEY for snapshot in self._raw_snapshots
-                        ),
-                        parsed_records=0,
-                        error=f"{type(exc).__name__}: {exc}",
-                        error_code=code.value,
-                        failure_stage=stage.value,
-                    ),
-                )
-                logger.warning("yagoonara fetch failed (skipped)")
-            await self.policy.delay_async(host="yagoonara.com")
+            records.extend(await self._crawl_yagoonara_source(types))
 
         return self._dedup(records)
 
@@ -762,8 +847,16 @@ class AwardCrawler:
 
             failed_sources = [source_run for source_run in self._source_runs if source_run.error]
             if failed_sources:
-                run.status = RUN_STATUS_PARTIAL
-                run.error_code = FailureCode.SOURCE_PARTIAL.value
+                if source_key is not None:
+                    # A source-specific replay was asked for exactly one unit, and
+                    # that unit failed. Reporting `partial` here would be a lie:
+                    # nothing succeeded, and the aggregate `SOURCE_PARTIAL` code
+                    # would replace the real cause in the retry policy.
+                    run.status = RUN_STATUS_FAILED
+                    run.error_code = failed_sources[0].error_code or FailureCode.UNKNOWN.value
+                else:
+                    run.status = RUN_STATUS_PARTIAL
+                    run.error_code = FailureCode.SOURCE_PARTIAL.value
                 run.error_message = "; ".join(
                     f"{source_run.source_key}: {source_run.error}" for source_run in failed_sources[:5]
                 )
@@ -779,6 +872,7 @@ class AwardCrawler:
             if source_run.source_key in seen:
                 continue
             seen.add(source_run.source_key)
+            code = source_run.error_code or FailureCode.UNKNOWN.value
             try:
                 enqueue_failure(
                     DeadLetterSpec(
@@ -787,8 +881,10 @@ class AwardCrawler:
                         target_type=AWARD_TARGET_TYPE,
                         target_id=source_run.source_key,
                         source_url=source_run.source_url,
-                        failure_stage=source_run.failure_stage or FailureStage.FETCH.value,
-                        error_code=source_run.error_code or FailureCode.UNKNOWN.value,
+                        # Derived, never supplied alongside the code: a letter
+                        # cannot claim a fetch timeout failed while persisting.
+                        failure_stage=stage_for_code(code).value,
+                        error_code=code,
                         error_message=source_run.error,
                     ),
                 )
